@@ -117,7 +117,7 @@ export default function Home() {
       <section className="space-y-6">
         <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
               Dashboard
             </h1>
           </div>
