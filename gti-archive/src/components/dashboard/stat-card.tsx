@@ -23,10 +23,10 @@ export function StatCard({
           : "bg-card text-[#151b16]"
       }`}
     >
-      <div className="mb-8 flex items-start justify-between gap-4">
+      <div className="mb-9 flex items-start justify-between gap-4">
         <h3
-          className={`text-[18px] font-semibold ${
-            emphasize ? "text-white" : "text-[#161d18]"
+          className={`text-[17px] font-[600] leading-tight ${
+            emphasize ? "text-[#f6fff3]" : "text-[#161d18]"
           }`}
         >
           {title}
@@ -43,16 +43,16 @@ export function StatCard({
       </div>
 
       <p
-        className={`text-4xl font-extrabold tracking-tight sm:text-[54px] ${
-          emphasize ? "text-[#edf9ee]" : "text-[#0d1210]"
+        className={`text-[45px] font-[600] leading-none tracking-[-0.04em] ${
+          emphasize ? "text-[#E3F9DE]" : "text-[#0d1210]"
         }`}
       >
         {value}
       </p>
 
-      <div className="mt-5 flex items-center gap-1.5 text-sm">
+      <div className="mt-6 flex items-center gap-1.5 text-[14px]">
         <span
-          className={`rounded-md border px-1.5 py-0.5 text-xs font-semibold ${
+          className={`rounded-md border px-1.5 py-0.5 text-[11px] font-[600] leading-none ${
             emphasize
               ? "border-[#9ce184]/60 text-[#d4ffc8]"
               : "border-[#8fd285] text-[#80c671]"

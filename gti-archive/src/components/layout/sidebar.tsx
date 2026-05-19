@@ -1,3 +1,8 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   BookCopy,
@@ -17,7 +22,6 @@ type SidebarItem = {
   href: string;
   icon: LucideIcon;
   badge?: string;
-  active?: boolean;
 };
 
 type SidebarSection = {
@@ -29,8 +33,8 @@ const sidebarSections: SidebarSection[] = [
   {
     title: "Menu",
     items: [
-      { label: "Dashboard", href: "/", icon: LayoutGrid, active: true },
-      { label: "Projects", href: "#", icon: BookCopy, badge: "6" },
+      { label: "Dashboard", href: "/", icon: LayoutGrid },
+      { label: "Projects", href: "/projects", icon: BookCopy, badge: "6" },
       { label: "Calendar", href: "#", icon: CalendarDays },
       { label: "Collaboration", href: "#", icon: Users },
       { label: "Library", href: "#", icon: Library },
@@ -54,25 +58,21 @@ type SidebarProps = {
 
 function LogoMark() {
   return (
-    <div className="flex items-center gap-4">
-      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-white shadow-[0_16px_40px_rgba(24,48,34,0.08)]">
-        <div className="grid h-11 w-11 place-items-center rounded-full border-2 border-brand/35 text-lg font-extrabold text-brand">
-          G
-        </div>
-      </div>
-      <div>
-        <p className="text-[26px] font-extrabold uppercase tracking-[0.28em] text-[#202621]">
-          Gulbahar
-        </p>
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted">
-          Tobacco Int&apos;l FZE
-        </p>
-      </div>
+    <div className="relative h-[78px] w-[176px]">
+      <Image
+        src="/gti-logo.svg"
+        alt="GTI logo"
+        fill
+        priority
+        className="object-contain object-left"
+      />
     </div>
   );
 }
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
+  const pathname = usePathname();
+
   return (
     <>
       <div
@@ -103,38 +103,43 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <nav className="flex flex-1 flex-col gap-10">
           {sidebarSections.map((section) => (
             <div key={section.title}>
-              <p className="mb-4 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted/75">
+              <p className="mb-4 px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted/75">
                 {section.title}
               </p>
               <ul className="space-y-1.5">
                 {section.items.map((item) => {
                   const Icon = item.icon;
+                  const isActive =
+                    item.href !== "#" &&
+                    (pathname === item.href ||
+                      (item.href !== "/" && pathname.startsWith(`${item.href}/`)));
 
                   return (
                     <li key={item.label} className="relative">
-                      {item.active ? (
+                      {isActive ? (
                         <span className="absolute inset-y-2 -left-6 w-2 rounded-r-full bg-brand" />
                       ) : null}
-                      <a
+                      <Link
                         href={item.href}
+                        onClick={onClose}
                         className={`flex items-center gap-3 rounded-2xl px-3 py-3.5 text-[15px] font-semibold transition-colors ${
-                          item.active
+                          isActive
                             ? "bg-white text-[#18211a] shadow-[0_12px_30px_rgba(24,48,34,0.06)]"
                             : "text-[#6c736d] hover:bg-white/70 hover:text-[#263129]"
                         }`}
                       >
                         <Icon
                           className={`h-5 w-5 ${
-                            item.active ? "text-brand" : "text-[#adb5af]"
+                            isActive ? "text-brand" : "text-[#adb5af]"
                           }`}
                         />
                         <span className="flex-1">{item.label}</span>
                         {item.badge ? (
-                          <span className="rounded-md bg-brand px-2 py-0.5 text-xs font-bold text-white">
+                          <span className="rounded-md bg-brand px-2 py-0.5 text-[11px] font-bold text-white">
                             {item.badge}
                           </span>
                         ) : null}
-                      </a>
+                      </Link>
                     </li>
                   );
                 })}

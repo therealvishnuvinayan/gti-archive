@@ -1,3 +1,8 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/inter/800.css";
 @import "tailwindcss";
 
 :root {
@@ -11,7 +16,7 @@
   --brand-dark: #123f2d;
   --brand-soft: #dceadf;
   --line: #d9dfd4;
-  --font-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-sans: "Inter", "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
 @theme inline {
@@ -41,6 +46,8 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  text-rendering: optimizeLegibility;
 }
 
 button,

@@ -36,7 +36,7 @@ export function ProjectProgressCard({
 
   return (
     <article className="rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
-      <h2 className="mb-4 text-[18px] font-extrabold text-[#111712]">{title}</h2>
+      <h2 className="mb-4 text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">{title}</h2>
 
       <div className="flex flex-col items-center">
         <div className="relative w-full max-w-[320px]">
@@ -71,14 +71,14 @@ export function ProjectProgressCard({
           </svg>
 
           <div className="absolute inset-x-0 bottom-2 text-center">
-            <p className="text-[52px] font-extrabold leading-none text-[#111712]">
+            <p className="text-[48px] font-bold leading-none tracking-[-0.04em] text-[#111712]">
               {percentage}%
             </p>
-            <p className="mt-1 text-sm text-[#8bc685]">{subtitle}</p>
+            <p className="mt-1 text-[12px] text-[#8bc685]">{subtitle}</p>
           </div>
         </div>
 
-        <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-sm text-[#3b413d]">
+        <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-[11px] text-[#3b413d]">
           {segments.map((segment) => (
             <li key={segment.label} className="flex items-center gap-2">
               <span className={`h-4 w-4 rounded-full ${segmentDotClass[segment.tone]}`} />

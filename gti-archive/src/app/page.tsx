@@ -117,7 +117,7 @@ export default function Home() {
       <section className="space-y-6">
         <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-[#0f1411] sm:text-5xl">
+            <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
               Dashboard
             </h1>
           </div>
@@ -125,13 +125,13 @@ export default function Home() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              className="inline-flex min-h-14 items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-7 text-xl font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
+              className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
             >
               + New Project
             </button>
             <button
               type="button"
-              className="inline-flex min-h-14 items-center justify-center rounded-full border border-brand bg-white px-7 text-xl font-semibold text-brand transition-colors hover:bg-brand-soft"
+              className="inline-flex min-h-[54px] items-center justify-center rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
             >
               + Upload Assets
             </button>

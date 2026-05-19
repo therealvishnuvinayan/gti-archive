@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useState } from "react";
 
 import { Sidebar } from "@/components/layout/sidebar";
@@ -7,9 +8,16 @@ import { Topbar } from "@/components/layout/topbar";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
+  topbarProps?: {
+    searchPlaceholder?: string;
+    leadingContent?: ReactNode;
+  };
 };
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({
+  children,
+  topbarProps,
+}: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -18,7 +26,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <Topbar onOpenSidebar={() => setSidebarOpen(true)} />
+          <Topbar
+            onOpenSidebar={() => setSidebarOpen(true)}
+            {...topbarProps}
+          />
           <main className="min-w-0 rounded-[32px] bg-surface p-5 shadow-[0_24px_80px_rgba(23,39,28,0.06)] sm:p-6 lg:p-8">
             {children}
           </main>

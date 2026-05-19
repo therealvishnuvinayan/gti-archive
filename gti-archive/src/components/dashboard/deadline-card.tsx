@@ -21,8 +21,8 @@ export function DeadlineCard({
       <div className="relative">
         <div className="mb-10 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-[18px] font-extrabold">{title}</h2>
-            <p className="mt-2 text-[15px] text-white/85">{project}</p>
+            <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em]">{title}</h2>
+            <p className="mt-2 text-[14px] text-white/85">{project}</p>
           </div>
           <button
             type="button"
@@ -33,7 +33,7 @@ export function DeadlineCard({
           </button>
         </div>
 
-        <p className="text-center text-[44px] font-extrabold tracking-tight">
+        <p className="text-center text-[40px] font-bold tracking-[-0.04em]">
           {timeLeft}
         </p>
 
