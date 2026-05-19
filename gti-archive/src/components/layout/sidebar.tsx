@@ -35,7 +35,7 @@ const sidebarSections: SidebarSection[] = [
     items: [
       { label: "Dashboard", href: "/", icon: LayoutGrid },
       { label: "Projects", href: "/projects", icon: BookCopy, badge: "6" },
-      { label: "Calendar", href: "#", icon: CalendarDays },
+      { label: "Calendar", href: "/calendar", icon: CalendarDays },
       { label: "Collaboration", href: "#", icon: Users },
       { label: "Library", href: "#", icon: Library },
       { label: "Archives", href: "#", icon: Archive },
