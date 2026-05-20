@@ -19,6 +19,26 @@ export type ProjectCollaborator = {
   removable?: boolean;
 };
 
+export type ProjectChatEntry = {
+  id: string;
+  kind: "revision" | "comment";
+  title?: string;
+  author: string;
+  role: string;
+  body: string;
+  briefLabel?: string;
+  attachments?: string[];
+  compareLabel?: string;
+};
+
+export type ProjectStageOverview = {
+  budget: string;
+  revisions: number;
+  stageStarted: string;
+  stageDeadline: string;
+  briefLabel: string;
+};
+
 export type ProjectRecord = {
   slug: string;
   stage: string;
@@ -38,6 +58,8 @@ export type ProjectRecord = {
   priority: string;
   stageCards: ProjectStage[];
   collaborators: ProjectCollaborator[];
+  stageOverview?: ProjectStageOverview;
+  chatEntries?: ProjectChatEntry[];
 };
 
 export const projectRecords: ProjectRecord[] = [
@@ -98,6 +120,59 @@ export const projectRecords: ProjectRecord[] = [
       { id: "c-9", name: "Sam", role: "Designer", group: "external", access: "view" },
       { id: "c-10", name: "Harry", role: "Designer", group: "external", access: "view" },
       { id: "c-11", name: "Mclean", role: "Print House", group: "external", access: "owner" },
+    ],
+    stageOverview: {
+      budget: "3000 USD (30%)",
+      revisions: 3,
+      stageStarted: "25/08/2023",
+      stageDeadline: "28/08/2023",
+      briefLabel: "Brief",
+    },
+    chatEntries: [
+      {
+        id: "chat-1",
+        kind: "revision",
+        title: "Revision 3",
+        author: "F",
+        role: "Designer",
+        body: "Dear team, please find the revised artworks according to the latest brief",
+        briefLabel: "latest brief",
+        attachments: ["AI", "PSD", "PDF", "FIG", "ZIP"],
+        compareLabel: "Compare with other stages",
+      },
+      {
+        id: "chat-2",
+        kind: "comment",
+        author: "S",
+        role: "Project Owner",
+        body: "Please correct the yellow color of the ice mango to more vibrant version, Please find the Attached color references",
+        attachments: ["FIG", "LINK"],
+      },
+      {
+        id: "chat-3",
+        kind: "comment",
+        author: "W",
+        role: "Collaborator",
+        body: "The yellow color needs change",
+      },
+      {
+        id: "chat-4",
+        kind: "comment",
+        author: "A",
+        role: "Collaborator",
+        body: "The colors are not right!",
+      },
+      {
+        id: "chat-5",
+        kind: "revision",
+        title: "Revision 3",
+        author: "F",
+        role: "Designer",
+        body: "Dear team, please find the revised artworks according to the latest brief",
+        briefLabel: "latest brief",
+        attachments: ["AI", "PSD", "PDF", "FIG", "ZIP"],
+        compareLabel: "Compare with other stages",
+      },
     ],
   },
   {

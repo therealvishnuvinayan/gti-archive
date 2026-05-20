@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Eye, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 
+import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import type { ProjectCollaborator, ProjectRecord, ProjectStage } from "@/components/projects/project-data";
 
 type ProjectDetailWorkspaceProps = {
@@ -38,26 +39,9 @@ const stageStyles: Record<
   },
 };
 
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps) {
   const [collaborators, setCollaborators] = useState<ProjectCollaborator[]>(
     project.collaborators,
-  );
-
-  const groupedCollaborators = useMemo(
-    () => ({
-      internal: collaborators.filter((collaborator) => collaborator.group === "internal"),
-      external: collaborators.filter((collaborator) => collaborator.group === "external"),
-    }),
-    [collaborators],
   );
 
   function removeCollaborator(id: string) {
@@ -127,12 +111,12 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
                   <p>Stage Budget: {stage.budget}</p>
                 </div>
                 <div className="mt-6 space-y-2.5">
-                  <button
-                    type="button"
+                  <Link
+                    href={`/projects/${project.slug}/chat?stage=${stage.id}`}
                     className={`inline-flex min-h-[40px] w-full items-center justify-center rounded-full px-5 text-[14px] font-[600] ${style.primaryButton}`}
                   >
                     Open Stage
-                  </button>
+                  </Link>
                   <button
                     type="button"
                     className={`inline-flex min-h-[40px] w-full items-center justify-center rounded-full px-5 text-[14px] font-[600] ${style.secondaryButton}`}
@@ -145,52 +129,10 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
           })}
         </div>
 
-        <aside className="rounded-[20px] bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-          <h2 className="text-[20px] font-[700] tracking-[-0.03em] text-[#111712]">
-            Project Collaborators
-          </h2>
-
-          {(["internal", "external"] as const).map((group) => (
-            <div key={group} className="mt-5">
-              <h3 className="text-[16px] font-[700] text-[#86c864] capitalize">
-                {group}
-              </h3>
-              <ul className="mt-3 space-y-3">
-                {groupedCollaborators[group].map((collaborator) => (
-                  <li key={collaborator.id} className="flex items-center gap-3">
-                    <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
-                      {getInitials(collaborator.name)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12px] font-[600] text-[#111712]">
-                        {collaborator.name}
-                      </p>
-                      <p className="truncate text-[10px] text-[#7a837b]">{collaborator.role}</p>
-                    </div>
-                    {collaborator.group === "external" ? (
-                      <Eye
-                        className={`h-4 w-4 ${
-                          collaborator.access === "view"
-                            ? "text-[#50b848]"
-                            : "text-[#ff2f2f]"
-                        }`}
-                      />
-                    ) : collaborator.removable ? (
-                      <button
-                        type="button"
-                        onClick={() => removeCollaborator(collaborator.id)}
-                        className="text-[#ff6e68]"
-                        aria-label={`Remove ${collaborator.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </aside>
+        <ProjectCollaboratorsPanel
+          collaborators={collaborators}
+          onRemove={removeCollaborator}
+        />
       </div>
     </section>
   );
