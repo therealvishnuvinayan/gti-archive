@@ -39,6 +39,17 @@ export type ProjectStageOverview = {
   briefLabel: string;
 };
 
+export type ProjectCompareNote = {
+  id: string;
+  author: string;
+  role: string;
+  date: string;
+  body: string;
+  x: string;
+  y: string;
+  attachments?: string[];
+};
+
 export type ProjectRecord = {
   slug: string;
   stage: string;
@@ -60,6 +71,7 @@ export type ProjectRecord = {
   collaborators: ProjectCollaborator[];
   stageOverview?: ProjectStageOverview;
   chatEntries?: ProjectChatEntry[];
+  compareNotes?: ProjectCompareNote[];
 };
 
 export const projectRecords: ProjectRecord[] = [
@@ -172,6 +184,28 @@ export const projectRecords: ProjectRecord[] = [
         briefLabel: "latest brief",
         attachments: ["AI", "PSD", "PDF", "FIG", "ZIP"],
         compareLabel: "Compare with other stages",
+      },
+    ],
+    compareNotes: [
+      {
+        id: "note-1",
+        author: "S",
+        role: "Project Owner",
+        date: "09:38 12/08/2025",
+        body: "This logo needs to be enlarged by 50% and the color of the logo needs to be black. reference attached",
+        x: "74%",
+        y: "22%",
+        attachments: ["FIG"],
+      },
+      {
+        id: "note-2",
+        author: "S",
+        role: "Project Owner",
+        date: "09:02 12/08/2025",
+        body: "The logo can be slightly bigger and the color can be slightly darker, reference attached",
+        x: "76%",
+        y: "50%",
+        attachments: ["FIG"],
       },
     ],
   },

@@ -147,12 +147,12 @@ export function ProjectChatWorkspace({
                           ))}
                         </div>
                         {message.compareLabel ? (
-                          <button
-                            type="button"
+                          <Link
+                            href={`/projects/${project.slug}/compare?stage=${activeStage?.id ?? ""}`}
                             className="mt-3 inline-flex min-h-[30px] w-full items-center justify-center rounded-full bg-[#23593a] px-3 text-[11px] font-[600] text-white"
                           >
                             {message.compareLabel}
-                          </button>
+                          </Link>
                         ) : null}
                       </div>
                     ) : null}
