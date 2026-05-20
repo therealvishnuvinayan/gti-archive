@@ -3,19 +3,33 @@
 import type { ReactNode } from "react";
 import { Bell, Menu, MessageSquareText, Search } from "lucide-react";
 
-type TopbarProps = {
+export type DashboardUserView = {
+  name: string;
+  email: string;
+  initials: string;
+};
+
+export type DashboardTopbarProps = {
+  user?: DashboardUserView;
   onOpenSidebar: () => void;
   searchPlaceholder?: string;
   leadingContent?: ReactNode;
   showSearch?: boolean;
 };
 
+const defaultUser: DashboardUserView = {
+  name: "Demo User",
+  email: "demouser@gulbahartobacco.com",
+  initials: "DU",
+};
+
 export function Topbar({
+  user = defaultUser,
   onOpenSidebar,
   searchPlaceholder = "Search.....",
   leadingContent,
   showSearch = true,
-}: TopbarProps) {
+}: DashboardTopbarProps) {
   return (
     <header className="rounded-[30px] bg-surface px-4 py-4 shadow-[0_18px_40px_rgba(23,39,28,0.05)] sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -66,14 +80,14 @@ export function Topbar({
 
           <div className="flex min-w-[250px] items-center gap-3 rounded-full bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,26,20,0.05)]">
             <div className="grid h-[56px] w-[56px] place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd7c5,#d88f6c_55%,#7c4a34)] text-[20px] font-bold text-white">
-              DU
+              {user.initials}
             </div>
             <div className="min-w-0">
               <p className="truncate text-[17px] font-extrabold leading-tight text-[#18211a]">
-                Demo User
+                {user.name}
               </p>
               <p className="truncate text-[13px] text-muted">
-                demouser@gulbahartobacco.com
+                {user.email}
               </p>
             </div>
           </div>
