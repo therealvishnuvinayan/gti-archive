@@ -45,7 +45,7 @@ const sidebarSections: SidebarSection[] = [
     title: "General",
     items: [
       { label: "Settings", href: "/settings", icon: Settings },
-      { label: "Help", href: "#", icon: HelpCircle },
+      { label: "Help", href: "/help", icon: HelpCircle },
     ],
   },
 ];
