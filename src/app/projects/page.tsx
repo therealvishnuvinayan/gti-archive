@@ -1,7 +1,8 @@
 import Link from "next/link";
 
-import { ProjectCard, type ProjectCardItem } from "@/components/projects/project-card";
+import { ProjectCard } from "@/components/projects/project-card";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { projectRecords } from "@/components/projects/project-data";
 
 type ProjectFilter = {
   label: string;
@@ -12,74 +13,6 @@ const projectFilters: ProjectFilter[] = [
   { label: "Ongoing", active: true },
   { label: "On Hold" },
   { label: "Completed" },
-];
-
-const projects: ProjectCardItem[] = [
-  {
-    stage: "Stage 2 : In Progress",
-    category: "Packaging Design",
-    title: "Milano Project 1 Packaging Design",
-    createdOn: "17/08/2025",
-    createdBy: "Slavomir Kluziak",
-    featured: true,
-  },
-  {
-    stage: "Stage 2 : In Progress",
-    category: "Packaging Design",
-    title: "Milano Project 2 Variance",
-    createdOn: "16/03/2025",
-    createdBy: "Slavomir Kluziak",
-  },
-  {
-    stage: "Stage 2 : In Progress",
-    category: "Packaging Design - Outer",
-    title: "Milano Project 3 King Size",
-    createdOn: "16/03/2025",
-    createdBy: "Slavomir Kluziak",
-  },
-  {
-    stage: "Stage 2 : In Progress",
-    category: "Leaflet Design",
-    title: "Milano Project 4 Flavours",
-    createdOn: "16/03/2025",
-    createdBy: "Slavomir Kluziak",
-    emphasized: true,
-  },
-  {
-    stage: "Stage 2 : In Progress",
-    category: "Marketing Graphics Design",
-    title: "Milano Project 4 Poster",
-    createdOn: "16/03/2025",
-    createdBy: "Slavomir Kluziak",
-  },
-  {
-    stage: "Stage 2 : In Progress",
-    category: "Packaging Design",
-    title: "Mond Project 1 Fanpack",
-    createdOn: "16/03/2025",
-    createdBy: "Slavomir Kluziak",
-  },
-  {
-    stage: "Stage 2 : In Progress",
-    category: "Branding Design",
-    title: "Gulbahar Branding",
-    createdOn: "16/03/2025",
-    createdBy: "Slavomir Kluziak",
-  },
-  {
-    stage: "Stage 2 : In Progress",
-    category: "POS Header Design",
-    title: "Milano Project 4 King Size",
-    createdOn: "16/03/2025",
-    createdBy: "Slavomir Kluziak",
-  },
-  {
-    stage: "Stage 2 : In Progress",
-    category: "Packaging Design - Outer",
-    title: "Momento Project 1",
-    createdOn: "16/03/2025",
-    createdBy: "Slavomir Kluziak",
-  },
 ];
 
 function BackPill() {
@@ -142,8 +75,8 @@ export default function ProjectsPage() {
         </header>
 
         <section className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-4">
-          {projects.map((project) => (
-            <ProjectCard key={`${project.title}-${project.category}`} project={project} />
+          {projectRecords.map((project) => (
+            <ProjectCard key={project.slug} project={project} />
           ))}
         </section>
       </section>

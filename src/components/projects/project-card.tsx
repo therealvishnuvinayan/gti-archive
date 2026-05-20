@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 
 export type ProjectCardItem = {
+  slug: string;
   stage: string;
   category: string;
   title: string;
@@ -65,8 +67,8 @@ export function ProjectCard({ project }: ProjectCardProps) {
         <p>Created By {project.createdBy}</p>
       </div>
 
-      <button
-        type="button"
+      <Link
+        href={`/projects/${project.slug}`}
         className={`mt-6 inline-flex min-h-[52px] w-full items-center justify-center rounded-full px-6 text-[18px] font-semibold transition-transform hover:-translate-y-0.5 ${
           project.featured
             ? "bg-[linear-gradient(90deg,#31a06a,#133f2d)] text-white"
@@ -74,7 +76,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
         }`}
       >
         View Project
-      </button>
+      </Link>
     </article>
   );
 }
