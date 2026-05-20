@@ -11,6 +11,7 @@ type DashboardLayoutProps = {
   topbarProps?: {
     searchPlaceholder?: string;
     leadingContent?: ReactNode;
+    showSearch?: boolean;
   };
 };
 

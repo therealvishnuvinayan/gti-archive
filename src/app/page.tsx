@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { UpdateList, type UpdateItem } from "@/components/dashboard/update-list";
@@ -123,12 +125,12 @@ export default function Home() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
+            <Link
+              href="/projects/new"
               className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
             >
               + New Project
-            </button>
+            </Link>
             <button
               type="button"
               className="inline-flex min-h-[54px] items-center justify-center rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
