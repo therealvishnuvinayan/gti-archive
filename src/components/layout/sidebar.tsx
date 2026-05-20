@@ -38,7 +38,7 @@ const sidebarSections: SidebarSection[] = [
       { label: "Calendar", href: "/calendar", icon: CalendarDays },
       { label: "Collaboration", href: "/collaboration", icon: Users },
       { label: "Library", href: "/library", icon: Library },
-      { label: "Archives", href: "#", icon: Archive },
+      { label: "Archives", href: "/archives", icon: Archive },
     ],
   },
   {
