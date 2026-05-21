@@ -6,14 +6,14 @@ import { Link2, Paperclip } from "lucide-react";
 
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import type {
-  ProjectCollaborator,
   ProjectCompareNote,
-  ProjectRecord,
-  ProjectStage,
-} from "@/components/projects/project-data";
+  ProjectCollaboratorRecord,
+  ProjectFlowRecord,
+  ProjectStageRecord,
+} from "@/lib/projects";
 
 type ProjectCompareWorkspaceProps = {
-  project: ProjectRecord;
+  project: ProjectFlowRecord;
   stageId?: string;
 };
 
@@ -42,20 +42,20 @@ export function ProjectCompareWorkspace({
   project,
   stageId,
 }: ProjectCompareWorkspaceProps) {
-  const [collaborators, setCollaborators] = useState<ProjectCollaborator[]>(
+  const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
     project.collaborators,
   );
   const [opacity, setOpacity] = useState(50);
   const [draft, setDraft] = useState("");
   const [notes, setNotes] = useState<ProjectCompareNote[]>(project.compareNotes ?? []);
 
-  const activeStage = useMemo<ProjectStage | undefined>(() => {
+  const activeStage = useMemo<ProjectStageRecord | undefined>(() => {
     if (!stageId) {
-      return project.stageCards[1] ?? project.stageCards[0];
+      return project.stageCards.find((stage) => stage.id === project.currentStageId) ?? project.stageCards[0];
     }
 
     return project.stageCards.find((stage) => stage.id === stageId) ?? project.stageCards[0];
-  }, [project.stageCards, stageId]);
+  }, [project.currentStageId, project.stageCards, stageId]);
 
   function removeCollaborator(id: string) {
     setCollaborators((current) => current.filter((collaborator) => collaborator.id !== id));
@@ -95,11 +95,11 @@ export function ProjectCompareWorkspace({
                 <div className="mt-3 flex flex-wrap gap-6 text-[13px]">
                   <div>
                     <p className="font-[700] text-[#95d867]">Revision 3</p>
-                    <p>Stage 2</p>
+                    <p>{activeStage?.label ?? project.currentStageName}</p>
                   </div>
                   <div>
                     <p className="font-[700] text-[#95d867]">Revision 2</p>
-                    <p>Stage 2</p>
+                    <p>{activeStage?.label ?? project.currentStageName}</p>
                   </div>
                   <div>
                     <p className="text-[14px] font-[700]">{project.title}</p>
@@ -130,10 +130,10 @@ export function ProjectCompareWorkspace({
                   ))}
                 </div>
                 <Link
-                  href={`/projects/${project.slug}/chat?stage=${activeStage?.id ?? ""}`}
+                  href={`/projects/${project.id}/chat?stage=${activeStage?.id ?? ""}`}
                   className="mt-3 inline-flex min-h-[30px] w-full items-center justify-center rounded-full bg-[#23593a] px-3 text-[11px] font-[600] text-white"
                 >
-                  Compare with other stages
+                  Back to stage chat
                 </Link>
               </div>
             </div>
@@ -171,38 +171,44 @@ export function ProjectCompareWorkspace({
             </div>
 
             <div className="space-y-3">
-              {notes.slice(0, 2).map((note) => (
-                <article
-                  key={note.id}
-                  className="rounded-[10px] border border-[#dbe3dc] bg-white p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="grid h-6 w-6 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
-                        {getInitials(note.author)}
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-[700] text-[#111712]">{note.author}</p>
-                        <p className="text-[9px] text-[#7a837b]">{note.role}</p>
-                      </div>
-                    </div>
-                    <span className="text-[8px] text-[#8b938d]">{note.date}</span>
-                  </div>
-                  <p className="mt-2 text-[11px] leading-[1.3] text-[#111712]">{note.body}</p>
-                  {note.attachments?.length ? (
-                    <div className="mt-2 flex justify-end gap-2">
-                      {note.attachments.map((attachment) => (
-                        <div
-                          key={`${note.id}-${attachment}`}
-                          className={`grid h-6 w-6 place-items-center rounded-md text-[8px] font-[700] ${getAttachmentClass(attachment)}`}
-                        >
-                          {attachment}
+              {notes.length > 0 ? (
+                notes.slice(0, 2).map((note) => (
+                  <article
+                    key={note.id}
+                    className="rounded-[10px] border border-[#dbe3dc] bg-white p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="grid h-6 w-6 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
+                          {getInitials(note.author)}
                         </div>
-                      ))}
+                        <div>
+                          <p className="text-[11px] font-[700] text-[#111712]">{note.author}</p>
+                          <p className="text-[9px] text-[#7a837b]">{note.role}</p>
+                        </div>
+                      </div>
+                      <span className="text-[8px] text-[#8b938d]">{note.date}</span>
                     </div>
-                  ) : null}
-                </article>
-              ))}
+                    <p className="mt-2 text-[11px] leading-[1.3] text-[#111712]">{note.body}</p>
+                    {note.attachments?.length ? (
+                      <div className="mt-2 flex justify-end gap-2">
+                        {note.attachments.map((attachment) => (
+                          <div
+                            key={`${note.id}-${attachment}`}
+                            className={`grid h-6 w-6 place-items-center rounded-md text-[8px] font-[700] ${getAttachmentClass(attachment)}`}
+                          >
+                            {attachment}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ))
+              ) : (
+                <div className="rounded-[10px] border border-dashed border-[#dbe3dc] bg-white p-4 text-[12px] text-[#7a837b] shadow-[0_8px_20px_rgba(19,28,22,0.04)]">
+                  No comparison notes have been added for this stage yet.
+                </div>
+              )}
             </div>
           </div>
 
@@ -268,19 +274,19 @@ export function ProjectCompareWorkspace({
             <dl className="mt-3 space-y-1.5 text-[13px] text-[#242b26]">
               <div>
                 <dt className="inline font-[700]">Budget :</dt>{" "}
-                <dd className="inline">{project.stageOverview?.budget ?? project.budget}</dd>
+                <dd className="inline">{activeStage?.budget ?? project.budget}</dd>
               </div>
               <div>
                 <dt className="inline font-[700]">Revisions :</dt>{" "}
-                <dd className="inline">{project.stageOverview?.revisions ?? 3}</dd>
+                <dd className="inline">{notes.length}</dd>
               </div>
               <div>
                 <dt className="inline font-[700]">Stage Started :</dt>{" "}
-                <dd className="inline">{project.stageOverview?.stageStarted ?? activeStage?.createdOn}</dd>
+                <dd className="inline">{activeStage?.createdOn ?? project.startDate}</dd>
               </div>
               <div>
                 <dt className="inline font-[700]">Stage Deadline :</dt>{" "}
-                <dd className="inline">{project.stageOverview?.stageDeadline ?? project.deadline}</dd>
+                <dd className="inline">{project.endDate}</dd>
               </div>
             </dl>
             <div className="mt-5">
@@ -288,7 +294,7 @@ export function ProjectCompareWorkspace({
                 href="#"
                 className="inline-flex min-h-[36px] min-w-[110px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-5 text-[13px] font-[600] text-white"
               >
-                {project.stageOverview?.briefLabel ?? "Brief"}
+                Brief
               </Link>
             </div>
           </aside>

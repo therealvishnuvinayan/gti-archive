@@ -9,6 +9,13 @@ type DashboardLayoutProps = {
     searchPlaceholder?: string;
     leadingContent?: ReactNode;
     showSearch?: boolean;
+    searchAction?: string;
+    searchName?: string;
+    searchDefaultValue?: string;
+    searchHiddenFields?: Array<{
+      name: string;
+      value: string;
+    }>;
   };
 };
 

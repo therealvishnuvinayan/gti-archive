@@ -1,0 +1,398 @@
+import type {
+  Project,
+  ProjectStage,
+  ProjectStatus,
+  User,
+} from "@prisma/client";
+
+import { prisma } from "@/lib/prisma";
+
+type ProjectWithCreator = Project & {
+  createdBy: Pick<User, "name" | "email">;
+  stages: ProjectStage[];
+};
+
+export type ProjectCardRecord = {
+  id: string;
+  stage: string;
+  category: string;
+  title: string;
+  createdOn: string;
+  createdBy: string;
+  featured?: boolean;
+  emphasized?: boolean;
+};
+
+export type ProjectStageVisualStatus =
+  | "completed"
+  | "in-progress"
+  | "pending"
+  | "on-hold";
+
+export type ProjectStageRecord = {
+  id: string;
+  label: string;
+  subtitle: string;
+  title: string;
+  createdOn: string;
+  budget: string;
+  status: ProjectStageVisualStatus;
+};
+
+export type ProjectCollaboratorRecord = {
+  id: string;
+  name: string;
+  role: string;
+  group: "internal" | "external";
+  access: "owner" | "view";
+  removable?: boolean;
+};
+
+export type ProjectChatEntry = {
+  id: string;
+  kind: "revision" | "comment";
+  title?: string;
+  author: string;
+  role: string;
+  body: string;
+  briefLabel?: string;
+  attachments?: string[];
+  compareLabel?: string;
+};
+
+export type ProjectCompareNote = {
+  id: string;
+  author: string;
+  role: string;
+  date: string;
+  body: string;
+  x: string;
+  y: string;
+  attachments?: string[];
+};
+
+export type ProjectFlowRecord = {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  budget: string;
+  statusLabel: string;
+  currentStageName: string;
+  currentStageId: string | null;
+  stageCount: number;
+  startDate: string;
+  endDate: string;
+  createdOn: string;
+  createdBy: string;
+  tag: string;
+  priority: string;
+  stageCards: ProjectStageRecord[];
+  collaborators: ProjectCollaboratorRecord[];
+  chatEntries: ProjectChatEntry[];
+  compareNotes: ProjectCompareNote[];
+};
+
+export type DashboardProjectCounts = {
+  total: number;
+  ongoing: number;
+  pending: number;
+  completed: number;
+};
+
+export type ProjectsListFilter = {
+  status?: "ONGOING" | "ON_HOLD" | "COMPLETED";
+  query?: string;
+  sort?: "newest" | "oldest" | "name";
+};
+
+export const projectStatusMeta: Record<
+  ProjectStatus,
+  {
+    label: string;
+    dashboardLabel: string;
+  }
+> = {
+  ONGOING: {
+    label: "In Progress",
+    dashboardLabel: "Ongoing",
+  },
+  ON_HOLD: {
+    label: "On Hold",
+    dashboardLabel: "On Hold",
+  },
+  PENDING: {
+    label: "Pending",
+    dashboardLabel: "Pending",
+  },
+  COMPLETED: {
+    label: "Completed",
+    dashboardLabel: "Completed",
+  },
+};
+
+export function formatProjectDate(date: Date) {
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${day}/${month}/${year}`;
+}
+
+export function formatProjectBudget(budget: number | null | undefined) {
+  if (!budget || budget <= 0) {
+    return "—";
+  }
+
+  return `${budget.toLocaleString("en-US")} USD`;
+}
+
+function getCreatorName(creator: Pick<User, "name" | "email">) {
+  if (creator.name?.trim()) {
+    return creator.name.trim();
+  }
+
+  return creator.email;
+}
+
+function mapStageStatusToVisual(status: ProjectStatus): ProjectStageVisualStatus {
+  switch (status) {
+    case "COMPLETED":
+      return "completed";
+    case "ON_HOLD":
+      return "on-hold";
+    case "PENDING":
+      return "pending";
+    default:
+      return "in-progress";
+  }
+}
+
+function buildSyntheticStages(project: Project): ProjectStage[] {
+  return Array.from({ length: Math.max(project.stageCount, 1) }, (_, index) => ({
+    id: `${project.id}-stage-${index + 1}`,
+    projectId: project.id,
+    name:
+      index === 0
+        ? project.currentStageName?.trim() || `Stage ${index + 1}`
+        : `Stage ${index + 1}`,
+    budget: index === 0 ? project.budget : null,
+    status: index === 0 ? project.status : "PENDING",
+    order: index + 1,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+  }));
+}
+
+function getProjectStages(project: ProjectWithCreator) {
+  if (project.stages.length > 0) {
+    return [...project.stages].sort((left, right) => left.order - right.order);
+  }
+
+  return buildSyntheticStages(project);
+}
+
+export function formatProjectStageLabel(project: Pick<Project, "currentStageName" | "status">) {
+  const stageName = project.currentStageName?.trim() || "Stage 1";
+  const statusLabel = projectStatusMeta[project.status].label;
+
+  return `${stageName} : ${statusLabel}`;
+}
+
+function mapProjectToCard(project: ProjectWithCreator, index: number): ProjectCardRecord {
+  return {
+    id: project.id,
+    stage: formatProjectStageLabel(project),
+    category: project.category,
+    title: project.name,
+    createdOn: formatProjectDate(project.createdAt),
+    createdBy: getCreatorName(project.createdBy),
+    featured: index === 0,
+    emphasized: index === 3,
+  };
+}
+
+function mapStageToCard(project: ProjectWithCreator, stage: ProjectStage): ProjectStageRecord {
+  return {
+    id: stage.id,
+    label: `${stage.name} : ${projectStatusMeta[stage.status].label}`,
+    subtitle: project.category,
+    title: project.name,
+    createdOn: formatProjectDate(stage.createdAt),
+    budget: formatProjectBudget(stage.budget),
+    status: mapStageStatusToVisual(stage.status),
+  };
+}
+
+function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
+  const creatorName = getCreatorName(project.createdBy);
+  const stages = getProjectStages(project);
+  const currentStage =
+    stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
+
+  return {
+    id: project.id,
+    title: project.name,
+    category: project.category,
+    description: project.description,
+    budget: formatProjectBudget(project.budget),
+    statusLabel: projectStatusMeta[project.status].label,
+    currentStageName: currentStage?.name ?? project.currentStageName?.trim() ?? "Stage 1",
+    currentStageId: currentStage?.id ?? null,
+    stageCount: stages.length,
+    startDate: formatProjectDate(project.startDate),
+    endDate: formatProjectDate(project.endDate),
+    createdOn: formatProjectDate(project.createdAt),
+    createdBy: creatorName,
+    tag: project.tag?.trim() || "—",
+    priority: "Medium",
+    stageCards: stages.map((stage) => mapStageToCard(project, stage)),
+    collaborators: [
+      {
+        id: project.createdById,
+        name: creatorName,
+        role: "Project Owner",
+        group: "internal",
+        access: "owner",
+      },
+    ],
+    chatEntries: [],
+    compareNotes: [],
+  };
+}
+
+function buildProjectsWhere(filter: ProjectsListFilter) {
+  const query = filter.query?.trim();
+
+  return {
+    ...(filter.status
+      ? {
+          status:
+            filter.status === "ONGOING"
+              ? {
+                  in: ["ONGOING", "PENDING"] as ProjectStatus[],
+                }
+              : filter.status,
+        }
+      : {}),
+    ...(query
+      ? {
+          OR: [
+            {
+              name: {
+                contains: query,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              category: {
+                contains: query,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              tag: {
+                contains: query,
+                mode: "insensitive" as const,
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+}
+
+export async function getDashboardProjectCounts(): Promise<DashboardProjectCounts> {
+  const [total, grouped] = await Promise.all([
+    prisma.project.count(),
+    prisma.project.groupBy({
+      by: ["status"],
+      _count: {
+        _all: true,
+      },
+    }),
+  ]);
+
+  const counts = grouped.reduce<Record<ProjectStatus, number>>(
+    (accumulator, item) => {
+      accumulator[item.status] = item._count._all;
+      return accumulator;
+    },
+    {
+      ONGOING: 0,
+      ON_HOLD: 0,
+      PENDING: 0,
+      COMPLETED: 0,
+    },
+  );
+
+  return {
+    total,
+    ongoing: counts.ONGOING,
+    pending: counts.PENDING,
+    completed: counts.COMPLETED,
+  };
+}
+
+export async function getRecentProjects(limit = 5) {
+  const projects = await prisma.project.findMany({
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: limit,
+  });
+
+  return projects.map((project, index) => ({
+    name: project.name,
+    tone: index < 2 ? "brand" : index < 4 ? "deep" : "muted",
+  })) as {
+    name: string;
+    tone: "brand" | "deep" | "muted";
+  }[];
+}
+
+export async function getProjectsList(filter: ProjectsListFilter) {
+  const orderBy =
+    filter.sort === "oldest"
+      ? [{ createdAt: "asc" as const }]
+      : filter.sort === "name"
+        ? [{ name: "asc" as const }]
+        : [{ createdAt: "desc" as const }];
+
+  const projects = await prisma.project.findMany({
+    where: buildProjectsWhere(filter),
+    include: {
+      createdBy: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+      stages: true,
+    },
+    orderBy,
+  });
+
+  return projects.map(mapProjectToCard);
+}
+
+export async function getProjectById(id: string) {
+  const project = await prisma.project.findUnique({
+    where: { id },
+    include: {
+      createdBy: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+      stages: true,
+    },
+  });
+
+  if (!project) {
+    return null;
+  }
+
+  return mapProjectToFlow(project);
+}

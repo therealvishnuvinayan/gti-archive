@@ -12,13 +12,13 @@ import {
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import type {
   ProjectChatEntry,
-  ProjectCollaborator,
-  ProjectRecord,
-  ProjectStage,
-} from "@/components/projects/project-data";
+  ProjectCollaboratorRecord,
+  ProjectFlowRecord,
+  ProjectStageRecord,
+} from "@/lib/projects";
 
 type ProjectChatWorkspaceProps = {
-  project: ProjectRecord;
+  project: ProjectFlowRecord;
   stageId?: string;
 };
 
@@ -51,18 +51,18 @@ export function ProjectChatWorkspace({
   stageId,
 }: ProjectChatWorkspaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(project.chatEntries ?? []);
-  const [collaborators, setCollaborators] = useState<ProjectCollaborator[]>(
+  const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
     project.collaborators,
   );
   const [draft, setDraft] = useState("");
 
-  const activeStage = useMemo<ProjectStage | undefined>(() => {
+  const activeStage = useMemo<ProjectStageRecord | undefined>(() => {
     if (!stageId) {
-      return project.stageCards[1] ?? project.stageCards[0];
+      return project.stageCards.find((stage) => stage.id === project.currentStageId) ?? project.stageCards[0];
     }
 
     return project.stageCards.find((stage) => stage.id === stageId) ?? project.stageCards[0];
-  }, [project.stageCards, stageId]);
+  }, [project.currentStageId, project.stageCards, stageId]);
 
   function removeCollaborator(id: string) {
     setCollaborators((current) => current.filter((collaborator) => collaborator.id !== id));
@@ -104,6 +104,20 @@ export function ProjectChatWorkspace({
     <section className="space-y-6">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]">
         <div className="space-y-4">
+          {messages.length === 0 ? (
+            <article className="rounded-[20px] border border-dashed border-[#d8e1d8] bg-white px-6 py-10 text-center shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
+              <h2 className="text-[20px] font-[700] text-[#111712]">
+                {activeStage?.label ?? "Stage"} Chat
+              </h2>
+              <p className="mt-2 text-[14px] text-[#6e776f]">
+                No revisions or comments have been added to this stage yet.
+              </p>
+              <p className="mt-1 text-[13px] text-[#8a938c]">
+                Use the input below to start the first discussion thread.
+              </p>
+            </article>
+          ) : null}
+
           {messages.map((message, index) =>
             message.kind === "revision" ? (
               <div
@@ -148,7 +162,7 @@ export function ProjectChatWorkspace({
                         </div>
                         {message.compareLabel ? (
                           <Link
-                            href={`/projects/${project.slug}/compare?stage=${activeStage?.id ?? ""}`}
+                            href={`/projects/${project.id}/compare?stage=${activeStage?.id ?? ""}`}
                             className="mt-3 inline-flex min-h-[30px] w-full items-center justify-center rounded-full bg-[#23593a] px-3 text-[11px] font-[600] text-white"
                           >
                             {message.compareLabel}
@@ -266,21 +280,21 @@ export function ProjectChatWorkspace({
             <dl className="mt-3 space-y-1.5 text-[13px] text-[#242b26]">
               <div>
                 <dt className="inline font-[700]">Budget :</dt>{" "}
-                <dd className="inline">{project.stageOverview?.budget ?? project.budget}</dd>
+                <dd className="inline">{activeStage?.budget ?? project.budget}</dd>
               </div>
               <div>
                 <dt className="inline font-[700]">Revisions :</dt>{" "}
-                <dd className="inline">{project.stageOverview?.revisions ?? messages.length}</dd>
+                <dd className="inline">{messages.filter((message) => message.kind === "revision").length}</dd>
               </div>
               <div>
                 <dt className="inline font-[700]">Stage Started :</dt>{" "}
                 <dd className="inline">
-                  {project.stageOverview?.stageStarted ?? activeStage?.createdOn ?? project.startDate}
+                  {activeStage?.createdOn ?? project.startDate}
                 </dd>
               </div>
               <div>
                 <dt className="inline font-[700]">Stage Deadline :</dt>{" "}
-                <dd className="inline">{project.stageOverview?.stageDeadline ?? project.deadline}</dd>
+                <dd className="inline">{project.endDate}</dd>
               </div>
             </dl>
             <div className="mt-5">
@@ -288,7 +302,7 @@ export function ProjectChatWorkspace({
                 href="#"
                 className="inline-flex min-h-[36px] min-w-[110px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-5 text-[13px] font-[600] text-white"
               >
-                {project.stageOverview?.briefLabel ?? "Brief"}
+                Brief
               </Link>
             </div>
           </aside>

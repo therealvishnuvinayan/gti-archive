@@ -6,7 +6,6 @@ import { UpdateList, type UpdateItem } from "@/components/dashboard/update-list"
 import { ReminderCard } from "@/components/dashboard/reminder-card";
 import {
   RecentProjects,
-  type RecentProject,
 } from "@/components/dashboard/recent-projects";
 import {
   CollaborationCard,
@@ -14,34 +13,7 @@ import {
 } from "@/components/dashboard/collaboration-card";
 import { ProjectProgressCard } from "@/components/dashboard/project-progress-card";
 import { DeadlineCard } from "@/components/dashboard/deadline-card";
-
-const statCards = [
-  {
-    title: "Total Projects",
-    value: "24",
-    delta: "18^",
-    note: "Increased from last month",
-    emphasize: true,
-  },
-  {
-    title: "Ongoing Projects",
-    value: "07",
-    delta: "12^",
-    note: "Increased from last month",
-  },
-  {
-    title: "Pending Projects",
-    value: "03",
-    delta: "01^",
-    note: "Increased from last month",
-  },
-  {
-    title: "Completed Projects",
-    value: "14",
-    delta: "09^",
-    note: "Increased from last month",
-  },
-] as const;
+import { getDashboardProjectCounts, getRecentProjects } from "@/lib/projects";
 
 const updates: UpdateItem[] = [
   {
@@ -64,14 +36,6 @@ const updates: UpdateItem[] = [
     project: "Project Alster ABCD",
     tone: "warning",
   },
-];
-
-const recentProjects: RecentProject[] = [
-  { name: "Project Milano Fanpack ABCD", tone: "brand" },
-  { name: "Project Cavallo Fanpack ABCD", tone: "brand" },
-  { name: "Project Momento Fanpack ABCD", tone: "deep" },
-  { name: "Project Alster Fanpack ABCD", tone: "deep" },
-  { name: "Project Mond Fanpack ABCD", tone: "muted" },
 ];
 
 const collaborators: Collaborator[] = [
@@ -113,7 +77,39 @@ const progressSegments = [
   { label: "Pending", value: 20, tone: "pending" },
 ] as const;
 
-export default function Home() {
+export default async function Home() {
+  const [counts, recentProjects] = await Promise.all([
+    getDashboardProjectCounts(),
+    getRecentProjects(),
+  ]);
+  const statCards = [
+    {
+      title: "Total Projects",
+      value: `${counts.total}`.padStart(2, "0"),
+      delta: `${counts.total}`.padStart(2, "0"),
+      note: "Projects in database",
+      emphasize: true,
+    },
+    {
+      title: "Ongoing Projects",
+      value: `${counts.ongoing}`.padStart(2, "0"),
+      delta: `${counts.ongoing}`.padStart(2, "0"),
+      note: "Currently active",
+    },
+    {
+      title: "Pending Projects",
+      value: `${counts.pending}`.padStart(2, "0"),
+      delta: `${counts.pending}`.padStart(2, "0"),
+      note: "Waiting to begin",
+    },
+    {
+      title: "Completed Projects",
+      value: `${counts.completed}`.padStart(2, "0"),
+      delta: `${counts.completed}`.padStart(2, "0"),
+      note: "Delivered projects",
+    },
+  ] as const;
+
   return (
     <DashboardLayout>
       <section className="space-y-6">

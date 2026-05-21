@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { getProjectBySlug } from "@/components/projects/project-data";
 import { ProjectChatWorkspace } from "@/components/projects/project-chat-workspace";
+import { getProjectById } from "@/lib/projects";
 
 function BackPill() {
   return (
@@ -25,7 +25,7 @@ export default async function ProjectChatPage({
 }) {
   const { slug } = await params;
   const { stage } = await searchParams;
-  const project = getProjectBySlug(slug);
+  const project = await getProjectById(slug);
 
   if (!project) {
     notFound();

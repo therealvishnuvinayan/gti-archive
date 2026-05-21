@@ -2,10 +2,10 @@
 
 import { Eye, Trash2 } from "lucide-react";
 
-import type { ProjectCollaborator } from "@/components/projects/project-data";
+import type { ProjectCollaboratorRecord } from "@/lib/projects";
 
 type ProjectCollaboratorsPanelProps = {
-  collaborators: ProjectCollaborator[];
+  collaborators: ProjectCollaboratorRecord[];
   onRemove?: (id: string) => void;
 };
 
@@ -38,37 +38,41 @@ export function ProjectCollaboratorsPanel({
         <div key={label} className="mt-5">
           <h3 className="text-[16px] font-[700] text-[#86c864]">{label}</h3>
           <ul className="mt-3 space-y-3">
-            {items.map((collaborator) => (
-              <li key={collaborator.id} className="flex items-center gap-3">
-                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
-                  {getInitials(collaborator.name)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] font-[600] text-[#111712]">
-                    {collaborator.name}
-                  </p>
-                  <p className="truncate text-[10px] text-[#7a837b]">{collaborator.role}</p>
-                </div>
-                {collaborator.group === "external" ? (
-                  <Eye
-                    className={`h-4 w-4 ${
-                      collaborator.access === "view"
-                        ? "text-[#50b848]"
-                        : "text-[#ff2f2f]"
-                    }`}
-                  />
-                ) : collaborator.removable ? (
-                  <button
-                    type="button"
-                    onClick={() => onRemove?.(collaborator.id)}
-                    className="text-[#ff6e68]"
-                    aria-label={`Remove ${collaborator.name}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                ) : null}
-              </li>
-            ))}
+            {items.length > 0 ? (
+              items.map((collaborator) => (
+                <li key={collaborator.id} className="flex items-center gap-3">
+                  <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
+                    {getInitials(collaborator.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-[600] text-[#111712]">
+                      {collaborator.name}
+                    </p>
+                    <p className="truncate text-[10px] text-[#7a837b]">{collaborator.role}</p>
+                  </div>
+                  {collaborator.group === "external" ? (
+                    <Eye
+                      className={`h-4 w-4 ${
+                        collaborator.access === "view"
+                          ? "text-[#50b848]"
+                          : "text-[#ff2f2f]"
+                      }`}
+                    />
+                  ) : collaborator.removable ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemove?.(collaborator.id)}
+                      className="text-[#ff6e68]"
+                      aria-label={`Remove ${collaborator.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </li>
+              ))
+            ) : (
+              <li className="text-[12px] text-[#8a938c]">No {label.toLowerCase()} collaborators yet.</li>
+            )}
           </ul>
         </div>
       ))}

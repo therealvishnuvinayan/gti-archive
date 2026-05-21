@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 
 export type ProjectCardItem = {
-  slug: string;
+  id: string;
   stage: string;
   category: string;
   title: string;
@@ -68,7 +68,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
       </div>
 
       <Link
-        href={`/projects/${project.slug}`}
+        href={`/projects/${project.id}`}
         className={`mt-6 inline-flex min-h-[52px] w-full items-center justify-center rounded-full px-6 text-[18px] font-semibold transition-transform hover:-translate-y-0.5 ${
           project.featured
             ? "bg-[linear-gradient(90deg,#31a06a,#133f2d)] text-white"

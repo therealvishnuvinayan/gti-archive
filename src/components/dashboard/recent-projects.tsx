@@ -30,16 +30,22 @@ export function RecentProjects({ title, items }: RecentProjectsProps) {
         </button>
       </div>
 
-      <ul className="space-y-5">
-        {items.map((item) => (
-          <li key={item.name} className="flex items-start gap-3">
-            <span className={`mt-1 h-6 w-6 shrink-0 rounded-full ${dotTone[item.tone]}`} />
-            <p className="text-[14px] font-medium leading-[1.25] text-[#236e4c]">
-              {item.name}
-            </p>
-          </li>
-        ))}
-      </ul>
+      {items.length > 0 ? (
+        <ul className="space-y-5">
+          {items.map((item) => (
+            <li key={item.name} className="flex items-start gap-3">
+              <span className={`mt-1 h-6 w-6 shrink-0 rounded-full ${dotTone[item.tone]}`} />
+              <p className="text-[14px] font-medium leading-[1.25] text-[#236e4c]">
+                {item.name}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[14px] leading-6 text-[#758077]">
+          No projects yet. Create your first project to see it here.
+        </p>
+      )}
     </article>
   );
 }

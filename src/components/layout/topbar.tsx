@@ -15,6 +15,13 @@ export type DashboardTopbarProps = {
   searchPlaceholder?: string;
   leadingContent?: ReactNode;
   showSearch?: boolean;
+  searchAction?: string;
+  searchName?: string;
+  searchDefaultValue?: string;
+  searchHiddenFields?: Array<{
+    name: string;
+    value: string;
+  }>;
 };
 
 const defaultUser: DashboardUserView = {
@@ -29,6 +36,10 @@ export function Topbar({
   searchPlaceholder = "Search.....",
   leadingContent,
   showSearch = true,
+  searchAction,
+  searchName = "q",
+  searchDefaultValue,
+  searchHiddenFields = [],
 }: DashboardTopbarProps) {
   return (
     <header className="rounded-[30px] bg-surface px-4 py-4 shadow-[0_18px_40px_rgba(23,39,28,0.05)] sm:px-6 lg:px-8">
@@ -48,14 +59,29 @@ export function Topbar({
           </div>
 
           {showSearch ? (
-            <label className="flex h-[52px] w-full max-w-[430px] items-center gap-3 rounded-full bg-white px-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] xl:min-w-[350px]">
-              <Search className="h-4.5 w-4.5 text-muted" />
-              <input
-                type="search"
-                placeholder={searchPlaceholder}
-                className="w-full bg-transparent text-[15px] font-medium text-[#1b231d] outline-none placeholder:text-[#9aa197]"
-              />
-            </label>
+            <form
+              action={searchAction}
+              className="w-full max-w-[430px] xl:min-w-[350px]"
+            >
+              {searchHiddenFields.map((field) => (
+                <input
+                  key={`${field.name}:${field.value}`}
+                  type="hidden"
+                  name={field.name}
+                  value={field.value}
+                />
+              ))}
+              <label className="flex h-[52px] w-full items-center gap-3 rounded-full bg-white px-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                <Search className="h-4.5 w-4.5 text-muted" />
+                <input
+                  type="search"
+                  name={searchName}
+                  defaultValue={searchDefaultValue}
+                  placeholder={searchPlaceholder}
+                  className="w-full bg-transparent text-[15px] font-medium text-[#1b231d] outline-none placeholder:text-[#9aa197]"
+                />
+              </label>
+            </form>
           ) : null}
         </div>
 
