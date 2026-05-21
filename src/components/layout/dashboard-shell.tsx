@@ -18,19 +18,25 @@ type DashboardShellProps = {
   children: React.ReactNode;
   topbarProps?: DashboardShellTopbarProps;
   user: DashboardUserView;
+  projectBadgeCount?: number;
 };
 
 export function DashboardShell({
   children,
   topbarProps,
   user,
+  projectBadgeCount,
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background p-3 sm:p-4 lg:p-6">
       <div className="mx-auto flex max-w-[1600px] gap-4 lg:gap-5">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          projectBadgeCount={projectBadgeCount}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <Topbar

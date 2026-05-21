@@ -20,7 +20,7 @@ function BackPill() {
   return (
     <Link
       href="/"
-      className="inline-flex min-h-13 min-w-[176px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[18px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-transform hover:-translate-y-0.5"
+      className="inline-flex min-h-13 min-w-[176px] cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[18px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-transform hover:-translate-y-0.5"
     >
       Back
     </Link>
@@ -88,7 +88,7 @@ export default async function ProjectsPage({
                       sort: activeSort,
                     },
                   }}
-                  className={`inline-flex min-h-[44px] flex-1 items-center justify-center rounded-full px-6 text-[17px] font-semibold transition-colors xl:flex-none ${
+                  className={`inline-flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-full px-6 text-[17px] font-semibold transition-colors xl:flex-none ${
                     activeStatus === filter.value
                       ? "bg-brand text-white"
                       : "text-brand hover:bg-brand-soft"
@@ -102,7 +102,7 @@ export default async function ProjectsPage({
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link
                 href="/projects/new"
-                className="inline-flex min-h-[52px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-7 text-[18px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-transform hover:-translate-y-0.5"
+                className="inline-flex min-h-[52px] cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-7 text-[18px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-transform hover:-translate-y-0.5"
               >
                 + New Project
               </Link>

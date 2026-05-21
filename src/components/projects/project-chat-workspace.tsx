@@ -179,14 +179,14 @@ export function ProjectChatWorkspace({
                       <button
                         type="button"
                         onClick={() => appendSystemComment("Stage marked as complete.")}
-                        className="inline-flex min-h-[36px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-4 text-[12px] font-[600] text-white"
+                        className="inline-flex min-h-[36px] cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-4 text-[12px] font-[600] text-white"
                       >
                         Mark as complete
                       </button>
                       <button
                         type="button"
                         onClick={() => appendSystemComment("Revision request created.")}
-                        className="inline-flex min-h-[36px] items-center justify-center rounded-full border border-[#2d2d2d]/35 bg-white px-4 text-[12px] font-[600] text-[#1a211c]"
+                        className="inline-flex min-h-[36px] cursor-pointer items-center justify-center rounded-full border border-[#2d2d2d]/35 bg-white px-4 text-[12px] font-[600] text-[#1a211c]"
                       >
                         Create Revision
                       </button>
@@ -195,7 +195,7 @@ export function ProjectChatWorkspace({
                   <button
                     type="button"
                     onClick={() => setDraft(`Replying to ${message.author}: `)}
-                    className="inline-flex min-h-[36px] items-center justify-center rounded-full border border-[#2d2d2d]/35 bg-white px-4 text-[12px] font-[600] text-[#1a211c]"
+                    className="inline-flex min-h-[36px] cursor-pointer items-center justify-center rounded-full border border-[#2d2d2d]/35 bg-white px-4 text-[12px] font-[600] text-[#1a211c]"
                   >
                     Add Comments
                   </button>
@@ -244,25 +244,25 @@ export function ProjectChatWorkspace({
                 className="w-full bg-transparent text-[14px] text-[#202622] outline-none placeholder:text-[#c0c4c0]"
               />
               <div className="flex items-center gap-2">
-                <button type="button" className="text-[#5083ff]" aria-label="Translate">
+                <button type="button" className="cursor-pointer text-[#5083ff]" aria-label="Translate">
                   <Languages className="h-5 w-5" />
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-brand/30 px-1.5 py-0.5 text-[10px] font-[700] text-brand"
+                  className="cursor-pointer rounded-md border border-brand/30 px-1.5 py-0.5 text-[10px] font-[700] text-brand"
                 >
                   EN
                 </button>
-                <button type="button" className="text-brand" aria-label="Attach file">
+                <button type="button" className="cursor-pointer text-brand" aria-label="Attach file">
                   <Paperclip className="h-5 w-5" />
                 </button>
-                <button type="button" className="text-brand" aria-label="Insert link">
+                <button type="button" className="cursor-pointer text-brand" aria-label="Insert link">
                   <Link2 className="h-5 w-5" />
                 </button>
                 <button
                   type="button"
                   onClick={addComment}
-                  className="inline-flex min-h-[34px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-4 text-[12px] font-[600] text-white"
+                  className="inline-flex min-h-[34px] cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-4 text-[12px] font-[600] text-white"
                 >
                   <Plus className="mr-1 h-3.5 w-3.5" />
                   Send

@@ -55,7 +55,7 @@ export function ProjectSortDropdown({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full border border-brand bg-white px-6 text-[18px] font-semibold text-brand transition-all duration-200 hover:bg-brand-soft ${
+        className={`inline-flex min-h-[52px] cursor-pointer items-center justify-center gap-2 rounded-full border border-brand bg-white px-6 text-[18px] font-semibold text-brand transition-all duration-200 hover:bg-brand-soft ${
           open ? "shadow-[0_14px_30px_rgba(34,102,70,0.14)]" : ""
         }`}
         aria-expanded={open}
@@ -93,7 +93,7 @@ export function ProjectSortDropdown({
               },
             }}
             onClick={() => setOpen(false)}
-            className={`flex items-center justify-between rounded-[14px] px-3 py-3 text-[15px] font-medium transition-colors ${
+            className={`flex cursor-pointer items-center justify-between rounded-[14px] px-3 py-3 text-[15px] font-medium transition-colors ${
               activeSort === option.value
                 ? "bg-[#f3faf4] text-brand"
                 : "text-[#223026] hover:bg-[#f7faf7]"

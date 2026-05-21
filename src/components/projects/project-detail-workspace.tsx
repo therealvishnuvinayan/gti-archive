@@ -14,7 +14,7 @@ function getStageCardClasses(stage: ProjectStageRecord) {
         label: "text-[#ffaf00]",
         meta: "text-[#8dde76]",
         secondaryButton:
-          "border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
+          "cursor-pointer border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
       };
     case "on-hold":
       return {
@@ -22,7 +22,7 @@ function getStageCardClasses(stage: ProjectStageRecord) {
         label: "text-[#ffd16f]",
         meta: "text-[#d8eee0]",
         secondaryButton:
-          "border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
+          "cursor-pointer border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
       };
     case "pending":
       return {
@@ -38,7 +38,7 @@ function getStageCardClasses(stage: ProjectStageRecord) {
         label: "text-[#92db6f]",
         meta: "text-[#8dde76]",
         secondaryButton:
-          "border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
+          "cursor-pointer border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
       };
   }
 }
@@ -138,7 +138,7 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
                       className={`inline-flex min-h-[42px] w-full items-center justify-center rounded-full px-5 text-[15px] font-[600] transition-transform hover:-translate-y-0.5 ${
                         stageInactive
                           ? "cursor-not-allowed bg-[#f1f1f1] text-[#d7d7d7] pointer-events-none"
-                          : "bg-[linear-gradient(90deg,#31a06a,#133f2d)] text-white"
+                          : "cursor-pointer bg-[linear-gradient(90deg,#31a06a,#133f2d)] text-white"
                       }`}
                     >
                       Open Stage

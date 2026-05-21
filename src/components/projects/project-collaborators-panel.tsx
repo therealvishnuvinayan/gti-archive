@@ -62,7 +62,7 @@ export function ProjectCollaboratorsPanel({
                     <button
                       type="button"
                       onClick={() => onRemove?.(collaborator.id)}
-                      className="text-[#ff6e68]"
+                      className="cursor-pointer text-[#ff6e68]"
                       aria-label={`Remove ${collaborator.name}`}
                     >
                       <Trash2 className="h-4 w-4" />

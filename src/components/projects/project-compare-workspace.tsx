@@ -250,14 +250,14 @@ export function ProjectCompareWorkspace({
                 <button
                   type="button"
                   onClick={addComment}
-                  className="inline-flex min-h-[36px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-5 text-[14px] font-[600] text-white"
+                  className="inline-flex min-h-[36px] cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-5 text-[14px] font-[600] text-white"
                 >
                   Send
                 </button>
                 <button
                   type="button"
                   onClick={() => setDraft("")}
-                  className="inline-flex min-h-[36px] items-center justify-center rounded-full border border-brand bg-white px-5 text-[14px] font-[600] text-brand"
+                  className="inline-flex min-h-[36px] cursor-pointer items-center justify-center rounded-full border border-brand bg-white px-5 text-[14px] font-[600] text-brand"
                 >
                   Cancel
                 </button>

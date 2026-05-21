@@ -34,7 +34,7 @@ const sidebarSections: SidebarSection[] = [
     title: "Menu",
     items: [
       { label: "Dashboard", href: "/", icon: LayoutGrid },
-      { label: "Projects", href: "/projects", icon: BookCopy, badge: "6" },
+      { label: "Projects", href: "/projects", icon: BookCopy },
       { label: "Calendar", href: "/calendar", icon: CalendarDays },
       { label: "Collaboration", href: "/collaboration", icon: Users },
       { label: "Library", href: "/library", icon: Library },
@@ -53,6 +53,7 @@ const sidebarSections: SidebarSection[] = [
 type SidebarProps = {
   isOpen: boolean;
   onClose: () => void;
+  projectBadgeCount?: number;
 };
 
 function LogoMark() {
@@ -69,7 +70,7 @@ function LogoMark() {
   );
 }
 
-export function Sidebar({ isOpen, onClose }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -108,6 +109,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <ul className="space-y-1.5">
                 {section.items.map((item) => {
                   const Icon = item.icon;
+                  const badge =
+                    item.href === "/projects" && typeof projectBadgeCount === "number"
+                      ? String(projectBadgeCount)
+                      : item.badge;
                   const isActive =
                     item.href !== "#" &&
                     (pathname === item.href ||
@@ -133,9 +138,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                           }`}
                         />
                         <span className="flex-1">{item.label}</span>
-                        {item.badge ? (
+                        {badge ? (
                           <span className="rounded-md bg-brand px-2 py-0.5 text-[11px] font-bold text-white">
-                            {item.badge}
+                            {badge}
                           </span>
                         ) : null}
                       </Link>

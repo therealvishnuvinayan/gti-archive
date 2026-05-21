@@ -69,7 +69,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
 
       <Link
         href={`/projects/${project.id}`}
-        className={`mt-6 inline-flex min-h-[52px] w-full items-center justify-center rounded-full px-6 text-[18px] font-semibold transition-transform hover:-translate-y-0.5 ${
+        className={`mt-6 inline-flex min-h-[52px] w-full cursor-pointer items-center justify-center rounded-full px-6 text-[18px] font-semibold transition-transform hover:-translate-y-0.5 ${
           project.featured
             ? "bg-[linear-gradient(90deg,#31a06a,#133f2d)] text-white"
             : "bg-[linear-gradient(90deg,#247449,#123d2b)] text-white"
