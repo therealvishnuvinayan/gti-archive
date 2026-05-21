@@ -17,7 +17,10 @@ export type CalendarFormState = {
 
 type EventDialogProps = {
   form: CalendarFormState;
+  error?: string;
   isOpen: boolean;
+  pending?: boolean;
+  submitLabel?: string;
   title: string;
   onChange: <K extends keyof CalendarFormState>(
     field: K,
@@ -43,7 +46,10 @@ const toneOptions: Array<{ tone: EventTone; label: string; swatch: string }> = [
 
 export function EventDialog({
   form,
+  error,
   isOpen,
+  pending = false,
+  submitLabel = "Save Event",
   title,
   onChange,
   onClose,
@@ -68,12 +74,18 @@ export function EventDialog({
           <button
             type="button"
             onClick={onClose}
-            className="grid h-10 w-10 place-items-center rounded-full border border-line text-[#253029]"
+            className="grid h-10 w-10 cursor-pointer place-items-center rounded-full border border-line text-[#253029]"
             aria-label="Close event dialog"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {error ? (
+          <div className="mb-5 rounded-[18px] border border-[#f1c7c1] bg-[#fff4f2] px-4 py-3 text-[13px] font-medium text-[#c05243]">
+            {error}
+          </div>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2">
@@ -173,7 +185,7 @@ export function EventDialog({
                     active
                       ? "border-brand bg-brand-soft text-brand"
                       : "border-line text-[#566059]"
-                  }`}
+                  } cursor-pointer`}
                 >
                   <span className={`h-3 w-3 rounded-full ${option.swatch}`} />
                   {option.label}
@@ -187,16 +199,21 @@ export function EventDialog({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex min-h-[48px] items-center justify-center rounded-full border border-line px-6 text-[15px] font-[600] text-[#2f3a32]"
+            className="inline-flex min-h-[48px] cursor-pointer items-center justify-center rounded-full border border-line px-6 text-[15px] font-[600] text-[#2f3a32]"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onSubmit}
-            className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-7 text-[15px] font-[600] text-white"
+            disabled={pending}
+            className={`inline-flex min-h-[48px] items-center justify-center rounded-full px-7 text-[15px] font-[600] text-white ${
+              pending
+                ? "cursor-not-allowed bg-[linear-gradient(90deg,#6ca989,#397453)]"
+                : "cursor-pointer bg-[linear-gradient(90deg,#2f8d5d,#123f2d)]"
+            }`}
           >
-            Save Event
+            {pending ? "Saving..." : submitLabel}
           </button>
         </div>
       </div>

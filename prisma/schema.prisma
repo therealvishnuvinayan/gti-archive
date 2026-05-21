@@ -20,6 +20,20 @@ enum ProjectStatus {
   COMPLETED
 }
 
+enum CalendarEventType {
+  PROJECTS
+  EVENTS
+  REMINDERS
+  PAYMENTS
+}
+
+enum CalendarEventTone {
+  GREEN
+  PURPLE
+  BLUE
+  AMBER
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -28,6 +42,7 @@ model User {
   role         UserRole  @default(COLLABORATOR)
   sessions     Session[]
   projects     Project[]
+  calendarEvents CalendarEvent[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -80,4 +95,22 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model CalendarEvent {
+  id          String            @id @default(cuid())
+  title       String
+  details     String?
+  startAt     DateTime
+  endAt       DateTime
+  type        CalendarEventType
+  tone        CalendarEventTone
+  createdById String
+  createdBy   User              @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([startAt])
+  @@index([endAt])
+  @@index([createdById])
 }
