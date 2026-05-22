@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -47,11 +47,7 @@ export function ProjectSortDropdown({
         </DropdownMenuLabel>
 
         {sortOptions.map((option) => (
-          <DropdownMenuCheckboxItem
-            key={option.value}
-            checked={activeSort === option.value}
-            asChild
-          >
+          <DropdownMenuItem key={option.value} asChild>
             <Link
               href={{
                 pathname: "/projects",
@@ -61,10 +57,14 @@ export function ProjectSortDropdown({
                   sort: option.value,
                 },
               }}
+              className="flex w-full items-center gap-2"
             >
+              <span className="flex h-4 w-4 items-center justify-center">
+                {activeSort === option.value ? <Check className="h-4 w-4" /> : null}
+              </span>
               {option.label}
             </Link>
-          </DropdownMenuCheckboxItem>
+          </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>

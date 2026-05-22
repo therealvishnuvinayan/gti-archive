@@ -68,40 +68,44 @@ export default async function ProjectsPage({
           </h1>
 
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-end">
-            <div className="inline-flex w-full flex-wrap rounded-full border border-brand bg-white p-1 xl:w-auto">
-              {projectFilters.map((filter) => (
-                <Button
-                  key={filter.label}
-                  asChild
-                  size="default"
-                  variant={activeStatus === filter.value ? "default" : "ghost"}
-                  className="min-h-[44px] flex-1 px-6 text-[17px] xl:flex-none"
-                >
-                  <Link
-                    href={{
-                      pathname: "/projects",
-                      query: {
-                        ...(query ? { q: query } : {}),
-                        status: filter.value,
-                        sort: activeSort,
-                      },
-                    }}
+            {projects.length > 0 ? (
+              <div className="inline-flex w-full flex-wrap rounded-full border border-brand bg-white p-1 xl:w-auto">
+                {projectFilters.map((filter) => (
+                  <Button
+                    key={filter.label}
+                    asChild
+                    size="default"
+                    variant={activeStatus === filter.value ? "default" : "ghost"}
+                    className="min-h-[44px] flex-1 px-6 text-[17px] xl:flex-none"
                   >
-                    {filter.label}
-                  </Link>
-                </Button>
-              ))}
-            </div>
+                    <Link
+                      href={{
+                        pathname: "/projects",
+                        query: {
+                          ...(query ? { q: query } : {}),
+                          status: filter.value,
+                          sort: activeSort,
+                        },
+                      }}
+                    >
+                      {filter.label}
+                    </Link>
+                  </Button>
+                ))}
+              </div>
+            ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button asChild size="lg" className="text-[18px]">
                 <Link href="/projects/new">+ New Project</Link>
               </Button>
-              <ProjectSortDropdown
-                activeSort={activeSort}
-                activeStatus={activeStatus}
-                query={query}
-              />
+              {projects.length > 0 ? (
+                <ProjectSortDropdown
+                  activeSort={activeSort}
+                  activeStatus={activeStatus}
+                  query={query}
+                />
+              ) : null}
             </div>
           </div>
         </header>
