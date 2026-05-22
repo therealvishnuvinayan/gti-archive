@@ -28,6 +28,8 @@ type CollaboratorDialogProps = {
   isOpen: boolean;
   mode: "invite" | "edit";
   form: CollaboratorForm;
+  error?: string;
+  saving?: boolean;
   onClose: () => void;
   onSubmit: () => void;
   onChange: <K extends keyof CollaboratorForm>(
@@ -54,6 +56,8 @@ export function CollaboratorDialog({
   isOpen,
   mode,
   form,
+  error,
+  saving = false,
   onClose,
   onSubmit,
   onChange,
@@ -89,6 +93,12 @@ export function CollaboratorDialog({
               <X className="h-4 w-4" />
             </Button>
           </div>
+
+          {error ? (
+            <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+              {error}
+            </div>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-2">
@@ -167,11 +177,17 @@ export function CollaboratorDialog({
           </div>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
-            <Button type="button" variant="secondary" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
-            <Button type="button" onClick={onSubmit}>
-              {mode === "invite" ? "Send Invite" : "Save Changes"}
+            <Button type="button" onClick={onSubmit} disabled={saving}>
+              {saving
+                ? mode === "invite"
+                  ? "Saving..."
+                  : "Updating..."
+                : mode === "invite"
+                  ? "Send Invite"
+                  : "Save Changes"}
             </Button>
           </div>
         </CardContent>

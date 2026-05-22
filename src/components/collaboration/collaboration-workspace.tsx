@@ -12,11 +12,11 @@ import {
   Users,
 } from "lucide-react";
 
+import { saveCollaboratorAction } from "@/app/collaboration/actions";
 import {
   CollaboratorDialog,
   type AccessArea,
   type CollaboratorForm,
-  type CollaboratorType,
   type PermissionLevel,
 } from "@/components/collaboration/collaborator-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import type { CollaboratorRecord } from "@/lib/collaboration";
 import { cn } from "@/lib/utils";
 
 type AccessCard = {
@@ -37,83 +38,11 @@ type AccessCard = {
   icon: LucideIcon;
 };
 
-type CollaboratorRecord = {
-  id: string;
-  name: string;
-  email: string;
-  type: CollaboratorType;
-  permissions: Record<AccessArea, PermissionLevel>;
-};
-
 const accessCards: AccessCard[] = [
   { area: "project", title: "Project Access", icon: BookCopy },
   { area: "calendar", title: "Calendar Access", icon: CalendarDays },
   { area: "library", title: "Library Access", icon: Library },
   { area: "archive", title: "Archives Access", icon: Archive },
-];
-
-const initialCollaborators: CollaboratorRecord[] = [
-  {
-    id: "user-1",
-    name: "User 1",
-    email: "user1@gulbahartobacco.com",
-    type: "Internal",
-    permissions: { project: "full", calendar: "full", library: "full", archive: "full" },
-  },
-  {
-    id: "user-2",
-    name: "User 2",
-    email: "user2@gulbahartobacco.com",
-    type: "Internal",
-    permissions: { project: "limited", calendar: "limited", library: "full", archive: "full" },
-  },
-  {
-    id: "user-3",
-    name: "User 3",
-    email: "user3@gulbahartobacco.com",
-    type: "Internal",
-    permissions: { project: "limited", calendar: "none", library: "full", archive: "full" },
-  },
-  {
-    id: "user-4",
-    name: "User 4",
-    email: "user4@gulbahartobacco.com",
-    type: "Internal",
-    permissions: { project: "limited", calendar: "limited", library: "full", archive: "full" },
-  },
-  {
-    id: "user-5",
-    name: "User 5",
-    email: "user5@gulbahartobacco.com",
-    type: "Internal",
-    permissions: { project: "none", calendar: "none", library: "none", archive: "none" },
-  },
-  {
-    id: "user-6",
-    name: "User 6",
-    email: "user6@gulbahartobacco.com",
-    type: "Internal",
-    permissions: {
-      project: "limited",
-      calendar: "limited",
-      library: "limited",
-      archive: "limited",
-    },
-  },
-  {
-    id: "user-7",
-    name: "User 7",
-    email: "user7@gulbahartobacco.com",
-    type: "Internal",
-    permissions: { project: "full", calendar: "full", library: "full", archive: "full" },
-  },
-  {
-    id: "user-8",
-    name: "User 8",
-    email: "user8@gulbahartobacco.com",
-    type: "Internal",
-    permissions: { project: "none", calendar: "none", library: "full", archive: "full" },
-  },
 ];
 
 const permissionStyles: Record<
@@ -183,13 +112,21 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-export function CollaborationWorkspace() {
+type CollaborationWorkspaceProps = {
+  initialCollaborators: CollaboratorRecord[];
+};
+
+export function CollaborationWorkspace({
+  initialCollaborators,
+}: CollaborationWorkspaceProps) {
   const [selectedArea, setSelectedArea] = useState<AccessArea>("project");
   const [collaborators, setCollaborators] = useState<CollaboratorRecord[]>(initialCollaborators);
   const [dialogMode, setDialogMode] = useState<"invite" | "edit">("invite");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CollaboratorForm>(getDefaultForm());
+  const [dialogError, setDialogError] = useState<string>();
+  const [saving, setSaving] = useState(false);
 
   const selectedAccessSummary = useMemo(() => {
     const full = collaborators.filter(
@@ -233,6 +170,7 @@ export function CollaborationWorkspace() {
     setDialogMode("invite");
     setEditingId(null);
     setForm(getDefaultForm());
+    setDialogError(undefined);
     setDialogOpen(true);
   }
 
@@ -245,41 +183,46 @@ export function CollaborationWorkspace() {
       type: collaborator.type,
       permissions: { ...collaborator.permissions },
     });
+    setDialogError(undefined);
     setDialogOpen(true);
   }
 
-  function handleSaveCollaborator() {
+  async function handleSaveCollaborator() {
     if (!form.name.trim() || !form.email.trim()) {
+      setDialogError("Enter both collaborator name and email.");
       return;
     }
 
-    if (dialogMode === "invite") {
-      const nextCollaborator: CollaboratorRecord = {
-        id: `user-${Date.now()}`,
-        name: form.name.trim(),
-        email: form.email.trim(),
-        type: form.type,
-        permissions: { ...form.permissions },
-      };
+    setSaving(true);
+    setDialogError(undefined);
 
-      setCollaborators((current) => [...current, nextCollaborator]);
-    } else if (editingId) {
-      setCollaborators((current) =>
-        current.map((collaborator) =>
-          collaborator.id === editingId
-            ? {
-                ...collaborator,
-                name: form.name.trim(),
-                email: form.email.trim(),
-                type: form.type,
-                permissions: { ...form.permissions },
-              }
-            : collaborator,
-        ),
-      );
+    try {
+      const result = await saveCollaboratorAction({
+        collaboratorId: editingId,
+        ...form,
+      });
+
+      if ("error" in result) {
+        setDialogError(result.error);
+        return;
+      }
+
+      if (dialogMode === "invite") {
+        setCollaborators((current) => [...current, result.collaborator]);
+      } else if (editingId) {
+        setCollaborators((current) =>
+          current.map((collaborator) =>
+            collaborator.id === editingId ? result.collaborator : collaborator,
+          ),
+        );
+      }
+
+      setDialogOpen(false);
+    } catch {
+      setDialogError("Unable to save the collaborator right now. Please try again.");
+    } finally {
+      setSaving(false);
     }
-
-    setDialogOpen(false);
   }
 
   return (
@@ -471,7 +414,7 @@ export function CollaborationWorkspace() {
                 </div>
 
                 <div className="divide-y divide-[#edf1ed]">
-                  {collaborators.map((collaborator) => (
+                  {collaborators.length > 0 ? collaborators.map((collaborator) => (
                     <div
                       key={collaborator.id}
                       className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px] lg:items-center"
@@ -548,7 +491,11 @@ export function CollaborationWorkspace() {
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  )) : (
+                    <div className="px-5 py-12 text-center text-[14px] text-[#6f7771]">
+                      No collaborators have been invited yet.
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -560,7 +507,12 @@ export function CollaborationWorkspace() {
         isOpen={dialogOpen}
         mode={dialogMode}
         form={form}
-        onClose={() => setDialogOpen(false)}
+        error={dialogError}
+        saving={saving}
+        onClose={() => {
+          setDialogError(undefined);
+          setDialogOpen(false);
+        }}
         onSubmit={handleSaveCollaborator}
         onChange={setFormValue}
         onPermissionChange={setPermissionValue}
