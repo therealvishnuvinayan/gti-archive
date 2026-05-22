@@ -4,12 +4,17 @@ import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Paperclip, Plus, X } from "lucide-react";
 
+import { saveCollaboratorAction } from "@/app/collaboration/actions";
 import { createProjectAction } from "@/app/projects/new/actions";
 import {
   initialProjectFormState,
   type ProjectFormState,
 } from "@/app/projects/new/project-form-state";
 import { CalendarMonthGrid } from "@/components/calendar/calendar-month-grid";
+import {
+  CollaboratorDialog,
+  type CollaboratorForm,
+} from "@/components/collaboration/collaborator-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import type { CollaboratorRecord } from "@/lib/collaboration";
 
 const currencyOptions = ["USD", "AED", "EUR", "GBP", "INR"] as const;
 
@@ -49,17 +55,16 @@ type StageForm = {
 
 type CurrencyValue = (typeof currencyOptions)[number];
 
-type CollaboratorEntry = {
-  id: string;
-  name: string;
-};
-
 type MonthPickerProps = {
   label: string;
   value: Date | null;
   onSelect: (date: Date) => void;
   month: Date;
   onMonthChange: (date: Date) => void;
+};
+
+type CreateProjectWorkspaceProps = {
+  initialCollaborators: CollaboratorRecord[];
 };
 
 function formatDateValue(date: Date) {
@@ -135,7 +140,23 @@ function formatFileSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function CreateProjectWorkspace() {
+function getDefaultCollaboratorForm(): CollaboratorForm {
+  return {
+    name: "",
+    email: "",
+    type: "Internal",
+    permissions: {
+      project: "full",
+      calendar: "limited",
+      library: "full",
+      archive: "limited",
+    },
+  };
+}
+
+export function CreateProjectWorkspace({
+  initialCollaborators,
+}: CreateProjectWorkspaceProps) {
   const [formState, formAction] = useActionState<ProjectFormState, FormData>(
     createProjectAction,
     initialProjectFormState,
@@ -154,9 +175,16 @@ export function CreateProjectWorkspace() {
   const [stages, setStages] = useState<StageForm[]>([
     { id: "stage-1", name: "Stage 1", budget: "", description: "" },
   ]);
-  const [internalCollaborators, setInternalCollaborators] = useState<CollaboratorEntry[]>([]);
-  const [externalCollaborators, setExternalCollaborators] = useState<CollaboratorEntry[]>([]);
+  const [collaborators, setCollaborators] =
+    useState<CollaboratorRecord[]>(initialCollaborators);
   const [briefAttachments, setBriefAttachments] = useState<File[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>(
+    getDefaultCollaboratorForm(),
+  );
+  const [collaboratorError, setCollaboratorError] = useState<string>();
+  const [collaboratorNotice, setCollaboratorNotice] = useState<string>();
+  const [collaboratorSaving, setCollaboratorSaving] = useState(false);
 
   const overview = useMemo(
     () => ({
@@ -190,14 +218,56 @@ export function CreateProjectWorkspace() {
     ]);
   }
 
-  function addCollaborator(group: "internal" | "external") {
-    const collection = group === "internal" ? internalCollaborators : externalCollaborators;
-    const next = { id: `${group}-${Date.now()}`, name: `Invite+` };
+  function setCollaboratorFormValue<K extends keyof CollaboratorForm>(
+    field: K,
+    value: CollaboratorForm[K],
+  ) {
+    setCollaboratorForm((current) => ({ ...current, [field]: value }));
+  }
 
-    if (group === "internal") {
-      setInternalCollaborators([...collection, next]);
-    } else {
-      setExternalCollaborators([...collection, next]);
+  function setCollaboratorPermissionValue(
+    area: keyof CollaboratorForm["permissions"],
+    value: CollaboratorForm["permissions"][keyof CollaboratorForm["permissions"]],
+  ) {
+    setCollaboratorForm((current) => ({
+      ...current,
+      permissions: { ...current.permissions, [area]: value },
+    }));
+  }
+
+  function openCollaboratorInvite() {
+    setCollaboratorForm(getDefaultCollaboratorForm());
+    setCollaboratorError(undefined);
+    setDialogOpen(true);
+  }
+
+  async function handleCollaboratorInvite() {
+    if (!collaboratorForm.name.trim() || !collaboratorForm.email.trim()) {
+      setCollaboratorError("Enter both collaborator name and email.");
+      return;
+    }
+
+    setCollaboratorSaving(true);
+    setCollaboratorError(undefined);
+    setCollaboratorNotice(undefined);
+
+    try {
+      const result = await saveCollaboratorAction(collaboratorForm);
+
+      if ("error" in result) {
+        setCollaboratorError(result.error);
+        return;
+      }
+
+      setCollaborators((current) => [...current, result.collaborator]);
+      setCollaboratorNotice(
+        result.warning || "Collaborator created and invite processing completed.",
+      );
+      setDialogOpen(false);
+    } catch {
+      setCollaboratorError("Unable to save the collaborator right now. Please try again.");
+    } finally {
+      setCollaboratorSaving(false);
     }
   }
 
@@ -535,52 +605,49 @@ export function CreateProjectWorkspace() {
           </CardHeader>
 
           <CardContent className="pt-0">
-          <div className="mt-1">
-            <h3 className="text-[16px] font-[700] text-[#86c864]">Internal</h3>
-            <div className="mt-3 space-y-2">
-              {internalCollaborators.map((collaborator) => (
-                <Badge
-                  key={collaborator.id}
-                  variant="secondary"
-                  className="mr-2 bg-[#f3faf4] text-[13px] font-[500] text-brand"
-                >
-                  {collaborator.name}
-                </Badge>
-              ))}
-              <Button
-                type="button"
-                onClick={() => addCollaborator("internal")}
-                variant="ghost"
-                size="sm"
-                className="px-0 text-[14px] font-[600] text-brand"
-              >
-                Invite+
-              </Button>
+          {collaboratorNotice ? (
+            <div className="mb-4 rounded-[16px] border border-[#d8e7d9] bg-[#f6fbf7] px-4 py-3 text-[12px] text-brand">
+              {collaboratorNotice}
             </div>
-          </div>
+          ) : null}
 
-          <div className="mt-8">
-            <h3 className="text-[16px] font-[700] text-[#86c864]">External</h3>
-            <div className="mt-3 space-y-2">
-              {externalCollaborators.map((collaborator) => (
-                <Badge
+          <div className="space-y-3">
+            {collaborators.length > 0 ? (
+              collaborators.map((collaborator) => (
+                <div
                   key={collaborator.id}
-                  variant="secondary"
-                  className="mr-2 bg-[#f3faf4] text-[13px] font-[500] text-brand"
+                  className="rounded-[16px] border border-[#e3e8e2] bg-[#fbfcfa] px-4 py-3"
                 >
-                  {collaborator.name}
-                </Badge>
-              ))}
-              <Button
-                type="button"
-                onClick={() => addCollaborator("external")}
-                variant="ghost"
-                size="sm"
-                className="px-0 text-[14px] font-[600] text-brand"
-              >
-                Invite+
-              </Button>
-            </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-[600] text-[#1f2923]">
+                        {collaborator.name}
+                      </p>
+                      <p className="truncate text-[11px] text-[#7f877f]">
+                        {collaborator.email}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0">
+                      {collaborator.type}
+                    </Badge>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-[13px] text-[#7a837b]">
+                No collaborators invited yet.
+              </p>
+            )}
+
+            <Button
+              type="button"
+              onClick={openCollaboratorInvite}
+              variant="ghost"
+              size="sm"
+              className="px-0 text-[14px] font-[600] text-brand"
+            >
+              Invite+
+            </Button>
           </div>
 
           <Separator className="mt-6" />
@@ -588,6 +655,21 @@ export function CreateProjectWorkspace() {
           </CardContent>
         </Card>
       </div>
+
+      <CollaboratorDialog
+        isOpen={dialogOpen}
+        mode="invite"
+        form={collaboratorForm}
+        error={collaboratorError}
+        saving={collaboratorSaving}
+        onClose={() => {
+          setCollaboratorError(undefined);
+          setDialogOpen(false);
+        }}
+        onSubmit={handleCollaboratorInvite}
+        onChange={setCollaboratorFormValue}
+        onPermissionChange={setCollaboratorPermissionValue}
+      />
     </form>
   );
 }
