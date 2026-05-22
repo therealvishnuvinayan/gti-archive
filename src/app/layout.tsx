@@ -3,8 +3,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GTI Archieve",
-  description: "Reusable dashboard UI built with Next.js App Router and Tailwind CSS.",
+  title: "GTI Archive",
+  description:
+    "A secure project archive and workflow management platform for organizing projects, documents, approvals, and team collaboration.",
 };
 
 export default function RootLayout({
