@@ -5,6 +5,9 @@ import { useMemo, useState } from "react";
 import { Link2, Paperclip } from "lucide-react";
 
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import type {
   ProjectCompareNote,
   ProjectCollaboratorRecord,
@@ -85,7 +88,7 @@ export function ProjectCompareWorkspace({
   return (
     <section className="space-y-6">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]">
-        <div className="rounded-[20px] bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
+        <Card className="rounded-[20px] p-5">
           <div className="rounded-[22px] bg-[linear-gradient(135deg,#2f8d5d,#3e9e69)] px-6 py-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -117,7 +120,7 @@ export function ProjectCompareWorkspace({
                 </div>
               </div>
 
-              <div className="rounded-[16px] border border-white/25 bg-[#2c855c]/80 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
+              <Card className="rounded-[16px] border border-white/25 bg-[#2c855c]/80 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
                 <p className="text-center text-[11px] font-[700]">Attachments</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {["AI", "PSD", "PDF", "FIG", "ZIP"].map((attachment) => (
@@ -129,13 +132,12 @@ export function ProjectCompareWorkspace({
                     </div>
                   ))}
                 </div>
-                <Link
-                  href={`/projects/${project.id}/chat?stage=${activeStage?.id ?? ""}`}
-                  className="mt-3 inline-flex min-h-[30px] w-full items-center justify-center rounded-full bg-[#23593a] px-3 text-[11px] font-[600] text-white"
-                >
-                  Back to stage chat
-                </Link>
-              </div>
+                <Button asChild size="sm" className="mt-3 min-h-[30px] w-full text-[11px]">
+                  <Link href={`/projects/${project.id}/chat?stage=${activeStage?.id ?? ""}`}>
+                    Back to stage chat
+                  </Link>
+                </Button>
+              </Card>
             </div>
           </div>
 
@@ -173,7 +175,7 @@ export function ProjectCompareWorkspace({
             <div className="space-y-3">
               {notes.length > 0 ? (
                 notes.slice(0, 2).map((note) => (
-                  <article
+                  <Card
                     key={note.id}
                     className="rounded-[10px] border border-[#dbe3dc] bg-white p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
                   >
@@ -202,12 +204,12 @@ export function ProjectCompareWorkspace({
                         ))}
                       </div>
                     ) : null}
-                  </article>
+                  </Card>
                 ))
               ) : (
-                <div className="rounded-[10px] border border-dashed border-[#dbe3dc] bg-white p-4 text-[12px] text-[#7a837b] shadow-[0_8px_20px_rgba(19,28,22,0.04)]">
+                <Card className="rounded-[10px] border border-dashed border-[#dbe3dc] bg-white p-4 text-[12px] text-[#7a837b] shadow-[0_8px_20px_rgba(19,28,22,0.04)]">
                   No comparison notes have been added for this stage yet.
-                </div>
+                </Card>
               )}
             </div>
           </div>
@@ -232,14 +234,14 @@ export function ProjectCompareWorkspace({
           </div>
 
           <div className="mt-3">
-            <h2 className="text-[18px] font-[700] text-brand">Comments</h2>
+            <CardTitle className="text-[18px] text-brand">Comments</CardTitle>
             <div className="mt-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_124px]">
-              <div className="relative rounded-[18px] bg-[#f7f7f7] p-4">
-                <textarea
+              <div className="relative">
+                <Textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder="Type your comments"
-                  className="min-h-[80px] w-full resize-none bg-transparent text-[13px] text-[#1b231d] outline-none placeholder:text-[#b6bbb7]"
+                  className="min-h-[80px] bg-[#f7f7f7] text-[13px] placeholder:text-[#b6bbb7]"
                 />
                 <div className="absolute bottom-3 right-3 flex items-center gap-2 text-[#b2bab3]">
                   <Paperclip className="h-4 w-4" />
@@ -247,31 +249,37 @@ export function ProjectCompareWorkspace({
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <button
+                <Button
                   type="button"
                   onClick={addComment}
-                  className="inline-flex min-h-[36px] cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-5 text-[14px] font-[600] text-white"
+                  size="sm"
+                  className="min-h-[36px] text-[14px]"
                 >
                   Send
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => setDraft("")}
-                  className="inline-flex min-h-[36px] cursor-pointer items-center justify-center rounded-full border border-brand bg-white px-5 text-[14px] font-[600] text-brand"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[36px] text-[14px]"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           </div>
-        </div>
+        </Card>
 
         <div className="space-y-4">
-          <aside className="rounded-[20px] border border-brand/40 bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-            <h2 className="text-[20px] font-[700] tracking-[-0.03em] text-brand">
+          <Card className="rounded-[20px] border border-brand/40">
+            <CardHeader className="pb-3">
+            <CardTitle className="text-[20px] text-brand">
               Stage Overview
-            </h2>
-            <dl className="mt-3 space-y-1.5 text-[13px] text-[#242b26]">
+            </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+            <dl className="space-y-1.5 text-[13px] text-[#242b26]">
               <div>
                 <dt className="inline font-[700]">Budget :</dt>{" "}
                 <dd className="inline">{activeStage?.budget ?? project.budget}</dd>
@@ -290,14 +298,12 @@ export function ProjectCompareWorkspace({
               </div>
             </dl>
             <div className="mt-5">
-              <Link
-                href="#"
-                className="inline-flex min-h-[36px] min-w-[110px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-5 text-[13px] font-[600] text-white"
-              >
-                Brief
-              </Link>
+              <Button asChild size="sm" className="min-w-[110px] text-[13px]">
+                <Link href="#">Brief</Link>
+              </Button>
             </div>
-          </aside>
+            </CardContent>
+          </Card>
 
           <ProjectCollaboratorsPanel
             collaborators={collaborators}

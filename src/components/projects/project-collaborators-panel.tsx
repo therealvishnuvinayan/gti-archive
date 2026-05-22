@@ -2,6 +2,9 @@
 
 import { Eye, Trash2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ProjectCollaboratorRecord } from "@/lib/projects";
 
 type ProjectCollaboratorsPanelProps = {
@@ -26,11 +29,14 @@ export function ProjectCollaboratorsPanel({
   const external = collaborators.filter((collaborator) => collaborator.group === "external");
 
   return (
-    <aside className="rounded-[20px] bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-      <h2 className="text-[20px] font-[700] tracking-[-0.03em] text-[#111712]">
+    <Card className="rounded-[20px]">
+      <CardHeader className="pb-3">
+      <CardTitle className="text-[20px]">
         Project Collaborators
-      </h2>
+      </CardTitle>
+      </CardHeader>
 
+      <CardContent className="pt-0">
       {([
         ["Internal", internal],
         ["External", external],
@@ -51,22 +57,27 @@ export function ProjectCollaboratorsPanel({
                     <p className="truncate text-[10px] text-[#7a837b]">{collaborator.role}</p>
                   </div>
                   {collaborator.group === "external" ? (
-                    <Eye
-                      className={`h-4 w-4 ${
+                    <Badge
+                      variant="secondary"
+                      className={`border-none p-2 ${
                         collaborator.access === "view"
-                          ? "text-[#50b848]"
-                          : "text-[#ff2f2f]"
+                          ? "bg-[#eef9ee] text-[#50b848]"
+                          : "bg-[#fff1f0] text-[#ff2f2f]"
                       }`}
-                    />
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Badge>
                   ) : collaborator.removable ? (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => onRemove?.(collaborator.id)}
-                      className="cursor-pointer text-[#ff6e68]"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-[#ff6e68]"
                       aria-label={`Remove ${collaborator.name}`}
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </Button>
                   ) : null}
                 </li>
               ))
@@ -76,6 +87,7 @@ export function ProjectCollaboratorsPanel({
           </ul>
         </div>
       ))}
-    </aside>
+      </CardContent>
+    </Card>
   );
 }

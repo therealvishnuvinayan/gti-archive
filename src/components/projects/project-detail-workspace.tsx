@@ -1,6 +1,10 @@
 import Link from "next/link";
 
 import type { ProjectFlowRecord, ProjectStageRecord } from "@/lib/projects";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 type ProjectDetailWorkspaceProps = {
   project: ProjectFlowRecord;
@@ -47,7 +51,7 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
   return (
     <section className="space-y-6">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]">
-        <div className="rounded-[20px] bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
+        <Card className="rounded-[20px] border-none bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
           <h1 className="text-[23px] font-[700] leading-[1.15] tracking-[-0.03em]">
             {project.title}
           </h1>
@@ -60,13 +64,16 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
               {project.currentStageName} : {project.statusLabel}
             </p>
           </div>
-        </div>
+        </Card>
 
-        <aside className="rounded-[20px] border border-brand/40 bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-          <h2 className="text-[21px] font-[700] tracking-[-0.03em] text-brand">
+        <Card className="rounded-[20px] border border-brand/40">
+          <CardHeader className="pb-3">
+          <CardTitle className="text-[21px] text-brand">
             Project Overview
-          </h2>
-          <dl className="mt-3 space-y-1.5 text-[13px] text-[#242b26]">
+          </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+          <dl className="space-y-1.5 text-[13px] text-[#242b26]">
             <div>
               <dt className="inline font-[700]">Budget:</dt>{" "}
               <dd className="inline">{project.budget}</dd>
@@ -92,35 +99,41 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
               <dd className="inline">{project.priority}</dd>
             </div>
           </dl>
-        </aside>
+          </CardContent>
+        </Card>
       </div>
 
-      <section className="rounded-[20px] bg-white p-6 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
+      <Card className="rounded-[20px]">
+        <CardHeader>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-[22px] font-[700] tracking-[-0.03em] text-[#111712]">
+            <CardTitle className="text-[22px]">
               Project Stages
-            </h2>
+            </CardTitle>
             <p className="mt-1 text-[14px] text-[#6b756d]">
               Open a stage to continue discussion and revision work. Use compare from the stage flow.
             </p>
           </div>
         </div>
+        </CardHeader>
 
         {project.stageCards.length > 0 ? (
-          <div className="mt-5 grid gap-4 xl:grid-cols-3">
+          <CardContent className="grid gap-4 xl:grid-cols-3">
             {project.stageCards.map((stage) => {
               const styles = getStageCardClasses(stage);
               const stageInactive = stage.status === "pending";
 
               return (
-                <article
+                <Card
                   key={stage.id}
                   className={`rounded-[18px] p-4 shadow-[0_18px_42px_rgba(23,39,28,0.05)] ${styles.card}`}
                 >
-                  <p className={`text-[16px] font-[700] leading-tight ${styles.label}`}>
+                  <Badge
+                    variant="secondary"
+                    className={`w-fit border-none bg-white/12 text-[16px] font-[700] leading-tight ${styles.label}`}
+                  >
                     {stage.label}
-                  </p>
+                  </Badge>
                   <p className="mt-1 text-[14px] leading-tight text-white/90">
                     {stage.subtitle}
                   </p>
@@ -139,55 +152,66 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
                     <p>Stage Budget: {stage.budget}</p>
                   </div>
 
+                  <Separator className="my-4 bg-white/12" />
+
                   <div className="mt-5 space-y-2.5">
-                    <Link
-                      href={`/projects/${project.id}/chat?stage=${stage.id}`}
-                      className={`inline-flex min-h-[42px] w-full items-center justify-center rounded-full px-5 text-[15px] font-[600] transition-transform hover:-translate-y-0.5 ${
-                        stageInactive
-                          ? "cursor-not-allowed bg-[#f1f1f1] text-[#d7d7d7] pointer-events-none"
-                          : "cursor-pointer bg-[linear-gradient(90deg,#31a06a,#133f2d)] text-white"
-                      }`}
+                    <Button
+                      asChild
+                      className={stageInactive ? "pointer-events-none bg-[#f1f1f1] text-[#d7d7d7] shadow-none" : "w-full"}
                     >
-                      Open Stage
-                    </Link>
-                    <Link
-                      href={`/projects/${project.id}/compare?stage=${stage.id}`}
-                      className={`inline-flex min-h-[42px] w-full items-center justify-center rounded-full px-5 text-[15px] font-[600] transition-colors ${styles.secondaryButton} ${
-                        stageInactive ? "pointer-events-none" : ""
-                      }`}
+                      <Link href={`/projects/${project.id}/chat?stage=${stage.id}`}>
+                        Open Stage
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="secondary"
+                      className={stageInactive ? "pointer-events-none border-[#cbd6ce] bg-[#f1f1f1] text-[#d7d7d7]" : styles.secondaryButton}
                     >
-                      Compare
-                    </Link>
+                      <Link href={`/projects/${project.id}/compare?stage=${stage.id}`}>
+                        Compare
+                      </Link>
+                    </Button>
                   </div>
-                </article>
+                </Card>
               );
             })}
-          </div>
+          </CardContent>
         ) : (
-          <div className="mt-5 rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-5 py-10 text-center text-[15px] text-[#6e776f]">
-            No stages are attached to this project yet.
-          </div>
+          <CardContent>
+            <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-5 py-10 text-center text-[15px] text-[#6e776f]">
+              No stages are attached to this project yet.
+            </div>
+          </CardContent>
         )}
-      </section>
+      </Card>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
-        <article className="rounded-[20px] bg-white p-6 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-          <h2 className="text-[20px] font-[700] tracking-[-0.03em] text-[#111712]">
+        <Card className="rounded-[20px]">
+          <CardHeader>
+          <CardTitle className="text-[20px]">
             Project Brief
-          </h2>
-          <p className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-[#39433c]">
+          </CardTitle>
+          </CardHeader>
+          <CardContent>
+          <p className="whitespace-pre-wrap text-[15px] leading-7 text-[#39433c]">
             {project.description}
           </p>
-        </article>
+          </CardContent>
+        </Card>
 
-        <article className="rounded-[20px] bg-white p-6 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-          <h2 className="text-[20px] font-[700] tracking-[-0.03em] text-[#111712]">
+        <Card className="rounded-[20px]">
+          <CardHeader>
+          <CardTitle className="text-[20px]">
             Project Assets
-          </h2>
-          <div className="mt-4 rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-8 text-center text-[14px] text-[#6e776f]">
+          </CardTitle>
+          </CardHeader>
+          <CardContent>
+          <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-8 text-center text-[14px] text-[#6e776f]">
             No project-level attachments uploaded yet.
           </div>
-        </article>
+          </CardContent>
+        </Card>
       </section>
     </section>
   );

@@ -2,7 +2,10 @@ import Link from "next/link";
 
 import { ProjectCard } from "@/components/projects/project-card";
 import { ProjectSortDropdown } from "@/components/projects/project-sort-dropdown";
+import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { getProjectsList } from "@/lib/projects";
 
 type ProjectFilter = {
@@ -15,17 +18,6 @@ const projectFilters: ProjectFilter[] = [
   { label: "On Hold", value: "ON_HOLD" },
   { label: "Completed", value: "COMPLETED" },
 ];
-
-function BackPill() {
-  return (
-    <Link
-      href="/"
-      className="inline-flex min-h-13 min-w-[176px] cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[18px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-transform hover:-translate-y-0.5"
-    >
-      Back
-    </Link>
-  );
-}
 
 export default async function ProjectsPage({
   searchParams,
@@ -54,7 +46,7 @@ export default async function ProjectsPage({
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search for Projects...",
-        leadingContent: <BackPill />,
+        leadingContent: <ProjectBackButton href="/" />,
         searchAction: "/projects",
         searchDefaultValue: query,
         searchHiddenFields: [
@@ -78,34 +70,33 @@ export default async function ProjectsPage({
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-end">
             <div className="inline-flex w-full flex-wrap rounded-full border border-brand bg-white p-1 xl:w-auto">
               {projectFilters.map((filter) => (
-                <Link
+                <Button
                   key={filter.label}
-                  href={{
-                    pathname: "/projects",
-                    query: {
-                      ...(query ? { q: query } : {}),
-                      status: filter.value,
-                      sort: activeSort,
-                    },
-                  }}
-                  className={`inline-flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-full px-6 text-[17px] font-semibold transition-colors xl:flex-none ${
-                    activeStatus === filter.value
-                      ? "bg-brand text-white"
-                      : "text-brand hover:bg-brand-soft"
-                  }`}
+                  asChild
+                  size="default"
+                  variant={activeStatus === filter.value ? "default" : "ghost"}
+                  className="min-h-[44px] flex-1 px-6 text-[17px] xl:flex-none"
                 >
-                  {filter.label}
-                </Link>
+                  <Link
+                    href={{
+                      pathname: "/projects",
+                      query: {
+                        ...(query ? { q: query } : {}),
+                        status: filter.value,
+                        sort: activeSort,
+                      },
+                    }}
+                  >
+                    {filter.label}
+                  </Link>
+                </Button>
               ))}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/projects/new"
-                className="inline-flex min-h-[52px] cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-7 text-[18px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-transform hover:-translate-y-0.5"
-              >
-                + New Project
-              </Link>
+              <Button asChild size="lg" className="text-[18px]">
+                <Link href="/projects/new">+ New Project</Link>
+              </Button>
               <ProjectSortDropdown
                 activeSort={activeSort}
                 activeStatus={activeStatus}
@@ -122,16 +113,18 @@ export default async function ProjectsPage({
             ))}
           </section>
         ) : (
-          <section className="rounded-[24px] bg-card p-8 text-center shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-            <h2 className="text-[24px] font-[600] tracking-[-0.03em] text-[#111712]">
-              No projects found
-            </h2>
-            <p className="mt-3 text-[15px] leading-7 text-[#6f776f]">
-              {query
-                ? "No saved projects match your current search."
-                : "Create a project to populate the projects board."}
-            </p>
-          </section>
+          <Card className="text-center">
+            <CardContent className="p-8">
+              <h2 className="text-[24px] font-[600] tracking-[-0.03em] text-[#111712]">
+                No projects found
+              </h2>
+              <p className="mt-3 text-[15px] leading-7 text-[#6f776f]">
+                {query
+                  ? "No saved projects match your current search."
+                  : "Create a project to populate the projects board."}
+              </p>
+            </CardContent>
+          </Card>
         )}
       </section>
     </DashboardLayout>

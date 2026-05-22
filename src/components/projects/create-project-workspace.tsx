@@ -9,6 +9,24 @@ import {
   initialProjectFormState,
   type ProjectFormState,
 } from "@/app/projects/new/project-form-state";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 
 const currencyOptions = ["USD", "AED", "EUR", "GBP", "INR"] as const;
 
@@ -119,69 +137,70 @@ function MonthPicker({
   return (
     <div>
       <h3 className="mb-2 text-[16px] font-[600] text-brand">{label}</h3>
-      <div className="rounded-[16px] bg-white p-4 shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
+      <Card className="rounded-[20px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
+        <CardContent className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <select
-              value={month.getMonth()}
-              onChange={(event) =>
-                onMonthChange(
-                  new Date(
-                    month.getFullYear(),
-                    Number(event.target.value),
-                    1,
-                  ),
-                )
+            <Select
+              value={String(month.getMonth())}
+              onValueChange={(nextMonth) =>
+                onMonthChange(new Date(month.getFullYear(), Number(nextMonth), 1))
               }
-              className="rounded-full border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-1 text-[11px] font-[700] text-[#202822] outline-none"
             >
-              {monthNames.map((monthName, index) => (
-                <option key={monthName} value={index}>
-                  {monthName}
-                </option>
-              ))}
-            </select>
-            <select
-              value={month.getFullYear()}
-              onChange={(event) =>
-                onMonthChange(
-                  new Date(
-                    Number(event.target.value),
-                    month.getMonth(),
-                    1,
-                  ),
-                )
+              <SelectTrigger className="h-9 w-[132px] bg-[#fbfcfa] text-[11px] font-[700]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {monthNames.map((monthName, index) => (
+                  <SelectItem key={monthName} value={String(index)}>
+                    {monthName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={String(month.getFullYear())}
+              onValueChange={(nextYear) =>
+                onMonthChange(new Date(Number(nextYear), month.getMonth(), 1))
               }
-              className="rounded-full border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-1 text-[11px] font-[700] text-[#202822] outline-none"
             >
-              {yearOptions.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-9 w-[92px] bg-[#fbfcfa] text-[11px] font-[700]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center gap-1">
-            <button
+            <Button
               type="button"
               onClick={() =>
                 onMonthChange(new Date(month.getFullYear(), month.getMonth() - 1, 1))
               }
-              className="cursor-pointer text-brand"
+              variant="ghost"
+              size="icon"
+              className="size-8 text-brand"
               aria-label={`Previous month for ${label}`}
             >
               <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={() =>
                 onMonthChange(new Date(month.getFullYear(), month.getMonth() + 1, 1))
               }
-              className="cursor-pointer text-brand"
+              variant="ghost"
+              size="icon"
+              className="size-8 text-brand"
               aria-label={`Next month for ${label}`}
             >
               <ChevronRight className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -214,7 +233,8 @@ function MonthPicker({
             );
           })}
         </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -223,7 +243,7 @@ function CreateProjectSubmitButton() {
   const { pending } = useFormStatus();
 
   return (
-    <button
+    <Button
       type="submit"
       disabled={pending}
       className={`mt-8 inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-full px-6 text-[15px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-all duration-200 ${
@@ -244,7 +264,7 @@ function CreateProjectSubmitButton() {
       ) : (
         "Create Project"
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -350,10 +370,14 @@ export function CreateProjectWorkspace() {
       />
       <input type="hidden" name="stageCount" value={String(stages.length)} />
 
-      <section className="rounded-[20px] bg-surface p-6 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-        <div className="rounded-[20px] bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-          <h1 className="text-[18px] font-[700] tracking-[-0.02em]">Create a project</h1>
-        </div>
+      <Card className="bg-surface">
+        <CardHeader>
+          <div className="rounded-[20px] bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
+            <CardTitle className="text-[18px] font-[700] tracking-[-0.02em] text-white">
+              Create a project
+            </CardTitle>
+          </div>
+        </CardHeader>
 
         {formState.error ? (
           <p className="mt-5 rounded-2xl border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[13px] font-medium text-[#ba3f31]">
@@ -361,165 +385,179 @@ export function CreateProjectWorkspace() {
           </p>
         ) : null}
 
-        <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <div className="space-y-4">
-            <label className="block">
-              <span className="mb-2 block text-[16px] font-[600] text-brand">
-                Project Name
-              </span>
-              <input
-                value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
-                name="name"
-                placeholder="Enter Project Name....."
-                className="h-[34px] w-full rounded-full bg-white px-4 text-[12px] text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-[16px] font-[600] text-brand">
-                Project Category
-              </span>
-              <input
-                value={projectCategory}
-                onChange={(event) => setProjectCategory(event.target.value)}
-                name="category"
-                placeholder="Enter Project Category....."
-                className="h-[34px] w-full rounded-full bg-white px-4 text-[12px] text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-[16px] font-[600] text-brand">
-                Project Budget
-              </span>
-              <div className="flex gap-2">
-                <input
-                  value={projectBudget}
-                  onChange={(event) => handleBudgetChange(event.target.value)}
-                  name="budget"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="Enter Project Budget...."
-                  className="h-[34px] min-w-0 flex-1 rounded-full bg-white px-4 text-[12px] text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
+        <CardContent className="space-y-6 pt-2">
+          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-[16px] font-[600] text-brand">
+                  Project Name
+                </span>
+                <Input
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  name="name"
+                  placeholder="Enter Project Name....."
+                  className="h-[42px] text-[12px]"
                 />
-                <select
-                  value={projectCurrency}
-                  onChange={(event) => setProjectCurrency(event.target.value as CurrencyValue)}
-                  className="h-[34px] w-[96px] rounded-full bg-white px-4 text-[12px] font-medium text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
-                >
-                  {currencyOptions.map((currency) => (
-                    <option key={currency} value={currency}>
-                      {currency}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </label>
+              </label>
 
-            <label className="block">
-              <span className="mb-2 block text-[16px] font-[600] text-brand">
-                Project Tag
-              </span>
-              <input
-                value={projectTag}
-                onChange={(event) => setProjectTag(event.target.value)}
-                name="tag"
-                placeholder="Enter Project Tag....."
-                className="h-[34px] w-full rounded-full bg-white px-4 text-[12px] text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-[16px] font-[600] text-brand">
-                Project Status
-              </span>
-              <select
-                value={projectStatus}
-                onChange={(event) =>
-                  setProjectStatus(event.target.value as ProjectStatusValue)
-                }
-                className="h-[34px] w-full rounded-full bg-white px-4 text-[12px] font-medium text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
-              >
-                {projectStatusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div>
-            <label className="block">
-              <span className="mb-2 block text-[16px] font-[600] text-brand">
-                Project Brief
-              </span>
-              <div className="relative rounded-[18px] bg-white">
-                <textarea
-                  value={projectBrief}
-                  onChange={(event) => setProjectBrief(event.target.value)}
-                  name="description"
-                  placeholder="Enter Project Brief......."
-                  className="min-h-[236px] w-full resize-none rounded-[18px] bg-transparent px-4 py-4 pr-12 text-[12px] text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
+              <label className="block">
+                <span className="mb-2 block text-[16px] font-[600] text-brand">
+                  Project Category
+                </span>
+                <Input
+                  value={projectCategory}
+                  onChange={(event) => setProjectCategory(event.target.value)}
+                  name="category"
+                  placeholder="Enter Project Category....."
+                  className="h-[42px] text-[12px]"
                 />
-                <label className="absolute bottom-3 right-3 cursor-pointer text-[#b4bbb5] transition-colors hover:text-brand">
-                  <input
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(event) =>
-                      setBriefAttachments(
-                        event.target.files
-                          ? Array.from(event.target.files)
-                          : [],
-                      )
-                    }
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-[16px] font-[600] text-brand">
+                  Project Budget
+                </span>
+                <div className="flex gap-2">
+                  <Input
+                    value={projectBudget}
+                    onChange={(event) => handleBudgetChange(event.target.value)}
+                    name="budget"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="Enter Project Budget...."
+                    className="h-[42px] min-w-0 flex-1 text-[12px]"
                   />
-                  <Paperclip className="h-5 w-5" />
-                </label>
-              </div>
-            </label>
+                  <Select
+                    value={projectCurrency}
+                    onValueChange={(nextValue) => setProjectCurrency(nextValue as CurrencyValue)}
+                  >
+                    <SelectTrigger className="h-[42px] w-[108px] text-[12px] font-medium">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currencyOptions.map((currency) => (
+                        <SelectItem key={currency} value={currency}>
+                          {currency}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </label>
 
-            {briefAttachments.length > 0 ? (
-              <div className="mt-3 rounded-[16px] border border-[#dce6dd] bg-white px-4 py-3">
-                <p className="text-[12px] font-semibold text-brand">
-                  Selected Attachments
-                </p>
-                <ul className="mt-2 space-y-2">
-                  {briefAttachments.map((file) => (
-                    <li
-                      key={`${file.name}-${file.size}`}
-                      className="flex items-center justify-between gap-3 rounded-[12px] bg-[#f7faf7] px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-[12px] font-medium text-[#243028]">
-                          {file.name}
-                        </p>
-                        <p className="text-[11px] text-[#7a837b]">
-                          {formatFileSize(file.size)}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeBriefAttachment(file.name)}
-                        className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44]"
-                        aria-label={`Remove ${file.name}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2 text-[11px] text-[#7a837b]">
-                  Files are currently selected in the UI only. Backend file storage is not connected yet.
-                </p>
-              </div>
-            ) : null}
+              <label className="block">
+                <span className="mb-2 block text-[16px] font-[600] text-brand">
+                  Project Tag
+                </span>
+                <Input
+                  value={projectTag}
+                  onChange={(event) => setProjectTag(event.target.value)}
+                  name="tag"
+                  placeholder="Enter Project Tag....."
+                  className="h-[42px] text-[12px]"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-[16px] font-[600] text-brand">
+                  Project Status
+                </span>
+                <Select
+                  value={projectStatus}
+                  onValueChange={(nextValue) =>
+                    setProjectStatus(nextValue as ProjectStatusValue)
+                  }
+                >
+                  <SelectTrigger className="h-[42px] text-[12px] font-medium">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projectStatusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            </div>
+
+            <div>
+              <label className="block">
+                <span className="mb-2 block text-[16px] font-[600] text-brand">
+                  Project Brief
+                </span>
+                <div className="relative">
+                  <Textarea
+                    value={projectBrief}
+                    onChange={(event) => setProjectBrief(event.target.value)}
+                    name="description"
+                    placeholder="Enter Project Brief......."
+                    className="min-h-[236px] pr-12 text-[12px]"
+                  />
+                  <label className="absolute bottom-3 right-3 cursor-pointer text-[#b4bbb5] transition-colors hover:text-brand">
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(event) =>
+                        setBriefAttachments(
+                          event.target.files
+                            ? Array.from(event.target.files)
+                            : [],
+                        )
+                      }
+                    />
+                    <Paperclip className="h-5 w-5" />
+                  </label>
+                </div>
+              </label>
+
+              {briefAttachments.length > 0 ? (
+                <Card className="mt-3 rounded-[16px] border border-[#dce6dd] shadow-none">
+                  <CardContent className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[12px] font-semibold text-brand">
+                        Selected Attachments
+                      </p>
+                      <Badge variant="secondary">{briefAttachments.length}</Badge>
+                    </div>
+                    <ul className="mt-2 space-y-2">
+                      {briefAttachments.map((file) => (
+                        <li
+                          key={`${file.name}-${file.size}`}
+                          className="flex items-center justify-between gap-3 rounded-[12px] bg-[#f7faf7] px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-[12px] font-medium text-[#243028]">
+                              {file.name}
+                            </p>
+                            <p className="text-[11px] text-[#7a837b]">
+                              {formatFileSize(file.size)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeBriefAttachment(file.name)}
+                            className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44]"
+                            aria-label={`Remove ${file.name}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-3 text-[11px] text-[#7a837b]">
+                      Files are currently selected in the UI only. Backend file storage is not connected yet.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        <div className="mt-6 grid gap-4 2xl:grid-cols-2">
+          <div className="grid gap-4 2xl:grid-cols-2">
           <MonthPicker
             label="Project Start Date"
             value={startDate}
@@ -534,65 +572,74 @@ export function CreateProjectWorkspace() {
             month={endMonth}
             onMonthChange={setEndMonth}
           />
-        </div>
-
-        <div className="mt-6">
-          <div className="flex items-center justify-between gap-4">
-            <h3 className="text-[16px] font-[600] text-brand">Project Stages</h3>
-            <button
-              type="button"
-              onClick={addStage}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-brand/30 bg-white px-3 py-1.5 text-[12px] font-semibold text-brand transition-colors hover:bg-[#f3faf4]"
-            >
-              <Plus className="h-4 w-4" />
-              Add Stage
-            </button>
           </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-            {stages.map((stage, index) => (
-              <div key={stage.id} className="rounded-[18px] bg-white p-4 shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
-                <input
-                  value={stage.name}
-                  onChange={(event) =>
-                    updateStage(stage.id, { name: event.target.value })
-                  }
-                  name="stageNames"
-                  className="inline-flex min-h-[38px] w-full rounded-full border border-brand bg-white px-5 text-center text-[14px] font-[500] text-brand outline-none"
-                />
-                <input
-                  value={stage.budget}
-                  onChange={(event) =>
-                    updateStage(stage.id, {
-                      budget: event.target.value.replace(/[^\d]/g, ""),
-                    })
-                  }
-                  name="stageBudgets"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder={`Stage ${index + 1} Budget...`}
-                  className="mt-3 h-[34px] w-full rounded-full bg-[#f7faf7] px-4 text-[12px] text-[#29322c] outline-none"
-                />
-                <textarea
-                  value={stage.description}
-                  onChange={(event) =>
-                    updateStage(stage.id, { description: event.target.value })
-                  }
-                  name="stageDescriptions"
-                  placeholder={`Stage ${index + 1} Description...`}
-                  className="mt-3 min-h-[84px] w-full resize-none rounded-[16px] bg-[#f7faf7] px-4 py-3 text-[12px] text-[#29322c] outline-none"
-                />
-              </div>
-            ))}
+          <div>
+            <div className="flex items-center justify-between gap-4">
+              <h3 className="text-[16px] font-[600] text-brand">Project Stages</h3>
+              <Button
+                type="button"
+                onClick={addStage}
+                variant="outline"
+                size="sm"
+                className="text-[12px]"
+              >
+                <Plus className="h-4 w-4" />
+                Add Stage
+              </Button>
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {stages.map((stage, index) => (
+                <Card key={stage.id} className="rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
+                  <CardContent className="p-4">
+                    <Input
+                      value={stage.name}
+                      onChange={(event) =>
+                        updateStage(stage.id, { name: event.target.value })
+                      }
+                      name="stageNames"
+                      className="min-h-[38px] border-brand text-center text-[14px] font-[500] text-brand"
+                    />
+                    <Input
+                      value={stage.budget}
+                      onChange={(event) =>
+                        updateStage(stage.id, {
+                          budget: event.target.value.replace(/[^\d]/g, ""),
+                        })
+                      }
+                      name="stageBudgets"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder={`Stage ${index + 1} Budget...`}
+                      className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
+                    />
+                    <Textarea
+                      value={stage.description}
+                      onChange={(event) =>
+                        updateStage(stage.id, { description: event.target.value })
+                      }
+                      name="stageDescriptions"
+                      placeholder={`Stage ${index + 1} Description...`}
+                      className="mt-3 min-h-[84px] bg-[#f7faf7] text-[12px]"
+                    />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        
+        </CardContent>
+      </Card>
 
       <div className="space-y-4">
-        <aside className="rounded-[20px] border border-brand/40 bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-          <h2 className="text-[21px] font-[700] tracking-[-0.03em] text-brand">
+        <Card className="border border-brand/40">
+          <CardHeader className="pb-3">
+          <CardTitle className="text-[21px] text-brand">
             Project Overview
-          </h2>
+          </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
           <dl className="mt-3 space-y-1.5 text-[13px] text-[#242b26]">
             <div>
               <dt className="inline font-[700]">Budget :</dt>{" "}
@@ -623,27 +670,37 @@ export function CreateProjectWorkspace() {
               <dd className="inline">{overview.priority}</dd>
             </div>
           </dl>
-        </aside>
-        <aside className="rounded-[20px] bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-          <h2 className="text-[20px] font-[700] tracking-[-0.03em] text-[#111712]">
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+          <CardTitle className="text-[20px] text-[#111712]">
             Project Collaborators
-          </h2>
+          </CardTitle>
+          </CardHeader>
 
-          <div className="mt-5">
+          <CardContent className="pt-0">
+          <div className="mt-1">
             <h3 className="text-[16px] font-[700] text-[#86c864]">Internal</h3>
             <div className="mt-3 space-y-2">
               {internalCollaborators.map((collaborator) => (
-                <div key={collaborator.id} className="text-[14px] font-[500] text-brand">
+                <Badge
+                  key={collaborator.id}
+                  variant="secondary"
+                  className="mr-2 bg-[#f3faf4] text-[13px] font-[500] text-brand"
+                >
                   {collaborator.name}
-                </div>
+                </Badge>
               ))}
-              <button
+              <Button
                 type="button"
                 onClick={() => addCollaborator("internal")}
-                className="cursor-pointer text-[14px] font-[600] text-brand"
+                variant="ghost"
+                size="sm"
+                className="px-0 text-[14px] font-[600] text-brand"
               >
                 Invite+
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -651,22 +708,30 @@ export function CreateProjectWorkspace() {
             <h3 className="text-[16px] font-[700] text-[#86c864]">External</h3>
             <div className="mt-3 space-y-2">
               {externalCollaborators.map((collaborator) => (
-                <div key={collaborator.id} className="text-[14px] font-[500] text-brand">
+                <Badge
+                  key={collaborator.id}
+                  variant="secondary"
+                  className="mr-2 bg-[#f3faf4] text-[13px] font-[500] text-brand"
+                >
                   {collaborator.name}
-                </div>
+                </Badge>
               ))}
-              <button
+              <Button
                 type="button"
                 onClick={() => addCollaborator("external")}
-                className="cursor-pointer text-[14px] font-[600] text-brand"
+                variant="ghost"
+                size="sm"
+                className="px-0 text-[14px] font-[600] text-brand"
               >
                 Invite+
-              </button>
+              </Button>
             </div>
           </div>
 
+          <Separator className="mt-6" />
           <CreateProjectSubmitButton />
-        </aside>
+          </CardContent>
+        </Card>
       </div>
     </form>
   );
