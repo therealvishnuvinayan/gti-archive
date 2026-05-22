@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import {
@@ -11,6 +12,8 @@ import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
 import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
 import { sendResendEmail } from "@/lib/email/resend";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+
+export const COLLABORATORS_CACHE_TAG = "collaborators";
 
 export type AccessArea = "project" | "calendar" | "library" | "archive";
 export type PermissionLevel = "full" | "limited" | "none";
@@ -174,26 +177,31 @@ function validateCollaboratorInput(
 }
 
 export async function getCollaborators() {
-  const collaborators = await withPrismaRetry(() =>
-    prisma.user.findMany({
-      where: {
-        role: UserRole.COLLABORATOR,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        collaboratorType: true,
-        projectAccess: true,
-        calendarAccess: true,
-        libraryAccess: true,
-        archiveAccess: true,
-      },
-    }),
-  );
+  const collaborators = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.user.findMany({
+          where: {
+            role: UserRole.COLLABORATOR,
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            collaboratorType: true,
+            projectAccess: true,
+            calendarAccess: true,
+            libraryAccess: true,
+            archiveAccess: true,
+          },
+        }),
+      ),
+    ["collaborators"],
+    { revalidate: 20, tags: [COLLABORATORS_CACHE_TAG] },
+  )();
 
   return collaborators.map(mapCollaborator);
 }

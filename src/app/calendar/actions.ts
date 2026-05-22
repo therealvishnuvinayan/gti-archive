@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
 import {
+  CALENDAR_CACHE_TAG,
   createCalendarEvent,
   type CreateCalendarEventResult,
   type SaveCalendarEventInput,
@@ -20,6 +21,7 @@ export async function saveCalendarEventAction(
   }
 
   revalidatePath("/calendar");
+  revalidateTag(CALENDAR_CACHE_TAG, "max");
 
   return result;
 }

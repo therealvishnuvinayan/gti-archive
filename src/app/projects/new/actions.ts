@@ -1,12 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { CurrencyCode, ProjectStatus } from "@prisma/client";
 
 import type { ProjectFormState } from "@/app/projects/new/project-form-state";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 function parseBudget(value: string) {
   const normalized = value.replace(/[^\d]/g, "");
@@ -147,6 +148,7 @@ export async function createProjectAction(
   revalidatePath("/");
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
+  revalidateTag(PROJECTS_CACHE_TAG, "max");
 
   redirect(`/projects/${projectId}`);
 }

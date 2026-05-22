@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import type {
   CurrencyCode,
   Project,
@@ -7,6 +8,8 @@ import type {
 } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+
+export const PROJECTS_CACHE_TAG = "projects";
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
@@ -134,10 +137,20 @@ export const projectStatusMeta: Record<
   },
 };
 
-export function formatProjectDate(date: Date) {
-  const day = `${date.getDate()}`.padStart(2, "0");
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const year = date.getFullYear();
+function toProjectDate(date: Date | string | number) {
+  return date instanceof Date ? date : new Date(date);
+}
+
+export function formatProjectDate(date: Date | string | number) {
+  const normalizedDate = toProjectDate(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "—";
+  }
+
+  const day = `${normalizedDate.getDate()}`.padStart(2, "0");
+  const month = `${normalizedDate.getMonth() + 1}`.padStart(2, "0");
+  const year = normalizedDate.getFullYear();
 
   return `${day}/${month}/${year}`;
 }
@@ -312,17 +325,24 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
 }
 
 export async function getDashboardProjectCounts(): Promise<DashboardProjectCounts> {
-  const [total, grouped] = await withPrismaRetry(() =>
-    Promise.all([
-      prisma.project.count(),
-      prisma.project.groupBy({
-        by: ["status"],
-        _count: {
-          _all: true,
-        },
-      }),
-    ]),
+  const getCachedCounts = unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        Promise.all([
+          prisma.project.count(),
+          prisma.project.groupBy({
+            by: ["status"],
+            _count: {
+              _all: true,
+            },
+          }),
+        ]),
+      ),
+    ["dashboard-project-counts"],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
+
+  const [total, grouped] = await getCachedCounts();
 
   const counts = grouped.reduce<Record<ProjectStatus, number>>(
     (accumulator, item) => {
@@ -346,14 +366,19 @@ export async function getDashboardProjectCounts(): Promise<DashboardProjectCount
 }
 
 export async function getRecentProjects(limit = 5) {
-  const projects = await withPrismaRetry(() =>
-    prisma.project.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: limit,
-    }),
-  );
+  const projects = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findMany({
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: limit,
+        }),
+      ),
+    ["recent-projects", String(limit)],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
 
   return projects.map((project, index) => ({
     name: project.name,
@@ -372,40 +397,55 @@ export async function getProjectsList(filter: ProjectsListFilter) {
         ? [{ name: "asc" as const }]
         : [{ createdAt: "desc" as const }];
 
-  const projects = await withPrismaRetry(() =>
-    prisma.project.findMany({
-      where: buildProjectsWhere(filter),
-      include: {
-        createdBy: {
-          select: {
-            name: true,
-            email: true,
+  const projects = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findMany({
+          where: buildProjectsWhere(filter),
+          include: {
+            createdBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            stages: true,
           },
-        },
-        stages: true,
-      },
-      orderBy,
-    }),
-  );
+          orderBy,
+        }),
+      ),
+    [
+      "projects-list",
+      filter.status ?? "all",
+      filter.query?.trim().toLowerCase() ?? "",
+      filter.sort ?? "newest",
+    ],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
 
   return projects.map(mapProjectToCard);
 }
 
 export async function getProjectById(id: string) {
-  const project = await withPrismaRetry(() =>
-    prisma.project.findUnique({
-      where: { id },
-      include: {
-        createdBy: {
-          select: {
-            name: true,
-            email: true,
+  const project = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findUnique({
+          where: { id },
+          include: {
+            createdBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            stages: true,
           },
-        },
-        stages: true,
-      },
-    }),
-  );
+        }),
+      ),
+    ["project-by-id", id],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
 
   if (!project) {
     return null;

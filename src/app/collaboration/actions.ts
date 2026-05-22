@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { getUserDisplayName, requireUser } from "@/lib/auth";
 import {
+  COLLABORATORS_CACHE_TAG,
   createCollaborator,
   updateCollaborator,
   type CollaboratorInput,
@@ -25,6 +26,7 @@ export async function saveCollaboratorAction(input: SaveCollaboratorInput) {
   }
 
   revalidatePath("/collaboration");
+  revalidateTag(COLLABORATORS_CACHE_TAG, "max");
 
   return result;
 }

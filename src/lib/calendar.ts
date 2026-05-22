@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import type {
   CalendarEvent,
   CalendarEventTone,
@@ -5,6 +6,8 @@ import type {
 } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+
+export const CALENDAR_CACHE_TAG = "calendar-events";
 
 export type CalendarTypeLabel = "Projects" | "Events" | "Reminders" | "Payments";
 export type EventToneLabel = "green" | "purple" | "blue" | "amber";
@@ -75,16 +78,24 @@ const reverseEventToneMap: Record<CalendarEventTone, EventToneLabel> = {
   AMBER: "amber",
 };
 
-function toDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
+function toCalendarDate(date: Date | string | number) {
+  return date instanceof Date ? date : new Date(date);
+}
+
+function toDateKey(date: Date | string | number) {
+  const normalizedDate = toCalendarDate(date);
+
+  const year = normalizedDate.getFullYear();
+  const month = `${normalizedDate.getMonth() + 1}`.padStart(2, "0");
+  const day = `${normalizedDate.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
-function toTimeKey(date: Date) {
-  const hours = `${date.getHours()}`.padStart(2, "0");
-  const minutes = `${date.getMinutes()}`.padStart(2, "0");
+function toTimeKey(date: Date | string | number) {
+  const normalizedDate = toCalendarDate(date);
+
+  const hours = `${normalizedDate.getHours()}`.padStart(2, "0");
+  const minutes = `${normalizedDate.getMinutes()}`.padStart(2, "0");
   return `${hours}:${minutes}`;
 }
 
@@ -155,13 +166,18 @@ export function parseCalendarEventInput(
 }
 
 export async function getCalendarEvents() {
-  const events = await withPrismaRetry(() =>
-    prisma.calendarEvent.findMany({
-      orderBy: {
-        startAt: "asc",
-      },
-    }),
-  );
+  const events = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.calendarEvent.findMany({
+          orderBy: {
+            startAt: "asc",
+          },
+        }),
+      ),
+    ["calendar-events"],
+    { revalidate: 20, tags: [CALENDAR_CACHE_TAG] },
+  )();
 
   return events.map(mapCalendarEvent);
 }

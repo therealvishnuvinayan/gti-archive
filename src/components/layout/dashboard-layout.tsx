@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
 
-import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { getUserDisplayName, getUserInitials, requireUser } from "@/lib/auth";
-import { getDashboardProjectCounts } from "@/lib/projects";
+import { requireUser } from "@/lib/auth";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -24,23 +22,8 @@ export async function DashboardLayout({
   children,
   topbarProps,
 }: DashboardLayoutProps) {
-  const [user, projectCounts] = await Promise.all([
-    requireUser(),
-    getDashboardProjectCounts(),
-  ]);
-  const displayName = getUserDisplayName(user);
+  void topbarProps;
+  await requireUser();
 
-  return (
-    <DashboardShell
-      topbarProps={topbarProps}
-      projectBadgeCount={projectCounts.ongoing}
-      user={{
-        name: displayName,
-        email: user.email,
-        initials: getUserInitials(displayName),
-      }}
-    >
-      {children}
-    </DashboardShell>
-  );
+  return <>{children}</>;
 }
