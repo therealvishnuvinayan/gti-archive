@@ -84,7 +84,7 @@ export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
       />
 
       <aside
-        className={`fixed inset-y-3 left-3 z-40 flex w-[min(82vw,290px)] flex-col rounded-[30px] bg-sidebar px-6 py-7 shadow-[0_25px_80px_rgba(18,34,25,0.08)] transition-transform duration-300 lg:static lg:inset-auto lg:z-0 lg:w-[306px] lg:translate-x-0 lg:shadow-none ${
+        className={`fixed inset-y-3 left-3 z-40 flex w-[min(82vw,290px)] flex-col overflow-hidden rounded-[30px] bg-sidebar px-6 py-7 shadow-[0_25px_80px_rgba(18,34,25,0.08)] transition-transform duration-300 lg:static lg:inset-auto lg:z-0 lg:h-full lg:w-[306px] lg:translate-x-0 lg:shadow-none ${
           isOpen ? "translate-x-0" : "-translate-x-[115%]"
         }`}
       >
@@ -100,7 +100,7 @@ export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-10">
+        <nav className="dashboard-scroll-thin flex min-h-0 flex-1 flex-col gap-10 overflow-y-auto pr-1">
           {sidebarSections.map((section) => (
             <div key={section.title}>
               <p className="mb-4 px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted/75">
