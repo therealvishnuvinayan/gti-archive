@@ -10,7 +10,6 @@ import {
   HelpCircle,
   LayoutGrid,
   Library,
-  LogOut,
   Settings,
   Users,
   Archive,
@@ -152,15 +151,6 @@ export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
           ))}
         </nav>
 
-        <form action="/sign-out" method="post" className="pt-6">
-          <button
-            type="submit"
-            className="flex w-full items-center gap-3 rounded-2xl px-3 py-3.5 text-[15px] font-semibold text-[#6c736d] transition-colors hover:bg-white/70 hover:text-[#263129]"
-          >
-            <LogOut className="h-5 w-5 text-[#adb5af]" />
-            <span className="flex-1 text-left">Logout</span>
-          </button>
-        </form>
       </aside>
     </>
   );
