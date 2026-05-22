@@ -20,6 +20,14 @@ enum ProjectStatus {
   COMPLETED
 }
 
+enum CurrencyCode {
+  USD
+  AED
+  EUR
+  GBP
+  INR
+}
+
 enum CalendarEventType {
   PROJECTS
   EVENTS
@@ -54,6 +62,7 @@ model Project {
   tag              String?
   description      String
   budget           Int
+  currency         CurrencyCode  @default(USD)
   status           ProjectStatus @default(ONGOING)
   startDate        DateTime
   endDate          DateTime
@@ -75,6 +84,7 @@ model ProjectStage {
   projectId String
   project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name      String
+  description String?
   budget    Int?
   status    ProjectStatus @default(PENDING)
   order     Int

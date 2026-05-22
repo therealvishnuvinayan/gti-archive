@@ -1,4 +1,5 @@
 import type {
+  CurrencyCode,
   Project,
   ProjectStage,
   ProjectStatus,
@@ -33,6 +34,7 @@ export type ProjectStageRecord = {
   id: string;
   label: string;
   subtitle: string;
+  description: string;
   title: string;
   createdOn: string;
   budget: string;
@@ -77,6 +79,7 @@ export type ProjectFlowRecord = {
   category: string;
   description: string;
   budget: string;
+  currency: CurrencyCode;
   statusLabel: string;
   currentStageName: string;
   currentStageId: string | null;
@@ -139,12 +142,15 @@ export function formatProjectDate(date: Date) {
   return `${day}/${month}/${year}`;
 }
 
-export function formatProjectBudget(budget: number | null | undefined) {
+export function formatProjectBudget(
+  budget: number | null | undefined,
+  currency: CurrencyCode = "USD",
+) {
   if (!budget || budget <= 0) {
     return "—";
   }
 
-  return `${budget.toLocaleString("en-US")} USD`;
+  return `${budget.toLocaleString("en-US")} ${currency}`;
 }
 
 function getCreatorName(creator: Pick<User, "name" | "email">) {
@@ -176,6 +182,7 @@ function buildSyntheticStages(project: Project): ProjectStage[] {
       index === 0
         ? project.currentStageName?.trim() || `Stage ${index + 1}`
         : `Stage ${index + 1}`,
+    description: null,
     budget: index === 0 ? project.budget : null,
     status: index === 0 ? project.status : "PENDING",
     order: index + 1,
@@ -217,9 +224,10 @@ function mapStageToCard(project: ProjectWithCreator, stage: ProjectStage): Proje
     id: stage.id,
     label: `${stage.name} : ${projectStatusMeta[stage.status].label}`,
     subtitle: project.category,
+    description: stage.description?.trim() || "",
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
-    budget: formatProjectBudget(stage.budget),
+    budget: formatProjectBudget(stage.budget, project.currency),
     status: mapStageStatusToVisual(stage.status),
   };
 }
@@ -235,7 +243,8 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
     title: project.name,
     category: project.category,
     description: project.description,
-    budget: formatProjectBudget(project.budget),
+    budget: formatProjectBudget(project.budget, project.currency),
+    currency: project.currency,
     statusLabel: projectStatusMeta[project.status].label,
     currentStageName: currentStage?.name ?? project.currentStageName?.trim() ?? "Stage 1",
     currentStageId: currentStage?.id ?? null,

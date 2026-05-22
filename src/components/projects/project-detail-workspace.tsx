@@ -124,6 +124,13 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
                   <p className="mt-1 text-[14px] leading-tight text-white/90">
                     {stage.subtitle}
                   </p>
+                  {stage.description ? (
+                    <p className="mt-2 min-h-[40px] text-[12px] leading-[1.4] text-white/82">
+                      {stage.description}
+                    </p>
+                  ) : (
+                    <div className="mt-2 min-h-[40px]" />
+                  )}
                   <h3 className="mt-1 min-h-[76px] text-[20px] font-[700] leading-[1.08] text-white">
                     {stage.title}
                   </h3>

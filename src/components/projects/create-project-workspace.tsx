@@ -10,6 +10,8 @@ import {
   type ProjectFormState,
 } from "@/app/projects/new/project-form-state";
 
+const currencyOptions = ["USD", "AED", "EUR", "GBP", "INR"] as const;
+
 const projectStatusOptions = [
   { value: "ONGOING", label: "Ongoing" },
   { value: "ON_HOLD", label: "On Hold" },
@@ -23,7 +25,10 @@ type StageForm = {
   id: string;
   name: string;
   budget: string;
+  description: string;
 };
+
+type CurrencyValue = (typeof currencyOptions)[number];
 
 type CollaboratorEntry = {
   id: string;
@@ -264,6 +269,7 @@ export function CreateProjectWorkspace() {
   const [projectCategory, setProjectCategory] = useState("");
   const [projectTag, setProjectTag] = useState("");
   const [projectBudget, setProjectBudget] = useState("");
+  const [projectCurrency, setProjectCurrency] = useState<CurrencyValue>("USD");
   const [projectBrief, setProjectBrief] = useState("");
   const [projectStatus, setProjectStatus] = useState<ProjectStatusValue>("ONGOING");
   const [startDate, setStartDate] = useState<Date | null>(null);
@@ -271,7 +277,7 @@ export function CreateProjectWorkspace() {
   const [startMonth, setStartMonth] = useState(new Date());
   const [endMonth, setEndMonth] = useState(new Date());
   const [stages, setStages] = useState<StageForm[]>([
-    { id: "stage-1", name: "Stage 1", budget: "" },
+    { id: "stage-1", name: "Stage 1", budget: "", description: "" },
   ]);
   const [internalCollaborators, setInternalCollaborators] = useState<CollaboratorEntry[]>([]);
   const [externalCollaborators, setExternalCollaborators] = useState<CollaboratorEntry[]>([]);
@@ -279,7 +285,7 @@ export function CreateProjectWorkspace() {
 
   const overview = useMemo(
     () => ({
-      budget: projectBudget ? `${projectBudget} USD` : "—",
+      budget: projectBudget ? `${projectBudget} ${projectCurrency}` : "—",
       stages: stages.length,
       started: startDate ? formatDateValue(startDate) : "—",
       deadline: endDate ? formatDateValue(endDate) : "—",
@@ -288,7 +294,7 @@ export function CreateProjectWorkspace() {
         projectStatusOptions.find((option) => option.value === projectStatus)?.label || "—",
       priority: "Medium",
     }),
-    [projectBudget, projectTag, projectStatus, stages.length, startDate, endDate],
+    [projectBudget, projectCurrency, projectTag, projectStatus, stages.length, startDate, endDate],
   );
 
   function updateStage(id: string, patch: Partial<StageForm>) {
@@ -304,6 +310,7 @@ export function CreateProjectWorkspace() {
         id: `stage-${Date.now()}`,
         name: `Stage ${current.length + 1}`,
         budget: "",
+        description: "",
       },
     ]);
   }
@@ -334,6 +341,7 @@ export function CreateProjectWorkspace() {
     >
       <input type="hidden" name="startDate" value={startDate ? formatDateValue(startDate) : ""} />
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
+      <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
       <input
         type="hidden"
@@ -385,15 +393,28 @@ export function CreateProjectWorkspace() {
               <span className="mb-2 block text-[16px] font-[600] text-brand">
                 Project Budget
               </span>
-              <input
-                value={projectBudget}
-                onChange={(event) => handleBudgetChange(event.target.value)}
-                name="budget"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="Enter Project Budget in USD...."
-                className="h-[34px] w-full rounded-full bg-white px-4 text-[12px] text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={projectBudget}
+                  onChange={(event) => handleBudgetChange(event.target.value)}
+                  name="budget"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Enter Project Budget...."
+                  className="h-[34px] min-w-0 flex-1 rounded-full bg-white px-4 text-[12px] text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
+                />
+                <select
+                  value={projectCurrency}
+                  onChange={(event) => setProjectCurrency(event.target.value as CurrencyValue)}
+                  className="h-[34px] w-[96px] rounded-full bg-white px-4 text-[12px] font-medium text-[#29322c] outline-none transition-shadow duration-200 focus:shadow-[0_0_0_3px_rgba(43,128,85,0.14)]"
+                >
+                  {currencyOptions.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </label>
 
             <label className="block">
@@ -551,6 +572,15 @@ export function CreateProjectWorkspace() {
                   pattern="[0-9]*"
                   placeholder={`Stage ${index + 1} Budget...`}
                   className="mt-3 h-[34px] w-full rounded-full bg-[#f7faf7] px-4 text-[12px] text-[#29322c] outline-none"
+                />
+                <textarea
+                  value={stage.description}
+                  onChange={(event) =>
+                    updateStage(stage.id, { description: event.target.value })
+                  }
+                  name="stageDescriptions"
+                  placeholder={`Stage ${index + 1} Description...`}
+                  className="mt-3 min-h-[84px] w-full resize-none rounded-[16px] bg-[#f7faf7] px-4 py-3 text-[12px] text-[#29322c] outline-none"
                 />
               </div>
             ))}

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ProjectStatus } from "@prisma/client";
+import { CurrencyCode, ProjectStatus } from "@prisma/client";
 
 import type { ProjectFormState } from "@/app/projects/new/project-form-state";
 import { requireUser } from "@/lib/auth";
@@ -17,6 +17,10 @@ function parseBudget(value: string) {
 
 function isProjectStatus(value: string): value is ProjectStatus {
   return Object.values(ProjectStatus).includes(value as ProjectStatus);
+}
+
+function isCurrencyCode(value: string): value is CurrencyCode {
+  return Object.values(CurrencyCode).includes(value as CurrencyCode);
 }
 
 function getInitialStageStatuses(
@@ -46,6 +50,7 @@ export async function createProjectAction(
   const tag = String(formData.get("tag") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const budgetInput = String(formData.get("budget") ?? "").trim();
+  const currencyInput = String(formData.get("currency") ?? "").trim();
   const statusInput = String(formData.get("status") ?? "").trim();
   const startDateInput = String(formData.get("startDate") ?? "").trim();
   const endDateInput = String(formData.get("endDate") ?? "").trim();
@@ -56,18 +61,26 @@ export async function createProjectAction(
   const stageBudgets = formData
     .getAll("stageBudgets")
     .map((value) => String(value).trim());
+  const stageDescriptions = formData
+    .getAll("stageDescriptions")
+    .map((value) => String(value).trim());
 
   if (!name || !category || !description || !budgetInput || !startDateInput || !endDateInput) {
     return { error: "Fill in all required project fields before creating the project." };
   }
 
   const budget = parseBudget(budgetInput);
+  const currency = isCurrencyCode(currencyInput) ? currencyInput : null;
   const status = isProjectStatus(statusInput) ? statusInput : null;
   const startDate = new Date(startDateInput);
   const endDate = new Date(endDateInput);
 
   if (!Number.isFinite(budget) || budget <= 0) {
-    return { error: "Enter a valid project budget in USD." };
+    return { error: "Enter a valid project budget." };
+  }
+
+  if (!currency) {
+    return { error: "Choose a valid project currency." };
   }
 
   if (!status) {
@@ -99,6 +112,7 @@ export async function createProjectAction(
         tag: tag || null,
         description,
         budget,
+        currency,
         status,
         startDate,
         endDate,
@@ -111,6 +125,7 @@ export async function createProjectAction(
 
             return {
               name: stageName,
+              description: stageDescriptions[index] || null,
               budget:
                 Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
                   ? parsedStageBudget
