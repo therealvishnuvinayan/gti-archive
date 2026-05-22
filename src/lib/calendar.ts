@@ -4,7 +4,7 @@ import type {
   CalendarEventType,
 } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export type CalendarTypeLabel = "Projects" | "Events" | "Reminders" | "Payments";
 export type EventToneLabel = "green" | "purple" | "blue" | "amber";
@@ -155,11 +155,13 @@ export function parseCalendarEventInput(
 }
 
 export async function getCalendarEvents() {
-  const events = await prisma.calendarEvent.findMany({
-    orderBy: {
-      startAt: "asc",
-    },
-  });
+  const events = await withPrismaRetry(() =>
+    prisma.calendarEvent.findMany({
+      orderBy: {
+        startAt: "asc",
+      },
+    }),
+  );
 
   return events.map(mapCalendarEvent);
 }

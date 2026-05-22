@@ -5,7 +5,7 @@ import type {
   User,
 } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
@@ -303,15 +303,17 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
 }
 
 export async function getDashboardProjectCounts(): Promise<DashboardProjectCounts> {
-  const [total, grouped] = await Promise.all([
-    prisma.project.count(),
-    prisma.project.groupBy({
-      by: ["status"],
-      _count: {
-        _all: true,
-      },
-    }),
-  ]);
+  const [total, grouped] = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.project.count(),
+      prisma.project.groupBy({
+        by: ["status"],
+        _count: {
+          _all: true,
+        },
+      }),
+    ]),
+  );
 
   const counts = grouped.reduce<Record<ProjectStatus, number>>(
     (accumulator, item) => {
@@ -335,12 +337,14 @@ export async function getDashboardProjectCounts(): Promise<DashboardProjectCount
 }
 
 export async function getRecentProjects(limit = 5) {
-  const projects = await prisma.project.findMany({
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: limit,
-  });
+  const projects = await withPrismaRetry(() =>
+    prisma.project.findMany({
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: limit,
+    }),
+  );
 
   return projects.map((project, index) => ({
     name: project.name,
@@ -359,36 +363,40 @@ export async function getProjectsList(filter: ProjectsListFilter) {
         ? [{ name: "asc" as const }]
         : [{ createdAt: "desc" as const }];
 
-  const projects = await prisma.project.findMany({
-    where: buildProjectsWhere(filter),
-    include: {
-      createdBy: {
-        select: {
-          name: true,
-          email: true,
+  const projects = await withPrismaRetry(() =>
+    prisma.project.findMany({
+      where: buildProjectsWhere(filter),
+      include: {
+        createdBy: {
+          select: {
+            name: true,
+            email: true,
+          },
         },
+        stages: true,
       },
-      stages: true,
-    },
-    orderBy,
-  });
+      orderBy,
+    }),
+  );
 
   return projects.map(mapProjectToCard);
 }
 
 export async function getProjectById(id: string) {
-  const project = await prisma.project.findUnique({
-    where: { id },
-    include: {
-      createdBy: {
-        select: {
-          name: true,
-          email: true,
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id },
+      include: {
+        createdBy: {
+          select: {
+            name: true,
+            email: true,
+          },
         },
+        stages: true,
       },
-      stages: true,
-    },
-  });
+    }),
+  );
 
   if (!project) {
     return null;
