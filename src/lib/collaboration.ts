@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import {
   CollaboratorAccess as PrismaCollaboratorAccess,
@@ -8,6 +8,8 @@ import {
 } from "@prisma/client";
 
 import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
+import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
+import { sendResendEmail } from "@/lib/email/resend";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export type AccessArea = "project" | "calendar" | "library" | "archive";
@@ -29,7 +31,21 @@ export type CollaboratorInput = {
   permissions: Record<AccessArea, PermissionLevel>;
 };
 
-type CollaboratorResult = { error: string } | { collaborator: CollaboratorRecord };
+export type InviteRegistrationRecord =
+  | {
+      status: "valid";
+      token: string;
+      email: string;
+      name: string;
+    }
+  | {
+      status: "invalid" | "expired";
+    };
+
+type CollaboratorResult =
+  | { error: string }
+  | { collaborator: CollaboratorRecord; inviteEmailSent?: boolean; warning?: string };
+
 type CollaboratorValidationResult =
   | { error: string }
   | {
@@ -43,6 +59,9 @@ type CollaboratorValidationResult =
         archiveAccess: PrismaCollaboratorAccess;
       };
     };
+
+const INVITE_EXPIRY_DAYS = 7;
+const MIN_PASSWORD_LENGTH = 8;
 
 const permissionMap: Record<PermissionLevel, PrismaCollaboratorAccess> = {
   full: "FULL",
@@ -74,6 +93,28 @@ function getFallbackName(email: string) {
     .filter(Boolean)
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+}
+
+function getAppUrl() {
+  return (
+    process.env.APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000"
+  ).replace(/\/$/, "");
+}
+
+function buildInviteUrl(token: string) {
+  return `${getAppUrl()}/register/${token}`;
+}
+
+function getInviteExpiryDate() {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + INVITE_EXPIRY_DAYS);
+  return expiresAt;
+}
+
+function createInviteToken() {
+  return randomBytes(32).toString("hex");
 }
 
 function mapCollaborator(user: Pick<
@@ -158,6 +199,7 @@ export async function getCollaborators() {
 }
 
 export async function createCollaborator(
+  inviterName: string,
   input: CollaboratorInput,
 ): Promise<CollaboratorResult> {
   const parsed = validateCollaboratorInput(input);
@@ -179,6 +221,9 @@ export async function createCollaborator(
     return { error: "A user with this email already exists." };
   }
 
+  const inviteToken = createInviteToken();
+  const inviteExpiresAt = getInviteExpiryDate();
+
   const collaborator = await prisma.user.create({
     data: {
       email: parsed.data.email,
@@ -190,6 +235,8 @@ export async function createCollaborator(
       libraryAccess: parsed.data.libraryAccess,
       archiveAccess: parsed.data.archiveAccess,
       passwordHash: hashAuthPassword(randomUUID()),
+      inviteToken,
+      inviteExpiresAt,
     },
     select: {
       id: true,
@@ -203,7 +250,34 @@ export async function createCollaborator(
     },
   });
 
-  return { collaborator: mapCollaborator(collaborator) };
+  const inviteEmail = buildCollaboratorInviteEmail({
+    collaboratorName: collaborator.name?.trim() || getFallbackName(collaborator.email),
+    collaboratorEmail: collaborator.email,
+    inviterName,
+    inviteUrl: buildInviteUrl(inviteToken),
+    collaboratorType: input.type,
+    permissions: input.permissions,
+  });
+
+  const emailResult = await sendResendEmail({
+    to: collaborator.email,
+    subject: inviteEmail.subject,
+    html: inviteEmail.html,
+    text: inviteEmail.text,
+  });
+
+  if (!emailResult.ok) {
+    return {
+      collaborator: mapCollaborator(collaborator),
+      inviteEmailSent: false,
+      warning: emailResult.error,
+    };
+  }
+
+  return {
+    collaborator: mapCollaborator(collaborator),
+    inviteEmailSent: true,
+  };
 }
 
 export async function updateCollaborator(
@@ -272,4 +346,83 @@ export async function updateCollaborator(
   });
 
   return { collaborator: mapCollaborator(updatedCollaborator) };
+}
+
+export async function getInviteRegistration(
+  token: string,
+): Promise<InviteRegistrationRecord> {
+  const inviteToken = token.trim();
+
+  if (!inviteToken) {
+    return { status: "invalid" };
+  }
+
+  const collaborator = await withPrismaRetry(() =>
+    prisma.user.findUnique({
+      where: {
+        inviteToken,
+      },
+      select: {
+        email: true,
+        name: true,
+        inviteExpiresAt: true,
+      },
+    }),
+  );
+
+  if (!collaborator) {
+    return { status: "invalid" };
+  }
+
+  if (!collaborator.inviteExpiresAt || collaborator.inviteExpiresAt < new Date()) {
+    return { status: "expired" };
+  }
+
+  return {
+    status: "valid",
+    token: inviteToken,
+    email: collaborator.email,
+    name: collaborator.name?.trim() || getFallbackName(collaborator.email),
+  };
+}
+
+export async function acceptCollaboratorInvite(
+  token: string,
+  password: string,
+  confirmPassword: string,
+): Promise<{ error: string } | { email: string }> {
+  const invite = await getInviteRegistration(token);
+
+  if (invite.status !== "valid") {
+    return invite.status === "expired"
+      ? {
+          error: "This invitation link has expired. Ask your administrator for a new invite.",
+        }
+      : { error: "This invitation link is invalid." };
+  }
+
+  if (password.trim().length < MIN_PASSWORD_LENGTH) {
+    return { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+  }
+
+  if (password !== confirmPassword) {
+    return { error: "Password and confirmation password must match." };
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: {
+      inviteToken: invite.token,
+    },
+    data: {
+      passwordHash: hashAuthPassword(password),
+      inviteAcceptedAt: new Date(),
+      inviteToken: null,
+      inviteExpiresAt: null,
+    },
+    select: {
+      email: true,
+    },
+  });
+
+  return { email: updatedUser.email };
 }

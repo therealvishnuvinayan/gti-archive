@@ -127,6 +127,7 @@ export function CollaborationWorkspace({
   const [form, setForm] = useState<CollaboratorForm>(getDefaultForm());
   const [dialogError, setDialogError] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const [pageNotice, setPageNotice] = useState<string>();
 
   const selectedAccessSummary = useMemo(() => {
     const full = collaborators.filter(
@@ -171,6 +172,7 @@ export function CollaborationWorkspace({
     setEditingId(null);
     setForm(getDefaultForm());
     setDialogError(undefined);
+    setPageNotice(undefined);
     setDialogOpen(true);
   }
 
@@ -184,6 +186,7 @@ export function CollaborationWorkspace({
       permissions: { ...collaborator.permissions },
     });
     setDialogError(undefined);
+    setPageNotice(undefined);
     setDialogOpen(true);
   }
 
@@ -217,6 +220,7 @@ export function CollaborationWorkspace({
         );
       }
 
+      setPageNotice(result.warning);
       setDialogOpen(false);
     } catch {
       setDialogError("Unable to save the collaborator right now. Please try again.");
@@ -244,6 +248,12 @@ export function CollaborationWorkspace({
                 Select an access area to review who can view or manage it.
               </p>
             </div>
+
+            {pageNotice ? (
+              <div className="rounded-[18px] border border-[#f7dfb6] bg-[#fff8eb] px-4 py-3 text-[13px] text-[#946113]">
+                {pageNotice}
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               {accessCards.map((card) => {

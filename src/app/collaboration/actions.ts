@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireUser } from "@/lib/auth";
+import { getUserDisplayName, requireUser } from "@/lib/auth";
 import {
   createCollaborator,
   updateCollaborator,
@@ -14,11 +14,11 @@ type SaveCollaboratorInput = CollaboratorInput & {
 };
 
 export async function saveCollaboratorAction(input: SaveCollaboratorInput) {
-  await requireUser();
+  const user = await requireUser();
 
   const result = input.collaboratorId
     ? await updateCollaborator(input.collaboratorId, input)
-    : await createCollaborator(input);
+    : await createCollaborator(getUserDisplayName(user), input);
 
   if ("error" in result) {
     return result;

@@ -64,6 +64,9 @@ model User {
   calendarAccess    CollaboratorAccess @default(NONE)
   libraryAccess     CollaboratorAccess @default(NONE)
   archiveAccess     CollaboratorAccess @default(NONE)
+  inviteToken       String?            @unique
+  inviteExpiresAt   DateTime?
+  inviteAcceptedAt  DateTime?
   sessions          Session[]
   projects          Project[]
   calendarEvents CalendarEvent[]
