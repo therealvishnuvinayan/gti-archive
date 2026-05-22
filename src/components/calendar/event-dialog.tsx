@@ -1,6 +1,24 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+
+import {
+  CalendarMonthGrid,
+  formatCalendarDateValue,
+  parseCalendarDateValue,
+} from "@/components/calendar/calendar-month-grid";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 export type CalendarType = "Projects" | "Events" | "Reminders" | "Payments";
 export type EventTone = "green" | "purple" | "blue" | "amber";
@@ -44,6 +62,105 @@ const toneOptions: Array<{ tone: EventTone; label: string; swatch: string }> = [
   { tone: "amber", label: "Amber", swatch: "bg-[#f3a11a]" },
 ];
 
+const timeOptions = Array.from({ length: 48 }, (_, index) => {
+  const hours = Math.floor(index / 2);
+  const minutes = index % 2 === 0 ? "00" : "30";
+  return `${String(hours).padStart(2, "0")}:${minutes}`;
+});
+
+function formatDisplayDate(value: string) {
+  const date = parseCalendarDateValue(value);
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  return `${day}/${month}/${date.getFullYear()}`;
+}
+
+function CalendarDateField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedDate = parseCalendarDateValue(value);
+  const [month, setMonth] = useState(() => selectedDate);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+
+      if (target?.closest('[data-slot="select-content"]')) {
+        return;
+      }
+
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Button
+        type="button"
+        variant="secondary"
+        className="h-12 w-full justify-between rounded-2xl border border-line px-4 text-[15px] font-normal text-[#18211a]"
+        onClick={() => {
+          setMonth(selectedDate);
+          setOpen((current) => !current);
+        }}
+      >
+        {formatDisplayDate(value)}
+      </Button>
+      {open ? (
+        <Card className="absolute left-0 top-[calc(100%+10px)] z-20 w-[320px] rounded-[22px] border border-line p-4 shadow-[0_20px_50px_rgba(23,39,28,0.16)]">
+          <CalendarMonthGrid
+            month={month}
+            selectedDate={selectedDate}
+            onMonthChange={setMonth}
+            onSelect={(date) => {
+              onChange(formatCalendarDateValue(date));
+              setMonth(date);
+              setOpen(false);
+            }}
+            compact
+          />
+          <div className="mt-3 flex items-center justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-0 text-[12px] text-brand"
+              onClick={() => {
+                const today = new Date();
+                onChange(formatCalendarDateValue(today));
+                setMonth(today);
+                setOpen(false);
+              }}
+            >
+              Today
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-0 text-[12px] text-[#6a706b]"
+              onClick={() => setOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
 export function EventDialog({
   form,
   error,
@@ -55,47 +172,53 @@ export function EventDialog({
   onClose,
   onSubmit,
 }: EventDialogProps) {
+  const startOptions = timeOptions;
+  const endOptions = timeOptions.filter((option) => option > form.start);
+
   if (!isOpen) {
     return null;
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8">
-      <div className="w-full max-w-[520px] rounded-[28px] bg-white p-6 shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
-        <div className="mb-6 flex items-start justify-between gap-4">
+      <Card className="w-full max-w-[520px] rounded-[28px] p-0 shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+        <CardHeader className="flex-row items-start justify-between gap-4 pb-0">
           <div>
-            <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+            <CardTitle className="text-[24px]">
               {title}
-            </h2>
+            </CardTitle>
             <p className="mt-1 text-[14px] text-[#6a706b]">
               Create a calendar item for the selected date and time.
             </p>
           </div>
-          <button
+          <Button
             type="button"
             onClick={onClose}
-            className="grid h-10 w-10 cursor-pointer place-items-center rounded-full border border-line text-[#253029]"
+            variant="secondary"
+            size="icon"
+            className="border border-line text-[#253029]"
             aria-label="Close event dialog"
           >
             <X className="h-4 w-4" />
-          </button>
-        </div>
+          </Button>
+        </CardHeader>
 
-        {error ? (
-          <div className="mb-5 rounded-[18px] border border-[#f1c7c1] bg-[#fff4f2] px-4 py-3 text-[13px] font-medium text-[#c05243]">
-            {error}
-          </div>
-        ) : null}
+        <CardContent className="p-6 pt-5">
+          {error ? (
+            <div className="mb-5 rounded-[18px] border border-[#f1c7c1] bg-[#fff4f2] px-4 py-3 text-[13px] font-medium text-[#c05243]">
+              {error}
+            </div>
+          ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2">
             <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
               Title
             </span>
-            <input
+            <Input
               value={form.title}
               onChange={(event) => onChange("title", event.target.value)}
-              className="h-12 w-full rounded-2xl border border-line px-4 text-[15px] text-[#18211a] outline-none transition-colors focus:border-brand"
+              className="h-12 rounded-2xl border-line text-[15px] text-[#18211a]"
               placeholder="Design review"
             />
           </label>
@@ -104,65 +227,74 @@ export function EventDialog({
             <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
               Date
             </span>
-            <input
-              type="date"
-              value={form.date}
-              onChange={(event) => onChange("date", event.target.value)}
-              className="h-12 w-full rounded-2xl border border-line px-4 text-[15px] text-[#18211a] outline-none transition-colors focus:border-brand"
-            />
+            <CalendarDateField value={form.date} onChange={(value) => onChange("date", value)} />
           </label>
 
           <label>
             <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
               Calendar
             </span>
-            <select
+            <Select
               value={form.calendar}
-              onChange={(event) =>
-                onChange("calendar", event.target.value as CalendarType)
-              }
-              className="h-12 w-full rounded-2xl border border-line px-4 text-[15px] text-[#18211a] outline-none transition-colors focus:border-brand"
+              onValueChange={(value) => onChange("calendar", value as CalendarType)}
             >
-              {calendarOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {calendarOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
 
           <label>
             <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
               Start
             </span>
-            <input
-              type="time"
-              value={form.start}
-              onChange={(event) => onChange("start", event.target.value)}
-              className="h-12 w-full rounded-2xl border border-line px-4 text-[15px] text-[#18211a] outline-none transition-colors focus:border-brand"
-            />
+            <Select value={form.start} onValueChange={(value) => onChange("start", value)}>
+              <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {startOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
 
           <label>
             <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
               End
             </span>
-            <input
-              type="time"
-              value={form.end}
-              onChange={(event) => onChange("end", event.target.value)}
-              className="h-12 w-full rounded-2xl border border-line px-4 text-[15px] text-[#18211a] outline-none transition-colors focus:border-brand"
-            />
+            <Select value={form.end} onValueChange={(value) => onChange("end", value)}>
+              <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {endOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
 
           <label className="sm:col-span-2">
             <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
               Details
             </span>
-            <textarea
+            <Textarea
               value={form.details}
               onChange={(event) => onChange("details", event.target.value)}
-              className="min-h-[96px] w-full rounded-2xl border border-line px-4 py-3 text-[15px] text-[#18211a] outline-none transition-colors focus:border-brand"
+              className="min-h-[96px] rounded-2xl border border-line text-[15px] text-[#18211a]"
               placeholder="Optional notes, location, or attendees"
             />
           </label>
@@ -196,27 +328,31 @@ export function EventDialog({
         </div>
 
         <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button
+          <Button
             type="button"
             onClick={onClose}
-            className="inline-flex min-h-[48px] cursor-pointer items-center justify-center rounded-full border border-line px-6 text-[15px] font-[600] text-[#2f3a32]"
+            variant="secondary"
+            size="lg"
+            className="border border-line px-6 text-[15px] text-[#2f3a32]"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={onSubmit}
             disabled={pending}
-            className={`inline-flex min-h-[48px] items-center justify-center rounded-full px-7 text-[15px] font-[600] text-white ${
+            size="lg"
+            className={`px-7 text-[15px] ${
               pending
                 ? "cursor-not-allowed bg-[linear-gradient(90deg,#6ca989,#397453)]"
-                : "cursor-pointer bg-[linear-gradient(90deg,#2f8d5d,#123f2d)]"
+                : ""
             }`}
           >
             {pending ? "Saving..." : submitLabel}
-          </button>
+          </Button>
         </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

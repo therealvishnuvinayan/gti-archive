@@ -2,13 +2,14 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { ChevronLeft, ChevronRight, Paperclip, Plus, X } from "lucide-react";
+import { Paperclip, Plus, X } from "lucide-react";
 
 import { createProjectAction } from "@/app/projects/new/actions";
 import {
   initialProjectFormState,
   type ProjectFormState,
 } from "@/app/projects/new/project-form-state";
+import { CalendarMonthGrid } from "@/components/calendar/calendar-month-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,67 +62,11 @@ type MonthPickerProps = {
   onMonthChange: (date: Date) => void;
 };
 
-const monthNames = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
-
 function formatDateValue(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function startOfWeek(date: Date) {
-  const copy = new Date(date);
-  const day = copy.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  copy.setDate(copy.getDate() + diff);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function buildMonthGrid(month: Date) {
-  const start = new Date(month.getFullYear(), month.getMonth(), 1);
-  const end = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-  const gridStart = startOfWeek(start);
-  const gridEnd = addDays(startOfWeek(end), 6);
-  const days: Date[] = [];
-
-  for (let current = new Date(gridStart); current <= gridEnd; current = addDays(current, 1)) {
-    days.push(new Date(current));
-  }
-
-  return days;
-}
-
-function isSameDay(left: Date | null, right: Date) {
-  if (!left) {
-    return false;
-  }
-
-  return (
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  );
 }
 
 function MonthPicker({
@@ -131,108 +76,18 @@ function MonthPicker({
   month,
   onMonthChange,
 }: MonthPickerProps) {
-  const yearOptions = Array.from({ length: 11 }, (_, index) => 2021 + index);
-  const days = buildMonthGrid(month);
-
   return (
     <div>
       <h3 className="mb-2 text-[16px] font-[600] text-brand">{label}</h3>
       <Card className="rounded-[20px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
         <CardContent className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Select
-              value={String(month.getMonth())}
-              onValueChange={(nextMonth) =>
-                onMonthChange(new Date(month.getFullYear(), Number(nextMonth), 1))
-              }
-            >
-              <SelectTrigger className="h-9 w-[132px] bg-[#fbfcfa] text-[11px] font-[700]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {monthNames.map((monthName, index) => (
-                  <SelectItem key={monthName} value={String(index)}>
-                    {monthName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={String(month.getFullYear())}
-              onValueChange={(nextYear) =>
-                onMonthChange(new Date(Number(nextYear), month.getMonth(), 1))
-              }
-            >
-              <SelectTrigger className="h-9 w-[92px] bg-[#fbfcfa] text-[11px] font-[700]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((year) => (
-                  <SelectItem key={year} value={String(year)}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              onClick={() =>
-                onMonthChange(new Date(month.getFullYear(), month.getMonth() - 1, 1))
-              }
-              variant="ghost"
-              size="icon"
-              className="size-8 text-brand"
-              aria-label={`Previous month for ${label}`}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              onClick={() =>
-                onMonthChange(new Date(month.getFullYear(), month.getMonth() + 1, 1))
-              }
-              variant="ghost"
-              size="icon"
-              className="size-8 text-brand"
-              aria-label={`Next month for ${label}`}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-7 gap-y-2 text-center text-[8px] font-[700] uppercase text-[#6f776f]">
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-            <span key={day}>{day}</span>
-          ))}
-        </div>
-
-        <div className="mt-3 grid grid-cols-7 gap-y-2 text-center text-[10px]">
-          {days.map((day) => {
-            const active = isSameDay(value, day);
-            const inMonth = day.getMonth() === month.getMonth();
-
-            return (
-              <button
-                key={day.toISOString()}
-                type="button"
-                onClick={() => onSelect(day)}
-                className={`mx-auto grid h-5 w-5 cursor-pointer place-items-center rounded-full ${
-                  active
-                    ? "bg-[#d8d3ff] text-[#7158f7]"
-                    : inMonth
-                      ? "text-[#1f2621] hover:bg-[#eef1ea]"
-                      : "text-[#b7bcb7]"
-                }`}
-              >
-                {day.getDate()}
-              </button>
-            );
-          })}
-        </div>
+          <CalendarMonthGrid
+            month={month}
+            selectedDate={value ?? month}
+            onMonthChange={onMonthChange}
+            onSelect={onSelect}
+            compact
+          />
         </CardContent>
       </Card>
     </div>

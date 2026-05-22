@@ -1,15 +1,33 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 import { saveCalendarEventAction } from "@/app/calendar/actions";
+import {
+  CalendarMonthGrid,
+  getCalendarMonthWeeks,
+  formatCalendarDateValue,
+  isSameCalendarDay,
+  parseCalendarDateValue,
+} from "@/components/calendar/calendar-month-grid";
 import {
   EventDialog,
   type CalendarFormState,
   type CalendarType,
   type EventTone,
 } from "@/components/calendar/event-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   CalendarEventRecord,
   SaveCalendarEventInput,
@@ -79,17 +97,6 @@ const monthGridLabel = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
-function parseDate(value: string) {
-  return new Date(`${value}T00:00:00`);
-}
-
-function formatDateValue(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -103,14 +110,6 @@ function startOfWeek(date: Date) {
   copy.setDate(copy.getDate() + diff);
   copy.setHours(0, 0, 0, 0);
   return copy;
-}
-
-function isSameDay(left: Date, right: Date) {
-  return (
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  );
 }
 
 function getWeekDays(anchor: Date) {
@@ -148,25 +147,6 @@ function formatHour(hour: number) {
   return `${String(hour).padStart(2, "0")}:00`;
 }
 
-function getWeeksForMonth(anchor: Date) {
-  const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-  const end = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
-  const gridStart = startOfWeek(start);
-  const gridEnd = addDays(startOfWeek(end), 6);
-  const days: Date[] = [];
-
-  for (let current = new Date(gridStart); current <= gridEnd; current = addDays(current, 1)) {
-    days.push(new Date(current));
-  }
-
-  const weeks: Date[][] = [];
-  for (let index = 0; index < days.length; index += 7) {
-    weeks.push(days.slice(index, index + 7));
-  }
-
-  return weeks;
-}
-
 function getDefaultForm(date: string, start = "09:00", end = "10:00"): CalendarFormState {
   return {
     title: "",
@@ -180,7 +160,7 @@ function getDefaultForm(date: string, start = "09:00", end = "10:00"): CalendarF
 }
 
 function compareEvents(left: CalendarEventRecord, right: CalendarEventRecord) {
-  return parseDate(left.date).getTime() - parseDate(right.date).getTime() ||
+  return parseCalendarDateValue(left.date).getTime() - parseCalendarDateValue(right.date).getTime() ||
     getEventMinutes(left.start) - getEventMinutes(right.start);
 }
 
@@ -191,7 +171,7 @@ function buildWeekOptions(anchor: Date) {
     const date = addDays(currentWeekStart, (index - 4) * 7);
 
     return {
-      value: formatDateValue(date),
+      value: formatCalendarDateValue(date),
       label: `Week ${getIsoWeekNumber(date)} • ${formatWeekTitle(date)}`,
     };
   });
@@ -211,14 +191,16 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
   const [dialogError, setDialogError] = useState<string | undefined>();
   const [dialogSaving, setDialogSaving] = useState(false);
   const [dialogTitle, setDialogTitle] = useState("Create event");
-  const [form, setForm] = useState<CalendarFormState>(getDefaultForm(formatDateValue(today)));
+  const [form, setForm] = useState<CalendarFormState>(
+    getDefaultForm(formatCalendarDateValue(today)),
+  );
 
   const visibleEvents = useMemo(
     () => events.filter((event) => filters[event.calendar]).sort(compareEvents),
     [events, filters],
   );
   const weekDays = getWeekDays(selectedDate);
-  const monthWeeks = getWeeksForMonth(selectedDate);
+  const monthWeeks = getCalendarMonthWeeks(selectedDate);
   const activeWeekLabel = formatWeekTitle(selectedDate);
   const activeWeekNumber = getIsoWeekNumber(selectedDate);
   const weekOptions = buildWeekOptions(selectedDate);
@@ -244,7 +226,7 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
   function openDialog(date: Date, start = "09:00", end = "10:00") {
     setDialogError(undefined);
     setDialogTitle("Create event");
-    setForm(getDefaultForm(formatDateValue(date), start, end));
+    setForm(getDefaultForm(formatCalendarDateValue(date), start, end));
     setDialogOpen(true);
   }
 
@@ -271,7 +253,7 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
       }
 
       setEvents((current) => [...current, result.event].sort(compareEvents));
-      setSelectedDate(parseDate(result.event.date));
+      setSelectedDate(parseCalendarDateValue(result.event.date));
       setDialogOpen(false);
     } catch {
       setDialogError("Unable to save the event right now. Please try again.");
@@ -305,22 +287,26 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
       <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex items-center gap-1">
-            <button
+            <Button
               type="button"
               onClick={() => moveCalendar("prev")}
-              className="grid h-10 w-10 cursor-pointer place-items-center rounded-full text-brand transition-colors hover:bg-brand-soft"
+              variant="ghost"
+              size="icon"
+              className="size-10 text-brand"
               aria-label="Previous range"
             >
               <ChevronLeft className="h-7 w-7" />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={() => moveCalendar("next")}
-              className="grid h-10 w-10 cursor-pointer place-items-center rounded-full text-brand transition-colors hover:bg-brand-soft"
+              variant="ghost"
+              size="icon"
+              className="size-10 text-brand"
               aria-label="Next range"
             >
               <ChevronRight className="h-7 w-7" />
-            </button>
+            </Button>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -332,48 +318,45 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
                   : activeWeekLabel}
             </h2>
             {view === "week" ? (
-              <div className="relative">
-                <select
-                  value={formatDateValue(startOfWeek(selectedDate))}
-                  onChange={(event) => setSelectedDate(parseDate(event.target.value))}
-                  className="inline-flex min-h-[38px] cursor-pointer appearance-none items-center rounded-full border border-[#e1e8e1] bg-white px-4 pr-9 text-[13px] font-[600] text-[#202822] shadow-[0_8px_18px_rgba(18,34,25,0.06)] outline-none"
-                  aria-label="Select week"
+              <div className="min-w-[230px]">
+                <Select
+                  value={formatCalendarDateValue(startOfWeek(selectedDate))}
+                  onValueChange={(value) => setSelectedDate(parseCalendarDateValue(value))}
                 >
-                  {weekOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#758075]" />
+                  <SelectTrigger className="min-h-[38px] text-[13px] font-[600] shadow-[0_8px_18px_rgba(18,34,25,0.06)]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {weekOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             ) : null}
           </div>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="inline-flex overflow-hidden rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-1 text-[13px] font-[600] text-white">
-            {(["week", "day", "month"] as CalendarView[]).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setView(option)}
-                className={`cursor-pointer rounded-full px-4 py-2 capitalize transition-colors ${
-                  view === option ? "bg-white/14 text-white" : "text-white/75 hover:text-white"
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
+          <Tabs value={view} onValueChange={(value) => setView(value as CalendarView)}>
+            <TabsList>
+              {(["week", "day", "month"] as CalendarView[]).map((option) => (
+                <TabsTrigger key={option} value={option}>
+                  {option}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
 
-          <button
+          <Button
             type="button"
             onClick={() => openDialog(selectedDate)}
-            className="inline-flex min-h-[42px] cursor-pointer items-center justify-center gap-2 rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-6 text-[14px] font-[600] text-white"
+            className="min-h-[42px] gap-2 px-6 text-[14px]"
           >
             Create <Plus className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -381,76 +364,28 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
 
   function renderMiniCalendar() {
     return (
-      <section className="rounded-[20px] bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-[16px] font-[700] text-[#111712]">
-            {monthLabel.format(selectedDate)}
-          </h3>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() =>
-                setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1))
-              }
-              className="grid h-8 w-8 cursor-pointer place-items-center rounded-full text-brand transition-colors hover:bg-brand-soft"
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 1))
-              }
-              className="grid h-8 w-8 cursor-pointer place-items-center rounded-full text-brand transition-colors hover:bg-brand-soft"
-              aria-label="Next month"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-7 gap-y-3 text-center text-[9px] font-[700] uppercase tracking-[0.08em] text-[#7c847d]">
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-            <span key={day}>{day}</span>
-          ))}
-        </div>
-
-        <div className="mt-4 grid grid-cols-7 gap-y-3 text-center text-[13px]">
-          {monthWeeks.flat().map((date) => {
-            const inMonth = date.getMonth() === selectedDate.getMonth();
-            const active = isSameDay(date, selectedDate);
-            const dayEvents = visibleEvents.filter((event) => event.date === formatDateValue(date));
-
-            return (
-              <button
-                key={date.toISOString()}
-                type="button"
-                onClick={() => setSelectedDate(date)}
-                className={`relative mx-auto grid h-8 w-8 cursor-pointer place-items-center rounded-lg transition-colors ${
-                  active
-                    ? "bg-[#dff0ff] text-brand"
-                    : inMonth
-                      ? "text-[#2c342e] hover:bg-[#eef2ea]"
-                      : "text-[#b0b5b1]"
-                }`}
-              >
-                {date.getDate()}
-                {dayEvents.length > 0 ? (
-                  <span className="absolute -bottom-0.5 h-1.5 w-1.5 rounded-full bg-brand" />
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      <Card className="rounded-[20px]">
+        <CardContent className="p-4">
+          <CalendarMonthGrid
+            month={selectedDate}
+            selectedDate={selectedDate}
+            onMonthChange={setSelectedDate}
+            onSelect={setSelectedDate}
+            markerDates={new Set(visibleEvents.map((event) => event.date))}
+            compact
+          />
+        </CardContent>
+      </Card>
     );
   }
 
   function renderUpcomingSchedules() {
     return (
-      <section className="rounded-[20px] bg-white p-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-        <h3 className="mb-4 text-[13px] font-[700] text-[#111712]">Upcoming Schedules</h3>
+      <Card className="rounded-[20px]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[13px]">Upcoming Schedules</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
         {upcomingEvents.length > 0 ? (
           <ul className="space-y-3">
             {upcomingEvents.map((event) => {
@@ -464,7 +399,7 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
                       {event.title} {event.details ? `- ${event.details}` : ""}
                     </p>
                     <p className="mt-1 text-[10px] text-[#7f877f]">
-                      {monthGridLabel.format(parseDate(event.date))} at {event.start}
+                    {monthGridLabel.format(parseCalendarDateValue(event.date))} at {event.start}
                     </p>
                   </div>
                 </li>
@@ -474,21 +409,25 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
         ) : (
           <p className="text-[12px] text-[#7f877f]">No upcoming schedules yet.</p>
         )}
-      </section>
+        </CardContent>
+      </Card>
     );
   }
 
   function renderCalendarFilters() {
     return (
-      <section className="rounded-[20px] bg-white p-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-        <h3 className="mb-4 text-[13px] font-[700] text-[#111712]">My Calendar</h3>
-        <div className="space-y-2.5">
+      <Card className="rounded-[20px]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[13px]">My Calendar</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2.5 pt-0">
           {calendarTypes.map((type) => (
-            <button
+            <Button
               key={type}
               type="button"
               onClick={() => toggleFilter(type)}
-              className="flex cursor-pointer items-center gap-2 text-[13px] text-[#253029]"
+              variant="ghost"
+              className="h-auto w-full justify-start gap-2 px-0 py-0 text-[13px] font-normal text-[#253029]"
             >
               <span
                 className={`grid h-4 w-4 place-items-center rounded-[4px] border ${
@@ -500,22 +439,23 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
                 <Check className="h-3 w-3" />
               </span>
               {type}
-            </button>
+            </Button>
           ))}
-        </div>
-      </section>
+        </CardContent>
+      </Card>
     );
   }
 
   function renderCollaborators() {
     return (
-      <section className="rounded-[20px] bg-white p-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-[13px] font-[700] text-[#111712]">Collaborators</h3>
-          <button type="button" className="cursor-pointer text-brand" aria-label="Add collaborator">
+      <Card className="rounded-[20px]">
+        <CardHeader className="flex-row items-center justify-between pb-3">
+          <CardTitle className="text-[13px]">Collaborators</CardTitle>
+          <Button type="button" variant="ghost" size="icon" className="size-8 text-brand" aria-label="Add collaborator">
             <Plus className="h-4 w-4" />
-          </button>
-        </div>
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-0">
         <ul className="space-y-3">
           {collaborators.map((collaborator, index) => (
             <li key={collaborator.name} className="flex items-center gap-2.5">
@@ -535,7 +475,8 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
             </li>
           ))}
         </ul>
-      </section>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -585,7 +526,7 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
             }}
           >
             {days.map((day) => {
-              const dayKey = formatDateValue(day);
+              const dayKey = formatCalendarDateValue(day);
               const dayEvents = visibleEvents.filter((event) => event.date === dayKey);
 
               return (
@@ -660,19 +601,20 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
           {monthWeeks.map((week) => (
             <div key={week[0].toISOString()} className="grid grid-cols-7 gap-3">
               {week.map((date) => {
-                const dayKey = formatDateValue(date);
+                const dayKey = formatCalendarDateValue(date);
                 const dayEvents = visibleEvents.filter((event) => event.date === dayKey);
-                const active = isSameDay(date, selectedDate);
+                const active = isSameCalendarDay(date, selectedDate);
 
                 return (
-                  <button
+                  <Button
                     key={dayKey}
                     type="button"
                     onClick={() => {
                       setSelectedDate(date);
                       openDialog(date);
                     }}
-                    className={`min-h-[126px] cursor-pointer rounded-[18px] border p-3 text-left transition-colors ${
+                    variant="secondary"
+                    className={`min-h-[126px] rounded-[18px] border p-3 text-left transition-colors ${
                       active
                         ? "border-brand bg-[#edf7ef]"
                         : "border-[#e2e7e1] bg-white hover:border-brand/30"
@@ -689,9 +631,9 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
                         {date.getDate()}
                       </span>
                       {dayEvents.length > 0 ? (
-                        <span className="rounded-full bg-brand-soft px-2 py-1 text-[10px] font-[600] text-brand">
+                        <Badge variant="secondary" className="rounded-full bg-brand-soft px-2 py-1 text-[10px] font-[600] text-brand">
                           {dayEvents.length}
-                        </span>
+                        </Badge>
                       ) : null}
                     </div>
 
@@ -709,7 +651,7 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
                         );
                       })}
                     </div>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -730,13 +672,13 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
             {renderCollaborators()}
           </div>
 
-          <article className="rounded-[28px] bg-white p-5 shadow-[0_22px_60px_rgba(23,39,28,0.06)] sm:p-6">
+          <Card className="rounded-[28px] p-5 shadow-[0_22px_60px_rgba(23,39,28,0.06)] sm:p-6">
             {renderHeaderControls()}
             <div className="mt-5">
               {visibleEvents.length === 0 ? (
-                <div className="mb-4 rounded-[18px] border border-dashed border-[#dbe2dc] bg-[#f8faf7] px-4 py-3 text-[13px] text-[#6f776f]">
+                <Card className="mb-4 rounded-[18px] border border-dashed border-[#dbe2dc] bg-[#f8faf7] px-4 py-3 shadow-none">
                   No calendar events yet. Use `Create` or click a date/timeslot to add your first event.
-                </div>
+                </Card>
               ) : null}
 
               {view === "month" ? (
@@ -750,7 +692,7 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
                 Week {activeWeekNumber} selected. Click any timeslot to add a new event.
               </p>
             ) : null}
-          </article>
+          </Card>
         </section>
       </section>
 
