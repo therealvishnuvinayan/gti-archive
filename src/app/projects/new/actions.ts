@@ -2,7 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import { CurrencyCode, ProjectStatus } from "@prisma/client";
+import { CurrencyCode, ProjectStatus, UserRole } from "@prisma/client";
 
 import type { ProjectFormState } from "@/app/projects/new/project-form-state";
 import { requireUser } from "@/lib/auth";
@@ -41,11 +41,7 @@ function getInitialStageStatuses(
   );
 }
 
-export async function createProjectAction(
-  _previousState: ProjectFormState,
-  formData: FormData,
-): Promise<ProjectFormState> {
-  const user = await requireUser();
+function parseProjectFormData(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
   const tag = String(formData.get("tag") ?? "").trim();
@@ -66,42 +62,109 @@ export async function createProjectAction(
     .getAll("stageDescriptions")
     .map((value) => String(value).trim());
 
-  if (!name || !category || !description || !budgetInput || !startDateInput || !endDateInput) {
-    return { error: "Fill in all required project fields before creating the project." };
+  return {
+    name,
+    category,
+    tag,
+    description,
+    budgetInput,
+    currencyInput,
+    statusInput,
+    startDateInput,
+    endDateInput,
+    stageNames,
+    stageBudgets,
+    stageDescriptions,
+  };
+}
+
+function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>) {
+  if (
+    !parsed.name ||
+    !parsed.category ||
+    !parsed.description ||
+    !parsed.budgetInput ||
+    !parsed.startDateInput ||
+    !parsed.endDateInput
+  ) {
+    return { error: "Fill in all required project fields before saving the project." } as const;
   }
 
-  const budget = parseBudget(budgetInput);
-  const currency = isCurrencyCode(currencyInput) ? currencyInput : null;
-  const status = isProjectStatus(statusInput) ? statusInput : null;
-  const startDate = new Date(startDateInput);
-  const endDate = new Date(endDateInput);
+  const budget = parseBudget(parsed.budgetInput);
+  const currency = isCurrencyCode(parsed.currencyInput) ? parsed.currencyInput : null;
+  const status = isProjectStatus(parsed.statusInput) ? parsed.statusInput : null;
+  const startDate = new Date(parsed.startDateInput);
+  const endDate = new Date(parsed.endDateInput);
 
   if (!Number.isFinite(budget) || budget <= 0) {
-    return { error: "Enter a valid project budget." };
+    return { error: "Enter a valid project budget." } as const;
   }
 
   if (!currency) {
-    return { error: "Choose a valid project currency." };
+    return { error: "Choose a valid project currency." } as const;
   }
 
   if (!status) {
-    return { error: "Choose a valid project status." };
+    return { error: "Choose a valid project status." } as const;
   }
 
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    return { error: "Choose valid start and end dates." };
+    return { error: "Choose valid start and end dates." } as const;
   }
 
   if (startDate > endDate) {
-    return { error: "Project end date must be after the start date." };
+    return { error: "Project end date must be after the start date." } as const;
   }
 
-  if (stageNames.length === 0) {
-    return { error: "Add at least one valid stage before creating the project." };
+  if (parsed.stageNames.length === 0) {
+    return { error: "Add at least one valid stage before saving the project." } as const;
   }
 
-  const stageStatuses = getInitialStageStatuses(status, stageNames.length);
-  const currentStageName = stageNames[0] || "Stage 1";
+  return {
+    data: {
+      ...parsed,
+      budget,
+      currency,
+      status,
+      startDate,
+      endDate,
+      stageStatuses: getInitialStageStatuses(status, parsed.stageNames.length),
+      currentStageName: parsed.stageNames[0] || "Stage 1",
+    },
+  } as const;
+}
+
+export async function createProjectAction(
+  _previousState: ProjectFormState,
+  formData: FormData,
+): Promise<ProjectFormState> {
+  const user = await requireUser();
+  if (user.role === UserRole.COLLABORATOR) {
+    return { error: "You are not allowed to create projects." };
+  }
+
+  const validated = validateProjectFormData(parseProjectFormData(formData));
+
+  if ("error" in validated) {
+    return validated;
+  }
+
+  const {
+    name,
+    category,
+    tag,
+    description,
+    budget,
+    currency,
+    status,
+    startDate,
+    endDate,
+    stageNames,
+    stageBudgets,
+    stageDescriptions,
+    stageStatuses,
+    currentStageName,
+  } = validated.data;
 
   let projectId: string;
 
@@ -151,4 +214,109 @@ export async function createProjectAction(
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 
   redirect(`/projects/${projectId}`);
+}
+
+export async function updateProjectAction(
+  _previousState: ProjectFormState,
+  formData: FormData,
+): Promise<ProjectFormState> {
+  const user = await requireUser();
+
+  if (user.role === UserRole.COLLABORATOR) {
+    return { error: "You are not allowed to edit projects." };
+  }
+
+  const projectId = String(formData.get("projectId") ?? "").trim();
+
+  if (!projectId) {
+    return { error: "Project id is missing." };
+  }
+
+  const validated = validateProjectFormData(parseProjectFormData(formData));
+
+  if ("error" in validated) {
+    return validated;
+  }
+
+  const {
+    name,
+    category,
+    tag,
+    description,
+    budget,
+    currency,
+    status,
+    startDate,
+    endDate,
+    stageNames,
+    stageBudgets,
+    stageDescriptions,
+    stageStatuses,
+    currentStageName,
+  } = validated.data;
+
+  try {
+    await prisma.project.update({
+      where: { id: projectId },
+      data: {
+        name,
+        category,
+        tag: tag || null,
+        description,
+        budget,
+        currency,
+        status,
+        startDate,
+        endDate,
+        currentStageName,
+        stageCount: stageNames.length,
+        stages: {
+          deleteMany: {},
+          create: stageNames.map((stageName, index) => {
+            const parsedStageBudget = parseBudget(stageBudgets[index] ?? "");
+
+            return {
+              name: stageName,
+              description: stageDescriptions[index] || null,
+              budget:
+                Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
+                  ? parsedStageBudget
+                  : index === 0
+                    ? budget
+                    : null,
+              status: stageStatuses[index],
+              order: index + 1,
+            };
+          }),
+        },
+      },
+    });
+  } catch {
+    return { error: "Unable to update the project right now. Please try again." };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/edit`);
+  revalidateTag(PROJECTS_CACHE_TAG, "max");
+
+  redirect(`/projects/${projectId}`);
+}
+
+export async function deleteProjectAction(projectId: string) {
+  const user = await requireUser();
+
+  if (user.role === UserRole.COLLABORATOR) {
+    throw new Error("You are not allowed to delete projects.");
+  }
+
+  await prisma.project.delete({
+    where: { id: projectId },
+  });
+
+  revalidatePath("/");
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  revalidateTag(PROJECTS_CACHE_TAG, "max");
 }

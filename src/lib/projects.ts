@@ -27,6 +27,25 @@ export type ProjectCardRecord = {
   emphasized?: boolean;
 };
 
+export type ProjectEditorRecord = {
+  id: string;
+  name: string;
+  category: string;
+  tag: string;
+  description: string;
+  budget: string;
+  currency: CurrencyCode;
+  status: ProjectStatus;
+  startDate: string;
+  endDate: string;
+  stages: Array<{
+    id: string;
+    name: string;
+    budget: string;
+    description: string;
+  }>;
+};
+
 export type ProjectStageVisualStatus =
   | "completed"
   | "in-progress"
@@ -283,6 +302,48 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
   };
 }
 
+function formatProjectInputDate(date: Date | string | number) {
+  const normalizedDate = toProjectDate(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "";
+  }
+
+  const year = normalizedDate.getFullYear();
+  const month = `${normalizedDate.getMonth() + 1}`.padStart(2, "0");
+  const day = `${normalizedDate.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
+  const stages = getProjectStages(project);
+
+  return {
+    id: project.id,
+    name: project.name,
+    category: project.category,
+    tag: project.tag?.trim() || "",
+    description: project.description,
+    budget: String(project.budget),
+    currency: project.currency,
+    status: project.status,
+    startDate: formatProjectInputDate(project.startDate),
+    endDate: formatProjectInputDate(project.endDate),
+    stages: stages.map((stage, index) => ({
+      id: stage.id,
+      name: stage.name,
+      budget:
+        stage.budget && stage.budget > 0
+          ? String(stage.budget)
+          : index === 0
+            ? String(project.budget)
+            : "",
+      description: stage.description?.trim() || "",
+    })),
+  };
+}
+
 function buildProjectsWhere(filter: ProjectsListFilter) {
   const query = filter.query?.trim();
 
@@ -452,4 +513,32 @@ export async function getProjectById(id: string) {
   }
 
   return mapProjectToFlow(project);
+}
+
+export async function getProjectEditorById(id: string) {
+  const project = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findUnique({
+          where: { id },
+          include: {
+            createdBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            stages: true,
+          },
+        }),
+      ),
+    ["project-editor-by-id", id],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
+
+  if (!project) {
+    return null;
+  }
+
+  return mapProjectToEditor(project);
 }

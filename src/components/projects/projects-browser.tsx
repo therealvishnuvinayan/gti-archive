@@ -27,6 +27,7 @@ type ProjectFilter = {
 type ProjectsBrowserProps = {
   projects: ProjectCardItem[];
   hasAnyProjects: boolean;
+  canManageProjects: boolean;
   activeStatus: ProjectFilterValue;
   activeSort: ProjectSortValue;
   query: string;
@@ -63,6 +64,7 @@ function ProjectsGridSkeleton() {
 export function ProjectsBrowser({
   projects,
   hasAnyProjects,
+  canManageProjects,
   activeStatus,
   activeSort,
   query,
@@ -142,7 +144,7 @@ export function ProjectsBrowser({
           >
             {projects.map((project) => (
               <MotionItem key={project.id} y={10} layout>
-                <ProjectCard project={project} />
+                <ProjectCard project={project} canManage={canManageProjects} />
               </MotionItem>
             ))}
           </MotionStaggerGroup>

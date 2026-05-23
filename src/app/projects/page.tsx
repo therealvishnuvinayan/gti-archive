@@ -1,5 +1,8 @@
+import { UserRole } from "@prisma/client";
+
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { requireUser } from "@/lib/auth";
 import { getDashboardProjectCounts, getProjectsList } from "@/lib/projects";
 
 type ProjectFilter = {
@@ -30,7 +33,8 @@ export default async function ProjectsPage({
     resolvedSearchParams.sort === "name"
       ? resolvedSearchParams.sort
       : "newest";
-  const [projects, projectCounts] = await Promise.all([
+  const [user, projects, projectCounts] = await Promise.all([
+    requireUser(),
     getProjectsList({
       status: activeStatus,
       query,
@@ -39,6 +43,7 @@ export default async function ProjectsPage({
     getDashboardProjectCounts(),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
+  const canManageProjects = user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
 
   return (
     <DashboardLayout
@@ -62,6 +67,7 @@ export default async function ProjectsPage({
         <ProjectsBrowser
           projects={projects}
           hasAnyProjects={hasAnyProjects}
+          canManageProjects={canManageProjects}
           activeStatus={activeStatus}
           activeSort={activeSort}
           query={query}

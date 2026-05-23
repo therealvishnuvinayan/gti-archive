@@ -5,9 +5,13 @@ import { useFormStatus } from "react-dom";
 import { Paperclip, Plus, X } from "lucide-react";
 
 import { saveCollaboratorAction } from "@/app/collaboration/actions";
-import { createProjectAction } from "@/app/projects/new/actions";
+import {
+  createProjectAction,
+  updateProjectAction,
+} from "@/app/projects/new/actions";
 import {
   initialProjectFormState,
+  type ProjectEditorInitialValues,
   type ProjectFormState,
 } from "@/app/projects/new/project-form-state";
 import { CalendarMonthGrid } from "@/components/calendar/calendar-month-grid";
@@ -70,6 +74,12 @@ type MonthPickerProps = {
 
 type CreateProjectWorkspaceProps = {
   initialCollaborators: CollaboratorRecord[];
+  mode?: "create" | "edit";
+  initialValues?: ProjectEditorInitialValues;
+  action?: (
+    previousState: ProjectFormState,
+    formData: FormData,
+  ) => Promise<ProjectFormState>;
 };
 
 function formatDateValue(date: Date) {
@@ -104,7 +114,7 @@ function MonthPicker({
   );
 }
 
-function CreateProjectSubmitButton() {
+function CreateProjectSubmitButton({ mode }: { mode: "create" | "edit" }) {
   const { pending } = useFormStatus();
 
   return (
@@ -124,10 +134,10 @@ function CreateProjectSubmitButton() {
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white [animation-delay:-0.1s]" />
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white" />
           </span>
-          Creating...
+          {mode === "edit" ? "Saving..." : "Creating..."}
         </>
       ) : (
-        "Create Project"
+        mode === "edit" ? "Save Changes" : "Create Project"
       )}
     </Button>
   );
@@ -161,25 +171,47 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
 
 export function CreateProjectWorkspace({
   initialCollaborators,
+  mode = "create",
+  initialValues,
+  action = mode === "edit" ? updateProjectAction : createProjectAction,
 }: CreateProjectWorkspaceProps) {
   const [formState, formAction] = useActionState<ProjectFormState, FormData>(
-    createProjectAction,
+    action,
     initialProjectFormState,
   );
-  const [projectName, setProjectName] = useState("");
-  const [projectCategory, setProjectCategory] = useState("");
-  const [projectTag, setProjectTag] = useState("");
-  const [projectBudget, setProjectBudget] = useState("");
-  const [projectCurrency, setProjectCurrency] = useState<CurrencyValue>("USD");
-  const [projectBrief, setProjectBrief] = useState("");
-  const [projectStatus, setProjectStatus] = useState<ProjectStatusValue>("ONGOING");
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
-  const [startMonth, setStartMonth] = useState(new Date());
-  const [endMonth, setEndMonth] = useState(new Date());
-  const [stages, setStages] = useState<StageForm[]>([
-    { id: "stage-1", name: "Stage 1", budget: "", description: "" },
-  ]);
+  const [projectName, setProjectName] = useState(initialValues?.name ?? "");
+  const [projectCategory, setProjectCategory] = useState(initialValues?.category ?? "");
+  const [projectTag, setProjectTag] = useState(initialValues?.tag ?? "");
+  const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
+  const [projectCurrency, setProjectCurrency] = useState<CurrencyValue>(
+    initialValues?.currency ?? "USD",
+  );
+  const [projectBrief, setProjectBrief] = useState(initialValues?.description ?? "");
+  const [projectStatus, setProjectStatus] = useState<ProjectStatusValue>(
+    initialValues?.status ?? "ONGOING",
+  );
+  const [startDate, setStartDate] = useState<Date | null>(
+    initialValues?.startDate ? new Date(initialValues.startDate) : null,
+  );
+  const [endDate, setEndDate] = useState<Date | null>(
+    initialValues?.endDate ? new Date(initialValues.endDate) : null,
+  );
+  const [startMonth, setStartMonth] = useState(
+    initialValues?.startDate ? new Date(initialValues.startDate) : new Date(),
+  );
+  const [endMonth, setEndMonth] = useState(
+    initialValues?.endDate ? new Date(initialValues.endDate) : new Date(),
+  );
+  const [stages, setStages] = useState<StageForm[]>(
+    initialValues?.stages.length
+      ? initialValues.stages.map((stage) => ({
+          id: stage.id,
+          name: stage.name,
+          budget: stage.budget,
+          description: stage.description,
+        }))
+      : [{ id: "stage-1", name: "Stage 1", budget: "", description: "" }],
+  );
   const [collaborators, setCollaborators] =
     useState<CollaboratorRecord[]>(initialCollaborators);
   const [briefAttachments, setBriefAttachments] = useState<File[]>([]);
@@ -293,6 +325,9 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
+      {mode === "edit" && initialValues ? (
+        <input type="hidden" name="projectId" value={initialValues.id} />
+      ) : null}
       <input
         type="hidden"
         name="currentStageName"
@@ -305,7 +340,7 @@ export function CreateProjectWorkspace({
         <CardHeader>
           <div className="rounded-[20px] bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
             <CardTitle className="text-[18px] font-[700] tracking-[-0.02em] text-white">
-              Create a project
+              {mode === "edit" ? "Edit project" : "Create a project"}
             </CardTitle>
           </div>
         </CardHeader>
@@ -678,7 +713,7 @@ export function CreateProjectWorkspace({
           </div>
 
           <Separator className="mt-6" />
-          <CreateProjectSubmitButton />
+          <CreateProjectSubmitButton mode={mode} />
           </CardContent>
         </Card>
         </MotionItem>
