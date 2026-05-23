@@ -1,0 +1,760 @@
+import { randomUUID } from "node:crypto";
+import { unstable_cache } from "next/cache";
+import {
+  ActivityLogAction,
+  AttachmentAssetType,
+  AttachmentStatus,
+  CollaboratorAccess,
+  UserRole,
+  type User,
+} from "@prisma/client";
+
+import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
+import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  buildProjectAssetKey,
+  createPresignedDownloadUrl,
+  createPresignedUploadUrl,
+  getFileExtension,
+  getMaxAssetUploadBytes,
+  getObjectMetadata,
+  getS3BucketName,
+  isAllowedAssetFile,
+  sanitizeFileName,
+} from "@/lib/storage/s3";
+
+type AccessUser = Pick<
+  User,
+  "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
+>;
+
+export type ProjectHistoryAccessUser = AccessUser;
+
+type StageHistoryQueryRecord = {
+  id: string;
+  projectId: string;
+  stageId: string;
+  revisionNumber: number;
+  title: string;
+  summary: string | null;
+  createdAt: Date;
+  createdBy: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
+  attachments: Array<{
+    id: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    createdAt: Date;
+    status: AttachmentStatus;
+    uploadedBy: Pick<User, "name" | "email">;
+  }>;
+};
+
+type StageCommentQueryRecord = {
+  id: string;
+  projectId: string;
+  stageId: string;
+  revisionId: string | null;
+  body: string;
+  createdAt: Date;
+  author: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
+  attachments: Array<{
+    id: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    createdAt: Date;
+    status: AttachmentStatus;
+    uploadedBy: Pick<User, "name" | "email">;
+  }>;
+};
+
+export type StageHistoryRecord = {
+  activeStageId: string | null;
+  latestRevisionId: string | null;
+  entries: ProjectChatEntry[];
+};
+
+export type RequestUploadInput = {
+  projectId: string;
+  stageId?: string | null;
+  revisionId?: string | null;
+  commentId?: string | null;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  assetType: AttachmentAssetType;
+};
+
+export type RequestUploadResult =
+  | { error: string }
+  | {
+      attachmentId: string;
+      fileName: string;
+      uploadUrl: string;
+      storageKey: string;
+    };
+
+function getDisplayName(user: Pick<User, "name" | "email">) {
+  return user.name?.trim() || user.email;
+}
+
+function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
+  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
+    return "Internal Team";
+  }
+
+  return user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator";
+}
+
+function formatHistoryTimestamp(date: Date | string | number) {
+  const normalizedDate = toHistoryDate(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(normalizedDate);
+}
+
+function toHistoryDate(value: Date | string | number) {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function formatFileSize(fileSize: number) {
+  if (fileSize >= 1024 * 1024) {
+    return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (fileSize >= 1024) {
+    return `${(fileSize / 1024).toFixed(1)} KB`;
+  }
+
+  return `${fileSize} B`;
+}
+
+function getFileTypeLabel(fileName: string, mimeType: string) {
+  const extension = getFileExtension(fileName).toUpperCase();
+
+  if (extension) {
+    return extension;
+  }
+
+  const subtype = mimeType.split("/")[1];
+  return subtype ? subtype.toUpperCase() : "FILE";
+}
+
+function mapAttachmentRecord(
+  attachment: {
+    id: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    createdAt: Date | string;
+    uploadedBy: Pick<User, "name" | "email">;
+  },
+): ProjectAttachmentRecord {
+  const createdAt = toHistoryDate(attachment.createdAt);
+
+  return {
+    id: attachment.id,
+    originalFileName: attachment.originalFileName,
+    fileTypeLabel: getFileTypeLabel(attachment.originalFileName, attachment.mimeType),
+    mimeType: attachment.mimeType,
+    fileSizeLabel: formatFileSize(attachment.fileSize),
+    uploadedBy: getDisplayName(attachment.uploadedBy),
+    uploadedAt: Number.isNaN(createdAt.getTime())
+      ? "—"
+      : formatHistoryTimestamp(createdAt),
+    downloadPath: `/api/project-assets/${attachment.id}/download`,
+  };
+}
+
+function mapRevisionEntry(revision: StageHistoryQueryRecord): ProjectChatEntry {
+  return {
+    id: revision.id,
+    revisionId: revision.id,
+    kind: "revision",
+    title: revision.title,
+    author: getDisplayName(revision.createdBy),
+    role: getActorRole(revision.createdBy),
+    body: revision.summary?.trim() || "Revision uploaded.",
+    createdAt: formatHistoryTimestamp(revision.createdAt),
+    attachments: revision.attachments
+      .filter((attachment) => attachment.status === AttachmentStatus.READY)
+      .map(mapAttachmentRecord),
+    compareLabel: "Compare with other stages",
+  };
+}
+
+function mapCommentEntry(comment: StageCommentQueryRecord): ProjectChatEntry {
+  return {
+    id: comment.id,
+    revisionId: comment.revisionId ?? undefined,
+    kind: "comment",
+    author: getDisplayName(comment.author),
+    role: getActorRole(comment.author),
+    body: comment.body,
+    createdAt: formatHistoryTimestamp(comment.createdAt),
+    attachments: comment.attachments
+      .filter((attachment) => attachment.status === AttachmentStatus.READY)
+      .map(mapAttachmentRecord),
+  };
+}
+
+async function getProjectAccessRecord(projectId: string) {
+  return withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        id: true,
+        createdById: true,
+        currency: true,
+        budget: true,
+        endDate: true,
+        stages: {
+          orderBy: {
+            order: "asc",
+          },
+          select: {
+            id: true,
+            name: true,
+            budget: true,
+            status: true,
+            createdAt: true,
+          },
+        },
+      },
+    }),
+  );
+}
+
+export async function assertProjectAccess(user: AccessUser, projectId: string) {
+  const project = await getProjectAccessRecord(projectId);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (
+    user.role === UserRole.SUPER_ADMIN ||
+    user.role === UserRole.ADMIN ||
+    project.createdById === user.id
+  ) {
+    return project;
+  }
+
+  if (user.projectAccess === CollaboratorAccess.NONE) {
+    throw new Error("You do not have access to this project.");
+  }
+
+  return project;
+}
+
+function resolveStageId(
+  project: Awaited<ReturnType<typeof getProjectAccessRecord>>,
+  preferredStageId?: string | null,
+) {
+  if (!project) {
+    return null;
+  }
+
+  if (preferredStageId && project.stages.some((stage) => stage.id === preferredStageId)) {
+    return preferredStageId;
+  }
+
+  return project.stages[0]?.id ?? null;
+}
+
+export async function getProjectStageHistory(
+  user: AccessUser,
+  projectId: string,
+  preferredStageId?: string | null,
+): Promise<StageHistoryRecord> {
+  const project = await assertProjectAccess(user, projectId);
+  const activeStageId = resolveStageId(project, preferredStageId);
+
+  if (!activeStageId) {
+    return {
+      activeStageId: null,
+      latestRevisionId: null,
+      entries: [],
+    };
+  }
+
+  const getCachedHistory = unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        Promise.all([
+          prisma.projectRevision.findMany({
+            where: {
+              projectId,
+              stageId: activeStageId,
+            },
+            orderBy: {
+              createdAt: "asc",
+            },
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                  collaboratorType: true,
+                },
+              },
+              attachments: {
+                orderBy: {
+                  createdAt: "asc",
+                },
+                include: {
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+          prisma.projectComment.findMany({
+            where: {
+              projectId,
+              stageId: activeStageId,
+            },
+            orderBy: {
+              createdAt: "asc",
+            },
+            include: {
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                  collaboratorType: true,
+                },
+              },
+              attachments: {
+                orderBy: {
+                  createdAt: "asc",
+                },
+                include: {
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        ]),
+      ),
+    ["project-stage-history", projectId, activeStageId],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  );
+
+  const [revisions, comments] = await getCachedHistory();
+  const entries = [
+    ...revisions.map((revision) => ({
+      createdAt: toHistoryDate(revision.createdAt).getTime(),
+      entry: mapRevisionEntry(revision),
+    })),
+    ...comments.map((comment) => ({
+      createdAt: toHistoryDate(comment.createdAt).getTime(),
+      entry: mapCommentEntry(comment),
+    })),
+  ]
+    .sort((left, right) => left.createdAt - right.createdAt)
+    .map((item) => item.entry);
+
+  return {
+    activeStageId,
+    latestRevisionId: revisions.at(-1)?.id ?? null,
+    entries,
+  };
+}
+
+export async function createStageRevision(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    summary?: string;
+  },
+) {
+  const project = await assertProjectAccess(user, input.projectId);
+  const stage = project.stages.find((item) => item.id === input.stageId);
+
+  if (!stage) {
+    throw new Error("Stage not found.");
+  }
+
+  const revision = await withPrismaRetry(async () => {
+    const latestRevision = await prisma.projectRevision.findFirst({
+      where: {
+        stageId: stage.id,
+      },
+      orderBy: {
+        revisionNumber: "desc",
+      },
+      select: {
+        revisionNumber: true,
+      },
+    });
+
+    const revisionNumber = (latestRevision?.revisionNumber ?? 0) + 1;
+
+    return prisma.projectRevision.create({
+      data: {
+        projectId: input.projectId,
+        stageId: stage.id,
+        createdById: user.id,
+        revisionNumber,
+        title: `Revision ${revisionNumber}`,
+        summary: input.summary?.trim() || null,
+      },
+      select: {
+        id: true,
+        title: true,
+      },
+    });
+  });
+
+  await withPrismaRetry(() =>
+    prisma.projectActivityLog.create({
+      data: {
+        projectId: input.projectId,
+        stageId: stage.id,
+        revisionId: revision.id,
+        actorId: user.id,
+        action: ActivityLogAction.REVISION_CREATED,
+        metadata: {
+          title: revision.title,
+          stageName: stage.name,
+        },
+      },
+    }),
+  );
+
+  return revision;
+}
+
+export async function createStageComment(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    body: string;
+    allowEmptyBody?: boolean;
+  },
+) {
+  const project = await assertProjectAccess(user, input.projectId);
+  const stage = project.stages.find((item) => item.id === input.stageId);
+
+  if (!stage) {
+    throw new Error("Stage not found.");
+  }
+
+  const latestRevision = await withPrismaRetry(() =>
+    prisma.projectRevision.findFirst({
+      where: {
+        stageId: stage.id,
+      },
+      orderBy: {
+        revisionNumber: "desc",
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  const body = input.body.trim();
+
+  if (!body && !input.allowEmptyBody) {
+    throw new Error("Enter a comment before sending.");
+  }
+
+  if (!latestRevision && input.allowEmptyBody) {
+    throw new Error("Create a revision before attaching files to a comment.");
+  }
+
+  return withPrismaRetry(() =>
+    prisma.projectComment.create({
+      data: {
+        projectId: input.projectId,
+        stageId: stage.id,
+        revisionId: latestRevision?.id ?? null,
+        authorId: user.id,
+        body: body || "Attachment uploaded.",
+      },
+      select: {
+        id: true,
+        revisionId: true,
+      },
+    }),
+  );
+}
+
+function getUploadAction(assetType: AttachmentAssetType) {
+  return assetType === AttachmentAssetType.COMMENT_ATTACHMENT
+    ? ActivityLogAction.COMMENT_ATTACHMENT_UPLOADED
+    : ActivityLogAction.ASSET_UPLOADED;
+}
+
+export async function requestAttachmentUpload(
+  user: AccessUser,
+  input: RequestUploadInput,
+): Promise<RequestUploadResult> {
+  if (!input.originalFileName.trim()) {
+    return { error: "Choose a file to upload." };
+  }
+
+  if (!isAllowedAssetFile(input.originalFileName)) {
+    return { error: "This file type is not allowed." };
+  }
+
+  if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
+    return { error: "File size is invalid." };
+  }
+
+  if (input.fileSize > getMaxAssetUploadBytes()) {
+    return { error: "This file exceeds the allowed size limit." };
+  }
+
+  const project = await assertProjectAccess(user, input.projectId);
+
+  if (input.stageId && !project.stages.some((stage) => stage.id === input.stageId)) {
+    return { error: "Stage not found." };
+  }
+
+  if (input.assetType === AttachmentAssetType.REVISION_ORIGINAL) {
+    if (!input.revisionId || !input.stageId) {
+      return { error: "Revision uploads require a valid stage and revision." };
+    }
+
+    const revisionId = input.revisionId;
+    const stageId = input.stageId;
+
+    const revision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          id: revisionId,
+          projectId: input.projectId,
+          stageId,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+
+    if (!revision) {
+      return { error: "Revision not found." };
+    }
+  }
+
+  if (input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT) {
+    if (!input.commentId || !input.revisionId || !input.stageId) {
+      return { error: "Comment attachment uploads require a valid comment and revision." };
+    }
+
+    const commentId = input.commentId;
+    const revisionId = input.revisionId;
+    const stageId = input.stageId;
+
+    const comment = await withPrismaRetry(() =>
+      prisma.projectComment.findFirst({
+        where: {
+          id: commentId,
+          projectId: input.projectId,
+          stageId,
+          revisionId,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+
+    if (!comment) {
+      return { error: "Comment not found." };
+    }
+  }
+
+  const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${sanitizeFileName(
+    input.originalFileName,
+  )}`;
+  const storageKey = buildProjectAssetKey({
+    projectId: input.projectId,
+    stageId: input.stageId,
+    revisionId: input.revisionId,
+    commentId: input.commentId,
+    assetType: input.assetType,
+    safeFileName: uniqueFileName,
+  });
+
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.create({
+      data: {
+        projectId: input.projectId,
+        stageId: input.stageId ?? null,
+        revisionId: input.revisionId ?? null,
+        commentId: input.commentId ?? null,
+        uploadedById: user.id,
+        fileName: uniqueFileName,
+        originalFileName: input.originalFileName,
+        mimeType: input.mimeType,
+        fileSize: input.fileSize,
+        bucket: getS3BucketName(),
+        storageKey,
+        assetType: input.assetType,
+        status: AttachmentStatus.UPLOADING,
+      },
+      select: {
+        id: true,
+        fileName: true,
+        storageKey: true,
+      },
+    }),
+  );
+
+  const uploadUrl = await createPresignedUploadUrl({
+    storageKey: attachment.storageKey,
+    mimeType: input.mimeType,
+  });
+
+  return {
+    attachmentId: attachment.id,
+    fileName: attachment.fileName,
+    uploadUrl,
+    storageKey: attachment.storageKey,
+  };
+}
+
+export async function completeAttachmentUpload(
+  user: AccessUser,
+  attachmentId: string,
+  failed = false,
+) {
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findUnique({
+      where: {
+        id: attachmentId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        stageId: true,
+        revisionId: true,
+        commentId: true,
+        assetType: true,
+        bucket: true,
+        storageKey: true,
+        originalFileName: true,
+      },
+    }),
+  );
+
+  if (!attachment) {
+    throw new Error("Attachment not found.");
+  }
+
+  await assertProjectAccess(user, attachment.projectId);
+
+  if (failed) {
+    await withPrismaRetry(() =>
+      prisma.projectAttachment.update({
+        where: {
+          id: attachment.id,
+        },
+        data: {
+          status: AttachmentStatus.FAILED,
+        },
+      }),
+    );
+
+    return;
+  }
+
+  const metadata = await getObjectMetadata(attachment.storageKey, attachment.bucket);
+
+  await withPrismaRetry(() =>
+    prisma.projectAttachment.update({
+      where: {
+        id: attachment.id,
+      },
+      data: {
+        status: AttachmentStatus.READY,
+        fileSize:
+          typeof metadata.ContentLength === "number" && metadata.ContentLength > 0
+            ? metadata.ContentLength
+            : undefined,
+        mimeType: metadata.ContentType || undefined,
+      },
+    }),
+  );
+
+  await withPrismaRetry(() =>
+    prisma.projectActivityLog.create({
+      data: {
+        projectId: attachment.projectId,
+        stageId: attachment.stageId,
+        revisionId: attachment.revisionId,
+        actorId: user.id,
+        action: getUploadAction(attachment.assetType),
+        metadata: {
+          attachmentId: attachment.id,
+          commentId: attachment.commentId,
+          fileName: attachment.originalFileName,
+          storageKey: attachment.storageKey,
+        },
+      },
+    }),
+  );
+}
+
+export async function getAttachmentDownloadUrlForUser(
+  user: AccessUser,
+  attachmentId: string,
+) {
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findUnique({
+      where: {
+        id: attachmentId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        bucket: true,
+        storageKey: true,
+        originalFileName: true,
+        status: true,
+      },
+    }),
+  );
+
+  if (!attachment || attachment.status !== AttachmentStatus.READY) {
+    throw new Error("Attachment not found.");
+  }
+
+  await assertProjectAccess(user, attachment.projectId);
+
+  return createPresignedDownloadUrl({
+    bucket: attachment.bucket,
+    storageKey: attachment.storageKey,
+    fileName: attachment.originalFileName,
+  });
+}

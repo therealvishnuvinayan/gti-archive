@@ -72,15 +72,27 @@ export type ProjectCollaboratorRecord = {
   removable?: boolean;
 };
 
+export type ProjectAttachmentRecord = {
+  id: string;
+  originalFileName: string;
+  fileTypeLabel: string;
+  mimeType: string;
+  fileSizeLabel: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  downloadPath: string;
+};
+
 export type ProjectChatEntry = {
   id: string;
   kind: "revision" | "comment";
+  revisionId?: string;
   title?: string;
   author: string;
   role: string;
   body: string;
-  briefLabel?: string;
-  attachments?: string[];
+  createdAt: string;
+  attachments?: ProjectAttachmentRecord[];
   compareLabel?: string;
 };
 

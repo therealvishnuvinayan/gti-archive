@@ -53,6 +53,29 @@ enum CalendarEventTone {
   AMBER
 }
 
+enum AttachmentAssetType {
+  REVISION_ORIGINAL
+  REVISION_PREVIEW
+  REVISION_THUMBNAIL
+  COMMENT_ATTACHMENT
+  FINAL_ARCHIVE
+  GENERAL_PROJECT_ASSET
+}
+
+enum AttachmentStatus {
+  UPLOADING
+  READY
+  FAILED
+  DELETED
+}
+
+enum ActivityLogAction {
+  ASSET_UPLOADED
+  COMMENT_ATTACHMENT_UPLOADED
+  REVISION_CREATED
+  FINAL_ARCHIVED
+}
+
 model User {
   id                String             @id @default(cuid())
   email             String             @unique
@@ -69,7 +92,11 @@ model User {
   inviteAcceptedAt  DateTime?
   sessions          Session[]
   projects          Project[]
-  calendarEvents CalendarEvent[]
+  revisions         ProjectRevision[]
+  comments          ProjectComment[]
+  attachments       ProjectAttachment[]
+  activityLogs      ProjectActivityLog[]
+  calendarEvents    CalendarEvent[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -90,6 +117,10 @@ model Project {
   createdById      String
   createdBy        User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   stages           ProjectStage[]
+  revisions        ProjectRevision[]
+  comments         ProjectComment[]
+  attachments      ProjectAttachment[]
+  activityLogs     ProjectActivityLog[]
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -107,10 +138,107 @@ model ProjectStage {
   budget    Int?
   status    ProjectStatus @default(PENDING)
   order     Int
+  revisions ProjectRevision[]
+  comments  ProjectComment[]
+  attachments ProjectAttachment[]
+  activityLogs ProjectActivityLog[]
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
   @@index([projectId, order])
+}
+
+model ProjectRevision {
+  id             String               @id @default(cuid())
+  projectId      String
+  project        Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId        String
+  stage          ProjectStage         @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  revisionNumber Int
+  title          String
+  summary        String?
+  attachments    ProjectAttachment[]
+  comments       ProjectComment[]
+  activityLogs   ProjectActivityLog[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([stageId, revisionNumber])
+  @@index([projectId, stageId, createdAt])
+  @@index([createdById])
+}
+
+model ProjectComment {
+  id           String               @id @default(cuid())
+  projectId    String
+  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId      String
+  stage        ProjectStage         @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  revisionId   String?
+  revision     ProjectRevision?     @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  authorId     String
+  author       User                 @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  body         String
+  attachments  ProjectAttachment[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([projectId, stageId, createdAt])
+  @@index([revisionId])
+  @@index([authorId])
+}
+
+model ProjectAttachment {
+  id               String             @id @default(cuid())
+  projectId        String
+  project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId          String?
+  stage            ProjectStage?      @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  revisionId       String?
+  revision         ProjectRevision?   @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  commentId        String?
+  comment          ProjectComment?    @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  uploadedById     String
+  uploadedBy       User               @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  fileName         String
+  originalFileName String
+  mimeType         String
+  fileSize         Int
+  bucket           String
+  storageKey       String             @unique
+  assetType        AttachmentAssetType
+  status           AttachmentStatus   @default(UPLOADING)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([projectId, createdAt])
+  @@index([stageId, createdAt])
+  @@index([revisionId, createdAt])
+  @@index([commentId, createdAt])
+  @@index([uploadedById])
+  @@index([status])
+}
+
+model ProjectActivityLog {
+  id         String            @id @default(cuid())
+  projectId  String
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId    String?
+  stage      ProjectStage?     @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  revisionId String?
+  revision   ProjectRevision?  @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  actorId    String
+  actor      User              @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action     ActivityLogAction
+  metadata   Json?
+  createdAt  DateTime          @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([stageId, createdAt])
+  @@index([revisionId, createdAt])
+  @@index([actorId])
 }
 
 model Session {
