@@ -177,15 +177,6 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
                           Open Stage
                         </Link>
                       </Button>
-                      <Button
-                        asChild
-                        variant="secondary"
-                        className={stageInactive ? "pointer-events-none border-[#cbd6ce] bg-[#f1f1f1] text-[#d7d7d7]" : styles.secondaryButton}
-                      >
-                        <Link href={`/projects/${project.id}/compare?stage=${stage.id}`}>
-                          Compare
-                        </Link>
-                      </Button>
                     </div>
                   </Card>
                 </MotionItem>

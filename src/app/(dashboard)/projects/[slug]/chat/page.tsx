@@ -30,7 +30,7 @@ export default async function ProjectChatPage({
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search for Projects...",
-        leadingContent: <ProjectBackButton />,
+        leadingContent: <ProjectBackButton href={`/projects/${slug}`} />,
       }}
     >
       <ProjectChatWorkspace

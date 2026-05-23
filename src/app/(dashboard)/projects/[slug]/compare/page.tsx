@@ -24,7 +24,15 @@ export default async function ProjectComparePage({
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search for Projects...",
-        leadingContent: <ProjectBackButton />,
+        leadingContent: (
+          <ProjectBackButton
+            href={
+              stage
+                ? `/projects/${slug}/chat?stage=${stage}`
+                : `/projects/${slug}`
+            }
+          />
+        ),
       }}
     >
       <ProjectCompareWorkspace project={project} stageId={stage} />

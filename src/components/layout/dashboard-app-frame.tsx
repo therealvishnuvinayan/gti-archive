@@ -25,6 +25,8 @@ function getTopbarProps(
   pathname: string,
   searchParams: URLSearchParams,
 ) {
+  const projectSegments = pathname.split("/").filter(Boolean);
+
   if (pathname === "/projects/new") {
     return {
       leadingContent: <BackPill href="/projects" />,
@@ -48,7 +50,43 @@ function getTopbarProps(
     };
   }
 
-  if (pathname.startsWith("/projects/")) {
+  if (projectSegments.length >= 3 && projectSegments[0] === "projects") {
+    const [, projectId, nestedSegment] = projectSegments;
+
+    if (nestedSegment === "chat") {
+      return {
+        searchPlaceholder: "Search for Projects...",
+        leadingContent: <BackPill href={`/projects/${projectId}`} />,
+      };
+    }
+
+    if (nestedSegment === "compare") {
+      const stage = searchParams.get("stage");
+
+      return {
+        searchPlaceholder: "Search for Projects...",
+        leadingContent: (
+          <BackPill
+            href={
+              stage
+                ? `/projects/${projectId}/chat?stage=${stage}`
+                : `/projects/${projectId}`
+            }
+          />
+        ),
+      };
+    }
+
+    if (nestedSegment === "edit") {
+      return {
+        searchPlaceholder: "Search for Projects...",
+        leadingContent: <BackPill href={`/projects/${projectId}`} />,
+        showSearch: false,
+      };
+    }
+  }
+
+  if (projectSegments.length === 2 && projectSegments[0] === "projects") {
     return {
       searchPlaceholder: "Search for Projects...",
       leadingContent: <BackPill href="/projects" />,
