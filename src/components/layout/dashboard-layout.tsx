@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 
-import { requireUser } from "@/lib/auth";
-
 type DashboardLayoutProps = {
   children: React.ReactNode;
   topbarProps?: {
@@ -18,12 +16,11 @@ type DashboardLayoutProps = {
   };
 };
 
-export async function DashboardLayout({
+export function DashboardLayout({
   children,
   topbarProps,
 }: DashboardLayoutProps) {
   void topbarProps;
-  await requireUser();
 
   return <>{children}</>;
 }

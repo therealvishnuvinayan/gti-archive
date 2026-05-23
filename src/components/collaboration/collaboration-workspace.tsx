@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { saveCollaboratorAction } from "@/app/collaboration/actions";
+import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
   CollaboratorDialog,
   type AccessArea,

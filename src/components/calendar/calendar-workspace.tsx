@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
-import { saveCollaboratorAction } from "@/app/collaboration/actions";
-import { saveCalendarEventAction } from "@/app/calendar/actions";
+import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
+import { saveCalendarEventAction } from "@/app/(dashboard)/calendar/actions";
 import {
   CalendarMonthGrid,
   getCalendarMonthWeeks,

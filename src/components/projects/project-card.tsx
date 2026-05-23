@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ArrowUpRight, Pencil, Trash2 } from "lucide-react";
 
-import { deleteProjectAction } from "@/app/projects/new/actions";
+import { deleteProjectAction } from "@/app/(dashboard)/projects/new/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";

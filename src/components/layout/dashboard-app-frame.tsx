@@ -21,10 +21,6 @@ function BackPill({ href }: { href: string }) {
   );
 }
 
-function isPublicPath(pathname: string) {
-  return pathname === "/sign-in" || pathname.startsWith("/register/");
-}
-
 function getTopbarProps(
   pathname: string,
   searchParams: URLSearchParams,
@@ -107,7 +103,7 @@ export function DashboardAppFrame({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  if (!pathname || isPublicPath(pathname) || !user) {
+  if (!pathname || !user) {
     return <>{children}</>;
   }
 

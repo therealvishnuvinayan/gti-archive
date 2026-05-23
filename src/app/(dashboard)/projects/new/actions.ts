@@ -4,7 +4,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { CurrencyCode, ProjectStatus, UserRole } from "@prisma/client";
 
-import type { ProjectFormState } from "@/app/projects/new/project-form-state";
+import type { ProjectFormState } from "@/app/(dashboard)/projects/new/project-form-state";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";

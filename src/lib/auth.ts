@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypt
 import { cache } from "react";
 import type { User } from "@prisma/client";
 import { cookies } from "next/headers";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -11,6 +12,7 @@ export const SESSION_COOKIE_NAME = "gti_session";
 const DEFAULT_SESSION_DAYS = 1;
 const REMEMBER_ME_SESSION_DAYS = 30;
 const MIN_PASSWORD_LENGTH = 8;
+const SESSION_CACHE_TTL_SECONDS = 10;
 
 export class AuthError extends Error {
   constructor(message: string) {
@@ -102,6 +104,33 @@ async function createSession(userId: string, rememberMe: boolean) {
   });
 }
 
+function getSessionCacheTag(token: string) {
+  return `session:${token}`;
+}
+
+async function getCachedSessionUser(sessionToken: string) {
+  const getCachedSession = unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.session.findUnique({
+          where: {
+            token: sessionToken,
+          },
+          include: {
+            user: true,
+          },
+        }),
+      ),
+    ["session-user", sessionToken],
+    {
+      revalidate: SESSION_CACHE_TTL_SECONDS,
+      tags: [getSessionCacheTag(sessionToken)],
+    },
+  );
+
+  return getCachedSession();
+}
+
 export async function signInUser(options: {
   email: string;
   password: string;
@@ -142,16 +171,7 @@ export const getCurrentUser = cache(async () => {
     return null;
   }
 
-  const session = await withPrismaRetry(() =>
-    prisma.session.findUnique({
-      where: {
-        token: sessionToken,
-      },
-      include: {
-        user: true,
-      },
-    }),
-  );
+  const session = await getCachedSessionUser(sessionToken);
 
   if (!session || session.expiresAt <= new Date()) {
     return null;
@@ -182,6 +202,7 @@ export async function signOutCurrentSession() {
         },
       }),
     );
+    revalidateTag(getSessionCacheTag(sessionToken), "max");
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);

@@ -4,16 +4,16 @@ import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Paperclip, Plus, X } from "lucide-react";
 
-import { saveCollaboratorAction } from "@/app/collaboration/actions";
+import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
   createProjectAction,
   updateProjectAction,
-} from "@/app/projects/new/actions";
+} from "@/app/(dashboard)/projects/new/actions";
 import {
   initialProjectFormState,
   type ProjectEditorInitialValues,
   type ProjectFormState,
-} from "@/app/projects/new/project-form-state";
+} from "@/app/(dashboard)/projects/new/project-form-state";
 import { CalendarMonthGrid } from "@/components/calendar/calendar-month-grid";
 import {
   CollaboratorDialog,
