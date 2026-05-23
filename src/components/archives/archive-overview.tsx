@@ -6,6 +6,11 @@ import { FolderPlus } from "lucide-react";
 
 import { archiveCategories } from "@/components/archives/archive-data";
 import { ArchiveCategoryDialog } from "@/components/archives/archive-category-dialog";
+import {
+  MotionItem,
+  MotionSection,
+  MotionStaggerGroup,
+} from "@/components/motion/motion-primitives";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -44,20 +49,23 @@ export function ArchiveOverview() {
   return (
     <>
       <section className="space-y-6">
-        <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-            Archives
-          </h1>
-          <Button
-            type="button"
-            onClick={() => setDialogOpen(true)}
-            size="default"
-            className="gap-2 self-start text-[14px] xl:self-auto"
-          >
-            Create <FolderPlus className="h-4 w-4" />
-          </Button>
-        </header>
+        <MotionSection>
+          <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+              Archives
+            </h1>
+            <Button
+              type="button"
+              onClick={() => setDialogOpen(true)}
+              size="default"
+              className="gap-2 self-start text-[14px] xl:self-auto"
+            >
+              Create <FolderPlus className="h-4 w-4" />
+            </Button>
+          </header>
+        </MotionSection>
 
+        <MotionSection y={10}>
         <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
           <div className="mb-8">
             <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#434747]">
@@ -65,46 +73,49 @@ export function ArchiveOverview() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <MotionStaggerGroup className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" stagger={0.045}>
             {archiveCategories.map((category) => {
               const Icon = category.icon;
 
               return (
-                <Card
-                  key={category.slug}
-                  className="rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]"
-                >
-                  <div className="mb-5 grid h-20 place-items-center text-brand">
-                    <Icon className="h-14 w-14" />
-                  </div>
-                  <h3 className="text-center text-[16px] font-[700] text-[#141915]">
-                    {category.title}
-                  </h3>
-                  <Button asChild size="default" className="mt-5 w-full text-[14px]">
-                    <Link href={`/archives/${category.slug}`}>Open</Link>
-                  </Button>
-                </Card>
+                <MotionItem key={category.slug} y={10}>
+                  <Card
+                    className="rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]"
+                  >
+                    <div className="mb-5 grid h-20 place-items-center text-brand">
+                      <Icon className="h-14 w-14" />
+                    </div>
+                    <h3 className="text-center text-[16px] font-[700] text-[#141915]">
+                      {category.title}
+                    </h3>
+                    <Button asChild size="default" className="mt-5 w-full text-[14px]">
+                      <Link href={`/archives/${category.slug}`}>Open</Link>
+                    </Button>
+                  </Card>
+                </MotionItem>
               );
             })}
 
             {customCategories.map((category) => (
-              <Card
-                key={category.slug}
-                className="rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]"
-              >
-                <div className="mb-5 grid h-20 place-items-center text-brand">
-                  <FolderPlus className="h-14 w-14" />
-                </div>
-                <h3 className="text-center text-[16px] font-[700] text-[#141915]">
-                  {category.title}
-                </h3>
-                <div className="mt-5 inline-flex min-h-[42px] w-full items-center justify-center rounded-full border border-brand bg-brand-soft px-6 text-[14px] font-[600] text-brand">
-                  Added
-                </div>
-              </Card>
+              <MotionItem key={category.slug} y={10}>
+                <Card
+                  className="rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]"
+                >
+                  <div className="mb-5 grid h-20 place-items-center text-brand">
+                    <FolderPlus className="h-14 w-14" />
+                  </div>
+                  <h3 className="text-center text-[16px] font-[700] text-[#141915]">
+                    {category.title}
+                  </h3>
+                  <div className="mt-5 inline-flex min-h-[42px] w-full items-center justify-center rounded-full border border-brand bg-brand-soft px-6 text-[14px] font-[600] text-brand">
+                    Added
+                  </div>
+                </Card>
+              </MotionItem>
             ))}
-          </div>
+          </MotionStaggerGroup>
         </Card>
+        </MotionSection>
       </section>
 
       <ArchiveCategoryDialog

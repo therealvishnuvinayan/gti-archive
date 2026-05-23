@@ -25,6 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  MotionSection,
+} from "@/components/motion/motion-primitives";
 
 type LibraryCategory = "assets" | "finance" | "users" | "favourites";
 
@@ -442,12 +445,15 @@ export function LibraryWorkspace() {
 
   return (
     <section className="space-y-6">
-      <header className="flex flex-col gap-4">
-        <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-          Library
-        </h1>
-      </header>
+      <MotionSection>
+        <header className="flex flex-col gap-4">
+          <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+            Library
+          </h1>
+        </header>
+      </MotionSection>
 
+      <MotionSection y={10}>
       <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
         <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-3">
@@ -469,7 +475,7 @@ export function LibraryWorkspace() {
           </div>
         </div>
 
-        {collapsed ? renderFilterBar() : renderQuickMenu()}
+        {collapsed ? renderFilterBar() : <MotionSection y={8}>{renderQuickMenu()}</MotionSection>}
 
         <div className="mt-6 overflow-x-auto rounded-[20px] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
           <table className="min-w-[900px] w-full border-collapse">
@@ -552,6 +558,7 @@ export function LibraryWorkspace() {
           </table>
         </div>
       </Card>
+      </MotionSection>
     </section>
   );
 }

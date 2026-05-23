@@ -14,6 +14,11 @@ import {
 import { ProjectProgressCard } from "@/components/dashboard/project-progress-card";
 import { DeadlineCard } from "@/components/dashboard/deadline-card";
 import { getDashboardProjectCounts, getRecentProjects } from "@/lib/projects";
+import {
+  MotionItem,
+  MotionSection,
+  MotionStaggerGroup,
+} from "@/components/motion/motion-primitives";
 
 const updates: UpdateItem[] = [
   {
@@ -113,69 +118,91 @@ export default async function Home() {
   return (
     <DashboardLayout>
       <section className="space-y-6">
-        <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-              Dashboard
-            </h1>
-          </div>
+        <MotionSection>
+          <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+                Dashboard
+              </h1>
+            </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/projects/new"
-              className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
-            >
-              + New Project
-            </Link>
-            <button
-              type="button"
-              className="inline-flex min-h-[54px] items-center justify-center rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
-            >
-              + Upload Assets
-            </button>
-          </div>
-        </header>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/projects/new"
+                className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
+              >
+                + New Project
+              </Link>
+              <button
+                type="button"
+                className="inline-flex min-h-[54px] items-center justify-center rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
+              >
+                + Upload Assets
+              </button>
+            </div>
+          </header>
+        </MotionSection>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MotionStaggerGroup
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
+          stagger={0.05}
+        >
           {statCards.map((card) => (
-            <StatCard key={card.title} {...card} />
+            <MotionItem key={card.title} y={10}>
+              <StatCard {...card} />
+            </MotionItem>
           ))}
-        </section>
+        </MotionStaggerGroup>
 
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <MotionStaggerGroup
+          className="grid grid-cols-1 gap-4 xl:grid-cols-12"
+          stagger={0.045}
+        >
           <div className="xl:col-span-6">
-            <UpdateList title="Important Updates" items={updates} />
+            <MotionItem y={12}>
+              <UpdateList title="Important Updates" items={updates} />
+            </MotionItem>
           </div>
           <div className="xl:col-span-3">
-            <ReminderCard
-              title="Reminder"
-              headline="Review the Artwork from company ABC"
-              project="Project Milano ABCD"
-              actionLabel="Take Action"
-            />
+            <MotionItem y={12}>
+              <ReminderCard
+                title="Reminder"
+                headline="Review the Artwork from company ABC"
+                project="Project Milano ABCD"
+                actionLabel="Take Action"
+              />
+            </MotionItem>
           </div>
           <div className="xl:col-span-3">
-            <RecentProjects title="Recent Projects" items={recentProjects} />
+            <MotionItem y={12}>
+              <RecentProjects title="Recent Projects" items={recentProjects} />
+            </MotionItem>
           </div>
           <div className="xl:col-span-5">
-            <CollaborationCard title="Collaboration" items={collaborators} />
+            <MotionItem y={12}>
+              <CollaborationCard title="Collaboration" items={collaborators} />
+            </MotionItem>
           </div>
           <div className="xl:col-span-4">
-            <ProjectProgressCard
-              title="Project Progress"
-              percentage={55}
-              subtitle="Projects Completed"
-              segments={progressSegments}
-            />
+            <MotionItem y={12}>
+              <ProjectProgressCard
+                title="Project Progress"
+                percentage={55}
+                subtitle="Projects Completed"
+                segments={progressSegments}
+              />
+            </MotionItem>
           </div>
           <div className="xl:col-span-3">
-            <DeadlineCard
-              title="Project Deadline"
-              project="Project ABCD"
-              timeLeft="48:50:29"
-            />
+            <MotionItem y={12}>
+              <DeadlineCard
+                title="Project Deadline"
+                project="Project ABCD"
+                timeLeft="48:50:29"
+              />
+            </MotionItem>
           </div>
-        </section>
+        </MotionStaggerGroup>
       </section>
     </DashboardLayout>
   );

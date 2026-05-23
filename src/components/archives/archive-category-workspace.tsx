@@ -21,6 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  MotionItem,
+  MotionSection,
+  MotionStaggerGroup,
+} from "@/components/motion/motion-primitives";
 
 type ArchiveCategoryWorkspaceProps = {
   categoryTitle: string;
@@ -195,20 +200,23 @@ export function ArchiveCategoryWorkspace({
   return (
     <>
       <section className="space-y-6">
-        <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-            {categoryTitle}
-          </h1>
-          <Button
-            type="button"
-            onClick={openAddDialog}
-            size="default"
-            className="text-[14px]"
-          >
-            Add+
-          </Button>
-        </header>
+        <MotionSection>
+          <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+              {categoryTitle}
+            </h1>
+            <Button
+              type="button"
+              onClick={openAddDialog}
+              size="default"
+              className="text-[14px]"
+            >
+              Add+
+            </Button>
+          </header>
+        </MotionSection>
 
+        <MotionSection y={10}>
         <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
           <Card className="rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3 shadow-none">
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
@@ -263,12 +271,14 @@ export function ArchiveCategoryWorkspace({
             </table>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <MotionStaggerGroup className="mt-4 space-y-3" stagger={0.035}>
             {visibleItems.map((item) => (
-              <article
+              <MotionItem
                 key={item.id}
-                className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[2fr_0.9fr_0.9fr_1.2fr_1.7fr_1.1fr]"
+                layout
+                className="rounded-[20px]"
               >
+              <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[2fr_0.9fr_0.9fr_1.2fr_1.7fr_1.1fr]">
                 <div className="min-w-0">
                   <h3 className="text-[14px] font-[700] leading-[1.25] text-[#111712]">
                     {item.fileName}
@@ -340,15 +350,19 @@ export function ArchiveCategoryWorkspace({
                   </Button>
                 </div>
               </article>
+              </MotionItem>
             ))}
 
             {visibleItems.length === 0 ? (
-              <div className="rounded-[20px] border border-brand/25 bg-white px-5 py-10 text-center text-[14px] text-[#707a72]">
-                No archive files match the current filters.
-              </div>
+              <MotionItem y={8}>
+                <div className="rounded-[20px] border border-brand/25 bg-white px-5 py-10 text-center text-[14px] text-[#707a72]">
+                  No archive files match the current filters.
+                </div>
+              </MotionItem>
             ) : null}
-          </div>
+          </MotionStaggerGroup>
         </Card>
+        </MotionSection>
       </section>
 
       <ArchiveItemDialog

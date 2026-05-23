@@ -19,6 +19,11 @@ import {
   type CollaboratorForm,
   type PermissionLevel,
 } from "@/components/collaboration/collaborator-dialog";
+import {
+  MotionItem,
+  MotionSection,
+  MotionStaggerGroup,
+} from "@/components/motion/motion-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -232,12 +237,15 @@ export function CollaborationWorkspace({
   return (
     <>
       <section className="space-y-6">
-        <header className="flex flex-col gap-4">
-          <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-            Collaboration
-          </h1>
-        </header>
+        <MotionSection>
+          <header className="flex flex-col gap-4">
+            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+              Collaboration
+            </h1>
+          </header>
+        </MotionSection>
 
+        <MotionSection y={10}>
         <section className="rounded-[30px] bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
           <div className="space-y-8">
             <div className="space-y-3">
@@ -255,7 +263,10 @@ export function CollaborationWorkspace({
               </div>
             ) : null}
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MotionStaggerGroup
+              className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
+              stagger={0.045}
+            >
               {accessCards.map((card) => {
                 const Icon = card.icon;
                 const active = selectedArea === card.area;
@@ -264,16 +275,16 @@ export function CollaborationWorkspace({
                 ).length;
 
                 return (
-                  <Card
-                    key={card.area}
-                    className={cn(
-                      "rounded-[24px] border bg-white transition-all",
-                      active
-                        ? "border-brand/45 shadow-[0_18px_45px_rgba(23,39,28,0.07)]"
-                        : "border-transparent",
-                    )}
-                  >
-                    <CardContent className="p-5">
+                  <MotionItem key={card.area} y={10}>
+                    <Card
+                      className={cn(
+                        "rounded-[24px] border bg-white transition-all",
+                        active
+                          ? "border-brand/45 shadow-[0_18px_45px_rgba(23,39,28,0.07)]"
+                          : "border-transparent",
+                      )}
+                    >
+                      <CardContent className="p-5">
                       <div className="mb-5 flex items-start justify-between gap-3">
                         <div className="grid h-16 w-16 place-items-center rounded-[18px] bg-brand-soft text-brand">
                           <Icon className="h-8 w-8" />
@@ -296,12 +307,14 @@ export function CollaborationWorkspace({
                       >
                         {active ? "Viewing" : "View"}
                       </Button>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  </MotionItem>
                 );
               })}
-            </div>
+            </MotionStaggerGroup>
 
+            <MotionSection y={10}>
             <Card className="rounded-[26px] border border-[#dfe7df] bg-[#fbfcfa] shadow-none">
               <CardHeader className="gap-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -323,13 +336,14 @@ export function CollaborationWorkspace({
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="grid gap-4 lg:grid-cols-3">
+              <CardContent>
+                <MotionStaggerGroup className="grid gap-4 lg:grid-cols-3" stagger={0.04}>
                 {focusedCollaborators.map((group) => (
-                  <Card
-                    key={group.permission}
-                    className="rounded-[22px] border border-[#e4ebe4] bg-white shadow-none"
-                  >
-                    <CardHeader className="pb-4">
+                  <MotionItem key={group.permission} y={8}>
+                    <Card
+                      className="rounded-[22px] border border-[#e4ebe4] bg-white shadow-none"
+                    >
+                      <CardHeader className="pb-4">
                       <div className="flex items-center justify-between gap-3">
                         <CardTitle className="text-[18px]">{group.label}</CardTitle>
                         <Badge
@@ -339,8 +353,8 @@ export function CollaborationWorkspace({
                           {group.collaborators.length}
                         </Badge>
                       </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3 pt-0">
+                      </CardHeader>
+                      <CardContent className="space-y-3 pt-0">
                       {group.collaborators.length > 0 ? (
                         group.collaborators.map((collaborator) => (
                           <div key={`${group.permission}-${collaborator.id}`} className="flex items-center gap-3">
@@ -371,11 +385,14 @@ export function CollaborationWorkspace({
                           No collaborators currently fall into this access level.
                         </p>
                       )}
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  </MotionItem>
                 ))}
+                </MotionStaggerGroup>
               </CardContent>
             </Card>
+            </MotionSection>
 
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
@@ -393,6 +410,7 @@ export function CollaborationWorkspace({
               </Button>
             </div>
 
+            <MotionSection y={10}>
             <Card className="overflow-hidden rounded-[24px] border border-transparent bg-white">
               <CardContent className="p-0">
                 <div className="hidden grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px] items-center gap-4 border-b border-[#e4e9e4] px-5 py-4 lg:grid">
@@ -425,8 +443,9 @@ export function CollaborationWorkspace({
 
                 <div className="divide-y divide-[#edf1ed]">
                   {collaborators.length > 0 ? collaborators.map((collaborator) => (
-                    <div
+                    <MotionItem
                       key={collaborator.id}
+                      layout
                       className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px] lg:items-center"
                     >
                       <div className="flex min-w-0 items-center gap-3">
@@ -500,7 +519,7 @@ export function CollaborationWorkspace({
                           <PenLine className="h-4 w-4" />
                         </Button>
                       </div>
-                    </div>
+                    </MotionItem>
                   )) : (
                     <div className="px-5 py-12 text-center text-[14px] text-[#6f7771]">
                       No collaborators have been invited yet.
@@ -509,8 +528,10 @@ export function CollaborationWorkspace({
                 </div>
               </CardContent>
             </Card>
+            </MotionSection>
           </div>
         </section>
+        </MotionSection>
       </section>
 
       <CollaboratorDialog

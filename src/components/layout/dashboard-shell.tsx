@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { Sidebar } from "@/components/layout/sidebar";
+import { MotionPage } from "@/components/motion/motion-primitives";
 import {
   Topbar,
   type DashboardTopbarProps,
@@ -28,6 +30,7 @@ export function DashboardShell({
   projectBadgeCount,
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
 
   return (
     <div className="h-[100svh] overflow-hidden bg-background p-3 sm:p-4 lg:p-6">
@@ -45,7 +48,9 @@ export function DashboardShell({
             {...topbarProps}
           />
           <main className="dashboard-scroll min-h-0 flex-1 overflow-y-auto rounded-[32px] bg-surface p-5 shadow-[0_24px_80px_rgba(23,39,28,0.06)] sm:p-6 lg:p-8">
-            {children}
+            <MotionPage key={pathname} y={12}>
+              {children}
+            </MotionPage>
           </main>
         </div>
       </div>

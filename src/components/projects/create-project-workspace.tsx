@@ -15,6 +15,11 @@ import {
   CollaboratorDialog,
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
+import {
+  MotionItem,
+  MotionSection,
+  MotionStaggerGroup,
+} from "@/components/motion/motion-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -295,6 +300,7 @@ export function CreateProjectWorkspace({
       />
       <input type="hidden" name="stageCount" value={String(stages.length)} />
 
+      <MotionSection>
       <Card className="bg-surface">
         <CardHeader>
           <div className="rounded-[20px] bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
@@ -311,7 +317,11 @@ export function CreateProjectWorkspace({
         ) : null}
 
         <CardContent className="space-y-6 pt-2">
-          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <MotionStaggerGroup
+            className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
+            stagger={0.05}
+          >
+            <MotionItem y={8}>
             <div className="space-y-4">
               <label className="block">
                 <span className="mb-2 block text-[16px] font-[600] text-brand">
@@ -407,7 +417,9 @@ export function CreateProjectWorkspace({
                 </Select>
               </label>
             </div>
+            </MotionItem>
 
+            <MotionItem y={8}>
             <div>
               <label className="block">
                 <span className="mb-2 block text-[16px] font-[600] text-brand">
@@ -480,25 +492,31 @@ export function CreateProjectWorkspace({
                 </Card>
               ) : null}
             </div>
-          </div>
+            </MotionItem>
+          </MotionStaggerGroup>
 
-          <div className="grid gap-4 2xl:grid-cols-2">
-          <MonthPicker
-            label="Project Start Date"
-            value={startDate}
-            onSelect={setStartDate}
-            month={startMonth}
-            onMonthChange={setStartMonth}
-          />
-          <MonthPicker
-            label="Project End Date"
-            value={endDate}
-            onSelect={setEndDate}
-            month={endMonth}
-            onMonthChange={setEndMonth}
-          />
-          </div>
+          <MotionStaggerGroup className="grid gap-4 2xl:grid-cols-2" stagger={0.05}>
+            <MotionItem y={8}>
+              <MonthPicker
+                label="Project Start Date"
+                value={startDate}
+                onSelect={setStartDate}
+                month={startMonth}
+                onMonthChange={setStartMonth}
+              />
+            </MotionItem>
+            <MotionItem y={8}>
+              <MonthPicker
+                label="Project End Date"
+                value={endDate}
+                onSelect={setEndDate}
+                month={endMonth}
+                onMonthChange={setEndMonth}
+              />
+            </MotionItem>
+          </MotionStaggerGroup>
 
+          <MotionSection y={8}>
           <div>
             <div className="flex items-center justify-between gap-4">
               <h3 className="text-[16px] font-[600] text-brand">Project Stages</h3>
@@ -514,9 +532,13 @@ export function CreateProjectWorkspace({
               </Button>
             </div>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            <MotionStaggerGroup
+              className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3"
+              stagger={0.04}
+            >
               {stages.map((stage, index) => (
-                <Card key={stage.id} className="rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
+                <MotionItem key={stage.id} y={8} layout>
+                <Card className="rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
                   <CardContent className="p-4">
                     <Input
                       value={stage.name}
@@ -550,14 +572,17 @@ export function CreateProjectWorkspace({
                     />
                   </CardContent>
                 </Card>
+                </MotionItem>
               ))}
-            </div>
+            </MotionStaggerGroup>
           </div>
-        
+          </MotionSection>
         </CardContent>
       </Card>
+      </MotionSection>
 
-      <div className="space-y-4">
+      <MotionStaggerGroup className="space-y-4" stagger={0.05}>
+        <MotionItem y={10}>
         <Card className="border border-brand/40">
           <CardHeader className="pb-3">
           <CardTitle className="text-[21px] text-brand">
@@ -597,6 +622,8 @@ export function CreateProjectWorkspace({
           </dl>
           </CardContent>
         </Card>
+        </MotionItem>
+        <MotionItem y={10}>
         <Card>
           <CardHeader className="pb-3">
           <CardTitle className="text-[20px] text-[#111712]">
@@ -654,7 +681,8 @@ export function CreateProjectWorkspace({
           <CreateProjectSubmitButton />
           </CardContent>
         </Card>
-      </div>
+        </MotionItem>
+      </MotionStaggerGroup>
 
       <CollaboratorDialog
         isOpen={dialogOpen}
