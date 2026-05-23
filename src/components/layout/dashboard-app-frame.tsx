@@ -43,7 +43,6 @@ function getTopbarProps(
 
     return {
       searchPlaceholder: "Search for Projects...",
-      leadingContent: <BackPill href="/" />,
       searchAction: "/projects",
       searchDefaultValue: query,
       searchHiddenFields: [

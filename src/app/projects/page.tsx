@@ -1,5 +1,4 @@
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getDashboardProjectCounts, getProjectsList } from "@/lib/projects";
 
@@ -45,7 +44,6 @@ export default async function ProjectsPage({
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search for Projects...",
-        leadingContent: <ProjectBackButton href="/" />,
         searchAction: "/projects",
         searchDefaultValue: query,
         searchHiddenFields: [
