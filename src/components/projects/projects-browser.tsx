@@ -8,7 +8,6 @@ import {
   MotionItem,
   MotionSection,
   MotionStaggerGroup,
-  MotionSwap,
 } from "@/components/motion/motion-primitives";
 import { ProjectCard, type ProjectCardItem } from "@/components/projects/project-card";
 import { ProjectSortDropdown } from "@/components/projects/project-sort-dropdown";
@@ -33,6 +32,38 @@ type ProjectsBrowserProps = {
   query: string;
   filters: ProjectFilter[];
 };
+
+function getEmptyStateCopy(
+  hasAnyProjects: boolean,
+  activeStatus: ProjectFilterValue,
+  query: string,
+) {
+  if (query) {
+    return {
+      title: "No projects found",
+      description: "No saved projects match your current search.",
+    };
+  }
+
+  if (!hasAnyProjects) {
+    return {
+      title: "No projects found",
+      description: "Create a project to populate the projects board.",
+    };
+  }
+
+  const statusLabel =
+    activeStatus === "ON_HOLD"
+      ? "on hold"
+      : activeStatus === "COMPLETED"
+        ? "completed"
+        : "ongoing";
+
+  return {
+    title: `No ${statusLabel} projects`,
+    description: `There are no ${statusLabel} projects to show right now.`,
+  };
+}
 
 function ProjectsGridSkeleton() {
   return (
@@ -73,6 +104,7 @@ export function ProjectsBrowser({
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
+  const emptyState = getEmptyStateCopy(hasAnyProjects, activeStatus, query);
 
   const navigate = (status: ProjectFilterValue, sort: ProjectSortValue) => {
     const params = new URLSearchParams();
@@ -134,37 +166,36 @@ export function ProjectsBrowser({
         </header>
       </MotionSection>
 
-      <MotionSwap motionKey={isPending ? "pending" : `${activeStatus}-${activeSort}-${query || "all"}`}>
-        {isPending ? (
-          <ProjectsGridSkeleton />
-        ) : projects.length > 0 ? (
-          <MotionStaggerGroup
-            className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-4"
-            stagger={0.045}
-          >
-            {projects.map((project) => (
-              <MotionItem key={project.id} y={10} layout>
-                <ProjectCard project={project} canManage={canManageProjects} />
-              </MotionItem>
-            ))}
-          </MotionStaggerGroup>
-        ) : (
-          <MotionItem y={8}>
-            <Card className="text-center">
-              <CardContent className="p-8">
-                <h2 className="text-[24px] font-[600] tracking-[-0.03em] text-[#111712]">
-                  No projects found
-                </h2>
-                <p className="mt-3 text-[15px] leading-7 text-[#6f776f]">
-                  {query
-                    ? "No saved projects match your current search."
-                    : "Create a project to populate the projects board."}
-                </p>
-              </CardContent>
-            </Card>
-          </MotionItem>
-        )}
-      </MotionSwap>
+      {isPending ? (
+        <ProjectsGridSkeleton />
+      ) : projects.length > 0 ? (
+        <MotionStaggerGroup
+          className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-4"
+          stagger={0.045}
+        >
+          {projects.map((project) => (
+            <MotionItem key={project.id} y={10} layout>
+              <ProjectCard project={project} canManage={canManageProjects} />
+            </MotionItem>
+          ))}
+        </MotionStaggerGroup>
+      ) : (
+        <MotionItem
+          key={`${activeStatus}-${activeSort}-${query || "all"}-empty`}
+          y={8}
+        >
+          <Card className="min-h-[280px] rounded-[24px] text-center shadow-[0_18px_42px_rgba(23,39,28,0.05)]">
+            <CardContent className="flex min-h-[280px] flex-col items-center justify-center p-8">
+              <h2 className="text-[24px] font-[600] tracking-[-0.03em] text-[#111712]">
+                {emptyState.title}
+              </h2>
+              <p className="mt-3 text-[15px] leading-7 text-[#6f776f]">
+                {emptyState.description}
+              </p>
+            </CardContent>
+          </Card>
+        </MotionItem>
+      )}
     </>
   );
 }
