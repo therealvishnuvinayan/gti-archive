@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
-import { Paperclip, Plus, X } from "lucide-react";
+import { Download, Loader2, Paperclip, Plus, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/app/(dashboard)/projects/new/actions";
 import {
   initialProjectFormState,
+  type ProjectEditorInitialAttachment,
   type ProjectEditorInitialValues,
   type ProjectFormState,
 } from "@/app/(dashboard)/projects/new/project-form-state";
@@ -82,6 +84,12 @@ type CreateProjectWorkspaceProps = {
   ) => Promise<ProjectFormState>;
 };
 
+type UploadAssetResponse = {
+  attachmentId?: string;
+  uploadUrl?: string;
+  error?: string;
+};
+
 function formatDateValue(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -143,18 +151,6 @@ function CreateProjectSubmitButton({ mode }: { mode: "create" | "edit" }) {
   );
 }
 
-function formatFileSize(size: number) {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function getDefaultCollaboratorForm(): CollaboratorForm {
   return {
     name: "",
@@ -175,6 +171,7 @@ export function CreateProjectWorkspace({
   initialValues,
   action = mode === "edit" ? updateProjectAction : createProjectAction,
 }: CreateProjectWorkspaceProps) {
+  const router = useRouter();
   const [formState, formAction] = useActionState<ProjectFormState, FormData>(
     action,
     initialProjectFormState,
@@ -214,7 +211,9 @@ export function CreateProjectWorkspace({
   );
   const [collaborators, setCollaborators] =
     useState<CollaboratorRecord[]>(initialCollaborators);
-  const [briefAttachments, setBriefAttachments] = useState<File[]>([]);
+  const [projectAttachments, setProjectAttachments] = useState<ProjectEditorInitialAttachment[]>(
+    initialValues?.attachments ?? [],
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>(
     getDefaultCollaboratorForm(),
@@ -222,6 +221,12 @@ export function CreateProjectWorkspace({
   const [collaboratorError, setCollaboratorError] = useState<string>();
   const [collaboratorNotice, setCollaboratorNotice] = useState<string>();
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
+  const [attachmentNotice, setAttachmentNotice] = useState<string>();
+  const [attachmentError, setAttachmentError] = useState<string>();
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const [, startRefresh] = useTransition();
 
   const overview = useMemo(
     () => ({
@@ -312,8 +317,162 @@ export function CreateProjectWorkspace({
     setProjectBudget(value.replace(/[^\d]/g, ""));
   }
 
-  function removeBriefAttachment(name: string) {
-    setBriefAttachments((current) => current.filter((file) => file.name !== name));
+  function refreshProjectData() {
+    startRefresh(() => {
+      router.refresh();
+    });
+  }
+
+  async function uploadProjectAsset(file: File) {
+    if (!initialValues?.id) {
+      throw new Error("Save the project first before uploading attachments.");
+    }
+
+    const uploadRequest = await fetch("/api/project-assets/upload-url", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: initialValues.id,
+        originalFileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        fileSize: file.size,
+        assetType: "GENERAL_PROJECT_ASSET",
+      }),
+    });
+
+    const uploadPayload = (await uploadRequest.json()) as UploadAssetResponse;
+
+    if (!uploadRequest.ok || !uploadPayload.attachmentId || !uploadPayload.uploadUrl) {
+      throw new Error(uploadPayload.error || "Unable to prepare the attachment upload.");
+    }
+
+    try {
+      const putResponse = await fetch(uploadPayload.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+        },
+        body: file,
+      });
+
+      if (!putResponse.ok) {
+        throw new Error(`Upload failed for ${file.name}.`);
+      }
+
+      const completeResponse = await fetch("/api/project-assets/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          attachmentId: uploadPayload.attachmentId,
+          projectId: initialValues.id,
+        }),
+      });
+
+      const completePayload = (await completeResponse.json()) as { error?: string };
+
+      if (!completeResponse.ok) {
+        throw new Error(completePayload.error || "Unable to complete the attachment upload.");
+      }
+    } catch (error) {
+      await fetch("/api/project-assets/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          attachmentId: uploadPayload.attachmentId,
+          failed: true,
+          projectId: initialValues.id,
+        }),
+      }).catch(() => undefined);
+
+      throw error;
+    }
+  }
+
+  async function handleAttachmentSelection(files: FileList | null) {
+    const selectedFiles = Array.from(files ?? []);
+
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    setAttachmentError(undefined);
+    setAttachmentNotice(undefined);
+
+    if (mode !== "edit" || !initialValues?.id) {
+      setAttachmentError("Create the project first, then upload attachments from edit mode.");
+      if (attachmentInputRef.current) {
+        attachmentInputRef.current.value = "";
+      }
+      return;
+    }
+
+    setIsUploadingAttachments(true);
+
+    try {
+      for (const file of selectedFiles) {
+        await uploadProjectAsset(file);
+      }
+
+      setAttachmentNotice(
+        selectedFiles.length === 1
+          ? `${selectedFiles[0]?.name} uploaded successfully.`
+          : `${selectedFiles.length} attachments uploaded successfully.`,
+      );
+      refreshProjectData();
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error ? error.message : "Unable to upload the project attachments right now.",
+      );
+    } finally {
+      setIsUploadingAttachments(false);
+
+      if (attachmentInputRef.current) {
+        attachmentInputRef.current.value = "";
+      }
+    }
+  }
+
+  async function removeProjectAttachment(attachmentId: string) {
+    if (!initialValues?.id) {
+      return;
+    }
+
+    setDeletingAttachmentId(attachmentId);
+    setAttachmentError(undefined);
+    setAttachmentNotice(undefined);
+
+    try {
+      const response = await fetch(
+        `/api/project-assets/${attachmentId}?projectId=${encodeURIComponent(initialValues.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to delete the attachment right now.");
+      }
+
+      setProjectAttachments((current) =>
+        current.filter((attachment) => attachment.id !== attachmentId),
+      );
+      setAttachmentNotice("Attachment removed.");
+      refreshProjectData();
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error ? error.message : "Unable to delete the attachment right now.",
+      );
+    } finally {
+      setDeletingAttachmentId(null);
+    }
   }
 
   return (
@@ -469,60 +628,135 @@ export function CreateProjectWorkspace({
                     className="min-h-[236px] pr-12 text-[12px]"
                   />
                   <label className="absolute bottom-3 right-3 cursor-pointer text-[#b4bbb5] transition-colors hover:text-brand">
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={(event) =>
-                        setBriefAttachments(
-                          event.target.files
-                            ? Array.from(event.target.files)
-                            : [],
-                        )
-                      }
-                    />
-                    <Paperclip className="h-5 w-5" />
+                    <button
+                      type="button"
+                      onClick={() => attachmentInputRef.current?.click()}
+                      className="cursor-pointer"
+                      aria-label="Add project attachment files"
+                    >
+                      <Paperclip className="h-5 w-5" />
+                    </button>
                   </label>
                 </div>
               </label>
 
-              {briefAttachments.length > 0 ? (
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  void handleAttachmentSelection(event.target.files);
+                }}
+              />
+
+              {attachmentNotice ? (
+                <div className="mt-3 rounded-[16px] border border-[#d8e7d9] bg-[#f6fbf7] px-4 py-3 text-[12px] text-brand">
+                  {attachmentNotice}
+                </div>
+              ) : null}
+
+              {attachmentError ? (
+                <div className="mt-3 rounded-[16px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] text-[#bb4d49]">
+                  {attachmentError}
+                </div>
+              ) : null}
+
+              {projectAttachments.length > 0 || mode === "edit" ? (
                 <Card className="mt-3 rounded-[16px] border border-[#dce6dd] shadow-none">
                   <CardContent className="px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[12px] font-semibold text-brand">
-                        Selected Attachments
+                        Project Attachments
                       </p>
-                      <Badge variant="secondary">{briefAttachments.length}</Badge>
+                      <div className="flex items-center gap-2">
+                        {isUploadingAttachments ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-[#7a837b]">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Uploading...
+                          </span>
+                        ) : null}
+                        <Badge variant="secondary">{projectAttachments.length}</Badge>
+                      </div>
                     </div>
-                    <ul className="mt-2 space-y-2">
-                      {briefAttachments.map((file) => (
+                    {projectAttachments.length > 0 ? (
+                      <ul className="mt-2 space-y-2">
+                        {projectAttachments.map((attachment) => (
                         <li
-                          key={`${file.name}-${file.size}`}
+                          key={attachment.id}
                           className="flex items-center justify-between gap-3 rounded-[12px] bg-[#f7faf7] px-3 py-2"
                         >
                           <div className="min-w-0">
                             <p className="truncate text-[12px] font-medium text-[#243028]">
-                              {file.name}
+                              {attachment.originalFileName}
                             </p>
-                            <p className="text-[11px] text-[#7a837b]">
-                              {formatFileSize(file.size)}
-                            </p>
+                            <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-[#7a837b]">
+                              <span>{attachment.fileSizeLabel}</span>
+                              <span>·</span>
+                              <span>{attachment.uploadedBy}</span>
+                              <span>·</span>
+                              <span>{attachment.uploadedAt}</span>
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeBriefAttachment(file.name)}
-                            className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44]"
-                            aria-label={`Remove ${file.name}`}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              asChild
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-brand"
+                            >
+                              <a
+                                href={attachment.downloadPath}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`Download ${attachment.originalFileName}`}
+                              >
+                                <Download className="h-4 w-4" />
+                              </a>
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void removeProjectAttachment(attachment.id);
+                              }}
+                              disabled={deletingAttachmentId === attachment.id}
+                              className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44] disabled:cursor-not-allowed disabled:opacity-50"
+                              aria-label={`Remove ${attachment.originalFileName}`}
+                            >
+                              {deletingAttachmentId === attachment.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
                         </li>
-                      ))}
-                    </ul>
-                    <p className="mt-3 text-[11px] text-[#7a837b]">
-                      Files are currently selected in the UI only. Backend file storage is not connected yet.
-                    </p>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 text-[11px] text-[#7a837b]">
+                        No project-level attachments uploaded yet.
+                      </p>
+                    )}
+                    <div className="mt-3 flex justify-between gap-3">
+                      <p className="text-[11px] text-[#7a837b]">
+                        {mode === "edit"
+                          ? "Files upload directly to secure S3 storage and are saved in project history."
+                          : "Save the project first, then upload attachments from edit mode."}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => attachmentInputRef.current?.click()}
+                        disabled={mode !== "edit" || isUploadingAttachments}
+                        className="shrink-0 text-[12px]"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                        Add files
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ) : null}

@@ -11,6 +11,17 @@ export type ProjectEditorInitialStage = {
   description: string;
 };
 
+export type ProjectEditorInitialAttachment = {
+  id: string;
+  originalFileName: string;
+  fileTypeLabel: string;
+  mimeType: string;
+  fileSizeLabel: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  downloadPath: string;
+};
+
 export type ProjectEditorInitialValues = {
   id: string;
   name: string;
@@ -23,4 +34,5 @@ export type ProjectEditorInitialValues = {
   startDate: string;
   endDate: string;
   stages: ProjectEditorInitialStage[];
+  attachments: ProjectEditorInitialAttachment[];
 };

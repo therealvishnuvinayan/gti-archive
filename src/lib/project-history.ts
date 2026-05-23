@@ -16,6 +16,7 @@ import {
   buildProjectAssetKey,
   createPresignedDownloadUrl,
   createPresignedUploadUrl,
+  deleteObjectIfNeeded,
   getFileExtension,
   getMaxAssetUploadBytes,
   getObjectMetadata,
@@ -757,4 +758,43 @@ export async function getAttachmentDownloadUrlForUser(
     storageKey: attachment.storageKey,
     fileName: attachment.originalFileName,
   });
+}
+
+export async function deleteAttachmentForUser(
+  user: AccessUser,
+  attachmentId: string,
+) {
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findUnique({
+      where: {
+        id: attachmentId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        bucket: true,
+        storageKey: true,
+        status: true,
+      },
+    }),
+  );
+
+  if (!attachment || attachment.status === AttachmentStatus.DELETED) {
+    throw new Error("Attachment not found.");
+  }
+
+  await assertProjectAccess(user, attachment.projectId);
+
+  await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(() => undefined);
+
+  await withPrismaRetry(() =>
+    prisma.projectAttachment.update({
+      where: {
+        id: attachment.id,
+      },
+      data: {
+        status: AttachmentStatus.DELETED,
+      },
+    }),
+  );
 }

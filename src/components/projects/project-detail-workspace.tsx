@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 
 import type { ProjectFlowRecord, ProjectStageRecord } from "@/lib/projects";
 import { Badge } from "@/components/ui/badge";
@@ -221,9 +222,49 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
             </CardTitle>
             </CardHeader>
             <CardContent>
-            <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-8 text-center text-[14px] text-[#6e776f]">
-              No project-level attachments uploaded yet.
-            </div>
+            {project.attachments.length > 0 ? (
+              <div className="space-y-3">
+                {project.attachments.map((attachment) => (
+                  <div
+                    key={attachment.id}
+                    className="flex items-start justify-between gap-3 rounded-[16px] border border-[#dce6dd] bg-[#fbfcfa] px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-[700] text-[#243028]">
+                        {attachment.originalFileName}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-[#7a837b]">
+                        <span>{attachment.fileSizeLabel}</span>
+                        <span>·</span>
+                        <span>{attachment.uploadedBy}</span>
+                        <span>·</span>
+                        <span>{attachment.uploadedAt}</span>
+                      </div>
+                    </div>
+                    <Button
+                      asChild
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 text-brand"
+                    >
+                      <a
+                        href={attachment.downloadPath}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Download ${attachment.originalFileName}`}
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-8 text-center text-[14px] text-[#6e776f]">
+                No project-level attachments uploaded yet.
+              </div>
+            )}
             </CardContent>
           </Card>
         </MotionItem>

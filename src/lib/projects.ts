@@ -1,4 +1,8 @@
 import { unstable_cache } from "next/cache";
+import {
+  AttachmentStatus,
+  AttachmentAssetType,
+} from "@prisma/client";
 import type {
   CurrencyCode,
   Project,
@@ -14,6 +18,14 @@ export const PROJECTS_CACHE_TAG = "projects";
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
   stages: ProjectStage[];
+  attachments: Array<{
+    id: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    createdAt: Date;
+    uploadedBy: Pick<User, "name" | "email">;
+  }>;
 };
 
 export type ProjectCardRecord = {
@@ -44,6 +56,7 @@ export type ProjectEditorRecord = {
     budget: string;
     description: string;
   }>;
+  attachments: ProjectAttachmentRecord[];
 };
 
 export type ProjectStageVisualStatus =
@@ -126,6 +139,7 @@ export type ProjectFlowRecord = {
   priority: string;
   stageCards: ProjectStageRecord[];
   collaborators: ProjectCollaboratorRecord[];
+  attachments: ProjectAttachmentRecord[];
   chatEntries: ProjectChatEntry[];
   compareNotes: ProjectCompareNote[];
 };
@@ -203,6 +217,70 @@ function getCreatorName(creator: Pick<User, "name" | "email">) {
   }
 
   return creator.email;
+}
+
+function formatAttachmentTimestamp(date: Date | string | number) {
+  const normalizedDate = toProjectDate(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(normalizedDate);
+}
+
+function getAttachmentFileTypeLabel(fileName: string, mimeType: string) {
+  const extension = fileName.split(".").at(-1)?.toUpperCase();
+
+  if (extension && extension !== fileName.toUpperCase()) {
+    return extension;
+  }
+
+  const subtype = mimeType.split("/")[1];
+  return subtype ? subtype.toUpperCase() : "FILE";
+}
+
+function formatAttachmentFileSize(fileSize: number) {
+  if (fileSize >= 1024 * 1024) {
+    return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (fileSize >= 1024) {
+    return `${(fileSize / 1024).toFixed(1)} KB`;
+  }
+
+  return `${fileSize} B`;
+}
+
+function mapAttachmentToRecord(
+  attachment: {
+    id: string;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    createdAt: Date | string | number;
+    uploadedBy: Pick<User, "name" | "email">;
+  },
+): ProjectAttachmentRecord {
+  return {
+    id: attachment.id,
+    originalFileName: attachment.originalFileName,
+    fileTypeLabel: getAttachmentFileTypeLabel(
+      attachment.originalFileName,
+      attachment.mimeType,
+    ),
+    mimeType: attachment.mimeType,
+    fileSizeLabel: formatAttachmentFileSize(attachment.fileSize),
+    uploadedBy: getCreatorName(attachment.uploadedBy),
+    uploadedAt: formatAttachmentTimestamp(attachment.createdAt),
+    downloadPath: `/api/project-assets/${attachment.id}/download`,
+  };
 }
 
 function mapStageStatusToVisual(status: ProjectStatus): ProjectStageVisualStatus {
@@ -309,6 +387,7 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
         access: "owner",
       },
     ],
+    attachments: project.attachments.map(mapAttachmentToRecord),
     chatEntries: [],
     compareNotes: [],
   };
@@ -353,6 +432,7 @@ function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
             : "",
       description: stage.description?.trim() || "",
     })),
+    attachments: project.attachments.map(mapAttachmentToRecord),
   };
 }
 
@@ -483,6 +563,28 @@ export async function getProjectsList(filter: ProjectsListFilter) {
               },
             },
             stages: true,
+            attachments: {
+              where: {
+                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                status: "READY" as AttachmentStatus,
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+              select: {
+                id: true,
+                originalFileName: true,
+                mimeType: true,
+                fileSize: true,
+                createdAt: true,
+                uploadedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
           },
           orderBy,
         }),
@@ -513,6 +615,28 @@ export async function getProjectById(id: string) {
               },
             },
             stages: true,
+            attachments: {
+              where: {
+                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                status: "READY" as AttachmentStatus,
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+              select: {
+                id: true,
+                originalFileName: true,
+                mimeType: true,
+                fileSize: true,
+                createdAt: true,
+                uploadedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
           },
         }),
       ),
@@ -541,6 +665,28 @@ export async function getProjectEditorById(id: string) {
               },
             },
             stages: true,
+            attachments: {
+              where: {
+                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                status: "READY" as AttachmentStatus,
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+              select: {
+                id: true,
+                originalFileName: true,
+                mimeType: true,
+                fileSize: true,
+                createdAt: true,
+                uploadedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
           },
         }),
       ),
