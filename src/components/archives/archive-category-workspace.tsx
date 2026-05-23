@@ -11,6 +11,16 @@ import {
   ArchiveItemDialog,
   type ArchiveItemForm,
 } from "@/components/archives/archive-item-dialog";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type ArchiveCategoryWorkspaceProps = {
   categoryTitle: string;
@@ -189,23 +199,24 @@ export function ArchiveCategoryWorkspace({
           <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
             {categoryTitle}
           </h1>
-          <button
+          <Button
             type="button"
             onClick={openAddDialog}
-            className="inline-flex min-h-[42px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-6 text-[14px] font-[600] text-white"
+            size="default"
+            className="text-[14px]"
           >
             Add+
-          </button>
+          </Button>
         </header>
 
-        <section className="rounded-[30px] bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
-          <div className="rounded-[18px] bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3">
+        <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
+          <Card className="rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3 shadow-none">
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
-              <input
+              <Input
                 value={filters.search}
                 onChange={(event) => updateFilter("search", event.target.value)}
                 placeholder="Search....."
-                className="h-[36px] rounded-full bg-white px-4 text-[12px] text-[#657069] outline-none"
+                className="h-[36px] border-0 text-[12px] text-[#657069]"
               />
 
               {(
@@ -217,22 +228,25 @@ export function ArchiveCategoryWorkspace({
                   ["country", options.country, "Country"],
                 ] as const
               ).map(([key, values, label]) => (
-                <select
+                <Select
                   key={key}
                   value={filters[key]}
-                  onChange={(event) => updateFilter(key, event.target.value)}
-                  className="h-[36px] rounded-full bg-white px-4 text-[12px] text-[#657069] outline-none"
+                  onValueChange={(value) => updateFilter(key, value)}
                 >
-                  <option value="">{label}</option>
-                  {values.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+                    <SelectValue placeholder={label} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {values.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ))}
             </div>
-          </div>
+          </Card>
 
           <div className="mt-4 overflow-x-auto rounded-[20px] border border-brand/35 bg-white">
             <table className="min-w-[1040px] w-full border-collapse">
@@ -253,7 +267,7 @@ export function ArchiveCategoryWorkspace({
             {visibleItems.map((item) => (
               <article
                 key={item.id}
-                className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] xl:grid-cols-[2fr_0.9fr_0.9fr_1.2fr_1.7fr_1.1fr]"
+                className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[2fr_0.9fr_0.9fr_1.2fr_1.7fr_1.1fr]"
               >
                 <div className="min-w-0">
                   <h3 className="text-[14px] font-[700] leading-[1.25] text-[#111712]">
@@ -282,13 +296,13 @@ export function ArchiveCategoryWorkspace({
                     const Icon = getFileTypeIcon(type);
 
                     return (
-                      <div
+                      <Card
                         key={`${item.id}-${type}`}
                         className="grid h-10 w-10 place-items-center rounded-xl border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
                         title={type}
                       >
                         <Icon className="h-5 w-5 text-brand" />
-                      </div>
+                      </Card>
                     );
                   })}
                 </div>
@@ -303,25 +317,27 @@ export function ArchiveCategoryWorkspace({
                     const Icon = action.icon;
 
                     return (
-                      <button
+                      <Button
                         key={action.label}
                         type="button"
                         onClick={action.action}
-                        className="flex min-h-[40px] flex-col items-center justify-center rounded-xl border border-[#ecefed] bg-white px-2 py-2 text-[10px] font-[600] text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
+                        variant="secondary"
+                        className="min-h-[40px] flex-col rounded-xl border border-[#ecefed] bg-white px-2 py-2 text-[10px] font-[600] text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
                       >
                         <Icon className="mb-1 h-4 w-4 text-brand" />
                         {action.label}
-                      </button>
+                      </Button>
                     );
                   })}
-                  <button
+                  <Button
                     type="button"
                     onClick={() => removeItem(item.id)}
-                    className="col-span-2 mt-1 inline-flex min-h-[36px] items-center justify-center gap-2 rounded-xl bg-[#fff0ef] text-[11px] font-[700] text-[#ff3b2f]"
+                    variant="ghost"
+                    className="col-span-2 mt-1 min-h-[36px] rounded-xl bg-[#fff0ef] text-[11px] font-[700] text-[#ff3b2f] hover:bg-[#ffe4e0] hover:text-[#ff3b2f]"
                   >
                     <Trash2 className="h-4 w-4" />
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </article>
             ))}
@@ -332,7 +348,7 @@ export function ArchiveCategoryWorkspace({
               </div>
             ) : null}
           </div>
-        </section>
+        </Card>
       </section>
 
       <ArchiveItemDialog

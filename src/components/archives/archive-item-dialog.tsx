@@ -1,6 +1,8 @@
 "use client";
 
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export type ArchiveItemForm = {
   fileName: string;
@@ -80,30 +82,31 @@ export function ArchiveItemDialog({
               <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
                 {label}
               </span>
-              <input
+              <Input
                 value={form[field]}
                 onChange={(event) => onChange(field, event.target.value)}
-                className="h-12 w-full rounded-2xl border border-line px-4 text-[15px] text-[#18211a] outline-none transition-colors focus:border-brand"
+                className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a] focus-visible:ring-0"
               />
             </label>
           ))}
         </div>
 
         <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button
+          <Button
             type="button"
             onClick={onClose}
-            className="inline-flex min-h-[48px] items-center justify-center rounded-full border border-line px-6 text-[15px] font-[600] text-[#2f3a32]"
+            variant="secondary"
+            className="min-h-[48px] px-6 text-[15px] font-[600] text-[#2f3a32]"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={onSubmit}
-            className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-7 text-[15px] font-[600] text-white"
+            className="min-h-[48px] px-7 text-[15px] font-[600]"
           >
             {mode === "add" ? "Add Item" : "Save Changes"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

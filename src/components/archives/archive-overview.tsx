@@ -6,6 +6,8 @@ import { FolderPlus } from "lucide-react";
 
 import { archiveCategories } from "@/components/archives/archive-data";
 import { ArchiveCategoryDialog } from "@/components/archives/archive-category-dialog";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 type CustomCategory = {
   slug: string;
@@ -46,16 +48,17 @@ export function ArchiveOverview() {
           <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
             Archives
           </h1>
-          <button
+          <Button
             type="button"
             onClick={() => setDialogOpen(true)}
-            className="inline-flex min-h-[42px] items-center justify-center gap-2 self-start rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-6 text-[14px] font-[600] text-white xl:self-auto"
+            size="default"
+            className="gap-2 self-start text-[14px] xl:self-auto"
           >
             Create <FolderPlus className="h-4 w-4" />
-          </button>
+          </Button>
         </header>
 
-        <section className="rounded-[30px] bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
+        <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
           <div className="mb-8">
             <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#434747]">
               Choose the category
@@ -67,9 +70,9 @@ export function ArchiveOverview() {
               const Icon = category.icon;
 
               return (
-                <article
+                <Card
                   key={category.slug}
-                  className="rounded-[22px] bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]"
+                  className="rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]"
                 >
                   <div className="mb-5 grid h-20 place-items-center text-brand">
                     <Icon className="h-14 w-14" />
@@ -77,20 +80,17 @@ export function ArchiveOverview() {
                   <h3 className="text-center text-[16px] font-[700] text-[#141915]">
                     {category.title}
                   </h3>
-                  <Link
-                    href={`/archives/${category.slug}`}
-                    className="mt-5 inline-flex min-h-[42px] w-full items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-6 text-[14px] font-[600] text-white"
-                  >
-                    Open
-                  </Link>
-                </article>
+                  <Button asChild size="default" className="mt-5 w-full text-[14px]">
+                    <Link href={`/archives/${category.slug}`}>Open</Link>
+                  </Button>
+                </Card>
               );
             })}
 
             {customCategories.map((category) => (
-              <article
+              <Card
                 key={category.slug}
-                className="rounded-[22px] bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)]"
+                className="rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]"
               >
                 <div className="mb-5 grid h-20 place-items-center text-brand">
                   <FolderPlus className="h-14 w-14" />
@@ -101,10 +101,10 @@ export function ArchiveOverview() {
                 <div className="mt-5 inline-flex min-h-[42px] w-full items-center justify-center rounded-full border border-brand bg-brand-soft px-6 text-[14px] font-[600] text-brand">
                   Added
                 </div>
-              </article>
+              </Card>
             ))}
           </div>
-        </section>
+        </Card>
       </section>
 
       <ArchiveCategoryDialog
