@@ -8,6 +8,7 @@ import { ProjectCard, type ProjectCardItem } from "@/components/projects/project
 import { ProjectSortDropdown } from "@/components/projects/project-sort-dropdown";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type ProjectFilterValue = "ONGOING" | "ON_HOLD" | "COMPLETED";
 type ProjectSortValue = "newest" | "oldest" | "name";
@@ -32,19 +33,19 @@ function ProjectsGridSkeleton() {
       {Array.from({ length: 4 }).map((_, index) => (
         <Card key={index} className="rounded-[22px] p-5 shadow-[0_18px_42px_rgba(23,39,28,0.05)]">
           <CardContent className="p-0">
-            <div className="animate-pulse space-y-4">
-              <div className="h-6 w-28 rounded-full bg-[#edf2ec]" />
-              <div className="h-4 w-32 rounded-full bg-[#edf2ec]" />
+            <div className="space-y-4">
+              <Skeleton className="h-6 w-28 rounded-full" />
+              <Skeleton className="h-4 w-32 rounded-full" />
               <div className="space-y-2 pt-2">
-                <div className="h-7 w-full rounded-full bg-[#edf2ec]" />
-                <div className="h-7 w-10/12 rounded-full bg-[#edf2ec]" />
-                <div className="h-7 w-8/12 rounded-full bg-[#edf2ec]" />
+                <Skeleton className="h-7 w-full rounded-full" />
+                <Skeleton className="h-7 w-10/12 rounded-full" />
+                <Skeleton className="h-7 w-8/12 rounded-full" />
               </div>
               <div className="space-y-2 pt-1">
-                <div className="h-4 w-36 rounded-full bg-[#edf2ec]" />
-                <div className="h-4 w-40 rounded-full bg-[#edf2ec]" />
+                <Skeleton className="h-4 w-36 rounded-full" />
+                <Skeleton className="h-4 w-40 rounded-full" />
               </div>
-              <div className="h-[52px] w-full rounded-full bg-[#edf2ec]" />
+              <Skeleton className="h-[52px] w-full rounded-full" />
             </div>
           </CardContent>
         </Card>
