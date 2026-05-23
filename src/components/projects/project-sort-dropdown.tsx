@@ -16,6 +16,9 @@ type ProjectSortDropdownProps = {
   activeSort: "newest" | "oldest" | "name";
   activeStatus: "ONGOING" | "ON_HOLD" | "COMPLETED";
   query: string;
+  onSelectSort?: (sort: "newest" | "oldest" | "name") => void;
+  disabled?: boolean;
+  pending?: boolean;
 };
 
 const sortOptions = [
@@ -32,13 +35,16 @@ export function ProjectSortDropdown({
   activeSort,
   activeStatus,
   query,
+  onSelectSort,
+  disabled = false,
+  pending = false,
 }: ProjectSortDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="lg" className="gap-2 text-[18px]">
+        <Button variant="outline" size="lg" className="gap-2 text-[18px]" disabled={disabled}>
           Sort
-          <ChevronDown className="h-4 w-4" />
+          <ChevronDown className={`h-4 w-4 transition-transform ${pending ? "animate-pulse" : ""}`} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[220px]">
@@ -47,24 +53,37 @@ export function ProjectSortDropdown({
         </DropdownMenuLabel>
 
         {sortOptions.map((option) => (
-          <DropdownMenuItem key={option.value} asChild>
-            <Link
-              href={{
-                pathname: "/projects",
-                query: {
-                  ...(query ? { q: query } : {}),
-                  status: activeStatus,
-                  sort: option.value,
-                },
-              }}
+          onSelectSort ? (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => onSelectSort(option.value)}
               className="flex w-full items-center gap-2"
             >
               <span className="flex h-4 w-4 items-center justify-center">
                 {activeSort === option.value ? <Check className="h-4 w-4" /> : null}
               </span>
               {option.label}
-            </Link>
-          </DropdownMenuItem>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem key={option.value} asChild>
+              <Link
+                href={{
+                  pathname: "/projects",
+                  query: {
+                    ...(query ? { q: query } : {}),
+                    status: activeStatus,
+                    sort: option.value,
+                  },
+                }}
+                className="flex w-full items-center gap-2"
+              >
+                <span className="flex h-4 w-4 items-center justify-center">
+                  {activeSort === option.value ? <Check className="h-4 w-4" /> : null}
+                </span>
+                {option.label}
+              </Link>
+            </DropdownMenuItem>
+          )
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
