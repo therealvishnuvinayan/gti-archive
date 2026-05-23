@@ -1,9 +1,13 @@
 import { CalendarWorkspace } from "@/components/calendar/calendar-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getCalendarEvents } from "@/lib/calendar";
+import { getCollaborators } from "@/lib/collaboration";
 
 export default async function CalendarPage() {
-  const events = await getCalendarEvents();
+  const [events, collaborators] = await Promise.all([
+    getCalendarEvents(),
+    getCollaborators(),
+  ]);
 
   return (
     <DashboardLayout
@@ -11,7 +15,10 @@ export default async function CalendarPage() {
         searchPlaceholder: "Search calendar...",
       }}
     >
-      <CalendarWorkspace initialEvents={events} />
+      <CalendarWorkspace
+        initialEvents={events}
+        collaborators={collaborators}
+      />
     </DashboardLayout>
   );
 }

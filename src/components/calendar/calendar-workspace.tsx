@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
+import { saveCollaboratorAction } from "@/app/collaboration/actions";
 import { saveCalendarEventAction } from "@/app/calendar/actions";
 import {
   CalendarMonthGrid,
@@ -11,6 +12,12 @@ import {
   isSameCalendarDay,
   parseCalendarDateValue,
 } from "@/components/calendar/calendar-month-grid";
+import {
+  CollaboratorDialog,
+  type AccessArea,
+  type CollaboratorForm,
+  type PermissionLevel,
+} from "@/components/collaboration/collaborator-dialog";
 import {
   EventDialog,
   type CalendarFormState,
@@ -32,16 +39,13 @@ import type {
   CalendarEventRecord,
   SaveCalendarEventInput,
 } from "@/lib/calendar";
+import type { CollaboratorRecord } from "@/lib/collaboration";
 
 type CalendarView = "week" | "day" | "month";
 
 type CalendarWorkspaceProps = {
   initialEvents: CalendarEventRecord[];
-};
-
-type Collaborator = {
-  name: string;
-  access: "Full Access" | "Limited Access";
+  collaborators: CollaboratorRecord[];
 };
 
 const hours = Array.from({ length: 9 }, (_, index) => 9 + index);
@@ -49,13 +53,6 @@ const hourHeight = 74;
 const calendarTypes: CalendarType[] = ["Projects", "Events", "Reminders", "Payments"];
 const today = new Date();
 
-const collaborators: Collaborator[] = [
-  { name: "User 1", access: "Limited Access" },
-  { name: "User 2", access: "Full Access" },
-  { name: "User 3", access: "Full Access" },
-  { name: "User 4", access: "Limited Access" },
-  { name: "User 5", access: "Full Access" },
-];
 
 const toneClasses: Record<
   EventTone,
@@ -177,10 +174,24 @@ function buildWeekOptions(anchor: Date) {
   });
 }
 
-export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+export function CalendarWorkspace({
+  initialEvents,
+  collaborators,
+}: CalendarWorkspaceProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [view, setView] = useState<CalendarView>("week");
   const [events, setEvents] = useState<CalendarEventRecord[]>([...initialEvents].sort(compareEvents));
+  const [collaboratorRecords, setCollaboratorRecords] =
+    useState<CollaboratorRecord[]>(collaborators);
   const [filters, setFilters] = useState<Record<CalendarType, boolean>>({
     Projects: true,
     Events: true,
@@ -191,6 +202,20 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
   const [dialogError, setDialogError] = useState<string | undefined>();
   const [dialogSaving, setDialogSaving] = useState(false);
   const [dialogTitle, setDialogTitle] = useState("Create event");
+  const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
+  const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
+  const [collaboratorSaving, setCollaboratorSaving] = useState(false);
+  const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
+    name: "",
+    email: "",
+    type: "Internal",
+    permissions: {
+      project: "limited",
+      calendar: "full",
+      library: "none",
+      archive: "none",
+    },
+  });
   const [form, setForm] = useState<CalendarFormState>(
     getDefaultForm(formatCalendarDateValue(today)),
   );
@@ -215,12 +240,83 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
         .slice(0, 5),
     [visibleEvents],
   );
+  const visibleCollaborators = useMemo(
+    () =>
+      collaboratorRecords
+        .filter((collaborator) => collaborator.permissions.calendar !== "none")
+        .sort((left, right) => {
+          if (left.permissions.calendar === right.permissions.calendar) {
+            return left.name.localeCompare(right.name);
+          }
+
+          return left.permissions.calendar === "full" ? -1 : 1;
+        }),
+    [collaboratorRecords],
+  );
 
   function setFormValue<K extends keyof CalendarFormState>(
     field: K,
     value: CalendarFormState[K],
   ) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function setCollaboratorFormValue<K extends keyof CollaboratorForm>(
+    field: K,
+    value: CollaboratorForm[K],
+  ) {
+    setCollaboratorForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function setCollaboratorPermissionValue(area: AccessArea, value: PermissionLevel) {
+    setCollaboratorForm((current) => ({
+      ...current,
+      permissions: { ...current.permissions, [area]: value },
+    }));
+  }
+
+  function openCollaboratorDialog() {
+    setCollaboratorForm({
+      name: "",
+      email: "",
+      type: "Internal",
+      permissions: {
+        project: "limited",
+        calendar: "full",
+        library: "none",
+        archive: "none",
+      },
+    });
+    setCollaboratorDialogError(undefined);
+    setCollaboratorDialogOpen(true);
+  }
+
+  async function saveCollaborator() {
+    if (!collaboratorForm.name.trim() || !collaboratorForm.email.trim()) {
+      setCollaboratorDialogError("Enter both collaborator name and email.");
+      return;
+    }
+
+    setCollaboratorSaving(true);
+    setCollaboratorDialogError(undefined);
+
+    try {
+      const result = await saveCollaboratorAction(collaboratorForm);
+
+      if ("error" in result) {
+        setCollaboratorDialogError(result.error);
+        return;
+      }
+
+      setCollaboratorRecords((current) => [...current, result.collaborator]);
+      setCollaboratorDialogOpen(false);
+    } catch {
+      setCollaboratorDialogError(
+        "Unable to save the collaborator right now. Please try again.",
+      );
+    } finally {
+      setCollaboratorSaving(false);
+    }
   }
 
   function openDialog(date: Date, start = "09:00", end = "10:00") {
@@ -451,30 +547,50 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
       <Card className="rounded-[20px]">
         <CardHeader className="flex-row items-center justify-between pb-3">
           <CardTitle className="text-[13px]">Collaborators</CardTitle>
-          <Button type="button" variant="ghost" size="icon" className="size-8 text-brand" aria-label="Add collaborator">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 text-brand"
+            onClick={openCollaboratorDialog}
+            aria-label="Invite collaborator"
+            title="Invite collaborator"
+          >
             <Plus className="h-4 w-4" />
           </Button>
         </CardHeader>
         <CardContent className="pt-0">
-        <ul className="space-y-3">
-          {collaborators.map((collaborator, index) => (
-            <li key={collaborator.name} className="flex items-center gap-2.5">
-              <div className="grid h-8 w-8 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[11px] font-[700] text-white">
-                U{index + 1}
-              </div>
-              <div>
-                <p className="text-[13px] font-[600] text-[#232c26]">{collaborator.name}</p>
-                <p
-                  className={`text-[10px] ${
-                    collaborator.access === "Full Access" ? "text-[#50b848]" : "text-[#f29b23]"
-                  }`}
-                >
-                  {collaborator.access}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
+          {visibleCollaborators.length > 0 ? (
+            <ul className="space-y-3">
+              {visibleCollaborators.map((collaborator) => {
+                const fullAccess = collaborator.permissions.calendar === "full";
+
+                return (
+                  <li key={collaborator.id} className="flex items-center gap-2.5">
+                    <div className="grid h-8 w-8 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[11px] font-[700] text-white">
+                      {getInitials(collaborator.name)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-[600] text-[#232c26]">
+                        {collaborator.name}
+                      </p>
+                      <p
+                        className={`text-[10px] ${
+                          fullAccess ? "text-[#50b848]" : "text-[#f29b23]"
+                        }`}
+                      >
+                        {fullAccess ? "Full Access" : "Limited Access"}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-[12px] text-[#7f877f]">
+              No collaborators currently have calendar access.
+            </p>
+          )}
         </CardContent>
       </Card>
     );
@@ -709,6 +825,20 @@ export function CalendarWorkspace({ initialEvents }: CalendarWorkspaceProps) {
           setDialogOpen(false);
         }}
         onSubmit={saveEvent}
+      />
+      <CollaboratorDialog
+        isOpen={collaboratorDialogOpen}
+        mode="invite"
+        form={collaboratorForm}
+        error={collaboratorDialogError}
+        saving={collaboratorSaving}
+        onClose={() => {
+          setCollaboratorDialogError(undefined);
+          setCollaboratorDialogOpen(false);
+        }}
+        onSubmit={saveCollaborator}
+        onChange={setCollaboratorFormValue}
+        onPermissionChange={setCollaboratorPermissionValue}
       />
     </>
   );

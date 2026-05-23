@@ -4,7 +4,7 @@ import type { User } from "@prisma/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const SESSION_COOKIE_NAME = "gti_session";
 
@@ -82,13 +82,15 @@ async function createSession(userId: string, rememberMe: boolean) {
       (rememberMe ? REMEMBER_ME_SESSION_DAYS : DEFAULT_SESSION_DAYS),
   );
 
-  const session = await prisma.session.create({
-    data: {
-      token: `${randomUUID()}-${randomBytes(16).toString("hex")}`,
-      userId,
-      expiresAt,
-    },
-  });
+  const session = await withPrismaRetry(() =>
+    prisma.session.create({
+      data: {
+        token: `${randomUUID()}-${randomBytes(16).toString("hex")}`,
+        userId,
+        expiresAt,
+      },
+    }),
+  );
 
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, session.token, {
@@ -106,22 +108,26 @@ export async function signInUser(options: {
   rememberMe: boolean;
 }) {
   const normalizedEmail = validateCredentials(options.email, options.password);
-  const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-  });
+  const user = await withPrismaRetry(() =>
+    prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    }),
+  );
 
   if (!user || !verifyPassword(options.password, user.passwordHash)) {
     throw new AuthError("Invalid email or password.");
   }
 
-  await prisma.session.deleteMany({
-    where: {
-      userId: user.id,
-      expiresAt: {
-        lt: new Date(),
+  await withPrismaRetry(() =>
+    prisma.session.deleteMany({
+      where: {
+        userId: user.id,
+        expiresAt: {
+          lt: new Date(),
+        },
       },
-    },
-  });
+    }),
+  );
 
   await createSession(user.id, options.rememberMe);
 
@@ -136,14 +142,16 @@ export const getCurrentUser = cache(async () => {
     return null;
   }
 
-  const session = await prisma.session.findUnique({
-    where: {
-      token: sessionToken,
-    },
-    include: {
-      user: true,
-    },
-  });
+  const session = await withPrismaRetry(() =>
+    prisma.session.findUnique({
+      where: {
+        token: sessionToken,
+      },
+      include: {
+        user: true,
+      },
+    }),
+  );
 
   if (!session || session.expiresAt <= new Date()) {
     return null;
@@ -167,11 +175,13 @@ export async function signOutCurrentSession() {
   const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
   if (sessionToken) {
-    await prisma.session.deleteMany({
-      where: {
-        token: sessionToken,
-      },
-    });
+    await withPrismaRetry(() =>
+      prisma.session.deleteMany({
+        where: {
+          token: sessionToken,
+        },
+      }),
+    );
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);
