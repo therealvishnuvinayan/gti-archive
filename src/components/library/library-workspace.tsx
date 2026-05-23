@@ -15,6 +15,17 @@ import {
   UserRound,
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 type LibraryCategory = "assets" | "finance" | "users" | "favourites";
 
 type LibraryItem = {
@@ -274,9 +285,9 @@ export function LibraryWorkspace() {
           const active = activeCategory === card.key;
 
           return (
-            <article
+            <Card
               key={card.key}
-              className={`rounded-[22px] bg-white p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-colors ${
+              className={`rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] ${
                 active ? "ring-2 ring-brand/45" : ""
               }`}
             >
@@ -303,14 +314,15 @@ export function LibraryWorkspace() {
                 files available
               </p>
 
-              <button
+              <Button
                 type="button"
                 onClick={() => setActiveCategory(card.key)}
-                className="mt-5 inline-flex min-h-[42px] w-full items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-6 text-[14px] font-[600] text-white"
+                size="default"
+                className="mt-5 w-full text-[14px]"
               >
                 View
-              </button>
-            </article>
+              </Button>
+            </Card>
           );
         })}
       </div>
@@ -318,98 +330,113 @@ export function LibraryWorkspace() {
   }
 
   function renderFilterBar() {
-    const selectClassName =
-      "h-[36px] rounded-full bg-white px-4 text-[12px] text-[#657069] outline-none";
-
     return (
-      <div className="rounded-[18px] bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3">
+      <Card className="rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3 shadow-none">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-7">
-          <input
+          <Input
             value={filters.search}
             onChange={(event) => updateFilter("search", event.target.value)}
             placeholder="Search....."
-            className={`${selectClassName} px-5`}
+            className="h-[36px] border-0 px-5 text-[12px] text-[#657069]"
           />
 
-          <select
+          <Select
             value={filters.project}
-            onChange={(event) => updateFilter("project", event.target.value)}
-            className={selectClassName}
+            onValueChange={(value) => updateFilter("project", value)}
           >
-            <option value="">Project</option>
-            {selectOptions.project.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+              <SelectValue placeholder="Project" />
+            </SelectTrigger>
+            <SelectContent>
+              {selectOptions.project.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <select
+          <Select
             value={filters.date}
-            onChange={(event) => updateFilter("date", event.target.value)}
-            className={selectClassName}
+            onValueChange={(value) => updateFilter("date", value)}
           >
-            <option value="">Date</option>
-            {selectOptions.date.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+              <SelectValue placeholder="Date" />
+            </SelectTrigger>
+            <SelectContent>
+              {selectOptions.date.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <select
+          <Select
             value={filters.createdBy}
-            onChange={(event) => updateFilter("createdBy", event.target.value)}
-            className={selectClassName}
+            onValueChange={(value) => updateFilter("createdBy", value)}
           >
-            <option value="">Created by</option>
-            {selectOptions.createdBy.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+              <SelectValue placeholder="Created by" />
+            </SelectTrigger>
+            <SelectContent>
+              {selectOptions.createdBy.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <select
+          <Select
             value={filters.type}
-            onChange={(event) => updateFilter("type", event.target.value)}
-            className={selectClassName}
+            onValueChange={(value) => updateFilter("type", value)}
           >
-            <option value="">Type</option>
-            {selectOptions.type.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              {selectOptions.type.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <select
+          <Select
             value={filters.source}
-            onChange={(event) => updateFilter("source", event.target.value)}
-            className={selectClassName}
+            onValueChange={(value) => updateFilter("source", value)}
           >
-            <option value="">Tag</option>
-            {selectOptions.source.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+              <SelectValue placeholder="Tag" />
+            </SelectTrigger>
+            <SelectContent>
+              {selectOptions.source.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <select
+          <Select
             value={filters.priority}
-            onChange={(event) => updateFilter("priority", event.target.value)}
-            className={selectClassName}
+            onValueChange={(value) => updateFilter("priority", value)}
           >
-            <option value="">Priority</option>
-            {selectOptions.priority.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              {selectOptions.priority.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -421,7 +448,7 @@ export function LibraryWorkspace() {
         </h1>
       </header>
 
-      <section className="rounded-[30px] bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
+      <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
         <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-3">
             <h2
@@ -431,13 +458,14 @@ export function LibraryWorkspace() {
             >
               Quick Menu
             </h2>
-            <button
+            <Button
               type="button"
               onClick={() => setCollapsed((current) => !current)}
-              className="inline-flex min-h-[28px] items-center gap-1 rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-4 text-[12px] font-[600] text-white"
+              size="sm"
+              className="min-h-[28px] gap-1 px-4 text-[12px]"
             >
               {collapsed ? "Expand" : "Collapse"} <ChevronDown className={`h-3.5 w-3.5 ${collapsed ? "" : "rotate-180"}`} />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -457,7 +485,7 @@ export function LibraryWorkspace() {
             </thead>
             <tbody>
               {visibleItems.map((item) => (
-                <tr key={item.id} className="border-t border-[#edf0ee] text-[13px] text-[#141915]">
+                <tr key={item.id} className="border-t border-[#edf0ee] text-[13px] text-[#141915] transition-colors hover:bg-[#f8fbf8]">
                   <td className="px-5 py-4 font-[600] leading-[1.2]">{item.fileName}</td>
                   <td className="px-4 py-4">{item.project}</td>
                   <td className="px-4 py-4">{item.date}</td>
@@ -467,41 +495,48 @@ export function LibraryWorkspace() {
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
-                      <button
+                      <Button
                         type="button"
-                        className="text-brand"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 rounded-full text-brand"
                         aria-label={`Preview ${item.fileName}`}
                         title="Preview"
                       >
                         <Eye className="h-4.5 w-4.5" />
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
                         onClick={() => toggleFavourite(item.id)}
-                        className="text-brand"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 rounded-full text-brand"
                         aria-label={`Toggle favourite for ${item.fileName}`}
                         title={item.favourite ? "Remove favourite" : "Add favourite"}
                       >
                         <Tag className={`h-4.5 w-4.5 ${item.favourite ? "fill-current" : ""}`} />
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        className="inline-flex min-h-[28px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-3 text-[10px] font-[600] text-white"
+                        size="sm"
+                        className="min-h-[28px] px-3 text-[10px]"
                         aria-label={`Download ${item.fileName}`}
                         title="Download"
                       >
                         <span className="mr-1.5">Download</span>
                         <Download className="h-3 w-3" />
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
                         onClick={() => removeItem(item.id)}
-                        className="text-[#ff2e00]"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 rounded-full text-[#ff2e00] hover:bg-[#fff3f0] hover:text-[#ff2e00]"
                         aria-label={`Delete ${item.fileName}`}
                         title="Delete"
                       >
                         <Trash2 className="h-4.5 w-4.5" />
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -516,7 +551,7 @@ export function LibraryWorkspace() {
             </tbody>
           </table>
         </div>
-      </section>
+      </Card>
     </section>
   );
 }
