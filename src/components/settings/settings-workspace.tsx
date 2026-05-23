@@ -13,6 +13,9 @@ import {
   UserRound,
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+
 type SettingsWorkspaceProps = {
   user: {
     name: string;
@@ -53,7 +56,7 @@ function SettingsCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[24px] border border-[#ebefe8] bg-white p-5 shadow-[0_16px_48px_rgba(23,39,28,0.05)] sm:p-6">
+    <Card className="rounded-[24px] border border-[#ebefe8] p-5 sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1.5">
           <h2 className="text-[28px] font-[600] leading-tight tracking-[-0.03em] text-[#1b231d]">
@@ -63,18 +66,19 @@ function SettingsCard({
         </div>
 
         {actionLabel ? (
-          <button
+          <Button
             type="button"
-            className="inline-flex h-[42px] items-center justify-center gap-2 rounded-xl border border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] transition-colors hover:bg-brand-soft"
+            variant="outline"
+            className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
           >
             {ActionIcon ? <ActionIcon className="h-4 w-4" /> : null}
             {actionLabel}
-          </button>
+          </Button>
         ) : null}
       </div>
 
       <div className="mt-5">{children}</div>
-    </section>
+    </Card>
   );
 }
 
@@ -111,7 +115,7 @@ export function SettingsWorkspace({ user }: SettingsWorkspaceProps) {
       </header>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="rounded-[24px] border border-[#ebefe8] bg-white p-4 shadow-[0_16px_48px_rgba(23,39,28,0.05)]">
+        <Card className="rounded-[24px] border border-[#ebefe8] p-4">
           <nav aria-label="Settings sections">
             <ul className="space-y-1.5">
               {settingsNavItems.map((item) => {
@@ -119,9 +123,10 @@ export function SettingsWorkspace({ user }: SettingsWorkspaceProps) {
 
                 return (
                   <li key={item.label}>
-                    <button
+                    <Button
                       type="button"
-                      className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-[14px] font-semibold transition-colors ${
+                      variant="ghost"
+                      className={`flex h-auto w-full items-center justify-start gap-3 rounded-2xl px-4 py-3 text-left text-[14px] font-semibold ${
                         item.active
                           ? "bg-[#f5faf6] text-brand"
                           : "text-[#5f685f] hover:bg-[#f7faf7] hover:text-[#1d271f]"
@@ -133,13 +138,13 @@ export function SettingsWorkspace({ user }: SettingsWorkspaceProps) {
                         }`}
                       />
                       {item.label}
-                    </button>
+                    </Button>
                   </li>
                 );
               })}
             </ul>
           </nav>
-        </aside>
+        </Card>
 
         <div className="space-y-4">
           <SettingsCard
