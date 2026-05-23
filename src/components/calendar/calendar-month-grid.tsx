@@ -107,17 +107,22 @@ export function CalendarMonthGrid({
   const weeks = getWeeksForMonth(month);
   const yearOptions = Array.from({ length: 21 }, (_, index) => month.getFullYear() - 10 + index);
   const compactSelectClassName =
-    "h-7 min-w-0 border-none bg-transparent px-0 text-[13px] font-[700] text-[#111712] shadow-none focus-visible:ring-0";
+    "h-7 min-w-0 border-none bg-transparent pl-0 pr-3 text-[11px] font-[700] text-[#111712] shadow-none focus-visible:ring-0 [&_svg]:h-3 [&_svg]:w-3";
 
   return (
     <div className={cn(compact ? "space-y-3" : "space-y-4", className)}>
       <div
         className={cn(
           "flex items-center justify-between gap-2",
-          compact && "gap-1",
+          compact && "justify-start gap-1.5",
         )}
       >
-        <div className={cn("flex min-w-0 flex-1 items-center gap-2", compact && "gap-1")}>
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2",
+            compact && "min-w-fit flex-none gap-1.5",
+          )}
+        >
           <Select
             value={String(month.getMonth())}
             onValueChange={(value) =>
@@ -128,7 +133,7 @@ export function CalendarMonthGrid({
               className={cn(
                 "border-none bg-transparent px-0 font-[700] text-[#111712] shadow-none focus-visible:ring-0",
                 compact
-                  ? cn(compactSelectClassName, "w-[78px] flex-none")
+                  ? cn(compactSelectClassName, "w-[72px] flex-none")
                   : "h-9 w-[138px] text-[16px]",
               )}
             >
@@ -153,7 +158,7 @@ export function CalendarMonthGrid({
               className={cn(
                 "border-none bg-transparent px-0 font-[700] text-[#111712] shadow-none focus-visible:ring-0",
                 compact
-                  ? cn(compactSelectClassName, "w-[58px] flex-none")
+                  ? cn(compactSelectClassName, "w-[84px] flex-none")
                   : "h-9 w-[92px] text-[16px]",
               )}
             >
@@ -169,7 +174,7 @@ export function CalendarMonthGrid({
           </Select>
         </div>
 
-        <div className={cn("flex shrink-0 items-center gap-1", compact && "gap-0")}>
+        <div className={cn("flex shrink-0 items-center gap-1", compact && "ml-auto gap-0")}>
           <Button
             type="button"
             variant="ghost"
