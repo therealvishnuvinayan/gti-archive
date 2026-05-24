@@ -36,7 +36,7 @@ export default async function EditProjectPage({
       }}
     >
       <CreateProjectWorkspace
-        initialCollaborators={collaborators}
+        availableCollaborators={collaborators}
         mode="edit"
         initialValues={project}
       />

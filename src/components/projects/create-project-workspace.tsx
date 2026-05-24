@@ -21,6 +21,7 @@ import {
 import {
   initialProjectFormState,
   type ProjectEditorInitialAttachment,
+  type ProjectEditorInitialCollaborator,
   type ProjectEditorInitialValues,
   type ProjectFormFieldErrors,
   type ProjectFormState,
@@ -30,6 +31,7 @@ import {
   CollaboratorDialog,
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
+import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import {
   MotionItem,
@@ -85,7 +87,7 @@ type MonthPickerProps = {
 };
 
 type CreateProjectWorkspaceProps = {
-  initialCollaborators: CollaboratorRecord[];
+  availableCollaborators: CollaboratorRecord[];
   mode?: "create" | "edit";
   initialValues?: ProjectEditorInitialValues;
   action?: (
@@ -211,7 +213,7 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
 }
 
 export function CreateProjectWorkspace({
-  initialCollaborators,
+  availableCollaborators,
   mode = "create",
   initialValues,
   action = mode === "edit" ? updateProjectAction : createProjectAction,
@@ -254,18 +256,21 @@ export function CreateProjectWorkspace({
         }))
       : [{ id: "stage-1", name: "Stage 1", budget: "", description: "" }],
   );
-  const [collaborators, setCollaborators] =
-    useState<CollaboratorRecord[]>(initialCollaborators);
+  const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
+    useState<CollaboratorRecord[]>(availableCollaborators);
+  const [assignedCollaborators, setAssignedCollaborators] = useState<ProjectEditorInitialCollaborator[]>(
+    initialValues?.collaborators ?? [],
+  );
   const [projectAttachments, setProjectAttachments] = useState<ProjectEditorInitialAttachment[]>(
     initialValues?.attachments ?? [],
   );
   const [pendingProjectFiles, setPendingProjectFiles] = useState<File[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>(
     getDefaultCollaboratorForm(),
   );
   const [collaboratorError, setCollaboratorError] = useState<string>();
-  const [collaboratorNotice, setCollaboratorNotice] = useState<string>();
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string>();
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
@@ -275,6 +280,10 @@ export function CreateProjectWorkspace({
   const [, startRefresh] = useTransition();
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
+  const selectedCollaboratorIds = useMemo(
+    () => assignedCollaborators.map((collaborator) => collaborator.id),
+    [assignedCollaborators],
+  );
 
   const overview = useMemo(
     () => ({
@@ -331,6 +340,40 @@ export function CreateProjectWorkspace({
     setDialogOpen(true);
   }
 
+  function toggleAssignedCollaborator(collaboratorId: string) {
+    const availableCollaborator = availableCollaboratorRecords.find(
+      (collaborator) => collaborator.id === collaboratorId,
+    );
+
+    if (!availableCollaborator) {
+      return;
+    }
+
+    setAssignedCollaborators((current) => {
+      const exists = current.some((collaborator) => collaborator.id === collaboratorId);
+
+      if (exists) {
+        return current.filter((collaborator) => collaborator.id !== collaboratorId);
+      }
+
+      return [
+        ...current,
+        {
+          id: availableCollaborator.id,
+          name: availableCollaborator.name,
+          email: availableCollaborator.email,
+          role:
+            availableCollaborator.type === "External"
+              ? "External Collaborator"
+              : "Collaborator",
+          group: availableCollaborator.type === "External" ? "external" : "internal",
+          access: "view",
+          removable: true,
+        },
+      ];
+    });
+  }
+
   async function handleCollaboratorInvite() {
     if (!collaboratorForm.name.trim() || !collaboratorForm.email.trim()) {
       setCollaboratorError("Enter both collaborator name and email.");
@@ -339,7 +382,6 @@ export function CreateProjectWorkspace({
 
     setCollaboratorSaving(true);
     setCollaboratorError(undefined);
-    setCollaboratorNotice(undefined);
 
     try {
       const result = await saveCollaboratorAction(collaboratorForm);
@@ -349,11 +391,24 @@ export function CreateProjectWorkspace({
         return;
       }
 
-      setCollaborators((current) => [...current, result.collaborator]);
-      setCollaboratorNotice(
-        result.warning || "Collaborator created and invite processing completed.",
-      );
+      setAvailableCollaboratorRecords((current) => [...current, result.collaborator]);
+      setAssignedCollaborators((current) => [
+        ...current,
+        {
+          id: result.collaborator.id,
+          name: result.collaborator.name,
+          email: result.collaborator.email,
+          role:
+            result.collaborator.type === "External"
+              ? "External Collaborator"
+              : "Collaborator",
+          group: result.collaborator.type === "External" ? "external" : "internal",
+          access: "view",
+          removable: true,
+        },
+      ]);
       setDialogOpen(false);
+      setPickerOpen(false);
     } catch {
       setCollaboratorError("Unable to save the collaborator right now. Please try again.");
     } finally {
@@ -595,6 +650,14 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
+      {selectedCollaboratorIds.map((collaboratorId) => (
+        <input
+          key={collaboratorId}
+          type="hidden"
+          name="collaboratorIds"
+          value={collaboratorId}
+        />
+      ))}
       {mode === "edit" && initialValues ? (
         <input type="hidden" name="projectId" value={initialValues.id} />
       ) : null}
@@ -1065,15 +1128,9 @@ export function CreateProjectWorkspace({
           </CardHeader>
 
           <CardContent className="pt-0">
-          {collaboratorNotice ? (
-            <div className="mb-4 rounded-[16px] border border-[#d8e7d9] bg-[#f6fbf7] px-4 py-3 text-[12px] text-brand">
-              {collaboratorNotice}
-            </div>
-          ) : null}
-
           <div className="space-y-3">
-            {collaborators.length > 0 ? (
-              collaborators.map((collaborator) => (
+            {assignedCollaborators.length > 0 ? (
+              assignedCollaborators.map((collaborator) => (
                 <div
                   key={collaborator.id}
                   className="rounded-[16px] border border-[#e3e8e2] bg-[#fbfcfa] px-4 py-3"
@@ -1084,29 +1141,36 @@ export function CreateProjectWorkspace({
                         {collaborator.name}
                       </p>
                       <p className="truncate text-[11px] text-[#7f877f]">
-                        {collaborator.email}
+                        {collaborator.email ?? collaborator.role}
                       </p>
                     </div>
-                    <Badge variant="secondary" className="shrink-0">
-                      {collaborator.type}
+                    <Badge
+                      variant="secondary"
+                      className={`shrink-0 ${
+                        collaborator.group === "external"
+                          ? "border border-[#f1dfcf] bg-[#fff4ea] text-[#ca7b3b]"
+                          : "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]"
+                      }`}
+                    >
+                      {collaborator.group === "external" ? "External" : "Internal"}
                     </Badge>
                   </div>
                 </div>
               ))
             ) : (
               <p className="text-[13px] text-[#7a837b]">
-                No collaborators invited yet.
+                No collaborators added yet.
               </p>
             )}
 
             <Button
               type="button"
-              onClick={openCollaboratorInvite}
+              onClick={() => setPickerOpen(true)}
               variant="ghost"
               size="sm"
               className="px-0 text-[14px] font-[600] text-brand"
             >
-              Invite+
+              Add Collaborator
             </Button>
           </div>
 
@@ -1133,6 +1197,16 @@ export function CreateProjectWorkspace({
         onSubmit={handleCollaboratorInvite}
         onChange={setCollaboratorFormValue}
         onPermissionChange={setCollaboratorPermissionValue}
+      />
+      <CollaboratorPickerDialog
+        isOpen={pickerOpen}
+        collaborators={availableCollaboratorRecords}
+        selectedIds={selectedCollaboratorIds}
+        onToggle={toggleAssignedCollaborator}
+        onClose={() => setPickerOpen(false)}
+        onConfirm={() => setPickerOpen(false)}
+        onInviteFallback={openCollaboratorInvite}
+        confirmLabel="Apply Selection"
       />
     </form>
   );

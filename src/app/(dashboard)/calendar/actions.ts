@@ -9,6 +9,10 @@ import {
   type CreateCalendarEventResult,
   type SaveCalendarEventInput,
 } from "@/lib/calendar";
+import {
+  CALENDAR_COLLABORATORS_CACHE_TAG,
+  updateCalendarCollaborators,
+} from "@/lib/collaboration";
 
 export async function saveCalendarEventAction(
   input: SaveCalendarEventInput,
@@ -24,4 +28,14 @@ export async function saveCalendarEventAction(
   revalidateTag(CALENDAR_CACHE_TAG, "max");
 
   return result;
+}
+
+export async function saveCalendarCollaboratorsAction(collaboratorIds: string[]) {
+  const user = await requireUser();
+  const collaborators = await updateCalendarCollaborators(collaboratorIds, user.id);
+
+  revalidatePath("/calendar");
+  revalidateTag(CALENDAR_COLLABORATORS_CACHE_TAG, "max");
+
+  return { collaborators };
 }

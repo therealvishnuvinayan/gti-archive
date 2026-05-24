@@ -1,12 +1,13 @@
 import { CalendarWorkspace } from "@/components/calendar/calendar-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { getCalendarEvents } from "@/lib/calendar";
-import { getCollaborators } from "@/lib/collaboration";
+import { getCalendarCollaborators, getCollaborators } from "@/lib/collaboration";
 
 export default async function CalendarPage() {
-  const [events, collaborators] = await Promise.all([
+  const [events, availableCollaborators, assignedCollaborators] = await Promise.all([
     getCalendarEvents(),
     getCollaborators(),
+    getCalendarCollaborators(),
   ]);
 
   return (
@@ -17,7 +18,8 @@ export default async function CalendarPage() {
     >
       <CalendarWorkspace
         initialEvents={events}
-        collaborators={collaborators}
+        availableCollaborators={availableCollaborators}
+        assignedCollaborators={assignedCollaborators}
       />
     </DashboardLayout>
   );

@@ -13,7 +13,7 @@ export default async function NewProjectPage() {
         showSearch: false,
       }}
     >
-      <CreateProjectWorkspace initialCollaborators={collaborators} />
+      <CreateProjectWorkspace availableCollaborators={collaborators} />
     </DashboardLayout>
   );
 }

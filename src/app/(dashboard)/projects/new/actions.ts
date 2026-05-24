@@ -64,6 +64,12 @@ function parseProjectFormData(formData: FormData) {
   const stageDescriptions = formData
     .getAll("stageDescriptions")
     .map((value) => String(value).trim());
+  const collaboratorIds = [...new Set(
+    formData
+      .getAll("collaboratorIds")
+      .map((value) => String(value).trim())
+      .filter(Boolean),
+  )];
 
   return {
     name,
@@ -78,6 +84,7 @@ function parseProjectFormData(formData: FormData) {
     stageNames,
     stageBudgets,
     stageDescriptions,
+    collaboratorIds,
   };
 }
 
@@ -219,7 +226,23 @@ export async function createProjectAction(
     stageDescriptions,
     stageStatuses,
     currentStageName,
+    collaboratorIds,
   } = validated.data;
+
+  const validCollaborators = collaboratorIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: {
+            in: collaboratorIds,
+          },
+          role: UserRole.COLLABORATOR,
+        },
+        select: {
+          id: true,
+        },
+      })
+    : [];
+  const validCollaboratorIds = validCollaborators.map((collaborator) => collaborator.id);
 
   let projectId: string;
 
@@ -238,6 +261,15 @@ export async function createProjectAction(
         currentStageName,
         stageCount: stageNames.length,
         createdById: user.id,
+        collaborators: {
+          createMany: {
+            data: validCollaboratorIds.map((collaboratorId) => ({
+              userId: collaboratorId,
+              addedById: user.id,
+            })),
+            skipDuplicates: true,
+          },
+        },
         stages: {
           create: stageNames.map((stageName, index) => {
             const parsedStageBudget = parseBudget(stageBudgets[index] ?? "");
@@ -308,7 +340,23 @@ export async function updateProjectAction(
     stageDescriptions,
     stageStatuses,
     currentStageName,
+    collaboratorIds,
   } = validated.data;
+
+  const validCollaborators = collaboratorIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: {
+            in: collaboratorIds,
+          },
+          role: UserRole.COLLABORATOR,
+        },
+        select: {
+          id: true,
+        },
+      })
+    : [];
+  const validCollaboratorIds = validCollaborators.map((collaborator) => collaborator.id);
 
   try {
     await prisma.project.update({
@@ -325,6 +373,16 @@ export async function updateProjectAction(
         endDate,
         currentStageName,
         stageCount: stageNames.length,
+        collaborators: {
+          deleteMany: {},
+          createMany: {
+            data: validCollaboratorIds.map((collaboratorId) => ({
+              userId: collaboratorId,
+              addedById: user.id,
+            })),
+            skipDuplicates: true,
+          },
+        },
         stages: {
           deleteMany: {},
           create: stageNames.map((stageName, index) => {

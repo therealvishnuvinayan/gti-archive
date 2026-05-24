@@ -14,6 +14,7 @@ import { sendResendEmail } from "@/lib/email/resend";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const COLLABORATORS_CACHE_TAG = "collaborators";
+export const CALENDAR_COLLABORATORS_CACHE_TAG = "calendar-collaborators";
 
 export type AccessArea = "project" | "calendar" | "library" | "archive";
 export type PermissionLevel = "full" | "limited" | "none";
@@ -204,6 +205,87 @@ export async function getCollaborators() {
   )();
 
   return collaborators.map(mapCollaborator);
+}
+
+export async function getCalendarCollaborators() {
+  const collaborators = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.calendarCollaborator.findMany({
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+                collaboratorType: true,
+                projectAccess: true,
+                calendarAccess: true,
+                libraryAccess: true,
+                archiveAccess: true,
+              },
+            },
+          },
+        }),
+      ),
+    ["calendar-collaborators"],
+    { revalidate: 20, tags: [CALENDAR_COLLABORATORS_CACHE_TAG] },
+  )();
+
+  return collaborators.map((item) => mapCollaborator(item.user));
+}
+
+export async function updateCalendarCollaborators(
+  collaboratorIds: string[],
+  addedById: string,
+) {
+  const normalizedIds = [...new Set(collaboratorIds.filter(Boolean))];
+
+  const validCollaborators = normalizedIds.length
+    ? await withPrismaRetry(() =>
+        prisma.user.findMany({
+          where: {
+            id: {
+              in: normalizedIds,
+            },
+            role: UserRole.COLLABORATOR,
+          },
+          select: {
+            id: true,
+          },
+        }),
+      )
+    : [];
+
+  const validIds = validCollaborators.map((collaborator) => collaborator.id);
+
+  await withPrismaRetry(() =>
+    prisma.$transaction([
+      prisma.calendarCollaborator.deleteMany({
+        where: {
+          userId: {
+            notIn: validIds,
+          },
+        },
+      }),
+      ...(validIds.length > 0
+        ? [
+            prisma.calendarCollaborator.createMany({
+              data: validIds.map((userId) => ({
+                userId,
+                addedById,
+              })),
+              skipDuplicates: true,
+            }),
+          ]
+        : []),
+    ]),
+  );
+
+  return getCalendarCollaborators();
 }
 
 export async function createCollaborator(

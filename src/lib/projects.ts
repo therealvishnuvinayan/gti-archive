@@ -4,8 +4,10 @@ import {
   AttachmentAssetType,
 } from "@prisma/client";
 import type {
+  CollaboratorType,
   CurrencyCode,
   Project,
+  ProjectCollaborator,
   ProjectStage,
   ProjectStatus,
   User,
@@ -18,6 +20,17 @@ export const PROJECTS_CACHE_TAG = "projects";
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
   stages: ProjectStage[];
+  collaborators?: Array<
+    ProjectCollaborator & {
+      user: Pick<
+        User,
+        | "id"
+        | "name"
+        | "email"
+        | "collaboratorType"
+      >;
+    }
+  >;
   attachments: Array<{
     id: string;
     originalFileName: string;
@@ -56,6 +69,7 @@ export type ProjectEditorRecord = {
     budget: string;
     description: string;
   }>;
+  collaborators: ProjectCollaboratorRecord[];
   attachments: ProjectAttachmentRecord[];
 };
 
@@ -79,6 +93,7 @@ export type ProjectStageRecord = {
 export type ProjectCollaboratorRecord = {
   id: string;
   name: string;
+  email?: string;
   role: string;
   group: "internal" | "external";
   access: "owner" | "view";
@@ -259,6 +274,10 @@ function formatAttachmentFileSize(fileSize: number) {
   return `${fileSize} B`;
 }
 
+function mapCollaboratorTypeToGroup(type: CollaboratorType): "internal" | "external" {
+  return type === "EXTERNAL" ? "external" : "internal";
+}
+
 function mapAttachmentToRecord(
   attachment: {
     id: string;
@@ -362,6 +381,20 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
   const currentStage =
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
 
+  const collaboratorRecords = (project.collaborators ?? [])
+    .map((assignment) => ({
+      id: assignment.user.id,
+      name: assignment.user.name?.trim() || assignment.user.email,
+      email: assignment.user.email,
+      role: assignment.user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator",
+      group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
+      access: "view" as const,
+      removable: true,
+    }))
+    .filter((collaborator, index, current) =>
+      current.findIndex((item) => item.id === collaborator.id) === index,
+    );
+
   return {
     id: project.id,
     title: project.name,
@@ -384,10 +417,12 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
       {
         id: project.createdById,
         name: creatorName,
+        email: project.createdBy.email,
         role: "Project Owner",
         group: "internal",
         access: "owner",
       },
+      ...collaboratorRecords,
     ],
     attachments: project.attachments.map(mapAttachmentToRecord),
     chatEntries: [],
@@ -433,6 +468,15 @@ function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
             ? String(project.budget)
             : "",
       description: stage.description?.trim() || "",
+    })),
+    collaborators: (project.collaborators ?? []).map((assignment) => ({
+      id: assignment.user.id,
+      name: assignment.user.name?.trim() || assignment.user.email,
+      email: assignment.user.email,
+      role: assignment.user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator",
+      group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
+      access: "view",
+      removable: true,
     })),
     attachments: project.attachments.map(mapAttachmentToRecord),
   };
@@ -617,6 +661,21 @@ export async function getProjectById(id: string) {
               },
             },
             stages: true,
+            collaborators: {
+              orderBy: {
+                createdAt: "asc",
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
             attachments: {
               where: {
                 assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
@@ -667,6 +726,21 @@ export async function getProjectEditorById(id: string) {
               },
             },
             stages: true,
+            collaborators: {
+              orderBy: {
+                createdAt: "asc",
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
             attachments: {
               where: {
                 assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,

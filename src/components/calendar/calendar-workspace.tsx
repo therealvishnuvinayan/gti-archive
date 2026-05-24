@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
-import { saveCalendarEventAction } from "@/app/(dashboard)/calendar/actions";
+import {
+  saveCalendarCollaboratorsAction,
+  saveCalendarEventAction,
+} from "@/app/(dashboard)/calendar/actions";
 import {
   CalendarMonthGrid,
   getCalendarMonthWeeks,
@@ -18,6 +21,7 @@ import {
   type CollaboratorForm,
   type PermissionLevel,
 } from "@/components/collaboration/collaborator-dialog";
+import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import {
   EventDialog,
   type CalendarFormState,
@@ -45,7 +49,8 @@ type CalendarView = "week" | "day" | "month";
 
 type CalendarWorkspaceProps = {
   initialEvents: CalendarEventRecord[];
-  collaborators: CollaboratorRecord[];
+  availableCollaborators: CollaboratorRecord[];
+  assignedCollaborators: CollaboratorRecord[];
 };
 
 const hours = Array.from({ length: 9 }, (_, index) => 9 + index);
@@ -185,13 +190,16 @@ function getInitials(name: string) {
 
 export function CalendarWorkspace({
   initialEvents,
-  collaborators,
+  availableCollaborators,
+  assignedCollaborators,
 }: CalendarWorkspaceProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [view, setView] = useState<CalendarView>("week");
   const [events, setEvents] = useState<CalendarEventRecord[]>([...initialEvents].sort(compareEvents));
-  const [collaboratorRecords, setCollaboratorRecords] =
-    useState<CollaboratorRecord[]>(collaborators);
+  const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
+    useState<CollaboratorRecord[]>(availableCollaborators);
+  const [assignedCollaboratorRecords, setAssignedCollaboratorRecords] =
+    useState<CollaboratorRecord[]>(assignedCollaborators);
   const [filters, setFilters] = useState<Record<CalendarType, boolean>>({
     Projects: true,
     Events: true,
@@ -203,6 +211,7 @@ export function CalendarWorkspace({
   const [dialogSaving, setDialogSaving] = useState(false);
   const [dialogTitle, setDialogTitle] = useState("Create event");
   const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
+  const [collaboratorPickerOpen, setCollaboratorPickerOpen] = useState(false);
   const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
@@ -242,16 +251,35 @@ export function CalendarWorkspace({
   );
   const visibleCollaborators = useMemo(
     () =>
-      collaboratorRecords
-        .filter((collaborator) => collaborator.permissions.calendar !== "none")
+      assignedCollaboratorRecords
         .sort((left, right) => {
           if (left.permissions.calendar === right.permissions.calendar) {
             return left.name.localeCompare(right.name);
           }
 
-          return left.permissions.calendar === "full" ? -1 : 1;
+          if (left.permissions.calendar === "full") {
+            return -1;
+          }
+
+          if (right.permissions.calendar === "full") {
+            return 1;
+          }
+
+          if (left.permissions.calendar === "limited") {
+            return -1;
+          }
+
+          if (right.permissions.calendar === "limited") {
+            return 1;
+          }
+
+          return 0;
         }),
-    [collaboratorRecords],
+    [assignedCollaboratorRecords],
+  );
+  const selectedCollaboratorIds = useMemo(
+    () => assignedCollaboratorRecords.map((collaborator) => collaborator.id),
+    [assignedCollaboratorRecords],
   );
 
   function setFormValue<K extends keyof CalendarFormState>(
@@ -276,6 +304,7 @@ export function CalendarWorkspace({
   }
 
   function openCollaboratorDialog() {
+    setCollaboratorPickerOpen(false);
     setCollaboratorForm({
       name: "",
       email: "",
@@ -289,6 +318,43 @@ export function CalendarWorkspace({
     });
     setCollaboratorDialogError(undefined);
     setCollaboratorDialogOpen(true);
+  }
+
+  function toggleAssignedCollaborator(collaboratorId: string) {
+    const availableCollaborator = availableCollaboratorRecords.find(
+      (collaborator) => collaborator.id === collaboratorId,
+    );
+
+    if (!availableCollaborator) {
+      return;
+    }
+
+    setAssignedCollaboratorRecords((current) => {
+      const exists = current.some((collaborator) => collaborator.id === collaboratorId);
+
+      if (exists) {
+        return current.filter((collaborator) => collaborator.id !== collaboratorId);
+      }
+
+      return [...current, availableCollaborator];
+    });
+  }
+
+  async function saveAssignedCollaborators() {
+    setCollaboratorSaving(true);
+    setCollaboratorDialogError(undefined);
+
+    try {
+      const result = await saveCalendarCollaboratorsAction(selectedCollaboratorIds);
+      setAssignedCollaboratorRecords(result.collaborators);
+      setCollaboratorPickerOpen(false);
+    } catch {
+      setCollaboratorDialogError(
+        "Unable to update the calendar collaborators right now. Please try again.",
+      );
+    } finally {
+      setCollaboratorSaving(false);
+    }
   }
 
   async function saveCollaborator() {
@@ -308,8 +374,10 @@ export function CalendarWorkspace({
         return;
       }
 
-      setCollaboratorRecords((current) => [...current, result.collaborator]);
+      setAvailableCollaboratorRecords((current) => [...current, result.collaborator]);
+      setAssignedCollaboratorRecords((current) => [...current, result.collaborator]);
       setCollaboratorDialogOpen(false);
+      setCollaboratorPickerOpen(false);
     } catch {
       setCollaboratorDialogError(
         "Unable to save the collaborator right now. Please try again.",
@@ -552,9 +620,9 @@ export function CalendarWorkspace({
             variant="ghost"
             size="icon"
             className="size-8 text-brand"
-            onClick={openCollaboratorDialog}
-            aria-label="Invite collaborator"
-            title="Invite collaborator"
+            onClick={() => setCollaboratorPickerOpen(true)}
+            aria-label="Add collaborator"
+            title="Add collaborator"
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -563,8 +631,6 @@ export function CalendarWorkspace({
           {visibleCollaborators.length > 0 ? (
             <ul className="space-y-3">
               {visibleCollaborators.map((collaborator) => {
-                const fullAccess = collaborator.permissions.calendar === "full";
-
                 return (
                   <li key={collaborator.id} className="flex items-center gap-2.5">
                     <div className="grid h-8 w-8 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[11px] font-[700] text-white">
@@ -576,10 +642,18 @@ export function CalendarWorkspace({
                       </p>
                       <p
                         className={`text-[10px] ${
-                          fullAccess ? "text-[#50b848]" : "text-[#f29b23]"
+                          collaborator.permissions.calendar === "full"
+                            ? "text-[#50b848]"
+                            : collaborator.permissions.calendar === "limited"
+                              ? "text-[#f29b23]"
+                              : "text-[#8b938d]"
                         }`}
                       >
-                        {fullAccess ? "Full Access" : "Limited Access"}
+                        {collaborator.permissions.calendar === "full"
+                          ? "Full Access"
+                          : collaborator.permissions.calendar === "limited"
+                            ? "Limited Access"
+                            : "No Access"}
                       </p>
                     </div>
                   </li>
@@ -839,6 +913,20 @@ export function CalendarWorkspace({
         onSubmit={saveCollaborator}
         onChange={setCollaboratorFormValue}
         onPermissionChange={setCollaboratorPermissionValue}
+      />
+      <CollaboratorPickerDialog
+        isOpen={collaboratorPickerOpen}
+        collaborators={availableCollaboratorRecords}
+        selectedIds={selectedCollaboratorIds}
+        saving={collaboratorSaving}
+        onToggle={toggleAssignedCollaborator}
+        onClose={() => {
+          setCollaboratorDialogError(undefined);
+          setCollaboratorPickerOpen(false);
+        }}
+        onConfirm={saveAssignedCollaborators}
+        onInviteFallback={openCollaboratorDialog}
+        confirmLabel="Apply Selection"
       />
     </>
   );

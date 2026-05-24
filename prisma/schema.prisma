@@ -97,6 +97,10 @@ model User {
   attachments       ProjectAttachment[]
   activityLogs      ProjectActivityLog[]
   calendarEvents    CalendarEvent[]
+  projectCollaborations       ProjectCollaborator[] @relation("ProjectCollaboratorUser")
+  addedProjectCollaborations  ProjectCollaborator[] @relation("ProjectCollaboratorAdder")
+  calendarCollaborations      CalendarCollaborator[] @relation("CalendarCollaboratorUser")
+  addedCalendarCollaborations CalendarCollaborator[] @relation("CalendarCollaboratorAdder")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -121,12 +125,38 @@ model Project {
   comments         ProjectComment[]
   attachments      ProjectAttachment[]
   activityLogs     ProjectActivityLog[]
+  collaborators    ProjectCollaborator[]
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
   @@index([status])
   @@index([createdAt])
   @@index([createdById])
+}
+
+model ProjectCollaborator {
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  addedById  String?
+  addedBy    User?    @relation("ProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@index([addedById])
+}
+
+model CalendarCollaborator {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation("CalendarCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  addedById String?
+  addedBy   User?    @relation("CalendarCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([addedById])
 }
 
 model ProjectStage {

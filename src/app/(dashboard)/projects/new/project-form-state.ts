@@ -40,6 +40,16 @@ export type ProjectEditorInitialAttachment = {
   downloadPath: string;
 };
 
+export type ProjectEditorInitialCollaborator = {
+  id: string;
+  name: string;
+  email?: string;
+  role: string;
+  group: "internal" | "external";
+  access: "owner" | "view";
+  removable?: boolean;
+};
+
 export type ProjectEditorInitialValues = {
   id: string;
   name: string;
@@ -52,5 +62,6 @@ export type ProjectEditorInitialValues = {
   startDate: string;
   endDate: string;
   stages: ProjectEditorInitialStage[];
+  collaborators: ProjectEditorInitialCollaborator[];
   attachments: ProjectEditorInitialAttachment[];
 };
