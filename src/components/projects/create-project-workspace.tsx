@@ -30,6 +30,7 @@ import {
   CollaboratorDialog,
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import {
   MotionItem,
   MotionSection,
@@ -811,6 +812,13 @@ export function CreateProjectWorkspace({
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
+                            <AssetPreviewButton
+                              fileName={attachment.originalFileName}
+                              mimeType={attachment.mimeType}
+                              previewPath={attachment.previewPath}
+                              downloadPath={attachment.downloadPath}
+                              triggerClassName="size-8 text-brand"
+                            />
                             <Button
                               asChild
                               type="button"

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { createStageCommentAction, createStageRevisionAction } from "@/app/(dashboard)/projects/actions";
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,21 +99,30 @@ function AttachmentHistoryList({
               </p>
               <p className="text-[10px] leading-4 text-[#89928b]">{attachment.uploadedAt}</p>
             </div>
-            <Button
-              asChild
-              variant="ghost"
-              size="icon"
-              className="size-8 rounded-full text-brand"
-            >
-              <a
-                href={attachment.downloadPath}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={`Download ${attachment.originalFileName}`}
+            <div className="flex items-center gap-1">
+              <AssetPreviewButton
+                fileName={attachment.originalFileName}
+                mimeType={attachment.mimeType}
+                previewPath={attachment.previewPath}
+                downloadPath={attachment.downloadPath}
+                triggerClassName="size-8 rounded-full text-brand"
+              />
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className="size-8 rounded-full text-brand"
               >
-                <Download className="h-4 w-4" />
-              </a>
-            </Button>
+                <a
+                  href={attachment.downloadPath}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Download ${attachment.originalFileName}`}
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+              </Button>
+            </div>
           </div>
         </div>
       ))}

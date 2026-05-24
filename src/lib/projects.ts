@@ -93,6 +93,7 @@ export type ProjectAttachmentRecord = {
   fileSizeLabel: string;
   uploadedBy: string;
   uploadedAt: string;
+  previewPath: string;
   downloadPath: string;
 };
 
@@ -279,6 +280,7 @@ function mapAttachmentToRecord(
     fileSizeLabel: formatAttachmentFileSize(attachment.fileSize),
     uploadedBy: getCreatorName(attachment.uploadedBy),
     uploadedAt: formatAttachmentTimestamp(attachment.createdAt),
+    previewPath: `/api/project-assets/${attachment.id}/preview`,
     downloadPath: `/api/project-assets/${attachment.id}/download`,
   };
 }

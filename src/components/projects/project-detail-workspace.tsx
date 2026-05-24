@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
 
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import type { ProjectFlowRecord, ProjectStageRecord } from "@/lib/projects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -241,22 +242,31 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
                         <span>{attachment.uploadedAt}</span>
                       </div>
                     </div>
-                    <Button
-                      asChild
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0 text-brand"
-                    >
-                      <a
-                        href={attachment.downloadPath}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Download ${attachment.originalFileName}`}
+                    <div className="flex shrink-0 items-center gap-1">
+                      <AssetPreviewButton
+                        fileName={attachment.originalFileName}
+                        mimeType={attachment.mimeType}
+                        previewPath={attachment.previewPath}
+                        downloadPath={attachment.downloadPath}
+                        triggerClassName="size-8 text-brand"
+                      />
+                      <Button
+                        asChild
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-brand"
                       >
-                        <Download className="h-4 w-4" />
-                      </a>
-                    </Button>
+                        <a
+                          href={attachment.downloadPath}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`Download ${attachment.originalFileName}`}
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

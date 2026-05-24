@@ -15,6 +15,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   buildProjectAssetKey,
   createPresignedDownloadUrl,
+  createPresignedPreviewUrl,
   createPresignedUploadUrl,
   deleteObjectIfNeeded,
   getFileExtension,
@@ -174,6 +175,7 @@ function mapAttachmentRecord(
     uploadedAt: Number.isNaN(createdAt.getTime())
       ? "—"
       : formatHistoryTimestamp(createdAt),
+    previewPath: `/api/project-assets/${attachment.id}/preview`,
     downloadPath: `/api/project-assets/${attachment.id}/download`,
   };
 }
@@ -742,6 +744,7 @@ export async function getAttachmentDownloadUrlForUser(
         bucket: true,
         storageKey: true,
         originalFileName: true,
+        mimeType: true,
         status: true,
       },
     }),
@@ -757,6 +760,42 @@ export async function getAttachmentDownloadUrlForUser(
     bucket: attachment.bucket,
     storageKey: attachment.storageKey,
     fileName: attachment.originalFileName,
+    mimeType: attachment.mimeType,
+  });
+}
+
+export async function getAttachmentPreviewUrlForUser(
+  user: AccessUser,
+  attachmentId: string,
+) {
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findUnique({
+      where: {
+        id: attachmentId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        bucket: true,
+        storageKey: true,
+        originalFileName: true,
+        mimeType: true,
+        status: true,
+      },
+    }),
+  );
+
+  if (!attachment || attachment.status !== AttachmentStatus.READY) {
+    throw new Error("Attachment not found.");
+  }
+
+  await assertProjectAccess(user, attachment.projectId);
+
+  return createPresignedPreviewUrl({
+    bucket: attachment.bucket,
+    storageKey: attachment.storageKey,
+    fileName: attachment.originalFileName,
+    mimeType: attachment.mimeType,
   });
 }
 

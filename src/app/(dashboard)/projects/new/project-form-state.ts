@@ -36,6 +36,7 @@ export type ProjectEditorInitialAttachment = {
   fileSizeLabel: string;
   uploadedBy: string;
   uploadedAt: string;
+  previewPath: string;
   downloadPath: string;
 };
 

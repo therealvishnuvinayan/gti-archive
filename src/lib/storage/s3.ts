@@ -191,6 +191,7 @@ type PresignedDownloadInput = {
   bucket?: string;
   storageKey: string;
   fileName: string;
+  mimeType?: string;
   expiresInSeconds?: number;
 };
 
@@ -204,6 +205,25 @@ export async function createPresignedDownloadUrl({
     Bucket: bucket,
     Key: storageKey,
     ResponseContentDisposition: `attachment; filename="${fileName}"`,
+  });
+
+  return getSignedUrl(getS3Client(), command, {
+    expiresIn: expiresInSeconds,
+  });
+}
+
+export async function createPresignedPreviewUrl({
+  bucket = getS3BucketName(),
+  storageKey,
+  fileName,
+  mimeType,
+  expiresInSeconds = 60 * 5,
+}: PresignedDownloadInput) {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: storageKey,
+    ResponseContentDisposition: `inline; filename="${fileName}"`,
+    ResponseContentType: mimeType || undefined,
   });
 
   return getSignedUrl(getS3Client(), command, {
@@ -234,4 +254,3 @@ export async function deleteObjectIfNeeded(
     }),
   );
 }
-
