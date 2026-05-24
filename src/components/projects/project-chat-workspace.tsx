@@ -146,6 +146,56 @@ function AttachmentHistoryList({
   );
 }
 
+function RevisionAttachmentTypeSummary({
+  attachments,
+}: {
+  attachments: ProjectAttachmentRecord[];
+}) {
+  const groupedAttachments = attachments.reduce<
+    Array<{ label: string; count: number }>
+  >((groups, attachment) => {
+    const existing = groups.find((group) => group.label === attachment.fileTypeLabel);
+
+    if (existing) {
+      existing.count += 1;
+      return groups;
+    }
+
+    groups.push({
+      label: attachment.fileTypeLabel,
+      count: 1,
+    });
+
+    return groups;
+  }, []);
+
+  if (groupedAttachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 rounded-[14px] border border-white/15 bg-white/8 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        {groupedAttachments.map((group) => (
+          <div
+            key={group.label}
+            className={`relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-[10px] border px-3 py-2 shadow-[0_8px_20px_rgba(13,39,27,0.18)] ${getFileBadgeClass(
+              group.label,
+            )}`}
+          >
+            <span className="text-[13px] font-[800] leading-none">{group.label}</span>
+            {group.count > 1 ? (
+              <span className="absolute -right-1.5 -top-1.5 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-[800] leading-none text-[#1f5f40]">
+                {group.count}
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 async function uploadAssetFile(input: {
   file: File;
   projectId: string;
@@ -689,13 +739,10 @@ export function ProjectChatWorkspace({
 
           {messages.map((message, index) =>
             message.kind === "revision" ? (
-              <div
-                key={message.id}
-                className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_176px] 2xl:items-start"
-              >
+              <div key={message.id} className="space-y-3">
                 <Card className="flex-1 rounded-[20px] border-none bg-[linear-gradient(135deg,#2f8d5d,#476f5a)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)] xl:items-start 2xl:grid-cols-[minmax(0,1fr)_420px]">
-                    <div>
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+                    <div className="max-w-[420px]">
                       <h1 className="text-[18px] font-[700] text-[#95d867]">
                         {message.title}
                       </h1>
@@ -715,9 +762,9 @@ export function ProjectChatWorkspace({
                     </div>
 
                     {message.attachments?.length ? (
-                      <Card className="min-w-0 rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
+                      <Card className="min-w-0 self-center rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
                         <p className="text-center text-[11px] font-[700]">Attachments</p>
-                        <AttachmentHistoryList attachments={message.attachments} />
+                        <RevisionAttachmentTypeSummary attachments={message.attachments} />
                         {message.compareLabel ? (
                           <Button asChild size="sm" className="mt-3 min-h-[30px] w-full text-[11px]">
                             <Link href={`/projects/${project.id}/compare?stage=${activeStage?.id ?? ""}`}>
@@ -730,50 +777,48 @@ export function ProjectChatWorkspace({
                   </div>
                 </Card>
 
-                <div className="flex flex-col gap-2 2xl:w-[176px] sm:flex-row sm:flex-wrap 2xl:flex-col">
-                  {index === messages.findIndex((entry) => entry.kind === "revision") ? (
-                    <>
+                {index === messages.findIndex((entry) => entry.kind === "revision") ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={openRevisionDialog}
+                      size="sm"
+                      className="text-[12px]"
+                      disabled={isUploadingRevision}
+                    >
+                      {isUploadingRevision ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5" />
+                      )}
+                      Create Revision
+                    </Button>
+                    {isProjectOwner ? (
                       <Button
                         type="button"
-                        onClick={openRevisionDialog}
                         size="sm"
+                        variant="secondary"
                         className="text-[12px]"
-                        disabled={isUploadingRevision}
+                        disabled={isStageCompleted || isMarkingStageComplete}
+                        onClick={() => {
+                          setStageCompleteError(null);
+                          setStageCompleteDialogOpen(true);
+                        }}
                       >
-                        {isUploadingRevision ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Upload className="h-3.5 w-3.5" />
-                        )}
-                        Create Revision
+                        {isStageCompleted ? "Stage completed" : "Mark as complete"}
                       </Button>
-                      {isProjectOwner ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className="text-[12px]"
-                          disabled={isStageCompleted || isMarkingStageComplete}
-                          onClick={() => {
-                            setStageCompleteError(null);
-                            setStageCompleteDialogOpen(true);
-                          }}
-                        >
-                          {isStageCompleted ? "Stage completed" : "Mark as complete"}
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : null}
-                  <Button
-                    type="button"
-                    onClick={() => setDraft(`Replying to ${message.author}: `)}
-                    size="sm"
-                    variant="secondary"
-                    className="text-[12px]"
-                  >
-                    Add Comments
-                  </Button>
-                </div>
+                    ) : null}
+                    <Button
+                      type="button"
+                      onClick={() => setDraft(`Replying to ${message.author}: `)}
+                      size="sm"
+                      variant="secondary"
+                      className="text-[12px]"
+                    >
+                      Add Comments
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <Card
