@@ -40,6 +40,7 @@ export default async function ProjectChatPage({
         stageId={history.activeStageId ?? stage}
         history={history}
         availableCollaborators={availableCollaborators}
+        currentUserId={user.id}
       />
     </DashboardLayout>
   );

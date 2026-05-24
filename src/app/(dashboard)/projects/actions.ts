@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import {
   createStageComment,
   createStageRevision,
+  completeProjectStage,
 } from "@/lib/project-history";
 import { PROJECTS_CACHE_TAG, updateProjectCollaborators } from "@/lib/projects";
 import { UserRole } from "@prisma/client";
@@ -62,6 +63,27 @@ export async function createStageCommentAction(input: StageCommentInput) {
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Unable to add the comment right now.",
+    };
+  }
+}
+
+export async function markStageCompleteAction(input: {
+  projectId: string;
+  stageId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const stage = await completeProjectStage(user, input);
+    revalidateProjectFlow(input.projectId);
+
+    return { stage };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to mark the stage as complete right now.",
     };
   }
 }

@@ -511,6 +511,51 @@ export async function createStageComment(
   );
 }
 
+export async function completeProjectStage(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+  },
+) {
+  const project = await getProjectAccessRecord(input.projectId);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (project.createdById !== user.id) {
+    throw new Error("Only the project owner can mark this stage as complete.");
+  }
+
+  const stage = project.stages.find((item) => item.id === input.stageId);
+
+  if (!stage) {
+    throw new Error("Stage not found.");
+  }
+
+  if (stage.status === "COMPLETED") {
+    return { id: stage.id, status: stage.status };
+  }
+
+  const updatedStage = await withPrismaRetry(() =>
+    prisma.projectStage.update({
+      where: {
+        id: stage.id,
+      },
+      data: {
+        status: "COMPLETED",
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    }),
+  );
+
+  return updatedStage;
+}
+
 function getUploadAction(assetType: AttachmentAssetType) {
   return assetType === AttachmentAssetType.COMMENT_ATTACHMENT
     ? ActivityLogAction.COMMENT_ATTACHMENT_UPLOADED

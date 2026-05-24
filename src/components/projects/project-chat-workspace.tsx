@@ -14,7 +14,11 @@ import {
   X,
 } from "lucide-react";
 
-import { createStageCommentAction, createStageRevisionAction } from "@/app/(dashboard)/projects/actions";
+import {
+  createStageCommentAction,
+  createStageRevisionAction,
+  markStageCompleteAction,
+} from "@/app/(dashboard)/projects/actions";
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import { saveProjectCollaboratorsAction } from "@/app/(dashboard)/projects/actions";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
@@ -26,7 +30,9 @@ import { CollaboratorPickerDialog } from "@/components/collaboration/collaborato
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { StageHistoryRecord } from "@/lib/project-history";
 import type {
   ProjectAttachmentRecord,
@@ -41,6 +47,7 @@ type ProjectChatWorkspaceProps = {
   stageId?: string | null;
   history: StageHistoryRecord;
   availableCollaborators: CollaboratorRecord[];
+  currentUserId: string;
 };
 
 type PendingFile = {
@@ -225,6 +232,7 @@ export function ProjectChatWorkspace({
   stageId,
   history,
   availableCollaborators,
+  currentUserId,
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
@@ -235,8 +243,15 @@ export function ProjectChatWorkspace({
   const [draft, setDraft] = useState("");
   const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
+  const [pendingRevisionFiles, setPendingRevisionFiles] = useState<PendingFile[]>([]);
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [isUploadingRevision, setIsUploadingRevision] = useState(false);
+  const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
+  const [revisionSummary, setRevisionSummary] = useState("");
+  const [revisionDialogError, setRevisionDialogError] = useState<string | null>(null);
+  const [stageCompleteDialogOpen, setStageCompleteDialogOpen] = useState(false);
+  const [stageCompleteError, setStageCompleteError] = useState<string | null>(null);
+  const [isMarkingStageComplete, setIsMarkingStageComplete] = useState(false);
   const [collaboratorPickerOpen, setCollaboratorPickerOpen] = useState(false);
   const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
@@ -275,6 +290,15 @@ export function ProjectChatWorkspace({
         .map((collaborator) => collaborator.id),
     [collaborators],
   );
+  const isProjectOwner = useMemo(
+    () =>
+      project.collaborators.some(
+        (collaborator) =>
+          collaborator.access === "owner" && collaborator.id === currentUserId,
+      ),
+    [currentUserId, project.collaborators],
+  );
+  const isStageCompleted = activeStage?.status === "completed";
 
   function removeCollaborator(id: string) {
     setCollaborators((current) => current.filter((collaborator) => collaborator.id !== id));
@@ -431,39 +455,69 @@ export function ProjectChatWorkspace({
     });
   }
 
-  async function handleRevisionFilesSelected(files: FileList | null) {
+  function openRevisionDialog() {
+    setRevisionDialogError(null);
+    setRevisionSummary("");
+    setPendingRevisionFiles([]);
+    setRevisionDialogOpen(true);
+  }
+
+  function handleRevisionFilesSelected(files: FileList | null) {
     const selectedFiles = Array.from(files ?? []);
-    const activeStageId = activeStage?.id;
 
     if (selectedFiles.length === 0) {
       return;
     }
 
+    setRevisionDialogError(null);
+    setPendingRevisionFiles((current) => [
+      ...current,
+      ...selectedFiles.map((file) => ({
+        id: `${file.name}-${file.size}-${crypto.randomUUID()}`,
+        file,
+      })),
+    ]);
+
+    if (revisionFileInputRef.current) {
+      revisionFileInputRef.current.value = "";
+    }
+  }
+
+  function removePendingRevisionFile(fileId: string) {
+    setPendingRevisionFiles((current) => current.filter((file) => file.id !== fileId));
+  }
+
+  async function handleCreateRevision() {
+    const activeStageId = activeStage?.id;
+    const summary = revisionSummary.trim();
+
     if (!activeStageId) {
-      setComposerError("This project does not have an active stage to upload into.");
+      setRevisionDialogError("This project does not have an active stage to upload into.");
       return;
     }
 
-    setComposerError(null);
+    if (!summary) {
+      setRevisionDialogError("Enter the revision details before creating it.");
+      return;
+    }
+
+    setRevisionDialogError(null);
     setIsUploadingRevision(true);
 
     try {
       const revisionResult = await createStageRevisionAction({
         projectId: project.id,
         stageId: activeStageId,
-        summary:
-          selectedFiles.length === 1
-            ? `Uploaded ${selectedFiles[0]?.name}`
-            : `Uploaded ${selectedFiles.length} revision files.`,
+        summary,
       });
 
       if ("error" in revisionResult) {
         throw new Error(revisionResult.error);
       }
 
-      for (const file of selectedFiles) {
+      for (const pendingFile of pendingRevisionFiles) {
         await uploadAssetFile({
-          file,
+          file: pendingFile.file,
           projectId: project.id,
           stageId: activeStageId,
           revisionId: revisionResult.revisionId,
@@ -471,10 +525,13 @@ export function ProjectChatWorkspace({
         });
       }
 
+      setRevisionDialogOpen(false);
+      setRevisionSummary("");
+      setPendingRevisionFiles([]);
       refreshHistory();
     } catch (error) {
-      setComposerError(
-        error instanceof Error ? error.message : "Unable to upload the revision files right now.",
+      setRevisionDialogError(
+        error instanceof Error ? error.message : "Unable to create the revision right now.",
       );
     } finally {
       setIsUploadingRevision(false);
@@ -482,6 +539,37 @@ export function ProjectChatWorkspace({
       if (revisionFileInputRef.current) {
         revisionFileInputRef.current.value = "";
       }
+    }
+  }
+
+  async function handleMarkStageComplete() {
+    const activeStageId = activeStage?.id;
+
+    if (!activeStageId) {
+      setStageCompleteError("This project does not have an active stage.");
+      return;
+    }
+
+    setStageCompleteError(null);
+    setIsMarkingStageComplete(true);
+
+    try {
+      const result = await markStageCompleteAction({
+        projectId: project.id,
+        stageId: activeStageId,
+      });
+
+      if ("error" in result) {
+        setStageCompleteError(
+          result.error ?? "Unable to mark this stage as complete right now.",
+        );
+        return;
+      }
+
+      setStageCompleteDialogOpen(false);
+      refreshHistory();
+    } finally {
+      setIsMarkingStageComplete(false);
     }
   }
 
@@ -585,7 +673,7 @@ export function ProjectChatWorkspace({
               <div className="mt-5 flex justify-center">
                 <Button
                   type="button"
-                  onClick={() => revisionFileInputRef.current?.click()}
+                  onClick={openRevisionDialog}
                   disabled={isUploadingRevision}
                 >
                   {isUploadingRevision ? (
@@ -647,7 +735,7 @@ export function ProjectChatWorkspace({
                     <>
                       <Button
                         type="button"
-                        onClick={() => revisionFileInputRef.current?.click()}
+                        onClick={openRevisionDialog}
                         size="sm"
                         className="text-[12px]"
                         disabled={isUploadingRevision}
@@ -659,9 +747,21 @@ export function ProjectChatWorkspace({
                         )}
                         Create Revision
                       </Button>
-                      <Button type="button" size="sm" variant="secondary" className="text-[12px]" disabled>
-                        Mark as complete
-                      </Button>
+                      {isProjectOwner ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="text-[12px]"
+                          disabled={isStageCompleted || isMarkingStageComplete}
+                          onClick={() => {
+                            setStageCompleteError(null);
+                            setStageCompleteDialogOpen(true);
+                          }}
+                        >
+                          {isStageCompleted ? "Stage completed" : "Mark as complete"}
+                        </Button>
+                      ) : null}
                     </>
                   ) : null}
                   <Button
@@ -705,7 +805,7 @@ export function ProjectChatWorkspace({
               multiple
               className="hidden"
               onChange={(event) => {
-                void handleRevisionFilesSelected(event.target.files);
+                handleRevisionFilesSelected(event.target.files);
               }}
             />
             <input
@@ -894,6 +994,136 @@ export function ProjectChatWorkspace({
         onChange={setCollaboratorFormValue}
         onPermissionChange={setCollaboratorPermissionValue}
       />
+      <ConfirmationDialog
+        isOpen={stageCompleteDialogOpen}
+        title="Mark Stage Complete"
+        description="This will mark the current stage as completed. Only the project owner can do this."
+        confirmLabel="Mark as Complete"
+        pending={isMarkingStageComplete}
+        error={stageCompleteError ?? undefined}
+        onClose={() => {
+          setStageCompleteError(null);
+          setStageCompleteDialogOpen(false);
+        }}
+        onConfirm={() => {
+          void handleMarkStageComplete();
+        }}
+      />
+      {revisionDialogOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+          <Card className="w-full max-w-[640px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+              <div>
+                <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                  Create Revision
+                </CardTitle>
+                <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
+                  Describe the required changes and attach supporting files if needed.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => {
+                  setRevisionDialogError(null);
+                  setRevisionDialogOpen(false);
+                }}
+                disabled={isUploadingRevision}
+                className="shrink-0 border border-line"
+                aria-label="Close revision dialog"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              {revisionDialogError ? (
+                <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+                  {revisionDialogError}
+                </div>
+              ) : null}
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <p className="text-[13px] font-[600] text-[#2d372f]">Revision Notes</p>
+                  <Textarea
+                    value={revisionSummary}
+                    onChange={(event) => setRevisionSummary(event.target.value)}
+                    placeholder="Describe the corrections required for this revision."
+                    className="min-h-[140px] rounded-[18px] border border-line"
+                    disabled={isUploadingRevision}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[13px] font-[600] text-[#2d372f]">Attachments</p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => revisionFileInputRef.current?.click()}
+                      disabled={isUploadingRevision}
+                    >
+                      <Paperclip className="h-4 w-4" />
+                      Add files
+                    </Button>
+                  </div>
+                  {pendingRevisionFiles.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 rounded-[18px] border border-[#e2e7e2] bg-[#fbfcfa] px-3 py-2.5">
+                      {pendingRevisionFiles.map((pendingFile) => (
+                        <div
+                          key={pendingFile.id}
+                          className="inline-flex items-center gap-2 rounded-full border border-[#d6dfd7] bg-white px-3 py-1.5 text-[11px] text-[#324138]"
+                        >
+                          <span className="max-w-[220px] truncate">{pendingFile.file.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => removePendingRevisionFile(pendingFile.id)}
+                            className="cursor-pointer text-[#7d847e] transition hover:text-[#27322b]"
+                            aria-label={`Remove ${pendingFile.file.name}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-[18px] border border-dashed border-[#d8e1d8] px-4 py-5 text-[13px] text-[#7a837b]">
+                      No files attached yet.
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setRevisionDialogError(null);
+                      setRevisionDialogOpen(false);
+                    }}
+                    disabled={isUploadingRevision}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      void handleCreateRevision();
+                    }}
+                    disabled={isUploadingRevision}
+                  >
+                    {isUploadingRevision ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Create Revision
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
     </section>
   );
 }
