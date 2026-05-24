@@ -4,7 +4,10 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { CurrencyCode, ProjectStatus, UserRole } from "@prisma/client";
 
-import type { ProjectFormState } from "@/app/(dashboard)/projects/new/project-form-state";
+import type {
+  ProjectFormFieldErrors,
+  ProjectFormState,
+} from "@/app/(dashboard)/projects/new/project-form-state";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
@@ -79,15 +82,20 @@ function parseProjectFormData(formData: FormData) {
 }
 
 function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>) {
-  if (
-    !parsed.name ||
-    !parsed.category ||
-    !parsed.description ||
-    !parsed.budgetInput ||
-    !parsed.startDateInput ||
-    !parsed.endDateInput
-  ) {
-    return { error: "Fill in all required project fields before saving the project." } as const;
+  const fieldErrors: ProjectFormFieldErrors = {};
+
+  if (!parsed.name) fieldErrors.name = "Project name is required.";
+  if (!parsed.category) fieldErrors.category = "Project category is required.";
+  if (!parsed.tag) fieldErrors.tag = "Project tag is required.";
+  if (!parsed.description) fieldErrors.description = "Project brief is required.";
+  if (!parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
+  if (!parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
+  if (!parsed.statusInput) fieldErrors.status = "Project status is required.";
+  if (!parsed.startDateInput) fieldErrors.startDate = "Project start date is required.";
+  if (!parsed.endDateInput) fieldErrors.endDate = "Project end date is required.";
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { error: "Please fill the required fields.", fieldErrors };
   }
 
   const budget = parseBudget(parsed.budgetInput);
@@ -97,27 +105,74 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
   const endDate = new Date(parsed.endDateInput);
 
   if (!Number.isFinite(budget) || budget <= 0) {
-    return { error: "Enter a valid project budget." } as const;
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { budget: "Enter a valid project budget." },
+    };
   }
 
   if (!currency) {
-    return { error: "Choose a valid project currency." } as const;
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { currency: "Choose a valid project currency." },
+    };
   }
 
   if (!status) {
-    return { error: "Choose a valid project status." } as const;
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { status: "Choose a valid project status." },
+    };
   }
 
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    return { error: "Choose valid start and end dates." } as const;
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        startDate: "Choose a valid start date.",
+        endDate: "Choose a valid end date.",
+      },
+    };
   }
 
   if (startDate > endDate) {
-    return { error: "Project end date must be after the start date." } as const;
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { endDate: "Project end date must be after the start date." },
+    };
   }
 
   if (parsed.stageNames.length === 0) {
-    return { error: "Add at least one valid stage before saving the project." } as const;
+    return {
+      error: "Please add at least one stage.",
+      fieldErrors: {
+        stageNames: [...["Stage name is required."]],
+        stageBudgets: [...["Stage budget is required."]],
+        stageDescriptions: [...["Stage description is required."]],
+      },
+    };
+  }
+
+  const stageNameErrors = parsed.stageNames.map((value) =>
+    value ? undefined : "Stage name is required.",
+  );
+  const stageBudgetErrors = parsed.stageBudgets.map((value) => {
+    const budget = parseBudget(value);
+    return Number.isFinite(budget) && budget > 0 ? undefined : "Enter a valid stage budget.";
+  });
+  const stageDescriptionErrors = parsed.stageDescriptions.map((value) =>
+    value ? undefined : "Stage description is required.",
+  );
+
+  if (stageNameErrors.some(Boolean) || stageBudgetErrors.some(Boolean) || stageDescriptionErrors.some(Boolean)) {
+    return {
+      error: "Please correct the highlighted stage fields.",
+      fieldErrors: {
+        stageNames: stageNameErrors,
+        stageBudgets: stageBudgetErrors,
+        stageDescriptions: stageDescriptionErrors,
+      },
+    };
   }
 
   return {
@@ -131,7 +186,7 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
       stageStatuses: getInitialStageStatuses(status, parsed.stageNames.length),
       currentStageName: parsed.stageNames[0] || "Stage 1",
     },
-  } as const;
+  };
 }
 
 export async function createProjectAction(
@@ -213,7 +268,7 @@ export async function createProjectAction(
   revalidatePath(`/projects/${projectId}`);
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 
-  redirect(`/projects/${projectId}`);
+  return { projectId };
 }
 
 export async function updateProjectAction(

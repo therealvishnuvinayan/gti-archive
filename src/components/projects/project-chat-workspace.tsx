@@ -646,6 +646,23 @@ export function ProjectChatWorkspace({
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-[20px] text-[#111712]">
+                Project Reference Files
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {project.attachments.length > 0 ? (
+                <AttachmentHistoryList attachments={project.attachments} compact />
+              ) : (
+                <p className="text-[13px] text-[#7a837b]">
+                  No project reference files uploaded yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           <ProjectCollaboratorsPanel
             collaborators={collaborators}
             onRemove={removeCollaborator}

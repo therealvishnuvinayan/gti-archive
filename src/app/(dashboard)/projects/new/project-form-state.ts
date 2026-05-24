@@ -1,5 +1,22 @@
+export type ProjectFormFieldErrors = {
+  name?: string;
+  category?: string;
+  tag?: string;
+  description?: string;
+  budget?: string;
+  currency?: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  stageNames?: Array<string | undefined>;
+  stageBudgets?: Array<string | undefined>;
+  stageDescriptions?: Array<string | undefined>;
+};
+
 export type ProjectFormState = {
   error?: string;
+  projectId?: string;
+  fieldErrors?: ProjectFormFieldErrors;
 };
 
 export const initialProjectFormState: ProjectFormState = {};

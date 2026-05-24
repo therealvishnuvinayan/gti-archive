@@ -1,6 +1,14 @@
 "use client";
 
-import { useActionState, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { useFormStatus } from "react-dom";
 import { Download, Loader2, Paperclip, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -14,6 +22,7 @@ import {
   initialProjectFormState,
   type ProjectEditorInitialAttachment,
   type ProjectEditorInitialValues,
+  type ProjectFormFieldErrors,
   type ProjectFormState,
 } from "@/app/(dashboard)/projects/new/project-form-state";
 import { CalendarMonthGrid } from "@/components/calendar/calendar-month-grid";
@@ -90,6 +99,11 @@ type UploadAssetResponse = {
   error?: string;
 };
 
+function getLocalFileTypeLabel(fileName: string) {
+  const extension = fileName.split(".").pop()?.toUpperCase();
+  return extension && extension.length <= 5 ? extension : "FILE";
+}
+
 function formatDateValue(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -122,27 +136,57 @@ function MonthPicker({
   );
 }
 
-function CreateProjectSubmitButton({ mode }: { mode: "create" | "edit" }) {
+function RequiredLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="mb-2 block text-[16px] font-[600] text-brand">
+      {children} <span className="text-[#d3554d]">*</span>
+    </span>
+  );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) {
+    return null;
+  }
+
+  return <p className="mt-2 text-[12px] font-medium text-[#ba3f31]">{message}</p>;
+}
+
+function CreateProjectSubmitButton({
+  mode,
+  uploadPhase,
+}: {
+  mode: "create" | "edit";
+  uploadPhase?: "uploading-assets" | null;
+}) {
   const { pending } = useFormStatus();
+  const isBusy = pending || uploadPhase === "uploading-assets";
+
+  const busyLabel =
+    uploadPhase === "uploading-assets"
+      ? "Uploading Assets..."
+      : mode === "edit"
+        ? "Saving..."
+        : "Creating Project...";
 
   return (
     <Button
       type="submit"
-      disabled={pending}
+      disabled={isBusy}
       className={`mt-8 inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-full px-6 text-[15px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-all duration-200 ${
-        pending
+        isBusy
           ? "cursor-not-allowed bg-[linear-gradient(90deg,#5aa07a,#2c6d4b)] shadow-[0_10px_20px_rgba(34,102,70,0.14)]"
           : "cursor-pointer bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(34,102,70,0.26)]"
       }`}
     >
-      {pending ? (
+      {isBusy ? (
         <>
           <span className="inline-flex gap-1">
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white [animation-delay:-0.2s]" />
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white [animation-delay:-0.1s]" />
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white" />
           </span>
-          {mode === "edit" ? "Saving..." : "Creating..."}
+          {busyLabel}
         </>
       ) : (
         mode === "edit" ? "Save Changes" : "Create Project"
@@ -214,6 +258,7 @@ export function CreateProjectWorkspace({
   const [projectAttachments, setProjectAttachments] = useState<ProjectEditorInitialAttachment[]>(
     initialValues?.attachments ?? [],
   );
+  const [pendingProjectFiles, setPendingProjectFiles] = useState<File[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>(
     getDefaultCollaboratorForm(),
@@ -221,12 +266,14 @@ export function CreateProjectWorkspace({
   const [collaboratorError, setCollaboratorError] = useState<string>();
   const [collaboratorNotice, setCollaboratorNotice] = useState<string>();
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
-  const [attachmentNotice, setAttachmentNotice] = useState<string>();
   const [attachmentError, setAttachmentError] = useState<string>();
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const handledCreatedProjectIdRef = useRef<string | null>(null);
   const [, startRefresh] = useTransition();
+  const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
+  const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
 
   const overview = useMemo(
     () => ({
@@ -323,8 +370,8 @@ export function CreateProjectWorkspace({
     });
   }
 
-  async function uploadProjectAsset(file: File) {
-    if (!initialValues?.id) {
+  async function uploadProjectAsset(file: File, projectId: string) {
+    if (!projectId) {
       throw new Error("Save the project first before uploading attachments.");
     }
 
@@ -334,7 +381,7 @@ export function CreateProjectWorkspace({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        projectId: initialValues.id,
+        projectId,
         originalFileName: file.name,
         mimeType: file.type || "application/octet-stream",
         fileSize: file.size,
@@ -368,7 +415,7 @@ export function CreateProjectWorkspace({
         },
         body: JSON.stringify({
           attachmentId: uploadPayload.attachmentId,
-          projectId: initialValues.id,
+          projectId,
         }),
       });
 
@@ -386,7 +433,7 @@ export function CreateProjectWorkspace({
         body: JSON.stringify({
           attachmentId: uploadPayload.attachmentId,
           failed: true,
-          projectId: initialValues.id,
+          projectId,
         }),
       }).catch(() => undefined);
 
@@ -402,10 +449,17 @@ export function CreateProjectWorkspace({
     }
 
     setAttachmentError(undefined);
-    setAttachmentNotice(undefined);
 
-    if (mode !== "edit" || !initialValues?.id) {
-      setAttachmentError("Create the project first, then upload attachments from edit mode.");
+    if (mode === "create") {
+      setPendingProjectFiles((current) => [...current, ...selectedFiles]);
+      if (attachmentInputRef.current) {
+        attachmentInputRef.current.value = "";
+      }
+      return;
+    }
+
+    if (!initialValues?.id) {
+      setAttachmentError("Save the project first before uploading attachments.");
       if (attachmentInputRef.current) {
         attachmentInputRef.current.value = "";
       }
@@ -416,14 +470,8 @@ export function CreateProjectWorkspace({
 
     try {
       for (const file of selectedFiles) {
-        await uploadProjectAsset(file);
+        await uploadProjectAsset(file, initialValues.id);
       }
-
-      setAttachmentNotice(
-        selectedFiles.length === 1
-          ? `${selectedFiles[0]?.name} uploaded successfully.`
-          : `${selectedFiles.length} attachments uploaded successfully.`,
-      );
       refreshProjectData();
     } catch (error) {
       setAttachmentError(
@@ -438,6 +486,70 @@ export function CreateProjectWorkspace({
     }
   }
 
+  function removePendingProjectFile(index: number) {
+    setPendingProjectFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
+
+  useEffect(() => {
+    if (mode !== "create" || !formState.projectId) {
+      return;
+    }
+
+    if (handledCreatedProjectIdRef.current === formState.projectId) {
+      return;
+    }
+
+    handledCreatedProjectIdRef.current = formState.projectId;
+
+    const projectId = formState.projectId;
+
+    if (pendingProjectFiles.length === 0) {
+      router.replace(`/projects/${projectId}`);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function completeQueuedUploads() {
+      setIsUploadingAttachments(true);
+      setAttachmentError(undefined);
+
+      try {
+        for (const file of pendingProjectFiles) {
+          await uploadProjectAsset(file, projectId);
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setPendingProjectFiles([]);
+        router.replace(`/projects/${projectId}`);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setAttachmentError(
+          error instanceof Error
+            ? `${error.message} The project was created, but the attachment upload did not finish. You can retry from edit mode.`
+            : "The project was created, but the attachment upload did not finish. You can retry from edit mode.",
+        );
+        router.replace(`/projects/${projectId}/edit`);
+      } finally {
+        if (!cancelled) {
+          setIsUploadingAttachments(false);
+        }
+      }
+    }
+
+    void completeQueuedUploads();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formState.projectId, mode, pendingProjectFiles, router]);
+
   async function removeProjectAttachment(attachmentId: string) {
     if (!initialValues?.id) {
       return;
@@ -445,7 +557,6 @@ export function CreateProjectWorkspace({
 
     setDeletingAttachmentId(attachmentId);
     setAttachmentError(undefined);
-    setAttachmentNotice(undefined);
 
     try {
       const response = await fetch(
@@ -464,7 +575,6 @@ export function CreateProjectWorkspace({
       setProjectAttachments((current) =>
         current.filter((attachment) => attachment.id !== attachmentId),
       );
-      setAttachmentNotice("Attachment removed.");
       refreshProjectData();
     } catch (error) {
       setAttachmentError(
@@ -504,7 +614,7 @@ export function CreateProjectWorkspace({
           </div>
         </CardHeader>
 
-        {formState.error ? (
+        {formState.error && !formState.fieldErrors ? (
           <p className="mt-5 rounded-2xl border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[13px] font-medium text-[#ba3f31]">
             {formState.error}
           </p>
@@ -518,40 +628,39 @@ export function CreateProjectWorkspace({
             <MotionItem y={8}>
             <div className="space-y-4">
               <label className="block">
-                <span className="mb-2 block text-[16px] font-[600] text-brand">
-                  Project Name
-                </span>
+                <RequiredLabel>Project Name</RequiredLabel>
                 <Input
                   value={projectName}
                   onChange={(event) => setProjectName(event.target.value)}
                   name="name"
+                  required
                   placeholder="Enter Project Name....."
                   className="h-[42px] text-[12px]"
                 />
+                <FieldError message={fieldErrors.name} />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-[16px] font-[600] text-brand">
-                  Project Category
-                </span>
+                <RequiredLabel>Project Category</RequiredLabel>
                 <Input
                   value={projectCategory}
                   onChange={(event) => setProjectCategory(event.target.value)}
                   name="category"
+                  required
                   placeholder="Enter Project Category....."
                   className="h-[42px] text-[12px]"
                 />
+                <FieldError message={fieldErrors.category} />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-[16px] font-[600] text-brand">
-                  Project Budget
-                </span>
+                <RequiredLabel>Project Budget</RequiredLabel>
                 <div className="flex gap-2">
                   <Input
                     value={projectBudget}
                     onChange={(event) => handleBudgetChange(event.target.value)}
                     name="budget"
+                    required
                     inputMode="numeric"
                     pattern="[0-9]*"
                     placeholder="Enter Project Budget...."
@@ -573,25 +682,24 @@ export function CreateProjectWorkspace({
                     </SelectContent>
                   </Select>
                 </div>
+                <FieldError message={fieldErrors.budget || fieldErrors.currency} />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-[16px] font-[600] text-brand">
-                  Project Tag
-                </span>
+                <RequiredLabel>Project Tag</RequiredLabel>
                 <Input
                   value={projectTag}
                   onChange={(event) => setProjectTag(event.target.value)}
                   name="tag"
+                  required
                   placeholder="Enter Project Tag....."
                   className="h-[42px] text-[12px]"
                 />
+                <FieldError message={fieldErrors.tag} />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-[16px] font-[600] text-brand">
-                  Project Status
-                </span>
+                <RequiredLabel>Project Status</RequiredLabel>
                 <Select
                   value={projectStatus}
                   onValueChange={(nextValue) =>
@@ -609,6 +717,7 @@ export function CreateProjectWorkspace({
                     ))}
                   </SelectContent>
                 </Select>
+                <FieldError message={fieldErrors.status} />
               </label>
             </div>
             </MotionItem>
@@ -616,17 +725,16 @@ export function CreateProjectWorkspace({
             <MotionItem y={8}>
             <div>
               <label className="block">
-                <span className="mb-2 block text-[16px] font-[600] text-brand">
-                  Project Brief
-                </span>
+                <RequiredLabel>Project Brief</RequiredLabel>
                 <div className="relative">
                   <Textarea
                     value={projectBrief}
                     onChange={(event) => setProjectBrief(event.target.value)}
                     name="description"
-                    placeholder="Enter Project Brief......."
-                    className="min-h-[236px] pr-12 text-[12px]"
-                  />
+                    required
+                  placeholder="Enter Project Brief......."
+                  className="min-h-[236px] pr-12 text-[12px]"
+                />
                   <label className="absolute bottom-3 right-3 cursor-pointer text-[#b4bbb5] transition-colors hover:text-brand">
                     <button
                       type="button"
@@ -638,6 +746,7 @@ export function CreateProjectWorkspace({
                     </button>
                   </label>
                 </div>
+                <FieldError message={fieldErrors.description} />
               </label>
 
               <input
@@ -650,19 +759,15 @@ export function CreateProjectWorkspace({
                 }}
               />
 
-              {attachmentNotice ? (
-                <div className="mt-3 rounded-[16px] border border-[#d8e7d9] bg-[#f6fbf7] px-4 py-3 text-[12px] text-brand">
-                  {attachmentNotice}
-                </div>
-              ) : null}
-
               {attachmentError ? (
                 <div className="mt-3 rounded-[16px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] text-[#bb4d49]">
                   {attachmentError}
                 </div>
               ) : null}
 
-              {projectAttachments.length > 0 || mode === "edit" ? (
+              {projectAttachments.length > 0 ||
+              pendingProjectFiles.length > 0 ||
+              mode === "edit" ? (
                 <Card className="mt-3 rounded-[16px] border border-[#dce6dd] shadow-none">
                   <CardContent className="px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
@@ -676,17 +781,23 @@ export function CreateProjectWorkspace({
                             Uploading...
                           </span>
                         ) : null}
-                        <Badge variant="secondary">{projectAttachments.length}</Badge>
+                        <Badge variant="secondary">
+                          {projectAttachments.length + pendingProjectFiles.length}
+                        </Badge>
                       </div>
                     </div>
-                    {projectAttachments.length > 0 ? (
+                    {projectAttachments.length > 0 || pendingProjectFiles.length > 0 ? (
                       <ul className="mt-2 space-y-2">
                         {projectAttachments.map((attachment) => (
                         <li
                           key={attachment.id}
                           className="flex items-center justify-between gap-3 rounded-[12px] bg-[#f7faf7] px-3 py-2"
                         >
-                          <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[#dce6dd] bg-white text-[11px] font-semibold text-brand">
+                              {attachment.fileTypeLabel}
+                            </div>
+                            <div className="min-w-0">
                             <p className="truncate text-[12px] font-medium text-[#243028]">
                               {attachment.originalFileName}
                             </p>
@@ -696,6 +807,7 @@ export function CreateProjectWorkspace({
                               <span>{attachment.uploadedBy}</span>
                               <span>·</span>
                               <span>{attachment.uploadedAt}</span>
+                            </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
@@ -733,24 +845,49 @@ export function CreateProjectWorkspace({
                           </div>
                         </li>
                         ))}
+                        {pendingProjectFiles.map((file, index) => (
+                          <li
+                            key={`${file.name}-${file.size}-${index}`}
+                            className="flex items-center justify-between gap-3 rounded-[12px] border border-dashed border-[#d7dfd7] bg-[#fdfefd] px-3 py-2"
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[#d7dfd7] bg-white text-[11px] font-semibold text-brand">
+                                {getLocalFileTypeLabel(file.name)}
+                              </div>
+                              <div className="min-w-0">
+                              <p className="truncate text-[12px] font-medium text-[#243028]">
+                                {file.name}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-[#7a837b]">
+                                <span>{(file.size / (1024 * 1024)).toFixed(1)} MB</span>
+                                <span>·</span>
+                                <span>{mode === "create" ? "Pending" : "Pending upload"}</span>
+                              </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removePendingProjectFile(index)}
+                              className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44]"
+                              aria-label={`Remove ${file.name}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </li>
+                        ))}
                       </ul>
                     ) : (
                       <p className="mt-3 text-[11px] text-[#7a837b]">
                         No project-level attachments uploaded yet.
                       </p>
                     )}
-                    <div className="mt-3 flex justify-between gap-3">
-                      <p className="text-[11px] text-[#7a837b]">
-                        {mode === "edit"
-                          ? "Files upload directly to secure S3 storage and are saved in project history."
-                          : "Save the project first, then upload attachments from edit mode."}
-                      </p>
+                    <div className="mt-3 flex justify-end gap-3">
                       <Button
                         type="button"
                         variant="secondary"
                         size="sm"
                         onClick={() => attachmentInputRef.current?.click()}
-                        disabled={mode !== "edit" || isUploadingAttachments}
+                        disabled={isUploadingAttachments}
                         className="shrink-0 text-[12px]"
                       >
                         <Paperclip className="h-4 w-4" />
@@ -767,28 +904,32 @@ export function CreateProjectWorkspace({
           <MotionStaggerGroup className="grid gap-4 2xl:grid-cols-2" stagger={0.05}>
             <MotionItem y={8}>
               <MonthPicker
-                label="Project Start Date"
+                label="Project Start Date *"
                 value={startDate}
                 onSelect={setStartDate}
                 month={startMonth}
                 onMonthChange={setStartMonth}
               />
+              <FieldError message={fieldErrors.startDate} />
             </MotionItem>
             <MotionItem y={8}>
               <MonthPicker
-                label="Project End Date"
+                label="Project End Date *"
                 value={endDate}
                 onSelect={setEndDate}
                 month={endMonth}
                 onMonthChange={setEndMonth}
               />
+              <FieldError message={fieldErrors.endDate} />
             </MotionItem>
           </MotionStaggerGroup>
 
           <MotionSection y={8}>
           <div>
             <div className="flex items-center justify-between gap-4">
-              <h3 className="text-[16px] font-[600] text-brand">Project Stages</h3>
+              <h3 className="text-[16px] font-[600] text-brand">
+                Project Stages <span className="text-[#d3554d]">*</span>
+              </h3>
               <Button
                 type="button"
                 onClick={addStage}
@@ -809,14 +950,22 @@ export function CreateProjectWorkspace({
                 <MotionItem key={stage.id} y={8} layout>
                 <Card className="rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
                   <CardContent className="p-4">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                      Stage Name <span className="text-[#d3554d]">*</span>
+                    </p>
                     <Input
                       value={stage.name}
                       onChange={(event) =>
                         updateStage(stage.id, { name: event.target.value })
                       }
                       name="stageNames"
+                      required
                       className="min-h-[38px] border-brand text-center text-[14px] font-[500] text-brand"
                     />
+                    <FieldError message={fieldErrors.stageNames?.[index]} />
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                      Stage Budget <span className="text-[#d3554d]">*</span>
+                    </p>
                     <Input
                       value={stage.budget}
                       onChange={(event) =>
@@ -825,20 +974,27 @@ export function CreateProjectWorkspace({
                         })
                       }
                       name="stageBudgets"
+                      required
                       inputMode="numeric"
                       pattern="[0-9]*"
                       placeholder={`Stage ${index + 1} Budget...`}
                       className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
                     />
+                    <FieldError message={fieldErrors.stageBudgets?.[index]} />
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                      Stage Description <span className="text-[#d3554d]">*</span>
+                    </p>
                     <Textarea
                       value={stage.description}
                       onChange={(event) =>
                         updateStage(stage.id, { description: event.target.value })
                       }
                       name="stageDescriptions"
+                      required
                       placeholder={`Stage ${index + 1} Description...`}
                       className="mt-3 min-h-[84px] bg-[#f7faf7] text-[12px]"
                     />
+                    <FieldError message={fieldErrors.stageDescriptions?.[index]} />
                   </CardContent>
                 </Card>
                 </MotionItem>
@@ -947,7 +1103,10 @@ export function CreateProjectWorkspace({
           </div>
 
           <Separator className="mt-6" />
-          <CreateProjectSubmitButton mode={mode} />
+          <CreateProjectSubmitButton
+            mode={mode}
+            uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
+          />
           </CardContent>
         </Card>
         </MotionItem>
