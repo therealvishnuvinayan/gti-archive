@@ -379,7 +379,7 @@ export async function getProjectStageHistory(
       entry: mapCommentEntry(comment),
     })),
   ]
-    .sort((left, right) => left.createdAt - right.createdAt)
+    .sort((left, right) => right.createdAt - left.createdAt)
     .map((item) => item.entry);
 
   return {
