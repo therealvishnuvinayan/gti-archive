@@ -641,11 +641,11 @@ export function ProjectChatWorkspace({
                 </div>
                 <div>
                   <dt className="inline font-[700]">Stage Started :</dt>{" "}
-                  <dd className="inline">{activeStage?.createdOn ?? project.startDate}</dd>
+                  <dd className="inline">{activeStage?.plannedStartAt ?? project.startDate}</dd>
                 </div>
                 <div>
                   <dt className="inline font-[700]">Stage Deadline :</dt>{" "}
-                  <dd className="inline">{project.endDate}</dd>
+                  <dd className="inline">{activeStage?.plannedDueAt ?? project.endDate}</dd>
                 </div>
               </dl>
               <div className="mt-5">

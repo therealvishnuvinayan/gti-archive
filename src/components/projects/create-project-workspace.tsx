@@ -27,6 +27,7 @@ import {
   type ProjectFormState,
 } from "@/app/(dashboard)/projects/new/project-form-state";
 import { CalendarMonthGrid } from "@/components/calendar/calendar-month-grid";
+import { DateTimePicker } from "@/components/calendar/date-time-picker";
 import {
   CollaboratorDialog,
   type CollaboratorForm,
@@ -74,6 +75,8 @@ type StageForm = {
   name: string;
   budget: string;
   description: string;
+  plannedStartAt: string;
+  plannedDueAt: string;
 };
 
 type CurrencyValue = (typeof currencyOptions)[number];
@@ -112,6 +115,20 @@ function formatDateValue(date: Date) {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatDateTimeInputValue(date: Date | null) {
+  if (!date || Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const hours = `${date.getHours()}`.padStart(2, "0");
+  const minutes = `${date.getMinutes()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function MonthPicker({
@@ -248,13 +265,24 @@ export function CreateProjectWorkspace({
   );
   const [stages, setStages] = useState<StageForm[]>(
     initialValues?.stages.length
-      ? initialValues.stages.map((stage) => ({
+        ? initialValues.stages.map((stage) => ({
           id: stage.id,
           name: stage.name,
           budget: stage.budget,
           description: stage.description,
+          plannedStartAt: stage.plannedStartAt,
+          plannedDueAt: stage.plannedDueAt,
         }))
-      : [{ id: "stage-1", name: "Stage 1", budget: "", description: "" }],
+      : [
+          {
+            id: "stage-1",
+            name: "Stage 1",
+            budget: "",
+            description: "",
+            plannedStartAt: "",
+            plannedDueAt: "",
+          },
+        ],
   );
   const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
     useState<CollaboratorRecord[]>(availableCollaborators);
@@ -313,6 +341,8 @@ export function CreateProjectWorkspace({
         name: `Stage ${current.length + 1}`,
         budget: "",
         description: "",
+        plannedStartAt: formatDateTimeInputValue(startDate),
+        plannedDueAt: formatDateTimeInputValue(endDate),
       },
     ]);
   }
@@ -1052,6 +1082,28 @@ export function CreateProjectWorkspace({
                       className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
                     />
                     <FieldError message={fieldErrors.stageBudgets?.[index]} />
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                      Stage Start <span className="text-[#d3554d]">*</span>
+                    </p>
+                    <DateTimePicker
+                      name="stageStartDates"
+                      value={stage.plannedStartAt}
+                      onChange={(value) =>
+                        updateStage(stage.id, { plannedStartAt: value })
+                      }
+                    />
+                    <FieldError message={fieldErrors.stageStartDates?.[index]} />
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                      Stage Due <span className="text-[#d3554d]">*</span>
+                    </p>
+                    <DateTimePicker
+                      name="stageDueDates"
+                      value={stage.plannedDueAt}
+                      onChange={(value) =>
+                        updateStage(stage.id, { plannedDueAt: value })
+                      }
+                    />
+                    <FieldError message={fieldErrors.stageDueDates?.[index]} />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Description <span className="text-[#d3554d]">*</span>
                     </p>

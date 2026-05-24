@@ -11,6 +11,8 @@ export type ProjectFormFieldErrors = {
   stageNames?: Array<string | undefined>;
   stageBudgets?: Array<string | undefined>;
   stageDescriptions?: Array<string | undefined>;
+  stageStartDates?: Array<string | undefined>;
+  stageDueDates?: Array<string | undefined>;
 };
 
 export type ProjectFormState = {
@@ -26,6 +28,8 @@ export type ProjectEditorInitialStage = {
   name: string;
   budget: string;
   description: string;
+  plannedStartAt: string;
+  plannedDueAt: string;
 };
 
 export type ProjectEditorInitialAttachment = {

@@ -68,6 +68,8 @@ export type ProjectEditorRecord = {
     name: string;
     budget: string;
     description: string;
+    plannedStartAt: string;
+    plannedDueAt: string;
   }>;
   collaborators: ProjectCollaboratorRecord[];
   attachments: ProjectAttachmentRecord[];
@@ -87,6 +89,8 @@ export type ProjectStageRecord = {
   title: string;
   createdOn: string;
   budget: string;
+  plannedStartAt: string;
+  plannedDueAt: string;
   status: ProjectStageVisualStatus;
 };
 
@@ -251,6 +255,27 @@ function formatAttachmentTimestamp(date: Date | string | number) {
   }).format(normalizedDate);
 }
 
+export function formatProjectDateTime(date: Date | string | number | null | undefined) {
+  if (!date) {
+    return "—";
+  }
+
+  const normalizedDate = toProjectDate(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(normalizedDate);
+}
+
 function getAttachmentFileTypeLabel(fileName: string, mimeType: string) {
   const extension = fileName.split(".").at(-1)?.toUpperCase();
 
@@ -327,6 +352,8 @@ function buildSyntheticStages(project: Project): ProjectStage[] {
         : `Stage ${index + 1}`,
     description: null,
     budget: index === 0 ? project.budget : null,
+    plannedStartAt: project.startDate,
+    plannedDueAt: project.endDate,
     status: index === 0 ? project.status : "PENDING",
     order: index + 1,
     createdAt: project.createdAt,
@@ -371,6 +398,8 @@ function mapStageToCard(project: ProjectWithCreator, stage: ProjectStage): Proje
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
     budget: formatProjectBudget(stage.budget, project.currency),
+    plannedStartAt: formatProjectDateTime(stage.plannedStartAt),
+    plannedDueAt: formatProjectDateTime(stage.plannedDueAt),
     status: mapStageStatusToVisual(stage.status),
   };
 }
@@ -444,6 +473,26 @@ function formatProjectInputDate(date: Date | string | number) {
   return `${year}-${month}-${day}`;
 }
 
+function formatProjectInputDateTime(date: Date | string | number | null | undefined) {
+  if (!date) {
+    return "";
+  }
+
+  const normalizedDate = toProjectDate(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "";
+  }
+
+  const year = normalizedDate.getFullYear();
+  const month = `${normalizedDate.getMonth() + 1}`.padStart(2, "0");
+  const day = `${normalizedDate.getDate()}`.padStart(2, "0");
+  const hours = `${normalizedDate.getHours()}`.padStart(2, "0");
+  const minutes = `${normalizedDate.getMinutes()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
   const stages = getProjectStages(project);
 
@@ -468,6 +517,8 @@ function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
             ? String(project.budget)
             : "",
       description: stage.description?.trim() || "",
+      plannedStartAt: formatProjectInputDateTime(stage.plannedStartAt ?? project.startDate),
+      plannedDueAt: formatProjectInputDateTime(stage.plannedDueAt ?? project.endDate),
     })),
     collaborators: (project.collaborators ?? []).map((assignment) => ({
       id: assignment.user.id,

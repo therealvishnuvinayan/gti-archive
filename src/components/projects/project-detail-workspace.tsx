@@ -55,8 +55,15 @@ function getStageCardClasses(stage: ProjectStageRecord) {
 }
 
 export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps) {
+  const stageGridClasses =
+    project.stageCards.length === 1
+      ? "max-w-[420px] grid-cols-1"
+      : project.stageCards.length === 2
+        ? "md:grid-cols-2"
+        : "xl:grid-cols-3";
+
   return (
-    <section className="space-y-6">
+    <section className="mx-auto max-w-[1320px] space-y-5">
       <MotionStaggerGroup
         className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]"
         stagger={0.05}
@@ -119,7 +126,7 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
 
       <MotionSection>
       <Card className="rounded-[20px]">
-        <CardHeader>
+        <CardHeader className="pb-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <CardTitle className="text-[22px]">
@@ -133,8 +140,11 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
         </CardHeader>
 
         {project.stageCards.length > 0 ? (
-          <CardContent>
-            <MotionStaggerGroup className="grid gap-4 xl:grid-cols-3" stagger={0.045}>
+          <CardContent className="pt-0">
+            <MotionStaggerGroup
+              className={`grid gap-4 ${stageGridClasses}`}
+              stagger={0.045}
+            >
             {project.stageCards.map((stage) => {
               const styles = getStageCardClasses(stage);
               const stageInactive = stage.status === "pending";
@@ -154,23 +164,23 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
                       {stage.subtitle}
                     </p>
                     {stage.description ? (
-                      <p className="mt-2 min-h-[40px] text-[12px] leading-[1.4] text-white/82">
+                      <p className="mt-2 text-[12px] leading-[1.4] text-white/82">
                         {stage.description}
                       </p>
-                    ) : (
-                      <div className="mt-2 min-h-[40px]" />
-                    )}
-                    <h3 className="mt-1 min-h-[76px] text-[20px] font-[700] leading-[1.08] text-white">
+                    ) : null}
+                    <h3 className="mt-3 text-[20px] font-[700] leading-[1.08] text-white">
                       {stage.title}
                     </h3>
-                    <div className={`space-y-0.5 text-[14px] ${styles.meta}`}>
+                    <div className={`mt-3 space-y-0.5 text-[14px] ${styles.meta}`}>
                       <p>Created on {stage.createdOn}</p>
                       <p>Stage Budget: {stage.budget}</p>
+                      <p>Stage Start: {stage.plannedStartAt}</p>
+                      <p>Stage Due: {stage.plannedDueAt}</p>
                     </div>
 
-                    <Separator className="my-4 bg-white/12" />
+                    <Separator className="my-3 bg-white/12" />
 
-                    <div className="mt-5 space-y-2.5">
+                    <div className="mt-4 space-y-2.5">
                       <Button
                         asChild
                         className={stageInactive ? "pointer-events-none bg-[#f1f1f1] text-[#d7d7d7] shadow-none" : "w-full"}

@@ -56,13 +56,18 @@ function parseProjectFormData(formData: FormData) {
   const endDateInput = String(formData.get("endDate") ?? "").trim();
   const stageNames = formData
     .getAll("stageNames")
-    .map((value) => String(value).trim())
-    .filter(Boolean);
+    .map((value) => String(value).trim());
   const stageBudgets = formData
     .getAll("stageBudgets")
     .map((value) => String(value).trim());
   const stageDescriptions = formData
     .getAll("stageDescriptions")
+    .map((value) => String(value).trim());
+  const stageStartDates = formData
+    .getAll("stageStartDates")
+    .map((value) => String(value).trim());
+  const stageDueDates = formData
+    .getAll("stageDueDates")
     .map((value) => String(value).trim());
   const collaboratorIds = [...new Set(
     formData
@@ -84,6 +89,8 @@ function parseProjectFormData(formData: FormData) {
     stageNames,
     stageBudgets,
     stageDescriptions,
+    stageStartDates,
+    stageDueDates,
     collaboratorIds,
   };
 }
@@ -156,28 +163,86 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
         stageNames: [...["Stage name is required."]],
         stageBudgets: [...["Stage budget is required."]],
         stageDescriptions: [...["Stage description is required."]],
+        stageStartDates: [...["Stage start is required."]],
+        stageDueDates: [...["Stage due is required."]],
       },
     };
   }
 
-  const stageNameErrors = parsed.stageNames.map((value) =>
+  const stageNameErrors: Array<string | undefined> = parsed.stageNames.map((value) =>
     value ? undefined : "Stage name is required.",
   );
-  const stageBudgetErrors = parsed.stageBudgets.map((value) => {
+  const stageBudgetErrors: Array<string | undefined> = parsed.stageBudgets.map((value) => {
     const budget = parseBudget(value);
     return Number.isFinite(budget) && budget > 0 ? undefined : "Enter a valid stage budget.";
   });
-  const stageDescriptionErrors = parsed.stageDescriptions.map((value) =>
+  const stageDescriptionErrors: Array<string | undefined> = parsed.stageDescriptions.map((value) =>
     value ? undefined : "Stage description is required.",
   );
+  const stageStartDateErrors: Array<string | undefined> = parsed.stageStartDates.map((value) =>
+    value ? undefined : "Stage start is required.",
+  );
+  const stageDueDateErrors: Array<string | undefined> = parsed.stageDueDates.map((value) =>
+    value ? undefined : "Stage due is required.",
+  );
 
-  if (stageNameErrors.some(Boolean) || stageBudgetErrors.some(Boolean) || stageDescriptionErrors.some(Boolean)) {
+  const projectStartBoundary = new Date(parsed.startDateInput);
+  projectStartBoundary.setHours(0, 0, 0, 0);
+  const projectEndBoundary = new Date(parsed.endDateInput);
+  projectEndBoundary.setHours(23, 59, 59, 999);
+
+  parsed.stageStartDates.forEach((value, index) => {
+    if (!value) return;
+
+    const stageStart = new Date(value);
+
+    if (Number.isNaN(stageStart.getTime())) {
+      stageStartDateErrors[index] = "Choose a valid stage start.";
+      return;
+    }
+
+    if (stageStart < projectStartBoundary || stageStart > projectEndBoundary) {
+      stageStartDateErrors[index] = "Stage start must be within the project date range.";
+    }
+  });
+
+  parsed.stageDueDates.forEach((value, index) => {
+    if (!value) return;
+
+    const stageDue = new Date(value);
+    const stageStartValue = parsed.stageStartDates[index];
+    const stageStart = stageStartValue ? new Date(stageStartValue) : null;
+
+    if (Number.isNaN(stageDue.getTime())) {
+      stageDueDateErrors[index] = "Choose a valid stage due time.";
+      return;
+    }
+
+    if (stageDue < projectStartBoundary || stageDue > projectEndBoundary) {
+      stageDueDateErrors[index] = "Stage due must be within the project date range.";
+      return;
+    }
+
+    if (stageStart && !Number.isNaN(stageStart.getTime()) && stageDue <= stageStart) {
+      stageDueDateErrors[index] = "Stage due must be after the stage start.";
+    }
+  });
+
+  if (
+    stageNameErrors.some(Boolean) ||
+    stageBudgetErrors.some(Boolean) ||
+    stageDescriptionErrors.some(Boolean) ||
+    stageStartDateErrors.some(Boolean) ||
+    stageDueDateErrors.some(Boolean)
+  ) {
     return {
       error: "Please correct the highlighted stage fields.",
       fieldErrors: {
         stageNames: stageNameErrors,
         stageBudgets: stageBudgetErrors,
         stageDescriptions: stageDescriptionErrors,
+        stageStartDates: stageStartDateErrors,
+        stageDueDates: stageDueDateErrors,
       },
     };
   }
@@ -190,6 +255,8 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
       status,
       startDate,
       endDate,
+      stageStartDates: parsed.stageStartDates.map((value) => new Date(value)),
+      stageDueDates: parsed.stageDueDates.map((value) => new Date(value)),
       stageStatuses: getInitialStageStatuses(status, parsed.stageNames.length),
       currentStageName: parsed.stageNames[0] || "Stage 1",
     },
@@ -224,6 +291,8 @@ export async function createProjectAction(
     stageNames,
     stageBudgets,
     stageDescriptions,
+    stageStartDates,
+    stageDueDates,
     stageStatuses,
     currentStageName,
     collaboratorIds,
@@ -283,6 +352,8 @@ export async function createProjectAction(
                   : index === 0
                     ? budget
                     : null,
+              plannedStartAt: stageStartDates[index],
+              plannedDueAt: stageDueDates[index],
               status: stageStatuses[index],
               order: index + 1,
             };
@@ -338,6 +409,8 @@ export async function updateProjectAction(
     stageNames,
     stageBudgets,
     stageDescriptions,
+    stageStartDates,
+    stageDueDates,
     stageStatuses,
     currentStageName,
     collaboratorIds,
@@ -397,6 +470,8 @@ export async function updateProjectAction(
                   : index === 0
                     ? budget
                     : null,
+              plannedStartAt: stageStartDates[index],
+              plannedDueAt: stageDueDates[index],
               status: stageStatuses[index],
               order: index + 1,
             };

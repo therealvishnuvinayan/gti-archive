@@ -166,6 +166,8 @@ model ProjectStage {
   name      String
   description String?
   budget    Int?
+  plannedStartAt DateTime?
+  plannedDueAt DateTime?
   status    ProjectStatus @default(PENDING)
   order     Int
   revisions ProjectRevision[]
