@@ -219,8 +219,8 @@ export function CalendarWorkspace({
     email: "",
     type: "Internal",
     permissions: {
-      project: "limited",
-      calendar: "full",
+      project: "none",
+      calendar: "none",
       library: "none",
       archive: "none",
     },
@@ -310,8 +310,8 @@ export function CalendarWorkspace({
       email: "",
       type: "Internal",
       permissions: {
-        project: "limited",
-        calendar: "full",
+        project: "none",
+        calendar: "none",
         library: "none",
         archive: "none",
       },

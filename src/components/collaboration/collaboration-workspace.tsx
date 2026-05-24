@@ -92,10 +92,10 @@ const permissionOrder: PermissionLevel[] = ["full", "limited", "none"];
 
 function getDefaultPermissions(): Record<AccessArea, PermissionLevel> {
   return {
-    project: "full",
-    calendar: "limited",
-    library: "full",
-    archive: "limited",
+    project: "none",
+    calendar: "none",
+    library: "none",
+    archive: "none",
   };
 }
 

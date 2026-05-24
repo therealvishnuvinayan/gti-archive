@@ -221,10 +221,10 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
     email: "",
     type: "Internal",
     permissions: {
-      project: "full",
-      calendar: "limited",
-      library: "full",
-      archive: "limited",
+      project: "none",
+      calendar: "none",
+      library: "none",
+      archive: "none",
     },
   };
 }
