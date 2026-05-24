@@ -179,7 +179,7 @@ function RevisionAttachmentTypeSummary({
         {groupedAttachments.map((group) => (
           <div
             key={group.label}
-            className={`relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-[10px] border px-3 py-2 shadow-[0_8px_20px_rgba(13,39,27,0.18)] ${getFileBadgeClass(
+            className={`relative inline-flex h-12 min-w-12 items-center justify-center rounded-[10px] border px-3 py-2 shadow-[0_8px_20px_rgba(13,39,27,0.18)] ${getFileBadgeClass(
               group.label,
             )}`}
           >
@@ -741,8 +741,8 @@ export function ProjectChatWorkspace({
             message.kind === "revision" ? (
               <div key={message.id} className="space-y-3">
                 <Card className="flex-1 rounded-[20px] border-none bg-[linear-gradient(135deg,#2f8d5d,#476f5a)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
-                    <div className="max-w-[420px]">
+                  <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)] xl:items-center">
+                    <div className="max-w-[220px]">
                       <h1 className="text-[18px] font-[700] text-[#95d867]">
                         {message.title}
                       </h1>
@@ -762,11 +762,15 @@ export function ProjectChatWorkspace({
                     </div>
 
                     {message.attachments?.length ? (
-                      <Card className="min-w-0 self-center rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
+                      <Card className="mx-auto min-w-0 max-w-[360px] rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
                         <p className="text-center text-[11px] font-[700]">Attachments</p>
                         <RevisionAttachmentTypeSummary attachments={message.attachments} />
                         {message.compareLabel ? (
-                          <Button asChild size="sm" className="mt-3 min-h-[30px] w-full text-[11px]">
+                          <Button
+                            asChild
+                            size="sm"
+                            className="mt-3 min-h-[30px] w-full rounded-full bg-[#184d34] text-[11px] hover:bg-[#123f2a]"
+                          >
                             <Link href={`/projects/${project.id}/compare?stage=${activeStage?.id ?? ""}`}>
                               {message.compareLabel}
                             </Link>
@@ -783,7 +787,7 @@ export function ProjectChatWorkspace({
                       type="button"
                       onClick={openRevisionDialog}
                       size="sm"
-                      className="text-[12px]"
+                      className="rounded-full text-[12px]"
                       disabled={isUploadingRevision}
                     >
                       {isUploadingRevision ? (
@@ -798,7 +802,7 @@ export function ProjectChatWorkspace({
                         type="button"
                         size="sm"
                         variant="secondary"
-                        className="text-[12px]"
+                        className="rounded-full text-[12px]"
                         disabled={isStageCompleted || isMarkingStageComplete}
                         onClick={() => {
                           setStageCompleteError(null);
@@ -813,7 +817,7 @@ export function ProjectChatWorkspace({
                       onClick={() => setDraft(`Replying to ${message.author}: `)}
                       size="sm"
                       variant="secondary"
-                      className="text-[12px]"
+                      className="rounded-full text-[12px]"
                     >
                       Add Comments
                     </Button>
