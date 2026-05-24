@@ -7,7 +7,8 @@ import {
   createStageComment,
   createStageRevision,
 } from "@/lib/project-history";
-import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import { PROJECTS_CACHE_TAG, updateProjectCollaborators } from "@/lib/projects";
+import { UserRole } from "@prisma/client";
 
 type StageRevisionInput = {
   projectId: string;
@@ -61,6 +62,37 @@ export async function createStageCommentAction(input: StageCommentInput) {
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Unable to add the comment right now.",
+    };
+  }
+}
+
+export async function saveProjectCollaboratorsAction(
+  projectId: string,
+  collaboratorIds: string[],
+) {
+  const user = await requireUser();
+
+  if (user.role === UserRole.COLLABORATOR) {
+    return { error: "You are not allowed to update project collaborators." };
+  }
+
+  try {
+    const collaborators = await updateProjectCollaborators(
+      projectId,
+      collaboratorIds,
+      user.id,
+    );
+
+    revalidateProjectFlow(projectId);
+    revalidatePath(`/projects/${projectId}/edit`);
+
+    return { collaborators };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update project collaborators right now.",
     };
   }
 }

@@ -15,7 +15,14 @@ import {
 } from "lucide-react";
 
 import { createStageCommentAction, createStageRevisionAction } from "@/app/(dashboard)/projects/actions";
+import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
+import { saveProjectCollaboratorsAction } from "@/app/(dashboard)/projects/actions";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  CollaboratorDialog,
+  type CollaboratorForm,
+} from "@/components/collaboration/collaborator-dialog";
+import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,11 +34,13 @@ import type {
   ProjectFlowRecord,
   ProjectStageRecord,
 } from "@/lib/projects";
+import type { CollaboratorRecord } from "@/lib/collaboration";
 
 type ProjectChatWorkspaceProps = {
   project: ProjectFlowRecord;
   stageId?: string | null;
   history: StageHistoryRecord;
+  availableCollaborators: CollaboratorRecord[];
 };
 
 type PendingFile = {
@@ -215,19 +224,37 @@ export function ProjectChatWorkspace({
   project,
   stageId,
   history,
+  availableCollaborators,
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
     project.collaborators,
   );
+  const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
+    useState<CollaboratorRecord[]>(availableCollaborators);
   const [draft, setDraft] = useState("");
   const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [isUploadingRevision, setIsUploadingRevision] = useState(false);
+  const [collaboratorPickerOpen, setCollaboratorPickerOpen] = useState(false);
+  const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
+  const [collaboratorSaving, setCollaboratorSaving] = useState(false);
+  const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
+    name: "",
+    email: "",
+    type: "Internal",
+    permissions: {
+      project: "none",
+      calendar: "none",
+      library: "none",
+      archive: "none",
+    },
+  });
 
   const messages = history.entries;
 
@@ -241,9 +268,161 @@ export function ProjectChatWorkspace({
 
     return project.stageCards.find((stage) => stage.id === stageId) ?? project.stageCards[0];
   }, [project.currentStageId, project.stageCards, stageId]);
+  const selectedCollaboratorIds = useMemo(
+    () =>
+      collaborators
+        .filter((collaborator) => collaborator.access !== "owner")
+        .map((collaborator) => collaborator.id),
+    [collaborators],
+  );
 
   function removeCollaborator(id: string) {
     setCollaborators((current) => current.filter((collaborator) => collaborator.id !== id));
+  }
+
+  function setCollaboratorFormValue<K extends keyof CollaboratorForm>(
+    field: K,
+    value: CollaboratorForm[K],
+  ) {
+    setCollaboratorForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function setCollaboratorPermissionValue(
+    area: keyof CollaboratorForm["permissions"],
+    value: CollaboratorForm["permissions"][keyof CollaboratorForm["permissions"]],
+  ) {
+    setCollaboratorForm((current) => ({
+      ...current,
+      permissions: { ...current.permissions, [area]: value },
+    }));
+  }
+
+  function openCollaboratorInvite() {
+    setCollaboratorPickerOpen(false);
+    setCollaboratorForm({
+      name: "",
+      email: "",
+      type: "Internal",
+      permissions: {
+        project: "none",
+        calendar: "none",
+        library: "none",
+        archive: "none",
+      },
+    });
+    setCollaboratorDialogError(undefined);
+    setCollaboratorDialogOpen(true);
+  }
+
+  function toggleAssignedCollaborator(collaboratorId: string) {
+    const availableCollaborator = availableCollaboratorRecords.find(
+      (collaborator) => collaborator.id === collaboratorId,
+    );
+
+    if (!availableCollaborator) {
+      return;
+    }
+
+    setCollaborators((current) => {
+      const exists = current.some((collaborator) => collaborator.id === collaboratorId);
+
+      if (exists) {
+        return current.filter((collaborator) => collaborator.id !== collaboratorId);
+      }
+
+      return [
+        ...current,
+        {
+          id: availableCollaborator.id,
+          name: availableCollaborator.name,
+          email: availableCollaborator.email,
+          role:
+            availableCollaborator.type === "External"
+              ? "External Collaborator"
+              : "Collaborator",
+          group: availableCollaborator.type === "External" ? "external" : "internal",
+          access: "view",
+          removable: true,
+        },
+      ];
+    });
+  }
+
+  async function applyCollaboratorsSelection() {
+    setCollaboratorSaving(true);
+
+    try {
+      const result = await saveProjectCollaboratorsAction(
+        project.id,
+        collaborators
+          .filter((collaborator) => collaborator.access !== "owner")
+          .map((collaborator) => collaborator.id),
+      );
+
+      if ("error" in result) {
+        setCollaboratorDialogError(result.error);
+        return;
+      }
+
+      setCollaborators((current) => {
+        const owner = current.find((collaborator) => collaborator.access === "owner");
+        return owner ? [owner, ...result.collaborators] : result.collaborators;
+      });
+      setCollaboratorPickerOpen(false);
+      setCollaboratorDialogError(undefined);
+    } finally {
+      setCollaboratorSaving(false);
+    }
+  }
+
+  async function handleCollaboratorInvite() {
+    if (!collaboratorForm.name.trim() || !collaboratorForm.email.trim()) {
+      setCollaboratorDialogError("Enter both collaborator name and email.");
+      return;
+    }
+
+    setCollaboratorSaving(true);
+    setCollaboratorDialogError(undefined);
+
+    try {
+      const inviteResult = await saveCollaboratorAction({
+        ...collaboratorForm,
+      });
+
+      if ("error" in inviteResult) {
+        setCollaboratorDialogError(inviteResult.error);
+        return;
+      }
+
+      setAvailableCollaboratorRecords((current) => [
+        ...current,
+        inviteResult.collaborator,
+      ]);
+
+      const saveResult = await saveProjectCollaboratorsAction(project.id, [
+        ...selectedCollaboratorIds,
+        inviteResult.collaborator.id,
+      ]);
+
+      if ("error" in saveResult) {
+        setCollaboratorDialogError(saveResult.error);
+        return;
+      }
+
+      setCollaborators((current) => {
+        const owner = current.find((collaborator) => collaborator.access === "owner");
+        return owner ? [owner, ...saveResult.collaborators] : saveResult.collaborators;
+      });
+      setCollaboratorDialogOpen(false);
+    } catch (error) {
+      setCollaboratorDialogError(
+        error instanceof Error
+          ? error.message
+          : "Unable to save the collaborator right now. Please try again.",
+      );
+    } finally {
+      setCollaboratorSaving(false);
+    }
   }
 
   function refreshHistory() {
@@ -676,9 +855,45 @@ export function ProjectChatWorkspace({
           <ProjectCollaboratorsPanel
             collaborators={collaborators}
             onRemove={removeCollaborator}
+            onAdd={() => {
+              setCollaboratorDialogError(undefined);
+              setCollaboratorPickerOpen(true);
+            }}
           />
         </div>
       </div>
+      <CollaboratorPickerDialog
+        isOpen={collaboratorPickerOpen}
+        collaborators={availableCollaboratorRecords}
+        selectedIds={selectedCollaboratorIds}
+        saving={collaboratorSaving}
+        onToggle={toggleAssignedCollaborator}
+        onClose={() => {
+          setCollaboratorDialogError(undefined);
+          setCollaboratorPickerOpen(false);
+        }}
+        onConfirm={() => {
+          void applyCollaboratorsSelection();
+        }}
+        onInviteFallback={openCollaboratorInvite}
+        confirmLabel="Apply Selection"
+      />
+      <CollaboratorDialog
+        isOpen={collaboratorDialogOpen}
+        mode="invite"
+        form={collaboratorForm}
+        error={collaboratorDialogError}
+        saving={collaboratorSaving}
+        onClose={() => {
+          setCollaboratorDialogError(undefined);
+          setCollaboratorDialogOpen(false);
+        }}
+        onSubmit={() => {
+          void handleCollaboratorInvite();
+        }}
+        onChange={setCollaboratorFormValue}
+        onPermissionChange={setCollaboratorPermissionValue}
+      />
     </section>
   );
 }

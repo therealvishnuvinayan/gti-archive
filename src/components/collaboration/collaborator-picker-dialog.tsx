@@ -22,6 +22,7 @@ type CollaboratorPickerDialogProps = {
   description?: string;
   collaborators: CollaboratorRecord[];
   selectedIds: string[];
+  error?: string;
   saving?: boolean;
   onToggle: (collaboratorId: string) => void;
   onClose: () => void;
@@ -45,6 +46,7 @@ export function CollaboratorPickerDialog({
   description = "Select existing collaborators from the workspace or invite a new one if not found.",
   collaborators,
   selectedIds,
+  error,
   saving = false,
   onToggle,
   onClose,
@@ -97,6 +99,12 @@ export function CollaboratorPickerDialog({
               <X className="h-4 w-4" />
             </Button>
           </div>
+
+          {error ? (
+            <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+              {error}
+            </div>
+          ) : null}
 
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
             <div className="relative">

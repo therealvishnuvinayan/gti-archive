@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import {
   AttachmentStatus,
   AttachmentAssetType,
+  UserRole,
 } from "@prisma/client";
 import type {
   CollaboratorType,
@@ -303,6 +304,25 @@ function mapCollaboratorTypeToGroup(type: CollaboratorType): "internal" | "exter
   return type === "EXTERNAL" ? "external" : "internal";
 }
 
+function mapProjectCollaboratorAssignmentToRecord(
+  assignment: ProjectCollaborator & {
+    user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
+  },
+): ProjectCollaboratorRecord {
+  return {
+    id: assignment.user.id,
+    name: assignment.user.name?.trim() || assignment.user.email,
+    email: assignment.user.email,
+    role:
+      assignment.user.collaboratorType === "EXTERNAL"
+        ? "External Collaborator"
+        : "Collaborator",
+    group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
+    access: "view",
+    removable: true,
+  };
+}
+
 function mapAttachmentToRecord(
   attachment: {
     id: string;
@@ -411,15 +431,7 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
 
   const collaboratorRecords = (project.collaborators ?? [])
-    .map((assignment) => ({
-      id: assignment.user.id,
-      name: assignment.user.name?.trim() || assignment.user.email,
-      email: assignment.user.email,
-      role: assignment.user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator",
-      group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
-      access: "view" as const,
-      removable: true,
-    }))
+    .map(mapProjectCollaboratorAssignmentToRecord)
     .filter((collaborator, index, current) =>
       current.findIndex((item) => item.id === collaborator.id) === index,
     );
@@ -521,16 +533,84 @@ function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
       plannedDueAt: formatProjectInputDateTime(stage.plannedDueAt ?? project.endDate),
     })),
     collaborators: (project.collaborators ?? []).map((assignment) => ({
-      id: assignment.user.id,
-      name: assignment.user.name?.trim() || assignment.user.email,
-      email: assignment.user.email,
-      role: assignment.user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator",
-      group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
-      access: "view",
-      removable: true,
+      ...mapProjectCollaboratorAssignmentToRecord(assignment),
     })),
     attachments: project.attachments.map(mapAttachmentToRecord),
   };
+}
+
+export async function updateProjectCollaborators(
+  projectId: string,
+  collaboratorIds: string[],
+  addedById: string,
+) {
+  const normalizedIds = [...new Set(collaboratorIds.filter(Boolean))];
+
+  const validCollaborators = normalizedIds.length
+    ? await withPrismaRetry(() =>
+        prisma.user.findMany({
+          where: {
+            id: {
+              in: normalizedIds,
+            },
+            role: UserRole.COLLABORATOR,
+          },
+          select: {
+            id: true,
+          },
+        }),
+      )
+    : [];
+
+  const validIds = validCollaborators.map((collaborator) => collaborator.id);
+
+  await withPrismaRetry(() =>
+    prisma.$transaction([
+      prisma.projectCollaborator.deleteMany({
+        where: {
+          projectId,
+          userId: {
+            notIn: validIds,
+          },
+        },
+      }),
+      ...(validIds.length > 0
+        ? [
+            prisma.projectCollaborator.createMany({
+              data: validIds.map((userId) => ({
+                projectId,
+                userId,
+                addedById,
+              })),
+              skipDuplicates: true,
+            }),
+          ]
+        : []),
+    ]),
+  );
+
+  const assignments = await withPrismaRetry(() =>
+    prisma.projectCollaborator.findMany({
+      where: {
+        projectId,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            collaboratorType: true,
+          },
+        },
+      },
+    }),
+  );
+
+  return assignments.map(mapProjectCollaboratorAssignmentToRecord);
 }
 
 function buildProjectsWhere(filter: ProjectsListFilter) {

@@ -213,7 +213,9 @@ export function CalendarWorkspace({
   const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
   const [collaboratorPickerOpen, setCollaboratorPickerOpen] = useState(false);
   const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
-  const [collaboratorSaving, setCollaboratorSaving] = useState(false);
+  const [collaboratorPickerError, setCollaboratorPickerError] = useState<string>();
+  const [collaboratorDialogSaving, setCollaboratorDialogSaving] = useState(false);
+  const [collaboratorPickerSaving, setCollaboratorPickerSaving] = useState(false);
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
@@ -305,6 +307,7 @@ export function CalendarWorkspace({
 
   function openCollaboratorDialog() {
     setCollaboratorPickerOpen(false);
+    setCollaboratorPickerError(undefined);
     setCollaboratorForm({
       name: "",
       email: "",
@@ -317,7 +320,9 @@ export function CalendarWorkspace({
       },
     });
     setCollaboratorDialogError(undefined);
-    setCollaboratorDialogOpen(true);
+    setTimeout(() => {
+      setCollaboratorDialogOpen(true);
+    }, 0);
   }
 
   function toggleAssignedCollaborator(collaboratorId: string) {
@@ -341,19 +346,19 @@ export function CalendarWorkspace({
   }
 
   async function saveAssignedCollaborators() {
-    setCollaboratorSaving(true);
-    setCollaboratorDialogError(undefined);
+    setCollaboratorPickerSaving(true);
+    setCollaboratorPickerError(undefined);
 
     try {
       const result = await saveCalendarCollaboratorsAction(selectedCollaboratorIds);
       setAssignedCollaboratorRecords(result.collaborators);
       setCollaboratorPickerOpen(false);
     } catch {
-      setCollaboratorDialogError(
+      setCollaboratorPickerError(
         "Unable to update the calendar collaborators right now. Please try again.",
       );
     } finally {
-      setCollaboratorSaving(false);
+      setCollaboratorPickerSaving(false);
     }
   }
 
@@ -363,7 +368,7 @@ export function CalendarWorkspace({
       return;
     }
 
-    setCollaboratorSaving(true);
+    setCollaboratorDialogSaving(true);
     setCollaboratorDialogError(undefined);
 
     try {
@@ -375,7 +380,11 @@ export function CalendarWorkspace({
       }
 
       setAvailableCollaboratorRecords((current) => [...current, result.collaborator]);
-      setAssignedCollaboratorRecords((current) => [...current, result.collaborator]);
+      const calendarResult = await saveCalendarCollaboratorsAction([
+        ...selectedCollaboratorIds,
+        result.collaborator.id,
+      ]);
+      setAssignedCollaboratorRecords(calendarResult.collaborators);
       setCollaboratorDialogOpen(false);
       setCollaboratorPickerOpen(false);
     } catch {
@@ -383,7 +392,7 @@ export function CalendarWorkspace({
         "Unable to save the collaborator right now. Please try again.",
       );
     } finally {
-      setCollaboratorSaving(false);
+      setCollaboratorDialogSaving(false);
     }
   }
 
@@ -620,7 +629,12 @@ export function CalendarWorkspace({
             variant="ghost"
             size="icon"
             className="size-8 text-brand"
-            onClick={() => setCollaboratorPickerOpen(true)}
+            onClick={() => {
+              setCollaboratorDialogOpen(false);
+              setCollaboratorDialogError(undefined);
+              setCollaboratorPickerError(undefined);
+              setCollaboratorPickerOpen(true);
+            }}
             aria-label="Add collaborator"
             title="Add collaborator"
           >
@@ -905,7 +919,7 @@ export function CalendarWorkspace({
         mode="invite"
         form={collaboratorForm}
         error={collaboratorDialogError}
-        saving={collaboratorSaving}
+        saving={collaboratorDialogSaving}
         onClose={() => {
           setCollaboratorDialogError(undefined);
           setCollaboratorDialogOpen(false);
@@ -918,10 +932,11 @@ export function CalendarWorkspace({
         isOpen={collaboratorPickerOpen}
         collaborators={availableCollaboratorRecords}
         selectedIds={selectedCollaboratorIds}
-        saving={collaboratorSaving}
+        error={collaboratorPickerError}
+        saving={collaboratorPickerSaving}
         onToggle={toggleAssignedCollaborator}
         onClose={() => {
-          setCollaboratorDialogError(undefined);
+          setCollaboratorPickerError(undefined);
           setCollaboratorPickerOpen(false);
         }}
         onConfirm={saveAssignedCollaborators}
