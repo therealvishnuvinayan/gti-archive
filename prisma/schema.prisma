@@ -95,6 +95,7 @@ model User {
   projects          Project[]
   revisions         ProjectRevision[]
   comments          ProjectComment[]
+  comparisonComments ComparisonComment[]
   attachments       ProjectAttachment[]
   activityLogs      ProjectActivityLog[]
   calendarEvents    CalendarEvent[]
@@ -124,6 +125,7 @@ model Project {
   stages           ProjectStage[]
   revisions        ProjectRevision[]
   comments         ProjectComment[]
+  comparisonComments ComparisonComment[]
   attachments      ProjectAttachment[]
   activityLogs     ProjectActivityLog[]
   collaborators    ProjectCollaborator[]
@@ -173,6 +175,7 @@ model ProjectStage {
   order     Int
   revisions ProjectRevision[]
   comments  ProjectComment[]
+  comparisonComments ComparisonComment[]
   attachments ProjectAttachment[]
   activityLogs ProjectActivityLog[]
   createdAt DateTime      @default(now())
@@ -235,6 +238,8 @@ model ProjectAttachment {
   comment          ProjectComment?    @relation(fields: [commentId], references: [id], onDelete: SetNull)
   uploadedById     String
   uploadedBy       User               @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  baseComparisonComments ComparisonComment[] @relation("ComparisonCommentBaseAttachment")
+  compareComparisonComments ComparisonComment[] @relation("ComparisonCommentCompareAttachment")
   fileName         String
   originalFileName String
   mimeType         String
@@ -252,6 +257,29 @@ model ProjectAttachment {
   @@index([commentId, createdAt])
   @@index([uploadedById])
   @@index([status])
+}
+
+model ComparisonComment {
+  id                String            @id @default(cuid())
+  projectId         String
+  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId           String
+  stage             ProjectStage      @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  baseAttachmentId  String
+  baseAttachment    ProjectAttachment @relation("ComparisonCommentBaseAttachment", fields: [baseAttachmentId], references: [id], onDelete: Cascade)
+  compareAttachmentId String
+  compareAttachment ProjectAttachment @relation("ComparisonCommentCompareAttachment", fields: [compareAttachmentId], references: [id], onDelete: Cascade)
+  xPercent          Float
+  yPercent          Float
+  body              String
+  createdById       String
+  createdBy         User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([projectId, stageId, createdAt])
+  @@index([baseAttachmentId, compareAttachmentId, createdAt])
+  @@index([createdById])
 }
 
 model ProjectActivityLog {

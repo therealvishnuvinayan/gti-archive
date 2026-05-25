@@ -3,6 +3,7 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
+import { createComparisonComment } from "@/lib/comparison";
 import {
   createStageComment,
   createStageRevision,
@@ -22,6 +23,16 @@ type StageCommentInput = {
   stageId: string;
   body: string;
   allowEmptyBody?: boolean;
+};
+
+type ComparisonCommentInput = {
+  projectId: string;
+  stageId: string;
+  baseAttachmentId: string;
+  compareAttachmentId: string;
+  xPercent: number;
+  yPercent: number;
+  body: string;
 };
 
 function revalidateProjectFlow(projectId: string) {
@@ -84,6 +95,24 @@ export async function markStageCompleteAction(input: {
         error instanceof Error
           ? error.message
           : "Unable to mark the stage as complete right now.",
+    };
+  }
+}
+
+export async function createComparisonCommentAction(input: ComparisonCommentInput) {
+  const user = await requireUser();
+
+  try {
+    const comment = await createComparisonComment(user, input);
+    revalidateProjectFlow(input.projectId);
+
+    return { comment };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to save the comparison comment right now.",
     };
   }
 }

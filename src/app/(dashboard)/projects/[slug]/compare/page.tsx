@@ -4,6 +4,11 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectCompareWorkspace } from "@/components/projects/project-compare-workspace";
 import { requireUser } from "@/lib/auth";
+import { getComparisonCommentsForPair } from "@/lib/comparison";
+import {
+  getStageSubmissionAttachments,
+  resolveComparisonSelection,
+} from "@/lib/comparison-utils";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
 
@@ -12,10 +17,10 @@ export default async function ProjectComparePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ stage?: string }>;
+  searchParams: Promise<{ stage?: string; base?: string; compare?: string }>;
 }) {
   const { slug } = await params;
-  const { stage } = await searchParams;
+  const { stage, base, compare } = await searchParams;
   const user = await requireUser();
   const [project, history] = await Promise.all([
     getProjectById(slug),
@@ -25,6 +30,22 @@ export default async function ProjectComparePage({
   if (!project) {
     notFound();
   }
+
+  const submissions = getStageSubmissionAttachments(history.entries);
+  const { baseSubmission, compareSubmission } = resolveComparisonSelection(
+    submissions,
+    base,
+    compare,
+  );
+  const comparisonComments =
+    history.activeStageId && baseSubmission && compareSubmission
+      ? await getComparisonCommentsForPair(user, {
+          projectId: slug,
+          stageId: history.activeStageId,
+          baseAttachmentId: baseSubmission.id,
+          compareAttachmentId: compareSubmission.id,
+        })
+      : [];
 
   return (
     <DashboardLayout
@@ -42,9 +63,13 @@ export default async function ProjectComparePage({
       }}
     >
       <ProjectCompareWorkspace
+        key={`${history.activeStageId ?? stage ?? "no-stage"}:${baseSubmission?.id ?? "no-base"}:${compareSubmission?.id ?? "no-compare"}`}
         project={project}
         stageId={history.activeStageId ?? stage}
         history={history}
+        initialBaseAttachmentId={baseSubmission?.id ?? null}
+        initialCompareAttachmentId={compareSubmission?.id ?? null}
+        initialComments={comparisonComments}
       />
     </DashboardLayout>
   );

@@ -28,6 +28,7 @@ import {
   SUPPORTED_CHAT_LANGUAGES,
   getSupportedLanguageByCode,
 } from "@/lib/ai/languages";
+import { getStageSubmissionAttachments } from "@/lib/comparison-utils";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import {
@@ -195,25 +196,6 @@ function getInitials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-}
-
-function getStageSubmissionAttachments(
-  messages: StageHistoryRecord["entries"],
-): ProjectAttachmentRecord[] {
-  const submissions = messages
-    .flatMap((message) => message.attachments ?? [])
-    .filter((attachment) => attachment.isSubmission);
-
-  return submissions
-    .filter(
-      (attachment, index, current) =>
-        current.findIndex((candidate) => candidate.id === attachment.id) === index,
-    )
-    .sort(
-      (left, right) =>
-        (left.submissionNumber ?? Number.MAX_SAFE_INTEGER) -
-        (right.submissionNumber ?? Number.MAX_SAFE_INTEGER),
-    );
 }
 
 function AttachmentHistoryList({
