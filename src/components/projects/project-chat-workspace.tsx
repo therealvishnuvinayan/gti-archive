@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Download,
   Languages,
-  Link2,
   Loader2,
+  Mic,
   Paperclip,
   Plus,
+  Square,
   Upload,
   X,
 } from "lucide-react";
@@ -21,7 +22,13 @@ import {
 } from "@/app/(dashboard)/projects/actions";
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import { saveProjectCollaboratorsAction } from "@/app/(dashboard)/projects/actions";
+import {
+  DEFAULT_CHAT_LANGUAGE,
+  SUPPORTED_CHAT_LANGUAGES,
+  getSupportedLanguageByCode,
+} from "@/lib/ai/languages";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import {
   CollaboratorDialog,
   type CollaboratorForm,
@@ -55,7 +62,25 @@ type PendingFile = {
   file: File;
 };
 
+type TranslateApiResponse = {
+  sourceLanguageCode: string;
+  sourceLanguageName: string;
+  targetLanguageCode: string;
+  translatedText: string;
+  error?: string;
+};
+
+type TranscribeApiResponse = {
+  detectedSourceLanguage: string;
+  detectedSourceLanguageCode: string;
+  transcriptOriginal: string;
+  translatedText: string;
+  targetLanguageCode: string;
+  error?: string;
+};
+
 type UploadAssetType = "REVISION_ORIGINAL" | "COMMENT_ATTACHMENT";
+const MAX_RECORDING_DURATION_MS = 60_000;
 
 const fileTypeStyles: Record<string, string> = {
   AI: "bg-[#2d1207] text-[#ff9d12]",
@@ -296,6 +321,13 @@ export function ProjectChatWorkspace({
   const [pendingRevisionFiles, setPendingRevisionFiles] = useState<PendingFile[]>([]);
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [isUploadingRevision, setIsUploadingRevision] = useState(false);
+  const [selectedOutputLanguageCode, setSelectedOutputLanguageCode] = useState(
+    DEFAULT_CHAT_LANGUAGE.code,
+  );
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
   const [revisionSummary, setRevisionSummary] = useState("");
   const [revisionDialogError, setRevisionDialogError] = useState<string | null>(null);
@@ -309,6 +341,10 @@ export function ProjectChatWorkspace({
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimeoutRef = useRef<number | null>(null);
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
@@ -349,6 +385,21 @@ export function ProjectChatWorkspace({
     [currentUserId, project.collaborators],
   );
   const isStageCompleted = activeStage?.status === "completed";
+  const selectedOutputLanguage =
+    getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimeoutRef.current) {
+        window.clearTimeout(recordingTimeoutRef.current);
+      }
+
+      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current = null;
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    };
+  }, []);
 
   function removeCollaborator(id: string) {
     setCollaborators((current) => current.filter((collaborator) => collaborator.id !== id));
@@ -503,6 +554,239 @@ export function ProjectChatWorkspace({
     startRefresh(() => {
       router.refresh();
     });
+  }
+
+  function clearRecorderResources() {
+    if (recordingTimeoutRef.current) {
+      window.clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+
+    mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+    mediaRecorderRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    audioChunksRef.current = [];
+  }
+
+  async function handleTranslateDraft() {
+    if (!draft.trim()) {
+      setComposerError("Enter a message to translate.");
+      return;
+    }
+
+    setComposerError(null);
+    setAiStatus("Translating…");
+    setIsTranslating(true);
+
+    try {
+      const response = await fetch("/api/ai/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: draft,
+          targetLanguageCode: selectedOutputLanguage.code,
+          targetLanguageName: selectedOutputLanguage.name,
+        }),
+      });
+
+      const payload = (await response.json()) as TranslateApiResponse;
+
+      if (!response.ok || !payload.translatedText) {
+        throw new Error(payload.error || "Unable to translate the message right now.");
+      }
+
+      setDraft(payload.translatedText);
+    } catch (error) {
+      setComposerError(
+        error instanceof Error
+          ? error.message
+          : "Unable to translate the message right now.",
+      );
+    } finally {
+      setIsTranslating(false);
+      setAiStatus(null);
+    }
+  }
+
+  function getRecordingMimeType() {
+    if (typeof MediaRecorder === "undefined") {
+      return "";
+    }
+
+    const preferredTypes = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ];
+
+    return (
+      preferredTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? ""
+    );
+  }
+
+  async function handleRecordedAudio(blob: Blob) {
+    const extension = blob.type.includes("mp4")
+      ? "m4a"
+      : blob.type.includes("ogg")
+        ? "ogg"
+        : "webm";
+    const audioFile = new File([blob], `stage-chat-${Date.now()}.${extension}`, {
+      type: blob.type || "audio/webm",
+    });
+
+    setIsTranscribing(true);
+    setAiStatus("Transcribing…");
+    setComposerError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("audio", audioFile);
+      formData.append("targetLanguageCode", selectedOutputLanguage.code);
+      formData.append("targetLanguageName", selectedOutputLanguage.name);
+
+      const response = await fetch("/api/ai/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = (await response.json()) as TranscribeApiResponse;
+
+      if (!response.ok || !payload.translatedText) {
+        throw new Error(payload.error || "Unable to transcribe the recording right now.");
+      }
+
+      setDraft((current) =>
+        current.trim() ? `${current.trim()}\n${payload.translatedText}` : payload.translatedText,
+      );
+    } catch (error) {
+      setComposerError(
+        error instanceof Error
+          ? error.message
+          : "Unable to transcribe the recording right now.",
+      );
+    } finally {
+      setIsTranscribing(false);
+      setAiStatus(null);
+    }
+  }
+
+  async function handleMicrophoneToggle() {
+    if (isTranscribing || isTranslating) {
+      return;
+    }
+
+    if (isListening) {
+      setAiStatus("Transcribing…");
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    if (
+      typeof window === "undefined" ||
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setComposerError(
+        "Voice input is not supported in this browser. Try Chrome, Edge, or Safari with microphone access enabled.",
+      );
+      return;
+    }
+
+    try {
+      setComposerError(null);
+      setAiStatus("Requesting microphone…");
+
+      if ("permissions" in navigator && navigator.permissions?.query) {
+        try {
+          const permissionStatus = await navigator.permissions.query({
+            name: "microphone" as PermissionName,
+          });
+
+          if (permissionStatus.state === "denied") {
+            setAiStatus(null);
+            setComposerError(
+              "Microphone permission is blocked in the browser. Allow microphone access in site settings and try again.",
+            );
+            return;
+          }
+        } catch {
+          // Permission query support varies by browser. Continue to getUserMedia.
+        }
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getRecordingMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+      setAiStatus("Listening…");
+      setIsListening(true);
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      });
+
+      recorder.addEventListener("stop", () => {
+        setIsListening(false);
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        clearRecorderResources();
+
+        if (!audioBlob.size) {
+          setAiStatus(null);
+          setComposerError("No speech was captured. Please try again.");
+          return;
+        }
+
+        void handleRecordedAudio(audioBlob);
+      });
+
+      try {
+        recorder.start();
+      } catch (error) {
+        clearRecorderResources();
+        setIsListening(false);
+        setAiStatus(null);
+        setComposerError(
+          error instanceof Error
+            ? error.message
+            : "Unable to start microphone recording right now.",
+        );
+        return;
+      }
+
+      recordingTimeoutRef.current = window.setTimeout(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          setAiStatus("Transcribing…");
+          mediaRecorderRef.current.stop();
+        }
+      }, MAX_RECORDING_DURATION_MS);
+    } catch (error) {
+      setIsListening(false);
+      setAiStatus(null);
+      clearRecorderResources();
+      setComposerError(
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "Microphone permission was denied."
+          : error instanceof DOMException && error.name === "NotFoundError"
+            ? "No microphone was found on this device."
+            : error instanceof DOMException && error.name === "NotReadableError"
+              ? "The microphone is already being used by another application."
+          : "Unable to access the microphone right now.",
+      );
+    }
   }
 
   function openRevisionDialog() {
@@ -888,6 +1172,20 @@ export function ProjectChatWorkspace({
               </div>
             ) : null}
 
+            {aiStatus ? (
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#dbe6da] bg-[#f7fbf6] px-3 py-1.5 text-[12px] font-[600] text-[#31523f]">
+                {isListening ? (
+                  <span className="relative flex size-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#d9645b] opacity-70" />
+                    <span className="relative inline-flex size-2.5 rounded-full bg-[#d9645b]" />
+                  </span>
+                ) : (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                )}
+                {aiStatus}
+              </div>
+            ) : null}
+
             <div className="flex items-center gap-3 rounded-full border border-[#e2e7e2] px-4 py-3">
               <Input
                 value={draft}
@@ -896,16 +1194,47 @@ export function ProjectChatWorkspace({
                 className="h-auto border-none bg-transparent p-0 text-[14px] shadow-none ring-0 focus-visible:ring-0"
               />
               <div className="flex items-center gap-2">
-                <Button type="button" variant="ghost" size="icon" className="size-8 text-[#5083ff]" aria-label="Translate">
-                  <Languages className="h-5 w-5" />
-                </Button>
                 <Button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 rounded-md px-2 text-[10px] font-[700]"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-[#5083ff]"
+                  aria-label="Translate message"
+                  onClick={() => {
+                    void handleTranslateDraft();
+                  }}
+                  disabled={isTranslating || isListening || isTranscribing}
                 >
-                  EN
+                  {isTranslating ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Languages className="h-5 w-5" />
+                  )}
+                </Button>
+                <ChatLanguagePicker
+                  languages={SUPPORTED_CHAT_LANGUAGES}
+                  selectedLanguage={selectedOutputLanguage}
+                  disabled={isTranslating || isListening || isTranscribing}
+                  onSelect={(language) => setSelectedOutputLanguageCode(language.code)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={`size-8 ${isListening ? "bg-[#fff1ef] text-[#d9645b] hover:bg-[#ffe7e3]" : "text-brand"}`}
+                  aria-label={isListening ? "Stop recording" : "Start voice input"}
+                  onClick={() => {
+                    void handleMicrophoneToggle();
+                  }}
+                  disabled={isTranscribing || isTranslating}
+                >
+                  {isTranscribing ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : isListening ? (
+                    <Square className="h-4 w-4 fill-current" />
+                  ) : (
+                    <Mic className="h-5 w-5" />
+                  )}
                 </Button>
                 <Button
                   type="button"
@@ -916,16 +1245,6 @@ export function ProjectChatWorkspace({
                   onClick={() => commentFileInputRef.current?.click()}
                 >
                   <Paperclip className="h-5 w-5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 text-brand"
-                  aria-label="Insert link"
-                  disabled
-                >
-                  <Link2 className="h-5 w-5" />
                 </Button>
                 <Button
                   type="button"
