@@ -231,8 +231,10 @@ function AttachmentHistoryList({
                   {attachment.originalFileName}
                 </p>
                 {attachment.isSubmission ? (
-                  <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
-                    Submission
+                  <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none text-[#2b8b56]">
+                    {attachment.submissionNumber
+                      ? `Submission ${attachment.submissionNumber}`
+                      : "Submission"}
                   </span>
                 ) : null}
               </div>

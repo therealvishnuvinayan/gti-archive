@@ -166,12 +166,14 @@ function mapAttachmentRecord(
     createdAt: Date | string;
     uploadedBy: Pick<User, "name" | "email">;
   },
+  submissionNumber?: number,
 ): ProjectAttachmentRecord {
   const createdAt = toHistoryDate(attachment.createdAt);
 
   return {
     id: attachment.id,
     isSubmission: attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION,
+    submissionNumber,
     originalFileName: attachment.originalFileName,
     fileTypeLabel: getFileTypeLabel(attachment.originalFileName, attachment.mimeType),
     mimeType: attachment.mimeType,
@@ -185,7 +187,35 @@ function mapAttachmentRecord(
   };
 }
 
-function mapRevisionEntry(revision: StageHistoryQueryRecord): ProjectChatEntry {
+function buildStageSubmissionNumberMap(
+  revisions: StageHistoryQueryRecord[],
+  comments: StageCommentQueryRecord[],
+) {
+  const submissions = [...revisions, ...comments]
+    .flatMap((entry) => entry.attachments)
+    .filter(
+      (attachment) =>
+        attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+        attachment.status === AttachmentStatus.READY,
+    )
+    .filter(
+      (attachment, index, allAttachments) =>
+        allAttachments.findIndex((candidate) => candidate.id === attachment.id) === index,
+    )
+    .sort((left, right) => {
+      const timeDifference =
+        toHistoryDate(left.createdAt).getTime() - toHistoryDate(right.createdAt).getTime();
+
+      return timeDifference !== 0 ? timeDifference : left.id.localeCompare(right.id);
+    });
+
+  return new Map(submissions.map((attachment, index) => [attachment.id, index + 1]));
+}
+
+function mapRevisionEntry(
+  revision: StageHistoryQueryRecord,
+  submissionNumbers: ReadonlyMap<string, number>,
+): ProjectChatEntry {
   return {
     id: revision.id,
     revisionId: revision.id,
@@ -197,12 +227,17 @@ function mapRevisionEntry(revision: StageHistoryQueryRecord): ProjectChatEntry {
     createdAt: formatHistoryTimestamp(revision.createdAt),
     attachments: revision.attachments
       .filter((attachment) => attachment.status === AttachmentStatus.READY)
-      .map(mapAttachmentRecord),
+      .map((attachment) =>
+        mapAttachmentRecord(attachment, submissionNumbers.get(attachment.id)),
+      ),
     compareLabel: "Compare with other stages",
   };
 }
 
-function mapCommentEntry(comment: StageCommentQueryRecord): ProjectChatEntry {
+function mapCommentEntry(
+  comment: StageCommentQueryRecord,
+  submissionNumbers: ReadonlyMap<string, number>,
+): ProjectChatEntry {
   return {
     id: comment.id,
     revisionId: comment.revisionId ?? undefined,
@@ -213,7 +248,9 @@ function mapCommentEntry(comment: StageCommentQueryRecord): ProjectChatEntry {
     createdAt: formatHistoryTimestamp(comment.createdAt),
     attachments: comment.attachments
       .filter((attachment) => attachment.status === AttachmentStatus.READY)
-      .map(mapAttachmentRecord),
+      .map((attachment) =>
+        mapAttachmentRecord(attachment, submissionNumbers.get(attachment.id)),
+      ),
   };
 }
 
@@ -388,14 +425,15 @@ export async function getProjectStageHistory(
   );
 
   const [revisions, comments] = await getCachedHistory();
+  const submissionNumbers = buildStageSubmissionNumberMap(revisions, comments);
   const entries = [
     ...revisions.map((revision) => ({
       createdAt: toHistoryDate(revision.createdAt).getTime(),
-      entry: mapRevisionEntry(revision),
+      entry: mapRevisionEntry(revision, submissionNumbers),
     })),
     ...comments.map((comment) => ({
       createdAt: toHistoryDate(comment.createdAt).getTime(),
-      entry: mapCommentEntry(comment),
+      entry: mapCommentEntry(comment, submissionNumbers),
     })),
   ]
     .sort((left, right) => right.createdAt - left.createdAt)

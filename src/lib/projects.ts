@@ -109,6 +109,7 @@ export type ProjectCollaboratorRecord = {
 export type ProjectAttachmentRecord = {
   id: string;
   isSubmission: boolean;
+  submissionNumber?: number;
   originalFileName: string;
   fileTypeLabel: string;
   mimeType: string;
