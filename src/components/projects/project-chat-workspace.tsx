@@ -197,6 +197,25 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
+function getStageSubmissionAttachments(
+  messages: StageHistoryRecord["entries"],
+): ProjectAttachmentRecord[] {
+  const submissions = messages
+    .flatMap((message) => message.attachments ?? [])
+    .filter((attachment) => attachment.isSubmission);
+
+  return submissions
+    .filter(
+      (attachment, index, current) =>
+        current.findIndex((candidate) => candidate.id === attachment.id) === index,
+    )
+    .sort(
+      (left, right) =>
+        (left.submissionNumber ?? Number.MAX_SAFE_INTEGER) -
+        (right.submissionNumber ?? Number.MAX_SAFE_INTEGER),
+    );
+}
+
 function AttachmentHistoryList({
   attachments,
   compact = false,
@@ -473,6 +492,11 @@ export function ProjectChatWorkspace({
   });
 
   const messages = history.entries;
+  const stageSubmissions = useMemo(
+    () => getStageSubmissionAttachments(messages),
+    [messages],
+  );
+  const canCompareSubmissions = stageSubmissions.length >= 2;
 
   const activeStage = useMemo<ProjectStageRecord | undefined>(() => {
     if (!stageId) {
@@ -1179,17 +1203,6 @@ export function ProjectChatWorkspace({
                       <Card className="mx-auto min-w-0 max-w-[360px] rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
                         <p className="text-center text-[11px] font-[700]">Attachments</p>
                         <RevisionAttachmentTypeSummary attachments={message.attachments} />
-                        {message.compareLabel ? (
-                          <Button
-                            asChild
-                            size="sm"
-                            className="mt-3 min-h-[30px] w-full rounded-full bg-[#184d34] text-[11px] hover:bg-[#123f2a]"
-                          >
-                            <Link href={`/projects/${project.id}/compare?stage=${activeStage?.id ?? ""}`}>
-                              {message.compareLabel}
-                            </Link>
-                          </Button>
-                        ) : null}
                       </Card>
                     ) : null}
                   </div>
@@ -1425,7 +1438,23 @@ export function ProjectChatWorkspace({
                   <dd className="inline">{activeStage?.plannedDueAt ?? project.endDate}</dd>
                 </div>
               </dl>
-              <div className="mt-5">
+              <div className="mt-5 space-y-2.5">
+                {canCompareSubmissions ? (
+                  <Button asChild size="sm" className="min-w-[170px] text-[13px]">
+                    <Link href={`/projects/${project.id}/compare?stage=${activeStage?.id ?? ""}`}>
+                      Compare Submissions
+                    </Link>
+                  </Button>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Button type="button" size="sm" disabled className="min-w-[170px] text-[13px]">
+                      Compare Submissions
+                    </Button>
+                    <p className="text-[11px] leading-4 text-[#6f786f]">
+                      Upload at least two submissions to compare.
+                    </p>
+                  </div>
+                )}
                 <Button asChild size="sm" className="min-w-[110px] text-[13px]">
                   <Link href="#">Brief</Link>
                 </Button>

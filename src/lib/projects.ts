@@ -130,7 +130,6 @@ export type ProjectChatEntry = {
   body: string;
   createdAt: string;
   attachments?: ProjectAttachmentRecord[];
-  compareLabel?: string;
 };
 
 export type ProjectCompareNote = {

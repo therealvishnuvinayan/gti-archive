@@ -230,7 +230,6 @@ function mapRevisionEntry(
       .map((attachment) =>
         mapAttachmentRecord(attachment, submissionNumbers.get(attachment.id)),
       ),
-    compareLabel: "Compare with other stages",
   };
 }
 

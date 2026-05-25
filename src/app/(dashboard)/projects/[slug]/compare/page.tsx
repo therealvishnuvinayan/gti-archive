@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectCompareWorkspace } from "@/components/projects/project-compare-workspace";
+import { requireUser } from "@/lib/auth";
+import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
 
 export default async function ProjectComparePage({
@@ -14,7 +16,11 @@ export default async function ProjectComparePage({
 }) {
   const { slug } = await params;
   const { stage } = await searchParams;
-  const project = await getProjectById(slug);
+  const user = await requireUser();
+  const [project, history] = await Promise.all([
+    getProjectById(slug),
+    getProjectStageHistory(user, slug, stage),
+  ]);
 
   if (!project) {
     notFound();
@@ -35,7 +41,11 @@ export default async function ProjectComparePage({
         ),
       }}
     >
-      <ProjectCompareWorkspace project={project} stageId={stage} />
+      <ProjectCompareWorkspace
+        project={project}
+        stageId={history.activeStageId ?? stage}
+        history={history}
+      />
     </DashboardLayout>
   );
 }

@@ -28,7 +28,6 @@ export type ProjectChatEntry = {
   body: string;
   briefLabel?: string;
   attachments?: string[];
-  compareLabel?: string;
 };
 
 export type ProjectStageOverview = {
@@ -150,7 +149,6 @@ export const projectRecords: ProjectRecord[] = [
         body: "Dear team, please find the revised artworks according to the latest brief",
         briefLabel: "latest brief",
         attachments: ["AI", "PSD", "PDF", "FIG", "ZIP"],
-        compareLabel: "Compare with other stages",
       },
       {
         id: "chat-2",
@@ -183,7 +181,6 @@ export const projectRecords: ProjectRecord[] = [
         body: "Dear team, please find the revised artworks according to the latest brief",
         briefLabel: "latest brief",
         attachments: ["AI", "PSD", "PDF", "FIG", "ZIP"],
-        compareLabel: "Compare with other stages",
       },
     ],
     compareNotes: [
