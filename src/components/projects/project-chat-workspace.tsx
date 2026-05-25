@@ -479,6 +479,7 @@ export function ProjectChatWorkspace({
     [messages],
   );
   const canCompareSubmissions = stageSubmissions.length >= 2;
+  const canSendComment = draft.trim().length > 0 || pendingCommentFiles.length > 0;
 
   const activeStage = useMemo<ProjectStageRecord | undefined>(() => {
     if (!stageId) {
@@ -1378,7 +1379,7 @@ export function ProjectChatWorkspace({
                   }}
                   size="sm"
                   className="text-[12px]"
-                  disabled={isSendingComment}
+                  disabled={isSendingComment || !canSendComment}
                 >
                   {isSendingComment ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
