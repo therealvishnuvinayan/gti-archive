@@ -34,6 +34,7 @@ type ProjectWithCreator = Project & {
   >;
   attachments: Array<{
     id: string;
+    assetType: AttachmentAssetType;
     originalFileName: string;
     mimeType: string;
     fileSize: number;
@@ -107,6 +108,7 @@ export type ProjectCollaboratorRecord = {
 
 export type ProjectAttachmentRecord = {
   id: string;
+  isSubmission: boolean;
   originalFileName: string;
   fileTypeLabel: string;
   mimeType: string;
@@ -326,6 +328,7 @@ function mapProjectCollaboratorAssignmentToRecord(
 function mapAttachmentToRecord(
   attachment: {
     id: string;
+    assetType: AttachmentAssetType;
     originalFileName: string;
     mimeType: string;
     fileSize: number;
@@ -335,6 +338,7 @@ function mapAttachmentToRecord(
 ): ProjectAttachmentRecord {
   return {
     id: attachment.id,
+    isSubmission: attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION,
     originalFileName: attachment.originalFileName,
     fileTypeLabel: getAttachmentFileTypeLabel(
       attachment.originalFileName,
@@ -750,6 +754,7 @@ export async function getProjectsList(filter: ProjectsListFilter) {
               },
               select: {
                 id: true,
+                assetType: true,
                 originalFileName: true,
                 mimeType: true,
                 fileSize: true,
@@ -817,6 +822,7 @@ export async function getProjectById(id: string) {
               },
               select: {
                 id: true,
+                assetType: true,
                 originalFileName: true,
                 mimeType: true,
                 fileSize: true,
@@ -882,6 +888,7 @@ export async function getProjectEditorById(id: string) {
               },
               select: {
                 id: true,
+                assetType: true,
                 originalFileName: true,
                 mimeType: true,
                 fileSize: true,

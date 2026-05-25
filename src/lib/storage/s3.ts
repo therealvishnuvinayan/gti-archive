@@ -104,6 +104,22 @@ export function isAllowedAssetFile(fileName: string) {
   return extension ? allowedExtensions.has(extension) : false;
 }
 
+const submissionImageExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
+const submissionImageMimeTypes = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+
+export function isAllowedSubmissionImage(fileName: string, mimeType: string) {
+  const extension = getFileExtension(fileName);
+
+  return (
+    (!!extension && submissionImageExtensions.has(extension)) ||
+    submissionImageMimeTypes.has(mimeType.toLowerCase())
+  );
+}
+
 type BuildProjectAssetKeyInput = {
   projectId: string;
   stageId?: string | null;
@@ -128,6 +144,13 @@ export function buildProjectAssetKey({
       }
 
       return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/assets/original/${safeFileName}`;
+    }
+    case AttachmentAssetType.STAGE_SUBMISSION: {
+      if (!stageId || !revisionId) {
+        throw new Error("Stage submissions require stageId and revisionId.");
+      }
+
+      return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/submissions/${safeFileName}`;
     }
     case AttachmentAssetType.REVISION_PREVIEW: {
       if (!stageId || !revisionId) {

@@ -23,6 +23,7 @@ import {
   getObjectMetadata,
   getS3BucketName,
   isAllowedAssetFile,
+  isAllowedSubmissionImage,
   sanitizeFileName,
 } from "@/lib/storage/s3";
 
@@ -44,6 +45,7 @@ type StageHistoryQueryRecord = {
   createdBy: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
   attachments: Array<{
     id: string;
+    assetType: AttachmentAssetType;
     originalFileName: string;
     mimeType: string;
     fileSize: number;
@@ -63,6 +65,7 @@ type StageCommentQueryRecord = {
   author: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
   attachments: Array<{
     id: string;
+    assetType: AttachmentAssetType;
     originalFileName: string;
     mimeType: string;
     fileSize: number;
@@ -156,6 +159,7 @@ function getFileTypeLabel(fileName: string, mimeType: string) {
 function mapAttachmentRecord(
   attachment: {
     id: string;
+    assetType: AttachmentAssetType;
     originalFileName: string;
     mimeType: string;
     fileSize: number;
@@ -167,6 +171,7 @@ function mapAttachmentRecord(
 
   return {
     id: attachment.id,
+    isSubmission: attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION,
     originalFileName: attachment.originalFileName,
     fileTypeLabel: getFileTypeLabel(attachment.originalFileName, attachment.mimeType),
     mimeType: attachment.mimeType,
@@ -318,7 +323,14 @@ export async function getProjectStageHistory(
                 orderBy: {
                   createdAt: "asc",
                 },
-                include: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  createdAt: true,
+                  status: true,
                   uploadedBy: {
                     select: {
                       name: true,
@@ -351,7 +363,14 @@ export async function getProjectStageHistory(
                 orderBy: {
                   createdAt: "asc",
                 },
-                include: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  createdAt: true,
+                  status: true,
                   uploadedBy: {
                     select: {
                       name: true,
@@ -588,9 +607,12 @@ export async function requestAttachmentUpload(
     return { error: "Stage not found." };
   }
 
-  if (input.assetType === AttachmentAssetType.REVISION_ORIGINAL) {
+  if (
+    input.assetType === AttachmentAssetType.REVISION_ORIGINAL ||
+    input.assetType === AttachmentAssetType.STAGE_SUBMISSION
+  ) {
     if (!input.revisionId || !input.stageId) {
-      return { error: "Revision uploads require a valid stage and revision." };
+      return { error: "Stage uploads require a valid stage and revision." };
     }
 
     const revisionId = input.revisionId;
@@ -614,9 +636,12 @@ export async function requestAttachmentUpload(
     }
   }
 
-  if (input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT) {
+  if (
+    input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT ||
+    input.assetType === AttachmentAssetType.STAGE_SUBMISSION
+  ) {
     if (!input.commentId || !input.revisionId || !input.stageId) {
-      return { error: "Comment attachment uploads require a valid comment and revision." };
+      return { error: "Chat uploads require a valid comment and revision." };
     }
 
     const commentId = input.commentId;
@@ -640,6 +665,15 @@ export async function requestAttachmentUpload(
     if (!comment) {
       return { error: "Comment not found." };
     }
+  }
+
+  if (
+    input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+    !isAllowedSubmissionImage(input.originalFileName, input.mimeType)
+  ) {
+    return {
+      error: "Submissions must be image files because they are used for comparison.",
+    };
   }
 
   const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${sanitizeFileName(

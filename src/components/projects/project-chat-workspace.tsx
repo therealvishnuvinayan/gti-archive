@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useDropzone } from "react-dropzone";
 import {
   Download,
   Languages,
@@ -60,6 +61,7 @@ type ProjectChatWorkspaceProps = {
 type PendingFile = {
   id: string;
   file: File;
+  assetType?: UploadAssetType;
 };
 
 type TranslateApiResponse = {
@@ -79,8 +81,19 @@ type TranscribeApiResponse = {
   error?: string;
 };
 
-type UploadAssetType = "REVISION_ORIGINAL" | "COMMENT_ATTACHMENT";
+type UploadAssetType =
+  | "REVISION_ORIGINAL"
+  | "COMMENT_ATTACHMENT"
+  | "STAGE_SUBMISSION";
+type CommentUploadIntent = "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
 const MAX_RECORDING_DURATION_MS = 60_000;
+const submissionExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
+const submissionMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const submissionDropzoneAccept = {
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/webp": [".webp"],
+};
 
 const fileTypeStyles: Record<string, string> = {
   AI: "bg-[#2d1207] text-[#ff9d12]",
@@ -94,6 +107,87 @@ function getFileBadgeClass(label: string) {
   return fileTypeStyles[label] ?? "bg-[#f8fbf8] text-brand border border-[#dde6de]";
 }
 
+function isSubmissionFile(file: File) {
+  const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
+  return submissionMimeTypes.has(file.type) || submissionExtensions.has(extension);
+}
+
+type UploadIntentDropzoneProps = {
+  intent: CommentUploadIntent;
+  disabled?: boolean;
+  onFilesSelected: (files: File[]) => void;
+  onError: (message: string) => void;
+};
+
+function UploadIntentDropzone({
+  intent,
+  disabled = false,
+  onFilesSelected,
+  onError,
+}: UploadIntentDropzoneProps) {
+  const dropzoneAccept =
+    intent === "STAGE_SUBMISSION" ? submissionDropzoneAccept : undefined;
+
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+    multiple: true,
+    disabled,
+    noClick: true,
+    noKeyboard: true,
+    accept: dropzoneAccept,
+    onDrop: (acceptedFiles) => {
+      if (acceptedFiles.length > 0) {
+        onFilesSelected(acceptedFiles);
+      }
+    },
+    onDropRejected: () => {
+      if (intent === "STAGE_SUBMISSION") {
+        onError("Submissions must be image files because they are used for comparison.");
+        return;
+      }
+
+      onError("Unable to add one or more selected files. Please try different files.");
+    },
+  });
+
+  return (
+    <div
+      {...getRootProps()}
+      className={`min-h-[112px] rounded-[18px] border border-dashed px-4 py-6 text-center transition ${
+        isDragActive
+          ? "border-brand bg-[#eef7ef]"
+          : "border-[#bfcbbf] bg-[#fbfdfb] hover:border-brand hover:bg-[#f4fbf5]"
+      } ${disabled ? "pointer-events-none opacity-60" : ""}`}
+    >
+      <input {...getInputProps()} />
+
+      <Upload className="mx-auto h-5 w-5 text-brand" />
+
+      <p className="mt-3 text-[14px] font-[700] text-brand">
+        {isDragActive ? "Drop files here" : "Drag files here"}
+      </p>
+
+      <p className="mt-1 text-[11px] text-[#7a837b]">
+        {intent === "STAGE_SUBMISSION"
+          ? "PNG, JPG, JPEG, or WebP only."
+          : "Choose one or more files to attach to the chat discussion."}
+      </p>
+
+      <Button
+        type="button"
+        size="sm"
+        className="mt-4 rounded-full text-[12px]"
+        disabled={disabled}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          open();
+        }}
+      >
+        Choose files
+      </Button>
+    </div>
+  );
+}
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -132,9 +226,16 @@ function AttachmentHistoryList({
               {attachment.fileTypeLabel}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-[700] text-[#111712]">
-                {attachment.originalFileName}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="truncate text-[12px] font-[700] text-[#111712]">
+                  {attachment.originalFileName}
+                </p>
+                {attachment.isSubmission ? (
+                  <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
+                    Submission
+                  </span>
+                ) : null}
+              </div>
               <p className="mt-0.5 text-[10px] leading-4 text-[#6c756e]">
                 {attachment.fileSizeLabel} · Uploaded by {attachment.uploadedBy}
               </p>
@@ -177,9 +278,13 @@ function RevisionAttachmentTypeSummary({
   attachments: ProjectAttachmentRecord[];
 }) {
   const groupedAttachments = attachments.reduce<
-    Array<{ label: string; count: number }>
+    Array<{ label: string; count: number; isSubmission: boolean }>
   >((groups, attachment) => {
-    const existing = groups.find((group) => group.label === attachment.fileTypeLabel);
+    const existing = groups.find(
+      (group) =>
+        group.label === attachment.fileTypeLabel &&
+        group.isSubmission === attachment.isSubmission,
+    );
 
     if (existing) {
       existing.count += 1;
@@ -189,6 +294,7 @@ function RevisionAttachmentTypeSummary({
     groups.push({
       label: attachment.fileTypeLabel,
       count: 1,
+      isSubmission: attachment.isSubmission,
     });
 
     return groups;
@@ -203,12 +309,17 @@ function RevisionAttachmentTypeSummary({
       <div className="flex flex-wrap items-center justify-center gap-3">
         {groupedAttachments.map((group) => (
           <div
-            key={group.label}
+            key={`${group.label}-${group.isSubmission ? "submission" : "attachment"}`}
             className={`relative inline-flex h-12 min-w-12 items-center justify-center rounded-[10px] border px-3 py-2 shadow-[0_8px_20px_rgba(13,39,27,0.18)] ${getFileBadgeClass(
               group.label,
             )}`}
           >
             <span className="text-[13px] font-[800] leading-none">{group.label}</span>
+            {group.isSubmission ? (
+              <span className="absolute -left-1.5 -top-1.5 rounded-full bg-[#eaf6ec] px-1.5 py-0.5 text-[8px] font-[800] uppercase leading-none text-[#1f7a4b]">
+                S
+              </span>
+            ) : null}
             {group.count > 1 ? (
               <span className="absolute -right-1.5 -top-1.5 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-[800] leading-none text-[#1f5f40]">
                 {group.count}
@@ -319,6 +430,9 @@ export function ProjectChatWorkspace({
   const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
   const [pendingRevisionFiles, setPendingRevisionFiles] = useState<PendingFile[]>([]);
+  const [commentUploadDialogOpen, setCommentUploadDialogOpen] = useState(false);
+  const [commentUploadIntent, setCommentUploadIntent] =
+    useState<CommentUploadIntent>("COMMENT_ATTACHMENT");
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [isUploadingRevision, setIsUploadingRevision] = useState(false);
   const [selectedOutputLanguageCode, setSelectedOutputLanguageCode] = useState(
@@ -340,7 +454,6 @@ export function ProjectChatWorkspace({
   const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
-  const commentFileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -907,11 +1020,28 @@ export function ProjectChatWorkspace({
     }
   }
 
-  function handleCommentFilesSelected(files: FileList | null) {
-    const selectedFiles = Array.from(files ?? []);
+  function openCommentUploadDialog() {
+    setComposerError(null);
+    setCommentUploadIntent("COMMENT_ATTACHMENT");
+    setCommentUploadDialogOpen(true);
+  }
+
+  function handleCommentFilesSelected(files: File[] | FileList | null) {
+    const selectedFiles = Array.isArray(files) ? files : Array.from(files ?? []);
 
     if (selectedFiles.length === 0) {
       return;
+    }
+
+    if (commentUploadIntent === "STAGE_SUBMISSION") {
+      const invalidFile = selectedFiles.find((file) => !isSubmissionFile(file));
+
+      if (invalidFile) {
+        setComposerError(
+          "Submissions must be image files because they are used for comparison.",
+        );
+        return;
+      }
     }
 
     setComposerError(null);
@@ -920,12 +1050,10 @@ export function ProjectChatWorkspace({
       ...selectedFiles.map((file) => ({
         id: `${file.name}-${file.size}-${crypto.randomUUID()}`,
         file,
+        assetType: commentUploadIntent,
       })),
     ]);
-
-    if (commentFileInputRef.current) {
-      commentFileInputRef.current.value = "";
-    }
+    setCommentUploadDialogOpen(false);
   }
 
   function removePendingCommentFile(fileId: string) {
@@ -967,7 +1095,7 @@ export function ProjectChatWorkspace({
           stageId: activeStageId,
           revisionId: commentResult.revisionId,
           commentId: commentResult.commentId,
-          assetType: "COMMENT_ATTACHMENT",
+          assetType: pendingFile.assetType ?? "COMMENT_ATTACHMENT",
         });
       }
 
@@ -1136,18 +1264,9 @@ export function ProjectChatWorkspace({
               ref={revisionFileInputRef}
               type="file"
               multiple
-              className="hidden"
+              className="sr-only"
               onChange={(event) => {
                 handleRevisionFilesSelected(event.target.files);
-              }}
-            />
-            <input
-              ref={commentFileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(event) => {
-                handleCommentFilesSelected(event.target.files);
               }}
             />
 
@@ -1158,6 +1277,15 @@ export function ProjectChatWorkspace({
                     key={pendingFile.id}
                     className="inline-flex items-center gap-2 rounded-full border border-[#d6dfd7] bg-white px-3 py-1.5 text-[11px] text-[#324138]"
                   >
+                    {pendingFile.assetType === "STAGE_SUBMISSION" ? (
+                      <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
+                        Submission
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#566259]">
+                        Attachment
+                      </span>
+                    )}
                     <span className="max-w-[180px] truncate">{pendingFile.file.name}</span>
                     <button
                       type="button"
@@ -1242,7 +1370,7 @@ export function ProjectChatWorkspace({
                   size="icon"
                   className="size-8 text-brand"
                   aria-label="Attach file"
-                  onClick={() => commentFileInputRef.current?.click()}
+                  onClick={openCommentUploadDialog}
                 >
                   <Paperclip className="h-5 w-5" />
                 </Button>
@@ -1377,6 +1505,110 @@ export function ProjectChatWorkspace({
           void handleMarkStageComplete();
         }}
       />
+      {commentUploadDialogOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+          <Card className="w-full max-w-[560px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+              <div>
+                <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                  Upload file as
+                </CardTitle>
+                <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
+                  Choose whether this file is part of the discussion or a design
+                  submission for this stage.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => setCommentUploadDialogOpen(false)}
+                className="shrink-0 border border-line"
+                aria-label="Close upload type dialog"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              <button
+                type="button"
+                onClick={() => setCommentUploadIntent("COMMENT_ATTACHMENT")}
+                className={`w-full rounded-[22px] border px-5 py-4 text-left transition ${
+                  commentUploadIntent === "COMMENT_ATTACHMENT"
+                    ? "border-brand bg-[#f4fbf5] shadow-[0_10px_24px_rgba(18,35,23,0.06)]"
+                    : "border-line bg-white hover:border-brand/40"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[16px] font-[700] text-[#111712]">Attachment</p>
+                    <p className="mt-1 text-[13px] leading-5 text-[#697169]">
+                      Use for chat, references, supporting documents, or normal
+                      discussion files.
+                    </p>
+                  </div>
+                  <div
+                    className={`mt-1 h-5 w-5 rounded-full border ${
+                      commentUploadIntent === "COMMENT_ATTACHMENT"
+                        ? "border-brand bg-brand"
+                        : "border-[#cfd8cf] bg-white"
+                    }`}
+                  />
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCommentUploadIntent("STAGE_SUBMISSION")}
+                className={`w-full rounded-[22px] border px-5 py-4 text-left transition ${
+                  commentUploadIntent === "STAGE_SUBMISSION"
+                    ? "border-brand bg-[#f4fbf5] shadow-[0_10px_24px_rgba(18,35,23,0.06)]"
+                    : "border-line bg-white hover:border-brand/40"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[16px] font-[700] text-[#111712]">Submission</p>
+                    <p className="mt-1 text-[13px] leading-5 text-[#697169]">
+                      Use for design output that will be compared with other
+                      submissions in this same stage. Images only.
+                    </p>
+                  </div>
+                  <div
+                    className={`mt-1 h-5 w-5 rounded-full border ${
+                      commentUploadIntent === "STAGE_SUBMISSION"
+                        ? "border-brand bg-brand"
+                        : "border-[#cfd8cf] bg-white"
+                    }`}
+                  />
+                </div>
+              </button>
+
+              <div className="rounded-[18px] border border-[#e4e8e3] bg-[#fafcf9] px-4 py-3 text-[12px] text-[#657067]">
+                Submissions must be PNG, JPG, JPEG, or WebP images.
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div className="space-y-2">
+                  <p className="text-[13px] font-[600] text-[#2d372f]">Choose Files</p>
+                  <UploadIntentDropzone
+                    intent={commentUploadIntent}
+                    onFilesSelected={handleCommentFilesSelected}
+                    onError={(message) => setComposerError(message)}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setCommentUploadDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
       {revisionDialogOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="w-full max-w-[640px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
