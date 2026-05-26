@@ -576,6 +576,10 @@ export async function createStageRevision(
     throw new Error("Only the project executor can submit work for review.");
   }
 
+  if (stage.status === "COMPLETED") {
+    throw new Error("This stage is already completed.");
+  }
+
   if (!stage.actualStartedAt) {
     throw new Error("Please accept the brief before submitting work.");
   }
@@ -790,14 +794,24 @@ export async function completeProjectStage(
     throw new Error("Stage not found.");
   }
 
-  if (stage.status === "COMPLETED") {
-    return { id: stage.id, status: stage.status };
-  }
-
   const orderedStages = [...project.stages].sort((left, right) => left.order - right.order);
   const stageIndex = orderedStages.findIndex((item) => item.id === stage.id);
   const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
 
+  if (stage.status === "COMPLETED") {
+    return {
+      id: stage.id,
+      status: stage.status,
+      nextStage: nextStage
+        ? {
+            id: nextStage.id,
+            name: nextStage.name,
+            status: nextStage.status,
+          }
+        : null,
+      allStagesCompleted: !nextStage,
+    };
+  }
   const updatedStage = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const completedStage = await tx.projectStage.update({
@@ -853,7 +867,17 @@ export async function completeProjectStage(
     }),
   );
 
-  return updatedStage;
+  return {
+    ...updatedStage,
+    nextStage: nextStage
+      ? {
+          id: nextStage.id,
+          name: nextStage.name,
+          status: nextStage.status === "PENDING" ? "ONGOING" : nextStage.status,
+        }
+      : null,
+    allStagesCompleted: !nextStage,
+  };
 }
 
 export async function reviewStageSubmission(
@@ -948,6 +972,14 @@ export async function reviewProjectRevision(
         revisionNumber: true,
         status: true,
         title: true,
+        stage: {
+          select: {
+            id: true,
+            name: true,
+            order: true,
+            status: true,
+          },
+        },
         project: {
           select: {
             createdById: true,
@@ -972,7 +1004,7 @@ export async function reviewProjectRevision(
   const rejectionReason = input.reason?.trim() || "";
 
   if (input.status === "REJECTED" && !rejectionReason) {
-    throw new Error("Rejection reason is required.");
+    throw new Error("Revision reason is required.");
   }
 
   return withPrismaRetry(() =>
@@ -1001,6 +1033,96 @@ export async function reviewProjectRevision(
             body: string;
           }
         | null = null;
+      let stageCompletion:
+        | {
+            id: string;
+            status: "COMPLETED";
+            nextStage: {
+              id: string;
+              name: string;
+              status: string;
+            } | null;
+            allStagesCompleted: boolean;
+          }
+        | null = null;
+
+      if (input.status === "APPROVED" && revision.stage.status !== "COMPLETED") {
+        const orderedStages = await tx.projectStage.findMany({
+          where: {
+            projectId: revision.projectId,
+          },
+          orderBy: {
+            order: "asc",
+          },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            order: true,
+          },
+        });
+
+        const stageIndex = orderedStages.findIndex((item) => item.id === revision.stageId);
+        const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
+
+        await tx.projectStage.update({
+          where: {
+            id: revision.stageId,
+          },
+          data: {
+            status: "COMPLETED",
+          },
+        });
+
+        if (nextStage) {
+          const nextStageStatus =
+            nextStage.status === "PENDING" ? "ONGOING" : nextStage.status;
+
+          if (nextStageStatus !== nextStage.status) {
+            await tx.projectStage.update({
+              where: {
+                id: nextStage.id,
+              },
+              data: {
+                status: nextStageStatus,
+              },
+            });
+          }
+
+          await tx.project.update({
+            where: {
+              id: revision.projectId,
+            },
+            data: {
+              currentStageName: nextStage.name,
+              status: nextStageStatus,
+            },
+          });
+        } else {
+          await tx.project.update({
+            where: {
+              id: revision.projectId,
+            },
+            data: {
+              currentStageName: revision.stage.name,
+              status: "COMPLETED",
+            },
+          });
+        }
+
+        stageCompletion = {
+          id: revision.stageId,
+          status: "COMPLETED",
+          nextStage: nextStage
+            ? {
+                id: nextStage.id,
+                name: nextStage.name,
+                status: nextStage.status === "PENDING" ? "ONGOING" : nextStage.status,
+              }
+            : null,
+          allStagesCompleted: !nextStage,
+        };
+      }
 
       if (input.status === "REJECTED") {
         rejectionComment = await tx.projectComment.create({
@@ -1009,7 +1131,7 @@ export async function reviewProjectRevision(
             stageId: revision.stageId,
             revisionId: revision.id,
             authorId: user.id,
-            body: `Rejection brief for Revision ${revision.revisionNumber}: ${rejectionReason}`,
+            body: `Revision brief for Revision ${revision.revisionNumber}: ${rejectionReason}`,
           },
           select: {
             id: true,
@@ -1021,6 +1143,7 @@ export async function reviewProjectRevision(
       return {
         ...updatedRevision,
         rejectionComment,
+        stageCompletion,
       };
     }),
   );
@@ -1072,6 +1195,7 @@ export async function requestAttachmentUpload(
           stage: {
             select: {
               actualStartedAt: true,
+              status: true,
             },
           },
           project: {
@@ -1095,6 +1219,10 @@ export async function requestAttachmentUpload(
 
     if (!revision.stage.actualStartedAt) {
       return { error: "Please accept the brief before submitting work." };
+    }
+
+    if (revision.stage.status === "COMPLETED") {
+      return { error: "This stage is already completed." };
     }
   } else if (
     input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT ||
@@ -1120,6 +1248,7 @@ export async function requestAttachmentUpload(
           stage: {
             select: {
               actualStartedAt: true,
+              status: true,
             },
           },
           project: {
@@ -1150,6 +1279,13 @@ export async function requestAttachmentUpload(
       !comment.stage.actualStartedAt
     ) {
       return { error: "Please accept the brief before submitting work." };
+    }
+
+    if (
+      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+      comment.stage.status === "COMPLETED"
+    ) {
+      return { error: "This stage is already completed." };
     }
 
     if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {

@@ -187,7 +187,7 @@ export async function rejectSubmissionAction(attachmentId: string, note?: string
   }
 }
 
-export async function approveStageSubmissionAction(input: {
+export async function markSubmissionCompleteAction(input: {
   projectId: string;
   stageId: string;
   revisionId: string;
@@ -207,12 +207,12 @@ export async function approveStageSubmissionAction(input: {
       error:
         error instanceof Error
           ? error.message
-          : "Unable to approve the submission right now.",
+          : "Unable to mark the stage as complete right now.",
     };
   }
 }
 
-export async function rejectStageSubmissionAction(input: {
+export async function requestSubmissionRevisionAction(input: {
   projectId: string;
   stageId: string;
   revisionId: string;
@@ -234,10 +234,13 @@ export async function rejectStageSubmissionAction(input: {
       error:
         error instanceof Error
           ? error.message
-          : "Unable to reject the submission right now.",
+          : "Unable to request a revision right now.",
     };
   }
 }
+
+export const approveStageSubmissionAction = markSubmissionCompleteAction;
+export const rejectStageSubmissionAction = requestSubmissionRevisionAction;
 
 export async function saveProjectCollaboratorsAction(
   projectId: string,

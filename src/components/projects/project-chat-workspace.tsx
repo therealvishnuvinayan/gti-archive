@@ -18,14 +18,12 @@ import {
 
 import {
   acceptStageBriefAction,
-  approveSubmissionAction,
-  approveStageSubmissionAction,
   createStageCommentAction,
   createStageRevisionAction,
+  markSubmissionCompleteAction,
   markStageCompleteAction,
   removeProjectCollaboratorAction,
-  rejectSubmissionAction,
-  rejectStageSubmissionAction,
+  requestSubmissionRevisionAction,
   saveProjectCollaboratorsAction,
   setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
@@ -94,7 +92,6 @@ type DisplayChatEntry = ProjectChatEntry & {
   serverEntryId?: string;
 };
 
-type SubmissionReviewState = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 type RevisionReviewState = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 
 type TranslateApiResponse = {
@@ -326,12 +323,12 @@ function getRevisionStatusMeta(status: RevisionReviewState) {
   switch (status) {
     case "APPROVED":
       return {
-        label: "Approved",
+        label: "Completed",
         badgeClassName: "bg-[#edf7ef] text-[#2b8b56]",
       };
     case "REJECTED":
       return {
-        label: "Rejected",
+        label: "Revision Requested",
         badgeClassName: "bg-[#fff0ef] text-[#c14f46]",
       };
     default:
@@ -345,19 +342,9 @@ function getRevisionStatusMeta(status: RevisionReviewState) {
 function AttachmentHistoryList({
   attachments,
   compact = false,
-  canReviewSubmissions = false,
-  pendingReviewAttachmentId = null,
-  submissionReviewOverrides,
-  onApproveSubmission,
-  onRejectSubmission,
 }: {
   attachments: DisplayAttachmentRecord[];
   compact?: boolean;
-  canReviewSubmissions?: boolean;
-  pendingReviewAttachmentId?: string | null;
-  submissionReviewOverrides?: Partial<Record<string, SubmissionReviewState>>;
-  onApproveSubmission?: (attachmentId: string) => void;
-  onRejectSubmission?: (attachmentId: string) => void;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -368,12 +355,8 @@ function AttachmentHistoryList({
       {attachments.map((attachment) => (
         (() => {
           const effectiveSubmissionStatus = attachment.isSubmission
-            ? (submissionReviewOverrides?.[attachment.id] ??
-                attachment.submissionReviewStatus ??
-                "PENDING_REVIEW")
+            ? (attachment.submissionReviewStatus ?? "PENDING_REVIEW")
             : null;
-          const isPendingReview =
-            effectiveSubmissionStatus === "PENDING_REVIEW";
 
           return (
             <div
@@ -430,9 +413,9 @@ function AttachmentHistoryList({
                         }`}
                       >
                         {effectiveSubmissionStatus === "APPROVED"
-                          ? "Approved"
+                          ? "Completed"
                           : effectiveSubmissionStatus === "REJECTED"
-                            ? "Rejected"
+                            ? "Revision Requested"
                             : "Pending Review"}
                       </span>
                     ) : null}
@@ -453,37 +436,6 @@ function AttachmentHistoryList({
                         className="h-full rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] transition-[width] duration-200"
                         style={{ width: `${attachment.progress ?? 0}%` }}
                       />
-                    </div>
-                  ) : null}
-                  {canReviewSubmissions &&
-                  attachment.isSubmission &&
-                  !attachment.uploadState &&
-                  isPendingReview &&
-                  onApproveSubmission &&
-                  onRejectSubmission ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-8 rounded-full px-3 text-[11px]"
-                        disabled={pendingReviewAttachmentId === attachment.id}
-                        onClick={() => onApproveSubmission(attachment.id)}
-                      >
-                        {pendingReviewAttachmentId === attachment.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : null}
-                        Approve
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 rounded-full px-3 text-[11px]"
-                        disabled={pendingReviewAttachmentId === attachment.id}
-                        onClick={() => onRejectSubmission(attachment.id)}
-                      >
-                        Reject
-                      </Button>
                     </div>
                   ) : null}
                 </div>
@@ -626,13 +578,7 @@ export function ProjectChatWorkspace({
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
   const [optimisticComments, setOptimisticComments] = useState<DisplayChatEntry[]>([]);
   const [confirmedComments, setConfirmedComments] = useState<DisplayChatEntry[]>([]);
-  const [pendingSubmissionReviewId, setPendingSubmissionReviewId] = useState<string | null>(
-    null,
-  );
   const [pendingRevisionReviewId, setPendingRevisionReviewId] = useState<string | null>(null);
-  const [submissionReviewOverrides, setSubmissionReviewOverrides] = useState<
-    Record<string, SubmissionReviewState>
-  >({});
   const [revisionReviewOverrides, setRevisionReviewOverrides] = useState<
     Record<string, { status: RevisionReviewState; rejectionReason: string | null }>
   >({});
@@ -668,9 +614,16 @@ export function ProjectChatWorkspace({
       {
         actualStartedAt: string;
         actualStartedAtValue: string | null;
+        status?: ProjectStageRecord["status"];
       }
     >
   >({});
+  const [completionPrompt, setCompletionPrompt] = useState<{
+    nextStageId: string | null;
+    nextStageLabel: string | null;
+    allStagesCompleted: boolean;
+  } | null>(null);
+  const [reviewCompleteDialogOpen, setReviewCompleteDialogOpen] = useState(false);
   const [collaboratorPickerOpen, setCollaboratorPickerOpen] = useState(false);
   const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
@@ -1145,6 +1098,7 @@ export function ProjectChatWorkspace({
   function closeRevisionReviewDialog() {
     setPendingRevisionReviewId(null);
     setReviewRevisionId(null);
+    setReviewCompleteDialogOpen(false);
     setReviewRejectMode(false);
     setReviewRejectReason("");
     setReviewDialogError(null);
@@ -1412,6 +1366,13 @@ export function ProjectChatWorkspace({
   }
 
   function openRevisionDialog() {
+    if (isStageCompleted) {
+      const message = "This stage is already completed.";
+      setComposerError(message);
+      showErrorToast("Unable to submit work.", message);
+      return;
+    }
+
     if (!hasAcceptedBrief) {
       const message = "Please accept the brief before submitting work.";
       setComposerError(message);
@@ -1450,6 +1411,47 @@ export function ProjectChatWorkspace({
     setPendingRevisionFiles((current) => current.filter((file) => file.id !== fileId));
   }
 
+  function applyStageCompletionLocally(completedStageId: string) {
+    const completedStage = stageCards.find((stage) => stage.id === completedStageId);
+    const stageIndex = stageCards.findIndex((stage) => stage.id === completedStageId);
+    const nextStage = stageIndex >= 0 ? stageCards[stageIndex + 1] ?? null : null;
+
+    setStageCardOverrides((current) => ({
+      ...current,
+      ...(completedStage
+        ? {
+            [completedStageId]: {
+              ...(current[completedStageId] ?? {}),
+              actualStartedAt:
+                current[completedStageId]?.actualStartedAt ?? completedStage.actualStartedAt,
+              actualStartedAtValue:
+                current[completedStageId]?.actualStartedAtValue ??
+                completedStage.actualStartedAtValue,
+              status: "completed",
+            },
+          }
+        : {}),
+      ...(nextStage
+        ? {
+            [nextStage.id]: {
+              ...(current[nextStage.id] ?? {}),
+              actualStartedAt:
+                current[nextStage.id]?.actualStartedAt ?? nextStage.actualStartedAt,
+              actualStartedAtValue:
+                current[nextStage.id]?.actualStartedAtValue ?? nextStage.actualStartedAtValue,
+              status: nextStage.status === "pending" ? "in-progress" : nextStage.status,
+            },
+          }
+        : {}),
+    }));
+
+    setCompletionPrompt({
+      nextStageId: nextStage?.id ?? null,
+      nextStageLabel: nextStage?.label ?? null,
+      allStagesCompleted: !nextStage,
+    });
+  }
+
   async function handleMarkStageComplete() {
     const activeStageId = activeStage?.id;
 
@@ -1478,6 +1480,7 @@ export function ProjectChatWorkspace({
         return;
       }
 
+      applyStageCompletionLocally(activeStageId);
       setStageCompleteDialogOpen(false);
       showSuccessToast("Stage marked as complete.");
       refreshHistory();
@@ -1580,6 +1583,13 @@ export function ProjectChatWorkspace({
 
     if (selectedAssetType === "STAGE_SUBMISSION" && !hasAcceptedBrief) {
       const message = "Please accept the brief before submitting work.";
+      setComposerError(message);
+      showErrorToast("Unable to submit work.", message);
+      return;
+    }
+
+    if (selectedAssetType === "STAGE_SUBMISSION" && isStageCompleted) {
+      const message = "This stage is already completed.";
       setComposerError(message);
       showErrorToast("Unable to submit work.", message);
       return;
@@ -1820,56 +1830,17 @@ export function ProjectChatWorkspace({
     }
   }
 
-  async function handleSubmissionReview(
-    attachmentId: string,
-    status: Extract<SubmissionReviewState, "APPROVED" | "REJECTED">,
-  ) {
-    setComposerError(null);
-    setPendingSubmissionReviewId(attachmentId);
-
-    try {
-      const result =
-        status === "APPROVED"
-          ? await approveSubmissionAction(attachmentId)
-          : await rejectSubmissionAction(attachmentId);
-
-      if ("error" in result) {
-        throw new Error(result.error);
-      }
-
-      setSubmissionReviewOverrides((current) => ({
-        ...current,
-        [attachmentId]: result.submission.submissionReviewStatus ?? status,
-      }));
-      showSuccessToast(
-        status === "APPROVED"
-          ? "Submission approved successfully."
-          : "Submission rejected successfully.",
-      );
-      refreshHistory();
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to update the submission review right now.";
-      setComposerError(message);
-      showErrorToast(
-        status === "APPROVED"
-          ? "Unable to approve submission."
-          : "Unable to reject submission.",
-        message,
-      );
-    } finally {
-      setPendingSubmissionReviewId(null);
-    }
-  }
-
   async function handleCreateRevision() {
     const activeStageId = activeStage?.id;
     const summary = revisionSummary.trim();
 
     if (!activeStageId) {
       setRevisionDialogError("This project does not have an active stage to upload into.");
+      return;
+    }
+
+    if (isStageCompleted) {
+      setRevisionDialogError("This stage is already completed.");
       return;
     }
 
@@ -2068,7 +2039,7 @@ export function ProjectChatWorkspace({
     const rejectionReason = reviewRejectReason.trim();
 
     if (status === "REJECTED" && !rejectionReason) {
-      setReviewDialogError("Rejection reason is required.");
+      setReviewDialogError("Revision reason is required.");
       return;
     }
 
@@ -2078,12 +2049,12 @@ export function ProjectChatWorkspace({
     try {
       const result =
         status === "APPROVED"
-          ? await approveStageSubmissionAction({
+          ? await markSubmissionCompleteAction({
               projectId: project.id,
               stageId: activeStageId,
               revisionId: reviewRevisionMessage.revisionId,
             })
-          : await rejectStageSubmissionAction({
+          : await requestSubmissionRevisionAction({
               projectId: project.id,
               stageId: activeStageId,
               revisionId: reviewRevisionMessage.revisionId,
@@ -2134,11 +2105,16 @@ export function ProjectChatWorkspace({
         return nextEntries;
       });
 
+      if (status === "APPROVED") {
+        applyStageCompletionLocally(activeStageId);
+      }
+
       closeRevisionReviewDialog();
+      setReviewCompleteDialogOpen(false);
       showSuccessToast(
         status === "APPROVED"
-          ? "Submission approved successfully."
-          : "Submission rejected successfully.",
+          ? "Stage marked as complete."
+          : "Revision requested.",
       );
       refreshHistory();
     } catch (error) {
@@ -2149,8 +2125,8 @@ export function ProjectChatWorkspace({
       setReviewDialogError(message);
       showErrorToast(
         status === "APPROVED"
-          ? "Unable to approve submission."
-          : "Unable to reject submission.",
+          ? "Unable to mark stage as complete."
+          : "Unable to request revision.",
         message,
       );
       setPendingRevisionReviewId(null);
@@ -2165,6 +2141,45 @@ export function ProjectChatWorkspace({
             <div className="rounded-[18px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-[13px] text-[#bd554f]">
               {composerError}
             </div>
+          ) : null}
+
+          {completionPrompt ? (
+            <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+              <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[14px] font-[700] text-[#173120]">
+                    {completionPrompt.allStagesCompleted
+                      ? "All stages completed."
+                      : "Stage completed. You can now move to the next stage."}
+                  </p>
+                  {completionPrompt.nextStageLabel && !completionPrompt.allStagesCompleted ? (
+                    <p className="mt-1 text-[12px] text-[#5f6b62]">
+                      Next stage: {completionPrompt.nextStageLabel}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex gap-2">
+                  {completionPrompt.nextStageId && !completionPrompt.allStagesCompleted ? (
+                    <Button asChild size="sm" className="rounded-full text-[12px]">
+                      <Link
+                        href={`/projects/${project.id}/chat?stage=${completionPrompt.nextStageId}`}
+                      >
+                        Go to Next Stage
+                      </Link>
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-full text-[12px]"
+                    onClick={() => setCompletionPrompt(null)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ) : null}
 
           {displayedMessages.length === 0 ? (
@@ -2255,7 +2270,7 @@ export function ProjectChatWorkspace({
                           {effectiveRejectionReason ? (
                             <div className="mt-3 rounded-[16px] border border-[#ffffff29] bg-[#fff2f1]/95 px-3 py-2.5 text-[11px] leading-5 text-[#7d2822]">
                               <p className="font-[700] uppercase tracking-[0.08em] text-[#bb4d49]">
-                                Rejection Brief
+                                Revision Brief
                               </p>
                               <p className="mt-1">{effectiveRejectionReason}</p>
                             </div>
@@ -2288,6 +2303,7 @@ export function ProjectChatWorkspace({
                             onClick={() => {
                               setReviewDialogError(null);
                               setReviewRejectMode(false);
+                              setReviewCompleteDialogOpen(false);
                               setReviewRejectReason("");
                               setReviewRevisionId(revisionEntryId);
                             }}
@@ -2301,7 +2317,7 @@ export function ProjectChatWorkspace({
                             onClick={openRevisionDialog}
                             size="sm"
                             className="rounded-full text-[12px]"
-                            disabled={isUploadingRevision}
+                            disabled={isUploadingRevision || isStageCompleted}
                           >
                             {isUploadingRevision ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2359,19 +2375,7 @@ export function ProjectChatWorkspace({
                 </div>
                 <p className="mt-3 text-[12px] leading-[1.35] text-[#111712]">{message.body}</p>
                 {message.attachments?.length ? (
-                  <AttachmentHistoryList
-                    attachments={message.attachments}
-                    compact
-                    canReviewSubmissions={canReviewSubmissions}
-                    pendingReviewAttachmentId={pendingSubmissionReviewId}
-                    submissionReviewOverrides={submissionReviewOverrides}
-                    onApproveSubmission={(attachmentId) => {
-                      void handleSubmissionReview(attachmentId, "APPROVED");
-                    }}
-                    onRejectSubmission={(attachmentId) => {
-                      void handleSubmissionReview(attachmentId, "REJECTED");
-                    }}
-                  />
+                  <AttachmentHistoryList attachments={message.attachments} compact />
                 ) : null}
               </Card>
             ),
@@ -2413,7 +2417,7 @@ export function ProjectChatWorkspace({
                   onClick={openRevisionDialog}
                   size="sm"
                   className="rounded-full text-[12px]"
-                  disabled={isUploadingRevision}
+                  disabled={isUploadingRevision || isStageCompleted}
                 >
                   {isUploadingRevision ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2741,6 +2745,25 @@ export function ProjectChatWorkspace({
         }}
       />
       <ConfirmationDialog
+        isOpen={reviewCompleteDialogOpen}
+        title="Mark stage as complete?"
+        description="This will mark the submitted revision as completed, complete the current stage, and make the next stage available."
+        confirmLabel="Mark as Complete"
+        pending={Boolean(pendingRevisionReviewId)}
+        error={reviewDialogError ?? undefined}
+        onClose={() => {
+          if (pendingRevisionReviewId) {
+            return;
+          }
+
+          setReviewDialogError(null);
+          setReviewCompleteDialogOpen(false);
+        }}
+        onConfirm={() => {
+          void handleRevisionReview("APPROVED");
+        }}
+      />
+      <ConfirmationDialog
         isOpen={stageCompleteDialogOpen}
         title="Mark Stage Complete"
         description="This will mark the current stage as completed. Only the project owner can do this."
@@ -2810,13 +2833,13 @@ export function ProjectChatWorkspace({
               <button
                 type="button"
                 onClick={() => {
-                  if (!hasAcceptedBrief) {
+                  if (!hasAcceptedBrief || isStageCompleted) {
                     return;
                   }
 
                   setCommentUploadIntent("STAGE_SUBMISSION");
                 }}
-                disabled={!hasAcceptedBrief}
+                disabled={!hasAcceptedBrief || isStageCompleted}
                 className={`w-full rounded-[22px] border px-5 py-4 text-left transition ${
                   commentUploadIntent === "STAGE_SUBMISSION"
                     ? "border-brand bg-[#f4fbf5] shadow-[0_10px_24px_rgba(18,35,23,0.06)]"
@@ -2842,7 +2865,9 @@ export function ProjectChatWorkspace({
               </button>
 
               <div className="rounded-[18px] border border-[#e4e8e3] bg-[#fafcf9] px-4 py-3 text-[12px] text-[#657067]">
-                {hasAcceptedBrief
+                {isStageCompleted
+                  ? "This stage is completed. New submissions are locked."
+                  : hasAcceptedBrief
                   ? "Submissions must be PNG, JPG, JPEG, or WebP images."
                   : "Accept the brief before submitting work files for review."}
               </div>
@@ -2992,7 +3017,7 @@ export function ProjectChatWorkspace({
                   Review Submission
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  Review the submitted revision and decide whether to approve it or request changes.
+                  Review the submitted revision and decide whether to mark this stage as complete or request another revision.
                 </p>
               </div>
               <Button
@@ -3072,7 +3097,7 @@ export function ProjectChatWorkspace({
               {reviewRejectMode ? (
                 <div className="space-y-2">
                   <p className="text-[13px] font-[600] text-[#2d372f]">
-                    Rejection Brief / Reason *
+                    Revision Brief / Reason *
                   </p>
                   <Textarea
                     value={reviewRejectReason}
@@ -3103,19 +3128,17 @@ export function ProjectChatWorkspace({
                       }}
                       disabled={Boolean(pendingRevisionReviewId)}
                     >
-                      Reject
+                      Request Revision
                     </Button>
                     <Button
                       type="button"
                       onClick={() => {
-                        void handleRevisionReview("APPROVED");
+                        setReviewDialogError(null);
+                        setReviewCompleteDialogOpen(true);
                       }}
                       disabled={Boolean(pendingRevisionReviewId)}
                     >
-                      {pendingRevisionReviewId ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      Approve
+                      Mark as Complete
                     </Button>
                   </>
                 ) : (
@@ -3132,7 +3155,7 @@ export function ProjectChatWorkspace({
                     {pendingRevisionReviewId ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : null}
-                    Reject Submission
+                    Request Revision
                   </Button>
                 )}
               </div>

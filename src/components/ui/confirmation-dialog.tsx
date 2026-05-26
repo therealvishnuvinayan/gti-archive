@@ -35,7 +35,7 @@ export function ConfirmationDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
       <Card className="w-full max-w-[520px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
           <div>
