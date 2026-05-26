@@ -35,6 +35,12 @@ import {
 import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import {
+  getDefaultProjectCollaboratorParticipantType,
+  getProjectCollaboratorTypeMeta,
+  projectCollaboratorParticipantTypes,
+  type ProjectCollaboratorParticipantType,
+} from "@/lib/project-collaborator-participant-types";
+import {
   MotionItem,
   MotionSection,
   MotionStaggerGroup,
@@ -443,6 +449,9 @@ export function CreateProjectWorkspace({
               ? "External Collaborator"
               : "Collaborator",
           group: availableCollaborator.type === "External" ? "external" : "internal",
+          participantType: getDefaultProjectCollaboratorParticipantType(
+            availableCollaborator.type === "External" ? "external" : "internal",
+          ),
           access: "view",
           removable: true,
         },
@@ -479,6 +488,9 @@ export function CreateProjectWorkspace({
               ? "External Collaborator"
               : "Collaborator",
           group: result.collaborator.type === "External" ? "external" : "internal",
+          participantType: getDefaultProjectCollaboratorParticipantType(
+            result.collaborator.type === "External" ? "external" : "internal",
+          ),
           access: "view",
           removable: true,
         },
@@ -500,6 +512,19 @@ export function CreateProjectWorkspace({
     startRefresh(() => {
       router.refresh();
     });
+  }
+
+  function updateAssignedCollaboratorParticipantType(
+    collaboratorId: string,
+    participantType: ProjectCollaboratorParticipantType,
+  ) {
+    setAssignedCollaborators((current) =>
+      current.map((collaborator) =>
+        collaborator.id === collaboratorId
+          ? { ...collaborator, participantType }
+          : collaborator,
+      ),
+    );
   }
 
   async function uploadProjectAsset(file: File, projectId: string) {
@@ -728,13 +753,15 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="tag" value={projectTag} />
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
-      {selectedCollaboratorIds.map((collaboratorId) => (
-        <input
-          key={collaboratorId}
-          type="hidden"
-          name="collaboratorIds"
-          value={collaboratorId}
-        />
+      {assignedCollaborators.map((collaborator) => (
+        <div key={collaborator.id}>
+          <input type="hidden" name="collaboratorIds" value={collaborator.id} />
+          <input
+            type="hidden"
+            name="collaboratorParticipantTypes"
+            value={collaborator.participantType ?? ""}
+          />
+        </div>
       ))}
       {mode === "edit" && initialValues ? (
         <input type="hidden" name="projectId" value={initialValues.id} />
@@ -1291,6 +1318,44 @@ export function CreateProjectWorkspace({
                       <p className="truncate text-[11px] text-[#7f877f]">
                         {collaborator.email ?? collaborator.role}
                       </p>
+                      <div className="mt-2">
+                        <Badge
+                          variant="secondary"
+                          className={getProjectCollaboratorTypeMeta(
+                            collaborator.participantType,
+                          ).badgeClassName}
+                        >
+                          {getProjectCollaboratorTypeMeta(collaborator.participantType).label}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 max-w-[260px]">
+                        <p className="mb-1 text-[11px] font-[600] text-[#7f877f]">
+                          Collaborator Type
+                        </p>
+                        <Select
+                          value={
+                            collaborator.participantType ??
+                            getDefaultProjectCollaboratorParticipantType(collaborator.group)
+                          }
+                          onValueChange={(value) =>
+                            updateAssignedCollaboratorParticipantType(
+                              collaborator.id,
+                              value as ProjectCollaboratorParticipantType,
+                            )
+                          }
+                        >
+                          <SelectTrigger className="h-9 rounded-full border border-line bg-white text-[12px] font-medium">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projectCollaboratorParticipantTypes.map((participantType) => (
+                              <SelectItem key={participantType} value={participantType}>
+                                {getProjectCollaboratorTypeMeta(participantType).label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <Badge
                       variant="secondary"

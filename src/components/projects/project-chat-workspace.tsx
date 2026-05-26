@@ -29,6 +29,10 @@ import {
   getSupportedLanguageByCode,
 } from "@/lib/ai/languages";
 import { getStageSubmissionAttachments } from "@/lib/comparison-utils";
+import {
+  getDefaultProjectCollaboratorParticipantType,
+  type ProjectCollaboratorParticipantType,
+} from "@/lib/project-collaborator-participant-types";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import {
@@ -739,6 +743,9 @@ export function ProjectChatWorkspace({
               ? "External Collaborator"
               : "Collaborator",
           group: availableCollaborator.type === "External" ? "external" : "internal",
+          participantType: getDefaultProjectCollaboratorParticipantType(
+            availableCollaborator.type === "External" ? "external" : "internal",
+          ),
           access: "view",
           removable: true,
         },
@@ -754,7 +761,10 @@ export function ProjectChatWorkspace({
         project.id,
         collaborators
           .filter((collaborator) => collaborator.access !== "owner")
-          .map((collaborator) => collaborator.id),
+          .map((collaborator) => ({
+            id: collaborator.id,
+            participantType: collaborator.participantType,
+          })),
       );
 
       if ("error" in result) {
@@ -798,8 +808,18 @@ export function ProjectChatWorkspace({
       ]);
 
       const saveResult = await saveProjectCollaboratorsAction(project.id, [
-        ...selectedCollaboratorIds,
-        inviteResult.collaborator.id,
+        ...collaborators
+          .filter((collaborator) => collaborator.access !== "owner")
+          .map((collaborator) => ({
+            id: collaborator.id,
+            participantType: collaborator.participantType,
+          })),
+        {
+          id: inviteResult.collaborator.id,
+          participantType: getDefaultProjectCollaboratorParticipantType(
+            inviteResult.collaborator.type === "External" ? "external" : "internal",
+          ),
+        },
       ]);
 
       if ("error" in saveResult) {
@@ -818,6 +838,46 @@ export function ProjectChatWorkspace({
           ? error.message
           : "Unable to save the collaborator right now. Please try again.",
       );
+    } finally {
+      setCollaboratorSaving(false);
+    }
+  }
+
+  async function handleCollaboratorParticipantTypeChange(
+    collaboratorId: string,
+    participantType: ProjectCollaboratorParticipantType,
+  ) {
+    const nextCollaborators = collaborators.map((collaborator) =>
+      collaborator.id === collaboratorId
+        ? { ...collaborator, participantType }
+        : collaborator,
+    );
+
+    setCollaborators(nextCollaborators);
+    setCollaboratorSaving(true);
+    setCollaboratorDialogError(undefined);
+
+    try {
+      const result = await saveProjectCollaboratorsAction(
+        project.id,
+        nextCollaborators
+          .filter((collaborator) => collaborator.access !== "owner")
+          .map((collaborator) => ({
+            id: collaborator.id,
+            participantType: collaborator.participantType,
+          })),
+      );
+
+      if ("error" in result) {
+        setCollaboratorDialogError(result.error);
+        refreshHistory();
+        return;
+      }
+
+      setCollaborators((current) => {
+        const owner = current.find((collaborator) => collaborator.access === "owner");
+        return owner ? [owner, ...result.collaborators] : result.collaborators;
+      });
     } finally {
       setCollaboratorSaving(false);
     }
@@ -1724,6 +1784,13 @@ export function ProjectChatWorkspace({
               setCollaboratorDialogError(undefined);
               setCollaboratorPickerOpen(true);
             }}
+            onParticipantTypeChange={(collaboratorId, participantType) => {
+              void handleCollaboratorParticipantTypeChange(
+                collaboratorId,
+                participantType,
+              );
+            }}
+            saving={collaboratorSaving}
           />
         </div>
       </div>

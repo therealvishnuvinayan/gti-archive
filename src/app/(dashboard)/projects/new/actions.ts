@@ -9,6 +9,11 @@ import type {
   ProjectFormState,
 } from "@/app/(dashboard)/projects/new/project-form-state";
 import { requireUser } from "@/lib/auth";
+import {
+  getDefaultProjectCollaboratorParticipantType,
+  isProjectCollaboratorParticipantType,
+  type ProjectCollaboratorParticipantType,
+} from "@/lib/project-collaborator-participant-types";
 import { prisma } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
@@ -72,6 +77,9 @@ function parseProjectFormData(formData: FormData) {
       .map((value) => String(value).trim())
       .filter(Boolean),
   )];
+  const collaboratorParticipantTypes = formData
+    .getAll("collaboratorParticipantTypes")
+    .map((value) => String(value).trim());
 
   return {
     name,
@@ -90,6 +98,7 @@ function parseProjectFormData(formData: FormData) {
     stageStartDates,
     stageDueDates,
     collaboratorIds,
+    collaboratorParticipantTypes,
   };
 }
 
@@ -316,6 +325,7 @@ export async function createProjectAction(
     stageStatuses,
     currentStageName,
     collaboratorIds,
+    collaboratorParticipantTypes,
   } = validated.data;
 
   const currencyCode = await resolveProjectCurrencyCode(currency);
@@ -337,10 +347,29 @@ export async function createProjectAction(
         },
         select: {
           id: true,
+          collaboratorType: true,
         },
       })
     : [];
   const validCollaboratorIds = validCollaborators.map((collaborator) => collaborator.id);
+  const validCollaboratorTypeMap = new Map(
+    validCollaborators.map((collaborator) => [
+      collaborator.id,
+      collaborator.collaboratorType === "EXTERNAL" ? "external" : "internal",
+    ] as const),
+  );
+  const collaboratorParticipantTypeMap = new Map<
+    string,
+    ProjectCollaboratorParticipantType | null
+  >(
+    collaboratorIds.map((collaboratorId, index) => {
+      const participantType = collaboratorParticipantTypes[index] ?? "";
+      return [
+        collaboratorId,
+        isProjectCollaboratorParticipantType(participantType) ? participantType : null,
+      ];
+    }),
+  );
 
   let projectId: string;
 
@@ -362,10 +391,15 @@ export async function createProjectAction(
         createdById: user.id,
         collaborators: {
           createMany: {
-            data: validCollaboratorIds.map((collaboratorId) => ({
-              userId: collaboratorId,
-              addedById: user.id,
-            })),
+              data: validCollaboratorIds.map((collaboratorId) => ({
+                userId: collaboratorId,
+                addedById: user.id,
+                participantType:
+                  collaboratorParticipantTypeMap.get(collaboratorId) ??
+                  getDefaultProjectCollaboratorParticipantType(
+                    validCollaboratorTypeMap.get(collaboratorId) ?? "external",
+                  ),
+              })),
             skipDuplicates: true,
           },
         },
@@ -445,6 +479,7 @@ export async function updateProjectAction(
     stageStatuses,
     currentStageName,
     collaboratorIds,
+    collaboratorParticipantTypes,
   } = validated.data;
 
   const existingProject = await prisma.project.findUnique({
@@ -477,10 +512,29 @@ export async function updateProjectAction(
         },
         select: {
           id: true,
+          collaboratorType: true,
         },
       })
     : [];
   const validCollaboratorIds = validCollaborators.map((collaborator) => collaborator.id);
+  const validCollaboratorTypeMap = new Map(
+    validCollaborators.map((collaborator) => [
+      collaborator.id,
+      collaborator.collaboratorType === "EXTERNAL" ? "external" : "internal",
+    ] as const),
+  );
+  const collaboratorParticipantTypeMap = new Map<
+    string,
+    ProjectCollaboratorParticipantType | null
+  >(
+    collaboratorIds.map((collaboratorId, index) => {
+      const participantType = collaboratorParticipantTypes[index] ?? "";
+      return [
+        collaboratorId,
+        isProjectCollaboratorParticipantType(participantType) ? participantType : null,
+      ];
+    }),
+  );
 
   try {
     await prisma.project.update({
@@ -504,6 +558,11 @@ export async function updateProjectAction(
             data: validCollaboratorIds.map((collaboratorId) => ({
               userId: collaboratorId,
               addedById: user.id,
+              participantType:
+                collaboratorParticipantTypeMap.get(collaboratorId) ??
+                getDefaultProjectCollaboratorParticipantType(
+                  validCollaboratorTypeMap.get(collaboratorId) ?? "external",
+                ),
             })),
             skipDuplicates: true,
           },

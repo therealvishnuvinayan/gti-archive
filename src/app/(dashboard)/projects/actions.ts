@@ -11,6 +11,7 @@ import {
 } from "@/lib/project-history";
 import { PROJECTS_CACHE_TAG, updateProjectCollaborators } from "@/lib/projects";
 import { UserRole } from "@prisma/client";
+import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 
 type StageRevisionInput = {
   projectId: string;
@@ -116,7 +117,10 @@ export async function createComparisonCommentAction(input: ComparisonCommentInpu
 
 export async function saveProjectCollaboratorsAction(
   projectId: string,
-  collaboratorIds: string[],
+  collaborators: Array<{
+    id: string;
+    participantType: ProjectCollaboratorParticipantType | null;
+  }>,
 ) {
   const user = await requireUser();
 
@@ -125,16 +129,16 @@ export async function saveProjectCollaboratorsAction(
   }
 
   try {
-    const collaborators = await updateProjectCollaborators(
+    const updatedCollaborators = await updateProjectCollaborators(
       projectId,
-      collaboratorIds,
+      collaborators,
       user.id,
     );
 
     revalidateProjectFlow();
     revalidatePath(`/projects/${projectId}/edit`);
 
-    return { collaborators };
+    return { collaborators: updatedCollaborators };
   } catch (error) {
     return {
       error:

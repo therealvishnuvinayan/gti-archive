@@ -18,6 +18,15 @@ enum CollaboratorType {
   EXTERNAL
 }
 
+enum ProjectCollaboratorParticipantType {
+  GTI_INTERNAL_CLIENT
+  GTI_SISTER_COMPANY_INTERNAL_CLIENT
+  EXTERNAL_FREELANCER
+  EXTERNAL_AGENCY
+  EXTERNAL_VENDOR
+  CLIENT_OF_GTI
+}
+
 enum CollaboratorAccess {
   FULL
   LIMITED
@@ -168,13 +177,14 @@ model ProjectCurrency {
 }
 
 model ProjectCollaborator {
-  projectId  String
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userId     String
-  user       User     @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
-  addedById  String?
-  addedBy    User?    @relation("ProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
-  createdAt  DateTime @default(now())
+  projectId        String
+  project          Project                           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User                              @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  participantType  ProjectCollaboratorParticipantType?
+  addedById        String?
+  addedBy          User?                             @relation("ProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt        DateTime                          @default(now())
 
   @@id([projectId, userId])
   @@index([userId])

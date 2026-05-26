@@ -13,6 +13,11 @@ import type {
   User,
 } from "@prisma/client";
 
+import {
+  getDefaultProjectCollaboratorParticipantType,
+  getProjectCollaboratorTypeMeta,
+  type ProjectCollaboratorParticipantType,
+} from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const PROJECTS_CACHE_TAG = "projects";
@@ -102,6 +107,7 @@ export type ProjectCollaboratorRecord = {
   email?: string;
   role: string;
   group: "internal" | "external";
+  participantType: ProjectCollaboratorParticipantType | null;
   access: "owner" | "view";
   removable?: boolean;
 };
@@ -319,6 +325,11 @@ function mapProjectCollaboratorAssignmentToRecord(
     user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
   },
 ): ProjectCollaboratorRecord {
+  const fallbackGroup = mapCollaboratorTypeToGroup(assignment.user.collaboratorType);
+  const participantType =
+    (assignment.participantType as ProjectCollaboratorParticipantType | null) ??
+    getDefaultProjectCollaboratorParticipantType(fallbackGroup);
+
   return {
     id: assignment.user.id,
     name: assignment.user.name?.trim() || assignment.user.email,
@@ -327,7 +338,8 @@ function mapProjectCollaboratorAssignmentToRecord(
       assignment.user.collaboratorType === "EXTERNAL"
         ? "External Collaborator"
         : "Collaborator",
-    group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
+    group: getProjectCollaboratorTypeMeta(participantType).group,
+    participantType,
     access: "view",
     removable: true,
   };
@@ -474,6 +486,7 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
         email: project.createdBy.email,
         role: "Project Owner",
         group: "internal",
+        participantType: "GTI_INTERNAL_CLIENT",
         access: "owner",
       },
       ...collaboratorRecords,
@@ -555,10 +568,28 @@ function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
 
 export async function updateProjectCollaborators(
   projectId: string,
-  collaboratorIds: string[],
+  collaborators: Array<{
+    id: string;
+    participantType: ProjectCollaboratorParticipantType | null;
+  }>,
   addedById: string,
 ) {
-  const normalizedIds = [...new Set(collaboratorIds.filter(Boolean))];
+  const normalizedCollaborators = collaborators.reduce<
+    Array<{ id: string; participantType: ProjectCollaboratorParticipantType | null }>
+  >((current, collaborator) => {
+    const id = collaborator.id.trim();
+
+    if (!id || current.some((item) => item.id === id)) {
+      return current;
+    }
+
+    current.push({
+      id,
+      participantType: collaborator.participantType,
+    });
+    return current;
+  }, []);
+  const normalizedIds = normalizedCollaborators.map((collaborator) => collaborator.id);
 
   const validCollaborators = normalizedIds.length
     ? await withPrismaRetry(() =>
@@ -571,21 +602,30 @@ export async function updateProjectCollaborators(
           },
           select: {
             id: true,
+            collaboratorType: true,
           },
         }),
       )
     : [];
 
   const validIds = validCollaborators.map((collaborator) => collaborator.id);
+  const validCollaboratorTypeMap = new Map(
+    validCollaborators.map((collaborator) => [
+      collaborator.id,
+      mapCollaboratorTypeToGroup(collaborator.collaboratorType),
+    ]),
+  );
+  const validCollaboratorMap = new Map(
+    normalizedCollaborators
+      .filter((collaborator) => validIds.includes(collaborator.id))
+      .map((collaborator) => [collaborator.id, collaborator.participantType] as const),
+  );
 
   await withPrismaRetry(() =>
     prisma.$transaction([
       prisma.projectCollaborator.deleteMany({
         where: {
           projectId,
-          userId: {
-            notIn: validIds,
-          },
         },
       }),
       ...(validIds.length > 0
@@ -595,6 +635,11 @@ export async function updateProjectCollaborators(
                 projectId,
                 userId,
                 addedById,
+                participantType:
+                  validCollaboratorMap.get(userId) ??
+                  getDefaultProjectCollaboratorParticipantType(
+                    validCollaboratorTypeMap.get(userId) ?? "external",
+                  ),
               })),
               skipDuplicates: true,
             }),

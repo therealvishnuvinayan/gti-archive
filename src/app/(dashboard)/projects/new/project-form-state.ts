@@ -1,3 +1,5 @@
+import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
+
 export type ProjectFormFieldErrors = {
   name?: string;
   category?: string;
@@ -51,6 +53,7 @@ export type ProjectEditorInitialCollaborator = {
   email?: string;
   role: string;
   group: "internal" | "external";
+  participantType: ProjectCollaboratorParticipantType | null;
   access: "owner" | "view";
   removable?: boolean;
 };
