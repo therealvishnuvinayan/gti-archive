@@ -1,4 +1,4 @@
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -27,12 +27,6 @@ export async function POST(request: Request) {
   try {
     await completeAttachmentUpload(user, payload.attachmentId, Boolean(payload.failed));
     revalidateTag(PROJECTS_CACHE_TAG, "max");
-
-    if (payload.projectId) {
-      revalidatePath(`/projects/${payload.projectId}`);
-      revalidatePath(`/projects/${payload.projectId}/chat`);
-      revalidatePath(`/projects/${payload.projectId}/compare`);
-    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

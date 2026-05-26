@@ -44,8 +44,30 @@ function getRequiredEnv(name: string) {
   return value;
 }
 
+function getOptionalBooleanEnv(name: string, defaultValue = false) {
+  const value = process.env[name]?.trim().toLowerCase();
+
+  if (!value) {
+    return defaultValue;
+  }
+
+  if (["1", "true", "yes", "on"].includes(value)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(value)) {
+    return false;
+  }
+
+  return defaultValue;
+}
+
 export function getS3BucketName() {
   return getRequiredEnv("AWS_S3_BUCKET");
+}
+
+export function isS3TransferAccelerationEnabled() {
+  return getOptionalBooleanEnv("AWS_S3_TRANSFER_ACCELERATION", false);
 }
 
 export function getMaxAssetUploadBytes() {
@@ -66,6 +88,7 @@ function getS3Client() {
 
   cachedClient = new S3Client({
     region: getRequiredEnv("AWS_REGION"),
+    useAccelerateEndpoint: isS3TransferAccelerationEnabled(),
     credentials: {
       accessKeyId: getRequiredEnv("AWS_ACCESS_KEY_ID"),
       secretAccessKey: getRequiredEnv("AWS_SECRET_ACCESS_KEY"),

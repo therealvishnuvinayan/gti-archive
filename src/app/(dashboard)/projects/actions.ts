@@ -35,10 +35,7 @@ type ComparisonCommentInput = {
   body: string;
 };
 
-function revalidateProjectFlow(projectId: string) {
-  revalidatePath(`/projects/${projectId}`);
-  revalidatePath(`/projects/${projectId}/chat`);
-  revalidatePath(`/projects/${projectId}/compare`);
+function revalidateProjectFlow() {
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 }
 
@@ -47,7 +44,7 @@ export async function createStageRevisionAction(input: StageRevisionInput) {
 
   try {
     const revision = await createStageRevision(user, input);
-    revalidateProjectFlow(input.projectId);
+    revalidateProjectFlow();
 
     return {
       revisionId: revision.id,
@@ -65,7 +62,7 @@ export async function createStageCommentAction(input: StageCommentInput) {
 
   try {
     const comment = await createStageComment(user, input);
-    revalidateProjectFlow(input.projectId);
+    revalidateProjectFlow();
 
     return {
       commentId: comment.id,
@@ -86,7 +83,7 @@ export async function markStageCompleteAction(input: {
 
   try {
     const stage = await completeProjectStage(user, input);
-    revalidateProjectFlow(input.projectId);
+    revalidateProjectFlow();
 
     return { stage };
   } catch (error) {
@@ -104,7 +101,7 @@ export async function createComparisonCommentAction(input: ComparisonCommentInpu
 
   try {
     const comment = await createComparisonComment(user, input);
-    revalidateProjectFlow(input.projectId);
+    revalidateProjectFlow();
 
     return { comment };
   } catch (error) {
@@ -134,7 +131,7 @@ export async function saveProjectCollaboratorsAction(
       user.id,
     );
 
-    revalidateProjectFlow(projectId);
+    revalidateProjectFlow();
     revalidatePath(`/projects/${projectId}/edit`);
 
     return { collaborators };

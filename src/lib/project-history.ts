@@ -20,7 +20,6 @@ import {
   deleteObjectIfNeeded,
   getFileExtension,
   getMaxAssetUploadBytes,
-  getObjectMetadata,
   getS3BucketName,
   isAllowedAssetFile,
   isAllowedSubmissionImage,
@@ -280,6 +279,20 @@ async function getProjectAccessRecord(projectId: string) {
   );
 }
 
+function ensureProjectAccessByOwnerId(user: AccessUser, createdById: string) {
+  if (
+    user.role === UserRole.SUPER_ADMIN ||
+    user.role === UserRole.ADMIN ||
+    createdById === user.id
+  ) {
+    return;
+  }
+
+  if (user.projectAccess === CollaboratorAccess.NONE) {
+    throw new Error("You do not have access to this project.");
+  }
+}
+
 export async function assertProjectAccess(user: AccessUser, projectId: string) {
   const project = await getProjectAccessRecord(projectId);
 
@@ -519,12 +532,28 @@ export async function createStageComment(
     allowEmptyBody?: boolean;
   },
 ) {
-  const project = await assertProjectAccess(user, input.projectId);
-  const stage = project.stages.find((item) => item.id === input.stageId);
+  const stage = await withPrismaRetry(() =>
+    prisma.projectStage.findFirst({
+      where: {
+        id: input.stageId,
+        projectId: input.projectId,
+      },
+      select: {
+        id: true,
+        project: {
+          select: {
+            createdById: true,
+          },
+        },
+      },
+    }),
+  );
 
   if (!stage) {
     throw new Error("Stage not found.");
   }
+
+  ensureProjectAccessByOwnerId(user, stage.project.createdById);
 
   const latestRevision = await withPrismaRetry(() =>
     prisma.projectRevision.findFirst({
@@ -634,15 +663,7 @@ export async function requestAttachmentUpload(
     return { error: "This file exceeds the allowed size limit." };
   }
 
-  const project = await assertProjectAccess(user, input.projectId);
-
-  if (input.stageId && !project.stages.some((stage) => stage.id === input.stageId)) {
-    return { error: "Stage not found." };
-  }
-
-  if (
-    input.assetType === AttachmentAssetType.REVISION_ORIGINAL
-  ) {
+  if (input.assetType === AttachmentAssetType.REVISION_ORIGINAL) {
     if (!input.revisionId || !input.stageId) {
       return { error: "Stage uploads require a valid stage and revision." };
     }
@@ -659,6 +680,11 @@ export async function requestAttachmentUpload(
         },
         select: {
           id: true,
+          project: {
+            select: {
+              createdById: true,
+            },
+          },
         },
       }),
     );
@@ -666,9 +692,8 @@ export async function requestAttachmentUpload(
     if (!revision) {
       return { error: "Revision not found." };
     }
-  }
-
-  if (
+    ensureProjectAccessByOwnerId(user, revision.project.createdById);
+  } else if (
     input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT ||
     input.assetType === AttachmentAssetType.STAGE_SUBMISSION
   ) {
@@ -689,6 +714,11 @@ export async function requestAttachmentUpload(
         select: {
           id: true,
           revisionId: true,
+          project: {
+            select: {
+              createdById: true,
+            },
+          },
         },
       }),
     );
@@ -697,9 +727,29 @@ export async function requestAttachmentUpload(
       return { error: "Comment not found." };
     }
 
+    ensureProjectAccessByOwnerId(user, comment.project.createdById);
+
     if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {
       return { error: "Comment upload context is invalid." };
     }
+  } else {
+    const project = await withPrismaRetry(() =>
+      prisma.project.findUnique({
+        where: {
+          id: input.projectId,
+        },
+        select: {
+          id: true,
+          createdById: true,
+        },
+      }),
+    );
+
+    if (!project) {
+      return { error: "Project not found." };
+    }
+
+    ensureProjectAccessByOwnerId(user, project.createdById);
   }
 
   if (
@@ -781,6 +831,13 @@ export async function completeAttachmentUpload(
         bucket: true,
         storageKey: true,
         originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        project: {
+          select: {
+            createdById: true,
+          },
+        },
       },
     }),
   );
@@ -789,7 +846,7 @@ export async function completeAttachmentUpload(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  ensureProjectAccessByOwnerId(user, attachment.project.createdById);
 
   if (failed) {
     await withPrismaRetry(() =>
@@ -806,8 +863,6 @@ export async function completeAttachmentUpload(
     return;
   }
 
-  const metadata = await getObjectMetadata(attachment.storageKey, attachment.bucket);
-
   await withPrismaRetry(() =>
     prisma.projectAttachment.update({
       where: {
@@ -815,11 +870,8 @@ export async function completeAttachmentUpload(
       },
       data: {
         status: AttachmentStatus.READY,
-        fileSize:
-          typeof metadata.ContentLength === "number" && metadata.ContentLength > 0
-            ? metadata.ContentLength
-            : undefined,
-        mimeType: metadata.ContentType || undefined,
+        fileSize: attachment.fileSize,
+        mimeType: attachment.mimeType,
       },
     }),
   );

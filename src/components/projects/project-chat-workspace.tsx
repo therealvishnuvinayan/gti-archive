@@ -45,6 +45,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { StageHistoryRecord } from "@/lib/project-history";
 import type {
   ProjectAttachmentRecord,
+  ProjectChatEntry,
   ProjectCollaboratorRecord,
   ProjectFlowRecord,
   ProjectStageRecord,
@@ -63,6 +64,19 @@ type PendingFile = {
   id: string;
   file: File;
   assetType?: UploadAssetType;
+};
+
+type UploadProgressState = "pending" | "uploading" | "uploaded" | "error";
+
+type DisplayAttachmentRecord = ProjectAttachmentRecord & {
+  uploadState?: UploadProgressState;
+  progress?: number;
+  errorMessage?: string;
+};
+
+type DisplayChatEntry = ProjectChatEntry & {
+  attachments?: DisplayAttachmentRecord[];
+  isOptimistic?: boolean;
 };
 
 type TranslateApiResponse = {
@@ -198,11 +212,76 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
+function getLocalFileTypeLabel(fileName: string) {
+  const extension = fileName.split(".").pop()?.toUpperCase();
+  return extension && extension.length <= 5 ? extension : "FILE";
+}
+
+function formatLocalFileSize(fileSize: number) {
+  if (fileSize >= 1024 * 1024) {
+    return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (fileSize >= 1024) {
+    return `${(fileSize / 1024).toFixed(1)} KB`;
+  }
+
+  return `${fileSize} B`;
+}
+
+function uploadFileToS3WithProgress(input: {
+  uploadUrl: string;
+  file: File;
+  fileIndex?: number;
+  fileCount?: number;
+  assetType: UploadAssetType;
+  onProgress?: (progress: number) => void;
+}) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+
+    request.open("PUT", input.uploadUrl, true);
+    request.setRequestHeader(
+      "Content-Type",
+      input.file.type || "application/octet-stream",
+    );
+
+    request.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) {
+        return;
+      }
+
+      const progress = Math.round((event.loaded / event.total) * 100);
+      input.onProgress?.(progress);
+    });
+
+    request.addEventListener("load", () => {
+      if (request.status >= 200 && request.status < 300) {
+        input.onProgress?.(100);
+        resolve();
+        return;
+      }
+
+      reject(new Error(`Upload failed with status ${request.status}.`));
+    });
+
+    request.addEventListener("error", () => {
+      reject(new Error("Upload failed due to a network error."));
+    });
+
+    request.addEventListener("abort", () => {
+      reject(new Error("Upload was cancelled."));
+    });
+
+    request.send(input.file);
+  });
+}
+
 function AttachmentHistoryList({
   attachments,
   compact = false,
 }: {
-  attachments: ProjectAttachmentRecord[];
+  attachments: DisplayAttachmentRecord[];
   compact?: boolean;
 }) {
   if (attachments.length === 0) {
@@ -231,6 +310,23 @@ function AttachmentHistoryList({
                 <p className="truncate text-[12px] font-[700] text-[#111712]">
                   {attachment.originalFileName}
                 </p>
+                {attachment.uploadState ? (
+                  <span
+                    className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none ${
+                      attachment.uploadState === "error"
+                        ? "bg-[#fff0ef] text-[#c14f46]"
+                        : attachment.uploadState === "uploaded"
+                          ? "bg-[#edf7ef] text-[#2b8b56]"
+                          : "bg-[#f4f7f4] text-[#566259]"
+                    }`}
+                  >
+                    {attachment.uploadState === "error"
+                      ? "Failed"
+                      : attachment.uploadState === "uploaded"
+                        ? "Uploaded"
+                        : "Uploading"}
+                  </span>
+                ) : null}
                 {attachment.isSubmission ? (
                   <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none text-[#2b8b56]">
                     {attachment.submissionNumber
@@ -240,34 +336,52 @@ function AttachmentHistoryList({
                 ) : null}
               </div>
               <p className="mt-0.5 text-[10px] leading-4 text-[#6c756e]">
-                {attachment.fileSizeLabel} · Uploaded by {attachment.uploadedBy}
+                {attachment.uploadState
+                  ? attachment.uploadState === "error"
+                    ? attachment.errorMessage || "Upload failed."
+                    : attachment.uploadState === "uploaded"
+                      ? `${attachment.fileSizeLabel} · Uploaded · Refreshing chat…`
+                      : `${attachment.fileSizeLabel} · ${attachment.progress ?? 0}% uploaded`
+                  : `${attachment.fileSizeLabel} · Uploaded by ${attachment.uploadedBy}`}
               </p>
-              <p className="text-[10px] leading-4 text-[#89928b]">{attachment.uploadedAt}</p>
+              <p className="text-[10px] leading-4 text-[#89928b]">
+                {attachment.uploadState ? attachment.uploadedAt : attachment.uploadedAt}
+              </p>
+              {attachment.uploadState && attachment.uploadState !== "error" ? (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#edf2ed]">
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] transition-[width] duration-200"
+                    style={{ width: `${attachment.progress ?? 0}%` }}
+                  />
+                </div>
+              ) : null}
             </div>
-            <div className="flex items-center gap-1">
-              <AssetPreviewButton
-                fileName={attachment.originalFileName}
-                mimeType={attachment.mimeType}
-                previewPath={attachment.previewPath}
-                downloadPath={attachment.downloadPath}
-                triggerClassName="size-8 rounded-full text-brand"
-              />
-              <Button
-                asChild
-                variant="ghost"
-                size="icon"
-                className="size-8 rounded-full text-brand"
-              >
-                <a
-                  href={attachment.downloadPath}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={`Download ${attachment.originalFileName}`}
+            {!attachment.uploadState && attachment.previewPath && attachment.downloadPath ? (
+              <div className="flex items-center gap-1">
+                <AssetPreviewButton
+                  fileName={attachment.originalFileName}
+                  mimeType={attachment.mimeType}
+                  previewPath={attachment.previewPath}
+                  downloadPath={attachment.downloadPath}
+                  triggerClassName="size-8 rounded-full text-brand"
+                />
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full text-brand"
                 >
-                  <Download className="h-4 w-4" />
-                </a>
-              </Button>
-            </div>
+                  <a
+                    href={attachment.downloadPath}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Download ${attachment.originalFileName}`}
+                  >
+                    <Download className="h-4 w-4" />
+                  </a>
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       ))}
@@ -342,6 +456,9 @@ async function uploadAssetFile(input: {
   revisionId?: string | null;
   commentId?: string | null;
   assetType: UploadAssetType;
+  fileIndex?: number;
+  fileCount?: number;
+  onProgress?: (progress: number) => void;
 }) {
   const requestUploadResponse = await fetch("/api/project-assets/upload-url", {
     method: "POST",
@@ -371,17 +488,14 @@ async function uploadAssetFile(input: {
   }
 
   try {
-    const uploadResponse = await fetch(uploadPayload.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": input.file.type || "application/octet-stream",
-      },
-      body: input.file,
+    await uploadFileToS3WithProgress({
+      uploadUrl: uploadPayload.uploadUrl,
+      file: input.file,
+      fileIndex: input.fileIndex,
+      fileCount: input.fileCount,
+      assetType: input.assetType,
+      onProgress: input.onProgress,
     });
-
-    if (!uploadResponse.ok) {
-      throw new Error(`Upload failed for ${input.file.name}.`);
-    }
 
     const completionResponse = await fetch("/api/project-assets/complete", {
       method: "POST",
@@ -432,6 +546,7 @@ export function ProjectChatWorkspace({
   const [draft, setDraft] = useState("");
   const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
+  const [optimisticComments, setOptimisticComments] = useState<DisplayChatEntry[]>([]);
   const [pendingRevisionFiles, setPendingRevisionFiles] = useState<PendingFile[]>([]);
   const [commentUploadDialogOpen, setCommentUploadDialogOpen] = useState(false);
   const [commentUploadIntent, setCommentUploadIntent] =
@@ -474,9 +589,17 @@ export function ProjectChatWorkspace({
   });
 
   const messages = history.entries;
+  const displayedMessages = useMemo(
+    () => [...optimisticComments, ...messages],
+    [messages, optimisticComments],
+  );
   const stageSubmissions = useMemo(
-    () => getStageSubmissionAttachments(messages),
-    [messages],
+    () =>
+      getStageSubmissionAttachments(displayedMessages).filter(
+        (attachment) =>
+          !("uploadState" in attachment) || attachment.uploadState === "uploaded",
+      ),
+    [displayedMessages],
   );
   const canCompareSubmissions = stageSubmissions.length >= 2;
   const canSendComment = draft.trim().length > 0 || pendingCommentFiles.length > 0;
@@ -509,6 +632,24 @@ export function ProjectChatWorkspace({
   const isStageCompleted = activeStage?.status === "completed";
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
+  const currentUserDisplayName = useMemo(() => {
+    const collaborator = project.collaborators.find(
+      (candidate) => candidate.id === currentUserId,
+    );
+
+    return collaborator?.name || "You";
+  }, [currentUserId, project.collaborators]);
+  const currentUserRoleLabel = useMemo(() => {
+    const collaborator = project.collaborators.find(
+      (candidate) => candidate.id === currentUserId,
+    );
+
+    if (!collaborator) {
+      return "Internal Team";
+    }
+
+    return collaborator.group === "external" ? "External Collaborator" : "Internal Team";
+  }, [currentUserId, project.collaborators]);
 
   useEffect(() => {
     return () => {
@@ -522,6 +663,16 @@ export function ProjectChatWorkspace({
       mediaStreamRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const cleanupTimeout = window.setTimeout(() => {
+      setOptimisticComments([]);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(cleanupTimeout);
+    };
+  }, [history.entries]);
 
   function removeCollaborator(id: string) {
     setCollaborators((current) => current.filter((collaborator) => collaborator.id !== id));
@@ -676,6 +827,25 @@ export function ProjectChatWorkspace({
     startRefresh(() => {
       router.refresh();
     });
+  }
+
+  function updateOptimisticAttachment(
+    commentId: string,
+    attachmentId: string,
+    updater: (attachment: DisplayAttachmentRecord) => DisplayAttachmentRecord,
+  ) {
+    setOptimisticComments((current) =>
+      current.map((entry) =>
+        entry.id === commentId
+          ? {
+              ...entry,
+              attachments: entry.attachments?.map((attachment: DisplayAttachmentRecord) =>
+                attachment.id === attachmentId ? updater(attachment) : attachment,
+              ),
+            }
+          : entry,
+      ),
+    );
   }
 
   function clearRecorderResources() {
@@ -1084,6 +1254,35 @@ export function ProjectChatWorkspace({
 
     setComposerError(null);
     setIsSendingComment(true);
+    const optimisticCommentId = `optimistic-comment-${crypto.randomUUID()}`;
+    const filesToUpload = [...pendingCommentFiles];
+
+    setOptimisticComments((current) => [
+      {
+        id: optimisticCommentId,
+        kind: "comment",
+        author: currentUserDisplayName,
+        role: currentUserRoleLabel,
+        body: body || "Attachment uploaded.",
+        createdAt: "Uploading…",
+        isOptimistic: true,
+        attachments: filesToUpload.map((pendingFile) => ({
+          id: pendingFile.id,
+          isSubmission: pendingFile.assetType === "STAGE_SUBMISSION",
+          originalFileName: pendingFile.file.name,
+          fileTypeLabel: getLocalFileTypeLabel(pendingFile.file.name),
+          mimeType: pendingFile.file.type || "application/octet-stream",
+          fileSizeLabel: formatLocalFileSize(pendingFile.file.size),
+          uploadedBy: currentUserDisplayName,
+          uploadedAt: "Uploading…",
+          previewPath: "",
+          downloadPath: "",
+          uploadState: "pending",
+          progress: 0,
+        })),
+      },
+      ...current,
+    ]);
 
     try {
       const commentResult = await createStageCommentAction({
@@ -1097,21 +1296,77 @@ export function ProjectChatWorkspace({
         throw new Error(commentResult.error);
       }
 
-      for (const pendingFile of pendingCommentFiles) {
-        await uploadAssetFile({
-          file: pendingFile.file,
-          projectId: project.id,
-          stageId: activeStageId,
-          revisionId: commentResult.revisionId,
-          commentId: commentResult.commentId,
-          assetType: pendingFile.assetType ?? "COMMENT_ATTACHMENT",
-        });
-      }
-
       setDraft("");
       setPendingCommentFiles([]);
+
+      const uploadResults = await Promise.allSettled(
+        filesToUpload.map((pendingFile, index) => {
+          updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+            ...attachment,
+            uploadState: "uploading",
+            progress: 0,
+            uploadedAt: "Uploading…",
+          }));
+
+          return uploadAssetFile({
+            file: pendingFile.file,
+            projectId: project.id,
+            stageId: activeStageId,
+            revisionId: commentResult.revisionId,
+            commentId: commentResult.commentId,
+            assetType: pendingFile.assetType ?? "COMMENT_ATTACHMENT",
+            fileIndex: index + 1,
+            fileCount: filesToUpload.length,
+            onProgress: (progress) => {
+              updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                uploadState: "uploading",
+                progress,
+              }));
+            },
+          })
+            .then(() => {
+              updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                uploadState: "uploaded",
+                progress: 100,
+                uploadedAt: "Uploaded. Refreshing…",
+              }));
+            })
+            .catch((error) => {
+              updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                uploadState: "error",
+                progress: attachment.progress ?? 0,
+                uploadedAt: "Upload failed",
+                errorMessage:
+                  error instanceof Error
+                    ? error.message
+                    : "Unable to upload this file right now.",
+              }));
+              throw error;
+            });
+        }),
+      );
+
+      const failedUploads = uploadResults.filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+
+      if (failedUploads.length > 0) {
+        setComposerError(
+          failedUploads.length === filesToUpload.length
+            ? "Comment saved, but all file uploads failed. Please try attaching them again."
+            : `Comment saved, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`,
+        );
+      }
+
+      setIsSendingComment(false);
       refreshHistory();
     } catch (error) {
+      setOptimisticComments((current) =>
+        current.filter((entry) => entry.id !== optimisticCommentId),
+      );
       setComposerError(
         error instanceof Error ? error.message : "Unable to send the comment right now.",
       );
@@ -1130,7 +1385,7 @@ export function ProjectChatWorkspace({
             </div>
           ) : null}
 
-          {messages.length === 0 ? (
+          {displayedMessages.length === 0 ? (
             <Card className="border border-dashed border-[#d8e1d8] px-6 py-10 text-center">
               <CardTitle className="text-[20px]">
                 {activeStage?.label ?? "Stage"} History
@@ -1158,7 +1413,7 @@ export function ProjectChatWorkspace({
             </Card>
           ) : null}
 
-          {messages.map((message, index) =>
+          {displayedMessages.map((message, index) =>
             message.kind === "revision" ? (
               <div key={message.id} className="space-y-3">
                 <Card className="flex-1 rounded-[20px] border-none bg-[linear-gradient(135deg,#2f8d5d,#476f5a)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
@@ -1191,7 +1446,7 @@ export function ProjectChatWorkspace({
                   </div>
                 </Card>
 
-                {index === messages.findIndex((entry) => entry.kind === "revision") ? (
+                {index === displayedMessages.findIndex((entry) => entry.kind === "revision") ? (
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"

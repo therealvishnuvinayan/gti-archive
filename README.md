@@ -28,6 +28,30 @@ For AI translation and voice transcription in the project stage chat composer:
 OPENAI_API_KEY=
 ```
 
+For project asset uploads to AWS S3:
+
+```bash
+AWS_REGION=
+AWS_S3_BUCKET=
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+ASSET_UPLOAD_MAX_BYTES=104857600
+AWS_S3_TRANSFER_ACCELERATION=false
+```
+
+To test faster uploads for global users:
+
+1. Enable Transfer Acceleration on the S3 bucket in AWS Console.
+2. Set `AWS_S3_TRANSFER_ACCELERATION=true`.
+3. Restart the app.
+4. Upload the same file again from stage chat.
+5. Compare the browser console timings for:
+   - `upload:s3-host`
+   - `upload:s3-put`
+   - `upload:total`
+
+If acceleration is working, the upload host should change from the regional S3 hostname to the S3 accelerate hostname.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
