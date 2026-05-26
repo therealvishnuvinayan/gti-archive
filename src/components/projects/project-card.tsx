@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowUpRight, Pencil, Trash2 } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  Pencil,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 
 import { deleteProjectAction } from "@/app/(dashboard)/projects/new/actions";
 import { Badge } from "@/components/ui/badge";
@@ -49,26 +55,30 @@ export function ProjectCard({ project, canManage = false }: ProjectCardProps) {
   return (
     <>
       <Card
-        className={`rounded-[22px] p-5 shadow-[0_18px_42px_rgba(23,39,28,0.05)] transition-transform hover:-translate-y-0.5 ${
+        className={`h-full rounded-[26px] border p-5 shadow-[0_18px_42px_rgba(23,39,28,0.05)] transition-transform hover:-translate-y-0.5 ${
           project.featured
-            ? "bg-[linear-gradient(135deg,#476f5a,#63a67d)] text-white"
+            ? "border-[#7eb496] bg-[radial-gradient(circle_at_top_right,rgba(193,239,204,0.28),transparent_35%),linear-gradient(135deg,#456c58,#78bf93)] text-white"
             : project.emphasized
-              ? "border border-[#a9b2ab] bg-card shadow-[0_12px_18px_rgba(0,0,0,0.18)]"
-              : "bg-card"
+              ? "border-[#dbe6dd] bg-card"
+              : "border-[#e8eee8] bg-card"
         }`}
       >
-        <CardContent className="p-0">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div className="space-y-2">
+        <CardContent className="flex h-full flex-col p-0">
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div className="space-y-3">
               <Badge
                 variant={project.featured ? "secondary" : "outline"}
-                className={project.featured ? "bg-white/15 text-[#b5f09b]" : ""}
+                className={`max-w-full truncate ${
+                  project.featured
+                    ? "border-white/15 bg-white/14 text-[#ecfff0]"
+                    : "border-[#d5e3d6] bg-[#fbfdfb] text-brand"
+                }`}
               >
                 {project.stage}
               </Badge>
               <p
-                className={`text-[14px] ${
-                  project.featured ? "text-[#d8f0dd]" : "text-[#74c771]"
+                className={`text-[13px] font-[600] ${
+                  project.featured ? "text-[#dff6e3]" : "text-[#64aa76]"
                 }`}
               >
                 {project.category}
@@ -82,7 +92,11 @@ export function ProjectCard({ project, canManage = false }: ProjectCardProps) {
                   type="button"
                   variant="secondary"
                   size="icon"
-                  className="h-9 w-9 rounded-[10px] border border-white/45 bg-white/12 text-white hover:bg-white/18"
+                  className={`h-9 w-9 rounded-[12px] ${
+                    project.featured
+                      ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
+                      : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
+                  }`}
                   aria-label={`Edit ${project.title}`}
                   title="Edit project"
                 >
@@ -99,39 +113,59 @@ export function ProjectCard({ project, canManage = false }: ProjectCardProps) {
                     setConfirmOpen(true);
                   }}
                   disabled={isPending}
-                  className="h-9 w-9 rounded-[10px] border border-white/45 bg-white/12 text-white hover:bg-white/18 disabled:cursor-not-allowed"
+                  className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
+                    project.featured
+                      ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
+                      : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
+                  }`}
                   aria-label={`Delete ${project.title}`}
                   title="Delete project"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-            ) : project.featured ? (
-              <Badge variant="secondary" className="bg-white/15 text-[#93db74]">
-                <ArrowUpRight className="h-4 w-4" />
-              </Badge>
             ) : null}
           </div>
 
           <h3
-            className={`min-h-[96px] text-[21px] font-extrabold leading-[1.1] ${
-              project.featured ? "text-white" : "text-[#236e4c]"
+            className={`min-h-[78px] text-[31px] font-extrabold leading-[1.05] tracking-[-0.04em] sm:text-[33px] ${
+              project.featured ? "text-white" : "text-[#18211a]"
             }`}
           >
             {project.title}
           </h3>
 
           <div
-            className={`space-y-0.5 text-[15px] ${
-              project.featured ? "text-[#a9e097]" : "text-[#242b26]"
+            className={`mt-6 space-y-3 border-t pt-5 text-[14px] ${
+              project.featured
+                ? "border-white/15 text-[#e7f8eb]"
+                : "border-[#edf2ec] text-[#4e5950]"
             }`}
           >
-            <p>Created on {project.createdOn}</p>
-            <p>Created By {project.createdBy}</p>
+            <p className="flex items-center gap-2.5">
+              <CalendarDays className="h-4 w-4 shrink-0" />
+              <span>Created on {project.createdOn}</span>
+            </p>
+            <p className="flex items-center gap-2.5">
+              <UserRound className="h-4 w-4 shrink-0" />
+              <span>Created by {project.createdBy}</span>
+            </p>
           </div>
 
-          <Button asChild size="lg" className="mt-6 w-full">
-            <Link href={`/projects/${project.id}`}>View Project</Link>
+          <Button
+            asChild
+            size="lg"
+            variant={project.featured ? "default" : "outline"}
+            className={`mt-6 w-full ${
+              project.featured
+                ? "bg-[#184e36] text-white shadow-[0_14px_34px_rgba(11,42,28,0.24)]"
+                : "border-brand/35 bg-white text-brand"
+            }`}
+          >
+            <Link href={`/projects/${project.id}`}>
+              View Project
+              <ArrowRight className="ml-auto h-4 w-4" />
+            </Link>
           </Button>
         </CardContent>
       </Card>

@@ -3,9 +3,9 @@ import { UserRole } from "@prisma/client";
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
+import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
 import {
   getDashboardProjectCounts,
-  getProjectListFilterOptions,
   getProjectsList,
 } from "@/lib/projects";
 
@@ -55,7 +55,7 @@ export default async function ProjectsPage({
       sort: activeSort,
     }),
     getDashboardProjectCounts(),
-    getProjectListFilterOptions(),
+    getActiveProjectMasterDataOptions(),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
   const canManageProjects = user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;

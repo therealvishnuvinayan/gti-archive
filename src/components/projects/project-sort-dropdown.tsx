@@ -21,6 +21,7 @@ type ProjectSortDropdownProps = {
   onSelectSort?: (sort: "newest" | "oldest" | "name") => void;
   disabled?: boolean;
   pending?: boolean;
+  className?: string;
 };
 
 const sortOptions = [
@@ -42,11 +43,17 @@ export function ProjectSortDropdown({
   onSelectSort,
   disabled = false,
   pending = false,
+  className,
 }: ProjectSortDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="lg" className="gap-2 text-[18px]" disabled={disabled}>
+        <Button
+          variant="outline"
+          size="lg"
+          className={className ?? "gap-2 text-[18px]"}
+          disabled={disabled}
+        >
           Sort
           <ChevronDown className={`h-4 w-4 transition-transform ${pending ? "animate-pulse" : ""}`} />
         </Button>

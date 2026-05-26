@@ -27,14 +27,29 @@ export type ProjectMasterDataRecord = {
   summary: ProjectMasterDataSummary;
 };
 
-function formatMasterDataTimestamp(date: Date) {
+export type ActiveProjectMasterDataOptions = {
+  categories: string[];
+  tags: string[];
+};
+
+function toMasterDataDate(date: Date | string | number) {
+  return date instanceof Date ? date : new Date(date);
+}
+
+function formatMasterDataTimestamp(date: Date | string | number) {
+  const normalizedDate = toMasterDataDate(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "—";
+  }
+
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date);
+  }).format(normalizedDate);
 }
 
 function mapMasterDataItem(item: {
@@ -43,8 +58,8 @@ function mapMasterDataItem(item: {
   description: string | null;
   color: string | null;
   isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | string | number;
+  updatedAt: Date | string | number;
 }) {
   return {
     id: item.id,
@@ -91,5 +106,18 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
       totalTags: tags.length,
       activeTags: tags.filter((item) => item.isActive).length,
     },
+  };
+}
+
+export async function getActiveProjectMasterDataOptions(): Promise<ActiveProjectMasterDataOptions> {
+  const masterData = await getProjectMasterData();
+
+  return {
+    categories: masterData.categories
+      .filter((item) => item.isActive)
+      .map((item) => item.name),
+    tags: masterData.tags
+      .filter((item) => item.isActive)
+      .map((item) => item.name),
   };
 }

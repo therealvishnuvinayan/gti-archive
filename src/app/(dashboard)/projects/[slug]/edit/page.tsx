@@ -6,6 +6,7 @@ import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { CreateProjectWorkspace } from "@/components/projects/create-project-workspace";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
+import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
 import { getProjectEditorById } from "@/lib/projects";
 
 export default async function EditProjectPage({
@@ -19,9 +20,10 @@ export default async function EditProjectPage({
     notFound();
   }
 
-  const [project, collaborators] = await Promise.all([
+  const [project, collaborators, masterDataOptions] = await Promise.all([
     getProjectEditorById(slug),
     getCollaborators(),
+    getActiveProjectMasterDataOptions(),
   ]);
 
   if (!project) {
@@ -37,6 +39,8 @@ export default async function EditProjectPage({
     >
       <CreateProjectWorkspace
         availableCollaborators={collaborators}
+        categoryOptions={masterDataOptions.categories}
+        tagOptions={masterDataOptions.tags}
         mode="edit"
         initialValues={project}
       />

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, useRef, useTransition } from "react";
-import { Search } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 
 import {
   MotionItem,
@@ -127,6 +127,7 @@ export function ProjectsBrowser({
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const hasActiveFilters = Boolean(query || activeCategory || activeTag);
   const emptyState = getEmptyStateCopy(
     hasAnyProjects,
     activeStatus,
@@ -186,37 +187,44 @@ export function ProjectsBrowser({
     });
   }
 
+  function clearFilters() {
+    startTransition(() => {
+      router.push(`${pathname}?status=${activeStatus}&sort=${activeSort}`, {
+        scroll: false,
+      });
+    });
+  }
+
   return (
     <>
       <MotionSection>
-        <header className="space-y-5">
-          <div className="flex flex-col gap-5 2xl:flex-row 2xl:items-center 2xl:justify-between">
-            <h1 className="text-4xl font-extrabold tracking-tight text-[#0f1411] sm:text-5xl">
+        <header className="space-y-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <h1 className="text-[42px] font-extrabold tracking-[-0.05em] text-[#0f1411] sm:text-[52px]">
               Projects
             </h1>
 
-            <div className="flex flex-col gap-3 xl:items-end">
-              <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:justify-end">
-                <form
-                  onSubmit={handleSearchSubmit}
-                  className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto"
-                >
-                  <label className="relative block min-w-0 flex-1 sm:min-w-[320px] xl:min-w-[360px]">
-                    <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#91a091]" />
-                    <Input
-                      key={query}
-                      ref={searchInputRef}
-                      type="search"
-                      defaultValue={query}
-                      placeholder="Search projects..."
-                      className="h-12 border border-[#dce6de] bg-white pl-11 pr-4 text-[15px] shadow-[0_10px_28px_rgba(18,34,25,0.06)]"
-                    />
-                  </label>
-                  <Button type="submit" variant="outline" size="lg" className="text-[16px]">
-                    Search
-                  </Button>
-                </form>
+            <form onSubmit={handleSearchSubmit} className="w-full lg:w-auto">
+              <label className="relative block lg:w-[360px] xl:w-[400px]">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#91a091]" />
+                <Input
+                  key={query}
+                  ref={searchInputRef}
+                  type="search"
+                  defaultValue={query}
+                  placeholder="Search projects..."
+                  className="h-[52px] rounded-[18px] border border-[#dde6dd] bg-white pl-11 pr-4 text-[15px] shadow-[0_10px_28px_rgba(18,34,25,0.05)]"
+                />
+                <button type="submit" className="sr-only">
+                  Search
+                </button>
+              </label>
+            </form>
+          </div>
 
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <Select
                   value={activeCategory || ALL_CATEGORIES}
                   onValueChange={(value) =>
@@ -225,7 +233,7 @@ export function ProjectsBrowser({
                     })
                   }
                 >
-                  <SelectTrigger className="h-12 min-w-[210px] rounded-full border border-[#dce6de] bg-white px-5 text-[15px] font-medium shadow-[0_10px_28px_rgba(18,34,25,0.06)]">
+                  <SelectTrigger className="h-[46px] w-full min-w-[160px] rounded-[16px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium shadow-[0_10px_24px_rgba(18,34,25,0.04)] sm:w-[172px]">
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
@@ -246,7 +254,7 @@ export function ProjectsBrowser({
                     })
                   }
                 >
-                  <SelectTrigger className="h-12 min-w-[190px] rounded-full border border-[#dce6de] bg-white px-5 text-[15px] font-medium shadow-[0_10px_28px_rgba(18,34,25,0.06)]">
+                  <SelectTrigger className="h-[46px] w-full min-w-[140px] rounded-[16px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium shadow-[0_10px_24px_rgba(18,34,25,0.04)] sm:w-[160px]">
                     <SelectValue placeholder="All Tags" />
                   </SelectTrigger>
                   <SelectContent>
@@ -260,43 +268,59 @@ export function ProjectsBrowser({
                 </Select>
               </div>
 
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-end">
-                {hasAnyProjects ? (
-                  <div className="inline-flex w-full flex-wrap rounded-full border border-brand bg-white p-1 xl:w-auto">
-                    {filters.map((filter) => (
-                      <Button
-                        key={filter.label}
-                        type="button"
-                        size="default"
-                        variant={activeStatus === filter.value ? "default" : "ghost"}
-                        className="min-h-[44px] flex-1 px-6 text-[17px] xl:flex-none"
-                        onClick={() => navigate({ status: filter.value })}
-                        disabled={isPending && activeStatus === filter.value}
-                      >
-                        {filter.label}
-                      </Button>
-                    ))}
-                  </div>
-                ) : null}
-
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Button asChild size="lg" className="text-[18px]">
-                    <Link href="/projects/new">+ New Project</Link>
-                  </Button>
-                  {hasAnyProjects ? (
-                    <ProjectSortDropdown
-                      activeSort={activeSort}
-                      activeStatus={activeStatus}
-                      query={query}
-                      category={activeCategory}
-                      tag={activeTag}
-                      onSelectSort={(sort) => navigate({ sort })}
-                      disabled={isPending}
-                      pending={isPending}
-                    />
-                  ) : null}
+              {hasAnyProjects ? (
+                <div className="inline-flex w-full flex-wrap rounded-[16px] border border-[#cfe0d4] bg-white p-1 shadow-[0_10px_24px_rgba(18,34,25,0.04)] lg:w-auto">
+                  {filters.map((filter) => (
+                    <Button
+                      key={filter.label}
+                      type="button"
+                      size="default"
+                      variant={activeStatus === filter.value ? "default" : "ghost"}
+                      className={`min-h-[40px] flex-1 rounded-[12px] px-5 text-[15px] lg:flex-none ${
+                        activeStatus === filter.value
+                          ? "shadow-[0_12px_28px_rgba(34,102,70,0.18)]"
+                          : "text-[#435042]"
+                      }`}
+                      onClick={() => navigate({ status: filter.value })}
+                      disabled={isPending && activeStatus === filter.value}
+                    >
+                      {filter.label}
+                    </Button>
+                  ))}
                 </div>
-              </div>
+              ) : null}
+
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={clearFilters}
+                  disabled={isPending}
+                  className="h-[42px] self-start rounded-full px-4 text-[14px] font-[700] text-[#5b675e]"
+                >
+                  <X className="h-4 w-4" />
+                  Clear filters
+                </Button>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-end">
+              <Button asChild size="lg" className="min-w-[170px] text-[16px]">
+                <Link href="/projects/new">+ New Project</Link>
+              </Button>
+              {hasAnyProjects ? (
+                <ProjectSortDropdown
+                  activeSort={activeSort}
+                  activeStatus={activeStatus}
+                  query={query}
+                  category={activeCategory}
+                  tag={activeTag}
+                  onSelectSort={(sort) => navigate({ sort })}
+                  disabled={isPending}
+                  pending={isPending}
+                  className="min-h-[46px] min-w-[120px] rounded-[16px] px-5 text-[15px]"
+                />
+              ) : null}
             </div>
           </div>
         </header>
@@ -306,7 +330,7 @@ export function ProjectsBrowser({
         <ProjectsGridSkeleton />
       ) : projects.length > 0 ? (
         <MotionStaggerGroup
-          className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-4"
+          className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
           stagger={0.045}
         >
           {projects.map((project) => (
@@ -328,6 +352,12 @@ export function ProjectsBrowser({
               <p className="mt-3 text-[15px] leading-7 text-[#6f776f]">
                 {emptyState.description}
               </p>
+              {hasActiveFilters ? (
+                <Button type="button" variant="outline" className="mt-6" onClick={clearFilters}>
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Reset filters
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
         </MotionItem>

@@ -91,6 +91,8 @@ type MonthPickerProps = {
 
 type CreateProjectWorkspaceProps = {
   availableCollaborators: CollaboratorRecord[];
+  categoryOptions?: string[];
+  tagOptions?: string[];
   mode?: "create" | "edit";
   initialValues?: ProjectEditorInitialValues;
   action?: (
@@ -235,6 +237,8 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
 
 export function CreateProjectWorkspace({
   availableCollaborators,
+  categoryOptions = [],
+  tagOptions = [],
   mode = "create",
   initialValues,
   action = mode === "edit" ? updateProjectAction : createProjectAction,
@@ -318,6 +322,20 @@ export function CreateProjectWorkspace({
   const selectedCollaboratorIds = useMemo(
     () => assignedCollaborators.map((collaborator) => collaborator.id),
     [assignedCollaborators],
+  );
+  const categorySelectOptions = useMemo(
+    () =>
+      projectCategory && !categoryOptions.includes(projectCategory)
+        ? [projectCategory, ...categoryOptions]
+        : categoryOptions,
+    [categoryOptions, projectCategory],
+  );
+  const tagSelectOptions = useMemo(
+    () =>
+      projectTag && !tagOptions.includes(projectTag)
+        ? [projectTag, ...tagOptions]
+        : tagOptions,
+    [projectTag, tagOptions],
   );
 
   const overview = useMemo(
@@ -695,6 +713,8 @@ export function CreateProjectWorkspace({
     >
       <input type="hidden" name="startDate" value={startDate ? formatDateValue(startDate) : ""} />
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
+      <input type="hidden" name="category" value={projectCategory} />
+      <input type="hidden" name="tag" value={projectTag} />
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
       {selectedCollaboratorIds.map((collaboratorId) => (
@@ -753,14 +773,28 @@ export function CreateProjectWorkspace({
 
               <label className="block">
                 <RequiredLabel>Project Category</RequiredLabel>
-                <Input
+                <Select
                   value={projectCategory}
-                  onChange={(event) => setProjectCategory(event.target.value)}
-                  name="category"
-                  required
-                  placeholder="Enter Project Category....."
-                  className="h-[42px] text-[12px]"
-                />
+                  onValueChange={setProjectCategory}
+                  disabled={categorySelectOptions.length === 0}
+                >
+                  <SelectTrigger className="h-[42px] text-[12px] font-medium">
+                    <SelectValue
+                      placeholder={
+                        categorySelectOptions.length === 0
+                          ? "No categories available"
+                          : "Select project category"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categorySelectOptions.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FieldError message={fieldErrors.category} />
               </label>
 
@@ -811,13 +845,24 @@ export function CreateProjectWorkspace({
 
               <label className="block">
                 <FieldLabel>Project Tag</FieldLabel>
-                <Input
-                  value={projectTag}
-                  onChange={(event) => setProjectTag(event.target.value)}
-                  name="tag"
-                  placeholder="Enter Project Tag....."
-                  className="h-[42px] text-[12px]"
-                />
+                <Select
+                  value={projectTag || "__no_tag__"}
+                  onValueChange={(nextValue) =>
+                    setProjectTag(nextValue === "__no_tag__" ? "" : nextValue)
+                  }
+                >
+                  <SelectTrigger className="h-[42px] text-[12px] font-medium">
+                    <SelectValue placeholder="Select project tag" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__no_tag__">No tag</SelectItem>
+                    {tagSelectOptions.map((tag) => (
+                      <SelectItem key={tag} value={tag}>
+                        {tag}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FieldError message={fieldErrors.tag} />
               </label>
 
