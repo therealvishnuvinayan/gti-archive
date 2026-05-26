@@ -43,6 +43,10 @@ export default async function SettingsPage() {
           email: user.email,
           role: formatRole(user.role),
           memberSince: formatMemberSince(user.createdAt),
+          department: user.department?.trim() || "",
+          phoneNumber: user.phoneNumber?.trim() || "",
+          jobTitle: user.jobTitle?.trim() || "",
+          bio: user.bio?.trim() || "",
         }}
         canManageMasterData={canManageMasterData}
       />
