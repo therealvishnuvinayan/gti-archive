@@ -9,10 +9,14 @@ import {
   Library,
   PenLine,
   Plus,
+  Trash2,
   Users,
 } from "lucide-react";
 
-import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
+import {
+  deleteCollaboratorAction,
+  saveCollaboratorAction,
+} from "@/app/(dashboard)/collaboration/actions";
 import {
   CollaboratorDialog,
   type AccessArea,
@@ -34,6 +38,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import { cn } from "@/lib/utils";
 
@@ -119,10 +124,12 @@ function getInitials(name: string) {
 
 type CollaborationWorkspaceProps = {
   initialCollaborators: CollaboratorRecord[];
+  canDeleteCollaborators: boolean;
 };
 
 export function CollaborationWorkspace({
   initialCollaborators,
+  canDeleteCollaborators,
 }: CollaborationWorkspaceProps) {
   const [selectedArea, setSelectedArea] = useState<AccessArea>("project");
   const [collaborators, setCollaborators] = useState<CollaboratorRecord[]>(initialCollaborators);
@@ -133,6 +140,10 @@ export function CollaborationWorkspace({
   const [dialogError, setDialogError] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [pageNotice, setPageNotice] = useState<string>();
+  const [collaboratorPendingDelete, setCollaboratorPendingDelete] =
+    useState<CollaboratorRecord | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>();
 
   const selectedAccessSummary = useMemo(() => {
     const full = collaborators.filter(
@@ -231,6 +242,34 @@ export function CollaborationWorkspace({
       setDialogError("Unable to save the collaborator right now. Please try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeleteCollaborator() {
+    if (!collaboratorPendingDelete) {
+      return;
+    }
+
+    setDeletePending(true);
+    setDeleteError(undefined);
+
+    try {
+      const result = await deleteCollaboratorAction(collaboratorPendingDelete.id);
+
+      if ("error" in result) {
+        setDeleteError(result.error);
+        return;
+      }
+
+      setCollaborators((current) =>
+        current.filter((collaborator) => collaborator.id !== collaboratorPendingDelete.id),
+      );
+      setCollaboratorPendingDelete(null);
+      setPageNotice("Collaborator deleted successfully.");
+    } catch {
+      setDeleteError("Unable to delete the collaborator right now. Please try again.");
+    } finally {
+      setDeletePending(false);
     }
   }
 
@@ -413,7 +452,14 @@ export function CollaborationWorkspace({
             <MotionSection y={10}>
             <Card className="overflow-hidden rounded-[24px] border border-transparent bg-white">
               <CardContent className="p-0">
-                <div className="hidden grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px] items-center gap-4 border-b border-[#e4e9e4] px-5 py-4 lg:grid">
+                <div
+                  className={cn(
+                    "hidden items-center gap-4 border-b border-[#e4e9e4] px-5 py-4 lg:grid",
+                    canDeleteCollaborators
+                      ? "grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_96px]"
+                      : "grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px]",
+                  )}
+                >
                   <span className="text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
                     Collaborator
                   </span>
@@ -437,7 +483,7 @@ export function CollaborationWorkspace({
                     );
                   })}
                   <span className="text-right text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
-                    Edit
+                    Actions
                   </span>
                 </div>
 
@@ -446,7 +492,12 @@ export function CollaborationWorkspace({
                     <MotionItem
                       key={collaborator.id}
                       layout
-                      className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px] lg:items-center"
+                      className={cn(
+                        "grid gap-4 px-5 py-4 lg:items-center",
+                        canDeleteCollaborators
+                          ? "lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_96px]"
+                          : "lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px]",
+                      )}
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <div
@@ -507,7 +558,7 @@ export function CollaborationWorkspace({
                         })}
                       </div>
 
-                      <div className="flex justify-end">
+                      <div className="flex justify-end gap-2">
                         <Button
                           type="button"
                           variant="secondary"
@@ -518,6 +569,21 @@ export function CollaborationWorkspace({
                         >
                           <PenLine className="h-4 w-4" />
                         </Button>
+                        {canDeleteCollaborators ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="icon"
+                            onClick={() => {
+                              setDeleteError(undefined);
+                              setCollaboratorPendingDelete(collaborator);
+                            }}
+                            className="h-9 w-9 border border-[#f0d7d5] text-[#c95955] shadow-none hover:bg-[#fff3f2] hover:text-[#b94844]"
+                            aria-label={`Delete ${collaborator.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
                       </div>
                     </MotionItem>
                   )) : (
@@ -547,6 +613,26 @@ export function CollaborationWorkspace({
         onSubmit={handleSaveCollaborator}
         onChange={setFormValue}
         onPermissionChange={setPermissionValue}
+      />
+
+      <ConfirmationDialog
+        isOpen={Boolean(collaboratorPendingDelete)}
+        title="Delete collaborator?"
+        description="This will permanently delete this collaborator and remove their related access records. This action cannot be undone."
+        confirmLabel="Delete Collaborator"
+        cancelLabel="Cancel"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={handleDeleteCollaborator}
+        onClose={() => {
+          if (deletePending) {
+            return;
+          }
+
+          setDeleteError(undefined);
+          setCollaboratorPendingDelete(null);
+        }}
       />
     </>
   );

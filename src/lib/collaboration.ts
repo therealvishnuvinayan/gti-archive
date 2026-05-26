@@ -12,6 +12,7 @@ import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
 import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
 import { sendResendEmail } from "@/lib/email/resend";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 export const COLLABORATORS_CACHE_TAG = "collaborators";
 export const CALENDAR_COLLABORATORS_CACHE_TAG = "calendar-collaborators";
@@ -49,6 +50,10 @@ export type InviteRegistrationRecord =
 type CollaboratorResult =
   | { error: string }
   | { collaborator: CollaboratorRecord; inviteEmailSent?: boolean; warning?: string };
+
+type DeleteCollaboratorResult =
+  | { error: string }
+  | { success: true };
 
 type CollaboratorValidationResult =
   | { error: string }
@@ -437,6 +442,69 @@ export async function updateCollaborator(
 
   return { collaborator: mapCollaborator(updatedCollaborator) };
 }
+
+export async function deleteCollaborator(
+  collaboratorId: string,
+): Promise<DeleteCollaboratorResult> {
+  const normalizedId = collaboratorId.trim();
+
+  if (!normalizedId) {
+    return { error: "Collaborator id is missing." };
+  }
+
+  return withPrismaRetry(async () => {
+    const collaborator = await prisma.user.findUnique({
+      where: { id: normalizedId },
+      select: {
+        id: true,
+        role: true,
+        _count: {
+          select: {
+            projects: true,
+            revisions: true,
+            comments: true,
+            comparisonComments: true,
+            attachments: true,
+            activityLogs: true,
+            createdCollaboratorVisibilityPauses: true,
+          },
+        },
+      },
+    });
+
+    if (!collaborator || collaborator.role !== UserRole.COLLABORATOR) {
+      return { error: "Collaborator not found." };
+    }
+
+    const hasBlockingReferences =
+      collaborator._count.projects > 0 ||
+      collaborator._count.revisions > 0 ||
+      collaborator._count.comments > 0 ||
+      collaborator._count.comparisonComments > 0 ||
+      collaborator._count.attachments > 0 ||
+      collaborator._count.activityLogs > 0 ||
+      collaborator._count.createdCollaboratorVisibilityPauses > 0;
+
+    if (hasBlockingReferences) {
+      return {
+        error:
+          "This collaborator cannot be deleted because they are referenced by existing project history. Remove their access instead.",
+      };
+    }
+
+    await prisma.user.delete({
+      where: { id: normalizedId },
+    });
+
+    return { success: true };
+  });
+}
+
+export const COLLABORATION_REVALIDATE_TAGS = [
+  COLLABORATORS_CACHE_TAG,
+  CALENDAR_COLLABORATORS_CACHE_TAG,
+  PROJECTS_CACHE_TAG,
+] as const;
 
 export async function getInviteRegistration(
   token: string,
