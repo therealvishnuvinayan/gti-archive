@@ -53,6 +53,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -144,6 +145,30 @@ function formatDateTimeInputValue(date: Date | null) {
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
 
   return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function normalizeBudgetInput(value: string) {
+  return value.replace(/[^\d]/g, "");
+}
+
+function parseBudgetInput(value: string) {
+  const normalized = value.trim().replace(/,/g, "");
+
+  if (!normalized || !/^\d+$/.test(normalized)) {
+    return NaN;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function formatBudgetDisplay(value: number, currencyCode: string) {
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+
+  return `${formatted} ${currencyCode}`.trim();
 }
 
 function MonthPicker({
@@ -344,6 +369,7 @@ export function CreateProjectWorkspace({
   const [attachmentError, setAttachmentError] = useState<string>();
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+  const [budgetConflictDialogOpen, setBudgetConflictDialogOpen] = useState(false);
   const [executorPickerOpen, setExecutorPickerOpen] = useState(false);
   const [executorSearch, setExecutorSearch] = useState("");
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -353,6 +379,60 @@ export function CreateProjectWorkspace({
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
+  const parsedProjectBudget = useMemo(() => parseBudgetInput(projectBudget), [projectBudget]);
+  const parsedStageBudgets = useMemo(
+    () => stages.map((stage) => parseBudgetInput(stage.budget)),
+    [stages],
+  );
+  const totalStageBudget = useMemo(
+    () =>
+      parsedStageBudgets.reduce(
+        (sum, budget) => sum + (Number.isFinite(budget) ? budget : 0),
+        0,
+      ),
+    [parsedStageBudgets],
+  );
+  const hasInvalidBudgetInputs = useMemo(
+    () =>
+      canViewBudget &&
+      (projectBudget.trim().length > 0
+        ? !Number.isFinite(parsedProjectBudget) || parsedProjectBudget <= 0
+        : false),
+    [canViewBudget, parsedProjectBudget, projectBudget],
+  );
+  const hasInvalidStageBudgetInputs = useMemo(
+    () =>
+      canViewBudget &&
+      stages.some((stage, index) => {
+        if (!stage.budget.trim()) {
+          return false;
+        }
+
+        const budget = parsedStageBudgets[index];
+        return !Number.isFinite(budget) || budget <= 0;
+      }),
+    [canViewBudget, parsedStageBudgets, stages],
+  );
+  const remainingStageBudget = useMemo(() => {
+    if (!canViewBudget || !Number.isFinite(parsedProjectBudget)) {
+      return null;
+    }
+
+    return parsedProjectBudget - totalStageBudget;
+  }, [canViewBudget, parsedProjectBudget, totalStageBudget]);
+  const hasBudgetConflict = useMemo(
+    () =>
+      canViewBudget &&
+      Number.isFinite(parsedProjectBudget) &&
+      !hasInvalidStageBudgetInputs &&
+      totalStageBudget > parsedProjectBudget,
+    [
+      canViewBudget,
+      hasInvalidStageBudgetInputs,
+      parsedProjectBudget,
+      totalStageBudget,
+    ],
+  );
   const selectedCollaboratorIds = useMemo(
     () => assignedCollaborators.map((collaborator) => collaborator.id),
     [assignedCollaborators],
@@ -412,10 +492,22 @@ export function CreateProjectWorkspace({
   const overview = useMemo(
     () => ({
       budget: canViewBudget
-        ? projectBudget
-          ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
-          : "—"
+        ? Number.isFinite(parsedProjectBudget)
+          ? formatBudgetDisplay(parsedProjectBudget, projectCurrency ?? "")
+          : projectBudget
+            ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
+            : "—"
         : "Restricted",
+      allocatedStageBudget:
+        canViewBudget && Number.isFinite(totalStageBudget)
+          ? formatBudgetDisplay(totalStageBudget, projectCurrency ?? "")
+          : "—",
+      remainingStageBudget:
+        canViewBudget && remainingStageBudget !== null
+          ? remainingStageBudget < 0
+            ? `${formatBudgetDisplay(Math.abs(remainingStageBudget), projectCurrency ?? "")} over budget`
+            : formatBudgetDisplay(remainingStageBudget, projectCurrency ?? "")
+          : "—",
       stages: stages.length,
       started: startDate ? formatDateValue(startDate) : "—",
       deadline: endDate ? formatDateValue(endDate) : "—",
@@ -432,9 +524,12 @@ export function CreateProjectWorkspace({
       projectExecutor,
       projectTag,
       projectStatus,
+      parsedProjectBudget,
+      remainingStageBudget,
       stages.length,
       startDate,
       endDate,
+      totalStageBudget,
     ],
   );
 
@@ -566,7 +661,24 @@ export function CreateProjectWorkspace({
   }
 
   function handleBudgetChange(value: string) {
-    setProjectBudget(value.replace(/[^\d]/g, ""));
+    setProjectBudget(normalizeBudgetInput(value));
+  }
+
+  function handleStageBudgetChange(stageId: string, value: string) {
+    updateStage(stageId, {
+      budget: normalizeBudgetInput(value),
+    });
+  }
+
+  function handleProjectFormSubmit(event: React.FormEvent<HTMLFormElement>) {
+    if (!canViewBudget) {
+      return;
+    }
+
+    if (hasBudgetConflict) {
+      event.preventDefault();
+      setBudgetConflictDialogOpen(true);
+    }
   }
 
   function refreshProjectData() {
@@ -849,6 +961,7 @@ export function CreateProjectWorkspace({
     <section className="mx-auto w-full max-w-[1420px]">
     <form
       action={formAction}
+      onSubmit={handleProjectFormSubmit}
       className="flex w-full min-w-0 flex-col gap-4 xl:flex-row xl:items-start"
     >
       <input type="hidden" name="startDate" value={startDate ? formatDateValue(startDate) : ""} />
@@ -1079,7 +1192,22 @@ export function CreateProjectWorkspace({
                   </div>
                 )}
                 {canViewBudget ? (
-                  <FieldError message={fieldErrors.budget || fieldErrors.currency} />
+                  <>
+                    <FieldError
+                      message={
+                        fieldErrors.budget ||
+                        fieldErrors.currency ||
+                        (hasInvalidBudgetInputs
+                          ? "Enter a valid project budget greater than zero."
+                          : undefined)
+                      }
+                    />
+                    {fieldErrors.budgetSummary ? (
+                      <div className="mt-3 rounded-[16px] border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[12px] font-medium text-[#ba3f31]">
+                        {fieldErrors.budgetSummary}
+                      </div>
+                    ) : null}
+                  </>
                 ) : null}
               </label>
 
@@ -1357,6 +1485,37 @@ export function CreateProjectWorkspace({
               </Button>
             </div>
 
+            {canViewBudget && hasBudgetConflict && remainingStageBudget !== null ? (
+              <div className="mt-3 rounded-[18px] border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[12px] text-[#ba3f31]">
+                <p className="font-[700]">Budget conflict</p>
+                <p className="mt-1">
+                  The total stage budget is higher than the project budget. Please adjust the project budget or reduce the stage budgets before saving.
+                </p>
+                <dl className="mt-2 space-y-1">
+                  <div>
+                    <dt className="inline font-[700]">Project Budget:</dt>{" "}
+                    <dd className="inline">
+                      {Number.isFinite(parsedProjectBudget)
+                        ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
+                        : "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-[700]">Total Stage Budgets:</dt>{" "}
+                    <dd className="inline">
+                      {formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-[700]">Difference:</dt>{" "}
+                    <dd className="inline">
+                      {formatBudgetDisplay(Math.abs(remainingStageBudget), projectCurrency || "")} over budget
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ) : null}
+
             <MotionStaggerGroup
               className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3"
               stagger={0.04}
@@ -1384,11 +1543,7 @@ export function CreateProjectWorkspace({
                     {canViewBudget ? (
                       <Input
                         value={stage.budget}
-                        onChange={(event) =>
-                          updateStage(stage.id, {
-                            budget: event.target.value.replace(/[^\d]/g, ""),
-                          })
-                        }
+                        onChange={(event) => handleStageBudgetChange(stage.id, event.target.value)}
                         name="stageBudgets"
                         required
                         inputMode="numeric"
@@ -1402,7 +1557,16 @@ export function CreateProjectWorkspace({
                       </div>
                     )}
                     {canViewBudget ? (
-                      <FieldError message={fieldErrors.stageBudgets?.[index]} />
+                      <FieldError
+                        message={
+                          fieldErrors.stageBudgets?.[index] ||
+                          (stage.budget.trim().length > 0 &&
+                          (!Number.isFinite(parsedStageBudgets[index]) ||
+                            parsedStageBudgets[index] <= 0)
+                            ? "Enter a valid stage budget greater than zero."
+                            : undefined)
+                        }
+                      />
                     ) : null}
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Start <span className="text-[#d3554d]">*</span>
@@ -1464,6 +1628,20 @@ export function CreateProjectWorkspace({
             <div>
               <dt className="inline font-[700]">Budget :</dt>{" "}
               <dd className="inline">{overview.budget}</dd>
+            </div>
+            <div>
+              <dt className="inline font-[700]">Allocated to Stages :</dt>{" "}
+              <dd className="inline">{overview.allocatedStageBudget}</dd>
+            </div>
+            <div>
+              <dt className="inline font-[700]">Remaining :</dt>{" "}
+              <dd
+                className={`inline ${
+                  hasBudgetConflict ? "font-[700] text-[#ba3f31]" : ""
+                }`}
+              >
+                {overview.remainingStageBudget}
+              </dd>
             </div>
             <div>
               <dt className="inline font-[700]">Stages :</dt>{" "}
@@ -1623,6 +1801,30 @@ export function CreateProjectWorkspace({
         onConfirm={() => setPickerOpen(false)}
         onInviteFallback={openCollaboratorInvite}
         confirmLabel="Apply Selection"
+      />
+      <ConfirmationDialog
+        isOpen={budgetConflictDialogOpen}
+        title="Budget conflict"
+        description="The total stage budget is higher than the project budget. Please adjust the project budget or reduce the stage budgets before saving."
+        confirmLabel="Review Budget"
+        cancelLabel="Close"
+        onClose={() => setBudgetConflictDialogOpen(false)}
+        onConfirm={() => setBudgetConflictDialogOpen(false)}
+        error={
+          canViewBudget && hasBudgetConflict && remainingStageBudget !== null
+            ? `Project Budget: ${
+                Number.isFinite(parsedProjectBudget)
+                  ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
+                  : "—"
+              }\nTotal Stage Budgets: ${formatBudgetDisplay(
+                totalStageBudget,
+                projectCurrency || "",
+              )}\nDifference: ${formatBudgetDisplay(
+                Math.abs(remainingStageBudget),
+                projectCurrency || "",
+              )} over budget`
+            : undefined
+        }
       />
     </form>
     </section>

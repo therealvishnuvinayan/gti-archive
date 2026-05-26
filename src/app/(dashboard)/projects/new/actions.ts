@@ -18,10 +18,75 @@ import { prisma } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 function parseBudget(value: string) {
-  const normalized = value.replace(/[^\d]/g, "");
-  const parsed = Number.parseInt(normalized, 10);
+  const normalized = value.trim().replace(/,/g, "");
 
+  if (!normalized || !/^\d+$/.test(normalized)) {
+    return NaN;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
   return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function formatBudgetValue(value: number, currencyCode: string) {
+  const formattedNumber = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+
+  return `${formattedNumber} ${currencyCode}`.trim();
+}
+
+function validateBudgetAllocation(input: {
+  projectBudget: number;
+  stageBudgetInputs: string[];
+  currencyCode: string;
+  requireBudget: boolean;
+}) {
+  if (!input.requireBudget) {
+    return null;
+  }
+
+  const stageBudgets = input.stageBudgetInputs.map((value) => parseBudget(value));
+  const hasInvalidStageBudget = stageBudgets.some(
+    (budget) => !Number.isFinite(budget) || budget < 0,
+  );
+
+  if (hasInvalidStageBudget || !Number.isFinite(input.projectBudget) || input.projectBudget < 0) {
+    return null;
+  }
+
+  const totalStageBudget = stageBudgets.reduce((sum, budget) => sum + budget, 0);
+
+  if (totalStageBudget <= input.projectBudget) {
+    return null;
+  }
+
+  const difference = totalStageBudget - input.projectBudget;
+
+  return {
+    error: `Stage budgets exceed the total project budget. Total project budget is ${formatBudgetValue(
+      input.projectBudget,
+      input.currencyCode,
+    )}, but stage budgets add up to ${formatBudgetValue(
+      totalStageBudget,
+      input.currencyCode,
+    )}.`,
+    fieldErrors: {
+      budgetSummary: `Total stage budgets are ${formatBudgetValue(
+        difference,
+        input.currencyCode,
+      )} over budget.`,
+      budget: `Project budget is ${formatBudgetValue(
+        input.projectBudget,
+        input.currencyCode,
+      )}, but stages total ${formatBudgetValue(totalStageBudget, input.currencyCode)}.`,
+      stageBudgets: input.stageBudgetInputs.map((value) => {
+        const budget = parseBudget(value);
+        return Number.isFinite(budget) ? "Included in an over-budget stage total." : undefined;
+      }),
+    } satisfies ProjectFormFieldErrors,
+  };
 }
 
 function isProjectStatus(value: string): value is ProjectStatus {
@@ -256,6 +321,17 @@ function validateProjectFormData(
         stageDueDates: stageDueDateErrors,
       },
     };
+  }
+
+  const budgetConflict = validateBudgetAllocation({
+    projectBudget: budget,
+    stageBudgetInputs: parsed.stageBudgets,
+    currencyCode: parsed.currencyInput || "—",
+    requireBudget,
+  });
+
+  if (budgetConflict) {
+    return budgetConflict;
   }
 
   return {

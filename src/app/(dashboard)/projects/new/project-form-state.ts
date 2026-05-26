@@ -8,6 +8,7 @@ export type ProjectFormFieldErrors = {
   tag?: string;
   description?: string;
   budget?: string;
+  budgetSummary?: string;
   currency?: string;
   status?: string;
   startDate?: string;
