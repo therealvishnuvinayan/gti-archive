@@ -546,10 +546,6 @@ export async function createStageComment(
     throw new Error("Enter a comment before sending.");
   }
 
-  if (!latestRevision && input.allowEmptyBody) {
-    throw new Error("Create a revision before attaching files to a comment.");
-  }
-
   return withPrismaRetry(() =>
     prisma.projectComment.create({
       data: {
@@ -645,8 +641,7 @@ export async function requestAttachmentUpload(
   }
 
   if (
-    input.assetType === AttachmentAssetType.REVISION_ORIGINAL ||
-    input.assetType === AttachmentAssetType.STAGE_SUBMISSION
+    input.assetType === AttachmentAssetType.REVISION_ORIGINAL
   ) {
     if (!input.revisionId || !input.stageId) {
       return { error: "Stage uploads require a valid stage and revision." };
@@ -677,12 +672,11 @@ export async function requestAttachmentUpload(
     input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT ||
     input.assetType === AttachmentAssetType.STAGE_SUBMISSION
   ) {
-    if (!input.commentId || !input.revisionId || !input.stageId) {
-      return { error: "Chat uploads require a valid comment and revision." };
+    if (!input.commentId || !input.stageId) {
+      return { error: "Chat uploads require a valid comment and stage." };
     }
 
     const commentId = input.commentId;
-    const revisionId = input.revisionId;
     const stageId = input.stageId;
 
     const comment = await withPrismaRetry(() =>
@@ -691,16 +685,20 @@ export async function requestAttachmentUpload(
           id: commentId,
           projectId: input.projectId,
           stageId,
-          revisionId,
         },
         select: {
           id: true,
+          revisionId: true,
         },
       }),
     );
 
     if (!comment) {
       return { error: "Comment not found." };
+    }
+
+    if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {
+      return { error: "Comment upload context is invalid." };
     }
   }
 

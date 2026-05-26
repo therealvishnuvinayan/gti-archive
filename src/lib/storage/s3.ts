@@ -175,11 +175,15 @@ export function buildProjectAssetKey({
       return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/assets/original/${safeFileName}`;
     }
     case AttachmentAssetType.STAGE_SUBMISSION: {
-      if (!stageId || !revisionId) {
-        throw new Error("Stage submissions require stageId and revisionId.");
+      if (!stageId || !commentId) {
+        throw new Error("Stage submissions require stageId and commentId.");
       }
 
-      return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/submissions/${safeFileName}`;
+      if (revisionId) {
+        return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/comments/${commentId}/submissions/${safeFileName}`;
+      }
+
+      return `projects/${projectId}/stages/${stageId}/comments/${commentId}/submissions/${safeFileName}`;
     }
     case AttachmentAssetType.REVISION_PREVIEW: {
       if (!stageId || !revisionId) {
@@ -196,11 +200,15 @@ export function buildProjectAssetKey({
       return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/assets/thumbnails/${safeFileName}`;
     }
     case AttachmentAssetType.COMMENT_ATTACHMENT: {
-      if (!stageId || !revisionId || !commentId) {
-        throw new Error("Comment attachments require stageId, revisionId, and commentId.");
+      if (!stageId || !commentId) {
+        throw new Error("Comment attachments require stageId and commentId.");
       }
 
-      return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/comments/${commentId}/attachments/${safeFileName}`;
+      if (revisionId) {
+        return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/comments/${commentId}/attachments/${safeFileName}`;
+      }
+
+      return `projects/${projectId}/stages/${stageId}/comments/${commentId}/attachments/${safeFileName}`;
     }
     case AttachmentAssetType.FINAL_ARCHIVE: {
       if (!stageId) {
