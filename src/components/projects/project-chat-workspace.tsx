@@ -84,6 +84,7 @@ type DisplayAttachmentRecord = ProjectAttachmentRecord & {
 type DisplayChatEntry = ProjectChatEntry & {
   attachments?: DisplayAttachmentRecord[];
   isOptimistic?: boolean;
+  serverCommentId?: string;
 };
 
 type TranslateApiResponse = {
@@ -466,7 +467,7 @@ async function uploadAssetFile(input: {
   fileIndex?: number;
   fileCount?: number;
   onProgress?: (progress: number) => void;
-}) {
+}): Promise<{ attachmentId: string }> {
   const requestUploadResponse = await fetch("/api/project-assets/upload-url", {
     method: "POST",
     headers: {
@@ -520,6 +521,10 @@ async function uploadAssetFile(input: {
     if (!completionResponse.ok) {
       throw new Error(completionPayload.error || "Unable to finalise the upload.");
     }
+
+    return {
+      attachmentId: uploadPayload.attachmentId,
+    };
   } catch (error) {
     await fetch("/api/project-assets/complete", {
       method: "POST",
@@ -555,6 +560,7 @@ export function ProjectChatWorkspace({
   const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
   const [optimisticComments, setOptimisticComments] = useState<DisplayChatEntry[]>([]);
+  const [confirmedComments, setConfirmedComments] = useState<DisplayChatEntry[]>([]);
   const [pendingRevisionFiles, setPendingRevisionFiles] = useState<PendingFile[]>([]);
   const [commentUploadDialogOpen, setCommentUploadDialogOpen] = useState(false);
   const [commentUploadIntent, setCommentUploadIntent] =
@@ -597,9 +603,54 @@ export function ProjectChatWorkspace({
   });
 
   const messages = history.entries;
+  const serverMessageIds = useMemo(
+    () => new Set(messages.map((entry) => entry.id)),
+    [messages],
+  );
+  const visibleOptimisticComments = useMemo(
+    () =>
+      optimisticComments.filter((entry) => {
+        if (!entry.serverCommentId || !serverMessageIds.has(entry.serverCommentId)) {
+          return true;
+        }
+
+        return (
+          entry.attachments?.some(
+            (attachment: DisplayAttachmentRecord) =>
+              attachment.uploadState === "pending" || attachment.uploadState === "uploading",
+          ) ?? false
+        );
+      }),
+    [optimisticComments, serverMessageIds],
+  );
+  const visibleConfirmedComments = useMemo(
+    () =>
+      confirmedComments.filter(
+        (entry) => !entry.serverCommentId || !serverMessageIds.has(entry.serverCommentId),
+      ),
+    [confirmedComments, serverMessageIds],
+  );
+  const serverCommentIdsWithLocalOverrides = useMemo(
+    () =>
+      new Set(
+        [...visibleOptimisticComments, ...visibleConfirmedComments]
+          .map((entry) => entry.serverCommentId)
+          .filter((entryId): entryId is string => Boolean(entryId)),
+      ),
+    [visibleConfirmedComments, visibleOptimisticComments],
+  );
   const displayedMessages = useMemo(
-    () => [...optimisticComments, ...messages],
-    [messages, optimisticComments],
+    () => [
+      ...visibleOptimisticComments,
+      ...visibleConfirmedComments,
+      ...messages.filter((message) => !serverCommentIdsWithLocalOverrides.has(message.id)),
+    ],
+    [
+      messages,
+      serverCommentIdsWithLocalOverrides,
+      visibleConfirmedComments,
+      visibleOptimisticComments,
+    ],
   );
   const stageSubmissions = useMemo(
     () =>
@@ -671,16 +722,6 @@ export function ProjectChatWorkspace({
       mediaStreamRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    const cleanupTimeout = window.setTimeout(() => {
-      setOptimisticComments([]);
-    }, 0);
-
-    return () => {
-      window.clearTimeout(cleanupTimeout);
-    };
-  }, [history.entries]);
 
   function applyUpdatedCollaborators(updatedCollaborators: ProjectCollaboratorRecord[]) {
     setCollaborators((current) => {
@@ -945,6 +986,15 @@ export function ProjectChatWorkspace({
             }
           : entry,
       ),
+    );
+  }
+
+  function updateOptimisticComment(
+    commentId: string,
+    updater: (entry: DisplayChatEntry) => DisplayChatEntry,
+  ) {
+    setOptimisticComments((current) =>
+      current.map((entry) => (entry.id === commentId ? updater(entry) : entry)),
     );
   }
 
@@ -1356,6 +1406,11 @@ export function ProjectChatWorkspace({
     setIsSendingComment(true);
     const optimisticCommentId = `optimistic-comment-${crypto.randomUUID()}`;
     const filesToUpload = [...pendingCommentFiles];
+    const startingSubmissionNumber =
+      getStageSubmissionAttachments(displayedMessages).filter(
+        (attachment) =>
+          !("uploadState" in attachment) || attachment.uploadState === "uploaded",
+      ).length + 1;
 
     setOptimisticComments((current) => [
       {
@@ -1396,6 +1451,11 @@ export function ProjectChatWorkspace({
         throw new Error(commentResult.error);
       }
 
+      updateOptimisticComment(optimisticCommentId, (entry) => ({
+        ...entry,
+        serverCommentId: commentResult.commentId,
+      }));
+
       setDraft("");
       setPendingCommentFiles([]);
 
@@ -1425,13 +1485,14 @@ export function ProjectChatWorkspace({
               }));
             },
           })
-            .then(() => {
+            .then((uploadResult) => {
               updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
                 ...attachment,
                 uploadState: "uploaded",
                 progress: 100,
                 uploadedAt: "Uploaded. Refreshing…",
               }));
+              return uploadResult;
             })
             .catch((error) => {
               updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
@@ -1452,6 +1513,32 @@ export function ProjectChatWorkspace({
       const failedUploads = uploadResults.filter(
         (result): result is PromiseRejectedResult => result.status === "rejected",
       );
+      const successfulUploads = uploadResults
+        .flatMap((result, index) =>
+          result.status === "fulfilled"
+            ? [
+                {
+                  pendingFile: filesToUpload[index],
+                  attachmentId: result.value.attachmentId,
+                },
+              ]
+            : [],
+        )
+        .map((result, index, allSuccessfulUploads) => {
+          const successfulSubmissionIndex = allSuccessfulUploads
+            .slice(0, index + 1)
+            .filter(
+              (item) => item.pendingFile.assetType === "STAGE_SUBMISSION",
+            ).length;
+
+          return {
+            ...result,
+            submissionNumber:
+              result.pendingFile.assetType === "STAGE_SUBMISSION"
+                ? startingSubmissionNumber + successfulSubmissionIndex - 1
+                : undefined,
+          };
+        });
 
       if (failedUploads.length > 0) {
         setComposerError(
@@ -1461,6 +1548,35 @@ export function ProjectChatWorkspace({
         );
       }
 
+      setConfirmedComments((current) => [
+        {
+          id: `confirmed-comment-${commentResult.commentId}`,
+          serverCommentId: commentResult.commentId,
+          revisionId: commentResult.revisionId ?? undefined,
+          kind: "comment",
+          author: currentUserDisplayName,
+          role: currentUserRoleLabel,
+          body: body || "Attachment uploaded.",
+          createdAt: "Just now",
+          attachments: successfulUploads.map((result) => ({
+            id: result.attachmentId,
+            isSubmission: result.pendingFile.assetType === "STAGE_SUBMISSION",
+            submissionNumber: result.submissionNumber,
+            originalFileName: result.pendingFile.file.name,
+            fileTypeLabel: getLocalFileTypeLabel(result.pendingFile.file.name),
+            mimeType: result.pendingFile.file.type || "application/octet-stream",
+            fileSizeLabel: formatLocalFileSize(result.pendingFile.file.size),
+            uploadedBy: currentUserDisplayName,
+            uploadedAt: "Just now",
+            previewPath: `/api/project-assets/${result.attachmentId}/preview`,
+            downloadPath: `/api/project-assets/${result.attachmentId}/download`,
+          })),
+        },
+        ...current,
+      ]);
+      setOptimisticComments((current) =>
+        current.filter((entry) => entry.id !== optimisticCommentId),
+      );
       setIsSendingComment(false);
       refreshHistory();
     } catch (error) {
