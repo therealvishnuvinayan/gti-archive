@@ -104,7 +104,11 @@ function parseProjectFormData(formData: FormData) {
   };
 }
 
-function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>) {
+function validateProjectFormData(
+  parsed: ReturnType<typeof parseProjectFormData>,
+  options: { requireBudget?: boolean } = {},
+) {
+  const requireBudget = options.requireBudget ?? true;
   const fieldErrors: ProjectFormFieldErrors = {};
 
   if (!parsed.name) fieldErrors.name = "Project name is required.";
@@ -113,8 +117,8 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
     fieldErrors.executorUserId = "Project executor is required.";
   }
   if (!parsed.description) fieldErrors.description = "Project brief is required.";
-  if (!parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
-  if (!parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
+  if (requireBudget && !parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
+  if (requireBudget && !parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
   if (!parsed.statusInput) fieldErrors.status = "Project status is required.";
   if (!parsed.startDateInput) fieldErrors.startDate = "Project start date is required.";
   if (!parsed.endDateInput) fieldErrors.endDate = "Project end date is required.";
@@ -128,7 +132,7 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
   const startDate = new Date(parsed.startDateInput);
   const endDate = new Date(parsed.endDateInput);
 
-  if (!Number.isFinite(budget) || budget <= 0) {
+  if (requireBudget && (!Number.isFinite(budget) || budget <= 0)) {
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: { budget: "Enter a valid project budget." },
@@ -176,6 +180,10 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
     value ? undefined : "Stage name is required.",
   );
   const stageBudgetErrors: Array<string | undefined> = parsed.stageBudgets.map((value) => {
+    if (!requireBudget) {
+      return undefined;
+    }
+
     const budget = parseBudget(value);
     return Number.isFinite(budget) && budget > 0 ? undefined : "Enter a valid stage budget.";
   });
@@ -336,7 +344,9 @@ export async function createProjectAction(
     return { error: "You are not allowed to create projects." };
   }
 
-  const validated = validateProjectFormData(parseProjectFormData(formData));
+  const validated = validateProjectFormData(parseProjectFormData(formData), {
+    requireBudget: true,
+  });
 
   if ("error" in validated) {
     return validated;
@@ -501,7 +511,31 @@ export async function updateProjectAction(
     return { error: "Project id is missing." };
   }
 
-  const validated = validateProjectFormData(parseProjectFormData(formData));
+  const existingProject = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      currency: true,
+      budget: true,
+      createdById: true,
+      stages: {
+        orderBy: {
+          order: "asc",
+        },
+        select: {
+          budget: true,
+        },
+      },
+    },
+  });
+
+  if (!existingProject) {
+    return { error: "Project not found." };
+  }
+
+  const canViewBudget = existingProject.createdById === user.id;
+  const validated = validateProjectFormData(parseProjectFormData(formData), {
+    requireBudget: canViewBudget,
+  });
 
   if ("error" in validated) {
     return validated;
@@ -530,18 +564,11 @@ export async function updateProjectAction(
     collaboratorParticipantTypes,
   } = validated.data;
 
-  const existingProject = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { currency: true },
-  });
-
-  if (!existingProject) {
-    return { error: "Project not found." };
-  }
-
-  const currencyCode = await resolveProjectCurrencyCode(currency, {
-    allowInactiveCode: existingProject.currency,
-  });
+  const currencyCode = canViewBudget
+    ? await resolveProjectCurrencyCode(currency, {
+        allowInactiveCode: existingProject.currency,
+      })
+    : existingProject.currency;
 
   if (!currencyCode) {
     return {
@@ -603,7 +630,7 @@ export async function updateProjectAction(
         executorUserId: resolvedExecutor.executorUserId,
         tag: tag || null,
         description,
-        budget,
+        budget: canViewBudget ? budget : existingProject.budget,
         currency: currencyCode,
         status,
         startDate,
@@ -634,11 +661,13 @@ export async function updateProjectAction(
               name: stageName,
               description: stageDescriptions[index] || null,
               budget:
-                Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
-                  ? parsedStageBudget
-                  : index === 0
-                    ? budget
-                    : null,
+                canViewBudget
+                  ? Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
+                    ? parsedStageBudget
+                    : index === 0
+                      ? budget
+                      : null
+                  : existingProject.stages[index]?.budget ?? null,
               plannedStartAt: stageStartDates[index],
               plannedDueAt: stageDueDates[index],
               status: stageStatuses[index],

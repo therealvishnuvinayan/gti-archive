@@ -351,6 +351,7 @@ export function CreateProjectWorkspace({
   const handledCreatedProjectIdRef = useRef<string | null>(null);
   const [, startRefresh] = useTransition();
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
+  const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
   const selectedCollaboratorIds = useMemo(
     () => assignedCollaborators.map((collaborator) => collaborator.id),
@@ -410,7 +411,11 @@ export function CreateProjectWorkspace({
 
   const overview = useMemo(
     () => ({
-      budget: projectBudget ? `${projectBudget} ${projectCurrency}` : "—",
+      budget: canViewBudget
+        ? projectBudget
+          ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
+          : "—"
+        : "Restricted",
       stages: stages.length,
       started: startDate ? formatDateValue(startDate) : "—",
       deadline: endDate ? formatDateValue(endDate) : "—",
@@ -421,6 +426,7 @@ export function CreateProjectWorkspace({
       priority: "Medium",
     }),
     [
+      canViewBudget,
       projectBudget,
       projectCurrency,
       projectExecutor,
@@ -1011,41 +1017,49 @@ export function CreateProjectWorkspace({
 
               <label className="block">
                 <RequiredLabel>Project Budget</RequiredLabel>
-                <div className="flex gap-2">
-                  <Input
-                    value={projectBudget}
-                    onChange={(event) => handleBudgetChange(event.target.value)}
-                    name="budget"
-                    required
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    placeholder="Enter Project Budget...."
-                    className="h-[42px] min-w-0 flex-1 text-[12px]"
-                  />
-                  <Select
-                    value={projectCurrency}
-                    onValueChange={setProjectCurrency}
-                    disabled={currencySelectOptions.length === 0}
-                  >
-                    <SelectTrigger className="h-[42px] w-[108px] text-[12px] font-medium">
-                      <SelectValue
-                        placeholder={
-                          currencySelectOptions.length === 0
-                            ? "No currencies available"
-                            : "Select currency"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currencySelectOptions.map((currency) => (
-                        <SelectItem key={currency.code} value={currency.code}>
-                          {currency.code}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <FieldError message={fieldErrors.budget || fieldErrors.currency} />
+                {canViewBudget ? (
+                  <div className="flex gap-2">
+                    <Input
+                      value={projectBudget}
+                      onChange={(event) => handleBudgetChange(event.target.value)}
+                      name="budget"
+                      required
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Enter Project Budget...."
+                      className="h-[42px] min-w-0 flex-1 text-[12px]"
+                    />
+                    <Select
+                      value={projectCurrency}
+                      onValueChange={setProjectCurrency}
+                      disabled={currencySelectOptions.length === 0}
+                    >
+                      <SelectTrigger className="h-[42px] w-[108px] text-[12px] font-medium">
+                        <SelectValue
+                          placeholder={
+                            currencySelectOptions.length === 0
+                              ? "No currencies available"
+                              : "Select currency"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {currencySelectOptions.map((currency) => (
+                          <SelectItem key={currency.code} value={currency.code}>
+                            {currency.code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="rounded-[18px] border border-[#dfe5df] bg-[#f7faf7] px-4 py-3 text-[12px] font-medium text-[#6f786f]">
+                    Budget is restricted to the project owner.
+                  </div>
+                )}
+                {canViewBudget ? (
+                  <FieldError message={fieldErrors.budget || fieldErrors.currency} />
+                ) : null}
               </label>
 
               <label className="block">
@@ -1346,21 +1360,29 @@ export function CreateProjectWorkspace({
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Budget <span className="text-[#d3554d]">*</span>
                     </p>
-                    <Input
-                      value={stage.budget}
-                      onChange={(event) =>
-                        updateStage(stage.id, {
-                          budget: event.target.value.replace(/[^\d]/g, ""),
-                        })
-                      }
-                      name="stageBudgets"
-                      required
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder={`Stage ${index + 1} Budget...`}
-                      className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
-                    />
-                    <FieldError message={fieldErrors.stageBudgets?.[index]} />
+                    {canViewBudget ? (
+                      <Input
+                        value={stage.budget}
+                        onChange={(event) =>
+                          updateStage(stage.id, {
+                            budget: event.target.value.replace(/[^\d]/g, ""),
+                          })
+                        }
+                        name="stageBudgets"
+                        required
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder={`Stage ${index + 1} Budget...`}
+                        className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
+                      />
+                    ) : (
+                      <div className="mt-3 rounded-[14px] border border-[#dfe5df] bg-[#f7faf7] px-3 py-2 text-[11px] font-medium text-[#6f786f]">
+                        Restricted
+                      </div>
+                    )}
+                    {canViewBudget ? (
+                      <FieldError message={fieldErrors.stageBudgets?.[index]} />
+                    ) : null}
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Start <span className="text-[#d3554d]">*</span>
                     </p>

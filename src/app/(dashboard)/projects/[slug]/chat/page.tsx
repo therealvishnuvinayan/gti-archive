@@ -20,7 +20,7 @@ export default async function ProjectChatPage({
   const { stage } = await searchParams;
   const user = await requireUser();
   const [project, history, availableCollaborators] = await Promise.all([
-    getProjectById(slug),
+    getProjectById(slug, user),
     getProjectStageHistory(user, slug, stage),
     getCollaborators(),
   ]);

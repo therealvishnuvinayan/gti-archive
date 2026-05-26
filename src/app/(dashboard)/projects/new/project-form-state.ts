@@ -68,7 +68,8 @@ export type ProjectEditorInitialValues = {
   tag: string;
   description: string;
   budget: string;
-  currency: string;
+  currency: string | null;
+  canViewBudget: boolean;
   status: "ONGOING" | "ON_HOLD" | "PENDING" | "COMPLETED";
   startDate: string;
   endDate: string;

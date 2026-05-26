@@ -24,7 +24,7 @@ export default async function ProjectComparePage({
   const { stage, base, compare } = await searchParams;
   const user = await requireUser();
   const [project, history] = await Promise.all([
-    getProjectById(slug),
+    getProjectById(slug, user),
     getProjectStageHistory(user, slug, stage),
   ]);
 

@@ -21,7 +21,7 @@ export default async function EditProjectPage({
   }
 
   const [project, collaborators, masterDataOptions] = await Promise.all([
-    getProjectEditorById(slug),
+    getProjectEditorById(slug, user),
     getCollaborators(),
     getActiveProjectMasterDataOptions(),
   ]);

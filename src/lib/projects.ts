@@ -22,6 +22,8 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const PROJECTS_CACHE_TAG = "projects";
 
+type BudgetAccessUser = Pick<User, "id">;
+
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
   executorUser?: Pick<User, "id" | "name" | "email" | "collaboratorType"> | null;
@@ -68,7 +70,8 @@ export type ProjectEditorRecord = {
   tag: string;
   description: string;
   budget: string;
-  currency: string;
+  currency: string | null;
+  canViewBudget: boolean;
   status: ProjectStatus;
   startDate: string;
   endDate: string;
@@ -155,12 +158,13 @@ export type ProjectCompareNote = {
 export type ProjectFlowRecord = {
   id: string;
   ownerId: string;
+  canViewBudget: boolean;
   title: string;
   category: string;
   executorName: string;
   description: string;
   budget: string;
-  currency: string;
+  currency: string | null;
   statusLabel: string;
   currentStageName: string;
   currentStageId: string | null;
@@ -250,6 +254,14 @@ export function formatProjectBudget(
   }
 
   return `${budget.toLocaleString("en-US")} ${currency}`;
+}
+
+export function canViewProjectBudget(
+  project: Pick<Project, "createdById"> | { ownerId: string },
+  currentUser: BudgetAccessUser,
+) {
+  const ownerId = "ownerId" in project ? project.ownerId : project.createdById;
+  return ownerId === currentUser.id;
 }
 
 function getCreatorName(creator: Pick<User, "name" | "email">) {
@@ -438,7 +450,11 @@ function mapProjectToCard(project: ProjectWithCreator, index: number): ProjectCa
   };
 }
 
-function mapStageToCard(project: ProjectWithCreator, stage: ProjectStage): ProjectStageRecord {
+function mapStageToCard(
+  project: ProjectWithCreator,
+  stage: ProjectStage,
+  allowBudgetView: boolean,
+): ProjectStageRecord {
   return {
     id: stage.id,
     label: `${stage.name} : ${projectStatusMeta[stage.status].label}`,
@@ -446,20 +462,26 @@ function mapStageToCard(project: ProjectWithCreator, stage: ProjectStage): Proje
     description: stage.description?.trim() || "",
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
-    budget: formatProjectBudget(stage.budget, project.currency),
+    budget: allowBudgetView
+      ? formatProjectBudget(stage.budget, project.currency)
+      : "Restricted",
     plannedStartAt: formatProjectDateTime(stage.plannedStartAt),
     plannedDueAt: formatProjectDateTime(stage.plannedDueAt),
     status: mapStageStatusToVisual(stage.status),
   };
 }
 
-function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
+function mapProjectToFlow(
+  project: ProjectWithCreator,
+  currentUser: BudgetAccessUser,
+): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
   const executorDisplayName =
     project.executorUser?.name?.trim() ||
     project.executorUser?.email ||
     project.executorName?.trim() ||
     "—";
+  const allowBudgetView = canViewProjectBudget(project, currentUser);
   const stages = getProjectStages(project);
   const currentStage =
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
@@ -473,12 +495,13 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
   return {
     id: project.id,
     ownerId: project.createdById,
+    canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
     executorName: executorDisplayName,
     description: project.description,
-    budget: formatProjectBudget(project.budget, project.currency),
-    currency: project.currency,
+    budget: allowBudgetView ? formatProjectBudget(project.budget, project.currency) : "Restricted",
+    currency: allowBudgetView ? project.currency : null,
     statusLabel: projectStatusMeta[project.status].label,
     currentStageName: currentStage?.name ?? project.currentStageName?.trim() ?? "Stage 1",
     currentStageId: currentStage?.id ?? null,
@@ -489,7 +512,7 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
     createdBy: creatorName,
     tag: project.tag?.trim() || "—",
     priority: "Medium",
-    stageCards: stages.map((stage) => mapStageToCard(project, stage)),
+    stageCards: stages.map((stage) => mapStageToCard(project, stage, allowBudgetView)),
     collaborators: [
       {
         id: project.createdById,
@@ -543,13 +566,17 @@ function formatProjectInputDateTime(date: Date | string | number | null | undefi
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
+function mapProjectToEditor(
+  project: ProjectWithCreator,
+  currentUser: BudgetAccessUser,
+): ProjectEditorRecord {
   const stages = getProjectStages(project);
   const executorDisplayName =
     project.executorUser?.name?.trim() ||
     project.executorUser?.email ||
     project.executorName?.trim() ||
     "";
+  const allowBudgetView = canViewProjectBudget(project, currentUser);
 
   return {
     id: project.id,
@@ -559,8 +586,9 @@ function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
     executorUserId: project.executorUserId ?? null,
     tag: project.tag?.trim() || "",
     description: project.description,
-    budget: String(project.budget),
-    currency: project.currency,
+    budget: allowBudgetView ? String(project.budget) : "",
+    currency: allowBudgetView ? project.currency : null,
+    canViewBudget: allowBudgetView,
     status: project.status,
     startDate: formatProjectInputDate(project.startDate),
     endDate: formatProjectInputDate(project.endDate),
@@ -568,11 +596,13 @@ function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
       id: stage.id,
       name: stage.name,
       budget:
-        stage.budget && stage.budget > 0
-          ? String(stage.budget)
-          : index === 0
-            ? String(project.budget)
-            : "",
+        allowBudgetView
+          ? stage.budget && stage.budget > 0
+            ? String(stage.budget)
+            : index === 0
+              ? String(project.budget)
+              : ""
+          : "",
       description: stage.description?.trim() || "",
       plannedStartAt: formatProjectInputDateTime(stage.plannedStartAt ?? project.startDate),
       plannedDueAt: formatProjectInputDateTime(stage.plannedDueAt ?? project.endDate),
@@ -1184,7 +1214,10 @@ export async function getProjectsList(filter: ProjectsListFilter) {
   return projects.map(mapProjectToCard);
 }
 
-export async function getProjectById(id: string) {
+export async function getProjectById(
+  id: string,
+  currentUser: BudgetAccessUser,
+) {
   const project = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
@@ -1247,7 +1280,7 @@ export async function getProjectById(id: string) {
           },
         }),
       ),
-    ["project-by-id", id],
+    ["project-by-id", id, currentUser.id],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -1255,10 +1288,13 @@ export async function getProjectById(id: string) {
     return null;
   }
 
-  return mapProjectToFlow(project);
+  return mapProjectToFlow(project, currentUser);
 }
 
-export async function getProjectEditorById(id: string) {
+export async function getProjectEditorById(
+  id: string,
+  currentUser: BudgetAccessUser,
+) {
   const project = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
@@ -1269,6 +1305,14 @@ export async function getProjectEditorById(id: string) {
               select: {
                 name: true,
                 email: true,
+              },
+            },
+            executorUser: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                collaboratorType: true,
               },
             },
             stages: true,
@@ -1313,7 +1357,7 @@ export async function getProjectEditorById(id: string) {
           },
         }),
       ),
-    ["project-editor-by-id", id],
+    ["project-editor-by-id", id, currentUser.id],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -1321,5 +1365,5 @@ export async function getProjectEditorById(id: string) {
     return null;
   }
 
-  return mapProjectToEditor(project);
+  return mapProjectToEditor(project, currentUser);
 }
