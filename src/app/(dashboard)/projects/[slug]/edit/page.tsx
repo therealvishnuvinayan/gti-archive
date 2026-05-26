@@ -41,6 +41,7 @@ export default async function EditProjectPage({
         availableCollaborators={collaborators}
         categoryOptions={masterDataOptions.categories}
         tagOptions={masterDataOptions.tags}
+        currencyOptions={masterDataOptions.currencies}
         mode="edit"
         initialValues={project}
       />

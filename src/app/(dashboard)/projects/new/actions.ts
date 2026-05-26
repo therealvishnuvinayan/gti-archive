@@ -2,7 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import { CurrencyCode, ProjectStatus, UserRole } from "@prisma/client";
+import { ProjectStatus, UserRole } from "@prisma/client";
 
 import type {
   ProjectFormFieldErrors,
@@ -21,10 +21,6 @@ function parseBudget(value: string) {
 
 function isProjectStatus(value: string): value is ProjectStatus {
   return Object.values(ProjectStatus).includes(value as ProjectStatus);
-}
-
-function isCurrencyCode(value: string): value is CurrencyCode {
-  return Object.values(CurrencyCode).includes(value as CurrencyCode);
 }
 
 function getInitialStageStatuses(
@@ -51,7 +47,7 @@ function parseProjectFormData(formData: FormData) {
   const tag = String(formData.get("tag") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const budgetInput = String(formData.get("budget") ?? "").trim();
-  const currencyInput = String(formData.get("currency") ?? "").trim();
+  const currencyInput = String(formData.get("currency") ?? "").trim().toUpperCase();
   const statusInput = String(formData.get("status") ?? "").trim();
   const startDateInput = String(formData.get("startDate") ?? "").trim();
   const endDateInput = String(formData.get("endDate") ?? "").trim();
@@ -117,7 +113,6 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
   }
 
   const budget = parseBudget(parsed.budgetInput);
-  const currency = isCurrencyCode(parsed.currencyInput) ? parsed.currencyInput : null;
   const status = isProjectStatus(parsed.statusInput) ? parsed.statusInput : null;
   const startDate = new Date(parsed.startDateInput);
   const endDate = new Date(parsed.endDateInput);
@@ -126,13 +121,6 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: { budget: "Enter a valid project budget." },
-    };
-  }
-
-  if (!currency) {
-    return {
-      error: "Please correct the highlighted fields.",
-      fieldErrors: { currency: "Choose a valid project currency." },
     };
   }
 
@@ -255,7 +243,7 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
     data: {
       ...parsed,
       budget,
-      currency,
+      currency: parsed.currencyInput,
       status,
       startDate,
       endDate,
@@ -265,6 +253,33 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
       currentStageName: parsed.stageNames[0] || "Stage 1",
     },
   };
+}
+
+async function resolveProjectCurrencyCode(
+  currencyCode: string,
+  options: { allowInactiveCode?: string } = {},
+) {
+  const normalizedCode = currencyCode.trim().toUpperCase();
+
+  if (!normalizedCode) {
+    return null;
+  }
+
+  const currency = await prisma.projectCurrency.findFirst({
+    where: {
+      code: normalizedCode,
+      OR:
+        options.allowInactiveCode &&
+        normalizedCode === options.allowInactiveCode.trim().toUpperCase()
+          ? [{ isActive: true }, { code: normalizedCode }]
+          : [{ isActive: true }],
+    },
+    select: {
+      code: true,
+    },
+  });
+
+  return currency?.code ?? null;
 }
 
 export async function createProjectAction(
@@ -303,6 +318,15 @@ export async function createProjectAction(
     collaboratorIds,
   } = validated.data;
 
+  const currencyCode = await resolveProjectCurrencyCode(currency);
+
+  if (!currencyCode) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { currency: "Choose a valid project currency." },
+    };
+  }
+
   const validCollaborators = collaboratorIds.length
     ? await prisma.user.findMany({
         where: {
@@ -329,7 +353,7 @@ export async function createProjectAction(
         tag: tag || null,
         description,
         budget,
-        currency,
+        currency: currencyCode,
         status,
         startDate,
         endDate,
@@ -423,6 +447,26 @@ export async function updateProjectAction(
     collaboratorIds,
   } = validated.data;
 
+  const existingProject = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { currency: true },
+  });
+
+  if (!existingProject) {
+    return { error: "Project not found." };
+  }
+
+  const currencyCode = await resolveProjectCurrencyCode(currency, {
+    allowInactiveCode: existingProject.currency,
+  });
+
+  if (!currencyCode) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { currency: "Choose a valid project currency." },
+    };
+  }
+
   const validCollaborators = collaboratorIds.length
     ? await prisma.user.findMany({
         where: {
@@ -448,7 +492,7 @@ export async function updateProjectAction(
         tag: tag || null,
         description,
         budget,
-        currency,
+        currency: currencyCode,
         status,
         startDate,
         endDate,

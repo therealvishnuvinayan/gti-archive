@@ -20,7 +20,9 @@ export default async function ProjectMasterDataPage() {
       <ProjectMasterDataWorkspace
         categories={masterData.categories}
         tags={masterData.tags}
+        currencies={masterData.currencies}
         summary={masterData.summary}
+        canDeleteItems={user.role === UserRole.SUPER_ADMIN}
       />
     </DashboardLayout>
   );

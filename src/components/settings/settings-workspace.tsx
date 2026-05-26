@@ -1154,7 +1154,7 @@ export function SettingsWorkspace({
 
           <SettingsCard
             title="Project Master Data"
-            description="Manage reusable project categories and tags used across project forms and filters."
+            description="Manage reusable project categories, tags, and currencies used across project forms and filters."
             action={
               <Button
                 asChild

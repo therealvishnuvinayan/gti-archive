@@ -6,7 +6,6 @@ import {
 } from "@prisma/client";
 import type {
   CollaboratorType,
-  CurrencyCode,
   Project,
   ProjectCollaborator,
   ProjectStage,
@@ -62,7 +61,7 @@ export type ProjectEditorRecord = {
   tag: string;
   description: string;
   budget: string;
-  currency: CurrencyCode;
+  currency: string;
   status: ProjectStatus;
   startDate: string;
   endDate: string;
@@ -151,7 +150,7 @@ export type ProjectFlowRecord = {
   executorName: string;
   description: string;
   budget: string;
-  currency: CurrencyCode;
+  currency: string;
   statusLabel: string;
   currentStageName: string;
   currentStageId: string | null;
@@ -234,7 +233,7 @@ export function formatProjectDate(date: Date | string | number) {
 
 export function formatProjectBudget(
   budget: number | null | undefined,
-  currency: CurrencyCode = "USD",
+  currency = "USD",
 ) {
   if (!budget || budget <= 0) {
     return "—";

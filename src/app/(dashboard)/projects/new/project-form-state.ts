@@ -63,7 +63,7 @@ export type ProjectEditorInitialValues = {
   tag: string;
   description: string;
   budget: string;
-  currency: "USD" | "AED" | "EUR" | "GBP" | "INR";
+  currency: string;
   status: "ONGOING" | "ON_HOLD" | "PENDING" | "COMPLETED";
   startDate: string;
   endDate: string;

@@ -12,6 +12,7 @@ type SaveMasterDataInput = {
   name: string;
   description?: string;
   color?: string;
+  code?: string;
   isActive: boolean;
 };
 
@@ -30,12 +31,23 @@ async function requireAdminUser() {
   return user;
 }
 
+async function requireSuperAdminUser() {
+  const user = await requireUser();
+
+  if (user.role !== UserRole.SUPER_ADMIN) {
+    throw new Error("Only super admins can delete project master data.");
+  }
+
+  return user;
+}
+
 function normalizeMasterDataInput(input: SaveMasterDataInput) {
   return {
     id: input.id?.trim() || undefined,
     name: input.name.trim(),
     description: input.description?.trim() || null,
     color: input.color?.trim() || null,
+    code: input.code?.trim().toUpperCase() || "",
     isActive: input.isActive,
   };
 }
@@ -170,6 +182,90 @@ export async function saveProjectTagAction(input: SaveMasterDataInput) {
   return { success: true };
 }
 
+export async function saveProjectCurrencyAction(input: SaveMasterDataInput) {
+  await requireAdminUser();
+
+  const parsed = normalizeMasterDataInput(input);
+
+  if (!parsed.name) {
+    return { error: "Currency name is required." };
+  }
+
+  if (!parsed.code) {
+    return { error: "Currency code is required." };
+  }
+
+  if (!/^[A-Z]{3}$/.test(parsed.code)) {
+    return { error: "Currency code must be 3 uppercase letters." };
+  }
+
+  const duplicate = await withPrismaRetry(() =>
+    prisma.projectCurrency.findFirst({
+      where: {
+        OR: [
+          {
+            code: {
+              equals: parsed.code,
+              mode: "insensitive",
+            },
+          },
+          {
+            name: {
+              equals: parsed.name,
+              mode: "insensitive",
+            },
+          },
+        ],
+        ...(parsed.id
+          ? {
+              id: {
+                not: parsed.id,
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    }),
+  );
+
+  if (duplicate) {
+    if (duplicate.code.toLowerCase() === parsed.code.toLowerCase()) {
+      return { error: "A currency with this code already exists." };
+    }
+
+    return { error: "A currency with this name already exists." };
+  }
+
+  await withPrismaRetry(() =>
+    parsed.id
+      ? prisma.projectCurrency.update({
+          where: {
+            id: parsed.id,
+          },
+          data: {
+            name: parsed.name,
+            code: parsed.code,
+            isActive: parsed.isActive,
+          },
+        })
+      : prisma.projectCurrency.create({
+          data: {
+            name: parsed.name,
+            code: parsed.code,
+            isActive: parsed.isActive,
+          },
+        }),
+  );
+
+  await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
 export async function setProjectCategoryStatusAction(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
@@ -200,6 +296,145 @@ export async function setProjectTagStatusAction(input: ToggleMasterDataInput) {
       data: {
         isActive: input.isActive,
       },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function setProjectCurrencyStatusAction(input: ToggleMasterDataInput) {
+  await requireAdminUser();
+
+  await withPrismaRetry(() =>
+    prisma.projectCurrency.update({
+      where: {
+        id: input.id,
+      },
+      data: {
+        isActive: input.isActive,
+      },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function deleteProjectCategoryAction(id: string) {
+  await requireSuperAdminUser();
+
+  const category = await withPrismaRetry(() =>
+    prisma.projectCategory.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    }),
+  );
+
+  if (!category) {
+    return { error: "Category not found." };
+  }
+
+  const usageCount = await withPrismaRetry(() =>
+    prisma.project.count({
+      where: {
+        category: {
+          equals: category.name,
+          mode: "insensitive",
+        },
+      },
+    }),
+  );
+
+  if (usageCount > 0) {
+    return { error: "This category is already used by existing projects. Deactivate it instead." };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.projectCategory.delete({
+      where: { id },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function deleteProjectTagAction(id: string) {
+  await requireSuperAdminUser();
+
+  const tag = await withPrismaRetry(() =>
+    prisma.projectTag.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    }),
+  );
+
+  if (!tag) {
+    return { error: "Tag not found." };
+  }
+
+  const usageCount = await withPrismaRetry(() =>
+    prisma.project.count({
+      where: {
+        tag: {
+          equals: tag.name,
+          mode: "insensitive",
+        },
+      },
+    }),
+  );
+
+  if (usageCount > 0) {
+    return { error: "This tag is already used by existing projects. Deactivate it instead." };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.projectTag.delete({
+      where: { id },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function deleteProjectCurrencyAction(id: string) {
+  await requireSuperAdminUser();
+
+  const currency = await withPrismaRetry(() =>
+    prisma.projectCurrency.findUnique({
+      where: { id },
+      select: { id: true, code: true },
+    }),
+  );
+
+  if (!currency) {
+    return { error: "Currency not found." };
+  }
+
+  const usageCount = await withPrismaRetry(() =>
+    prisma.project.count({
+      where: {
+        currency: {
+          equals: currency.code,
+          mode: "insensitive",
+        },
+      },
+    }),
+  );
+
+  if (usageCount > 0) {
+    return { error: "This currency is already used by existing projects. Deactivate it instead." };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.projectCurrency.delete({
+      where: { id },
     }),
   );
 

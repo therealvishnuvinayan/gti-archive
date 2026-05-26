@@ -21,6 +21,7 @@ export default async function NewProjectPage() {
         availableCollaborators={collaborators}
         categoryOptions={masterDataOptions.categories}
         tagOptions={masterDataOptions.tags}
+        currencyOptions={masterDataOptions.currencies}
       />
     </DashboardLayout>
   );

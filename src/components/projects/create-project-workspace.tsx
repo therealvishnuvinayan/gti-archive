@@ -59,8 +59,6 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
 
-const currencyOptions = ["USD", "AED", "EUR", "GBP", "INR"] as const;
-
 const projectStatusOptions = [
   { value: "ONGOING", label: "Ongoing" },
   { value: "ON_HOLD", label: "On Hold" },
@@ -79,8 +77,6 @@ type StageForm = {
   plannedDueAt: string;
 };
 
-type CurrencyValue = (typeof currencyOptions)[number];
-
 type MonthPickerProps = {
   label: string;
   value: Date | null;
@@ -93,6 +89,10 @@ type CreateProjectWorkspaceProps = {
   availableCollaborators: CollaboratorRecord[];
   categoryOptions?: string[];
   tagOptions?: string[];
+  currencyOptions?: Array<{
+    code: string;
+    name: string;
+  }>;
   mode?: "create" | "edit";
   initialValues?: ProjectEditorInitialValues;
   action?: (
@@ -239,6 +239,7 @@ export function CreateProjectWorkspace({
   availableCollaborators,
   categoryOptions = [],
   tagOptions = [],
+  currencyOptions = [],
   mode = "create",
   initialValues,
   action = mode === "edit" ? updateProjectAction : createProjectAction,
@@ -255,8 +256,8 @@ export function CreateProjectWorkspace({
   );
   const [projectTag, setProjectTag] = useState(initialValues?.tag ?? "");
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
-  const [projectCurrency, setProjectCurrency] = useState<CurrencyValue>(
-    initialValues?.currency ?? "USD",
+  const [projectCurrency, setProjectCurrency] = useState<string>(
+    initialValues?.currency ?? currencyOptions[0]?.code ?? "",
   );
   const [projectBrief, setProjectBrief] = useState(initialValues?.description ?? "");
   const [projectStatus, setProjectStatus] = useState<ProjectStatusValue>(
@@ -337,6 +338,16 @@ export function CreateProjectWorkspace({
         : tagOptions,
     [projectTag, tagOptions],
   );
+  const currencySelectOptions = useMemo(() => {
+    if (
+      projectCurrency &&
+      !currencyOptions.some((currency) => currency.code === projectCurrency)
+    ) {
+      return [{ code: projectCurrency, name: projectCurrency }, ...currencyOptions];
+    }
+
+    return currencyOptions;
+  }, [currencyOptions, projectCurrency]);
 
   const overview = useMemo(
     () => ({
@@ -826,15 +837,22 @@ export function CreateProjectWorkspace({
                   />
                   <Select
                     value={projectCurrency}
-                    onValueChange={(nextValue) => setProjectCurrency(nextValue as CurrencyValue)}
+                    onValueChange={setProjectCurrency}
+                    disabled={currencySelectOptions.length === 0}
                   >
                     <SelectTrigger className="h-[42px] w-[108px] text-[12px] font-medium">
-                      <SelectValue />
+                      <SelectValue
+                        placeholder={
+                          currencySelectOptions.length === 0
+                            ? "No currencies available"
+                            : "Select currency"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      {currencyOptions.map((currency) => (
-                        <SelectItem key={currency} value={currency}>
-                          {currency}
+                      {currencySelectOptions.map((currency) => (
+                        <SelectItem key={currency.code} value={currency.code}>
+                          {currency.code}
                         </SelectItem>
                       ))}
                     </SelectContent>
