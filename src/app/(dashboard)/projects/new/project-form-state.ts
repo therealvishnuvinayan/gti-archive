@@ -4,6 +4,7 @@ export type ProjectFormFieldErrors = {
   name?: string;
   category?: string;
   executorName?: string;
+  executorUserId?: string;
   tag?: string;
   description?: string;
   budget?: string;
@@ -63,6 +64,7 @@ export type ProjectEditorInitialValues = {
   name: string;
   category: string;
   executorName: string;
+  executorUserId?: string | null;
   tag: string;
   description: string;
   budget: string;

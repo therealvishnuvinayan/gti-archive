@@ -49,6 +49,7 @@ function parseProjectFormData(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
   const executorName = String(formData.get("executorName") ?? "").trim();
+  const executorUserId = String(formData.get("executorUserId") ?? "").trim();
   const tag = String(formData.get("tag") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const budgetInput = String(formData.get("budget") ?? "").trim();
@@ -85,6 +86,7 @@ function parseProjectFormData(formData: FormData) {
     name,
     category,
     executorName,
+    executorUserId,
     tag,
     description,
     budgetInput,
@@ -108,7 +110,7 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
   if (!parsed.name) fieldErrors.name = "Project name is required.";
   if (!parsed.category) fieldErrors.category = "Project category is required.";
   if (!parsed.executorName) {
-    fieldErrors.executorName = "Project executor is required.";
+    fieldErrors.executorUserId = "Project executor is required.";
   }
   if (!parsed.description) fieldErrors.description = "Project brief is required.";
   if (!parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
@@ -291,6 +293,40 @@ async function resolveProjectCurrencyCode(
   return currency?.code ?? null;
 }
 
+async function resolveProjectExecutor(
+  executorUserId: string,
+  fallbackExecutorName: string,
+) {
+  const normalizedId = executorUserId.trim();
+
+  if (!normalizedId) {
+    return fallbackExecutorName
+      ? { executorUserId: null, executorName: fallbackExecutorName }
+      : null;
+  }
+
+  const executorUser = await prisma.user.findUnique({
+    where: {
+      id: normalizedId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      collaboratorType: true,
+    },
+  });
+
+  if (!executorUser) {
+    return null;
+  }
+
+  return {
+    executorUserId: executorUser.id,
+    executorName: executorUser.name?.trim() || executorUser.email,
+  };
+}
+
 export async function createProjectAction(
   _previousState: ProjectFormState,
   formData: FormData,
@@ -310,6 +346,7 @@ export async function createProjectAction(
     name,
     category,
     executorName,
+    executorUserId,
     tag,
     description,
     budget,
@@ -334,6 +371,15 @@ export async function createProjectAction(
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: { currency: "Choose a valid project currency." },
+    };
+  }
+
+  const resolvedExecutor = await resolveProjectExecutor(executorUserId, executorName);
+
+  if (!resolvedExecutor) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { executorUserId: "Choose a valid project executor." },
     };
   }
 
@@ -378,7 +424,8 @@ export async function createProjectAction(
       data: {
         name,
         category,
-        executorName,
+        executorName: resolvedExecutor.executorName,
+        executorUserId: resolvedExecutor.executorUserId,
         tag: tag || null,
         description,
         budget,
@@ -464,6 +511,7 @@ export async function updateProjectAction(
     name,
     category,
     executorName,
+    executorUserId,
     tag,
     description,
     budget,
@@ -499,6 +547,15 @@ export async function updateProjectAction(
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: { currency: "Choose a valid project currency." },
+    };
+  }
+
+  const resolvedExecutor = await resolveProjectExecutor(executorUserId, executorName);
+
+  if (!resolvedExecutor) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { executorUserId: "Choose a valid project executor." },
     };
   }
 
@@ -542,7 +599,8 @@ export async function updateProjectAction(
       data: {
         name,
         category,
-        executorName,
+        executorName: resolvedExecutor.executorName,
+        executorUserId: resolvedExecutor.executorUserId,
         tag: tag || null,
         description,
         budget,

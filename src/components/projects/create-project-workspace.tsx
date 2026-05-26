@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useFormStatus } from "react-dom";
-import { Download, Loader2, Paperclip, Plus, X } from "lucide-react";
+import { Check, ChevronDown, Download, Loader2, Paperclip, Plus, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
@@ -107,6 +107,13 @@ type CreateProjectWorkspaceProps = {
   ) => Promise<ProjectFormState>;
 };
 
+type ExecutorOption = {
+  id: string;
+  name: string;
+  email: string;
+  type: CollaboratorRecord["type"];
+};
+
 type UploadAssetResponse = {
   attachmentId?: string;
   uploadUrl?: string;
@@ -184,6 +191,10 @@ function FieldError({ message }: { message?: string }) {
   return <p className="mt-2 text-[12px] font-medium text-[#ba3f31]">{message}</p>;
 }
 
+function formatExecutorTypeLabel(type: CollaboratorRecord["type"]) {
+  return type === "External" ? "External Collaborator" : "Internal Collaborator";
+}
+
 function CreateProjectSubmitButton({
   mode,
   uploadPhase,
@@ -255,10 +266,22 @@ export function CreateProjectWorkspace({
     action,
     initialProjectFormState,
   );
+  const initialExecutorOption =
+    availableCollaborators.find(
+      (collaborator) =>
+        collaborator.id === initialValues?.executorUserId ||
+        ((!initialValues?.executorUserId && initialValues?.executorName
+          ? collaborator.name.trim().toLowerCase() === initialValues.executorName.trim().toLowerCase() ||
+            collaborator.email.trim().toLowerCase() === initialValues.executorName.trim().toLowerCase()
+          : false)),
+    ) ?? null;
   const [projectName, setProjectName] = useState(initialValues?.name ?? "");
   const [projectCategory, setProjectCategory] = useState(initialValues?.category ?? "");
   const [projectExecutor, setProjectExecutor] = useState(
-    initialValues?.executorName ?? "",
+    initialExecutorOption?.name ?? initialValues?.executorName ?? "",
+  );
+  const [projectExecutorUserId, setProjectExecutorUserId] = useState(
+    initialExecutorOption?.id ?? initialValues?.executorUserId ?? "",
   );
   const [projectTag, setProjectTag] = useState(initialValues?.tag ?? "");
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
@@ -321,7 +344,10 @@ export function CreateProjectWorkspace({
   const [attachmentError, setAttachmentError] = useState<string>();
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+  const [executorPickerOpen, setExecutorPickerOpen] = useState(false);
+  const [executorSearch, setExecutorSearch] = useState("");
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const executorPickerRef = useRef<HTMLDivElement | null>(null);
   const handledCreatedProjectIdRef = useRef<string | null>(null);
   const [, startRefresh] = useTransition();
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
@@ -354,6 +380,33 @@ export function CreateProjectWorkspace({
 
     return currencyOptions;
   }, [currencyOptions, projectCurrency]);
+  const executorOptions = useMemo<ExecutorOption[]>(
+    () =>
+      availableCollaboratorRecords.map((collaborator) => ({
+        id: collaborator.id,
+        name: collaborator.name,
+        email: collaborator.email,
+        type: collaborator.type,
+      })),
+    [availableCollaboratorRecords],
+  );
+  const selectedExecutorOption = useMemo(
+    () => executorOptions.find((option) => option.id === projectExecutorUserId) ?? null,
+    [executorOptions, projectExecutorUserId],
+  );
+  const filteredExecutorOptions = useMemo(() => {
+    const query = executorSearch.trim().toLowerCase();
+
+    if (!query) {
+      return executorOptions;
+    }
+
+    return executorOptions.filter((option) =>
+      [option.name, option.email, option.type, formatExecutorTypeLabel(option.type)].some(
+        (value) => value.toLowerCase().includes(query),
+      ),
+    );
+  }, [executorOptions, executorSearch]);
 
   const overview = useMemo(
     () => ({
@@ -650,6 +703,27 @@ export function CreateProjectWorkspace({
   }
 
   useEffect(() => {
+    if (!executorPickerOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (
+        executorPickerRef.current &&
+        !executorPickerRef.current.contains(event.target as Node)
+      ) {
+        setExecutorPickerOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [executorPickerOpen]);
+
+  useEffect(() => {
     if (mode !== "create" || !formState.projectId) {
       return;
     }
@@ -753,6 +827,8 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="startDate" value={startDate ? formatDateValue(startDate) : ""} />
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
       <input type="hidden" name="category" value={projectCategory} />
+      <input type="hidden" name="executorName" value={projectExecutor} />
+      <input type="hidden" name="executorUserId" value={projectExecutorUserId} />
       <input type="hidden" name="tag" value={projectTag} />
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
@@ -841,15 +917,96 @@ export function CreateProjectWorkspace({
 
               <label className="block">
                 <RequiredLabel>Project Executor</RequiredLabel>
-                <Input
-                  value={projectExecutor}
-                  onChange={(event) => setProjectExecutor(event.target.value)}
-                  name="executorName"
-                  required
-                  placeholder="Select person or company responsible for execution"
-                  className="h-[42px] text-[12px]"
-                />
-                <FieldError message={fieldErrors.executorName} />
+                <div ref={executorPickerRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExecutorPickerOpen((current) => !current);
+                      setExecutorSearch("");
+                    }}
+                    className="flex h-[42px] w-full items-center justify-between rounded-full border border-line bg-white px-4 text-left text-[12px] font-medium text-[#111712] shadow-[0_6px_16px_rgba(16,29,21,0.04)]"
+                    aria-haspopup="listbox"
+                    aria-expanded={executorPickerOpen}
+                  >
+                    <span className="truncate">
+                      {selectedExecutorOption?.name ||
+                        projectExecutor ||
+                        "Search and select executor"}
+                    </span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-[#7b857d]" />
+                  </button>
+
+                  {executorPickerOpen ? (
+                    <div className="absolute z-30 mt-2 w-full rounded-[20px] border border-[#dde6de] bg-white p-3 shadow-[0_24px_50px_rgba(17,31,23,0.12)]">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a948c]" />
+                        <Input
+                          value={executorSearch}
+                          onChange={(event) => setExecutorSearch(event.target.value)}
+                          placeholder="Search and select executor"
+                          className="h-10 pl-9 text-[12px]"
+                          autoFocus
+                        />
+                      </div>
+
+                      <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
+                        {filteredExecutorOptions.length > 0 ? (
+                          filteredExecutorOptions.map((option) => {
+                            const isSelected = option.id === projectExecutorUserId;
+
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => {
+                                  setProjectExecutorUserId(option.id);
+                                  setProjectExecutor(option.name);
+                                  setExecutorPickerOpen(false);
+                                  setExecutorSearch("");
+                                }}
+                                className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2 text-left transition ${
+                                  isSelected
+                                    ? "bg-[#eef7ef]"
+                                    : "bg-[#fbfcfa] hover:bg-[#f3f8f3]"
+                                }`}
+                              >
+                                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
+                                  {isSelected ? (
+                                    <Check className="h-4 w-4 text-brand" />
+                                  ) : (
+                                    <span className="h-2.5 w-2.5 rounded-full bg-[#d6dfd8]" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-[13px] font-[700] text-[#162019]">
+                                    {option.name}
+                                  </p>
+                                  <p className="truncate text-[11px] text-[#6f796f]">
+                                    {option.email}
+                                  </p>
+                                  <p className="mt-1 text-[10px] font-[700] uppercase tracking-[0.08em] text-brand">
+                                    {formatExecutorTypeLabel(option.type)}
+                                  </p>
+                                </div>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="rounded-[16px] border border-dashed border-[#d7dfd7] bg-[#fbfcfa] px-4 py-5 text-center text-[12px] text-[#7a837b]">
+                            No collaborators found. Add a collaborator first.
+                          </div>
+                        )}
+                      </div>
+
+                      {!selectedExecutorOption && projectExecutor ? (
+                        <p className="mt-3 text-[11px] text-[#7a837b]">
+                          Current saved executor: <span className="font-[700] text-[#243028]">{projectExecutor}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <FieldError message={fieldErrors.executorUserId || fieldErrors.executorName} />
               </label>
 
               <label className="block">

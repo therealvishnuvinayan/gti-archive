@@ -106,6 +106,7 @@ model User {
   attachments       ProjectAttachment[]
   activityLogs      ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
+  assignedProjects  Project[]           @relation("ProjectExecutor")
   calendarEvents    CalendarEvent[]
   projectCollaborations       ProjectCollaborator[] @relation("ProjectCollaboratorUser")
   addedProjectCollaborations  ProjectCollaborator[] @relation("ProjectCollaboratorAdder")
@@ -121,6 +122,8 @@ model Project {
   category         String
   tag              String?
   executorName     String?
+  executorUserId   String?
+  executorUser     User?         @relation("ProjectExecutor", fields: [executorUserId], references: [id], onDelete: SetNull)
   description      String
   budget           Int
   currency         String        @default("USD")
@@ -144,6 +147,7 @@ model Project {
   @@index([status])
   @@index([createdAt])
   @@index([createdById])
+  @@index([executorUserId])
 }
 
 model ProjectCategory {

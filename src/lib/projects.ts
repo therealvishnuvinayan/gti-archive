@@ -24,6 +24,7 @@ export const PROJECTS_CACHE_TAG = "projects";
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
+  executorUser?: Pick<User, "id" | "name" | "email" | "collaboratorType"> | null;
   stages: ProjectStage[];
   collaborators?: Array<
     ProjectCollaborator & {
@@ -63,6 +64,7 @@ export type ProjectEditorRecord = {
   name: string;
   category: string;
   executorName: string;
+  executorUserId?: string | null;
   tag: string;
   description: string;
   budget: string;
@@ -453,6 +455,11 @@ function mapStageToCard(project: ProjectWithCreator, stage: ProjectStage): Proje
 
 function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
+  const executorDisplayName =
+    project.executorUser?.name?.trim() ||
+    project.executorUser?.email ||
+    project.executorName?.trim() ||
+    "—";
   const stages = getProjectStages(project);
   const currentStage =
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
@@ -468,7 +475,7 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
     ownerId: project.createdById,
     title: project.name,
     category: project.category,
-    executorName: project.executorName?.trim() || "—",
+    executorName: executorDisplayName,
     description: project.description,
     budget: formatProjectBudget(project.budget, project.currency),
     currency: project.currency,
@@ -538,12 +545,18 @@ function formatProjectInputDateTime(date: Date | string | number | null | undefi
 
 function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
   const stages = getProjectStages(project);
+  const executorDisplayName =
+    project.executorUser?.name?.trim() ||
+    project.executorUser?.email ||
+    project.executorName?.trim() ||
+    "";
 
   return {
     id: project.id,
     name: project.name,
     category: project.category,
-    executorName: project.executorName?.trim() || "",
+    executorName: executorDisplayName,
+    executorUserId: project.executorUserId ?? null,
     tag: project.tag?.trim() || "",
     description: project.description,
     budget: String(project.budget),
@@ -1121,6 +1134,14 @@ export async function getProjectsList(filter: ProjectsListFilter) {
                 email: true,
               },
             },
+            executorUser: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                collaboratorType: true,
+              },
+            },
             stages: true,
             attachments: {
               where: {
@@ -1174,6 +1195,14 @@ export async function getProjectById(id: string) {
               select: {
                 name: true,
                 email: true,
+              },
+            },
+            executorUser: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                collaboratorType: true,
               },
             },
             stages: true,
