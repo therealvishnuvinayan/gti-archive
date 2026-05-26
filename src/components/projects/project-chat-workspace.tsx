@@ -53,6 +53,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageHistoryRecord } from "@/lib/project-history";
 import type {
   ProjectAttachmentRecord,
@@ -820,6 +821,14 @@ export function ProjectChatWorkspace({
       }
 
       applyUpdatedCollaborators(result.collaborators);
+      showSuccessToast("Collaborator removed successfully.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to remove the collaborator right now.";
+      setCollaboratorDialogError(message);
+      showErrorToast("Unable to remove collaborator.", message);
     } finally {
       setCollaboratorSaving(false);
     }
@@ -844,6 +853,19 @@ export function ProjectChatWorkspace({
       }
 
       applyUpdatedCollaborators(result.collaborators);
+      showSuccessToast(
+        paused ? "Chat visibility paused." : "Chat visibility resumed.",
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to update collaborator chat visibility right now.";
+      setCollaboratorDialogError(message);
+      showErrorToast(
+        paused ? "Unable to pause chat visibility." : "Unable to resume chat visibility.",
+        message,
+      );
     } finally {
       setCollaboratorSaving(false);
     }
@@ -937,12 +959,21 @@ export function ProjectChatWorkspace({
 
       if ("error" in result) {
         setCollaboratorDialogError(result.error);
+        showErrorToast("Unable to update collaborators.", result.error);
         return;
       }
 
       applyUpdatedCollaborators(result.collaborators);
       setCollaboratorPickerOpen(false);
       setCollaboratorDialogError(undefined);
+      showSuccessToast("Project collaborators updated successfully.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to update project collaborators right now.";
+      setCollaboratorDialogError(message);
+      showErrorToast("Unable to update collaborators.", message);
     } finally {
       setCollaboratorSaving(false);
     }
@@ -964,6 +995,7 @@ export function ProjectChatWorkspace({
 
       if ("error" in inviteResult) {
         setCollaboratorDialogError(inviteResult.error);
+        showErrorToast("Unable to add collaborator.", inviteResult.error);
         return;
       }
 
@@ -989,17 +1021,20 @@ export function ProjectChatWorkspace({
 
       if ("error" in saveResult) {
         setCollaboratorDialogError(saveResult.error);
+        showErrorToast("Unable to add collaborator.", saveResult.error);
         return;
       }
 
       applyUpdatedCollaborators(saveResult.collaborators);
       setCollaboratorDialogOpen(false);
+      showSuccessToast("Collaborator added successfully.");
     } catch (error) {
-      setCollaboratorDialogError(
+      const message =
         error instanceof Error
           ? error.message
-          : "Unable to save the collaborator right now. Please try again.",
-      );
+          : "Unable to save the collaborator right now. Please try again.";
+      setCollaboratorDialogError(message);
+      showErrorToast("Unable to add collaborator.", message);
     } finally {
       setCollaboratorSaving(false);
     }
@@ -1032,11 +1067,20 @@ export function ProjectChatWorkspace({
 
       if ("error" in result) {
         setCollaboratorDialogError(result.error);
+        showErrorToast("Unable to update collaborator type.", result.error);
         refreshHistory();
         return;
       }
 
       applyUpdatedCollaborators(result.collaborators);
+      showSuccessToast("Collaborator type updated successfully.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to update collaborator type right now.";
+      setCollaboratorDialogError(message);
+      showErrorToast("Unable to update collaborator type.", message);
     } finally {
       setCollaboratorSaving(false);
     }
@@ -1370,11 +1414,23 @@ export function ProjectChatWorkspace({
         setStageCompleteError(
           result.error ?? "Unable to mark this stage as complete right now.",
         );
+        showErrorToast(
+          "Unable to mark stage complete.",
+          result.error ?? "Unable to mark this stage as complete right now.",
+        );
         return;
       }
 
       setStageCompleteDialogOpen(false);
+      showSuccessToast("Stage marked as complete.");
       refreshHistory();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to mark this stage as complete right now.";
+      setStageCompleteError(message);
+      showErrorToast("Unable to mark stage complete.", message);
     } finally {
       setIsMarkingStageComplete(false);
     }
@@ -1582,11 +1638,12 @@ export function ProjectChatWorkspace({
         });
 
       if (failedUploads.length > 0) {
-        setComposerError(
+        const message =
           failedUploads.length === filesToUpload.length
             ? "Comment saved, but all file uploads failed. Please try attaching them again."
-            : `Comment saved, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`,
-        );
+            : `Comment saved, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`;
+        setComposerError(message);
+        showErrorToast("Attachment upload failed.", message);
       }
 
       setConfirmedComments((current) => [
@@ -1628,9 +1685,10 @@ export function ProjectChatWorkspace({
       setOptimisticComments((current) =>
         current.filter((entry) => entry.id !== optimisticCommentId),
       );
-      setComposerError(
-        error instanceof Error ? error.message : "Unable to send the comment right now.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Unable to send the comment right now.";
+      setComposerError(message);
+      showErrorToast("Unable to send comment.", message);
     } finally {
       setIsSendingComment(false);
     }
@@ -1657,12 +1715,23 @@ export function ProjectChatWorkspace({
         ...current,
         [attachmentId]: result.submission.submissionReviewStatus ?? status,
       }));
+      showSuccessToast(
+        status === "APPROVED"
+          ? "Submission approved successfully."
+          : "Submission rejected successfully.",
+      );
       refreshHistory();
     } catch (error) {
-      setComposerError(
+      const message =
         error instanceof Error
           ? error.message
-          : "Unable to update the submission review right now.",
+          : "Unable to update the submission review right now.";
+      setComposerError(message);
+      showErrorToast(
+        status === "APPROVED"
+          ? "Unable to approve submission."
+          : "Unable to reject submission.",
+        message,
       );
     } finally {
       setPendingSubmissionReviewId(null);
@@ -1792,11 +1861,12 @@ export function ProjectChatWorkspace({
       );
 
       if (failedUploads.length > 0) {
-        setComposerError(
+        const message =
           failedUploads.length === filesToUpload.length
             ? "Revision created, but all file uploads failed. Please try attaching them again."
-            : `Revision created, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`,
-        );
+            : `Revision created, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`;
+        setComposerError(message);
+        showErrorToast("Submit Work completed with upload issues.", message);
       }
 
       setConfirmedComments((current) => [
@@ -1834,14 +1904,16 @@ export function ProjectChatWorkspace({
       setRevisionDialogOpen(false);
       setRevisionSummary("");
       setPendingRevisionFiles([]);
+      showSuccessToast("Work submitted successfully.");
       refreshHistory();
     } catch (error) {
       setOptimisticComments((current) =>
         current.filter((entry) => entry.id !== optimisticRevisionId),
       );
-      setRevisionDialogError(
-        error instanceof Error ? error.message : "Unable to create the revision right now.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Unable to create the revision right now.";
+      setRevisionDialogError(message);
+      showErrorToast("Unable to submit work.", message);
     } finally {
       setIsUploadingRevision(false);
 
@@ -1932,12 +2004,23 @@ export function ProjectChatWorkspace({
       });
 
       closeRevisionReviewDialog();
+      showSuccessToast(
+        status === "APPROVED"
+          ? "Submission approved successfully."
+          : "Submission rejected successfully.",
+      );
       refreshHistory();
     } catch (error) {
-      setReviewDialogError(
+      const message =
         error instanceof Error
           ? error.message
-          : "Unable to review the submission right now.",
+          : "Unable to review the submission right now.";
+      setReviewDialogError(message);
+      showErrorToast(
+        status === "APPROVED"
+          ? "Unable to approve submission."
+          : "Unable to reject submission.",
+        message,
       );
       setPendingRevisionReviewId(null);
     }

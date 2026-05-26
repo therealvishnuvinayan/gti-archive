@@ -40,6 +40,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import type { CollaboratorRecord } from "@/lib/collaboration";
+import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 type AccessCard = {
@@ -209,6 +210,7 @@ export function CollaborationWorkspace({
   async function handleSaveCollaborator() {
     if (!form.name.trim() || !form.email.trim()) {
       setDialogError("Enter both collaborator name and email.");
+      showErrorToast("Unable to save collaborator.", "Enter both collaborator name and email.");
       return;
     }
 
@@ -221,10 +223,11 @@ export function CollaborationWorkspace({
         ...form,
       });
 
-      if ("error" in result) {
-        setDialogError(result.error);
-        return;
-      }
+        if ("error" in result) {
+          setDialogError(result.error);
+          showErrorToast("Unable to save collaborator.", result.error);
+          return;
+        }
 
       if (dialogMode === "invite") {
         setCollaborators((current) => [...current, result.collaborator]);
@@ -237,9 +240,21 @@ export function CollaborationWorkspace({
       }
 
       setPageNotice(result.warning);
+      showSuccessToast(
+        dialogMode === "invite"
+          ? "Collaborator saved successfully."
+          : "Collaborator updated successfully.",
+      );
+      if (result.warning) {
+        showWarningToast("Collaborator saved with warning.", result.warning);
+      }
       setDialogOpen(false);
     } catch {
       setDialogError("Unable to save the collaborator right now. Please try again.");
+      showErrorToast(
+        "Unable to save collaborator.",
+        "Unable to save the collaborator right now. Please try again.",
+      );
     } finally {
       setSaving(false);
     }
@@ -258,6 +273,7 @@ export function CollaborationWorkspace({
 
       if ("error" in result) {
         setDeleteError(result.error);
+        showErrorToast("Unable to delete collaborator.", result.error);
         return;
       }
 
@@ -266,8 +282,13 @@ export function CollaborationWorkspace({
       );
       setCollaboratorPendingDelete(null);
       setPageNotice("Collaborator deleted successfully.");
+      showSuccessToast("Collaborator deleted successfully.");
     } catch {
       setDeleteError("Unable to delete the collaborator right now. Please try again.");
+      showErrorToast(
+        "Unable to delete collaborator.",
+        "Unable to delete the collaborator right now. Please try again.",
+      );
     } finally {
       setDeletePending(false);
     }

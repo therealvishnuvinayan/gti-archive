@@ -65,6 +65,11 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
+import {
+  showErrorToast,
+  showSuccessToast,
+  showWarningToast,
+} from "@/lib/toast";
 
 const projectStatusOptions = [
   { value: "ONGOING", label: "Ongoing" },
@@ -375,6 +380,8 @@ export function CreateProjectWorkspace({
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const executorPickerRef = useRef<HTMLDivElement | null>(null);
   const handledCreatedProjectIdRef = useRef<string | null>(null);
+  const handledEditProjectIdRef = useRef<string | null>(null);
+  const lastFormToastKeyRef = useRef<string | null>(null);
   const [, startRefresh] = useTransition();
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
@@ -677,6 +684,10 @@ export function CreateProjectWorkspace({
 
     if (hasBudgetConflict) {
       event.preventDefault();
+      showWarningToast(
+        "Budget conflict.",
+        "Total stage budgets exceed the project budget.",
+      );
       setBudgetConflictDialogOpen(true);
     }
   }
@@ -851,6 +862,33 @@ export function CreateProjectWorkspace({
   }, [executorPickerOpen]);
 
   useEffect(() => {
+    if (!formState.error) {
+      return;
+    }
+
+    const toastKey = `${mode}:${formState.error}:${fieldErrors.budgetSummary ?? ""}`;
+
+    if (lastFormToastKeyRef.current === toastKey) {
+      return;
+    }
+
+    lastFormToastKeyRef.current = toastKey;
+
+    if (fieldErrors.budgetSummary) {
+      showWarningToast("Budget conflict.", fieldErrors.budgetSummary);
+      return;
+    }
+
+    showErrorToast(
+      mode === "edit" ? "Unable to update project." : "Unable to create project.",
+      formState.error === "Please correct the highlighted fields." ||
+        formState.error === "Please correct the highlighted stage fields."
+        ? "Please review the highlighted fields."
+        : formState.error,
+    );
+  }, [fieldErrors.budgetSummary, formState.error, mode]);
+
+  useEffect(() => {
     if (mode !== "create" || !formState.projectId) {
       return;
     }
@@ -866,6 +904,7 @@ export function CreateProjectWorkspace({
     const initialBriefCommentId = formState.initialBriefCommentId ?? null;
 
     if (pendingProjectFiles.length === 0) {
+      showSuccessToast("Project created successfully.");
       router.replace(`/projects/${projectId}`);
       return;
     }
@@ -889,6 +928,7 @@ export function CreateProjectWorkspace({
         }
 
         setPendingProjectFiles([]);
+        showSuccessToast("Project created successfully.");
         router.replace(`/projects/${projectId}`);
       } catch (error) {
         if (cancelled) {
@@ -899,6 +939,10 @@ export function CreateProjectWorkspace({
           error instanceof Error
             ? `${error.message} The project was created, but the attachment upload did not finish. You can retry from edit mode.`
             : "The project was created, but the attachment upload did not finish. You can retry from edit mode.",
+        );
+        showErrorToast(
+          "Project created, but attachment upload failed.",
+          "You can retry the attachment upload from edit mode.",
         );
         router.replace(`/projects/${projectId}/edit`);
       } finally {
@@ -921,6 +965,20 @@ export function CreateProjectWorkspace({
     pendingProjectFiles,
     router,
   ]);
+
+  useEffect(() => {
+    if (mode !== "edit" || !formState.projectId) {
+      return;
+    }
+
+    if (handledEditProjectIdRef.current === formState.projectId) {
+      return;
+    }
+
+    handledEditProjectIdRef.current = formState.projectId;
+    showSuccessToast("Project updated successfully.");
+    router.replace(`/projects/${formState.projectId}`);
+  }, [formState.projectId, mode, router]);
 
   async function removeProjectAttachment(attachmentId: string) {
     if (!initialValues?.id) {

@@ -31,6 +31,7 @@ import {
   MIN_PASSWORD_LENGTH,
   getPasswordRequirementChecks,
 } from "@/lib/password-rules";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
 type SettingsWorkspaceProps = {
   user: {
@@ -932,6 +933,7 @@ export function SettingsWorkspace({
       setFieldErrors({
         name: "Full name is required.",
       });
+      showErrorToast("Unable to update profile.", "Please review the highlighted fields.");
       return;
     }
 
@@ -940,6 +942,7 @@ export function SettingsWorkspace({
       setFieldErrors({
         bio: "Short bio must be 300 characters or fewer.",
       });
+      showErrorToast("Unable to update profile.", "Please review the highlighted fields.");
       return;
     }
 
@@ -959,19 +962,27 @@ export function SettingsWorkspace({
         if (result.error) {
           setDrawerError(result.error);
           setFieldErrors(result.fieldErrors ?? {});
+          showErrorToast(
+            "Unable to update profile.",
+            result.error === "Please correct the highlighted fields."
+              ? "Please review the highlighted fields."
+              : result.error,
+          );
           return;
         }
 
         setProfileDrawerOpen(false);
         setSelectedAvatarFile(null);
         setSaveNotice("Profile updated successfully.");
+        showSuccessToast("Profile updated successfully.");
         router.refresh();
       } catch (error) {
-        setDrawerError(
+        const message =
           error instanceof Error
             ? error.message
-            : "Unable to update your profile right now. Please try again.",
-        );
+            : "Unable to update your profile right now. Please try again.";
+        setDrawerError(message);
+        showErrorToast("Unable to update profile.", message);
       }
     });
   }
@@ -1039,6 +1050,7 @@ export function SettingsWorkspace({
     if (Object.keys(nextFieldErrors).length > 0) {
       setPasswordDrawerError("Please correct the highlighted fields.");
       setPasswordFieldErrors(nextFieldErrors);
+      showErrorToast("Unable to update password.", "Please review the highlighted fields.");
       return;
     }
 
@@ -1047,6 +1059,7 @@ export function SettingsWorkspace({
       setPasswordFieldErrors({
         confirmNewPassword: "New password and confirm password do not match.",
       });
+      showErrorToast("Unable to update password.", "Please review the highlighted fields.");
       return;
     }
 
@@ -1055,6 +1068,7 @@ export function SettingsWorkspace({
       setPasswordFieldErrors({
         newPassword: "New password must be different from current password.",
       });
+      showErrorToast("Unable to update password.", "Please review the highlighted fields.");
       return;
     }
 
@@ -1063,6 +1077,7 @@ export function SettingsWorkspace({
       setPasswordFieldErrors({
         newPassword: "Password does not meet the required rules.",
       });
+      showErrorToast("Unable to update password.", "Password does not meet the required rules.");
       return;
     }
 
@@ -1073,15 +1088,26 @@ export function SettingsWorkspace({
         if (result.error) {
           setPasswordDrawerError(result.error);
           setPasswordFieldErrors(result.fieldErrors ?? {});
+          showErrorToast(
+            "Unable to update password.",
+            result.error === "Please correct the highlighted fields."
+              ? "Please review the highlighted fields."
+              : result.error,
+          );
           return;
         }
 
         setPasswordDrawerOpen(false);
         setPasswordForm(buildPasswordDraft());
         setSaveNotice("Password updated successfully.");
+        showSuccessToast("Password updated successfully.");
         router.refresh();
       } catch {
         setPasswordDrawerError("Unable to update your password right now. Please try again.");
+        showErrorToast(
+          "Unable to update password.",
+          "Unable to update your password right now. Please try again.",
+        );
       }
     });
   }

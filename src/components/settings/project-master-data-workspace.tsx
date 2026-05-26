@@ -33,6 +33,7 @@ import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
 type MasterDataTab = "categories" | "tags" | "currencies";
 
@@ -568,6 +569,7 @@ export function ProjectMasterDataWorkspace({
 
     if (nextFieldErrors.name || nextFieldErrors.code) {
       setFieldErrors(nextFieldErrors);
+      showErrorToast("Unable to save value.", "Please review the highlighted fields.");
       return;
     }
 
@@ -595,13 +597,38 @@ export function ProjectMasterDataWorkspace({
 
         if (result.error) {
           setError(result.error);
+          showErrorToast(
+            activeTab === "currencies"
+              ? "Unable to save currency."
+              : activeTab === "tags"
+                ? "Unable to save tag."
+                : "Unable to save category.",
+            result.error,
+          );
           return;
         }
 
         setDrawerOpen(false);
+        showSuccessToast(
+          activeTab === "currencies"
+            ? dialogMode === "add"
+              ? "Currency added successfully."
+              : "Currency updated successfully."
+            : activeTab === "tags"
+              ? dialogMode === "add"
+                ? "Tag added successfully."
+                : "Tag updated successfully."
+              : dialogMode === "add"
+                ? "Category added successfully."
+                : "Category updated successfully.",
+        );
         router.refresh();
       } catch {
         setError("Unable to save this value right now. Please try again.");
+        showErrorToast(
+          "Unable to save value.",
+          "Unable to save this value right now. Please try again.",
+        );
       }
     });
   }
@@ -634,13 +661,25 @@ export function ProjectMasterDataWorkspace({
 
         if (result.error) {
           setDeleteError(result.error);
+          showErrorToast("Unable to delete value.", result.error);
           return;
         }
 
+        showSuccessToast(
+          deleteTarget.tab === "currencies"
+            ? "Currency deleted successfully."
+            : deleteTarget.tab === "tags"
+              ? "Tag deleted successfully."
+              : "Category deleted successfully.",
+        );
         setDeleteTarget(null);
         router.refresh();
       } catch {
         setDeleteError("Unable to delete this item right now. Please try again.");
+        showErrorToast(
+          "Unable to delete value.",
+          "Unable to delete this item right now. Please try again.",
+        );
       }
     });
   }

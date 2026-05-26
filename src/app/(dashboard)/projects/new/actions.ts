@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
-import { redirect } from "next/navigation";
 import { ProjectStatus, UserRole } from "@prisma/client";
 
 import type {
@@ -827,7 +826,7 @@ export async function updateProjectAction(
   revalidatePath(`/projects/${projectId}/edit`);
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 
-  redirect(`/projects/${projectId}`);
+  return { projectId };
 }
 
 export async function deleteProjectAction(projectId: string) {
