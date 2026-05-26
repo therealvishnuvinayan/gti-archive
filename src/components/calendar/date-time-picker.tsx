@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   CalendarMonthGrid,
@@ -81,6 +82,12 @@ type DateTimePickerProps = {
   onChange: (value: string) => void;
 };
 
+type PickerPosition = {
+  top: number;
+  left: number;
+  width: number;
+};
+
 export function DateTimePicker({
   name,
   value,
@@ -89,7 +96,9 @@ export function DateTimePicker({
   const [open, setOpen] = useState(false);
   const [{ date, time }, setDraft] = useState(() => parseDateTimeValue(value));
   const [month, setMonth] = useState(() => parseCalendarDateValue(parseDateTimeValue(value).date));
+  const [position, setPosition] = useState<PickerPosition | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -99,7 +108,10 @@ export function DateTimePicker({
         return;
       }
 
-      if (!containerRef.current?.contains(event.target as Node)) {
+      if (
+        !containerRef.current?.contains(event.target as Node) &&
+        !panelRef.current?.contains(event.target as Node)
+      ) {
         setOpen(false);
       }
     }
@@ -107,6 +119,154 @@ export function DateTimePicker({
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function updatePosition() {
+      const trigger = containerRef.current;
+
+      if (!trigger) {
+        return;
+      }
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 430;
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      const desiredWidth = Math.min(320, viewportWidth - 32);
+      const spaceBelow = viewportHeight - triggerRect.bottom - 16;
+      const spaceAbove = triggerRect.top - 16;
+      const openUpward = spaceBelow < panelHeight && spaceAbove > spaceBelow;
+
+      const unclampedLeft = triggerRect.left;
+      const maxLeft = Math.max(16, viewportWidth - desiredWidth - 16);
+      const left = Math.min(Math.max(16, unclampedLeft), maxLeft);
+      const top = openUpward
+        ? Math.max(16, triggerRect.top - panelHeight - 10)
+        : Math.min(
+            viewportHeight - panelHeight - 16,
+            triggerRect.bottom + 10,
+          );
+
+      setPosition({
+        top,
+        left,
+        width: desiredWidth,
+      });
+    }
+
+    updatePosition();
+
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, date, time]);
+
+  const pickerPanel =
+    open && typeof document !== "undefined" && position
+      ? createPortal(
+          <div
+            ref={panelRef}
+            className="fixed z-[70]"
+            style={{
+              top: position.top,
+              left: position.left,
+              width: position.width,
+              maxHeight: "calc(100vh - 32px)",
+            }}
+          >
+            <Card className="rounded-[22px] border border-line p-4 shadow-[0_20px_50px_rgba(23,39,28,0.16)]">
+              <div className="overflow-y-auto pr-1" style={{ maxHeight: "calc(100vh - 64px)" }}>
+                <CalendarMonthGrid
+                  month={month}
+                  selectedDate={parseCalendarDateValue(date)}
+                  onMonthChange={setMonth}
+                  onSelect={(selectedDate) =>
+                    setDraft((current) => ({
+                      ...current,
+                      date: formatCalendarDateValue(selectedDate),
+                    }))
+                  }
+                  compact
+                />
+
+                <div className="mt-4">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                    Time
+                  </p>
+                  <Select
+                    value={time}
+                    onValueChange={(nextTime) =>
+                      setDraft((current) => ({ ...current, time: nextTime }))
+                    }
+                  >
+                    <SelectTrigger className="h-10 rounded-2xl border border-line bg-white text-[13px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="px-0 text-[12px] text-brand"
+                    onClick={() => {
+                      const today = new Date();
+                      const nextDate = formatCalendarDateValue(today);
+                      setDraft({
+                        date: nextDate,
+                        time: getDefaultTimeValue(),
+                      });
+                      setMonth(today);
+                    }}
+                  >
+                    Today
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-[12px] text-[#6a706b]"
+                      onClick={() => setOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="text-[12px]"
+                      onClick={() => {
+                        onChange(`${date}T${time}`);
+                        setOpen(false);
+                      }}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div ref={containerRef} className="relative">
@@ -124,88 +284,7 @@ export function DateTimePicker({
       >
         <span className="truncate">{formatDisplayDateTime(value)}</span>
       </Button>
-
-      {open ? (
-        <Card className="absolute left-0 top-[calc(100%+10px)] z-20 w-[320px] rounded-[22px] border border-line p-4 shadow-[0_20px_50px_rgba(23,39,28,0.16)]">
-          <CalendarMonthGrid
-            month={month}
-            selectedDate={parseCalendarDateValue(date)}
-            onMonthChange={setMonth}
-            onSelect={(selectedDate) =>
-              setDraft((current) => ({
-                ...current,
-                date: formatCalendarDateValue(selectedDate),
-              }))
-            }
-            compact
-          />
-
-          <div className="mt-4">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
-              Time
-            </p>
-            <Select
-              value={time}
-              onValueChange={(nextTime) =>
-                setDraft((current) => ({ ...current, time: nextTime }))
-              }
-            >
-              <SelectTrigger className="h-10 rounded-2xl border border-line bg-white text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {timeOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="px-0 text-[12px] text-brand"
-              onClick={() => {
-                const today = new Date();
-                const nextDate = formatCalendarDateValue(today);
-                setDraft({
-                  date: nextDate,
-                  time: getDefaultTimeValue(),
-                });
-                setMonth(today);
-              }}
-            >
-              Today
-            </Button>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-[12px] text-[#6a706b]"
-                onClick={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="text-[12px]"
-                onClick={() => {
-                  onChange(`${date}T${time}`);
-                  setOpen(false);
-                }}
-              >
-                Apply
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ) : null}
+      {pickerPanel}
     </div>
   );
 }

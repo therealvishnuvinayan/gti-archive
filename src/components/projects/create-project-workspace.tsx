@@ -377,6 +377,7 @@ export function CreateProjectWorkspace({
   const [budgetConflictDialogOpen, setBudgetConflictDialogOpen] = useState(false);
   const [executorPickerOpen, setExecutorPickerOpen] = useState(false);
   const [executorSearch, setExecutorSearch] = useState("");
+  const [dirtyFieldKeys, setDirtyFieldKeys] = useState<Set<string>>(() => new Set());
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const executorPickerRef = useRef<HTMLDivElement | null>(null);
   const handledCreatedProjectIdRef = useRef<string | null>(null);
@@ -495,7 +496,6 @@ export function CreateProjectWorkspace({
       ),
     );
   }, [executorOptions, executorSearch]);
-
   const overview = useMemo(
     () => ({
       budget: canViewBudget
@@ -544,6 +544,48 @@ export function CreateProjectWorkspace({
     setStages((current) =>
       current.map((stage) => (stage.id === id ? { ...stage, ...patch } : stage)),
     );
+  }
+
+  function clearFieldError(fieldKey: string) {
+    setDirtyFieldKeys((current) => {
+      if (current.has(fieldKey)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.add(fieldKey);
+      return next;
+    });
+  }
+
+  function clearStageFieldError(
+    fieldKey: "stageNames" | "stageBudgets" | "stageDescriptions" | "stageStartDates" | "stageDueDates",
+    index: number,
+  ) {
+    clearFieldError(`${fieldKey}.${index}`);
+  }
+
+  function getFieldError(
+    fieldKey: keyof ProjectFormFieldErrors,
+    message: string | undefined,
+  ) {
+    if (!message) {
+      return undefined;
+    }
+
+    return dirtyFieldKeys.has(fieldKey) ? undefined : message;
+  }
+
+  function getStageFieldError(
+    fieldKey: "stageNames" | "stageBudgets" | "stageDescriptions" | "stageStartDates" | "stageDueDates",
+    index: number,
+    message?: string,
+  ) {
+    if (!message) {
+      return undefined;
+    }
+
+    return dirtyFieldKeys.has(`${fieldKey}.${index}`) ? undefined : message;
   }
 
   function addStage() {
@@ -669,15 +711,25 @@ export function CreateProjectWorkspace({
 
   function handleBudgetChange(value: string) {
     setProjectBudget(normalizeBudgetInput(value));
+    clearFieldError("budget");
+    clearFieldError("currency");
+    clearFieldError("budgetSummary");
   }
 
   function handleStageBudgetChange(stageId: string, value: string) {
+    const stageIndex = stages.findIndex((stage) => stage.id === stageId);
     updateStage(stageId, {
       budget: normalizeBudgetInput(value),
     });
+    if (stageIndex >= 0) {
+      clearStageFieldError("stageBudgets", stageIndex);
+    }
+    clearFieldError("budgetSummary");
   }
 
   function handleProjectFormSubmit(event: React.FormEvent<HTMLFormElement>) {
+    setDirtyFieldKeys(new Set());
+
     if (!canViewBudget) {
       return;
     }
@@ -1077,20 +1129,26 @@ export function CreateProjectWorkspace({
                 <RequiredLabel>Project Name</RequiredLabel>
                 <Input
                   value={projectName}
-                  onChange={(event) => setProjectName(event.target.value)}
+                  onChange={(event) => {
+                    setProjectName(event.target.value);
+                    clearFieldError("name");
+                  }}
                   name="name"
                   required
                   placeholder="Enter Project Name....."
                   className="h-[42px] text-[12px]"
                 />
-                <FieldError message={fieldErrors.name} />
+                <FieldError message={getFieldError("name", fieldErrors.name)} />
               </label>
 
               <label className="block">
                 <RequiredLabel>Project Category</RequiredLabel>
                 <Select
                   value={projectCategory}
-                  onValueChange={setProjectCategory}
+                  onValueChange={(nextValue) => {
+                    setProjectCategory(nextValue);
+                    clearFieldError("category");
+                  }}
                   disabled={categorySelectOptions.length === 0}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
@@ -1110,7 +1168,7 @@ export function CreateProjectWorkspace({
                     ))}
                   </SelectContent>
                 </Select>
-                <FieldError message={fieldErrors.category} />
+                <FieldError message={getFieldError("category", fieldErrors.category)} />
               </label>
 
               <label className="block">
@@ -1161,6 +1219,8 @@ export function CreateProjectWorkspace({
                                   setProjectExecutor(option.name);
                                   setExecutorPickerOpen(false);
                                   setExecutorSearch("");
+                                  clearFieldError("executorUserId");
+                                  clearFieldError("executorName");
                                 }}
                                 className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2 text-left transition ${
                                   isSelected
@@ -1204,7 +1264,12 @@ export function CreateProjectWorkspace({
                     </div>
                   ) : null}
                 </div>
-                <FieldError message={fieldErrors.executorUserId || fieldErrors.executorName} />
+                <FieldError
+                  message={
+                    getFieldError("executorUserId", fieldErrors.executorUserId) ||
+                    getFieldError("executorName", fieldErrors.executorName)
+                  }
+                />
               </label>
 
               <label className="block">
@@ -1223,7 +1288,11 @@ export function CreateProjectWorkspace({
                     />
                     <Select
                       value={projectCurrency}
-                      onValueChange={setProjectCurrency}
+                      onValueChange={(nextValue) => {
+                        setProjectCurrency(nextValue);
+                        clearFieldError("currency");
+                        clearFieldError("budgetSummary");
+                      }}
                       disabled={currencySelectOptions.length === 0}
                     >
                       <SelectTrigger className="h-[42px] w-[108px] text-[12px] font-medium">
@@ -1253,16 +1322,22 @@ export function CreateProjectWorkspace({
                   <>
                     <FieldError
                       message={
-                        fieldErrors.budget ||
-                        fieldErrors.currency ||
+                        getFieldError("budget", fieldErrors.budget) ||
+                        getFieldError("currency", fieldErrors.currency) ||
                         (hasInvalidBudgetInputs
                           ? "Enter a valid project budget greater than zero."
                           : undefined)
                       }
                     />
-                    {fieldErrors.budgetSummary ? (
+                    {getFieldError(
+                      "budgetSummary",
+                      fieldErrors.budgetSummary,
+                    ) ? (
                       <div className="mt-3 rounded-[16px] border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[12px] font-medium text-[#ba3f31]">
-                        {fieldErrors.budgetSummary}
+                        {getFieldError(
+                          "budgetSummary",
+                          fieldErrors.budgetSummary,
+                        )}
                       </div>
                     ) : null}
                   </>
@@ -1273,9 +1348,10 @@ export function CreateProjectWorkspace({
                 <FieldLabel>Project Tag</FieldLabel>
                 <Select
                   value={projectTag || "__no_tag__"}
-                  onValueChange={(nextValue) =>
-                    setProjectTag(nextValue === "__no_tag__" ? "" : nextValue)
-                  }
+                  onValueChange={(nextValue) => {
+                    setProjectTag(nextValue === "__no_tag__" ? "" : nextValue);
+                    clearFieldError("tag");
+                  }}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
                     <SelectValue placeholder="Select project tag" />
@@ -1289,16 +1365,17 @@ export function CreateProjectWorkspace({
                     ))}
                   </SelectContent>
                 </Select>
-                <FieldError message={fieldErrors.tag} />
+                <FieldError message={getFieldError("tag", fieldErrors.tag)} />
               </label>
 
               <label className="block">
                 <RequiredLabel>Project Status</RequiredLabel>
                 <Select
                   value={projectStatus}
-                  onValueChange={(nextValue) =>
-                    setProjectStatus(nextValue as ProjectStatusValue)
-                  }
+                  onValueChange={(nextValue) => {
+                    setProjectStatus(nextValue as ProjectStatusValue);
+                    clearFieldError("status");
+                  }}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
                     <SelectValue />
@@ -1311,7 +1388,7 @@ export function CreateProjectWorkspace({
                     ))}
                   </SelectContent>
                 </Select>
-                <FieldError message={fieldErrors.status} />
+                <FieldError message={getFieldError("status", fieldErrors.status)} />
               </label>
             </div>
             </MotionItem>
@@ -1323,7 +1400,10 @@ export function CreateProjectWorkspace({
                 <div className="relative">
                   <Textarea
                     value={projectBrief}
-                    onChange={(event) => setProjectBrief(event.target.value)}
+                    onChange={(event) => {
+                      setProjectBrief(event.target.value);
+                      clearFieldError("description");
+                    }}
                     name="description"
                     required
                   placeholder="Enter Project Brief......."
@@ -1340,7 +1420,7 @@ export function CreateProjectWorkspace({
                     </button>
                   </label>
                 </div>
-                <FieldError message={fieldErrors.description} />
+                <FieldError message={getFieldError("description", fieldErrors.description)} />
               </label>
 
               <input
@@ -1507,21 +1587,37 @@ export function CreateProjectWorkspace({
               <MonthPicker
                 label="Project Start Date *"
                 value={startDate}
-                onSelect={setStartDate}
+                onSelect={(date) => {
+                  setStartDate(date);
+                  clearFieldError("startDate");
+                }}
                 month={startMonth}
                 onMonthChange={setStartMonth}
               />
-              <FieldError message={fieldErrors.startDate} />
+              <FieldError
+                message={getFieldError(
+                  "startDate",
+                  fieldErrors.startDate,
+                )}
+              />
             </MotionItem>
             <MotionItem y={8}>
               <MonthPicker
                 label="Project End Date *"
                 value={endDate}
-                onSelect={setEndDate}
+                onSelect={(date) => {
+                  setEndDate(date);
+                  clearFieldError("endDate");
+                }}
                 month={endMonth}
                 onMonthChange={setEndMonth}
               />
-              <FieldError message={fieldErrors.endDate} />
+              <FieldError
+                message={getFieldError(
+                  "endDate",
+                  fieldErrors.endDate,
+                )}
+              />
             </MotionItem>
           </MotionStaggerGroup>
 
@@ -1587,14 +1683,17 @@ export function CreateProjectWorkspace({
                     </p>
                     <Input
                       value={stage.name}
-                      onChange={(event) =>
-                        updateStage(stage.id, { name: event.target.value })
-                      }
+                      onChange={(event) => {
+                        updateStage(stage.id, { name: event.target.value });
+                        clearStageFieldError("stageNames", index);
+                      }}
                       name="stageNames"
                       required
                       className="min-h-[38px] border-brand text-center text-[14px] font-[500] text-brand"
                     />
-                    <FieldError message={fieldErrors.stageNames?.[index]} />
+                    <FieldError
+                      message={getStageFieldError("stageNames", index, fieldErrors.stageNames?.[index])}
+                    />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Budget <span className="text-[#d3554d]">*</span>
                     </p>
@@ -1617,7 +1716,7 @@ export function CreateProjectWorkspace({
                     {canViewBudget ? (
                       <FieldError
                         message={
-                          fieldErrors.stageBudgets?.[index] ||
+                          getStageFieldError("stageBudgets", index, fieldErrors.stageBudgets?.[index]) ||
                           (stage.budget.trim().length > 0 &&
                           (!Number.isFinite(parsedStageBudgets[index]) ||
                             parsedStageBudgets[index] <= 0)
@@ -1632,36 +1731,45 @@ export function CreateProjectWorkspace({
                     <DateTimePicker
                       name="stageStartDates"
                       value={stage.plannedStartAt}
-                      onChange={(value) =>
-                        updateStage(stage.id, { plannedStartAt: value })
-                      }
+                      onChange={(value) => {
+                        updateStage(stage.id, { plannedStartAt: value });
+                        clearStageFieldError("stageStartDates", index);
+                      }}
                     />
-                    <FieldError message={fieldErrors.stageStartDates?.[index]} />
+                    <FieldError
+                      message={getStageFieldError("stageStartDates", index, fieldErrors.stageStartDates?.[index])}
+                    />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Due <span className="text-[#d3554d]">*</span>
                     </p>
                     <DateTimePicker
                       name="stageDueDates"
                       value={stage.plannedDueAt}
-                      onChange={(value) =>
-                        updateStage(stage.id, { plannedDueAt: value })
-                      }
+                      onChange={(value) => {
+                        updateStage(stage.id, { plannedDueAt: value });
+                        clearStageFieldError("stageDueDates", index);
+                      }}
                     />
-                    <FieldError message={fieldErrors.stageDueDates?.[index]} />
+                    <FieldError
+                      message={getStageFieldError("stageDueDates", index, fieldErrors.stageDueDates?.[index])}
+                    />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Description <span className="text-[#d3554d]">*</span>
                     </p>
                     <Textarea
                       value={stage.description}
-                      onChange={(event) =>
-                        updateStage(stage.id, { description: event.target.value })
-                      }
+                      onChange={(event) => {
+                        updateStage(stage.id, { description: event.target.value });
+                        clearStageFieldError("stageDescriptions", index);
+                      }}
                       name="stageDescriptions"
                       required
                       placeholder={`Stage ${index + 1} Description...`}
                       className="mt-3 min-h-[84px] bg-[#f7faf7] text-[12px]"
                     />
-                    <FieldError message={fieldErrors.stageDescriptions?.[index]} />
+                    <FieldError
+                      message={getStageFieldError("stageDescriptions", index, fieldErrors.stageDescriptions?.[index])}
+                    />
                   </CardContent>
                 </Card>
                 </MotionItem>
