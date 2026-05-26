@@ -16,6 +16,8 @@ type ProjectSortDropdownProps = {
   activeSort: "newest" | "oldest" | "name";
   activeStatus: "ONGOING" | "ON_HOLD" | "COMPLETED";
   query: string;
+  category: string;
+  tag: string;
   onSelectSort?: (sort: "newest" | "oldest" | "name") => void;
   disabled?: boolean;
   pending?: boolean;
@@ -35,6 +37,8 @@ export function ProjectSortDropdown({
   activeSort,
   activeStatus,
   query,
+  category,
+  tag,
   onSelectSort,
   disabled = false,
   pending = false,
@@ -71,6 +75,8 @@ export function ProjectSortDropdown({
                   pathname: "/projects",
                   query: {
                     ...(query ? { q: query } : {}),
+                    ...(category ? { category } : {}),
+                    ...(tag ? { tag } : {}),
                     status: activeStatus,
                     sort: option.value,
                   },

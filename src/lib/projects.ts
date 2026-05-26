@@ -179,7 +179,14 @@ export type DashboardProjectCounts = {
 export type ProjectsListFilter = {
   status?: "ONGOING" | "ON_HOLD" | "COMPLETED";
   query?: string;
+  category?: string;
+  tag?: string;
   sort?: "newest" | "oldest" | "name";
+};
+
+export type ProjectListFilterOptions = {
+  categories: string[];
+  tags: string[];
 };
 
 export const projectStatusMeta: Record<
@@ -623,6 +630,8 @@ export async function updateProjectCollaborators(
 
 function buildProjectsWhere(filter: ProjectsListFilter) {
   const query = filter.query?.trim();
+  const category = filter.category?.trim();
+  const tag = filter.tag?.trim();
 
   return {
     ...(filter.status
@@ -656,9 +665,85 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
                 mode: "insensitive" as const,
               },
             },
+            {
+              createdBy: {
+                is: {
+                  name: {
+                    contains: query,
+                    mode: "insensitive" as const,
+                  },
+                },
+              },
+            },
+            {
+              createdBy: {
+                is: {
+                  email: {
+                    contains: query,
+                    mode: "insensitive" as const,
+                  },
+                },
+              },
+            },
           ],
         }
       : {}),
+    ...(category
+      ? {
+          category: {
+            equals: category,
+            mode: "insensitive" as const,
+          },
+        }
+      : {}),
+    ...(tag
+      ? {
+          tag: {
+            equals: tag,
+            mode: "insensitive" as const,
+          },
+        }
+      : {}),
+  };
+}
+
+export async function getProjectListFilterOptions(): Promise<ProjectListFilterOptions> {
+  const projects = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findMany({
+          select: {
+            category: true,
+            tag: true,
+          },
+        }),
+      ),
+    ["project-list-filter-options"],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
+
+  const categories = new Map<string, string>();
+  const tags = new Map<string, string>();
+
+  for (const project of projects) {
+    const normalizedCategory = project.category.trim();
+    if (normalizedCategory) {
+      categories.set(normalizedCategory.toLowerCase(), normalizedCategory);
+    }
+
+    const normalizedTag = project.tag?.trim();
+    if (normalizedTag) {
+      tags.set(normalizedTag.toLowerCase(), normalizedTag);
+    }
+  }
+
+  return {
+    categories: [...categories.values()].sort((left, right) =>
+      left.localeCompare(right, undefined, { sensitivity: "base" }),
+    ),
+    tags: [...tags.values()].sort((left, right) =>
+      left.localeCompare(right, undefined, { sensitivity: "base" }),
+    ),
   };
 }
 
@@ -779,6 +864,8 @@ export async function getProjectsList(filter: ProjectsListFilter) {
       "projects-list",
       filter.status ?? "all",
       filter.query?.trim().toLowerCase() ?? "",
+      filter.category?.trim().toLowerCase() ?? "",
+      filter.tag?.trim().toLowerCase() ?? "",
       filter.sort ?? "newest",
     ],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },

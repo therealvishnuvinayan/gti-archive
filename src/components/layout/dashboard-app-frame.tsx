@@ -30,24 +30,11 @@ function getTopbarProps(
   if (pathname === "/projects/new") {
     return {
       leadingContent: <BackPill href="/projects" />,
-      showSearch: false,
     };
   }
 
   if (pathname === "/projects") {
-    const query = searchParams.get("q")?.trim() ?? "";
-    const status = searchParams.get("status") ?? "ONGOING";
-    const sort = searchParams.get("sort") ?? "newest";
-
-    return {
-      searchPlaceholder: "Search for Projects...",
-      searchAction: "/projects",
-      searchDefaultValue: query,
-      searchHiddenFields: [
-        { name: "status", value: status },
-        { name: "sort", value: sort },
-      ],
-    };
+    return {};
   }
 
   if (projectSegments.length >= 3 && projectSegments[0] === "projects") {
@@ -55,7 +42,6 @@ function getTopbarProps(
 
     if (nestedSegment === "chat") {
       return {
-        searchPlaceholder: "Search for Projects...",
         leadingContent: <BackPill href={`/projects/${projectId}`} />,
       };
     }
@@ -64,7 +50,6 @@ function getTopbarProps(
       const stage = searchParams.get("stage");
 
       return {
-        searchPlaceholder: "Search for Projects...",
         leadingContent: (
           <BackPill
             href={
@@ -79,54 +64,20 @@ function getTopbarProps(
 
     if (nestedSegment === "edit") {
       return {
-        searchPlaceholder: "Search for Projects...",
         leadingContent: <BackPill href={`/projects/${projectId}`} />,
-        showSearch: false,
       };
     }
   }
 
   if (projectSegments.length === 2 && projectSegments[0] === "projects") {
     return {
-      searchPlaceholder: "Search for Projects...",
       leadingContent: <BackPill href="/projects" />,
     };
   }
 
   if (pathname.startsWith("/archives/")) {
     return {
-      searchPlaceholder: "Search archive files...",
       leadingContent: <BackPill href="/archives" />,
-    };
-  }
-
-  if (pathname === "/archives") {
-    return {
-      searchPlaceholder: "Search archives...",
-    };
-  }
-
-  if (pathname === "/calendar") {
-    return {
-      searchPlaceholder: "Search calendar...",
-    };
-  }
-
-  if (pathname === "/collaboration") {
-    return {
-      searchPlaceholder: "Search collaborators...",
-    };
-  }
-
-  if (pathname === "/library") {
-    return {
-      searchPlaceholder: "Search library...",
-    };
-  }
-
-  if (pathname === "/settings" || pathname === "/help") {
-    return {
-      searchPlaceholder: "Search projects, files, people...",
     };
   }
 

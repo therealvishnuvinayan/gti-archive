@@ -3,7 +3,11 @@ import { UserRole } from "@prisma/client";
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
-import { getDashboardProjectCounts, getProjectsList } from "@/lib/projects";
+import {
+  getDashboardProjectCounts,
+  getProjectListFilterOptions,
+  getProjectsList,
+} from "@/lib/projects";
 
 type ProjectFilter = {
   label: string;
@@ -19,7 +23,13 @@ const projectFilters: ProjectFilter[] = [
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    q?: string;
+    sort?: string;
+    category?: string;
+    tag?: string;
+  }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const activeStatus =
@@ -33,36 +43,25 @@ export default async function ProjectsPage({
     resolvedSearchParams.sort === "name"
       ? resolvedSearchParams.sort
       : "newest";
-  const [user, projects, projectCounts] = await Promise.all([
+  const activeCategory = resolvedSearchParams.category?.trim() ?? "";
+  const activeTag = resolvedSearchParams.tag?.trim() ?? "";
+  const [user, projects, projectCounts, filterOptions] = await Promise.all([
     requireUser(),
     getProjectsList({
       status: activeStatus,
       query,
+      category: activeCategory,
+      tag: activeTag,
       sort: activeSort,
     }),
     getDashboardProjectCounts(),
+    getProjectListFilterOptions(),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
   const canManageProjects = user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
 
   return (
-    <DashboardLayout
-      topbarProps={{
-        searchPlaceholder: "Search for Projects...",
-        searchAction: "/projects",
-        searchDefaultValue: query,
-        searchHiddenFields: [
-          {
-            name: "status",
-            value: activeStatus,
-          },
-          {
-            name: "sort",
-            value: activeSort,
-          },
-        ],
-      }}
-    >
+    <DashboardLayout>
       <section className="space-y-6">
         <ProjectsBrowser
           projects={projects}
@@ -71,6 +70,10 @@ export default async function ProjectsPage({
           activeStatus={activeStatus}
           activeSort={activeSort}
           query={query}
+          activeCategory={activeCategory}
+          activeTag={activeTag}
+          categoryOptions={filterOptions.categories}
+          tagOptions={filterOptions.tags}
           filters={projectFilters}
         />
       </section>
