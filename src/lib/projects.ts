@@ -102,9 +102,23 @@ export type ProjectStageRecord = {
   createdOn: string;
   budget: string;
   plannedStartAt: string;
+  plannedStartAtValue: string | null;
   plannedDueAt: string;
+  plannedDueAtValue: string | null;
   status: ProjectStageVisualStatus;
 };
+
+function toProjectIsoString(
+  date: Date | string | number | null | undefined,
+) {
+  if (!date) {
+    return null;
+  }
+
+  const normalizedDate = toProjectDate(date);
+
+  return Number.isNaN(normalizedDate.getTime()) ? null : normalizedDate.toISOString();
+}
 
 export type ProjectCollaboratorRecord = {
   id: string;
@@ -466,7 +480,9 @@ function mapStageToCard(
       ? formatProjectBudget(stage.budget, project.currency)
       : "Restricted",
     plannedStartAt: formatProjectDateTime(stage.plannedStartAt),
+    plannedStartAtValue: toProjectIsoString(stage.plannedStartAt),
     plannedDueAt: formatProjectDateTime(stage.plannedDueAt),
+    plannedDueAtValue: toProjectIsoString(stage.plannedDueAt),
     status: mapStageStatusToVisual(stage.status),
   };
 }

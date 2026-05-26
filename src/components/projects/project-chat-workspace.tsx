@@ -43,6 +43,7 @@ import {
 } from "@/components/collaboration/collaborator-dialog";
 import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
+import { StageTimeRemainingCard } from "@/components/projects/stage-time-remaining-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -1915,6 +1916,11 @@ export function ProjectChatWorkspace({
               </div>
             </CardContent>
           </Card>
+
+          <StageTimeRemainingCard
+            stageStartAt={activeStage?.plannedStartAtValue ?? null}
+            stageDueAt={activeStage?.plannedDueAtValue ?? null}
+          />
 
           <Card>
             <CardHeader className="pb-3">
