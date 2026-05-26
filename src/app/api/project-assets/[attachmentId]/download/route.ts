@@ -19,12 +19,14 @@ export async function GET(
     const downloadUrl = await getAttachmentDownloadUrlForUser(user, attachmentId);
     return NextResponse.redirect(downloadUrl, { status: 302 });
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to create a download link.";
+
     return NextResponse.json(
+      { error: message },
       {
-        error:
-          error instanceof Error ? error.message : "Unable to create a download link.",
+        status: /permission|access/i.test(message) ? 403 : 404,
       },
-      { status: 404 },
     );
   }
 }

@@ -105,6 +105,7 @@ model User {
   comparisonComments ComparisonComment[]
   attachments       ProjectAttachment[]
   activityLogs      ProjectActivityLog[]
+  createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
   calendarEvents    CalendarEvent[]
   projectCollaborations       ProjectCollaborator[] @relation("ProjectCollaboratorUser")
   addedProjectCollaborations  ProjectCollaborator[] @relation("ProjectCollaboratorAdder")
@@ -182,13 +183,32 @@ model ProjectCollaborator {
   userId           String
   user             User                              @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
   participantType  ProjectCollaboratorParticipantType?
+  chatVisibilityPaused Boolean                       @default(false)
   addedById        String?
   addedBy          User?                             @relation("ProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  visibilityPauses ProjectCollaboratorVisibilityPause[]
   createdAt        DateTime                          @default(now())
 
   @@id([projectId, userId])
   @@index([userId])
   @@index([addedById])
+}
+
+model ProjectCollaboratorVisibilityPause {
+  id          String              @id @default(cuid())
+  projectId   String
+  userId      String
+  collaborator ProjectCollaborator @relation(fields: [projectId, userId], references: [projectId, userId], onDelete: Cascade)
+  pausedAt    DateTime
+  resumedAt   DateTime?
+  createdById String
+  createdBy   User                @relation("ProjectCollaboratorVisibilityPauseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([projectId, userId, pausedAt])
+  @@index([projectId, pausedAt, resumedAt])
+  @@index([createdById])
 }
 
 model CalendarCollaborator {

@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
+import { UserRole } from "@prisma/client";
 
 export default async function ProjectChatPage({
   params,
@@ -28,6 +29,11 @@ export default async function ProjectChatPage({
     notFound();
   }
 
+  const canManageCollaborators =
+    user.role === UserRole.SUPER_ADMIN ||
+    user.role === UserRole.ADMIN ||
+    project.ownerId === user.id;
+
   return (
     <DashboardLayout
       topbarProps={{
@@ -41,6 +47,7 @@ export default async function ProjectChatPage({
         history={history}
         availableCollaborators={availableCollaborators}
         currentUserId={user.id}
+        canManageCollaborators={canManageCollaborators}
       />
     </DashboardLayout>
   );

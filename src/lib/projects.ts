@@ -108,6 +108,7 @@ export type ProjectCollaboratorRecord = {
   role: string;
   group: "internal" | "external";
   participantType: ProjectCollaboratorParticipantType | null;
+  chatVisibilityPaused: boolean;
   access: "owner" | "view";
   removable?: boolean;
 };
@@ -151,6 +152,7 @@ export type ProjectCompareNote = {
 
 export type ProjectFlowRecord = {
   id: string;
+  ownerId: string;
   title: string;
   category: string;
   executorName: string;
@@ -340,6 +342,7 @@ function mapProjectCollaboratorAssignmentToRecord(
         : "Collaborator",
     group: getProjectCollaboratorTypeMeta(participantType).group,
     participantType,
+    chatVisibilityPaused: assignment.chatVisibilityPaused,
     access: "view",
     removable: true,
   };
@@ -462,6 +465,7 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
 
   return {
     id: project.id,
+    ownerId: project.createdById,
     title: project.name,
     category: project.category,
     executorName: project.executorName?.trim() || "—",
@@ -487,6 +491,7 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
         role: "Project Owner",
         group: "internal",
         participantType: "GTI_INTERNAL_CLIENT",
+        chatVisibilityPaused: false,
         access: "owner",
       },
       ...collaboratorRecords,
@@ -621,17 +626,59 @@ export async function updateProjectCollaborators(
       .map((collaborator) => [collaborator.id, collaborator.participantType] as const),
   );
 
+  const existingAssignments = await withPrismaRetry(() =>
+    prisma.projectCollaborator.findMany({
+      where: {
+        projectId,
+      },
+      select: {
+        userId: true,
+      },
+    }),
+  );
+  const existingIds = new Set(existingAssignments.map((assignment) => assignment.userId));
+  const nextIds = new Set(validIds);
+  const idsToDelete = existingAssignments
+    .map((assignment) => assignment.userId)
+    .filter((userId) => !nextIds.has(userId));
+  const idsToCreate = validIds.filter((userId) => !existingIds.has(userId));
+  const idsToUpdate = validIds.filter((userId) => existingIds.has(userId));
+
   await withPrismaRetry(() =>
     prisma.$transaction([
-      prisma.projectCollaborator.deleteMany({
-        where: {
-          projectId,
-        },
-      }),
-      ...(validIds.length > 0
+      ...(idsToDelete.length > 0
+        ? [
+            prisma.projectCollaborator.deleteMany({
+              where: {
+                projectId,
+                userId: {
+                  in: idsToDelete,
+                },
+              },
+            }),
+          ]
+        : []),
+      ...idsToUpdate.map((userId) =>
+        prisma.projectCollaborator.update({
+          where: {
+            projectId_userId: {
+              projectId,
+              userId,
+            },
+          },
+          data: {
+            participantType:
+              validCollaboratorMap.get(userId) ??
+              getDefaultProjectCollaboratorParticipantType(
+                validCollaboratorTypeMap.get(userId) ?? "external",
+              ),
+          },
+        }),
+      ),
+      ...(idsToCreate.length > 0
         ? [
             prisma.projectCollaborator.createMany({
-              data: validIds.map((userId) => ({
+              data: idsToCreate.map((userId) => ({
                 projectId,
                 userId,
                 addedById,
@@ -670,6 +717,204 @@ export async function updateProjectCollaborators(
   );
 
   return assignments.map(mapProjectCollaboratorAssignmentToRecord);
+}
+
+async function assertProjectCollaboratorManagementAccess(
+  actor: Pick<User, "id" | "role">,
+  projectId: string,
+) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: {
+        id: projectId,
+      },
+      select: {
+        id: true,
+        createdById: true,
+      },
+    }),
+  );
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (
+    actor.role !== UserRole.SUPER_ADMIN &&
+    actor.role !== UserRole.ADMIN &&
+    project.createdById !== actor.id
+  ) {
+    throw new Error("You are not allowed to update project collaborators.");
+  }
+
+  return project;
+}
+
+async function getProjectCollaboratorAssignments(projectId: string) {
+  const assignments = await withPrismaRetry(() =>
+    prisma.projectCollaborator.findMany({
+      where: {
+        projectId,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            collaboratorType: true,
+          },
+        },
+      },
+    }),
+  );
+
+  return assignments.map(mapProjectCollaboratorAssignmentToRecord);
+}
+
+export async function removeProjectCollaborator(
+  actor: Pick<User, "id" | "role">,
+  projectId: string,
+  collaboratorId: string,
+) {
+  await assertProjectCollaboratorManagementAccess(actor, projectId);
+
+  const assignment = await withPrismaRetry(() =>
+    prisma.projectCollaborator.findUnique({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId: collaboratorId,
+        },
+      },
+      select: {
+        userId: true,
+      },
+    }),
+  );
+
+  if (!assignment) {
+    throw new Error("Collaborator not found.");
+  }
+
+  await withPrismaRetry(() =>
+    prisma.projectCollaborator.delete({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId: collaboratorId,
+        },
+      },
+    }),
+  );
+
+  return getProjectCollaboratorAssignments(projectId);
+}
+
+export async function setProjectCollaboratorChatVisibility(
+  actor: Pick<User, "id" | "role">,
+  input: {
+    projectId: string;
+    collaboratorId: string;
+    paused: boolean;
+  },
+) {
+  await assertProjectCollaboratorManagementAccess(actor, input.projectId);
+
+  const assignment = await withPrismaRetry(() =>
+    prisma.projectCollaborator.findUnique({
+      where: {
+        projectId_userId: {
+          projectId: input.projectId,
+          userId: input.collaboratorId,
+        },
+      },
+      select: {
+        projectId: true,
+        userId: true,
+        chatVisibilityPaused: true,
+      },
+    }),
+  );
+
+  if (!assignment) {
+    throw new Error("Collaborator not found.");
+  }
+
+  if (assignment.chatVisibilityPaused === input.paused) {
+    return getProjectCollaboratorAssignments(input.projectId);
+  }
+
+  await withPrismaRetry(async () =>
+    prisma.$transaction(async (tx) => {
+      if (input.paused) {
+        await tx.projectCollaborator.update({
+          where: {
+            projectId_userId: {
+              projectId: input.projectId,
+              userId: input.collaboratorId,
+            },
+          },
+          data: {
+            chatVisibilityPaused: true,
+          },
+        });
+
+        await tx.projectCollaboratorVisibilityPause.create({
+          data: {
+            projectId: input.projectId,
+            userId: input.collaboratorId,
+            pausedAt: new Date(),
+            createdById: actor.id,
+          },
+        });
+
+        return;
+      }
+
+      const latestOpenPause = await tx.projectCollaboratorVisibilityPause.findFirst({
+        where: {
+          projectId: input.projectId,
+          userId: input.collaboratorId,
+          resumedAt: null,
+        },
+        orderBy: {
+          pausedAt: "desc",
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      await tx.projectCollaborator.update({
+        where: {
+          projectId_userId: {
+            projectId: input.projectId,
+            userId: input.collaboratorId,
+          },
+        },
+        data: {
+          chatVisibilityPaused: false,
+        },
+      });
+
+      if (latestOpenPause) {
+        await tx.projectCollaboratorVisibilityPause.update({
+          where: {
+            id: latestOpenPause.id,
+          },
+          data: {
+            resumedAt: new Date(),
+          },
+        });
+      }
+    }),
+  );
+
+  return getProjectCollaboratorAssignments(input.projectId);
 }
 
 function buildProjectsWhere(filter: ProjectsListFilter) {

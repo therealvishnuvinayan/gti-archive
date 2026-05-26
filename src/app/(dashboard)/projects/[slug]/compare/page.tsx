@@ -11,6 +11,7 @@ import {
 } from "@/lib/comparison-utils";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
+import { UserRole } from "@prisma/client";
 
 export default async function ProjectComparePage({
   params,
@@ -30,6 +31,11 @@ export default async function ProjectComparePage({
   if (!project) {
     notFound();
   }
+
+  const canManageCollaborators =
+    user.role === UserRole.SUPER_ADMIN ||
+    user.role === UserRole.ADMIN ||
+    project.ownerId === user.id;
 
   const submissions = getStageSubmissionAttachments(history.entries);
   const { baseSubmission, compareSubmission } = resolveComparisonSelection(
@@ -70,6 +76,7 @@ export default async function ProjectComparePage({
         initialBaseAttachmentId={baseSubmission?.id ?? null}
         initialCompareAttachmentId={compareSubmission?.id ?? null}
         initialComments={comparisonComments}
+        canManageCollaborators={canManageCollaborators}
       />
     </DashboardLayout>
   );

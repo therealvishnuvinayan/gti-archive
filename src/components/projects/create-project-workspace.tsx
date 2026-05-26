@@ -452,6 +452,7 @@ export function CreateProjectWorkspace({
           participantType: getDefaultProjectCollaboratorParticipantType(
             availableCollaborator.type === "External" ? "external" : "internal",
           ),
+          chatVisibilityPaused: false,
           access: "view",
           removable: true,
         },
@@ -491,6 +492,7 @@ export function CreateProjectWorkspace({
           participantType: getDefaultProjectCollaboratorParticipantType(
             result.collaborator.type === "External" ? "external" : "internal",
           ),
+          chatVisibilityPaused: false,
           access: "view",
           removable: true,
         },

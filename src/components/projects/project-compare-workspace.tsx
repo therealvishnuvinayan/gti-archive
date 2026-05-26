@@ -5,7 +5,11 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Expand, Loader2, Send, X } from "lucide-react";
 
-import { createComparisonCommentAction } from "@/app/(dashboard)/projects/actions";
+import {
+  createComparisonCommentAction,
+  removeProjectCollaboratorAction,
+  setProjectCollaboratorChatVisibilityAction,
+} from "@/app/(dashboard)/projects/actions";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import { Button } from "@/components/ui/button";
@@ -38,6 +42,7 @@ type ProjectCompareWorkspaceProps = {
   initialBaseAttachmentId?: string | null;
   initialCompareAttachmentId?: string | null;
   initialComments: ComparisonCommentRecord[];
+  canManageCollaborators: boolean;
 };
 
 type ImageDimensions = {
@@ -460,12 +465,14 @@ export function ProjectCompareWorkspace({
   initialBaseAttachmentId,
   initialCompareAttachmentId,
   initialComments,
+  canManageCollaborators,
 }: ProjectCompareWorkspaceProps) {
   const router = useRouter();
   const [isSelectionPending, startSelectionTransition] = useTransition();
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
     project.collaborators,
   );
+  const [collaboratorSaving, setCollaboratorSaving] = useState(false);
   const [comments, setComments] = useState<ComparisonCommentRecord[]>(initialComments);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(
     initialComments[0]?.id ?? null,
@@ -513,8 +520,50 @@ export function ProjectCompareWorkspace({
     return maxHeight > 0 ? maxWidth / maxHeight : 1;
   }, [baseImageDimensions, compareImageDimensions]);
 
-  function removeCollaborator(id: string) {
-    setCollaborators((current) => current.filter((collaborator) => collaborator.id !== id));
+  function applyUpdatedCollaborators(updatedCollaborators: ProjectCollaboratorRecord[]) {
+    setCollaborators((current) => {
+      const owner = current.find((collaborator) => collaborator.access === "owner");
+      return owner ? [owner, ...updatedCollaborators] : updatedCollaborators;
+    });
+  }
+
+  async function removeCollaborator(id: string) {
+    setCollaboratorSaving(true);
+
+    try {
+      const result = await removeProjectCollaboratorAction(project.id, id);
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      applyUpdatedCollaborators(result.collaborators);
+    } finally {
+      setCollaboratorSaving(false);
+    }
+  }
+
+  async function handleCollaboratorChatVisibilityToggle(
+    collaboratorId: string,
+    paused: boolean,
+  ) {
+    setCollaboratorSaving(true);
+
+    try {
+      const result = await setProjectCollaboratorChatVisibilityAction({
+        projectId: project.id,
+        collaboratorId,
+        paused,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      applyUpdatedCollaborators(result.collaborators);
+    } finally {
+      setCollaboratorSaving(false);
+    }
   }
 
   function updateComparisonSelection(kind: "base" | "compare", nextAttachmentId: string) {
@@ -856,7 +905,19 @@ export function ProjectCompareWorkspace({
             </CardContent>
           </Card>
 
-          <ProjectCollaboratorsPanel collaborators={collaborators} onRemove={removeCollaborator} />
+          <ProjectCollaboratorsPanel
+            collaborators={collaborators}
+            onRemove={
+              canManageCollaborators ? (collaboratorId) => removeCollaborator(collaboratorId) : undefined
+            }
+            onToggleChatVisibility={
+              canManageCollaborators
+                ? (collaboratorId, paused) =>
+                    handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
+                : undefined
+            }
+            saving={collaboratorSaving}
+          />
         </div>
       </div>
 

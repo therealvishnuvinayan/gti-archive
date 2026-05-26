@@ -10,6 +10,12 @@ import {
 } from "@prisma/client";
 
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
+import {
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows,
+  type ProjectCollaboratorVisibilityPauseRecord,
+} from "@/lib/project-collaborator-visibility";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
@@ -330,6 +336,80 @@ function resolveStageId(
   return project.stages[0]?.id ?? null;
 }
 
+function filterAttachmentsOutsidePauseWindows<
+  T extends {
+    createdAt: Date | string;
+  },
+>(attachments: T[], pauseWindows: ProjectCollaboratorVisibilityPauseRecord[]) {
+  if (pauseWindows.length === 0) {
+    return attachments;
+  }
+
+  return attachments.filter(
+    (attachment) => !isTimestampHiddenByPauseWindows(attachment.createdAt, pauseWindows),
+  );
+}
+
+function filterHistoryEntriesOutsidePauseWindows<
+  T extends {
+    createdAt: Date;
+    attachments: Array<{
+      createdAt: Date;
+    }>;
+  },
+>(entries: T[], pauseWindows: ProjectCollaboratorVisibilityPauseRecord[]) {
+  if (pauseWindows.length === 0) {
+    return entries;
+  }
+
+  return entries
+    .filter((entry) => !isTimestampHiddenByPauseWindows(entry.createdAt, pauseWindows))
+    .map((entry) => ({
+      ...entry,
+      attachments: filterAttachmentsOutsidePauseWindows(entry.attachments, pauseWindows),
+    }));
+}
+
+async function getProjectVisibilityPauseWindows(
+  user: AccessUser,
+  project: NonNullable<Awaited<ReturnType<typeof getProjectAccessRecord>>>,
+) {
+  if (canBypassCollaboratorVisibility(user, project.createdById)) {
+    return [];
+  }
+
+  const visibilityState = await getProjectCollaboratorVisibilityState(project.id, user.id);
+  return visibilityState?.visibilityPauses ?? [];
+}
+
+async function assertProjectAttachmentVisibility(
+  user: AccessUser,
+  attachment: {
+    projectId: string;
+    createdAt: Date;
+    project: {
+      createdById: string;
+    };
+  },
+) {
+  if (canBypassCollaboratorVisibility(user, attachment.project.createdById)) {
+    return;
+  }
+
+  const visibilityState = await getProjectCollaboratorVisibilityState(
+    attachment.projectId,
+    user.id,
+  );
+  const pauseWindows = visibilityState?.visibilityPauses ?? [];
+
+  if (
+    pauseWindows.length > 0 &&
+    isTimestampHiddenByPauseWindows(attachment.createdAt, pauseWindows)
+  ) {
+    throw new Error("You do not have permission to access this file.");
+  }
+}
+
 export async function getProjectStageHistory(
   user: AccessUser,
   projectId: string,
@@ -436,8 +516,11 @@ export async function getProjectStageHistory(
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
-  const [revisions, comments] = await getCachedHistory();
-  const submissionNumbers = buildStageSubmissionNumberMap(revisions, comments);
+  const [allRevisions, allComments] = await getCachedHistory();
+  const submissionNumbers = buildStageSubmissionNumberMap(allRevisions, allComments);
+  const pauseWindows = await getProjectVisibilityPauseWindows(user, project);
+  const revisions = filterHistoryEntriesOutsidePauseWindows(allRevisions, pauseWindows);
+  const comments = filterHistoryEntriesOutsidePauseWindows(allComments, pauseWindows);
   const entries = [
     ...revisions.map((revision) => ({
       createdAt: toHistoryDate(revision.createdAt).getTime(),
@@ -912,6 +995,12 @@ export async function getAttachmentDownloadUrlForUser(
         originalFileName: true,
         mimeType: true,
         status: true,
+        createdAt: true,
+        project: {
+          select: {
+            createdById: true,
+          },
+        },
       },
     }),
   );
@@ -921,6 +1010,7 @@ export async function getAttachmentDownloadUrlForUser(
   }
 
   await assertProjectAccess(user, attachment.projectId);
+  await assertProjectAttachmentVisibility(user, attachment);
 
   return createPresignedDownloadUrl({
     bucket: attachment.bucket,
@@ -947,6 +1037,12 @@ export async function getAttachmentPreviewUrlForUser(
         originalFileName: true,
         mimeType: true,
         status: true,
+        createdAt: true,
+        project: {
+          select: {
+            createdById: true,
+          },
+        },
       },
     }),
   );
@@ -956,6 +1052,7 @@ export async function getAttachmentPreviewUrlForUser(
   }
 
   await assertProjectAccess(user, attachment.projectId);
+  await assertProjectAttachmentVisibility(user, attachment);
 
   return createPresignedPreviewUrl({
     bucket: attachment.bucket,
@@ -980,6 +1077,12 @@ export async function deleteAttachmentForUser(
         bucket: true,
         storageKey: true,
         status: true,
+        createdAt: true,
+        project: {
+          select: {
+            createdById: true,
+          },
+        },
       },
     }),
   );
@@ -989,6 +1092,7 @@ export async function deleteAttachmentForUser(
   }
 
   await assertProjectAccess(user, attachment.projectId);
+  await assertProjectAttachmentVisibility(user, attachment);
 
   await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(() => undefined);
 

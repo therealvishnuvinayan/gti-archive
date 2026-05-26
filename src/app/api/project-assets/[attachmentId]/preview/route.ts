@@ -19,12 +19,14 @@ export async function GET(
     const previewUrl = await getAttachmentPreviewUrlForUser(user, attachmentId);
     return NextResponse.redirect(previewUrl, { status: 302 });
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to create a preview link.";
+
     return NextResponse.json(
+      { error: message },
       {
-        error:
-          error instanceof Error ? error.message : "Unable to create a preview link.",
+        status: /permission|access/i.test(message) ? 403 : 404,
       },
-      { status: 404 },
     );
   }
 }

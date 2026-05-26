@@ -29,12 +29,16 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to delete the attachment right now.";
+
     return NextResponse.json(
+      { error: message },
       {
-        error:
-          error instanceof Error ? error.message : "Unable to delete the attachment right now.",
+        status: /permission|access/i.test(message) ? 403 : 400,
       },
-      { status: 400 },
     );
   }
 }

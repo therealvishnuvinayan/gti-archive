@@ -9,7 +9,12 @@ import {
   createStageRevision,
   completeProjectStage,
 } from "@/lib/project-history";
-import { PROJECTS_CACHE_TAG, updateProjectCollaborators } from "@/lib/projects";
+import {
+  PROJECTS_CACHE_TAG,
+  removeProjectCollaborator,
+  setProjectCollaboratorChatVisibility,
+  updateProjectCollaborators,
+} from "@/lib/projects";
 import { UserRole } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 
@@ -145,6 +150,57 @@ export async function saveProjectCollaboratorsAction(
         error instanceof Error
           ? error.message
           : "Unable to update project collaborators right now.",
+    };
+  }
+}
+
+export async function removeProjectCollaboratorAction(
+  projectId: string,
+  collaboratorId: string,
+) {
+  const user = await requireUser();
+
+  try {
+    const updatedCollaborators = await removeProjectCollaborator(
+      user,
+      projectId,
+      collaboratorId,
+    );
+
+    revalidateProjectFlow();
+    revalidatePath(`/projects/${projectId}/edit`);
+
+    return { collaborators: updatedCollaborators };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to remove the collaborator right now.",
+    };
+  }
+}
+
+export async function setProjectCollaboratorChatVisibilityAction(input: {
+  projectId: string;
+  collaboratorId: string;
+  paused: boolean;
+}) {
+  const user = await requireUser();
+
+  try {
+    const updatedCollaborators = await setProjectCollaboratorChatVisibility(user, input);
+
+    revalidateProjectFlow();
+    revalidatePath(`/projects/${input.projectId}/edit`);
+
+    return { collaborators: updatedCollaborators };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update collaborator chat visibility right now.",
     };
   }
 }

@@ -20,9 +20,11 @@ import {
   createStageCommentAction,
   createStageRevisionAction,
   markStageCompleteAction,
+  removeProjectCollaboratorAction,
+  saveProjectCollaboratorsAction,
+  setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
-import { saveProjectCollaboratorsAction } from "@/app/(dashboard)/projects/actions";
 import {
   DEFAULT_CHAT_LANGUAGE,
   SUPPORTED_CHAT_LANGUAGES,
@@ -62,6 +64,7 @@ type ProjectChatWorkspaceProps = {
   history: StageHistoryRecord;
   availableCollaborators: CollaboratorRecord[];
   currentUserId: string;
+  canManageCollaborators: boolean;
 };
 
 type PendingFile = {
@@ -540,6 +543,7 @@ export function ProjectChatWorkspace({
   history,
   availableCollaborators,
   currentUserId,
+  canManageCollaborators,
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
@@ -678,8 +682,52 @@ export function ProjectChatWorkspace({
     };
   }, [history.entries]);
 
-  function removeCollaborator(id: string) {
-    setCollaborators((current) => current.filter((collaborator) => collaborator.id !== id));
+  function applyUpdatedCollaborators(updatedCollaborators: ProjectCollaboratorRecord[]) {
+    setCollaborators((current) => {
+      const owner = current.find((collaborator) => collaborator.access === "owner");
+      return owner ? [owner, ...updatedCollaborators] : updatedCollaborators;
+    });
+  }
+
+  async function removeCollaborator(id: string) {
+    setCollaboratorSaving(true);
+    setCollaboratorDialogError(undefined);
+
+    try {
+      const result = await removeProjectCollaboratorAction(project.id, id);
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      applyUpdatedCollaborators(result.collaborators);
+    } finally {
+      setCollaboratorSaving(false);
+    }
+  }
+
+  async function handleCollaboratorChatVisibilityToggle(
+    collaboratorId: string,
+    paused: boolean,
+  ) {
+    setCollaboratorSaving(true);
+    setCollaboratorDialogError(undefined);
+
+    try {
+      const result = await setProjectCollaboratorChatVisibilityAction({
+        projectId: project.id,
+        collaboratorId,
+        paused,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      applyUpdatedCollaborators(result.collaborators);
+    } finally {
+      setCollaboratorSaving(false);
+    }
   }
 
   function setCollaboratorFormValue<K extends keyof CollaboratorForm>(
@@ -746,6 +794,7 @@ export function ProjectChatWorkspace({
           participantType: getDefaultProjectCollaboratorParticipantType(
             availableCollaborator.type === "External" ? "external" : "internal",
           ),
+          chatVisibilityPaused: false,
           access: "view",
           removable: true,
         },
@@ -772,10 +821,7 @@ export function ProjectChatWorkspace({
         return;
       }
 
-      setCollaborators((current) => {
-        const owner = current.find((collaborator) => collaborator.access === "owner");
-        return owner ? [owner, ...result.collaborators] : result.collaborators;
-      });
+      applyUpdatedCollaborators(result.collaborators);
       setCollaboratorPickerOpen(false);
       setCollaboratorDialogError(undefined);
     } finally {
@@ -827,10 +873,7 @@ export function ProjectChatWorkspace({
         return;
       }
 
-      setCollaborators((current) => {
-        const owner = current.find((collaborator) => collaborator.access === "owner");
-        return owner ? [owner, ...saveResult.collaborators] : saveResult.collaborators;
-      });
+      applyUpdatedCollaborators(saveResult.collaborators);
       setCollaboratorDialogOpen(false);
     } catch (error) {
       setCollaboratorDialogError(
@@ -874,10 +917,7 @@ export function ProjectChatWorkspace({
         return;
       }
 
-      setCollaborators((current) => {
-        const owner = current.find((collaborator) => collaborator.access === "owner");
-        return owner ? [owner, ...result.collaborators] : result.collaborators;
-      });
+      applyUpdatedCollaborators(result.collaborators);
     } finally {
       setCollaboratorSaving(false);
     }
@@ -1779,17 +1819,35 @@ export function ProjectChatWorkspace({
 
           <ProjectCollaboratorsPanel
             collaborators={collaborators}
-            onRemove={removeCollaborator}
-            onAdd={() => {
-              setCollaboratorDialogError(undefined);
-              setCollaboratorPickerOpen(true);
-            }}
-            onParticipantTypeChange={(collaboratorId, participantType) => {
-              void handleCollaboratorParticipantTypeChange(
-                collaboratorId,
-                participantType,
-              );
-            }}
+            onRemove={
+              canManageCollaborators
+                ? (collaboratorId) => removeCollaborator(collaboratorId)
+                : undefined
+            }
+            onAdd={
+              canManageCollaborators
+                ? () => {
+                    setCollaboratorDialogError(undefined);
+                    setCollaboratorPickerOpen(true);
+                  }
+                : undefined
+            }
+            onParticipantTypeChange={
+              canManageCollaborators
+                ? (collaboratorId, participantType) => {
+                    void handleCollaboratorParticipantTypeChange(
+                      collaboratorId,
+                      participantType,
+                    );
+                  }
+                : undefined
+            }
+            onToggleChatVisibility={
+              canManageCollaborators
+                ? (collaboratorId, paused) =>
+                    handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
+                : undefined
+            }
             saving={collaboratorSaving}
           />
         </div>
