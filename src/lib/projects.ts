@@ -105,6 +105,8 @@ export type ProjectStageRecord = {
   title: string;
   createdOn: string;
   budget: string;
+  actualStartedAt: string;
+  actualStartedAtValue: string | null;
   plannedStartAt: string;
   plannedStartAtValue: string | null;
   plannedDueAt: string;
@@ -459,6 +461,8 @@ function buildSyntheticStages(project: Project): ProjectStage[] {
         : `Stage ${index + 1}`,
     description: null,
     budget: index === 0 ? project.budget : null,
+    actualStartedAt: null,
+    startedById: null,
     plannedStartAt: project.startDate,
     plannedDueAt: project.endDate,
     status: index === 0 ? project.status : "PENDING",
@@ -511,6 +515,8 @@ function mapStageToCard(
     budget: allowBudgetView
       ? formatProjectBudget(stage.budget, project.currency)
       : "Restricted",
+    actualStartedAt: formatProjectDateTime(stage.actualStartedAt),
+    actualStartedAtValue: toProjectIsoString(stage.actualStartedAt),
     plannedStartAt: formatProjectDateTime(stage.plannedStartAt),
     plannedStartAtValue: toProjectIsoString(stage.plannedStartAt),
     plannedDueAt: formatProjectDateTime(stage.plannedDueAt),

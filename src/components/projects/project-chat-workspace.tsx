@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import {
+  acceptStageBriefAction,
   approveSubmissionAction,
   approveStageSubmissionAction,
   createStageCommentAction,
@@ -232,6 +233,23 @@ function getInitials(name: string) {
 function getLocalFileTypeLabel(fileName: string) {
   const extension = fileName.split(".").pop()?.toUpperCase();
   return extension && extension.length <= 5 ? extension : "FILE";
+}
+
+function formatLocalStageDateTime(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
 }
 
 function formatLocalFileSize(fileSize: number) {
@@ -641,6 +659,18 @@ export function ProjectChatWorkspace({
   const [stageCompleteDialogOpen, setStageCompleteDialogOpen] = useState(false);
   const [stageCompleteError, setStageCompleteError] = useState<string | null>(null);
   const [isMarkingStageComplete, setIsMarkingStageComplete] = useState(false);
+  const [acceptBriefDialogOpen, setAcceptBriefDialogOpen] = useState(false);
+  const [acceptBriefError, setAcceptBriefError] = useState<string | null>(null);
+  const [isAcceptingBrief, setIsAcceptingBrief] = useState(false);
+  const [stageCardOverrides, setStageCardOverrides] = useState<
+    Record<
+      string,
+      {
+        actualStartedAt: string;
+        actualStartedAtValue: string | null;
+      }
+    >
+  >({});
   const [collaboratorPickerOpen, setCollaboratorPickerOpen] = useState(false);
   const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
@@ -663,8 +693,22 @@ export function ProjectChatWorkspace({
       archive: "none",
     },
   });
-
   const messages = history.entries;
+  const stageCards = useMemo(
+    () =>
+      project.stageCards.map((stage) => {
+        const override = stageCardOverrides[stage.id];
+
+        return override
+          ? {
+              ...stage,
+              actualStartedAt: override.actualStartedAt,
+              actualStartedAtValue: override.actualStartedAtValue,
+            }
+          : stage;
+      }),
+    [project.stageCards, stageCardOverrides],
+  );
   const serverMessageIds = useMemo(
     () => new Set(messages.map((entry) => entry.id)),
     [messages],
@@ -732,13 +776,13 @@ export function ProjectChatWorkspace({
   const activeStage = useMemo<ProjectStageRecord | undefined>(() => {
     if (!stageId) {
       return (
-        project.stageCards.find((stage) => stage.id === project.currentStageId) ??
-        project.stageCards[0]
+        stageCards.find((stage) => stage.id === project.currentStageId) ??
+        stageCards[0]
       );
     }
 
-    return project.stageCards.find((stage) => stage.id === stageId) ?? project.stageCards[0];
-  }, [project.currentStageId, project.stageCards, stageId]);
+    return stageCards.find((stage) => stage.id === stageId) ?? stageCards[0];
+  }, [project.currentStageId, stageCards, stageId]);
   const selectedCollaboratorIds = useMemo(
     () =>
       collaborators
@@ -756,7 +800,13 @@ export function ProjectChatWorkspace({
   );
   const isStageCompleted = activeStage?.status === "completed";
   const isProjectExecutor = project.executorUserId === currentUserId;
+  const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
   const canReviewSubmissions = project.ownerId === currentUserId;
+  const stageExecutionStatus = isStageCompleted
+    ? "Completed"
+    : hasAcceptedBrief
+      ? "In progress"
+      : "Waiting for executor";
   const hasRevisionEntries = displayedMessages.some((message) => message.kind === "revision");
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
@@ -1362,6 +1412,13 @@ export function ProjectChatWorkspace({
   }
 
   function openRevisionDialog() {
+    if (!hasAcceptedBrief) {
+      const message = "Please accept the brief before submitting work.";
+      setComposerError(message);
+      showErrorToast("Unable to submit work.", message);
+      return;
+    }
+
     setRevisionDialogError(null);
     setRevisionSummary("");
     setPendingRevisionFiles([]);
@@ -1436,6 +1493,68 @@ export function ProjectChatWorkspace({
     }
   }
 
+  async function handleAcceptBrief() {
+    const activeStageId = activeStage?.id;
+
+    if (!activeStageId) {
+      setAcceptBriefError("This project does not have an active stage.");
+      return;
+    }
+
+    setAcceptBriefError(null);
+    setIsAcceptingBrief(true);
+
+    try {
+      const result = await acceptStageBriefAction({
+        projectId: project.id,
+        stageId: activeStageId,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      const startedAtValue = result.result.stage.actualStartedAt
+        ? new Date(result.result.stage.actualStartedAt).toISOString()
+        : null;
+      const startedAtLabel = startedAtValue
+        ? formatLocalStageDateTime(startedAtValue)
+        : "Just now";
+
+      setStageCardOverrides((current) => ({
+        ...current,
+        [activeStageId]: {
+          actualStartedAt: startedAtLabel,
+          actualStartedAtValue: startedAtValue,
+        },
+      }));
+      setConfirmedComments((current) => [
+        {
+          id: `confirmed-comment-${result.result.activityComment.id}`,
+          serverEntryId: result.result.activityComment.id,
+          kind: "comment",
+          author: currentUserDisplayName,
+          role: currentUserRoleLabel,
+          body: result.result.activityComment.body,
+          createdAt: "Just now",
+        },
+        ...current,
+      ]);
+      setAcceptBriefDialogOpen(false);
+      showSuccessToast("Brief accepted. Stage timer started.");
+      refreshHistory();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to accept the brief right now.";
+      setAcceptBriefError(message);
+      showErrorToast("Unable to accept brief.", message);
+    } finally {
+      setIsAcceptingBrief(false);
+    }
+  }
+
   function openCommentUploadDialog() {
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
@@ -1458,6 +1577,13 @@ export function ProjectChatWorkspace({
     const selectedAssetType: CommentUploadIntent = isProjectExecutor
       ? commentUploadIntent
       : "COMMENT_ATTACHMENT";
+
+    if (selectedAssetType === "STAGE_SUBMISSION" && !hasAcceptedBrief) {
+      const message = "Please accept the brief before submitting work.";
+      setComposerError(message);
+      showErrorToast("Unable to submit work.", message);
+      return;
+    }
 
     if (selectedAssetType === "STAGE_SUBMISSION") {
       const invalidFile = selectedFiles.find((file) => !isSubmissionFile(file));
@@ -1744,6 +1870,11 @@ export function ProjectChatWorkspace({
 
     if (!activeStageId) {
       setRevisionDialogError("This project does not have an active stage to upload into.");
+      return;
+    }
+
+    if (!hasAcceptedBrief) {
+      setRevisionDialogError("Please accept the brief before submitting work.");
       return;
     }
 
@@ -2047,7 +2178,7 @@ export function ProjectChatWorkspace({
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 Upload the first revision to start the proof and archive trail.
               </p>
-              {isProjectExecutor ? (
+              {isProjectExecutor && hasAcceptedBrief ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -2060,6 +2191,18 @@ export function ProjectChatWorkspace({
                       <Upload className="h-4 w-4" />
                     )}
                     Submit First Work
+                  </Button>
+                </div>
+              ) : isProjectExecutor ? (
+                <div className="mt-5 flex justify-center">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setAcceptBriefError(null);
+                      setAcceptBriefDialogOpen(true);
+                    }}
+                  >
+                    Accept Brief
                   </Button>
                 </div>
               ) : null}
@@ -2152,7 +2295,7 @@ export function ProjectChatWorkspace({
                             Review Submission
                           </Button>
                         ) : null}
-                        {index === firstRevisionIndex && isProjectExecutor ? (
+                        {index === firstRevisionIndex && isProjectExecutor && hasAcceptedBrief ? (
                           <Button
                             type="button"
                             onClick={openRevisionDialog}
@@ -2234,22 +2377,57 @@ export function ProjectChatWorkspace({
             ),
           )}
 
-          {!hasRevisionEntries && displayedMessages.length > 0 && isProjectExecutor ? (
+          {!hasRevisionEntries && displayedMessages.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={openRevisionDialog}
-                size="sm"
-                className="rounded-full text-[12px]"
-                disabled={isUploadingRevision}
-              >
-                {isUploadingRevision ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Upload className="h-3.5 w-3.5" />
-                )}
-                Submit Work
-              </Button>
+              {isProjectExecutor && !hasAcceptedBrief ? (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="rounded-full text-[12px]"
+                    onClick={() => {
+                      setAcceptBriefError(null);
+                      setAcceptBriefDialogOpen(true);
+                    }}
+                    disabled={isAcceptingBrief}
+                  >
+                    {isAcceptingBrief ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : null}
+                    Accept Brief
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => setDraft(`Replying to ${currentUserDisplayName}: `)}
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-full text-[12px]"
+                  >
+                    Add Comments
+                  </Button>
+                </>
+              ) : null}
+              {isProjectExecutor && hasAcceptedBrief ? (
+                <Button
+                  type="button"
+                  onClick={openRevisionDialog}
+                  size="sm"
+                  className="rounded-full text-[12px]"
+                  disabled={isUploadingRevision}
+                >
+                  {isUploadingRevision ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                  Submit Work
+                </Button>
+              ) : null}
+              {isProjectOwner && !hasAcceptedBrief ? (
+                <div className="inline-flex items-center rounded-full bg-[#f4f7f4] px-3 py-2 text-[12px] font-medium text-[#5d675f]">
+                  Waiting for executor to accept brief.
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -2423,11 +2601,15 @@ export function ProjectChatWorkspace({
                 </div>
                 <div>
                   <dt className="inline font-[700]">Stage Started :</dt>{" "}
-                  <dd className="inline">{activeStage?.plannedStartAt ?? project.startDate}</dd>
+                  <dd className="inline">{activeStage?.actualStartedAt ?? "—"}</dd>
                 </div>
                 <div>
                   <dt className="inline font-[700]">Stage Deadline :</dt>{" "}
                   <dd className="inline">{activeStage?.plannedDueAt ?? project.endDate}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-[700]">Status :</dt>{" "}
+                  <dd className="inline">{stageExecutionStatus}</dd>
                 </div>
               </dl>
               <div className="mt-5 space-y-2.5">
@@ -2455,7 +2637,7 @@ export function ProjectChatWorkspace({
           </Card>
 
           <StageTimeRemainingCard
-            stageStartAt={activeStage?.plannedStartAtValue ?? null}
+            actualStartedAt={activeStage?.actualStartedAtValue ?? null}
             stageDueAt={activeStage?.plannedDueAtValue ?? null}
           />
 
@@ -2544,6 +2726,21 @@ export function ProjectChatWorkspace({
         onPermissionChange={setCollaboratorPermissionValue}
       />
       <ConfirmationDialog
+        isOpen={acceptBriefDialogOpen}
+        title="Accept brief and start work?"
+        description="This confirms that you have reviewed the project brief and are starting work on this stage. The stage timer will start from this moment."
+        confirmLabel="Accept & Start Work"
+        pending={isAcceptingBrief}
+        error={acceptBriefError ?? undefined}
+        onClose={() => {
+          setAcceptBriefError(null);
+          setAcceptBriefDialogOpen(false);
+        }}
+        onConfirm={() => {
+          void handleAcceptBrief();
+        }}
+      />
+      <ConfirmationDialog
         isOpen={stageCompleteDialogOpen}
         title="Mark Stage Complete"
         description="This will mark the current stage as completed. Only the project owner can do this."
@@ -2612,7 +2809,14 @@ export function ProjectChatWorkspace({
 
               <button
                 type="button"
-                onClick={() => setCommentUploadIntent("STAGE_SUBMISSION")}
+                onClick={() => {
+                  if (!hasAcceptedBrief) {
+                    return;
+                  }
+
+                  setCommentUploadIntent("STAGE_SUBMISSION");
+                }}
+                disabled={!hasAcceptedBrief}
                 className={`w-full rounded-[22px] border px-5 py-4 text-left transition ${
                   commentUploadIntent === "STAGE_SUBMISSION"
                     ? "border-brand bg-[#f4fbf5] shadow-[0_10px_24px_rgba(18,35,23,0.06)]"
@@ -2638,7 +2842,9 @@ export function ProjectChatWorkspace({
               </button>
 
               <div className="rounded-[18px] border border-[#e4e8e3] bg-[#fafcf9] px-4 py-3 text-[12px] text-[#657067]">
-                Submissions must be PNG, JPG, JPEG, or WebP images.
+                {hasAcceptedBrief
+                  ? "Submissions must be PNG, JPG, JPEG, or WebP images."
+                  : "Accept the brief before submitting work files for review."}
               </div>
 
               <div className="flex flex-col gap-3">

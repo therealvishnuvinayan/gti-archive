@@ -297,6 +297,7 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
             id: true,
             name: true,
             budget: true,
+            actualStartedAt: true,
             status: true,
             order: true,
             createdAt: true,
@@ -575,6 +576,10 @@ export async function createStageRevision(
     throw new Error("Only the project executor can submit work for review.");
   }
 
+  if (!stage.actualStartedAt) {
+    throw new Error("Please accept the brief before submitting work.");
+  }
+
   const revision = await withPrismaRetry(async () => {
     const latestRevision = await prisma.projectRevision.findFirst({
       where: {
@@ -696,6 +701,68 @@ export async function createStageComment(
         id: true,
         revisionId: true,
       },
+    }),
+  );
+}
+
+export async function startProjectStageWork(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+  },
+) {
+  const project = await assertProjectAccess(user, input.projectId);
+  const stage = project.stages.find((item) => item.id === input.stageId);
+
+  if (!stage) {
+    throw new Error("Stage not found.");
+  }
+
+  if (!isProjectExecutorUser(project, user.id)) {
+    throw new Error("Only the project executor can accept the brief for this stage.");
+  }
+
+  if (stage.actualStartedAt) {
+    throw new Error("This stage has already been started.");
+  }
+
+  return withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const startedAt = new Date();
+
+      const startedStage = await tx.projectStage.update({
+        where: {
+          id: stage.id,
+        },
+        data: {
+          actualStartedAt: startedAt,
+          startedById: user.id,
+        },
+        select: {
+          id: true,
+          actualStartedAt: true,
+        },
+      });
+
+      const activityComment = await tx.projectComment.create({
+        data: {
+          projectId: input.projectId,
+          stageId: stage.id,
+          authorId: user.id,
+          body: `${getDisplayName(user)} accepted the brief and started work on this stage.`,
+        },
+        select: {
+          id: true,
+          body: true,
+          createdAt: true,
+        },
+      });
+
+      return {
+        stage: startedStage,
+        activityComment,
+      };
     }),
   );
 }
@@ -1002,6 +1069,11 @@ export async function requestAttachmentUpload(
         },
         select: {
           id: true,
+          stage: {
+            select: {
+              actualStartedAt: true,
+            },
+          },
           project: {
             select: {
               createdById: true,
@@ -1019,6 +1091,10 @@ export async function requestAttachmentUpload(
 
     if (!isProjectExecutorUser(revision.project, user.id)) {
       return { error: "Only the project executor can submit work for review." };
+    }
+
+    if (!revision.stage.actualStartedAt) {
+      return { error: "Please accept the brief before submitting work." };
     }
   } else if (
     input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT ||
@@ -1041,6 +1117,11 @@ export async function requestAttachmentUpload(
         select: {
           id: true,
           revisionId: true,
+          stage: {
+            select: {
+              actualStartedAt: true,
+            },
+          },
           project: {
             select: {
               createdById: true,
@@ -1062,6 +1143,13 @@ export async function requestAttachmentUpload(
       !isProjectExecutorUser(comment.project, user.id)
     ) {
       return { error: "Only the project executor can upload submissions for review." };
+    }
+
+    if (
+      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+      !comment.stage.actualStartedAt
+    ) {
+      return { error: "Please accept the brief before submitting work." };
     }
 
     if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {

@@ -120,6 +120,7 @@ model User {
   activityLogs      ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
   assignedProjects  Project[]           @relation("ProjectExecutor")
+  startedProjectStages ProjectStage[]   @relation("ProjectStageStarter")
   reviewedStageSubmissions ProjectAttachment[] @relation("SubmissionReviewer")
   calendarEvents    CalendarEvent[]
   projectCollaborations       ProjectCollaborator[] @relation("ProjectCollaboratorUser")
@@ -249,6 +250,9 @@ model ProjectStage {
   budget    Int?
   plannedStartAt DateTime?
   plannedDueAt DateTime?
+  actualStartedAt DateTime?
+  startedById String?
+  startedBy User? @relation("ProjectStageStarter", fields: [startedById], references: [id], onDelete: SetNull)
   status    ProjectStatus @default(PENDING)
   order     Int
   revisions ProjectRevision[]
@@ -260,6 +264,7 @@ model ProjectStage {
   updatedAt DateTime      @updatedAt
 
   @@index([projectId, order])
+  @@index([startedById])
 }
 
 model ProjectRevision {

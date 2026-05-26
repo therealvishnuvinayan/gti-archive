@@ -6,21 +6,28 @@ import { AlarmClockCheck, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type StageTimeRemainingCardProps = {
-  stageStartAt?: string | null;
+  actualStartedAt?: string | null;
   stageDueAt?: string | null;
 };
 
 type CountdownState = {
   hasDeadline: boolean;
+  hasStarted: boolean;
   isOverdue: boolean;
   days: string;
   hours: string;
   minutes: string;
-  statusLabel: "On track" | "Due soon" | "Overdue" | "No deadline";
+  statusLabel:
+    | "On track"
+    | "Due soon"
+    | "Overdue"
+    | "No deadline"
+    | "Waiting for executor";
   helperText: string;
   progressPercent: number | null;
   progressLabel: string | null;
   deadlineLabel: string | null;
+  startedLabel: string | null;
 };
 
 function formatStageDate(date: Date) {
@@ -44,18 +51,62 @@ function clamp(value: number, min: number, max: number) {
 
 function buildCountdownState(
   nowMs: number,
-  stageStartAt?: string | null,
+  actualStartedAt?: string | null,
   stageDueAt?: string | null,
 ): CountdownState {
   const dueDate = stageDueAt ? new Date(stageDueAt) : null;
-  const startDate = stageStartAt ? new Date(stageStartAt) : null;
+  const startDate = actualStartedAt ? new Date(actualStartedAt) : null;
   const dueMs = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate.getTime() : null;
   const startMs =
     startDate && !Number.isNaN(startDate.getTime()) ? startDate.getTime() : null;
 
+  if (!startMs) {
+    if (!dueMs) {
+      return {
+        hasDeadline: false,
+        hasStarted: false,
+        isOverdue: false,
+        days: "—",
+        hours: "—",
+        minutes: "—",
+        statusLabel: "Waiting for executor",
+        helperText: "Not started. Waiting for executor to accept brief.",
+        progressPercent: null,
+        progressLabel: null,
+        deadlineLabel: null,
+        startedLabel: null,
+      };
+    }
+
+    const diffMs = dueMs - nowMs;
+    const absoluteMinutes = Math.floor(Math.abs(diffMs) / (1000 * 60));
+    const days = Math.floor(absoluteMinutes / (60 * 24));
+    const hours = Math.floor((absoluteMinutes % (60 * 24)) / 60);
+    const minutes = absoluteMinutes % 60;
+    const isOverdue = diffMs < 0;
+
+    return {
+      hasDeadline: true,
+      hasStarted: false,
+      isOverdue,
+      days: "—",
+      hours: "—",
+      minutes: "—",
+      statusLabel: isOverdue ? "Overdue" : "Waiting for executor",
+      helperText: isOverdue
+        ? `${days > 0 ? `${days}d ` : ""}${hours}h ${minutes}m overdue before work started`
+        : "Not started. Waiting for executor to accept brief.",
+      progressPercent: null,
+      progressLabel: null,
+      deadlineLabel: formatStageDate(new Date(dueMs)),
+      startedLabel: null,
+    };
+  }
+
   if (!dueMs) {
     return {
       hasDeadline: false,
+      hasStarted: true,
       isOverdue: false,
       days: "—",
       hours: "—",
@@ -65,6 +116,7 @@ function buildCountdownState(
       progressPercent: null,
       progressLabel: null,
       deadlineLabel: null,
+      startedLabel: formatStageDate(new Date(startMs)),
     };
   }
 
@@ -98,6 +150,7 @@ function buildCountdownState(
 
   return {
     hasDeadline: true,
+    hasStarted: true,
     isOverdue,
     days: pad(days),
     hours: pad(hours),
@@ -109,6 +162,7 @@ function buildCountdownState(
     progressPercent,
     progressLabel,
     deadlineLabel: formatStageDate(new Date(dueMs)),
+    startedLabel: formatStageDate(new Date(startMs)),
   };
 }
 
@@ -138,7 +192,7 @@ function getStatusClasses(statusLabel: CountdownState["statusLabel"]) {
 }
 
 export function StageTimeRemainingCard({
-  stageStartAt,
+  actualStartedAt,
   stageDueAt,
 }: StageTimeRemainingCardProps) {
   const [nowMs, setNowMs] = useState<number | null>(null);
@@ -167,20 +221,24 @@ export function StageTimeRemainingCard({
 
       return {
         hasDeadline,
+        hasStarted: false,
         isOverdue: false,
         days: "—",
         hours: "—",
         minutes: "—",
-        statusLabel: hasDeadline ? "On track" : "No deadline",
-        helperText: hasDeadline ? "Calculating remaining time…" : "No deadline set",
+        statusLabel: hasDeadline ? "Waiting for executor" : "No deadline",
+        helperText: hasDeadline
+          ? "Not started. Waiting for executor to accept brief."
+          : "No deadline set",
         progressPercent: null,
         progressLabel: null,
         deadlineLabel: hasDeadline ? formatStageDate(dueDate as Date) : null,
+        startedLabel: null,
       } satisfies CountdownState;
     }
 
-    return buildCountdownState(nowMs, stageStartAt, stageDueAt);
-  }, [nowMs, stageDueAt, stageStartAt]);
+    return buildCountdownState(nowMs, actualStartedAt, stageDueAt);
+  }, [actualStartedAt, nowMs, stageDueAt]);
   const statusClasses = getStatusClasses(countdown.statusLabel);
 
   return (
@@ -203,27 +261,36 @@ export function StageTimeRemainingCard({
 
         {countdown.hasDeadline ? (
           <>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: "Days", value: countdown.days },
-                { label: "Hours", value: countdown.hours },
-                { label: "Minutes", value: countdown.minutes },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-[16px] border border-[#e4ebe4] bg-[#fbfcfa] px-3 py-3 text-center"
-                >
-                  <p className="text-[12px] font-[800] leading-none text-[#173120] sm:text-[13px]">
-                    {item.value}
-                  </p>
-                  <p className="mt-1 text-[10px] text-[#728074]">{item.label}</p>
-                </div>
-              ))}
-            </div>
+            {countdown.hasStarted ? (
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: "Days", value: countdown.days },
+                  { label: "Hours", value: countdown.hours },
+                  { label: "Minutes", value: countdown.minutes },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-[16px] border border-[#e4ebe4] bg-[#fbfcfa] px-3 py-3 text-center"
+                  >
+                    <p className="text-[12px] font-[800] leading-none text-[#173120] sm:text-[13px]">
+                      {item.value}
+                    </p>
+                    <p className="mt-1 text-[10px] text-[#728074]">{item.label}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[16px] border border-dashed border-[#d7dfd8] bg-[#fbfcfa] px-4 py-4 text-[12px] text-[#728074]">
+                Waiting for executor to accept brief
+              </div>
+            )}
 
             <div className="flex items-start gap-2 text-[12px] text-[#4f5d52]">
               <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
               <div>
+                {countdown.startedLabel ? (
+                  <p className="font-[600]">Started on {countdown.startedLabel}</p>
+                ) : null}
                 <p className="font-[600]">Due on {countdown.deadlineLabel}</p>
               </div>
             </div>

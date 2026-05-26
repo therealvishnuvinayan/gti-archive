@@ -10,6 +10,7 @@ import {
   completeProjectStage,
   reviewProjectRevision,
   reviewStageSubmission,
+  startProjectStageWork,
 } from "@/lib/project-history";
 import {
   PROJECTS_CACHE_TAG,
@@ -100,6 +101,27 @@ export async function markStageCompleteAction(input: {
         error instanceof Error
           ? error.message
           : "Unable to mark the stage as complete right now.",
+    };
+  }
+}
+
+export async function acceptStageBriefAction(input: {
+  projectId: string;
+  stageId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await startProjectStageWork(user, input);
+    revalidateProjectFlow();
+
+    return { result };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to accept the brief right now.",
     };
   }
 }
