@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from "react";
+import Link from "next/link";
 import {
   Bell,
   BrushCleaning,
@@ -22,6 +23,7 @@ type SettingsWorkspaceProps = {
     email: string;
     role: string;
   };
+  canManageMasterData?: boolean;
 };
 
 type SettingsNavItem = {
@@ -94,7 +96,10 @@ function getDepartmentFromRole(role: string) {
   return "Design & Packaging";
 }
 
-export function SettingsWorkspace({ user }: SettingsWorkspaceProps) {
+export function SettingsWorkspace({
+  user,
+  canManageMasterData = false,
+}: SettingsWorkspaceProps) {
   const profileRows = [
     { label: "Full Name", value: user.name },
     { label: "Email Address", value: user.email },
@@ -147,6 +152,30 @@ export function SettingsWorkspace({ user }: SettingsWorkspaceProps) {
         </Card>
 
         <div className="space-y-4">
+          {canManageMasterData ? (
+            <SettingsCard
+              title="Project Master Data"
+              description="Manage reusable project categories and tags used across the dashboard."
+              actionLabel="Open Master Data"
+              actionIcon={Settings2}
+            >
+              <div className="flex flex-col gap-4 rounded-[22px] bg-[#fbfcfa] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-[15px] font-semibold text-[#1e261f]">
+                    Categories and tags
+                  </p>
+                  <p className="text-[14px] text-[#748074]">
+                    Add, edit, and deactivate reusable values for future project forms.
+                  </p>
+                </div>
+
+                <Button asChild className="self-start sm:self-auto">
+                  <Link href="/settings/project-master-data">Project Master Data</Link>
+                </Button>
+              </div>
+            </SettingsCard>
+          ) : null}
+
           <SettingsCard
             title="Profile Information"
             description="Update your personal information and how others see you."

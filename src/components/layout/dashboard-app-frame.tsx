@@ -33,6 +33,12 @@ function getTopbarProps(
     };
   }
 
+  if (pathname === "/settings/project-master-data") {
+    return {
+      leadingContent: <BackPill href="/settings" />,
+    };
+  }
+
   if (pathname === "/projects") {
     return {};
   }
