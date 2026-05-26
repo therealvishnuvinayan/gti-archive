@@ -17,6 +17,9 @@ export default async function DashboardRoutesLayout({
         name: displayName,
         email: user.email,
         initials: getUserInitials(displayName),
+        avatarSrc: user.avatarUrl
+          ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
+          : null,
       }}
       projectBadgeCount={counts.ongoing}
     >

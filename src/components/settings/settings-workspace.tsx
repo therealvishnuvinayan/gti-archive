@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   CalendarDays,
+  ImagePlus,
   Info,
   LockKeyhole,
   PencilLine,
@@ -27,6 +28,7 @@ type SettingsWorkspaceProps = {
     email: string;
     role: string;
     memberSince: string;
+    avatarSrc: string | null;
     department: string;
     phoneNumber: string;
     jobTitle: string;
@@ -42,6 +44,14 @@ type ProfileDraft = {
   jobTitle: string;
   bio: string;
 };
+
+const maxProfilePhotoBytes = 2 * 1024 * 1024;
+const allowedProfilePhotoTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
 
 const departmentOptions = [
   "System Administration",
@@ -126,6 +136,122 @@ function buildProfileDraft(user: SettingsWorkspaceProps["user"]): ProfileDraft {
   };
 }
 
+function validateProfilePhoto(file: File) {
+  if (!allowedProfilePhotoTypes.has(file.type.toLowerCase())) {
+    return "Profile photo must be JPG, PNG, GIF, or WebP.";
+  }
+
+  if (file.size > maxProfilePhotoBytes) {
+    return "Profile photo must be smaller than 2MB.";
+  }
+
+  return null;
+}
+
+async function uploadProfilePhoto(file: File) {
+  const uploadRequest = await fetch("/api/profile/avatar/upload-url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      fileSize: file.size,
+    }),
+  });
+
+  const uploadPayload = (await uploadRequest.json()) as {
+    uploadUrl?: string;
+    storageKey?: string;
+    error?: string;
+  };
+
+  if (!uploadRequest.ok || !uploadPayload.uploadUrl || !uploadPayload.storageKey) {
+    throw new Error(uploadPayload.error || "Unable to prepare the profile photo upload.");
+  }
+
+  const putResponse = await fetch(uploadPayload.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+
+  if (!putResponse.ok) {
+    throw new Error("Unable to upload the profile photo right now.");
+  }
+
+  return uploadPayload.storageKey;
+}
+
+function AvatarCircle({
+  src,
+  initials,
+  sizeClassName,
+  textClassName,
+}: {
+  src?: string | null;
+  initials: string;
+  sizeClassName: string;
+  textClassName: string;
+}) {
+  if (src) {
+    return (
+      <AvatarImage
+        key={src}
+        src={src}
+        alt="Profile avatar"
+        className={`${sizeClassName} rounded-full border border-[#dce7dd] object-cover shadow-[0_20px_44px_rgba(31,58,44,0.12)]`}
+        fallback={
+          <div
+            className={`grid ${sizeClassName} place-items-center rounded-full border border-[#dce7dd] bg-[radial-gradient(circle_at_top,#ffd7c4,#dd956f_58%,#b9673d)] ${textClassName} font-[700] text-white shadow-[0_20px_44px_rgba(31,58,44,0.12)]`}
+          >
+            {initials}
+          </div>
+        }
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`grid ${sizeClassName} place-items-center rounded-full border border-[#dce7dd] bg-[radial-gradient(circle_at_top,#ffd7c4,#dd956f_58%,#b9673d)] ${textClassName} font-[700] text-white shadow-[0_20px_44px_rgba(31,58,44,0.12)]`}
+    >
+      {initials}
+    </div>
+  );
+}
+
+function AvatarImage({
+  src,
+  alt,
+  className,
+  fallback,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+  fallback: React.ReactNode;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (imageFailed) {
+    return <>{fallback}</>;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setImageFailed(true)}
+    />
+  );
+}
+
 function ActionButton({
   icon: Icon,
   label,
@@ -157,11 +283,15 @@ function EditProfileDrawer({
   form,
   nameError,
   bioError,
+  avatarError,
   error,
   saving,
+  avatarPreviewSrc,
+  selectedAvatarFileName,
   onClose,
   onReset,
   onChange,
+  onSelectAvatar,
   onSave,
 }: {
   isOpen: boolean;
@@ -169,17 +299,22 @@ function EditProfileDrawer({
   form: ProfileDraft;
   nameError?: string;
   bioError?: string;
+  avatarError?: string;
   error?: string;
   saving: boolean;
+  avatarPreviewSrc: string | null;
+  selectedAvatarFileName?: string;
   onClose: () => void;
   onReset: () => void;
   onChange: <K extends keyof ProfileDraft>(field: K, value: ProfileDraft[K]) => void;
+  onSelectAvatar: (file: File | null) => void;
   onSave: () => void;
 }) {
   const departmentValues =
     form.department && !departmentOptions.includes(form.department as (typeof departmentOptions)[number])
       ? [form.department, ...departmentOptions]
       : departmentOptions;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) {
     return null;
@@ -219,23 +354,38 @@ function EditProfileDrawer({
             ) : null}
 
             <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-center">
-              <div className="grid h-[152px] w-[152px] shrink-0 place-items-center rounded-full border border-[#dce7dd] bg-[radial-gradient(circle_at_top,#ffd7c4,#dd956f_58%,#b9673d)] text-[58px] font-[700] text-white shadow-[0_20px_44px_rgba(31,58,44,0.12)]">
-                {getProfileInitials(form.name || user.name)}
-              </div>
+              <AvatarCircle
+                src={avatarPreviewSrc}
+                initials={getProfileInitials(form.name || user.name)}
+                sizeClassName="h-[152px] w-[152px] shrink-0"
+                textClassName="text-[58px]"
+              />
 
               <div className="space-y-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    onSelectAvatar(event.target.files?.[0] ?? null);
+                    event.currentTarget.value = "";
+                  }}
+                />
                 <Button
                   type="button"
                   variant="outline"
-                  disabled
+                  disabled={saving}
+                  onClick={() => fileInputRef.current?.click()}
                   className="h-[46px] rounded-[14px] border-[#b8d8c0] px-6 text-[18px] font-[600] text-brand"
                 >
-                  <PencilLine className="h-4 w-4" />
+                  <ImagePlus className="h-4 w-4" />
                   Change Photo
                 </Button>
                 <p className="text-[14px] text-[#808981]">
-                  JPG, PNG or GIF. Max size 2MB. Coming soon.
+                  {selectedAvatarFileName || "JPG, PNG, GIF or WebP. Max size 2MB."}
                 </p>
+                <FieldError message={avatarError} />
               </div>
             </div>
 
@@ -408,11 +558,13 @@ export function SettingsWorkspace({
   const [isDrawerOpen, setDrawerOpen] = useState(false);
   const [drawerError, setDrawerError] = useState<string>();
   const [saveNotice, setSaveNotice] = useState<string>();
+  const [avatarError, setAvatarError] = useState<string>();
   const [fieldErrors, setFieldErrors] = useState<{
     name?: string;
     bio?: string;
   }>({});
   const [form, setForm] = useState<ProfileDraft>(() => buildProfileDraft(user));
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const profileRows = [
@@ -424,12 +576,43 @@ export function SettingsWorkspace({
   ];
 
   const displayInitials = useMemo(() => getProfileInitials(user.name), [user.name]);
+  const selectedAvatarPreviewSrc = useMemo(() => {
+    if (!selectedAvatarFile) {
+      return null;
+    }
+
+    return URL.createObjectURL(selectedAvatarFile);
+  }, [selectedAvatarFile]);
+
+  useEffect(() => {
+    if (!selectedAvatarPreviewSrc) {
+      return;
+    }
+
+    return () => {
+      URL.revokeObjectURL(selectedAvatarPreviewSrc);
+    };
+  }, [selectedAvatarPreviewSrc]);
+
+  function closeDrawer() {
+    if (isPending) {
+      return;
+    }
+
+    setDrawerOpen(false);
+    setDrawerError(undefined);
+    setAvatarError(undefined);
+    setFieldErrors({});
+    setSelectedAvatarFile(null);
+  }
 
   function openDrawer() {
     setForm(buildProfileDraft(user));
     setFieldErrors({});
     setDrawerError(undefined);
+    setAvatarError(undefined);
     setSaveNotice(undefined);
+    setSelectedAvatarFile(null);
     setDrawerOpen(true);
   }
 
@@ -437,6 +620,8 @@ export function SettingsWorkspace({
     setForm(buildProfileDraft(user));
     setFieldErrors({});
     setDrawerError(undefined);
+    setAvatarError(undefined);
+    setSelectedAvatarFile(null);
   }
 
   function handleChange<K extends keyof ProfileDraft>(field: K, value: ProfileDraft[K]) {
@@ -454,14 +639,61 @@ export function SettingsWorkspace({
     }));
   }
 
+  function handleAvatarSelection(file: File | null) {
+    setAvatarError(undefined);
+
+    if (!file) {
+      setSelectedAvatarFile(null);
+      return;
+    }
+
+    const validationError = validateProfilePhoto(file);
+
+    if (validationError) {
+      setSelectedAvatarFile(null);
+      setAvatarError(validationError);
+      return;
+    }
+
+    setSelectedAvatarFile(file);
+  }
+
   function handleSave() {
     setDrawerError(undefined);
     setFieldErrors({});
     setSaveNotice(undefined);
+    setAvatarError(undefined);
+
+    const trimmedName = form.name.trim();
+
+    if (!trimmedName) {
+      setDrawerError("Please correct the highlighted fields.");
+      setFieldErrors({
+        name: "Full name is required.",
+      });
+      return;
+    }
+
+    if (form.bio.trim().length > 300) {
+      setDrawerError("Please correct the highlighted fields.");
+      setFieldErrors({
+        bio: "Short bio must be 300 characters or fewer.",
+      });
+      return;
+    }
 
     startTransition(async () => {
       try {
-        const result = await updateProfileAction(form);
+        let avatarUrl: string | null | undefined;
+
+        if (selectedAvatarFile) {
+          avatarUrl = await uploadProfilePhoto(selectedAvatarFile);
+        }
+
+        const result = await updateProfileAction({
+          ...form,
+          avatarUrl,
+        });
 
         if (result.error) {
           setDrawerError(result.error);
@@ -470,10 +702,15 @@ export function SettingsWorkspace({
         }
 
         setDrawerOpen(false);
+        setSelectedAvatarFile(null);
         setSaveNotice("Profile updated successfully.");
         router.refresh();
-      } catch {
-        setDrawerError("Unable to update your profile right now. Please try again.");
+      } catch (error) {
+        setDrawerError(
+          error instanceof Error
+            ? error.message
+            : "Unable to update your profile right now. Please try again.",
+        );
       }
     });
   }
@@ -503,9 +740,12 @@ export function SettingsWorkspace({
             action={<ActionButton icon={PencilLine} label="Edit Profile" onClick={openDrawer} />}
           >
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
-              <div className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd6c3,#d98e6a_55%,#855038)] text-[28px] font-bold text-white shadow-[0_14px_34px_rgba(26,49,36,0.12)]">
-                {displayInitials}
-              </div>
+              <AvatarCircle
+                src={user.avatarSrc}
+                initials={displayInitials}
+                sizeClassName="h-[72px] w-[72px] shrink-0"
+                textClassName="text-[28px]"
+              />
 
               <div className="grid flex-1 grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
                 {profileRows.map((row) => (
@@ -568,17 +808,15 @@ export function SettingsWorkspace({
         form={form}
         nameError={fieldErrors.name}
         bioError={fieldErrors.bio}
+        avatarError={avatarError}
         error={drawerError}
         saving={isPending}
-        onClose={() => {
-          if (!isPending) {
-            setDrawerOpen(false);
-            setDrawerError(undefined);
-            setFieldErrors({});
-          }
-        }}
+        avatarPreviewSrc={selectedAvatarPreviewSrc || user.avatarSrc}
+        selectedAvatarFileName={selectedAvatarFile?.name || undefined}
+        onClose={closeDrawer}
         onReset={resetForm}
         onChange={handleChange}
+        onSelectAvatar={handleAvatarSelection}
         onSave={handleSave}
       />
     </>

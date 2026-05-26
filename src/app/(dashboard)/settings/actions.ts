@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 
 import { requireUser, SESSION_COOKIE_NAME } from "@/lib/auth";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { deleteObjectIfNeeded } from "@/lib/storage/s3";
 
 type UpdateProfileInput = {
   name: string;
@@ -12,6 +13,7 @@ type UpdateProfileInput = {
   phoneNumber?: string;
   jobTitle?: string;
   bio?: string;
+  avatarUrl?: string | null;
 };
 
 export type UpdateProfileResult = {
@@ -30,6 +32,7 @@ function normalizeProfileInput(input: UpdateProfileInput) {
     phoneNumber: input.phoneNumber?.trim() || null,
     jobTitle: input.jobTitle?.trim() || null,
     bio: input.bio?.trim() || null,
+    avatarUrl: input.avatarUrl?.trim() || null,
   };
 }
 
@@ -68,9 +71,14 @@ export async function updateProfileAction(
         phoneNumber: parsed.phoneNumber,
         jobTitle: parsed.jobTitle,
         bio: parsed.bio,
+        avatarUrl: parsed.avatarUrl ?? user.avatarUrl ?? null,
       },
     }),
   );
+
+  if (parsed.avatarUrl && user.avatarUrl && parsed.avatarUrl !== user.avatarUrl) {
+    await deleteObjectIfNeeded(user.avatarUrl).catch(() => undefined);
+  }
 
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;

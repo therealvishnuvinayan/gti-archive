@@ -43,6 +43,9 @@ export default async function SettingsPage() {
           email: user.email,
           role: formatRole(user.role),
           memberSince: formatMemberSince(user.createdAt),
+          avatarSrc: user.avatarUrl
+            ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
+            : null,
           department: user.department?.trim() || "",
           phoneNumber: user.phoneNumber?.trim() || "",
           jobTitle: user.jobTitle?.trim() || "",

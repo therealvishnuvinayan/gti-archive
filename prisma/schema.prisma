@@ -81,6 +81,7 @@ model User {
   id                String             @id @default(cuid())
   email             String             @unique
   name              String?
+  avatarUrl         String?
   department        String?
   phoneNumber       String?
   jobTitle          String?

@@ -11,6 +11,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { AttachmentAssetType } from "@prisma/client";
 
 const DEFAULT_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+const PROFILE_AVATAR_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
 
 const allowedExtensions = new Set([
   "png",
@@ -111,6 +112,14 @@ const submissionImageMimeTypes = new Set([
   "image/webp",
 ]);
 
+const profileImageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+const profileImageMimeTypes = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+
 export function isAllowedSubmissionImage(fileName: string, mimeType: string) {
   const extension = getFileExtension(fileName);
 
@@ -118,6 +127,26 @@ export function isAllowedSubmissionImage(fileName: string, mimeType: string) {
     (!!extension && submissionImageExtensions.has(extension)) ||
     submissionImageMimeTypes.has(mimeType.toLowerCase())
   );
+}
+
+export function getMaxProfileAvatarBytes() {
+  return PROFILE_AVATAR_MAX_FILE_SIZE_BYTES;
+}
+
+export function isAllowedProfileImage(fileName: string, mimeType: string) {
+  const extension = getFileExtension(fileName);
+
+  return (
+    (!!extension && profileImageExtensions.has(extension)) ||
+    profileImageMimeTypes.has(mimeType.toLowerCase())
+  );
+}
+
+export function buildUserAvatarKey(userId: string, originalFileName: string) {
+  const safeFileName = sanitizeFileName(originalFileName);
+  const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safeFileName}`;
+
+  return `users/${userId}/avatar/${uniqueFileName}`;
 }
 
 type BuildProjectAssetKeyInput = {

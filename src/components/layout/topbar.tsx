@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Bell, ChevronDown, LogOut, Menu, MessageSquareText } from "lucide-react";
 
 import {
@@ -16,6 +16,7 @@ export type DashboardUserView = {
   name: string;
   email: string;
   initials: string;
+  avatarSrc?: string | null;
 };
 
 export type DashboardTopbarProps = {
@@ -28,7 +29,60 @@ const defaultUser: DashboardUserView = {
   name: "Demo User",
   email: "demouser@gulbahartobacco.com",
   initials: "DU",
+  avatarSrc: null,
 };
+
+function UserAvatar({ user }: { user: DashboardUserView }) {
+  if (user.avatarSrc) {
+    return (
+      <AvatarImage
+        key={user.avatarSrc}
+        src={user.avatarSrc}
+        alt={`${user.name} avatar`}
+        className="h-[56px] w-[56px]"
+        fallback={
+          <div className="grid h-[56px] w-[56px] place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd7c5,#d88f6c_55%,#7c4a34)] text-[20px] font-bold text-white">
+            {user.initials}
+          </div>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="grid h-[56px] w-[56px] place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd7c5,#d88f6c_55%,#7c4a34)] text-[20px] font-bold text-white">
+      {user.initials}
+    </div>
+  );
+}
+
+function AvatarImage({
+  src,
+  alt,
+  className,
+  fallback,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+  fallback: ReactNode;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (imageFailed) {
+    return <>{fallback}</>;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className={`${className} rounded-full object-cover`}
+      onError={() => setImageFailed(true)}
+    />
+  );
+}
 
 export function Topbar({
   user = defaultUser,
@@ -79,9 +133,7 @@ export function Topbar({
                 className="flex min-w-[250px] cursor-pointer items-center gap-3 rounded-full bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,26,20,0.05)] outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-brand/35"
                 aria-label="Open user menu"
               >
-                <div className="grid h-[56px] w-[56px] place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd7c5,#d88f6c_55%,#7c4a34)] text-[20px] font-bold text-white">
-                  {user.initials}
-                </div>
+                <UserAvatar user={user} />
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-[17px] font-extrabold leading-tight text-[#18211a]">
                     {user.name}
