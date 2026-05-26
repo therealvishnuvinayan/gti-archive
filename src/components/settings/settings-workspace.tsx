@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   CalendarDays,
+  CheckCircle2,
+  Eye,
+  EyeOff,
   ImagePlus,
   Info,
   LockKeyhole,
@@ -15,12 +18,19 @@ import {
   X,
 } from "lucide-react";
 
-import { updateProfileAction } from "@/app/(dashboard)/settings/actions";
+import {
+  changePasswordAction,
+  updateProfileAction,
+} from "@/app/(dashboard)/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  MIN_PASSWORD_LENGTH,
+  getPasswordRequirementChecks,
+} from "@/lib/password-rules";
 
 type SettingsWorkspaceProps = {
   user: {
@@ -28,6 +38,7 @@ type SettingsWorkspaceProps = {
     email: string;
     role: string;
     memberSince: string;
+    passwordChangedAt: string;
     avatarSrc: string | null;
     department: string;
     phoneNumber: string;
@@ -43,6 +54,12 @@ type ProfileDraft = {
   phoneNumber: string;
   jobTitle: string;
   bio: string;
+};
+
+type PasswordDraft = {
+  currentPassword: string;
+  newPassword: string;
+  confirmNewPassword: string;
 };
 
 const maxProfilePhotoBytes = 2 * 1024 * 1024;
@@ -249,6 +266,75 @@ function AvatarImage({
       className={className}
       onError={() => setImageFailed(true)}
     />
+  );
+}
+
+function buildPasswordDraft(): PasswordDraft {
+  return {
+    currentPassword: "",
+    newPassword: "",
+    confirmNewPassword: "",
+  };
+}
+
+function PasswordRequirementItem({
+  label,
+  isValid,
+}: {
+  label: string;
+  isValid: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 text-[14px] text-[#5f6a60]">
+      <CheckCircle2
+        className={`h-4 w-4 shrink-0 ${isValid ? "text-brand" : "text-[#a8b0a8]"}`}
+      />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function PasswordInputField({
+  label,
+  value,
+  onChange,
+  visible,
+  onToggleVisibility,
+  error,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggleVisibility: () => void;
+  error?: string;
+  disabled: boolean;
+}) {
+  const ToggleIcon = visible ? EyeOff : Eye;
+
+  return (
+    <label className="block">
+      <span className="mb-2 block text-[16px] font-[600] text-[#697268]">{label}</span>
+      <div className="relative">
+        <Input
+          type={visible ? "text" : "password"}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-[54px] rounded-[16px] border border-[#dce4dc] px-4 pr-14 text-[18px] shadow-none"
+        />
+        <button
+          type="button"
+          onClick={onToggleVisibility}
+          disabled={disabled}
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-[#404840]"
+          aria-label={visible ? `Hide ${label}` : `Show ${label}`}
+        >
+          <ToggleIcon className="h-5 w-5" />
+        </button>
+      </div>
+      <FieldError message={error} />
+    </label>
   );
 }
 
@@ -551,21 +637,196 @@ function EditProfileDrawer({
   );
 }
 
+function ChangePasswordDrawer({
+  isOpen,
+  passwordChangedAt,
+  form,
+  fieldErrors,
+  error,
+  saving,
+  visibility,
+  onClose,
+  onChange,
+  onToggleVisibility,
+  onSave,
+}: {
+  isOpen: boolean;
+  passwordChangedAt: string;
+  form: PasswordDraft;
+  fieldErrors: {
+    currentPassword?: string;
+    newPassword?: string;
+    confirmNewPassword?: string;
+  };
+  error?: string;
+  saving: boolean;
+  visibility: {
+    currentPassword: boolean;
+    newPassword: boolean;
+    confirmNewPassword: boolean;
+  };
+  onClose: () => void;
+  onChange: <K extends keyof PasswordDraft>(field: K, value: PasswordDraft[K]) => void;
+  onToggleVisibility: (field: keyof PasswordDraft) => void;
+  onSave: () => void;
+}) {
+  const passwordChecks = getPasswordRequirementChecks(form.newPassword);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-[#102116]/26 backdrop-blur-[2px]">
+      <div className="absolute inset-y-0 right-0 flex w-full justify-end">
+        <div className="flex h-full w-full max-w-[860px] flex-col overflow-y-auto rounded-l-[36px] border-l border-[#e8efe8] bg-white shadow-[-20px_0_60px_rgba(19,36,27,0.14)]">
+          <div className="flex items-start justify-between gap-4 px-8 pb-2 pt-8 sm:px-10">
+            <div>
+              <h2 className="text-[54px] font-[700] leading-none tracking-[-0.06em] text-[#111712]">
+                Change Password
+              </h2>
+              <p className="mt-3 text-[18px] text-[#707a71]">
+                Update your password to keep your account secure.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={onClose}
+              disabled={saving}
+              className="mt-1 shrink-0 border border-[#dde5de]"
+              aria-label="Close change password drawer"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <div className="px-8 pb-8 pt-6 sm:px-10">
+            {error ? (
+              <div className="mb-6 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="space-y-8">
+              <PasswordInputField
+                label="Current Password"
+                value={form.currentPassword}
+                onChange={(value) => onChange("currentPassword", value)}
+                visible={visibility.currentPassword}
+                onToggleVisibility={() => onToggleVisibility("currentPassword")}
+                error={fieldErrors.currentPassword}
+                disabled={saving}
+              />
+
+              <PasswordInputField
+                label="New Password"
+                value={form.newPassword}
+                onChange={(value) => onChange("newPassword", value)}
+                visible={visibility.newPassword}
+                onToggleVisibility={() => onToggleVisibility("newPassword")}
+                error={fieldErrors.newPassword}
+                disabled={saving}
+              />
+
+              <PasswordInputField
+                label="Confirm New Password"
+                value={form.confirmNewPassword}
+                onChange={(value) => onChange("confirmNewPassword", value)}
+                visible={visibility.confirmNewPassword}
+                onToggleVisibility={() => onToggleVisibility("confirmNewPassword")}
+                error={fieldErrors.confirmNewPassword}
+                disabled={saving}
+              />
+
+              <div className="rounded-[24px] border border-[#ebefe8] bg-[#fbfcfa] p-5">
+                <p className="text-[26px] font-[700] tracking-[-0.03em] text-[#1b231d]">
+                  Password must contain:
+                </p>
+                <div className="mt-4 space-y-3">
+                  <PasswordRequirementItem
+                    label={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                    isValid={passwordChecks.minLength}
+                  />
+                  <PasswordRequirementItem
+                    label="One uppercase letter (A–Z)"
+                    isValid={passwordChecks.uppercase}
+                  />
+                  <PasswordRequirementItem
+                    label="One number (0–9)"
+                    isValid={passwordChecks.number}
+                  />
+                  <PasswordRequirementItem
+                    label="One special character (!@#$%^&*)"
+                    isValid={passwordChecks.specialCharacter}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-[15px] text-[#677266]">Last changed</p>
+                <p className="text-[28px] font-[700] tracking-[-0.03em] text-[#131a14]">
+                  {passwordChangedAt}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-auto flex flex-col gap-3 border-t border-[#edf2ed] px-8 py-6 sm:flex-row sm:items-center sm:justify-end sm:px-10">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onClose}
+              disabled={saving}
+              className="min-w-[140px] rounded-[16px] text-[18px]"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="min-w-[228px] rounded-[16px] text-[18px]"
+            >
+              {saving ? "Updating..." : "Update Password"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsWorkspace({
   user,
 }: SettingsWorkspaceProps) {
   const router = useRouter();
-  const [isDrawerOpen, setDrawerOpen] = useState(false);
+  const [isProfileDrawerOpen, setProfileDrawerOpen] = useState(false);
+  const [isPasswordDrawerOpen, setPasswordDrawerOpen] = useState(false);
   const [drawerError, setDrawerError] = useState<string>();
+  const [passwordDrawerError, setPasswordDrawerError] = useState<string>();
   const [saveNotice, setSaveNotice] = useState<string>();
   const [avatarError, setAvatarError] = useState<string>();
   const [fieldErrors, setFieldErrors] = useState<{
     name?: string;
     bio?: string;
   }>({});
+  const [passwordFieldErrors, setPasswordFieldErrors] = useState<{
+    currentPassword?: string;
+    newPassword?: string;
+    confirmNewPassword?: string;
+  }>({});
   const [form, setForm] = useState<ProfileDraft>(() => buildProfileDraft(user));
+  const [passwordForm, setPasswordForm] = useState<PasswordDraft>(() => buildPasswordDraft());
   const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isProfilePending, startProfileTransition] = useTransition();
+  const [isPasswordPending, startPasswordTransition] = useTransition();
+  const [passwordVisibility, setPasswordVisibility] = useState({
+    currentPassword: false,
+    newPassword: false,
+    confirmNewPassword: false,
+  });
 
   const profileRows = [
     { label: "Full Name", value: user.name },
@@ -595,11 +856,11 @@ export function SettingsWorkspace({
   }, [selectedAvatarPreviewSrc]);
 
   function closeDrawer() {
-    if (isPending) {
+    if (isProfilePending) {
       return;
     }
 
-    setDrawerOpen(false);
+    setProfileDrawerOpen(false);
     setDrawerError(undefined);
     setAvatarError(undefined);
     setFieldErrors({});
@@ -613,7 +874,7 @@ export function SettingsWorkspace({
     setAvatarError(undefined);
     setSaveNotice(undefined);
     setSelectedAvatarFile(null);
-    setDrawerOpen(true);
+    setProfileDrawerOpen(true);
   }
 
   function resetForm() {
@@ -682,7 +943,7 @@ export function SettingsWorkspace({
       return;
     }
 
-    startTransition(async () => {
+    startProfileTransition(async () => {
       try {
         let avatarUrl: string | null | undefined;
 
@@ -701,7 +962,7 @@ export function SettingsWorkspace({
           return;
         }
 
-        setDrawerOpen(false);
+        setProfileDrawerOpen(false);
         setSelectedAvatarFile(null);
         setSaveNotice("Profile updated successfully.");
         router.refresh();
@@ -711,6 +972,116 @@ export function SettingsWorkspace({
             ? error.message
             : "Unable to update your profile right now. Please try again.",
         );
+      }
+    });
+  }
+
+  function openPasswordDrawer() {
+    setPasswordForm(buildPasswordDraft());
+    setPasswordFieldErrors({});
+    setPasswordDrawerError(undefined);
+    setSaveNotice(undefined);
+    setPasswordVisibility({
+      currentPassword: false,
+      newPassword: false,
+      confirmNewPassword: false,
+    });
+    setPasswordDrawerOpen(true);
+  }
+
+  function closePasswordDrawer() {
+    if (isPasswordPending) {
+      return;
+    }
+
+    setPasswordDrawerOpen(false);
+    setPasswordDrawerError(undefined);
+    setPasswordFieldErrors({});
+    setPasswordForm(buildPasswordDraft());
+  }
+
+  function handlePasswordChange<K extends keyof PasswordDraft>(
+    field: K,
+    value: PasswordDraft[K],
+  ) {
+    setPasswordForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function togglePasswordVisibility(field: keyof PasswordDraft) {
+    setPasswordVisibility((current) => ({
+      ...current,
+      [field]: !current[field],
+    }));
+  }
+
+  function handlePasswordSave() {
+    setPasswordDrawerError(undefined);
+    setPasswordFieldErrors({});
+    setSaveNotice(undefined);
+
+    const nextFieldErrors: typeof passwordFieldErrors = {};
+
+    if (!passwordForm.currentPassword) {
+      nextFieldErrors.currentPassword = "Current password is required.";
+    }
+
+    if (!passwordForm.newPassword) {
+      nextFieldErrors.newPassword = "New password is required.";
+    }
+
+    if (!passwordForm.confirmNewPassword) {
+      nextFieldErrors.confirmNewPassword = "Confirm new password is required.";
+    }
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setPasswordDrawerError("Please correct the highlighted fields.");
+      setPasswordFieldErrors(nextFieldErrors);
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmNewPassword) {
+      setPasswordDrawerError("Please correct the highlighted fields.");
+      setPasswordFieldErrors({
+        confirmNewPassword: "New password and confirm password do not match.",
+      });
+      return;
+    }
+
+    if (passwordForm.newPassword === passwordForm.currentPassword) {
+      setPasswordDrawerError("Please correct the highlighted fields.");
+      setPasswordFieldErrors({
+        newPassword: "New password must be different from current password.",
+      });
+      return;
+    }
+
+    if (!Object.values(getPasswordRequirementChecks(passwordForm.newPassword)).every(Boolean)) {
+      setPasswordDrawerError("Password does not meet the required rules.");
+      setPasswordFieldErrors({
+        newPassword: "Password does not meet the required rules.",
+      });
+      return;
+    }
+
+    startPasswordTransition(async () => {
+      try {
+        const result = await changePasswordAction(passwordForm);
+
+        if (result.error) {
+          setPasswordDrawerError(result.error);
+          setPasswordFieldErrors(result.fieldErrors ?? {});
+          return;
+        }
+
+        setPasswordDrawerOpen(false);
+        setPasswordForm(buildPasswordDraft());
+        setSaveNotice("Password updated successfully.");
+        router.refresh();
+      } catch {
+        setPasswordDrawerError("Unable to update your password right now. Please try again.");
       }
     });
   }
@@ -765,11 +1136,19 @@ export function SettingsWorkspace({
           <SettingsCard
             title="Password"
             description="Update your password regularly to keep your account secure."
-            action={<ActionButton icon={LockKeyhole} label="Change Password" />}
+            action={
+              <ActionButton
+                icon={LockKeyhole}
+                label="Change Password"
+                onClick={openPasswordDrawer}
+              />
+            }
           >
             <div className="space-y-1">
               <p className="text-[12px] font-medium text-[#7c857d]">Last changed</p>
-              <p className="text-[15px] font-semibold text-[#1e261f]">—</p>
+              <p className="text-[15px] font-semibold text-[#1e261f]">
+                {user.passwordChangedAt}
+              </p>
             </div>
           </SettingsCard>
 
@@ -803,14 +1182,14 @@ export function SettingsWorkspace({
       </section>
 
       <EditProfileDrawer
-        isOpen={isDrawerOpen}
+        isOpen={isProfileDrawerOpen}
         user={user}
         form={form}
         nameError={fieldErrors.name}
         bioError={fieldErrors.bio}
         avatarError={avatarError}
         error={drawerError}
-        saving={isPending}
+        saving={isProfilePending}
         avatarPreviewSrc={selectedAvatarPreviewSrc || user.avatarSrc}
         selectedAvatarFileName={selectedAvatarFile?.name || undefined}
         onClose={closeDrawer}
@@ -818,6 +1197,20 @@ export function SettingsWorkspace({
         onChange={handleChange}
         onSelectAvatar={handleAvatarSelection}
         onSave={handleSave}
+      />
+
+      <ChangePasswordDrawer
+        isOpen={isPasswordDrawerOpen}
+        passwordChangedAt={user.passwordChangedAt}
+        form={passwordForm}
+        fieldErrors={passwordFieldErrors}
+        error={passwordDrawerError}
+        saving={isPasswordPending}
+        visibility={passwordVisibility}
+        onClose={closePasswordDrawer}
+        onChange={handlePasswordChange}
+        onToggleVisibility={togglePasswordVisibility}
+        onSave={handlePasswordSave}
       />
     </>
   );

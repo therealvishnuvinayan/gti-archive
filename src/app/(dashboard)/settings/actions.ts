@@ -3,7 +3,13 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { cookies } from "next/headers";
 
-import { requireUser, SESSION_COOKIE_NAME } from "@/lib/auth";
+import {
+  hashAuthPassword,
+  requireUser,
+  SESSION_COOKIE_NAME,
+  verifyAuthPassword,
+} from "@/lib/auth";
+import { isStrongPassword } from "@/lib/password-rules";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { deleteObjectIfNeeded } from "@/lib/storage/s3";
 
@@ -22,6 +28,22 @@ export type UpdateProfileResult = {
   fieldErrors?: {
     name?: string;
     bio?: string;
+  };
+};
+
+type ChangePasswordInput = {
+  currentPassword: string;
+  newPassword: string;
+  confirmNewPassword: string;
+};
+
+export type ChangePasswordResult = {
+  success?: boolean;
+  error?: string;
+  fieldErrors?: {
+    currentPassword?: string;
+    newPassword?: string;
+    confirmNewPassword?: string;
   };
 };
 
@@ -79,6 +101,121 @@ export async function updateProfileAction(
   if (parsed.avatarUrl && user.avatarUrl && parsed.avatarUrl !== user.avatarUrl) {
     await deleteObjectIfNeeded(user.avatarUrl).catch(() => undefined);
   }
+
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+
+  if (sessionToken) {
+    revalidateTag(`session:${sessionToken}`, "max");
+  }
+
+  revalidatePath("/settings");
+
+  return {
+    success: true,
+  };
+}
+
+function normalizePasswordInput(input: ChangePasswordInput) {
+  return {
+    currentPassword: input.currentPassword,
+    newPassword: input.newPassword,
+    confirmNewPassword: input.confirmNewPassword,
+  };
+}
+
+export async function changePasswordAction(
+  input: ChangePasswordInput,
+): Promise<ChangePasswordResult> {
+  const sessionUser = await requireUser();
+  const parsed = normalizePasswordInput(input);
+
+  const fieldErrors: ChangePasswordResult["fieldErrors"] = {};
+
+  if (!parsed.currentPassword) {
+    fieldErrors.currentPassword = "Current password is required.";
+  }
+
+  if (!parsed.newPassword) {
+    fieldErrors.newPassword = "New password is required.";
+  }
+
+  if (!parsed.confirmNewPassword) {
+    fieldErrors.confirmNewPassword = "Confirm new password is required.";
+  }
+
+  if (fieldErrors.currentPassword || fieldErrors.newPassword || fieldErrors.confirmNewPassword) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors,
+    };
+  }
+
+  if (parsed.newPassword !== parsed.confirmNewPassword) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        confirmNewPassword: "New password and confirm password do not match.",
+      },
+    };
+  }
+
+  if (parsed.currentPassword === parsed.newPassword) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        newPassword: "New password must be different from current password.",
+      },
+    };
+  }
+
+  if (!isStrongPassword(parsed.newPassword)) {
+    return {
+      error: "Password does not meet the required rules.",
+      fieldErrors: {
+        newPassword: "Password does not meet the required rules.",
+      },
+    };
+  }
+
+  const user = await withPrismaRetry(() =>
+    prisma.user.findUnique({
+      where: {
+        id: sessionUser.id,
+      },
+      select: {
+        id: true,
+        passwordHash: true,
+      },
+    }),
+  );
+
+  if (!user) {
+    return {
+      error: "Unauthorized.",
+    };
+  }
+
+  if (!verifyAuthPassword(parsed.currentPassword, user.passwordHash)) {
+    return {
+      error: "Current password is incorrect.",
+      fieldErrors: {
+        currentPassword: "Current password is incorrect.",
+      },
+    };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        passwordHash: hashAuthPassword(parsed.newPassword),
+        passwordChangedAt: new Date(),
+      },
+    }),
+  );
 
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;

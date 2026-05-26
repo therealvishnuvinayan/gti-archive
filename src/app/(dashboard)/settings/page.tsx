@@ -30,6 +30,27 @@ function formatMemberSince(date: Date | string | number | null | undefined) {
   }).format(normalizedDate);
 }
 
+function formatPasswordChangedAt(date: Date | string | number | null | undefined) {
+  if (!date) {
+    return "—";
+  }
+
+  const normalizedDate = date instanceof Date ? date : new Date(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(normalizedDate);
+}
+
 export default async function SettingsPage() {
   const user = await requireUser();
   const canManageMasterData =
@@ -43,6 +64,7 @@ export default async function SettingsPage() {
           email: user.email,
           role: formatRole(user.role),
           memberSince: formatMemberSince(user.createdAt),
+          passwordChangedAt: formatPasswordChangedAt(user.passwordChangedAt),
           avatarSrc: user.avatarUrl
             ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
             : null,

@@ -5,13 +5,13 @@ import { cookies } from "next/headers";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { MIN_PASSWORD_LENGTH } from "@/lib/password-rules";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const SESSION_COOKIE_NAME = "gti_session";
 
 const DEFAULT_SESSION_DAYS = 1;
 const REMEMBER_ME_SESSION_DAYS = 30;
-const MIN_PASSWORD_LENGTH = 8;
 const SESSION_CACHE_TTL_SECONDS = 10;
 
 export class AuthError extends Error {
@@ -61,6 +61,10 @@ function verifyPassword(password: string, storedHash: string) {
   }
 
   return timingSafeEqual(storedBuffer, derivedBuffer);
+}
+
+export function verifyAuthPassword(password: string, storedHash: string) {
+  return verifyPassword(password, storedHash);
 }
 
 function validateCredentials(email: string, password: string) {
@@ -143,7 +147,7 @@ export async function signInUser(options: {
     }),
   );
 
-  if (!user || !verifyPassword(options.password, user.passwordHash)) {
+  if (!user || !verifyAuthPassword(options.password, user.passwordHash)) {
     throw new AuthError("Invalid email or password.");
   }
 

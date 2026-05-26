@@ -87,6 +87,7 @@ model User {
   jobTitle          String?
   bio               String?
   passwordHash      String
+  passwordChangedAt DateTime?
   role              UserRole           @default(COLLABORATOR)
   collaboratorType  CollaboratorType   @default(INTERNAL)
   projectAccess     CollaboratorAccess @default(NONE)
