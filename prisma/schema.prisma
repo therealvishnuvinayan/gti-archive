@@ -112,6 +112,7 @@ model Project {
   name             String
   category         String
   tag              String?
+  executorName     String?
   description      String
   budget           Int
   currency         CurrencyCode  @default(USD)

@@ -111,6 +111,10 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
                   <dd className="inline">{project.endDate}</dd>
                 </div>
                 <div>
+                  <dt className="inline font-[700]">Executor:</dt>{" "}
+                  <dd className="inline">{project.executorName}</dd>
+                </div>
+                <div>
                   <dt className="inline font-[700]">Tag:</dt>{" "}
                   <dd className="inline">{project.tag}</dd>
                 </div>

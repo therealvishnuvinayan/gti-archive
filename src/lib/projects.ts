@@ -58,6 +58,7 @@ export type ProjectEditorRecord = {
   id: string;
   name: string;
   category: string;
+  executorName: string;
   tag: string;
   description: string;
   budget: string;
@@ -147,6 +148,7 @@ export type ProjectFlowRecord = {
   id: string;
   title: string;
   category: string;
+  executorName: string;
   description: string;
   budget: string;
   currency: CurrencyCode;
@@ -444,6 +446,7 @@ function mapProjectToFlow(project: ProjectWithCreator): ProjectFlowRecord {
     id: project.id,
     title: project.name,
     category: project.category,
+    executorName: project.executorName?.trim() || "—",
     description: project.description,
     budget: formatProjectBudget(project.budget, project.currency),
     currency: project.currency,
@@ -516,6 +519,7 @@ function mapProjectToEditor(project: ProjectWithCreator): ProjectEditorRecord {
     id: project.id,
     name: project.name,
     category: project.category,
+    executorName: project.executorName?.trim() || "",
     tag: project.tag?.trim() || "",
     description: project.description,
     budget: String(project.budget),

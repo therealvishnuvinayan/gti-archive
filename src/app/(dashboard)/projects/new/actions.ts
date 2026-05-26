@@ -47,6 +47,7 @@ function getInitialStageStatuses(
 function parseProjectFormData(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
+  const executorName = String(formData.get("executorName") ?? "").trim();
   const tag = String(formData.get("tag") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const budgetInput = String(formData.get("budget") ?? "").trim();
@@ -79,6 +80,7 @@ function parseProjectFormData(formData: FormData) {
   return {
     name,
     category,
+    executorName,
     tag,
     description,
     budgetInput,
@@ -100,7 +102,9 @@ function validateProjectFormData(parsed: ReturnType<typeof parseProjectFormData>
 
   if (!parsed.name) fieldErrors.name = "Project name is required.";
   if (!parsed.category) fieldErrors.category = "Project category is required.";
-  if (!parsed.tag) fieldErrors.tag = "Project tag is required.";
+  if (!parsed.executorName) {
+    fieldErrors.executorName = "Project executor is required.";
+  }
   if (!parsed.description) fieldErrors.description = "Project brief is required.";
   if (!parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
   if (!parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
@@ -281,6 +285,7 @@ export async function createProjectAction(
   const {
     name,
     category,
+    executorName,
     tag,
     description,
     budget,
@@ -320,6 +325,7 @@ export async function createProjectAction(
       data: {
         name,
         category,
+        executorName,
         tag: tag || null,
         description,
         budget,
@@ -399,6 +405,7 @@ export async function updateProjectAction(
   const {
     name,
     category,
+    executorName,
     tag,
     description,
     budget,
@@ -437,6 +444,7 @@ export async function updateProjectAction(
       data: {
         name,
         category,
+        executorName,
         tag: tag || null,
         description,
         budget,

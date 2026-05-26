@@ -164,6 +164,10 @@ function RequiredLabel({ children }: { children: ReactNode }) {
   );
 }
 
+function FieldLabel({ children }: { children: ReactNode }) {
+  return <span className="mb-2 block text-[16px] font-[600] text-brand">{children}</span>;
+}
+
 function FieldError({ message }: { message?: string }) {
   if (!message) {
     return null;
@@ -242,6 +246,9 @@ export function CreateProjectWorkspace({
   );
   const [projectName, setProjectName] = useState(initialValues?.name ?? "");
   const [projectCategory, setProjectCategory] = useState(initialValues?.category ?? "");
+  const [projectExecutor, setProjectExecutor] = useState(
+    initialValues?.executorName ?? "",
+  );
   const [projectTag, setProjectTag] = useState(initialValues?.tag ?? "");
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
   const [projectCurrency, setProjectCurrency] = useState<CurrencyValue>(
@@ -319,12 +326,22 @@ export function CreateProjectWorkspace({
       stages: stages.length,
       started: startDate ? formatDateValue(startDate) : "—",
       deadline: endDate ? formatDateValue(endDate) : "—",
+      executor: projectExecutor || "—",
       tag: projectTag || "—",
       status:
         projectStatusOptions.find((option) => option.value === projectStatus)?.label || "—",
       priority: "Medium",
     }),
-    [projectBudget, projectCurrency, projectTag, projectStatus, stages.length, startDate, endDate],
+    [
+      projectBudget,
+      projectCurrency,
+      projectExecutor,
+      projectTag,
+      projectStatus,
+      stages.length,
+      startDate,
+      endDate,
+    ],
   );
 
   function updateStage(id: string, patch: Partial<StageForm>) {
@@ -748,6 +765,19 @@ export function CreateProjectWorkspace({
               </label>
 
               <label className="block">
+                <RequiredLabel>Project Executor</RequiredLabel>
+                <Input
+                  value={projectExecutor}
+                  onChange={(event) => setProjectExecutor(event.target.value)}
+                  name="executorName"
+                  required
+                  placeholder="Select person or company responsible for execution"
+                  className="h-[42px] text-[12px]"
+                />
+                <FieldError message={fieldErrors.executorName} />
+              </label>
+
+              <label className="block">
                 <RequiredLabel>Project Budget</RequiredLabel>
                 <div className="flex gap-2">
                   <Input
@@ -780,12 +810,11 @@ export function CreateProjectWorkspace({
               </label>
 
               <label className="block">
-                <RequiredLabel>Project Tag</RequiredLabel>
+                <FieldLabel>Project Tag</FieldLabel>
                 <Input
                   value={projectTag}
                   onChange={(event) => setProjectTag(event.target.value)}
                   name="tag"
-                  required
                   placeholder="Enter Project Tag....."
                   className="h-[42px] text-[12px]"
                 />
@@ -1154,6 +1183,10 @@ export function CreateProjectWorkspace({
             <div>
               <dt className="inline font-[700]">Project Deadline :</dt>{" "}
               <dd className="inline">{overview.deadline}</dd>
+            </div>
+            <div>
+              <dt className="inline font-[700]">Executor :</dt>{" "}
+              <dd className="inline">{overview.executor}</dd>
             </div>
             <div>
               <dt className="inline font-[700]">Tag :</dt>{" "}
