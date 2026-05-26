@@ -745,9 +745,10 @@ export function CreateProjectWorkspace({
   }
 
   return (
+    <section className="mx-auto w-full max-w-[1420px]">
     <form
       action={formAction}
-      className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]"
+      className="flex w-full min-w-0 flex-col gap-4 xl:flex-row xl:items-start"
     >
       <input type="hidden" name="startDate" value={startDate ? formatDateValue(startDate) : ""} />
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
@@ -775,8 +776,8 @@ export function CreateProjectWorkspace({
       />
       <input type="hidden" name="stageCount" value={String(stages.length)} />
 
-      <MotionSection>
-      <Card className="bg-surface">
+      <MotionSection className="min-w-0 w-full flex-1">
+      <Card className="w-full bg-surface">
         <CardHeader>
           <div className="rounded-[20px] bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
             <CardTitle className="text-[18px] font-[700] tracking-[-0.02em] text-white">
@@ -1250,7 +1251,7 @@ export function CreateProjectWorkspace({
       </Card>
       </MotionSection>
 
-      <MotionStaggerGroup className="space-y-4" stagger={0.05}>
+      <MotionStaggerGroup className="min-w-0 space-y-4 xl:w-[340px] xl:shrink-0" stagger={0.05}>
         <MotionItem y={10}>
         <Card className="border border-brand/40">
           <CardHeader className="pb-3">
@@ -1424,5 +1425,6 @@ export function CreateProjectWorkspace({
         confirmLabel="Apply Selection"
       />
     </form>
+    </section>
   );
 }
