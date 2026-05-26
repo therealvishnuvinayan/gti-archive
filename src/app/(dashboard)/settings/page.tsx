@@ -12,6 +12,24 @@ function formatRole(role: string) {
     .join(" ");
 }
 
+function formatMemberSince(date: Date | string | number | null | undefined) {
+  if (!date) {
+    return "—";
+  }
+
+  const normalizedDate = date instanceof Date ? date : new Date(date);
+
+  if (Number.isNaN(normalizedDate.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(normalizedDate);
+}
+
 export default async function SettingsPage() {
   const user = await requireUser();
   const canManageMasterData =
@@ -24,6 +42,7 @@ export default async function SettingsPage() {
           name: getUserDisplayName(user),
           email: user.email,
           role: formatRole(user.role),
+          memberSince: formatMemberSince(user.createdAt),
         }}
         canManageMasterData={canManageMasterData}
       />

@@ -1,18 +1,5 @@
-import type { ComponentType, ReactNode } from "react";
 import Link from "next/link";
-import {
-  Bell,
-  BrushCleaning,
-  Globe,
-  LaptopMinimal,
-  LockKeyhole,
-  PencilLine,
-  ScrollText,
-  Settings2,
-  ShieldCheck,
-  SlidersHorizontal,
-  UserRound,
-} from "lucide-react";
+import { LockKeyhole, PencilLine, Settings2, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,27 +9,10 @@ type SettingsWorkspaceProps = {
     name: string;
     email: string;
     role: string;
+    memberSince: string;
   };
   canManageMasterData?: boolean;
 };
-
-type SettingsNavItem = {
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-  active?: boolean;
-};
-
-const settingsNavItems: SettingsNavItem[] = [
-  { label: "Profile", icon: UserRound, active: true },
-  { label: "Notifications", icon: Bell },
-  { label: "Password", icon: LockKeyhole },
-  { label: "Security", icon: ShieldCheck },
-  { label: "Preferences", icon: SlidersHorizontal },
-  { label: "Appearance", icon: BrushCleaning },
-  { label: "Language & Region", icon: Globe },
-  { label: "Sessions", icon: LaptopMinimal },
-  { label: "Audit Log", icon: ScrollText },
-];
 
 function SettingsCard({
   title,
@@ -54,8 +24,8 @@ function SettingsCard({
   title: string;
   description: string;
   actionLabel?: string;
-  actionIcon?: ComponentType<{ className?: string }>;
-  children: ReactNode;
+  actionIcon?: typeof UserRound;
+  children: React.ReactNode;
 }) {
   return (
     <Card className="rounded-[24px] border border-[#ebefe8] p-5 sm:p-6">
@@ -105,7 +75,7 @@ export function SettingsWorkspace({
     { label: "Email Address", value: user.email },
     { label: "Role", value: user.role },
     { label: "Department", value: getDepartmentFromRole(user.role) },
-    { label: "Member Since", value: "Jan 15, 2024" },
+    { label: "Member Since", value: user.memberSince },
   ];
 
   return (
@@ -115,169 +85,77 @@ export function SettingsWorkspace({
           Settings
         </h1>
         <p className="text-[15px] text-[#6f776f]">
-          Manage your account, preferences and system settings.
+          Manage core account and project configuration.
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <Card className="rounded-[24px] border border-[#ebefe8] p-4">
-          <nav aria-label="Settings sections">
-            <ul className="space-y-1.5">
-              {settingsNavItems.map((item) => {
-                const Icon = item.icon;
-
-                return (
-                  <li key={item.label}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className={`flex h-auto w-full items-center justify-start gap-3 rounded-2xl px-4 py-3 text-left text-[14px] font-semibold ${
-                        item.active
-                          ? "bg-[#f5faf6] text-brand"
-                          : "text-[#5f685f] hover:bg-[#f7faf7] hover:text-[#1d271f]"
-                      }`}
-                    >
-                      <Icon
-                        className={`h-4.5 w-4.5 ${
-                          item.active ? "text-brand" : "text-[#7f897f]"
-                        }`}
-                      />
-                      {item.label}
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        </Card>
-
-        <div className="space-y-4">
-          {canManageMasterData ? (
-            <SettingsCard
-              title="Project Master Data"
-              description="Manage reusable project categories and tags used across the dashboard."
-              actionLabel="Open Master Data"
-              actionIcon={Settings2}
-            >
-              <div className="flex flex-col gap-4 rounded-[22px] bg-[#fbfcfa] p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <p className="text-[15px] font-semibold text-[#1e261f]">
-                    Categories and tags
-                  </p>
-                  <p className="text-[14px] text-[#748074]">
-                    Add, edit, and deactivate reusable values for future project forms.
-                  </p>
-                </div>
-
-                <Button asChild className="self-start sm:self-auto">
-                  <Link href="/settings/project-master-data">Project Master Data</Link>
-                </Button>
-              </div>
-            </SettingsCard>
-          ) : null}
-
-          <SettingsCard
-            title="Profile Information"
-            description="Update your personal information and how others see you."
-            actionLabel="Edit Profile"
-            actionIcon={PencilLine}
-          >
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
-              <div className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd6c3,#d98e6a_55%,#855038)] text-[28px] font-bold text-white shadow-[0_14px_34px_rgba(26,49,36,0.12)]">
-                {user.name
-                  .split(/\s+/)
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map((part) => part[0]?.toUpperCase() ?? "")
-                  .join("")}
-              </div>
-
-              <div className="grid flex-1 grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
-                {profileRows.map((row) => (
-                  <div key={row.label} className="space-y-1">
-                    <p className="text-[12px] font-medium text-[#7c857d]">
-                      {row.label}
-                    </p>
-                    <p className="text-[16px] font-semibold text-[#1c241d]">
-                      {row.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
+      <div className="mx-auto max-w-[980px] space-y-4">
+        <SettingsCard
+          title="Profile Information"
+          description="Update your personal information and how others see you."
+          actionLabel="Edit Profile"
+          actionIcon={PencilLine}
+        >
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+            <div className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd6c3,#d98e6a_55%,#855038)] text-[28px] font-bold text-white shadow-[0_14px_34px_rgba(26,49,36,0.12)]">
+              {user.name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => part[0]?.toUpperCase() ?? "")
+                .join("")}
             </div>
-          </SettingsCard>
 
-          <SettingsCard
-            title="Password"
-            description="Update your password regularly to keep your account secure."
-            actionLabel="Change Password"
-            actionIcon={LockKeyhole}
-          >
-            <div className="space-y-1">
-              <p className="text-[12px] font-medium text-[#7c857d]">Last changed</p>
-              <p className="text-[15px] font-semibold text-[#1e261f]">
-                May 10, 2025
-              </p>
-            </div>
-          </SettingsCard>
-
-          <SettingsCard
-            title="Two-Factor Authentication"
-            description="Add an extra layer of security to your account."
-            actionLabel="Enable 2FA"
-            actionIcon={ShieldCheck}
-          >
-            <div className="flex items-start gap-4 rounded-[20px] bg-[#fbfcfa] px-4 py-4">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#edf7ef] text-brand">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-[14px] font-medium text-[#5f685f]">
-                  Two-factor authentication is currently disabled.
-                </p>
-                <p className="text-[14px] text-[#7f887f]">
-                  Enable 2FA to protect your account from unauthorized access.
-                </p>
-              </div>
-            </div>
-          </SettingsCard>
-
-          <SettingsCard
-            title="Preferences"
-            description="Choose how your dashboard experience should behave."
-            actionLabel="Manage Preferences"
-            actionIcon={Settings2}
-          >
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-              {[
-                {
-                  label: "Email notifications",
-                  value: "Enabled",
-                },
-                {
-                  label: "Default workspace",
-                  value: "Projects",
-                },
-                {
-                  label: "Language",
-                  value: "English (UAE)",
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-[18px] border border-[#eef2eb] bg-[#fbfcfa] px-4 py-4"
-                >
+            <div className="grid flex-1 grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
+              {profileRows.map((row) => (
+                <div key={row.label} className="space-y-1">
                   <p className="text-[12px] font-medium text-[#7c857d]">
-                    {item.label}
+                    {row.label}
                   </p>
-                  <p className="mt-1 text-[15px] font-semibold text-[#1e261f]">
-                    {item.value}
+                  <p className="text-[16px] font-semibold text-[#1c241d]">
+                    {row.value}
                   </p>
                 </div>
               ))}
             </div>
+          </div>
+        </SettingsCard>
+
+        <SettingsCard
+          title="Password"
+          description="Update your password regularly to keep your account secure."
+          actionLabel="Change Password"
+          actionIcon={LockKeyhole}
+        >
+          <div className="space-y-1">
+            <p className="text-[12px] font-medium text-[#7c857d]">Last changed</p>
+            <p className="text-[15px] font-semibold text-[#1e261f]">—</p>
+          </div>
+        </SettingsCard>
+
+        {canManageMasterData ? (
+          <SettingsCard
+            title="Project Master Data"
+            description="Manage reusable project categories and tags used across project forms and filters."
+            actionLabel="Open Project Master Data"
+            actionIcon={Settings2}
+          >
+            <div className="flex flex-col gap-4 rounded-[22px] bg-[#fbfcfa] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-[15px] font-semibold text-[#1e261f]">
+                  Categories and tags
+                </p>
+                <p className="text-[14px] text-[#748074]">
+                  Manage reusable values used across project forms and filters.
+                </p>
+              </div>
+
+              <Button asChild className="self-start sm:self-auto">
+                <Link href="/settings/project-master-data">Open Project Master Data</Link>
+              </Button>
+            </div>
           </SettingsCard>
-        </div>
+        ) : null}
       </div>
     </section>
   );
