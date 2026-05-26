@@ -4,7 +4,8 @@ import {
   ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
-  CollaboratorAccess,
+  ProjectRevisionStatus,
+  SubmissionReviewStatus,
   UserRole,
   type User,
 } from "@prisma/client";
@@ -46,6 +47,9 @@ type StageHistoryQueryRecord = {
   revisionNumber: number;
   title: string;
   summary: string | null;
+  status: ProjectRevisionStatus;
+  rejectionReason: string | null;
+  reviewedAt: Date | null;
   createdAt: Date;
   createdBy: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
   attachments: Array<{
@@ -54,6 +58,7 @@ type StageHistoryQueryRecord = {
     originalFileName: string;
     mimeType: string;
     fileSize: number;
+    submissionReviewStatus: SubmissionReviewStatus | null;
     createdAt: Date;
     status: AttachmentStatus;
     uploadedBy: Pick<User, "name" | "email">;
@@ -74,6 +79,7 @@ type StageCommentQueryRecord = {
     originalFileName: string;
     mimeType: string;
     fileSize: number;
+    submissionReviewStatus: SubmissionReviewStatus | null;
     createdAt: Date;
     status: AttachmentStatus;
     uploadedBy: Pick<User, "name" | "email">;
@@ -168,6 +174,7 @@ function mapAttachmentRecord(
     originalFileName: string;
     mimeType: string;
     fileSize: number;
+    submissionReviewStatus?: SubmissionReviewStatus | null;
     createdAt: Date | string;
     uploadedBy: Pick<User, "name" | "email">;
   },
@@ -179,6 +186,7 @@ function mapAttachmentRecord(
     id: attachment.id,
     isSubmission: attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION,
     submissionNumber,
+    submissionReviewStatus: attachment.submissionReviewStatus ?? null,
     originalFileName: attachment.originalFileName,
     fileTypeLabel: getFileTypeLabel(attachment.originalFileName, attachment.mimeType),
     mimeType: attachment.mimeType,
@@ -226,6 +234,8 @@ function mapRevisionEntry(
     revisionId: revision.id,
     kind: "revision",
     title: revision.title,
+    revisionStatus: revision.status,
+    rejectionReason: revision.rejectionReason,
     author: getDisplayName(revision.createdBy),
     role: getActorRole(revision.createdBy),
     body: revision.summary?.trim() || "Revision uploaded.",
@@ -258,16 +268,27 @@ function mapCommentEntry(
   };
 }
 
-async function getProjectAccessRecord(projectId: string) {
+async function getProjectAccessRecord(projectId: string, userId?: string) {
   return withPrismaRetry(() =>
     prisma.project.findUnique({
       where: { id: projectId },
       select: {
         id: true,
         createdById: true,
+        executorUserId: true,
         currency: true,
         budget: true,
         endDate: true,
+        collaborators: userId
+          ? {
+              where: {
+                userId,
+              },
+              select: {
+                userId: true,
+              },
+            }
+          : false,
         stages: {
           orderBy: {
             order: "asc",
@@ -286,22 +307,15 @@ async function getProjectAccessRecord(projectId: string) {
   );
 }
 
-function ensureProjectAccessByOwnerId(user: AccessUser, createdById: string) {
-  if (
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN ||
-    createdById === user.id
-  ) {
-    return;
-  }
-
-  if (user.projectAccess === CollaboratorAccess.NONE) {
-    throw new Error("You do not have access to this project.");
-  }
+function isProjectExecutorUser(
+  project: { executorUserId?: string | null },
+  userId: string,
+) {
+  return Boolean(project.executorUserId && project.executorUserId === userId);
 }
 
 export async function assertProjectAccess(user: AccessUser, projectId: string) {
-  const project = await getProjectAccessRecord(projectId);
+  const project = await getProjectAccessRecord(projectId, user.id);
 
   if (!project) {
     throw new Error("Project not found.");
@@ -310,16 +324,14 @@ export async function assertProjectAccess(user: AccessUser, projectId: string) {
   if (
     user.role === UserRole.SUPER_ADMIN ||
     user.role === UserRole.ADMIN ||
-    project.createdById === user.id
+    project.createdById === user.id ||
+    isProjectExecutorUser(project, user.id) ||
+    project.collaborators.length > 0
   ) {
     return project;
   }
 
-  if (user.projectAccess === CollaboratorAccess.NONE) {
-    throw new Error("You do not have access to this project.");
-  }
-
-  return project;
+  throw new Error("You do not have access to this project.");
 }
 
 function resolveStageId(
@@ -459,6 +471,7 @@ export async function getProjectStageHistory(
                   originalFileName: true,
                   mimeType: true,
                   fileSize: true,
+                  submissionReviewStatus: true,
                   createdAt: true,
                   status: true,
                   uploadedBy: {
@@ -499,6 +512,7 @@ export async function getProjectStageHistory(
                   originalFileName: true,
                   mimeType: true,
                   fileSize: true,
+                  submissionReviewStatus: true,
                   createdAt: true,
                   status: true,
                   uploadedBy: {
@@ -557,6 +571,10 @@ export async function createStageRevision(
     throw new Error("Stage not found.");
   }
 
+  if (!isProjectExecutorUser(project, user.id)) {
+    throw new Error("Only the project executor can submit work for review.");
+  }
+
   const revision = await withPrismaRetry(async () => {
     const latestRevision = await prisma.projectRevision.findFirst({
       where: {
@@ -580,10 +598,16 @@ export async function createStageRevision(
         revisionNumber,
         title: `Revision ${revisionNumber}`,
         summary: input.summary?.trim() || null,
+        status: ProjectRevisionStatus.PENDING_REVIEW,
+        reviewedById: null,
+        reviewedAt: null,
+        rejectionReason: null,
       },
       select: {
         id: true,
         title: true,
+        revisionNumber: true,
+        status: true,
       },
     });
   });
@@ -637,7 +661,7 @@ export async function createStageComment(
     throw new Error("Stage not found.");
   }
 
-  ensureProjectAccessByOwnerId(user, stage.project.createdById);
+  await assertProjectAccess(user, input.projectId);
 
   const latestRevision = await withPrismaRetry(() =>
     prisma.projectRevision.findFirst({
@@ -765,6 +789,176 @@ export async function completeProjectStage(
   return updatedStage;
 }
 
+export async function reviewStageSubmission(
+  user: AccessUser,
+  input: {
+    attachmentId: string;
+    status: "APPROVED" | "REJECTED";
+    note?: string;
+  },
+) {
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findUnique({
+      where: {
+        id: input.attachmentId,
+      },
+      select: {
+        id: true,
+        assetType: true,
+        status: true,
+        projectId: true,
+        stageId: true,
+        commentId: true,
+        submissionReviewStatus: true,
+        project: {
+          select: {
+            createdById: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (
+    !attachment ||
+    attachment.assetType !== AttachmentAssetType.STAGE_SUBMISSION ||
+    attachment.status !== AttachmentStatus.READY
+  ) {
+    throw new Error("Submission not found.");
+  }
+
+  if (attachment.project.createdById !== user.id) {
+    throw new Error("Only the project owner can review submissions.");
+  }
+
+  if (
+    attachment.submissionReviewStatus &&
+    attachment.submissionReviewStatus !== SubmissionReviewStatus.PENDING_REVIEW
+  ) {
+    throw new Error("This submission has already been reviewed.");
+  }
+
+  return withPrismaRetry(() =>
+    prisma.projectAttachment.update({
+      where: {
+        id: attachment.id,
+      },
+      data: {
+        submissionReviewStatus: input.status,
+        reviewedById: user.id,
+        reviewedAt: new Date(),
+        reviewNote: input.note?.trim() || null,
+      },
+      select: {
+        id: true,
+        submissionReviewStatus: true,
+      },
+    }),
+  );
+}
+
+export async function reviewProjectRevision(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    revisionId: string;
+    status: "APPROVED" | "REJECTED";
+    reason?: string;
+  },
+) {
+  const revision = await withPrismaRetry(() =>
+    prisma.projectRevision.findFirst({
+      where: {
+        id: input.revisionId,
+        projectId: input.projectId,
+        stageId: input.stageId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        stageId: true,
+        revisionNumber: true,
+        status: true,
+        title: true,
+        project: {
+          select: {
+            createdById: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!revision) {
+    throw new Error("Submission not found.");
+  }
+
+  if (revision.project.createdById !== user.id) {
+    throw new Error("Only the project owner can review this submission.");
+  }
+
+  if (revision.status !== ProjectRevisionStatus.PENDING_REVIEW) {
+    throw new Error("This submission is no longer pending review.");
+  }
+
+  const rejectionReason = input.reason?.trim() || "";
+
+  if (input.status === "REJECTED" && !rejectionReason) {
+    throw new Error("Rejection reason is required.");
+  }
+
+  return withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const updatedRevision = await tx.projectRevision.update({
+        where: {
+          id: revision.id,
+        },
+        data: {
+          status: input.status,
+          reviewedById: user.id,
+          reviewedAt: new Date(),
+          rejectionReason: input.status === "REJECTED" ? rejectionReason : null,
+        },
+        select: {
+          id: true,
+          status: true,
+          rejectionReason: true,
+          reviewedAt: true,
+        },
+      });
+
+      let rejectionComment:
+        | {
+            id: string;
+            body: string;
+          }
+        | null = null;
+
+      if (input.status === "REJECTED") {
+        rejectionComment = await tx.projectComment.create({
+          data: {
+            projectId: revision.projectId,
+            stageId: revision.stageId,
+            revisionId: revision.id,
+            authorId: user.id,
+            body: `Rejection brief for Revision ${revision.revisionNumber}: ${rejectionReason}`,
+          },
+          select: {
+            id: true,
+            body: true,
+          },
+        });
+      }
+
+      return {
+        ...updatedRevision,
+        rejectionComment,
+      };
+    }),
+  );
+}
+
 function getUploadAction(assetType: AttachmentAssetType) {
   return assetType === AttachmentAssetType.COMMENT_ATTACHMENT
     ? ActivityLogAction.COMMENT_ATTACHMENT_UPLOADED
@@ -811,6 +1005,7 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               createdById: true,
+              executorUserId: true,
             },
           },
         },
@@ -820,7 +1015,11 @@ export async function requestAttachmentUpload(
     if (!revision) {
       return { error: "Revision not found." };
     }
-    ensureProjectAccessByOwnerId(user, revision.project.createdById);
+    await assertProjectAccess(user, input.projectId);
+
+    if (!isProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only the project executor can submit work for review." };
+    }
   } else if (
     input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT ||
     input.assetType === AttachmentAssetType.STAGE_SUBMISSION
@@ -845,6 +1044,7 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               createdById: true,
+              executorUserId: true,
             },
           },
         },
@@ -855,7 +1055,14 @@ export async function requestAttachmentUpload(
       return { error: "Comment not found." };
     }
 
-    ensureProjectAccessByOwnerId(user, comment.project.createdById);
+    await assertProjectAccess(user, input.projectId);
+
+    if (
+      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+      !isProjectExecutorUser(comment.project, user.id)
+    ) {
+      return { error: "Only the project executor can upload submissions for review." };
+    }
 
     if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {
       return { error: "Comment upload context is invalid." };
@@ -877,7 +1084,7 @@ export async function requestAttachmentUpload(
       return { error: "Project not found." };
     }
 
-    ensureProjectAccessByOwnerId(user, project.createdById);
+    await assertProjectAccess(user, input.projectId);
   }
 
   if (
@@ -917,6 +1124,13 @@ export async function requestAttachmentUpload(
         storageKey,
         assetType: input.assetType,
         status: AttachmentStatus.UPLOADING,
+        submissionReviewStatus:
+          input.assetType === AttachmentAssetType.STAGE_SUBMISSION
+            ? SubmissionReviewStatus.PENDING_REVIEW
+            : null,
+        reviewedById: null,
+        reviewedAt: null,
+        reviewNote: null,
       },
       select: {
         id: true,
@@ -956,6 +1170,7 @@ export async function completeAttachmentUpload(
         revisionId: true,
         commentId: true,
         assetType: true,
+        submissionReviewStatus: true,
         bucket: true,
         storageKey: true,
         originalFileName: true,
@@ -974,7 +1189,7 @@ export async function completeAttachmentUpload(
     throw new Error("Attachment not found.");
   }
 
-  ensureProjectAccessByOwnerId(user, attachment.project.createdById);
+  await assertProjectAccess(user, attachment.projectId);
 
   if (failed) {
     await withPrismaRetry(() =>
@@ -1000,6 +1215,10 @@ export async function completeAttachmentUpload(
         status: AttachmentStatus.READY,
         fileSize: attachment.fileSize,
         mimeType: attachment.mimeType,
+        submissionReviewStatus:
+          attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION
+            ? attachment.submissionReviewStatus ?? SubmissionReviewStatus.PENDING_REVIEW
+            : undefined,
       },
     }),
   );

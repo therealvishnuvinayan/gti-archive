@@ -141,22 +141,46 @@ export function StageTimeRemainingCard({
   stageStartAt,
   stageDueAt,
 }: StageTimeRemainingCardProps) {
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState<number | null>(null);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const syncNow = () => {
       setNowMs(Date.now());
+    };
+
+    const initialTimer = window.setTimeout(syncNow, 0);
+
+    const timer = window.setInterval(() => {
+      syncNow();
     }, 60_000);
 
     return () => {
+      window.clearTimeout(initialTimer);
       window.clearInterval(timer);
     };
   }, []);
 
-  const countdown = useMemo(
-    () => buildCountdownState(nowMs, stageStartAt, stageDueAt),
-    [nowMs, stageDueAt, stageStartAt],
-  );
+  const countdown = useMemo(() => {
+    if (nowMs === null) {
+      const dueDate = stageDueAt ? new Date(stageDueAt) : null;
+      const hasDeadline = Boolean(dueDate && !Number.isNaN(dueDate.getTime()));
+
+      return {
+        hasDeadline,
+        isOverdue: false,
+        days: "—",
+        hours: "—",
+        minutes: "—",
+        statusLabel: hasDeadline ? "On track" : "No deadline",
+        helperText: hasDeadline ? "Calculating remaining time…" : "No deadline set",
+        progressPercent: null,
+        progressLabel: null,
+        deadlineLabel: hasDeadline ? formatStageDate(dueDate as Date) : null,
+      } satisfies CountdownState;
+    }
+
+    return buildCountdownState(nowMs, stageStartAt, stageDueAt);
+  }, [nowMs, stageDueAt, stageStartAt]);
   const statusClasses = getStatusClasses(countdown.statusLabel);
 
   return (

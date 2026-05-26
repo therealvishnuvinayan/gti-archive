@@ -393,13 +393,24 @@ export async function createProjectAction(
     };
   }
 
-  const validCollaborators = collaboratorIds.length
+  const assignedCollaboratorIds = [
+    ...new Set(
+      [
+        ...collaboratorIds,
+        resolvedExecutor.executorUserId,
+      ].filter(
+        (collaboratorId): collaboratorId is string =>
+          Boolean(collaboratorId) && collaboratorId !== user.id,
+      ),
+    ),
+  ];
+
+  const validCollaborators = assignedCollaboratorIds.length
     ? await prisma.user.findMany({
         where: {
           id: {
-            in: collaboratorIds,
+            in: assignedCollaboratorIds,
           },
-          role: UserRole.COLLABORATOR,
         },
         select: {
           id: true,
@@ -628,13 +639,24 @@ export async function updateProjectAction(
     };
   }
 
-  const validCollaborators = collaboratorIds.length
+  const assignedCollaboratorIds = [
+    ...new Set(
+      [
+        ...collaboratorIds,
+        resolvedExecutor.executorUserId,
+      ].filter(
+        (collaboratorId): collaboratorId is string =>
+          Boolean(collaboratorId) && collaboratorId !== existingProject.createdById,
+      ),
+    ),
+  ];
+
+  const validCollaborators = assignedCollaboratorIds.length
     ? await prisma.user.findMany({
         where: {
           id: {
-            in: collaboratorIds,
+            in: assignedCollaboratorIds,
           },
-          role: UserRole.COLLABORATOR,
         },
         select: {
           id: true,

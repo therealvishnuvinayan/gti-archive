@@ -17,10 +17,14 @@ import {
 } from "lucide-react";
 
 import {
+  approveSubmissionAction,
+  approveStageSubmissionAction,
   createStageCommentAction,
   createStageRevisionAction,
   markStageCompleteAction,
   removeProjectCollaboratorAction,
+  rejectSubmissionAction,
+  rejectStageSubmissionAction,
   saveProjectCollaboratorsAction,
   setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
@@ -85,8 +89,11 @@ type DisplayAttachmentRecord = ProjectAttachmentRecord & {
 type DisplayChatEntry = ProjectChatEntry & {
   attachments?: DisplayAttachmentRecord[];
   isOptimistic?: boolean;
-  serverCommentId?: string;
+  serverEntryId?: string;
 };
+
+type SubmissionReviewState = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
+type RevisionReviewState = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 
 type TranslateApiResponse = {
   sourceLanguageCode: string;
@@ -286,12 +293,52 @@ function uploadFileToS3WithProgress(input: {
   });
 }
 
+function getRevisionEntryId(
+  entry: Pick<DisplayChatEntry, "id" | "kind" | "revisionId" | "serverEntryId">,
+) {
+  if (entry.kind !== "revision") {
+    return entry.id;
+  }
+
+  return entry.revisionId ?? entry.serverEntryId ?? entry.id;
+}
+
+function getRevisionStatusMeta(status: RevisionReviewState) {
+  switch (status) {
+    case "APPROVED":
+      return {
+        label: "Approved",
+        badgeClassName: "bg-[#edf7ef] text-[#2b8b56]",
+      };
+    case "REJECTED":
+      return {
+        label: "Rejected",
+        badgeClassName: "bg-[#fff0ef] text-[#c14f46]",
+      };
+    default:
+      return {
+        label: "Pending Review",
+        badgeClassName: "bg-[#fff8eb] text-[#b77420]",
+      };
+  }
+}
+
 function AttachmentHistoryList({
   attachments,
   compact = false,
+  canReviewSubmissions = false,
+  pendingReviewAttachmentId = null,
+  submissionReviewOverrides,
+  onApproveSubmission,
+  onRejectSubmission,
 }: {
   attachments: DisplayAttachmentRecord[];
   compact?: boolean;
+  canReviewSubmissions?: boolean;
+  pendingReviewAttachmentId?: string | null;
+  submissionReviewOverrides?: Partial<Record<string, SubmissionReviewState>>;
+  onApproveSubmission?: (attachmentId: string) => void;
+  onRejectSubmission?: (attachmentId: string) => void;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -300,160 +347,158 @@ function AttachmentHistoryList({
   return (
     <div className={compact ? "mt-3 space-y-2" : "mt-3 space-y-2.5"}>
       {attachments.map((attachment) => (
-        <div
-          key={attachment.id}
-          className={`rounded-[14px] border border-white/15 bg-white/92 px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${
-            compact ? "sm:max-w-[360px]" : ""
-          }`}
-        >
-          <div className="flex items-start gap-3">
+        (() => {
+          const effectiveSubmissionStatus = attachment.isSubmission
+            ? (submissionReviewOverrides?.[attachment.id] ??
+                attachment.submissionReviewStatus ??
+                "PENDING_REVIEW")
+            : null;
+          const isPendingReview =
+            effectiveSubmissionStatus === "PENDING_REVIEW";
+
+          return (
             <div
-              className={`grid h-8 min-w-8 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
-                attachment.fileTypeLabel,
-              )}`}
+              key={attachment.id}
+              className={`rounded-[14px] border border-white/15 bg-white/92 px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${
+                compact ? "sm:max-w-[360px]" : ""
+              }`}
             >
-              {attachment.fileTypeLabel}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="truncate text-[12px] font-[700] text-[#111712]">
-                  {attachment.originalFileName}
-                </p>
-                {attachment.uploadState ? (
-                  <span
-                    className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none ${
-                      attachment.uploadState === "error"
-                        ? "bg-[#fff0ef] text-[#c14f46]"
-                        : attachment.uploadState === "uploaded"
-                          ? "bg-[#edf7ef] text-[#2b8b56]"
-                          : "bg-[#f4f7f4] text-[#566259]"
-                    }`}
-                  >
-                    {attachment.uploadState === "error"
-                      ? "Failed"
-                      : attachment.uploadState === "uploaded"
-                        ? "Uploaded"
-                        : "Uploading"}
-                  </span>
-                ) : null}
-                {attachment.isSubmission ? (
-                  <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none text-[#2b8b56]">
-                    {attachment.submissionNumber
-                      ? `Submission ${attachment.submissionNumber}`
-                      : "Submission"}
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-0.5 text-[10px] leading-4 text-[#6c756e]">
-                {attachment.uploadState
-                  ? attachment.uploadState === "error"
-                    ? attachment.errorMessage || "Upload failed."
-                    : attachment.uploadState === "uploaded"
-                      ? `${attachment.fileSizeLabel} · Uploaded · Refreshing chat…`
-                      : `${attachment.fileSizeLabel} · ${attachment.progress ?? 0}% uploaded`
-                  : `${attachment.fileSizeLabel} · Uploaded by ${attachment.uploadedBy}`}
-              </p>
-              <p className="text-[10px] leading-4 text-[#89928b]">
-                {attachment.uploadState ? attachment.uploadedAt : attachment.uploadedAt}
-              </p>
-              {attachment.uploadState && attachment.uploadState !== "error" ? (
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#edf2ed]">
-                  <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] transition-[width] duration-200"
-                    style={{ width: `${attachment.progress ?? 0}%` }}
-                  />
-                </div>
-              ) : null}
-            </div>
-            {!attachment.uploadState && attachment.previewPath && attachment.downloadPath ? (
-              <div className="flex items-center gap-1">
-                <AssetPreviewButton
-                  fileName={attachment.originalFileName}
-                  mimeType={attachment.mimeType}
-                  previewPath={attachment.previewPath}
-                  downloadPath={attachment.downloadPath}
-                  triggerClassName="size-8 rounded-full text-brand"
-                />
-                <Button
-                  asChild
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 rounded-full text-brand"
+              <div className="flex items-start gap-3">
+                <div
+                  className={`grid h-8 min-w-8 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
+                    attachment.fileTypeLabel,
+                  )}`}
                 >
-                  <a
-                    href={attachment.downloadPath}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Download ${attachment.originalFileName}`}
-                  >
-                    <Download className="h-4 w-4" />
-                  </a>
-                </Button>
+                  {attachment.fileTypeLabel}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-[12px] font-[700] text-[#111712]">
+                      {attachment.originalFileName}
+                    </p>
+                    {attachment.uploadState ? (
+                      <span
+                        className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none ${
+                          attachment.uploadState === "error"
+                            ? "bg-[#fff0ef] text-[#c14f46]"
+                            : attachment.uploadState === "uploaded"
+                              ? "bg-[#edf7ef] text-[#2b8b56]"
+                              : "bg-[#f4f7f4] text-[#566259]"
+                        }`}
+                      >
+                        {attachment.uploadState === "error"
+                          ? "Failed"
+                          : attachment.uploadState === "uploaded"
+                            ? "Uploaded"
+                            : "Uploading"}
+                      </span>
+                    ) : null}
+                    {attachment.isSubmission ? (
+                      <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none text-[#2b8b56]">
+                        {attachment.submissionNumber
+                          ? `Submission ${attachment.submissionNumber}`
+                          : "Submission"}
+                      </span>
+                    ) : null}
+                    {attachment.isSubmission && !attachment.uploadState ? (
+                      <span
+                        className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none ${
+                          effectiveSubmissionStatus === "APPROVED"
+                            ? "bg-[#edf7ef] text-[#2b8b56]"
+                            : effectiveSubmissionStatus === "REJECTED"
+                              ? "bg-[#fff0ef] text-[#c14f46]"
+                              : "bg-[#fff8eb] text-[#b77420]"
+                        }`}
+                      >
+                        {effectiveSubmissionStatus === "APPROVED"
+                          ? "Approved"
+                          : effectiveSubmissionStatus === "REJECTED"
+                            ? "Rejected"
+                            : "Pending Review"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-0.5 text-[10px] leading-4 text-[#6c756e]">
+                    {attachment.uploadState
+                      ? attachment.uploadState === "error"
+                        ? attachment.errorMessage || "Upload failed."
+                        : attachment.uploadState === "uploaded"
+                          ? `${attachment.fileSizeLabel} · Uploaded · Refreshing chat…`
+                          : `${attachment.fileSizeLabel} · ${attachment.progress ?? 0}% uploaded`
+                      : `${attachment.fileSizeLabel} · Uploaded by ${attachment.uploadedBy}`}
+                  </p>
+                  <p className="text-[10px] leading-4 text-[#89928b]">{attachment.uploadedAt}</p>
+                  {attachment.uploadState && attachment.uploadState !== "error" ? (
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#edf2ed]">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] transition-[width] duration-200"
+                        style={{ width: `${attachment.progress ?? 0}%` }}
+                      />
+                    </div>
+                  ) : null}
+                  {canReviewSubmissions &&
+                  attachment.isSubmission &&
+                  !attachment.uploadState &&
+                  isPendingReview &&
+                  onApproveSubmission &&
+                  onRejectSubmission ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 rounded-full px-3 text-[11px]"
+                        disabled={pendingReviewAttachmentId === attachment.id}
+                        onClick={() => onApproveSubmission(attachment.id)}
+                      >
+                        {pendingReviewAttachmentId === attachment.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : null}
+                        Approve
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8 rounded-full px-3 text-[11px]"
+                        disabled={pendingReviewAttachmentId === attachment.id}
+                        onClick={() => onRejectSubmission(attachment.id)}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+                {!attachment.uploadState && attachment.previewPath && attachment.downloadPath ? (
+                  <div className="flex items-center gap-1">
+                    <AssetPreviewButton
+                      fileName={attachment.originalFileName}
+                      mimeType={attachment.mimeType}
+                      previewPath={attachment.previewPath}
+                      downloadPath={attachment.downloadPath}
+                      triggerClassName="size-8 rounded-full text-brand"
+                    />
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 rounded-full text-brand"
+                    >
+                      <a
+                        href={attachment.downloadPath}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Download ${attachment.originalFileName}`}
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        </div>
+            </div>
+          );
+        })()
       ))}
-    </div>
-  );
-}
-
-function RevisionAttachmentTypeSummary({
-  attachments,
-}: {
-  attachments: ProjectAttachmentRecord[];
-}) {
-  const groupedAttachments = attachments.reduce<
-    Array<{ label: string; count: number; isSubmission: boolean }>
-  >((groups, attachment) => {
-    const existing = groups.find(
-      (group) =>
-        group.label === attachment.fileTypeLabel &&
-        group.isSubmission === attachment.isSubmission,
-    );
-
-    if (existing) {
-      existing.count += 1;
-      return groups;
-    }
-
-    groups.push({
-      label: attachment.fileTypeLabel,
-      count: 1,
-      isSubmission: attachment.isSubmission,
-    });
-
-    return groups;
-  }, []);
-
-  if (groupedAttachments.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-3 rounded-[14px] border border-white/15 bg-white/8 px-4 py-3">
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        {groupedAttachments.map((group) => (
-          <div
-            key={`${group.label}-${group.isSubmission ? "submission" : "attachment"}`}
-            className={`relative inline-flex h-12 min-w-12 items-center justify-center rounded-[10px] border px-3 py-2 shadow-[0_8px_20px_rgba(13,39,27,0.18)] ${getFileBadgeClass(
-              group.label,
-            )}`}
-          >
-            <span className="text-[13px] font-[800] leading-none">{group.label}</span>
-            {group.isSubmission ? (
-              <span className="absolute -left-1.5 -top-1.5 rounded-full bg-[#eaf6ec] px-1.5 py-0.5 text-[8px] font-[800] uppercase leading-none text-[#1f7a4b]">
-                S
-              </span>
-            ) : null}
-            {group.count > 1 ? (
-              <span className="absolute -right-1.5 -top-1.5 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-[800] leading-none text-[#1f5f40]">
-                {group.count}
-              </span>
-            ) : null}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -562,7 +607,21 @@ export function ProjectChatWorkspace({
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
   const [optimisticComments, setOptimisticComments] = useState<DisplayChatEntry[]>([]);
   const [confirmedComments, setConfirmedComments] = useState<DisplayChatEntry[]>([]);
+  const [pendingSubmissionReviewId, setPendingSubmissionReviewId] = useState<string | null>(
+    null,
+  );
+  const [pendingRevisionReviewId, setPendingRevisionReviewId] = useState<string | null>(null);
+  const [submissionReviewOverrides, setSubmissionReviewOverrides] = useState<
+    Record<string, SubmissionReviewState>
+  >({});
+  const [revisionReviewOverrides, setRevisionReviewOverrides] = useState<
+    Record<string, { status: RevisionReviewState; rejectionReason: string | null }>
+  >({});
   const [pendingRevisionFiles, setPendingRevisionFiles] = useState<PendingFile[]>([]);
+  const [reviewRevisionId, setReviewRevisionId] = useState<string | null>(null);
+  const [reviewRejectMode, setReviewRejectMode] = useState(false);
+  const [reviewRejectReason, setReviewRejectReason] = useState("");
+  const [reviewDialogError, setReviewDialogError] = useState<string | null>(null);
   const [commentUploadDialogOpen, setCommentUploadDialogOpen] = useState(false);
   const [commentUploadIntent, setCommentUploadIntent] =
     useState<CommentUploadIntent>("COMMENT_ATTACHMENT");
@@ -587,6 +646,7 @@ export function ProjectChatWorkspace({
   const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
+  const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -611,7 +671,7 @@ export function ProjectChatWorkspace({
   const visibleOptimisticComments = useMemo(
     () =>
       optimisticComments.filter((entry) => {
-        if (!entry.serverCommentId || !serverMessageIds.has(entry.serverCommentId)) {
+        if (!entry.serverEntryId || !serverMessageIds.has(entry.serverEntryId)) {
           return true;
         }
 
@@ -627,15 +687,15 @@ export function ProjectChatWorkspace({
   const visibleConfirmedComments = useMemo(
     () =>
       confirmedComments.filter(
-        (entry) => !entry.serverCommentId || !serverMessageIds.has(entry.serverCommentId),
+        (entry) => !entry.serverEntryId || !serverMessageIds.has(entry.serverEntryId),
       ),
     [confirmedComments, serverMessageIds],
   );
-  const serverCommentIdsWithLocalOverrides = useMemo(
+  const serverEntryIdsWithLocalOverrides = useMemo(
     () =>
       new Set(
         [...visibleOptimisticComments, ...visibleConfirmedComments]
-          .map((entry) => entry.serverCommentId)
+          .map((entry) => entry.serverEntryId)
           .filter((entryId): entryId is string => Boolean(entryId)),
       ),
     [visibleConfirmedComments, visibleOptimisticComments],
@@ -644,11 +704,11 @@ export function ProjectChatWorkspace({
     () => [
       ...visibleOptimisticComments,
       ...visibleConfirmedComments,
-      ...messages.filter((message) => !serverCommentIdsWithLocalOverrides.has(message.id)),
+      ...messages.filter((message) => !serverEntryIdsWithLocalOverrides.has(message.id)),
     ],
     [
       messages,
-      serverCommentIdsWithLocalOverrides,
+      serverEntryIdsWithLocalOverrides,
       visibleConfirmedComments,
       visibleOptimisticComments,
     ],
@@ -663,6 +723,10 @@ export function ProjectChatWorkspace({
   );
   const canCompareSubmissions = stageSubmissions.length >= 2;
   const canSendComment = draft.trim().length > 0 || pendingCommentFiles.length > 0;
+  const firstRevisionIndex = useMemo(
+    () => displayedMessages.findIndex((entry) => entry.kind === "revision"),
+    [displayedMessages],
+  );
 
   const activeStage = useMemo<ProjectStageRecord | undefined>(() => {
     if (!stageId) {
@@ -690,6 +754,9 @@ export function ProjectChatWorkspace({
     [currentUserId, project.collaborators],
   );
   const isStageCompleted = activeStage?.status === "completed";
+  const isProjectExecutor = project.executorUserId === currentUserId;
+  const canReviewSubmissions = project.ownerId === currentUserId;
+  const hasRevisionEntries = displayedMessages.some((message) => message.kind === "revision");
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
   const currentUserDisplayName = useMemo(() => {
@@ -710,6 +777,16 @@ export function ProjectChatWorkspace({
 
     return collaborator.group === "external" ? "External Collaborator" : "Internal Team";
   }, [currentUserId, project.collaborators]);
+  const reviewRevisionMessage = useMemo(
+    () =>
+      reviewRevisionId
+        ? displayedMessages.find(
+            (entry) =>
+              entry.kind === "revision" && getRevisionEntryId(entry) === reviewRevisionId,
+          )
+        : undefined,
+    [displayedMessages, reviewRevisionId],
+  );
 
   useEffect(() => {
     return () => {
@@ -969,6 +1046,14 @@ export function ProjectChatWorkspace({
     startRefresh(() => {
       router.refresh();
     });
+  }
+
+  function closeRevisionReviewDialog() {
+    setPendingRevisionReviewId(null);
+    setReviewRevisionId(null);
+    setReviewRejectMode(false);
+    setReviewRejectReason("");
+    setReviewDialogError(null);
   }
 
   function updateOptimisticAttachment(
@@ -1264,61 +1349,6 @@ export function ProjectChatWorkspace({
     setPendingRevisionFiles((current) => current.filter((file) => file.id !== fileId));
   }
 
-  async function handleCreateRevision() {
-    const activeStageId = activeStage?.id;
-    const summary = revisionSummary.trim();
-
-    if (!activeStageId) {
-      setRevisionDialogError("This project does not have an active stage to upload into.");
-      return;
-    }
-
-    if (!summary) {
-      setRevisionDialogError("Enter the revision details before creating it.");
-      return;
-    }
-
-    setRevisionDialogError(null);
-    setIsUploadingRevision(true);
-
-    try {
-      const revisionResult = await createStageRevisionAction({
-        projectId: project.id,
-        stageId: activeStageId,
-        summary,
-      });
-
-      if ("error" in revisionResult) {
-        throw new Error(revisionResult.error);
-      }
-
-      for (const pendingFile of pendingRevisionFiles) {
-        await uploadAssetFile({
-          file: pendingFile.file,
-          projectId: project.id,
-          stageId: activeStageId,
-          revisionId: revisionResult.revisionId,
-          assetType: "REVISION_ORIGINAL",
-        });
-      }
-
-      setRevisionDialogOpen(false);
-      setRevisionSummary("");
-      setPendingRevisionFiles([]);
-      refreshHistory();
-    } catch (error) {
-      setRevisionDialogError(
-        error instanceof Error ? error.message : "Unable to create the revision right now.",
-      );
-    } finally {
-      setIsUploadingRevision(false);
-
-      if (revisionFileInputRef.current) {
-        revisionFileInputRef.current.value = "";
-      }
-    }
-  }
-
   async function handleMarkStageComplete() {
     const activeStageId = activeStage?.id;
 
@@ -1353,6 +1383,12 @@ export function ProjectChatWorkspace({
   function openCommentUploadDialog() {
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
+
+    if (!isProjectExecutor) {
+      commentAttachmentInputRef.current?.click();
+      return;
+    }
+
     setCommentUploadDialogOpen(true);
   }
 
@@ -1363,7 +1399,11 @@ export function ProjectChatWorkspace({
       return;
     }
 
-    if (commentUploadIntent === "STAGE_SUBMISSION") {
+    const selectedAssetType: CommentUploadIntent = isProjectExecutor
+      ? commentUploadIntent
+      : "COMMENT_ATTACHMENT";
+
+    if (selectedAssetType === "STAGE_SUBMISSION") {
       const invalidFile = selectedFiles.find((file) => !isSubmissionFile(file));
 
       if (invalidFile) {
@@ -1380,7 +1420,7 @@ export function ProjectChatWorkspace({
       ...selectedFiles.map((file) => ({
         id: `${file.name}-${file.size}-${crypto.randomUUID()}`,
         file,
-        assetType: commentUploadIntent,
+        assetType: selectedAssetType,
       })),
     ]);
     setCommentUploadDialogOpen(false);
@@ -1454,7 +1494,7 @@ export function ProjectChatWorkspace({
 
       updateOptimisticComment(optimisticCommentId, (entry) => ({
         ...entry,
-        serverCommentId: commentResult.commentId,
+        serverEntryId: commentResult.commentId,
       }));
 
       setDraft("");
@@ -1552,7 +1592,7 @@ export function ProjectChatWorkspace({
       setConfirmedComments((current) => [
         {
           id: `confirmed-comment-${commentResult.commentId}`,
-          serverCommentId: commentResult.commentId,
+          serverEntryId: commentResult.commentId,
           revisionId: commentResult.revisionId ?? undefined,
           kind: "comment",
           author: currentUserDisplayName,
@@ -1571,6 +1611,10 @@ export function ProjectChatWorkspace({
             uploadedAt: "Just now",
             previewPath: `/api/project-assets/${result.attachmentId}/preview`,
             downloadPath: `/api/project-assets/${result.attachmentId}/download`,
+            submissionReviewStatus:
+              result.pendingFile.assetType === "STAGE_SUBMISSION"
+                ? "PENDING_REVIEW"
+                : null,
           })),
         },
         ...current,
@@ -1589,6 +1633,313 @@ export function ProjectChatWorkspace({
       );
     } finally {
       setIsSendingComment(false);
+    }
+  }
+
+  async function handleSubmissionReview(
+    attachmentId: string,
+    status: Extract<SubmissionReviewState, "APPROVED" | "REJECTED">,
+  ) {
+    setComposerError(null);
+    setPendingSubmissionReviewId(attachmentId);
+
+    try {
+      const result =
+        status === "APPROVED"
+          ? await approveSubmissionAction(attachmentId)
+          : await rejectSubmissionAction(attachmentId);
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      setSubmissionReviewOverrides((current) => ({
+        ...current,
+        [attachmentId]: result.submission.submissionReviewStatus ?? status,
+      }));
+      refreshHistory();
+    } catch (error) {
+      setComposerError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update the submission review right now.",
+      );
+    } finally {
+      setPendingSubmissionReviewId(null);
+    }
+  }
+
+  async function handleCreateRevision() {
+    const activeStageId = activeStage?.id;
+    const summary = revisionSummary.trim();
+
+    if (!activeStageId) {
+      setRevisionDialogError("This project does not have an active stage to upload into.");
+      return;
+    }
+
+    if (!summary) {
+      setRevisionDialogError("Enter the revision details before creating it.");
+      return;
+    }
+
+    setRevisionDialogError(null);
+    setComposerError(null);
+    setIsUploadingRevision(true);
+    const optimisticRevisionId = `optimistic-revision-${crypto.randomUUID()}`;
+    const filesToUpload = [...pendingRevisionFiles];
+
+    setOptimisticComments((current) => [
+      {
+        id: optimisticRevisionId,
+        kind: "revision",
+        title: "Submitting work…",
+        revisionStatus: "PENDING_REVIEW",
+        rejectionReason: null,
+        author: currentUserDisplayName,
+        role: currentUserRoleLabel,
+        body: summary,
+        createdAt: "Uploading…",
+        isOptimistic: true,
+        attachments: filesToUpload.map((pendingFile) => ({
+          id: pendingFile.id,
+          isSubmission: false,
+          originalFileName: pendingFile.file.name,
+          fileTypeLabel: getLocalFileTypeLabel(pendingFile.file.name),
+          mimeType: pendingFile.file.type || "application/octet-stream",
+          fileSizeLabel: formatLocalFileSize(pendingFile.file.size),
+          uploadedBy: currentUserDisplayName,
+          uploadedAt: "Uploading…",
+          previewPath: "",
+          downloadPath: "",
+          uploadState: "pending",
+          progress: 0,
+        })),
+      },
+      ...current,
+    ]);
+
+    try {
+      const revisionResult = await createStageRevisionAction({
+        projectId: project.id,
+        stageId: activeStageId,
+        summary,
+      });
+
+      if ("error" in revisionResult) {
+        throw new Error(revisionResult.error);
+      }
+
+      updateOptimisticComment(optimisticRevisionId, (entry) => ({
+        ...entry,
+        title: revisionResult.title,
+        serverEntryId: revisionResult.revisionId,
+      }));
+
+      const uploadResults = await Promise.allSettled(
+        filesToUpload.map((pendingFile) => {
+          updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
+            ...attachment,
+            uploadState: "uploading",
+            progress: 0,
+            uploadedAt: "Uploading…",
+          }));
+
+          return uploadAssetFile({
+            file: pendingFile.file,
+            projectId: project.id,
+            stageId: activeStageId,
+            revisionId: revisionResult.revisionId,
+            assetType: "REVISION_ORIGINAL",
+            onProgress: (progress) => {
+              updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                uploadState: "uploading",
+                progress,
+              }));
+            },
+          })
+            .then((uploadResult) => {
+              updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                uploadState: "uploaded",
+                progress: 100,
+                uploadedAt: "Uploaded. Refreshing…",
+              }));
+              return { pendingFile, attachmentId: uploadResult.attachmentId };
+            })
+            .catch((error) => {
+              updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                uploadState: "error",
+                progress: attachment.progress ?? 0,
+                uploadedAt: "Upload failed",
+                errorMessage:
+                  error instanceof Error
+                    ? error.message
+                    : "Unable to upload this file right now.",
+              }));
+              throw error;
+            });
+        }),
+      );
+
+      const failedUploads = uploadResults.filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+      const successfulUploads = uploadResults.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+
+      if (failedUploads.length > 0) {
+        setComposerError(
+          failedUploads.length === filesToUpload.length
+            ? "Revision created, but all file uploads failed. Please try attaching them again."
+            : `Revision created, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`,
+        );
+      }
+
+      setConfirmedComments((current) => [
+        {
+          id: `confirmed-revision-${revisionResult.revisionId}`,
+          serverEntryId: revisionResult.revisionId,
+          revisionId: revisionResult.revisionId,
+          kind: "revision",
+          title: revisionResult.title,
+          revisionStatus: "PENDING_REVIEW",
+          rejectionReason: null,
+          author: currentUserDisplayName,
+          role: currentUserRoleLabel,
+          body: summary,
+          createdAt: "Just now",
+          attachments: successfulUploads.map((result) => ({
+            id: result.attachmentId,
+            isSubmission: false,
+            originalFileName: result.pendingFile.file.name,
+            fileTypeLabel: getLocalFileTypeLabel(result.pendingFile.file.name),
+            mimeType: result.pendingFile.file.type || "application/octet-stream",
+            fileSizeLabel: formatLocalFileSize(result.pendingFile.file.size),
+            uploadedBy: currentUserDisplayName,
+            uploadedAt: "Just now",
+            previewPath: `/api/project-assets/${result.attachmentId}/preview`,
+            downloadPath: `/api/project-assets/${result.attachmentId}/download`,
+          })),
+        },
+        ...current,
+      ]);
+
+      setOptimisticComments((current) =>
+        current.filter((entry) => entry.id !== optimisticRevisionId),
+      );
+      setRevisionDialogOpen(false);
+      setRevisionSummary("");
+      setPendingRevisionFiles([]);
+      refreshHistory();
+    } catch (error) {
+      setOptimisticComments((current) =>
+        current.filter((entry) => entry.id !== optimisticRevisionId),
+      );
+      setRevisionDialogError(
+        error instanceof Error ? error.message : "Unable to create the revision right now.",
+      );
+    } finally {
+      setIsUploadingRevision(false);
+
+      if (revisionFileInputRef.current) {
+        revisionFileInputRef.current.value = "";
+      }
+    }
+  }
+
+  async function handleRevisionReview(
+    status: Extract<RevisionReviewState, "APPROVED" | "REJECTED">,
+  ) {
+    const activeStageId = activeStage?.id;
+
+    if (!reviewRevisionMessage?.revisionId || !activeStageId) {
+      setReviewDialogError("Submission not found.");
+      return;
+    }
+
+    const revisionEntryId = getRevisionEntryId(reviewRevisionMessage);
+    const rejectionReason = reviewRejectReason.trim();
+
+    if (status === "REJECTED" && !rejectionReason) {
+      setReviewDialogError("Rejection reason is required.");
+      return;
+    }
+
+    setReviewDialogError(null);
+    setPendingRevisionReviewId(revisionEntryId);
+
+    try {
+      const result =
+        status === "APPROVED"
+          ? await approveStageSubmissionAction({
+              projectId: project.id,
+              stageId: activeStageId,
+              revisionId: reviewRevisionMessage.revisionId,
+            })
+          : await rejectStageSubmissionAction({
+              projectId: project.id,
+              stageId: activeStageId,
+              revisionId: reviewRevisionMessage.revisionId,
+              reason: rejectionReason,
+            });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      const nextStatus = result.revision.status as RevisionReviewState;
+      const nextReason = result.revision.rejectionReason ?? null;
+
+      setRevisionReviewOverrides((current) => ({
+        ...current,
+        [revisionEntryId]: {
+          status: nextStatus,
+          rejectionReason: nextReason,
+        },
+      }));
+
+      setConfirmedComments((current) => {
+        const nextEntries = current.map((entry) =>
+          entry.kind === "revision" && getRevisionEntryId(entry) === revisionEntryId
+            ? {
+                ...entry,
+                revisionStatus: nextStatus,
+                rejectionReason: nextReason,
+              }
+            : entry,
+        );
+
+        if (result.revision.rejectionComment) {
+          return [
+            {
+              id: `confirmed-comment-${result.revision.rejectionComment.id}`,
+              serverEntryId: result.revision.rejectionComment.id,
+              kind: "comment",
+              author: currentUserDisplayName,
+              role: currentUserRoleLabel,
+              body: result.revision.rejectionComment.body,
+              createdAt: "Just now",
+            },
+            ...nextEntries,
+          ];
+        }
+
+        return nextEntries;
+      });
+
+      closeRevisionReviewDialog();
+      refreshHistory();
+    } catch (error) {
+      setReviewDialogError(
+        error instanceof Error
+          ? error.message
+          : "Unable to review the submission right now.",
+      );
+      setPendingRevisionReviewId(null);
     }
   }
 
@@ -1613,99 +1964,158 @@ export function ProjectChatWorkspace({
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 Upload the first revision to start the proof and archive trail.
               </p>
-              <div className="mt-5 flex justify-center">
-                <Button
-                  type="button"
-                  onClick={openRevisionDialog}
-                  disabled={isUploadingRevision}
-                >
-                  {isUploadingRevision ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4" />
-                  )}
-                  Upload First Revision
-                </Button>
-              </div>
+              {isProjectExecutor ? (
+                <div className="mt-5 flex justify-center">
+                  <Button
+                    type="button"
+                    onClick={openRevisionDialog}
+                    disabled={isUploadingRevision}
+                  >
+                    {isUploadingRevision ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Submit First Work
+                  </Button>
+                </div>
+              ) : null}
             </Card>
           ) : null}
 
           {displayedMessages.map((message, index) =>
             message.kind === "revision" ? (
-              <div key={message.id} className="space-y-3">
-                <Card className="flex-1 rounded-[20px] border-none bg-[linear-gradient(135deg,#2f8d5d,#476f5a)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-                  <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)] xl:items-center">
-                    <div className="max-w-[220px]">
-                      <h1 className="text-[18px] font-[700] text-[#95d867]">
-                        {message.title}
-                      </h1>
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="grid h-7 w-7 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
-                          {getInitials(message.author)}
+              (() => {
+                const revisionEntryId = getRevisionEntryId(message);
+                const effectiveRevisionStatus =
+                  revisionReviewOverrides[revisionEntryId]?.status ??
+                  message.revisionStatus ??
+                  "PENDING_REVIEW";
+                const effectiveRejectionReason =
+                  revisionReviewOverrides[revisionEntryId]?.rejectionReason ??
+                  message.rejectionReason ??
+                  null;
+                const revisionStatusMeta = getRevisionStatusMeta(effectiveRevisionStatus);
+                const canReviewRevision =
+                  canReviewSubmissions && effectiveRevisionStatus === "PENDING_REVIEW";
+
+                return (
+                  <div key={message.id} className="space-y-3">
+                    <Card className="flex-1 rounded-[20px] border-none bg-[linear-gradient(135deg,#2f8d5d,#476f5a)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
+                      <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)] xl:items-center">
+                        <div className="max-w-[220px]">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h1 className="text-[18px] font-[700] text-[#95d867]">
+                              {message.title}
+                            </h1>
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${revisionStatusMeta.badgeClassName}`}
+                            >
+                              {revisionStatusMeta.label}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="grid h-7 w-7 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
+                              {getInitials(message.author)}
+                            </div>
+                            <div>
+                              <p className="text-[12px] font-[600]">{message.author}</p>
+                              <p className="text-[10px] text-[#93d68a]">{message.role}</p>
+                            </div>
+                          </div>
+                          <p className="mt-3 text-[12px] leading-[1.45] text-white/90">
+                            {message.body}
+                          </p>
+                          {effectiveRejectionReason ? (
+                            <div className="mt-3 rounded-[16px] border border-[#ffffff29] bg-[#fff2f1]/95 px-3 py-2.5 text-[11px] leading-5 text-[#7d2822]">
+                              <p className="font-[700] uppercase tracking-[0.08em] text-[#bb4d49]">
+                                Rejection Brief
+                              </p>
+                              <p className="mt-1">{effectiveRejectionReason}</p>
+                            </div>
+                          ) : null}
+                          <p className="mt-2 text-[10px] text-white/70">{message.createdAt}</p>
                         </div>
-                        <div>
-                          <p className="text-[12px] font-[600]">{message.author}</p>
-                          <p className="text-[10px] text-[#93d68a]">{message.role}</p>
-                        </div>
+
+                        {message.attachments?.length ? (
+                          <div className="mx-auto min-w-0 max-w-[420px]">
+                            <Card className="rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
+                              <p className="text-center text-[11px] font-[700] text-white">
+                                Attachments
+                              </p>
+                              <AttachmentHistoryList attachments={message.attachments} />
+                            </Card>
+                          </div>
+                        ) : null}
                       </div>
-                      <p className="mt-3 text-[12px] leading-[1.45] text-white/90">
-                        {message.body}
-                      </p>
-                      <p className="mt-2 text-[10px] text-white/70">{message.createdAt}</p>
-                    </div>
+                    </Card>
 
-                    {message.attachments?.length ? (
-                      <Card className="mx-auto min-w-0 max-w-[360px] rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
-                        <p className="text-center text-[11px] font-[700]">Attachments</p>
-                        <RevisionAttachmentTypeSummary attachments={message.attachments} />
-                      </Card>
+                    {canReviewRevision || index === firstRevisionIndex ? (
+                      <div className="flex flex-wrap gap-2">
+                        {canReviewRevision ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="rounded-full text-[12px]"
+                            disabled={pendingRevisionReviewId === revisionEntryId}
+                            onClick={() => {
+                              setReviewDialogError(null);
+                              setReviewRejectMode(false);
+                              setReviewRejectReason("");
+                              setReviewRevisionId(revisionEntryId);
+                            }}
+                          >
+                            Review Submission
+                          </Button>
+                        ) : null}
+                        {index === firstRevisionIndex && isProjectExecutor ? (
+                          <Button
+                            type="button"
+                            onClick={openRevisionDialog}
+                            size="sm"
+                            className="rounded-full text-[12px]"
+                            disabled={isUploadingRevision}
+                          >
+                            {isUploadingRevision ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Upload className="h-3.5 w-3.5" />
+                            )}
+                            Submit Work
+                          </Button>
+                        ) : null}
+                        {index === firstRevisionIndex && isProjectOwner ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="rounded-full text-[12px]"
+                            disabled={isStageCompleted || isMarkingStageComplete}
+                            onClick={() => {
+                              setStageCompleteError(null);
+                              setStageCompleteDialogOpen(true);
+                            }}
+                          >
+                            {isStageCompleted ? "Stage completed" : "Mark as complete"}
+                          </Button>
+                        ) : null}
+                        {index === firstRevisionIndex ? (
+                          <Button
+                            type="button"
+                            onClick={() => setDraft(`Replying to ${message.author}: `)}
+                            size="sm"
+                            variant="secondary"
+                            className="rounded-full text-[12px]"
+                          >
+                            Add Comments
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
-                </Card>
-
-                {index === displayedMessages.findIndex((entry) => entry.kind === "revision") ? (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      onClick={openRevisionDialog}
-                      size="sm"
-                      className="rounded-full text-[12px]"
-                      disabled={isUploadingRevision}
-                    >
-                      {isUploadingRevision ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Upload className="h-3.5 w-3.5" />
-                      )}
-                      Create Revision
-                    </Button>
-                    {isProjectOwner ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="rounded-full text-[12px]"
-                        disabled={isStageCompleted || isMarkingStageComplete}
-                        onClick={() => {
-                          setStageCompleteError(null);
-                          setStageCompleteDialogOpen(true);
-                        }}
-                      >
-                        {isStageCompleted ? "Stage completed" : "Mark as complete"}
-                      </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      onClick={() => setDraft(`Replying to ${message.author}: `)}
-                      size="sm"
-                      variant="secondary"
-                      className="rounded-full text-[12px]"
-                    >
-                      Add Comments
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
+                );
+              })()
             ) : (
               <Card
                 key={message.id}
@@ -1723,11 +2133,42 @@ export function ProjectChatWorkspace({
                 </div>
                 <p className="mt-3 text-[12px] leading-[1.35] text-[#111712]">{message.body}</p>
                 {message.attachments?.length ? (
-                  <AttachmentHistoryList attachments={message.attachments} compact />
+                  <AttachmentHistoryList
+                    attachments={message.attachments}
+                    compact
+                    canReviewSubmissions={canReviewSubmissions}
+                    pendingReviewAttachmentId={pendingSubmissionReviewId}
+                    submissionReviewOverrides={submissionReviewOverrides}
+                    onApproveSubmission={(attachmentId) => {
+                      void handleSubmissionReview(attachmentId, "APPROVED");
+                    }}
+                    onRejectSubmission={(attachmentId) => {
+                      void handleSubmissionReview(attachmentId, "REJECTED");
+                    }}
+                  />
                 ) : null}
               </Card>
             ),
           )}
+
+          {!hasRevisionEntries && displayedMessages.length > 0 && isProjectExecutor ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={openRevisionDialog}
+                size="sm"
+                className="rounded-full text-[12px]"
+                disabled={isUploadingRevision}
+              >
+                {isUploadingRevision ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                Submit Work
+              </Button>
+            </div>
+          ) : null}
 
           <Card className="sticky bottom-0 rounded-[22px] bg-white/95 p-3 backdrop-blur">
             <input
@@ -1737,6 +2178,19 @@ export function ProjectChatWorkspace({
               className="sr-only"
               onChange={(event) => {
                 handleRevisionFilesSelected(event.target.files);
+              }}
+            />
+            <input
+              ref={commentAttachmentInputRef}
+              type="file"
+              multiple
+              className="sr-only"
+              onChange={(event) => {
+                handleCommentFilesSelected(event.target.files);
+
+                if (commentAttachmentInputRef.current) {
+                  commentAttachmentInputRef.current.value = "";
+                }
               }}
             />
 
@@ -2131,10 +2585,10 @@ export function ProjectChatWorkspace({
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
               <div>
                 <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
-                  Create Revision
+                  Submit Work for Review
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  Describe the required changes and attach supporting files if needed.
+                  Describe the work submission and attach supporting files if needed.
                 </p>
               </div>
               <Button
@@ -2232,9 +2686,166 @@ export function ProjectChatWorkspace({
                     ) : (
                       <Upload className="h-4 w-4" />
                     )}
-                    Create Revision
+                    Submit Work
                   </Button>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+      {reviewRevisionMessage ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+          <Card className="w-full max-w-[720px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+              <div>
+                <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                  Review Submission
+                </CardTitle>
+                <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
+                  Review the submitted revision and decide whether to approve it or request changes.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={closeRevisionReviewDialog}
+                disabled={Boolean(pendingRevisionReviewId)}
+                className="shrink-0 border border-line"
+                aria-label="Close review dialog"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-5 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              {reviewDialogError ? (
+                <div className="rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+                  {reviewDialogError}
+                </div>
+              ) : null}
+              <div className="grid gap-3 rounded-[20px] border border-line bg-[#fbfcfa] p-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                    Revision
+                  </p>
+                  <p className="mt-1 text-[15px] font-[700] text-[#111712]">
+                    {reviewRevisionMessage.title}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                    Current Status
+                  </p>
+                  <div className="mt-1">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+                        getRevisionStatusMeta(
+                          revisionReviewOverrides[reviewRevisionId ?? ""]?.status ??
+                            reviewRevisionMessage.revisionStatus ??
+                            "PENDING_REVIEW",
+                        ).badgeClassName
+                      }`}
+                    >
+                      {
+                        getRevisionStatusMeta(
+                          revisionReviewOverrides[reviewRevisionId ?? ""]?.status ??
+                            reviewRevisionMessage.revisionStatus ??
+                            "PENDING_REVIEW",
+                        ).label
+                      }
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                    Submitted By
+                  </p>
+                  <p className="mt-1 text-[14px] text-[#27322b]">
+                    {reviewRevisionMessage.author}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                    Submitted At
+                  </p>
+                  <p className="mt-1 text-[14px] text-[#27322b]">
+                    {reviewRevisionMessage.createdAt}
+                  </p>
+                </div>
+              </div>
+              {reviewRevisionMessage.attachments?.length ? (
+                <div className="space-y-2">
+                  <p className="text-[13px] font-[600] text-[#2d372f]">Submitted Files</p>
+                  <AttachmentHistoryList attachments={reviewRevisionMessage.attachments} />
+                </div>
+              ) : null}
+              {reviewRejectMode ? (
+                <div className="space-y-2">
+                  <p className="text-[13px] font-[600] text-[#2d372f]">
+                    Rejection Brief / Reason *
+                  </p>
+                  <Textarea
+                    value={reviewRejectReason}
+                    onChange={(event) => setReviewRejectReason(event.target.value)}
+                    placeholder="Explain what needs to be changed for the next revision."
+                    className="min-h-[120px] rounded-[18px] border border-line"
+                    disabled={Boolean(pendingRevisionReviewId)}
+                  />
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={closeRevisionReviewDialog}
+                  disabled={Boolean(pendingRevisionReviewId)}
+                >
+                  Cancel
+                </Button>
+                {!reviewRejectMode ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setReviewDialogError(null);
+                        setReviewRejectMode(true);
+                      }}
+                      disabled={Boolean(pendingRevisionReviewId)}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        void handleRevisionReview("APPROVED");
+                      }}
+                      disabled={Boolean(pendingRevisionReviewId)}
+                    >
+                      {pendingRevisionReviewId ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      Approve
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => {
+                      void handleRevisionReview("REJECTED");
+                    }}
+                    disabled={
+                      Boolean(pendingRevisionReviewId) || reviewRejectReason.trim().length === 0
+                    }
+                  >
+                    {pendingRevisionReviewId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    Reject Submission
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

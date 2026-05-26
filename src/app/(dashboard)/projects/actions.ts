@@ -8,6 +8,8 @@ import {
   createStageComment,
   createStageRevision,
   completeProjectStage,
+  reviewProjectRevision,
+  reviewStageSubmission,
 } from "@/lib/project-history";
 import {
   PROJECTS_CACHE_TAG,
@@ -15,7 +17,7 @@ import {
   setProjectCollaboratorChatVisibility,
   updateProjectCollaborators,
 } from "@/lib/projects";
-import { UserRole } from "@prisma/client";
+import { SubmissionReviewStatus, UserRole } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 
 type StageRevisionInput = {
@@ -116,6 +118,101 @@ export async function createComparisonCommentAction(input: ComparisonCommentInpu
         error instanceof Error
           ? error.message
           : "Unable to save the comparison comment right now.",
+    };
+  }
+}
+
+export async function approveSubmissionAction(attachmentId: string) {
+  const user = await requireUser();
+
+  try {
+    const submission = await reviewStageSubmission(user, {
+      attachmentId,
+      status: SubmissionReviewStatus.APPROVED,
+    });
+    revalidateProjectFlow();
+
+    return { submission };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to approve the submission right now.",
+    };
+  }
+}
+
+export async function rejectSubmissionAction(attachmentId: string, note?: string) {
+  const user = await requireUser();
+
+  try {
+    const submission = await reviewStageSubmission(user, {
+      attachmentId,
+      status: SubmissionReviewStatus.REJECTED,
+      note,
+    });
+    revalidateProjectFlow();
+
+    return { submission };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to reject the submission right now.",
+    };
+  }
+}
+
+export async function approveStageSubmissionAction(input: {
+  projectId: string;
+  stageId: string;
+  revisionId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const revision = await reviewProjectRevision(user, {
+      ...input,
+      status: "APPROVED",
+    });
+    revalidateProjectFlow();
+
+    return { revision };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to approve the submission right now.",
+    };
+  }
+}
+
+export async function rejectStageSubmissionAction(input: {
+  projectId: string;
+  stageId: string;
+  revisionId: string;
+  reason: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const revision = await reviewProjectRevision(user, {
+      ...input,
+      status: "REJECTED",
+      reason: input.reason,
+    });
+    revalidateProjectFlow();
+
+    return { revision };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to reject the submission right now.",
     };
   }
 }

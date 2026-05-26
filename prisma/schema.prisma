@@ -71,6 +71,18 @@ enum AttachmentStatus {
   DELETED
 }
 
+enum SubmissionReviewStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ProjectRevisionStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
 enum ActivityLogAction {
   ASSET_UPLOADED
   COMMENT_ATTACHMENT_UPLOADED
@@ -101,12 +113,14 @@ model User {
   sessions          Session[]
   projects          Project[]
   revisions         ProjectRevision[]
+  reviewedRevisions ProjectRevision[]   @relation("ProjectRevisionReviewer")
   comments          ProjectComment[]
   comparisonComments ComparisonComment[]
   attachments       ProjectAttachment[]
   activityLogs      ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
   assignedProjects  Project[]           @relation("ProjectExecutor")
+  reviewedStageSubmissions ProjectAttachment[] @relation("SubmissionReviewer")
   calendarEvents    CalendarEvent[]
   projectCollaborations       ProjectCollaborator[] @relation("ProjectCollaboratorUser")
   addedProjectCollaborations  ProjectCollaborator[] @relation("ProjectCollaboratorAdder")
@@ -256,9 +270,14 @@ model ProjectRevision {
   stage          ProjectStage         @relation(fields: [stageId], references: [id], onDelete: Cascade)
   createdById    String
   createdBy      User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedById   String?
+  reviewedBy     User?                @relation("ProjectRevisionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   revisionNumber Int
   title          String
   summary        String?
+  status         ProjectRevisionStatus @default(PENDING_REVIEW)
+  reviewedAt     DateTime?
+  rejectionReason String?
   attachments    ProjectAttachment[]
   comments       ProjectComment[]
   activityLogs   ProjectActivityLog[]
@@ -268,6 +287,8 @@ model ProjectRevision {
   @@unique([stageId, revisionNumber])
   @@index([projectId, stageId, createdAt])
   @@index([createdById])
+  @@index([reviewedById])
+  @@index([status])
 }
 
 model ProjectComment {
@@ -302,6 +323,8 @@ model ProjectAttachment {
   comment          ProjectComment?    @relation(fields: [commentId], references: [id], onDelete: SetNull)
   uploadedById     String
   uploadedBy       User               @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  reviewedById     String?
+  reviewedBy       User?              @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   baseComparisonComments ComparisonComment[] @relation("ComparisonCommentBaseAttachment")
   compareComparisonComments ComparisonComment[] @relation("ComparisonCommentCompareAttachment")
   fileName         String
@@ -312,6 +335,9 @@ model ProjectAttachment {
   storageKey       String             @unique
   assetType        AttachmentAssetType
   status           AttachmentStatus   @default(UPLOADING)
+  submissionReviewStatus SubmissionReviewStatus?
+  reviewedAt        DateTime?
+  reviewNote        String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
@@ -320,7 +346,9 @@ model ProjectAttachment {
   @@index([revisionId, createdAt])
   @@index([commentId, createdAt])
   @@index([uploadedById])
+  @@index([reviewedById])
   @@index([status])
+  @@index([submissionReviewStatus])
 }
 
 model ComparisonComment {

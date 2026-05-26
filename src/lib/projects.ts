@@ -2,6 +2,8 @@ import { unstable_cache } from "next/cache";
 import {
   AttachmentStatus,
   AttachmentAssetType,
+  ProjectRevisionStatus,
+  SubmissionReviewStatus,
   UserRole,
 } from "@prisma/client";
 import type {
@@ -23,6 +25,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 export const PROJECTS_CACHE_TAG = "projects";
 
 type BudgetAccessUser = Pick<User, "id">;
+type ProjectAccessUser = Pick<User, "id" | "role">;
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
@@ -45,6 +48,7 @@ type ProjectWithCreator = Project & {
     originalFileName: string;
     mimeType: string;
     fileSize: number;
+    submissionReviewStatus?: SubmissionReviewStatus | null;
     createdAt: Date;
     uploadedBy: Pick<User, "name" | "email">;
   }>;
@@ -136,6 +140,7 @@ export type ProjectAttachmentRecord = {
   id: string;
   isSubmission: boolean;
   submissionNumber?: number;
+  submissionReviewStatus?: SubmissionReviewStatus | null;
   originalFileName: string;
   fileTypeLabel: string;
   mimeType: string;
@@ -151,6 +156,8 @@ export type ProjectChatEntry = {
   kind: "revision" | "comment";
   revisionId?: string;
   title?: string;
+  revisionStatus?: ProjectRevisionStatus | null;
+  rejectionReason?: string | null;
   author: string;
   role: string;
   body: string;
@@ -172,6 +179,7 @@ export type ProjectCompareNote = {
 export type ProjectFlowRecord = {
   id: string;
   ownerId: string;
+  executorUserId?: string | null;
   canViewBudget: boolean;
   title: string;
   category: string;
@@ -376,6 +384,28 @@ function mapProjectCollaboratorAssignmentToRecord(
   };
 }
 
+function canAccessProjectRecord(
+  project: Pick<Project, "createdById" | "executorUserId"> & {
+    collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
+  },
+  currentUser: ProjectAccessUser,
+) {
+  if (
+    currentUser.role === UserRole.SUPER_ADMIN ||
+    currentUser.role === UserRole.ADMIN ||
+    project.createdById === currentUser.id ||
+    project.executorUserId === currentUser.id
+  ) {
+    return true;
+  }
+
+  return (
+    project.collaborators?.some(
+      (collaborator) => collaborator.userId === currentUser.id,
+    ) ?? false
+  );
+}
+
 function mapAttachmentToRecord(
   attachment: {
     id: string;
@@ -383,6 +413,7 @@ function mapAttachmentToRecord(
     originalFileName: string;
     mimeType: string;
     fileSize: number;
+    submissionReviewStatus?: SubmissionReviewStatus | null;
     createdAt: Date | string | number;
     uploadedBy: Pick<User, "name" | "email">;
   },
@@ -390,6 +421,7 @@ function mapAttachmentToRecord(
   return {
     id: attachment.id,
     isSubmission: attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION,
+    submissionReviewStatus: attachment.submissionReviewStatus ?? null,
     originalFileName: attachment.originalFileName,
     fileTypeLabel: getAttachmentFileTypeLabel(
       attachment.originalFileName,
@@ -511,6 +543,7 @@ function mapProjectToFlow(
   return {
     id: project.id,
     ownerId: project.createdById,
+    executorUserId: project.executorUserId ?? null,
     canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
@@ -1232,7 +1265,7 @@ export async function getProjectsList(filter: ProjectsListFilter) {
 
 export async function getProjectById(
   id: string,
-  currentUser: BudgetAccessUser,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -1304,12 +1337,16 @@ export async function getProjectById(
     return null;
   }
 
+  if (!canAccessProjectRecord(project, currentUser)) {
+    return null;
+  }
+
   return mapProjectToFlow(project, currentUser);
 }
 
 export async function getProjectEditorById(
   id: string,
-  currentUser: BudgetAccessUser,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -1378,6 +1415,10 @@ export async function getProjectEditorById(
   )();
 
   if (!project) {
+    return null;
+  }
+
+  if (!canAccessProjectRecord(project, currentUser)) {
     return null;
   }
 
