@@ -277,6 +277,7 @@ async function getProjectAccessRecord(projectId: string) {
             name: true,
             budget: true,
             status: true,
+            order: true,
             createdAt: true,
           },
         },
@@ -702,18 +703,62 @@ export async function completeProjectStage(
     return { id: stage.id, status: stage.status };
   }
 
+  const orderedStages = [...project.stages].sort((left, right) => left.order - right.order);
+  const stageIndex = orderedStages.findIndex((item) => item.id === stage.id);
+  const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
+
   const updatedStage = await withPrismaRetry(() =>
-    prisma.projectStage.update({
-      where: {
-        id: stage.id,
-      },
-      data: {
-        status: "COMPLETED",
-      },
-      select: {
-        id: true,
-        status: true,
-      },
+    prisma.$transaction(async (tx) => {
+      const completedStage = await tx.projectStage.update({
+        where: {
+          id: stage.id,
+        },
+        data: {
+          status: "COMPLETED",
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (nextStage) {
+        const nextStageStatus =
+          nextStage.status === "PENDING" ? "ONGOING" : nextStage.status;
+
+        if (nextStageStatus !== nextStage.status) {
+          await tx.projectStage.update({
+            where: {
+              id: nextStage.id,
+            },
+            data: {
+              status: nextStageStatus,
+            },
+          });
+        }
+
+        await tx.project.update({
+          where: {
+            id: input.projectId,
+          },
+          data: {
+            currentStageName: nextStage.name,
+            status: nextStageStatus,
+          },
+        });
+      } else {
+        await tx.project.update({
+          where: {
+            id: input.projectId,
+          },
+          data: {
+            currentStageName: stage.name,
+            status: "COMPLETED",
+          },
+        });
+      }
+
+      return completedStage;
     }),
   );
 
