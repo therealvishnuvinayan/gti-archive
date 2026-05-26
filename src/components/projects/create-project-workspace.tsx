@@ -588,7 +588,14 @@ export function CreateProjectWorkspace({
     );
   }
 
-  async function uploadProjectAsset(file: File, projectId: string) {
+  async function uploadProjectAsset(
+    file: File,
+    projectId: string,
+    options?: {
+      stageId?: string | null;
+      commentId?: string | null;
+    },
+  ) {
     if (!projectId) {
       throw new Error("Save the project first before uploading attachments.");
     }
@@ -600,6 +607,8 @@ export function CreateProjectWorkspace({
       },
       body: JSON.stringify({
         projectId,
+        stageId: options?.stageId ?? null,
+        commentId: options?.commentId ?? null,
         originalFileName: file.name,
         mimeType: file.type || "application/octet-stream",
         fileSize: file.size,
@@ -741,6 +750,8 @@ export function CreateProjectWorkspace({
     handledCreatedProjectIdRef.current = formState.projectId;
 
     const projectId = formState.projectId;
+    const initialBriefStageId = formState.initialBriefStageId ?? null;
+    const initialBriefCommentId = formState.initialBriefCommentId ?? null;
 
     if (pendingProjectFiles.length === 0) {
       router.replace(`/projects/${projectId}`);
@@ -755,7 +766,10 @@ export function CreateProjectWorkspace({
 
       try {
         for (const file of pendingProjectFiles) {
-          await uploadProjectAsset(file, projectId);
+          await uploadProjectAsset(file, projectId, {
+            stageId: initialBriefStageId,
+            commentId: initialBriefCommentId,
+          });
         }
 
         if (cancelled) {
@@ -787,7 +801,14 @@ export function CreateProjectWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [formState.projectId, mode, pendingProjectFiles, router]);
+  }, [
+    formState.initialBriefCommentId,
+    formState.initialBriefStageId,
+    formState.projectId,
+    mode,
+    pendingProjectFiles,
+    router,
+  ]);
 
   async function removeProjectAttachment(attachmentId: string) {
     if (!initialValues?.id) {

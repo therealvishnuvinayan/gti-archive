@@ -22,6 +22,8 @@ export type ProjectFormFieldErrors = {
 export type ProjectFormState = {
   error?: string;
   projectId?: string;
+  initialBriefStageId?: string;
+  initialBriefCommentId?: string;
   fieldErrors?: ProjectFormFieldErrors;
 };
 

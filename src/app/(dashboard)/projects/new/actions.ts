@@ -428,61 +428,103 @@ export async function createProjectAction(
   );
 
   let projectId: string;
+  let initialBriefStageId: string | undefined;
+  let initialBriefCommentId: string | undefined;
 
   try {
-    const project = await prisma.project.create({
-      data: {
-        name,
-        category,
-        executorName: resolvedExecutor.executorName,
-        executorUserId: resolvedExecutor.executorUserId,
-        tag: tag || null,
-        description,
-        budget,
-        currency: currencyCode,
-        status,
-        startDate,
-        endDate,
-        currentStageName,
-        stageCount: stageNames.length,
-        createdById: user.id,
-        collaborators: {
-          createMany: {
-              data: validCollaboratorIds.map((collaboratorId) => ({
-                userId: collaboratorId,
-                addedById: user.id,
-                participantType:
-                  collaboratorParticipantTypeMap.get(collaboratorId) ??
-                  getDefaultProjectCollaboratorParticipantType(
-                    validCollaboratorTypeMap.get(collaboratorId) ?? "external",
-                  ),
-              })),
-            skipDuplicates: true,
+    const project = await prisma.$transaction(async (tx) => {
+      const createdProject = await tx.project.create({
+        data: {
+          name,
+          category,
+          executorName: resolvedExecutor.executorName,
+          executorUserId: resolvedExecutor.executorUserId,
+          tag: tag || null,
+          description,
+          budget,
+          currency: currencyCode,
+          status,
+          startDate,
+          endDate,
+          currentStageName,
+          stageCount: stageNames.length,
+          createdById: user.id,
+          collaborators: {
+            createMany: {
+                data: validCollaboratorIds.map((collaboratorId) => ({
+                  userId: collaboratorId,
+                  addedById: user.id,
+                  participantType:
+                    collaboratorParticipantTypeMap.get(collaboratorId) ??
+                    getDefaultProjectCollaboratorParticipantType(
+                      validCollaboratorTypeMap.get(collaboratorId) ?? "external",
+                    ),
+                })),
+              skipDuplicates: true,
+            },
+          },
+          stages: {
+            create: stageNames.map((stageName, index) => {
+              const parsedStageBudget = parseBudget(stageBudgets[index] ?? "");
+
+              return {
+                name: stageName,
+                description: stageDescriptions[index] || null,
+                budget:
+                  Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
+                    ? parsedStageBudget
+                    : index === 0
+                      ? budget
+                      : null,
+                plannedStartAt: stageStartDates[index],
+                plannedDueAt: stageDueDates[index],
+                status: stageStatuses[index],
+                order: index + 1,
+              };
+            }),
           },
         },
-        stages: {
-          create: stageNames.map((stageName, index) => {
-            const parsedStageBudget = parseBudget(stageBudgets[index] ?? "");
-
-            return {
-              name: stageName,
-              description: stageDescriptions[index] || null,
-              budget:
-                Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
-                  ? parsedStageBudget
-                  : index === 0
-                    ? budget
-                    : null,
-              plannedStartAt: stageStartDates[index],
-              plannedDueAt: stageDueDates[index],
-              status: stageStatuses[index],
-              order: index + 1,
-            };
-          }),
+        select: {
+          id: true,
+          stages: {
+            orderBy: {
+              order: "asc",
+            },
+            select: {
+              id: true,
+            },
+          },
         },
-      },
+      });
+
+      const firstStageId = createdProject.stages[0]?.id;
+      let initialCommentId: string | undefined;
+
+      if (firstStageId) {
+        const initialComment = await tx.projectComment.create({
+          data: {
+            projectId: createdProject.id,
+            stageId: firstStageId,
+            authorId: user.id,
+            body: description,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        initialCommentId = initialComment.id;
+      }
+
+      return {
+        id: createdProject.id,
+        stages: createdProject.stages,
+        initialCommentId,
+      };
     });
     projectId = project.id;
+    initialBriefStageId = project.stages[0]?.id;
+    initialBriefCommentId = project.initialCommentId;
   } catch {
     return { error: "Unable to create the project right now. Please try again." };
   }
@@ -492,7 +534,7 @@ export async function createProjectAction(
   revalidatePath(`/projects/${projectId}`);
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 
-  return { projectId };
+  return { projectId, initialBriefStageId, initialBriefCommentId };
 }
 
 export async function updateProjectAction(
