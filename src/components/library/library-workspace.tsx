@@ -1,22 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { LucideIcon } from "lucide-react";
+import { useDeferredValue, useEffect, useState } from "react";
 import {
-  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Eye,
   FileCheck2,
   FileStack,
   ReceiptText,
   Star,
-  Tag,
   Trash2,
   UserRound,
 } from "lucide-react";
 
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { MotionSection } from "@/components/motion/motion-primitives";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -26,539 +28,706 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  MotionSection,
-} from "@/components/motion/motion-primitives";
+  libraryTypeFilterOptions,
+  type LibraryDateFilter,
+  type LibraryItemRecord,
+  type LibraryPageData,
+  type LibraryQuickMenuOption,
+  type LibraryTypeFilter,
+} from "@/lib/library-shared";
+import {
+  showErrorToast,
+  showInfoToast,
+  showSuccessToast,
+} from "@/lib/toast";
 
-type LibraryCategory = "assets" | "finance" | "users" | "favourites";
-
-type LibraryItem = {
-  id: string;
-  fileName: string;
-  project: string;
-  date: string;
-  createdBy: string;
-  type: string;
-  source: "Project Assets" | "Quotations/Invoices" | "From Users";
-  priority: "High" | "Medium" | "Low";
-  favourite: boolean;
-};
-
-type QuickMenuCard = {
-  key: LibraryCategory;
-  title: string;
-  icon: LucideIcon;
-  source?: LibraryItem["source"];
-};
-
-const quickMenuCards: QuickMenuCard[] = [
-  { key: "assets", title: "Project Assets", icon: FileStack, source: "Project Assets" },
-  {
-    key: "finance",
-    title: "Quotations/Invoices",
-    icon: ReceiptText,
-    source: "Quotations/Invoices",
-  },
-  { key: "users", title: "From Users", icon: UserRound, source: "From Users" },
-  { key: "favourites", title: "Favourites", icon: Star },
+const pageSizeOptions = [10, 20, 50] as const;
+const dateFilterOptions: Array<{ value: LibraryDateFilter; label: string }> = [
+  { value: "all", label: "All dates" },
+  { value: "today", label: "Today" },
+  { value: "last7", label: "Last 7 days" },
+  { value: "last30", label: "Last 30 days" },
 ];
 
-const initialItems: LibraryItem[] = [
-  {
-    id: "library-1",
-    fileName: "Milano-Framework-Queens",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Slavomir Kluziak",
-    type: "Artwork",
-    source: "Project Assets",
-    priority: "High",
-    favourite: false,
-  },
-  {
-    id: "library-2",
-    fileName: "Mond_POS_Canada",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Aditya Karolia",
-    type: "Graphics",
-    source: "From Users",
-    priority: "Medium",
-    favourite: true,
-  },
-  {
-    id: "library-3",
-    fileName: "Momento-Framework-Queens",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Sam Altman",
-    type: "Invoice",
-    source: "Quotations/Invoices",
-    priority: "Low",
-    favourite: false,
-  },
-  {
-    id: "library-4",
-    fileName: "Cavallo-Framework-Queens",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Louis Philippe",
-    type: "Advert",
-    source: "Project Assets",
-    priority: "Medium",
-    favourite: true,
-  },
-  {
-    id: "library-5",
-    fileName: "Milano-Framework-Queens",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "BCC Printing",
-    type: "Promotional",
-    source: "Project Assets",
-    priority: "High",
-    favourite: false,
-  },
-  {
-    id: "library-6",
-    fileName: "Mond-Framework-Queens",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Emirates Group",
-    type: "Quotation",
-    source: "Quotations/Invoices",
-    priority: "Low",
-    favourite: false,
-  },
-  {
-    id: "library-7",
-    fileName: "Cavallo-Framework-Queens",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Emirates Group",
-    type: "Graphics",
-    source: "From Users",
-    priority: "Medium",
-    favourite: false,
-  },
-  {
-    id: "library-8",
-    fileName: "Momento-Framework-Queens",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Sam Altman",
-    type: "Invoice",
-    source: "Quotations/Invoices",
-    priority: "Low",
-    favourite: true,
-  },
-  {
-    id: "library-9",
-    fileName: "Milano-Framework-Queens",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Slavomir Kluziak",
-    type: "Artwork",
-    source: "Project Assets",
-    priority: "High",
-    favourite: true,
-  },
-  {
-    id: "library-10",
-    fileName: "Mond_POS_Canada",
-    project: "Milano Queens Retro",
-    date: "17/08/2023",
-    createdBy: "Aditya Karolia",
-    type: "Graphics",
-    source: "From Users",
-    priority: "Medium",
-    favourite: false,
-  },
-];
-
-type FilterState = {
+function buildLibraryUrl(input: {
+  page: number;
+  pageSize: number;
   search: string;
-  project: string;
-  date: string;
-  createdBy: string;
-  type: string;
-  source: string;
-  priority: string;
-};
+  projectId: string;
+  createdById: string;
+  date: LibraryDateFilter;
+  type: LibraryTypeFilter;
+  quickMenu: LibraryQuickMenuOption;
+}) {
+  const searchParams = new URLSearchParams({
+    page: String(input.page),
+    pageSize: String(input.pageSize),
+    search: input.search,
+    projectId: input.projectId,
+    createdById: input.createdById,
+    date: input.date,
+    type: input.type,
+    quickMenu: input.quickMenu,
+  });
 
-const defaultFilters: FilterState = {
-  search: "",
-  project: "",
-  date: "",
-  createdBy: "",
-  type: "",
-  source: "",
-  priority: "",
-};
+  return `/api/library?${searchParams.toString()}`;
+}
 
-const typeStyles: Record<string, string> = {
-  Artwork: "text-[#151b16]",
-  Graphics: "text-[#151b16]",
-  Invoice: "text-[#151b16]",
-  Advert: "text-[#151b16]",
-  Promotional: "text-[#151b16]",
-  Quotation: "text-[#151b16]",
-};
-
-const uniqueValues = (items: LibraryItem[], key: keyof LibraryItem) =>
-  Array.from(new Set(items.map((item) => item[key] as string)));
-
-export function LibraryWorkspace() {
-  const [collapsed, setCollapsed] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<LibraryCategory>("assets");
-  const [items, setItems] = useState<LibraryItem[]>(initialItems);
-  const [filters, setFilters] = useState<FilterState>(defaultFilters);
-
-  const selectOptions = useMemo(
-    () => ({
-      project: uniqueValues(items, "project"),
-      date: uniqueValues(items, "date"),
-      createdBy: uniqueValues(items, "createdBy"),
-      type: uniqueValues(items, "type"),
-      source: uniqueValues(items, "source"),
-      priority: uniqueValues(items, "priority"),
-    }),
-    [items],
+function isPreviewableLibraryFile(fileName: string, mimeType: string) {
+  return (
+    mimeType.startsWith("image/") ||
+    mimeType === "application/pdf" ||
+    fileName.toLowerCase().endsWith(".pdf")
   );
+}
 
-  const visibleItems = useMemo(() => {
-    const activeCard = quickMenuCards.find((card) => card.key === activeCategory);
-
-    return items.filter((item) => {
-      if (activeCategory === "favourites" && !item.favourite) {
-        return false;
-      }
-
-      if (activeCard?.source && item.source !== activeCard.source) {
-        return false;
-      }
-
-      if (
-        filters.search &&
-        ![
-          item.fileName,
-          item.project,
-          item.createdBy,
-          item.type,
-          item.source,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(filters.search.toLowerCase())
-      ) {
-        return false;
-      }
-
-      if (filters.project && item.project !== filters.project) return false;
-      if (filters.date && item.date !== filters.date) return false;
-      if (filters.createdBy && item.createdBy !== filters.createdBy) return false;
-      if (filters.type && item.type !== filters.type) return false;
-      if (filters.source && item.source !== filters.source) return false;
-      if (filters.priority && item.priority !== filters.priority) return false;
-
-      return true;
-    });
-  }, [activeCategory, filters, items]);
-
-  function updateFilter<K extends keyof FilterState>(key: K, value: FilterState[K]) {
-    setFilters((current) => ({ ...current, [key]: value }));
-  }
-
-  function toggleFavourite(id: string) {
-    setItems((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, favourite: !item.favourite } : item,
-      ),
-    );
-  }
-
-  function removeItem(id: string) {
-    setItems((current) => current.filter((item) => item.id !== id));
-  }
-
-  function renderQuickMenu() {
-    return (
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {quickMenuCards.map((card) => {
-          const Icon = card.icon;
-          const active = activeCategory === card.key;
-
-          return (
-            <Card
-              key={card.key}
-              className={`rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] ${
-                active ? "ring-2 ring-brand/45" : ""
-              }`}
-            >
-              <div className="mb-5 flex items-start justify-between gap-3">
-                <div className="grid h-16 w-16 place-items-center rounded-[18px] bg-brand-soft text-brand">
-                  <Icon className="h-8 w-8" />
-                </div>
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-[#edf4ee] text-brand">
-                  <FileCheck2 className="h-5 w-5" />
-                </div>
-              </div>
-
-              <h3 className="text-[16px] font-[700] text-[#141915]">{card.title}</h3>
-              <p className="mt-2 text-[13px] text-[#79817b]">
-                {
-                  visibleItems.filter((item) =>
-                    card.key === "favourites"
-                      ? item.favourite
-                      : card.source
-                        ? item.source === card.source
-                        : true,
-                  ).length
-                }{" "}
-                files available
-              </p>
-
-              <Button
-                type="button"
-                onClick={() => setActiveCategory(card.key)}
-                size="default"
-                className="mt-5 w-full text-[14px]"
-              >
-                View
-              </Button>
-            </Card>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function renderFilterBar() {
-    return (
-      <Card className="rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3 shadow-none">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-7">
-          <Input
-            value={filters.search}
-            onChange={(event) => updateFilter("search", event.target.value)}
-            placeholder="Search....."
-            className="h-[36px] border-0 px-5 text-[12px] text-[#657069]"
-          />
-
-          <Select
-            value={filters.project}
-            onValueChange={(value) => updateFilter("project", value)}
-          >
-            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-              <SelectValue placeholder="Project" />
-            </SelectTrigger>
-            <SelectContent>
-              {selectOptions.project.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.date}
-            onValueChange={(value) => updateFilter("date", value)}
-          >
-            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-              <SelectValue placeholder="Date" />
-            </SelectTrigger>
-            <SelectContent>
-              {selectOptions.date.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.createdBy}
-            onValueChange={(value) => updateFilter("createdBy", value)}
-          >
-            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-              <SelectValue placeholder="Created by" />
-            </SelectTrigger>
-            <SelectContent>
-              {selectOptions.createdBy.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.type}
-            onValueChange={(value) => updateFilter("type", value)}
-          >
-            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              {selectOptions.type.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.source}
-            onValueChange={(value) => updateFilter("source", value)}
-          >
-            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-              <SelectValue placeholder="Tag" />
-            </SelectTrigger>
-            <SelectContent>
-              {selectOptions.source.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.priority}
-            onValueChange={(value) => updateFilter("priority", value)}
-          >
-            <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              {selectOptions.priority.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+function QuickMenuCard({
+  active,
+  title,
+  description,
+  actionLabel,
+  onClick,
+  icon: Icon,
+}: {
+  active: boolean;
+  title: string;
+  description: string;
+  actionLabel: string;
+  onClick: () => void;
+  icon: typeof FileStack;
+}) {
+  return (
+    <Card
+      className={`rounded-[22px] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] ${
+        active ? "ring-2 ring-brand/45" : ""
+      }`}
+    >
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="grid h-16 w-16 place-items-center rounded-[18px] bg-brand-soft text-brand">
+          <Icon className="h-8 w-8" />
         </div>
-      </Card>
+        <div className="grid h-10 w-10 place-items-center rounded-full bg-[#edf4ee] text-brand">
+          <FileCheck2 className="h-5 w-5" />
+        </div>
+      </div>
+
+      <h3 className="text-[16px] font-[700] text-[#141915]">{title}</h3>
+      <p className="mt-2 text-[13px] leading-6 text-[#79817b]">{description}</p>
+
+      <Button
+        type="button"
+        onClick={onClick}
+        size="default"
+        className="mt-5 w-full text-[14px]"
+      >
+        {actionLabel}
+      </Button>
+    </Card>
+  );
+}
+
+function LibraryPreviewAction({ item }: { item: LibraryItemRecord }) {
+  if (isPreviewableLibraryFile(item.fileName, item.mimeType)) {
+    return (
+      <AssetPreviewButton
+        fileName={item.fileName}
+        mimeType={item.mimeType}
+        previewPath={item.previewPath}
+        downloadPath={item.downloadPath}
+        triggerClassName="h-9 w-9 rounded-full text-brand hover:bg-[#eef6ef]"
+      />
     );
   }
 
   return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="h-9 w-9 rounded-full text-brand"
+      onClick={() =>
+        showInfoToast(
+          "Preview not available.",
+          "Preview is not available for this file type. Please download the file.",
+        )
+      }
+      aria-label={`Preview ${item.fileName}`}
+      title="Preview"
+    >
+      <Eye className="h-4.5 w-4.5" />
+    </Button>
+  );
+}
+
+type LibraryWorkspaceProps = {
+  initialData: LibraryPageData;
+};
+
+export function LibraryWorkspace({ initialData }: LibraryWorkspaceProps) {
+  const [activeQuickMenu, setActiveQuickMenu] =
+    useState<LibraryQuickMenuOption>("assets");
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search.trim());
+  const [projectId, setProjectId] = useState("all");
+  const [dateFilter, setDateFilter] = useState<LibraryDateFilter>("all");
+  const [createdById, setCreatedById] = useState("all");
+  const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>("All Types");
+  const [currentPage, setCurrentPage] = useState(initialData.page);
+  const [pageSize, setPageSize] = useState<(typeof pageSizeOptions)[number]>(
+    initialData.pageSize as (typeof pageSizeOptions)[number],
+  );
+  const [data, setData] = useState(initialData);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LibraryItemRecord | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLibraryPage() {
+      try {
+        const response = await fetch(
+          buildLibraryUrl({
+            page: currentPage,
+            pageSize,
+            search: deferredSearch,
+            projectId: projectId === "all" ? "" : projectId,
+            createdById: createdById === "all" ? "" : createdById,
+            date: dateFilter,
+            type: typeFilter,
+            quickMenu: activeQuickMenu,
+          }),
+          {
+            method: "GET",
+            cache: "no-store",
+          },
+        );
+
+        const payload = (await response.json()) as LibraryPageData | { error?: string };
+
+        if (!response.ok) {
+          throw new Error(
+            typeof payload === "object" &&
+              payload !== null &&
+              "error" in payload &&
+              typeof payload.error === "string"
+              ? payload.error
+              : "Unable to load library files right now.",
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setData(payload as LibraryPageData);
+        setError(null);
+        setLoading(false);
+      } catch (nextError) {
+        if (cancelled) {
+          return;
+        }
+
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to load library files right now.",
+        );
+        setLoading(false);
+      }
+    }
+
+    loadLibraryPage().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeQuickMenu, createdById, currentPage, dateFilter, deferredSearch, pageSize, projectId, typeFilter]);
+
+  async function refetchLibraryPage() {
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        buildLibraryUrl({
+          page: currentPage,
+          pageSize,
+          search: deferredSearch,
+          projectId: projectId === "all" ? "" : projectId,
+          createdById: createdById === "all" ? "" : createdById,
+          date: dateFilter,
+          type: typeFilter,
+          quickMenu: activeQuickMenu,
+        }),
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
+
+      const payload = (await response.json()) as LibraryPageData | { error?: string };
+
+      if (!response.ok) {
+        throw new Error(
+          typeof payload === "object" &&
+            payload !== null &&
+            "error" in payload &&
+            typeof payload.error === "string"
+            ? payload.error
+            : "Unable to load library files right now.",
+        );
+      }
+
+      setData(payload as LibraryPageData);
+      setError(null);
+    } catch (nextError) {
+      const message =
+        nextError instanceof Error
+          ? nextError.message
+          : "Unable to load library files right now.";
+      setError(message);
+      showErrorToast("Unable to load library files.", message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteFile() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    setPendingDeleteId(deleteTarget.id);
+    setDeleteError(null);
+
+    try {
+      const response = await fetch(`/api/library/attachments/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as { success?: boolean; error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to delete the file right now.");
+      }
+
+      setDeleteTarget(null);
+      showSuccessToast("File deleted from library.");
+      await refetchLibraryPage();
+    } catch (nextError) {
+      const message =
+        nextError instanceof Error
+          ? nextError.message
+          : "Unable to delete the file right now.";
+      setDeleteError(message);
+      showErrorToast("Unable to delete file.", message);
+    } finally {
+      setPendingDeleteId(null);
+    }
+  }
+
+  function handleQuickMenuSelection(nextQuickMenu: LibraryQuickMenuOption) {
+    if (nextQuickMenu === "favourites") {
+      showInfoToast("Favourites will be available soon.");
+      return;
+    }
+
+    setLoading(true);
+    setActiveQuickMenu(nextQuickMenu);
+    setCurrentPage(1);
+
+    if (nextQuickMenu === "users") {
+      window.requestAnimationFrame(() => {
+        const trigger = document.querySelector<HTMLElement>(
+          '[data-library-created-by-trigger="true"]',
+        );
+        trigger?.focus();
+      });
+    }
+  }
+
+  const noLibraryFiles = data.counts.projectAssets === 0;
+  const noFilteredFiles = !loading && data.items.length === 0;
+
+  return (
     <section className="space-y-6">
       <MotionSection>
-        <header className="flex flex-col gap-4">
+        <header className="space-y-2">
           <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
             Library
           </h1>
+          <p className="text-[16px] text-[#68736a]">
+            Browse working project files, attachments, and submissions from real uploads across the PMS.
+          </p>
         </header>
       </MotionSection>
 
       <MotionSection y={10}>
-      <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
-        <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-3">
-            <h2
-              className={`text-[24px] font-[700] tracking-[-0.03em] ${
-                collapsed ? "text-[#c1c5c1]" : "text-[#434747]"
-              }`}
-            >
-              Quick Menu
-            </h2>
-            <Button
-              type="button"
-              onClick={() => setCollapsed((current) => !current)}
-              size="sm"
-              className="min-h-[28px] gap-1 px-4 text-[12px]"
-            >
-              {collapsed ? "Expand" : "Collapse"} <ChevronDown className={`h-3.5 w-3.5 ${collapsed ? "" : "rotate-180"}`} />
-            </Button>
+        <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
+          <div className="mb-6 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#434747]">
+                  Quick Menu
+                </h2>
+                <p className="mt-1 text-[13px] text-[#79817b]">
+                  Jump into the most useful library views without leaving the page.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <QuickMenuCard
+                active={activeQuickMenu === "assets"}
+                title="Project Assets"
+                description={`${data.counts.projectAssets} files available`}
+                actionLabel="View"
+                onClick={() => handleQuickMenuSelection("assets")}
+                icon={FileStack}
+              />
+              <QuickMenuCard
+                active={activeQuickMenu === "finance"}
+                title="Quotations/Invoices"
+                description={`${data.counts.quotationsAndInvoices} files available`}
+                actionLabel="View"
+                onClick={() => handleQuickMenuSelection("finance")}
+                icon={ReceiptText}
+              />
+              <QuickMenuCard
+                active={activeQuickMenu === "users"}
+                title="From Users"
+                description={`${data.counts.fromUsers} uploaders available`}
+                actionLabel="Filter"
+                onClick={() => handleQuickMenuSelection("users")}
+                icon={UserRound}
+              />
+              <QuickMenuCard
+                active={false}
+                title="Favourites"
+                description="This view will be available soon."
+                actionLabel="Coming Soon"
+                onClick={() => handleQuickMenuSelection("favourites")}
+                icon={Star}
+              />
+            </div>
           </div>
-        </div>
 
-        {collapsed ? renderFilterBar() : <MotionSection y={8}>{renderQuickMenu()}</MotionSection>}
+          <Card className="rounded-[24px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-4 shadow-none">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
+              <Input
+                value={search}
+                onChange={(event) => {
+                  setLoading(true);
+                  setSearch(event.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Search by file, project, user, or type"
+                className="h-[42px] border-0 px-5 text-[13px] text-[#657069]"
+              />
 
-        <div className="mt-6 overflow-x-auto rounded-[20px] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
-          <table className="min-w-[900px] w-full border-collapse">
-            <thead className="bg-[linear-gradient(90deg,#2b7e51,#3ca36d)] text-left text-[13px] font-[600] text-white">
-              <tr>
-                <th className="px-5 py-4">File Name</th>
-                <th className="px-4 py-4">Project</th>
-                <th className="px-4 py-4">Date</th>
-                <th className="px-4 py-4">Created by</th>
-                <th className="px-4 py-4">Type</th>
-                <th className="px-4 py-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleItems.map((item) => (
-                <tr key={item.id} className="border-t border-[#edf0ee] text-[13px] text-[#141915] transition-colors hover:bg-[#f8fbf8]">
-                  <td className="px-5 py-4 font-[600] leading-[1.2]">{item.fileName}</td>
-                  <td className="px-4 py-4">{item.project}</td>
-                  <td className="px-4 py-4">{item.date}</td>
-                  <td className="px-4 py-4">{item.createdBy}</td>
-                  <td className={`px-4 py-4 font-[600] ${typeStyles[item.type] ?? "text-[#141915]"}`}>
-                    {item.type}
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 rounded-full text-brand"
-                        aria-label={`Preview ${item.fileName}`}
-                        title="Preview"
+              <Select
+                value={projectId}
+                onValueChange={(value) => {
+                  setLoading(true);
+                  setProjectId(value);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-[42px] border-0 text-[13px] text-[#657069]">
+                  <SelectValue placeholder="Project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All projects</SelectItem>
+                  {data.filters.projects.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={dateFilter}
+                onValueChange={(value) => {
+                  setLoading(true);
+                  setDateFilter(value as LibraryDateFilter);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-[42px] border-0 text-[13px] text-[#657069]">
+                  <SelectValue placeholder="Date" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dateFilterOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={createdById}
+                onValueChange={(value) => {
+                  setLoading(true);
+                  setCreatedById(value);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger
+                  data-library-created-by-trigger="true"
+                  className="h-[42px] border-0 text-[13px] text-[#657069]"
+                >
+                  <SelectValue placeholder="Created by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All users</SelectItem>
+                  {data.filters.createdBy.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={typeFilter}
+                onValueChange={(value) => {
+                  setLoading(true);
+                  setTypeFilter(value as LibraryTypeFilter);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-[42px] border-0 text-[13px] text-[#657069]">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {libraryTypeFilterOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </Card>
+
+          <div className="mt-6 overflow-hidden rounded-[24px] border border-[#e3e8e3] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
+            <div className="overflow-x-auto">
+              <table className="min-w-[920px] w-full border-collapse">
+                <thead className="bg-[linear-gradient(90deg,#2b7e51,#3ca36d)] text-left text-[13px] font-[700] text-white">
+                  <tr>
+                    <th className="px-5 py-4">File Name</th>
+                    <th className="px-4 py-4">Project</th>
+                    <th className="px-4 py-4">Date</th>
+                    <th className="px-4 py-4">Created by</th>
+                    <th className="px-4 py-4">Type</th>
+                    <th className="px-4 py-4">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12 text-center text-[14px] text-[#707a72]">
+                        Loading library files...
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12 text-center">
+                        <p className="text-[16px] font-[700] text-[#18211a]">
+                          Unable to load library files.
+                        </p>
+                        <p className="mt-2 text-[14px] text-[#68736a]">{error}</p>
+                        <Button
+                          type="button"
+                          className="mt-5"
+                          onClick={() => {
+                            void refetchLibraryPage();
+                          }}
+                        >
+                          Retry
+                        </Button>
+                      </td>
+                    </tr>
+                  ) : data.items.length > 0 ? (
+                    data.items.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="border-t border-[#edf0ee] text-[13px] text-[#141915] transition-colors hover:bg-[#f8fbf8]"
                       >
-                        <Eye className="h-4.5 w-4.5" />
-                      </Button>
+                        <td className="px-5 py-4">
+                          <div>
+                            <p className="font-[700] leading-[1.25] text-[#18211a]">
+                              {item.fileName}
+                            </p>
+                            {item.projectTag ? (
+                              <p className="mt-1 text-[11px] text-[#7a847d]">
+                                Tag: {item.projectTag}
+                              </p>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-[#314036]">{item.projectName}</td>
+                        <td className="px-4 py-4 text-[#5f6b62]">{item.uploadedAt}</td>
+                        <td className="px-4 py-4 text-[#314036]">{item.createdBy}</td>
+                        <td className="px-4 py-4">
+                          <span className="inline-flex rounded-full bg-[#edf7ef] px-3 py-1 text-[11px] font-[700] text-[#2b8b56]">
+                            {item.type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <LibraryPreviewAction item={item} />
+                            <Button asChild type="button" size="sm" className="min-h-[32px] px-3 text-[11px]">
+                              <a
+                                href={item.downloadPath}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`Download ${item.fileName}`}
+                              >
+                                <span className="mr-1.5">Download</span>
+                                <Download className="h-3 w-3" />
+                              </a>
+                            </Button>
+                            {item.canDelete ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setDeleteTarget(item);
+                                  setDeleteError(null);
+                                }}
+                                className="h-9 w-9 rounded-full text-[#ff2e00] hover:bg-[#fff3f0] hover:text-[#ff2e00]"
+                                aria-label={`Delete ${item.fileName}`}
+                              >
+                                <Trash2 className="h-4.5 w-4.5" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12 text-center text-[14px] text-[#707a72]">
+                        {noLibraryFiles
+                          ? "No library files found."
+                          : noFilteredFiles
+                            ? "No files match your filters. Try changing your search or filters."
+                            : "No library files found."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col gap-4 border-t border-[#e7ece7] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+              <p className="text-[14px] text-[#5f6b62]">
+                Showing {data.total === 0 ? 0 : (data.page - 1) * data.pageSize + 1} to{" "}
+                {Math.min(data.page * data.pageSize, data.total)} of {data.total} files
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => {
+                      setLoading(true);
+                      setCurrentPage((current) => Math.max(1, current - 1));
+                    }}
+                    disabled={data.page === 1 || loading}
+                    className="border border-[#dce4dc]"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  {Array.from({ length: data.totalPages }, (_, index) => index + 1)
+                    .slice(0, 5)
+                    .map((pageNumber) => (
                       <Button
+                        key={pageNumber}
                         type="button"
-                        onClick={() => toggleFavourite(item.id)}
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 rounded-full text-brand"
-                        aria-label={`Toggle favourite for ${item.fileName}`}
-                        title={item.favourite ? "Remove favourite" : "Add favourite"}
+                        variant={pageNumber === data.page ? "default" : "secondary"}
+                        className="min-w-[44px] rounded-[16px] px-3 text-[14px]"
+                        onClick={() => {
+                          setLoading(true);
+                          setCurrentPage(pageNumber);
+                        }}
+                        disabled={loading}
                       >
-                        <Tag className={`h-4.5 w-4.5 ${item.favourite ? "fill-current" : ""}`} />
+                        {pageNumber}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="min-h-[28px] px-3 text-[10px]"
-                        aria-label={`Download ${item.fileName}`}
-                        title="Download"
-                      >
-                        <span className="mr-1.5">Download</span>
-                        <Download className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => removeItem(item.id)}
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 rounded-full text-[#ff2e00] hover:bg-[#fff3f0] hover:text-[#ff2e00]"
-                        aria-label={`Delete ${item.fileName}`}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4.5 w-4.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {visibleItems.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-[14px] text-[#707a72]">
-                    No files match the current filters.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                    ))}
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => {
+                      setLoading(true);
+                      setCurrentPage((current) => Math.min(data.totalPages, current + 1));
+                    }}
+                    disabled={data.page === data.totalPages || loading}
+                    className="border border-[#dce4dc]"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    setLoading(true);
+                    setPageSize(Number(value) as (typeof pageSizeOptions)[number]);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-11 w-[126px] border border-[#dce4dc] text-[14px] shadow-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pageSizeOptions.map((option) => (
+                      <SelectItem key={option} value={String(option)}>
+                        {option} / page
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </Card>
       </MotionSection>
+
+      <ConfirmationDialog
+        isOpen={Boolean(deleteTarget)}
+        title="Delete file?"
+        description="This file will be removed from the library. This action cannot be undone."
+        confirmLabel="Delete File"
+        cancelLabel="Cancel"
+        tone="destructive"
+        pending={pendingDeleteId === deleteTarget?.id}
+        error={deleteError ?? undefined}
+        onClose={() => {
+          if (pendingDeleteId) {
+            return;
+          }
+
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => {
+          void handleDeleteFile();
+        }}
+      />
     </section>
   );
 }
