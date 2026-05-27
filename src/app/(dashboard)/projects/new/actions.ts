@@ -20,6 +20,10 @@ import {
 } from "@/lib/project-collaborator-participant-types";
 import { prisma } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import {
+  DEFAULT_PROJECT_PRIORITY,
+  isProjectPriority,
+} from "@/lib/project-priority";
 
 function parseBudget(value: string) {
   const normalized = value.trim().replace(/,/g, "");
@@ -120,6 +124,7 @@ function parseProjectFormData(formData: FormData) {
   const executorName = String(formData.get("executorName") ?? "").trim();
   const executorUserId = String(formData.get("executorUserId") ?? "").trim();
   const tag = String(formData.get("tag") ?? "").trim();
+  const priorityInput = String(formData.get("priority") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const budgetInput = String(formData.get("budget") ?? "").trim();
   const currencyInput = String(formData.get("currency") ?? "").trim().toUpperCase();
@@ -157,6 +162,7 @@ function parseProjectFormData(formData: FormData) {
     executorName,
     executorUserId,
     tag,
+    priorityInput,
     description,
     budgetInput,
     currencyInput,
@@ -198,6 +204,11 @@ function validateProjectFormData(
 
   const budget = parseBudget(parsed.budgetInput);
   const status = isProjectStatus(parsed.statusInput) ? parsed.statusInput : null;
+  const priority = parsed.priorityInput
+    ? isProjectPriority(parsed.priorityInput)
+      ? parsed.priorityInput
+      : null
+    : DEFAULT_PROJECT_PRIORITY;
   const startDate = new Date(parsed.startDateInput);
   const endDate = new Date(parsed.endDateInput);
 
@@ -212,6 +223,13 @@ function validateProjectFormData(
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: { status: "Choose a valid project status." },
+    };
+  }
+
+  if (!priority) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { priority: "Choose a valid project priority." },
     };
   }
 
@@ -344,6 +362,7 @@ function validateProjectFormData(
       budget,
       currency: parsed.currencyInput,
       status,
+      priority,
       startDate,
       endDate,
       stageStartDates: parsed.stageStartDates.map((value) => new Date(value)),
@@ -442,6 +461,7 @@ export async function createProjectAction(
     budget,
     currency,
     status,
+    priority,
     startDate,
     endDate,
     stageNames,
@@ -535,6 +555,7 @@ export async function createProjectAction(
           budget,
           currency: currencyCode,
           status,
+          priority,
           startDate,
           endDate,
           currentStageName,
@@ -697,6 +718,7 @@ export async function updateProjectAction(
     budget,
     currency,
     status,
+    priority,
     startDate,
     endDate,
     stageNames,
@@ -799,6 +821,7 @@ export async function updateProjectAction(
         budget: canViewBudget ? budget : existingProject.budget,
         currency: currencyCode,
         status,
+        priority,
         startDate,
         endDate,
         currentStageName,

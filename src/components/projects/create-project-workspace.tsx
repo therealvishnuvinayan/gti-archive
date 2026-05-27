@@ -71,6 +71,13 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import {
+  DEFAULT_PROJECT_PRIORITY,
+  formatProjectPriority,
+  isProjectPriority,
+  projectPriorityOptions,
+  type ProjectPriorityValue,
+} from "@/lib/project-priority";
+import {
   showErrorToast,
   showSuccessToast,
   showWarningToast,
@@ -650,6 +657,11 @@ export function CreateProjectWorkspace({
   const [projectCurrency, setProjectCurrency] = useState<string>(
     initialValues?.currency ?? getDefaultProjectCurrencyCode(currencyOptions),
   );
+  const [projectPriority, setProjectPriority] = useState<ProjectPriorityValue>(
+    initialValues?.priority && isProjectPriority(initialValues.priority)
+      ? initialValues.priority
+      : DEFAULT_PROJECT_PRIORITY,
+  );
   const [projectBrief, setProjectBrief] = useState(initialValues?.description ?? "");
   const [projectStatus, setProjectStatus] = useState<ProjectStatusValue>(
     initialValues?.status ?? "ONGOING",
@@ -865,7 +877,7 @@ export function CreateProjectWorkspace({
       tag: projectTag || "—",
       status:
         projectStatusOptions.find((option) => option.value === projectStatus)?.label || "—",
-      priority: "Medium",
+      priority: formatProjectPriority(projectPriority),
     }),
     [
       canViewBudget,
@@ -873,6 +885,7 @@ export function CreateProjectWorkspace({
       projectCurrency,
       projectExecutor,
       projectTag,
+      projectPriority,
       projectStatus,
       parsedProjectBudget,
       remainingStageBudget,
@@ -1624,6 +1637,7 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="tag" value={projectTag} />
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
+      <input type="hidden" name="priority" value={projectPriority} />
       {assignedCollaborators.map((collaborator) => (
         <div key={collaborator.id}>
           <input type="hidden" name="collaboratorIds" value={collaborator.id} />
@@ -1972,6 +1986,29 @@ export function CreateProjectWorkspace({
                   </SelectContent>
                 </Select>
                 <FieldError message={getFieldError("status", fieldErrors.status)} />
+              </label>
+
+              <label className="block">
+                <FieldLabel>Project Priority</FieldLabel>
+                <Select
+                  value={projectPriority}
+                  onValueChange={(nextValue) => {
+                    setProjectPriority(nextValue as ProjectPriorityValue);
+                    clearFieldError("priority");
+                  }}
+                >
+                  <SelectTrigger className="h-[42px] text-[12px] font-medium">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projectPriorityOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldError message={getFieldError("priority", fieldErrors.priority)} />
               </label>
             </div>
             </MotionItem>

@@ -5,6 +5,7 @@ export type ProjectFormFieldErrors = {
   category?: string;
   executorName?: string;
   executorUserId?: string;
+  priority?: string;
   tag?: string;
   description?: string;
   budget?: string;
@@ -75,6 +76,7 @@ export type ProjectEditorInitialValues = {
   currency: string | null;
   canViewBudget: boolean;
   status: "ONGOING" | "ON_HOLD" | "PENDING" | "COMPLETED";
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   startDate: string;
   endDate: string;
   stages: ProjectEditorInitialStage[];

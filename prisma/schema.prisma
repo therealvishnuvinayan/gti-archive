@@ -40,6 +40,13 @@ enum ProjectStatus {
   COMPLETED
 }
 
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
 enum CalendarEventType {
   PROJECTS
   EVENTS
@@ -206,6 +213,7 @@ model Project {
   budget           Int
   currency         String        @default("USD")
   status           ProjectStatus @default(ONGOING)
+  priority         ProjectPriority @default(MEDIUM)
   startDate        DateTime
   endDate          DateTime
   currentStageName String?

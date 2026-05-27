@@ -20,6 +20,11 @@ import {
   getProjectCollaboratorTypeMeta,
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
+import {
+  DEFAULT_PROJECT_PRIORITY,
+  formatProjectPriority,
+  type ProjectPriorityValue,
+} from "@/lib/project-priority";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
@@ -73,6 +78,7 @@ export type ProjectEditorRecord = {
   executorName: string;
   executorUserId?: string | null;
   tag: string;
+  priority: ProjectPriorityValue;
   description: string;
   budget: string;
   currency: string | null;
@@ -621,7 +627,7 @@ function mapProjectToFlow(
     createdOn: formatProjectDate(project.createdAt),
     createdBy: creatorName,
     tag: project.tag?.trim() || "—",
-    priority: "Medium",
+    priority: formatProjectPriority(project.priority ?? DEFAULT_PROJECT_PRIORITY),
     stageCards: stages.map((stage) => mapStageToCard(project, stage, allowBudgetView)),
     collaborators: [
       {
@@ -699,6 +705,7 @@ function mapProjectToEditor(
     executorName: executorDisplayName,
     executorUserId: project.executorUserId ?? null,
     tag: project.tag?.trim() || "",
+    priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
     description: project.description,
     budget: allowBudgetView ? String(project.budget) : "",
     currency: allowBudgetView ? project.currency : null,
