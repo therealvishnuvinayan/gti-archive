@@ -463,6 +463,7 @@ function buildSyntheticStages(project: Project): ProjectStage[] {
     budget: index === 0 ? project.budget : null,
     actualStartedAt: null,
     startedById: null,
+    completedAt: null,
     plannedStartAt: project.startDate,
     plannedDueAt: project.endDate,
     status: index === 0 ? project.status : "PENDING",

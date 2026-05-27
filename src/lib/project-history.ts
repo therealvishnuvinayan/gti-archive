@@ -276,6 +276,7 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
         id: true,
         createdById: true,
         executorUserId: true,
+        status: true,
         currency: true,
         budget: true,
         endDate: true,
@@ -576,6 +577,10 @@ export async function createStageRevision(
     throw new Error("Only the project executor can submit work for review.");
   }
 
+  if (project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
+  }
+
   if (stage.status === "COMPLETED") {
     throw new Error("This stage is already completed.");
   }
@@ -660,6 +665,7 @@ export async function createStageComment(
         project: {
           select: {
             createdById: true,
+            status: true,
           },
         },
       },
@@ -671,6 +677,10 @@ export async function createStageComment(
   }
 
   await assertProjectAccess(user, input.projectId);
+
+  if (stage.project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
+  }
 
   const latestRevision = await withPrismaRetry(() =>
     prisma.projectRevision.findFirst({
@@ -725,6 +735,10 @@ export async function startProjectStageWork(
 
   if (!isProjectExecutorUser(project, user.id)) {
     throw new Error("Only the project executor can accept the brief for this stage.");
+  }
+
+  if (project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
   }
 
   if (stage.actualStartedAt) {
@@ -788,6 +802,10 @@ export async function completeProjectStage(
     throw new Error("Only the project owner can mark this stage as complete.");
   }
 
+  if (project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
+  }
+
   const stage = project.stages.find((item) => item.id === input.stageId);
 
   if (!stage) {
@@ -797,6 +815,10 @@ export async function completeProjectStage(
   const orderedStages = [...project.stages].sort((left, right) => left.order - right.order);
   const stageIndex = orderedStages.findIndex((item) => item.id === stage.id);
   const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
+
+  if (!nextStage) {
+    throw new Error("Use the project completion flow to complete the final stage.");
+  }
 
   if (stage.status === "COMPLETED") {
     return {
@@ -820,6 +842,7 @@ export async function completeProjectStage(
         },
         data: {
           status: "COMPLETED",
+          completedAt: new Date(),
         },
         select: {
           id: true,
@@ -904,6 +927,7 @@ export async function reviewStageSubmission(
         project: {
           select: {
             createdById: true,
+            status: true,
           },
         },
       },
@@ -920,6 +944,10 @@ export async function reviewStageSubmission(
 
   if (attachment.project.createdById !== user.id) {
     throw new Error("Only the project owner can review submissions.");
+  }
+
+  if (attachment.project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
   }
 
   if (
@@ -983,6 +1011,7 @@ export async function reviewProjectRevision(
         project: {
           select: {
             createdById: true,
+            status: true,
           },
         },
       },
@@ -995,6 +1024,10 @@ export async function reviewProjectRevision(
 
   if (revision.project.createdById !== user.id) {
     throw new Error("Only the project owner can review this submission.");
+  }
+
+  if (revision.project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
   }
 
   if (revision.status !== ProjectRevisionStatus.PENDING_REVIEW) {
@@ -1065,16 +1098,17 @@ export async function reviewProjectRevision(
         const stageIndex = orderedStages.findIndex((item) => item.id === revision.stageId);
         const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
 
-        await tx.projectStage.update({
-          where: {
-            id: revision.stageId,
-          },
-          data: {
-            status: "COMPLETED",
-          },
-        });
-
         if (nextStage) {
+          await tx.projectStage.update({
+            where: {
+              id: revision.stageId,
+            },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+            },
+          });
+
           const nextStageStatus =
             nextStage.status === "PENDING" ? "ONGOING" : nextStage.status;
 
@@ -1098,30 +1132,18 @@ export async function reviewProjectRevision(
               status: nextStageStatus,
             },
           });
-        } else {
-          await tx.project.update({
-            where: {
-              id: revision.projectId,
-            },
-            data: {
-              currentStageName: revision.stage.name,
-              status: "COMPLETED",
-            },
-          });
-        }
 
-        stageCompletion = {
-          id: revision.stageId,
-          status: "COMPLETED",
-          nextStage: nextStage
-            ? {
-                id: nextStage.id,
-                name: nextStage.name,
-                status: nextStage.status === "PENDING" ? "ONGOING" : nextStage.status,
-              }
-            : null,
-          allStagesCompleted: !nextStage,
-        };
+          stageCompletion = {
+            id: revision.stageId,
+            status: "COMPLETED",
+            nextStage: {
+              id: nextStage.id,
+              name: nextStage.name,
+              status: nextStage.status === "PENDING" ? "ONGOING" : nextStage.status,
+            },
+            allStagesCompleted: false,
+          };
+        }
       }
 
       if (input.status === "REJECTED") {
@@ -1202,6 +1224,7 @@ export async function requestAttachmentUpload(
             select: {
               createdById: true,
               executorUserId: true,
+              status: true,
             },
           },
         },
@@ -1215,6 +1238,10 @@ export async function requestAttachmentUpload(
 
     if (!isProjectExecutorUser(revision.project, user.id)) {
       return { error: "Only the project executor can submit work for review." };
+    }
+
+    if (revision.project.status === "COMPLETED") {
+      return { error: "This project is already completed." };
     }
 
     if (!revision.stage.actualStartedAt) {
@@ -1255,6 +1282,7 @@ export async function requestAttachmentUpload(
             select: {
               createdById: true,
               executorUserId: true,
+              status: true,
             },
           },
         },
@@ -1288,6 +1316,10 @@ export async function requestAttachmentUpload(
       return { error: "This stage is already completed." };
     }
 
+    if (comment.project.status === "COMPLETED") {
+      return { error: "This project is already completed." };
+    }
+
     if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {
       return { error: "Comment upload context is invalid." };
     }
@@ -1300,6 +1332,7 @@ export async function requestAttachmentUpload(
         select: {
           id: true,
           createdById: true,
+          status: true,
         },
       }),
     );
@@ -1309,6 +1342,10 @@ export async function requestAttachmentUpload(
     }
 
     await assertProjectAccess(user, input.projectId);
+
+    if (project.status === "COMPLETED") {
+      return { error: "This project is already completed." };
+    }
   }
 
   if (

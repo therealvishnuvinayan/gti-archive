@@ -184,6 +184,12 @@ export async function createComparisonComment(
     throw new Error("Comment position is invalid.");
   }
 
+  const project = await assertProjectAccess(user, input.projectId);
+
+  if (project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
+  }
+
   const { normalizedBaseAttachmentId, normalizedCompareAttachmentId } =
     await assertComparableSubmissionPair(user, input);
 

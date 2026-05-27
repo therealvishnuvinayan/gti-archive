@@ -1,16 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Eye, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { Download } from "lucide-react";
 
+import { getFileTypeIcon } from "@/components/archives/archive-data";
 import {
-  getFileTypeIcon,
-  type ArchiveItem,
-} from "@/components/archives/archive-data";
-import {
-  ArchiveItemDialog,
-  type ArchiveItemForm,
-} from "@/components/archives/archive-item-dialog";
+  MotionItem,
+  MotionSection,
+  MotionStaggerGroup,
+} from "@/components/motion/motion-primitives";
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,89 +20,44 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  MotionItem,
-  MotionSection,
-  MotionStaggerGroup,
-} from "@/components/motion/motion-primitives";
+import type { ArchivedProjectFileRecord } from "@/lib/archives";
 
 type ArchiveCategoryWorkspaceProps = {
   categoryTitle: string;
-  initialItems: ArchiveItem[];
+  items: ArchivedProjectFileRecord[];
 };
 
 type ArchiveFilters = {
   search: string;
-  project: string;
-  date: string;
-  createdBy: string;
-  tag: string;
-  country: string;
+  projectName: string;
+  archivedBy: string;
+  projectTag: string;
 };
 
 const defaultFilters: ArchiveFilters = {
   search: "",
-  project: "",
-  date: "",
-  createdBy: "",
-  tag: "",
-  country: "",
+  projectName: "",
+  archivedBy: "",
+  projectTag: "",
 };
 
-function uniqueValues(items: ArchiveItem[], key: keyof ArchiveItem) {
-  return Array.from(new Set(items.map((item) => item[key] as string)));
-}
-
-function getDefaultForm(): ArchiveItemForm {
-  return {
-    fileName: "",
-    projectName: "",
-    projectLabel: "",
-    date: "",
-    listedBy: "",
-    createdBy: "",
-    fileTypes: "PDF, ZIP",
-    tag: "",
-    country: "",
-  };
-}
-
-function toItem(form: ArchiveItemForm, id: string): ArchiveItem {
-  return {
-    id,
-    fileName: form.fileName.trim(),
-    projectName: form.projectName.trim(),
-    projectLabel: form.projectLabel.trim(),
-    date: form.date.trim(),
-    listedBy: form.listedBy.trim(),
-    createdBy: form.createdBy.trim(),
-    fileTypes: form.fileTypes
-      .split(",")
-      .map((value) => value.trim().toUpperCase())
-      .filter(Boolean),
-    tag: form.tag.trim(),
-    country: form.country.trim(),
-  };
+function uniqueValues(items: ArchivedProjectFileRecord[], key: keyof ArchivedProjectFileRecord) {
+  return Array.from(new Set(items.map((item) => item[key] as string).filter(Boolean))).sort(
+    (left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }),
+  );
 }
 
 export function ArchiveCategoryWorkspace({
   categoryTitle,
-  initialItems,
+  items,
 }: ArchiveCategoryWorkspaceProps) {
-  const [items, setItems] = useState<ArchiveItem[]>(initialItems);
   const [filters, setFilters] = useState<ArchiveFilters>(defaultFilters);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<ArchiveItemForm>(getDefaultForm());
 
   const options = useMemo(
     () => ({
-      project: uniqueValues(items, "projectName"),
-      date: uniqueValues(items, "date"),
-      createdBy: uniqueValues(items, "createdBy"),
-      tag: uniqueValues(items, "tag"),
-      country: uniqueValues(items, "country"),
+      projectName: uniqueValues(items, "projectName"),
+      archivedBy: uniqueValues(items, "archivedBy"),
+      projectTag: uniqueValues(items, "projectTag"),
     }),
     [items],
   );
@@ -113,12 +67,13 @@ export function ArchiveCategoryWorkspace({
       if (
         filters.search &&
         ![
-          item.fileName,
+          item.finalArchiveFileName,
+          item.originalFileName,
           item.projectName,
-          item.projectLabel,
-          item.createdBy,
-          item.tag,
-          item.country,
+          item.projectCategory,
+          item.projectTag,
+          item.archivedBy,
+          item.sourceLabel,
         ]
           .join(" ")
           .toLowerCase()
@@ -127,253 +82,183 @@ export function ArchiveCategoryWorkspace({
         return false;
       }
 
-      if (filters.project && item.projectName !== filters.project) return false;
-      if (filters.date && item.date !== filters.date) return false;
-      if (filters.createdBy && item.createdBy !== filters.createdBy) return false;
-      if (filters.tag && item.tag !== filters.tag) return false;
-      if (filters.country && item.country !== filters.country) return false;
+      if (filters.projectName && item.projectName !== filters.projectName) {
+        return false;
+      }
+
+      if (filters.archivedBy && item.archivedBy !== filters.archivedBy) {
+        return false;
+      }
+
+      if (filters.projectTag && item.projectTag !== filters.projectTag) {
+        return false;
+      }
 
       return true;
     });
   }, [filters, items]);
 
-  function updateFilter<K extends keyof ArchiveFilters>(
-    key: K,
-    value: ArchiveFilters[K],
-  ) {
+  function updateFilter<K extends keyof ArchiveFilters>(key: K, value: ArchiveFilters[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
   }
 
-  function updateForm<K extends keyof ArchiveItemForm>(
-    key: K,
-    value: ArchiveItemForm[K],
-  ) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
-
-  function openAddDialog() {
-    setDialogMode("add");
-    setEditingId(null);
-    setForm(getDefaultForm());
-    setDialogOpen(true);
-  }
-
-  function openEditDialog(item: ArchiveItem) {
-    setDialogMode("edit");
-    setEditingId(item.id);
-    setForm({
-      fileName: item.fileName,
-      projectName: item.projectName,
-      projectLabel: item.projectLabel,
-      date: item.date,
-      listedBy: item.listedBy,
-      createdBy: item.createdBy,
-      fileTypes: item.fileTypes.join(", "),
-      tag: item.tag,
-      country: item.country,
-    });
-    setDialogOpen(true);
-  }
-
-  function saveItem() {
-    if (!form.fileName.trim() || !form.projectName.trim()) {
-      return;
-    }
-
-    if (dialogMode === "add") {
-      setItems((current) => [...current, toItem(form, `archive-${Date.now()}`)]);
-    } else if (editingId) {
-      setItems((current) =>
-        current.map((item) =>
-          item.id === editingId ? toItem(form, editingId) : item,
-        ),
-      );
-    }
-
-    setDialogOpen(false);
-  }
-
-  function removeItem(id: string) {
-    setItems((current) => current.filter((item) => item.id !== id));
-  }
-
   return (
-    <>
-      <section className="space-y-6">
-        <MotionSection>
-          <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-              {categoryTitle}
-            </h1>
-            <Button
-              type="button"
-              onClick={openAddDialog}
-              size="default"
-              className="text-[14px]"
-            >
-              Add+
-            </Button>
-          </header>
-        </MotionSection>
+    <section className="space-y-6">
+      <MotionSection>
+        <header className="flex flex-col gap-3">
+          <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+            {categoryTitle}
+          </h1>
+          <p className="max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
+            Final archived files are read-only. Allowed users can view or download the
+            approved files that were saved when a project was completed.
+          </p>
+        </header>
+      </MotionSection>
 
-        <MotionSection y={10}>
+      <MotionSection y={10}>
         <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
           <Card className="rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3 shadow-none">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
               <Input
                 value={filters.search}
                 onChange={(event) => updateFilter("search", event.target.value)}
-                placeholder="Search....."
+                placeholder="Search archived files..."
                 className="h-[36px] border-0 text-[12px] text-[#657069]"
               />
 
-              {(
-                [
-                  ["project", options.project, "Project"],
-                  ["date", options.date, "Date"],
-                  ["createdBy", options.createdBy, "Created by"],
-                  ["tag", options.tag, "Tag"],
-                  ["country", options.country, "Country"],
-                ] as const
-              ).map(([key, values, label]) => (
-                <Select
-                  key={key}
-                  value={filters[key]}
-                  onValueChange={(value) => updateFilter(key, value)}
-                >
-                  <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-                    <SelectValue placeholder={label} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {values.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ))}
+              <Select
+                value={filters.projectName}
+                onValueChange={(value) => updateFilter("projectName", value)}
+              >
+                <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+                  <SelectValue placeholder="Project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.projectName.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.archivedBy}
+                onValueChange={(value) => updateFilter("archivedBy", value)}
+              >
+                <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+                  <SelectValue placeholder="Archived by" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.archivedBy.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.projectTag}
+                onValueChange={(value) => updateFilter("projectTag", value)}
+              >
+                <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+                  <SelectValue placeholder="Project tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.projectTag.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </Card>
 
-          <div className="mt-4 overflow-x-auto rounded-[20px] border border-brand/35 bg-white">
-            <table className="min-w-[1040px] w-full border-collapse">
-              <thead>
-                <tr className="text-left text-[13px] font-[600] text-[#6d756f]">
-                  <th className="px-5 py-4">File Name / Project Name</th>
-                  <th className="px-4 py-4">Date</th>
-                  <th className="px-4 py-4">Listed by</th>
-                  <th className="px-4 py-4">Created by</th>
-                  <th className="px-4 py-4">File types</th>
-                  <th className="px-4 py-4">Actions</th>
-                </tr>
-              </thead>
-            </table>
-          </div>
-
           <MotionStaggerGroup className="mt-4 space-y-3" stagger={0.035}>
-            {visibleItems.map((item) => (
-              <MotionItem
-                key={item.id}
-                layout
-                className="rounded-[20px]"
-              >
-              <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[2fr_0.9fr_0.9fr_1.2fr_1.7fr_1.1fr]">
-                <div className="min-w-0">
-                  <h3 className="text-[14px] font-[700] leading-[1.25] text-[#111712]">
-                    {item.fileName}
-                  </h3>
-                  <div className="my-3 h-px w-full bg-[#dce2dd]" />
-                  <p className="text-[13px] font-[600] text-brand">
-                    {item.projectLabel}
-                  </p>
-                </div>
+            {visibleItems.map((item) => {
+              const Icon = getFileTypeIcon(item.fileTypeLabel);
 
-                <div className="text-[13px] font-[600] text-[#111712] xl:self-center">
-                  {item.date}
-                </div>
+              return (
+                <MotionItem key={item.id} layout className="rounded-[20px]">
+                  <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[2.2fr_1.2fr_1fr_1.1fr_0.9fr]">
+                    <div className="min-w-0">
+                      <div className="flex items-start gap-3">
+                        <Card className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
+                          <Icon className="h-5 w-5 text-brand" />
+                        </Card>
+                        <div className="min-w-0">
+                          <h3 className="truncate text-[14px] font-[700] leading-[1.25] text-[#111712]">
+                            {item.finalArchiveFileName}
+                          </h3>
+                          <p className="mt-1 text-[12px] text-[#667168]">
+                            Original: {item.originalFileName}
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#6c756e]">
+                            <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 font-[700] uppercase tracking-[0.08em] text-[#566259]">
+                              {item.fileTypeLabel}
+                            </span>
+                            <span>{item.fileSizeLabel}</span>
+                            <span>{item.sourceLabel}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
 
-                <div className="text-[13px] font-[600] text-[#111712] xl:self-center">
-                  {item.listedBy}
-                </div>
+                    <div className="space-y-1 text-[13px] xl:self-center">
+                      <p className="font-[700] text-[#111712]">{item.projectName}</p>
+                      <p className="text-[#687269]">{item.projectCategory}</p>
+                      <p className="text-[#687269]">Tag: {item.projectTag}</p>
+                    </div>
 
-                <div className="text-[13px] font-[600] text-[#111712] xl:self-center">
-                  {item.createdBy}
-                </div>
+                    <div className="space-y-1 text-[13px] xl:self-center">
+                      <p className="font-[700] text-[#111712]">{item.archivedAt}</p>
+                      <p className="text-[#687269]">Archived date</p>
+                    </div>
 
-                <div className="flex flex-wrap gap-2 xl:self-center">
-                  {item.fileTypes.map((type) => {
-                    const Icon = getFileTypeIcon(type);
+                    <div className="space-y-1 text-[13px] xl:self-center">
+                      <p className="font-[700] text-[#111712]">{item.archivedBy}</p>
+                      <p className="text-[#687269]">Archived by</p>
+                    </div>
 
-                    return (
-                      <Card
-                        key={`${item.id}-${type}`}
-                        className="grid h-10 w-10 place-items-center rounded-xl border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
-                        title={type}
-                      >
-                        <Icon className="h-5 w-5 text-brand" />
-                      </Card>
-                    );
-                  })}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 xl:self-start">
-                  {[
-                    { label: "Open", icon: Eye, action: () => undefined },
-                    { label: "Download", icon: Download, action: () => undefined },
-                    { label: "Manage", icon: ShieldCheck, action: () => undefined },
-                    { label: "Edit", icon: Pencil, action: () => openEditDialog(item) },
-                  ].map((action) => {
-                    const Icon = action.icon;
-
-                    return (
+                    <div className="grid grid-cols-2 gap-2 xl:self-start">
+                      <AssetPreviewButton
+                        fileName={item.finalArchiveFileName}
+                        mimeType={item.mimeType}
+                        previewPath={item.previewPath}
+                        downloadPath={item.downloadPath}
+                        triggerClassName="min-h-[40px] rounded-xl border border-[#ecefed] bg-white px-2 py-2 text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
+                        iconOnly={false}
+                      />
                       <Button
-                        key={action.label}
+                        asChild
                         type="button"
-                        onClick={action.action}
                         variant="secondary"
-                        className="min-h-[40px] flex-col rounded-xl border border-[#ecefed] bg-white px-2 py-2 text-[10px] font-[600] text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
+                        className="min-h-[40px] rounded-xl border border-[#ecefed] bg-white px-2 py-2 text-[10px] font-[600] text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
                       >
-                        <Icon className="mb-1 h-4 w-4 text-brand" />
-                        {action.label}
+                        <a href={item.downloadPath} target="_blank" rel="noreferrer">
+                          <Download className="h-4 w-4 text-brand" />
+                          Download
+                        </a>
                       </Button>
-                    );
-                  })}
-                  <Button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    variant="ghost"
-                    className="col-span-2 mt-1 min-h-[36px] rounded-xl bg-[#fff0ef] text-[11px] font-[700] text-[#ff3b2f] hover:bg-[#ffe4e0] hover:text-[#ff3b2f]"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </Button>
-                </div>
-              </article>
-              </MotionItem>
-            ))}
+                    </div>
+                  </article>
+                </MotionItem>
+              );
+            })}
 
             {visibleItems.length === 0 ? (
               <MotionItem y={8}>
                 <div className="rounded-[20px] border border-brand/25 bg-white px-5 py-10 text-center text-[14px] text-[#707a72]">
-                  No archive files match the current filters.
+                  No archived files match the current filters.
                 </div>
               </MotionItem>
             ) : null}
           </MotionStaggerGroup>
         </Card>
-        </MotionSection>
-      </section>
-
-      <ArchiveItemDialog
-        isOpen={dialogOpen}
-        mode={dialogMode}
-        title={categoryTitle}
-        form={form}
-        onChange={updateForm}
-        onClose={() => setDialogOpen(false)}
-        onSubmit={saveItem}
-      />
-    </>
+      </MotionSection>
+    </section>
   );
 }

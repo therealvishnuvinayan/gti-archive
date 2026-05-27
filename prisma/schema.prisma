@@ -90,6 +90,11 @@ enum ActivityLogAction {
   FINAL_ARCHIVED
 }
 
+enum ArchiveRecordStatus {
+  COMPLETED
+  ARCHIVED
+}
+
 model User {
   id                String             @id @default(cuid())
   email             String             @unique
@@ -117,6 +122,8 @@ model User {
   comments          ProjectComment[]
   comparisonComments ComparisonComment[]
   attachments       ProjectAttachment[]
+  projectArchives   ProjectArchive[]    @relation("ProjectArchiveArchivedBy")
+  archivedProjectFiles ArchivedProjectFile[] @relation("ArchivedProjectFileArchivedBy")
   activityLogs      ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
   assignedProjects  Project[]           @relation("ProjectExecutor")
@@ -156,6 +163,10 @@ model Project {
   attachments      ProjectAttachment[]
   activityLogs     ProjectActivityLog[]
   collaborators    ProjectCollaborator[]
+  archive          ProjectArchive?
+  archivedFiles    ArchivedProjectFile[]
+  completedAt      DateTime?
+  archivedAt       DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -259,7 +270,9 @@ model ProjectStage {
   comments  ProjectComment[]
   comparisonComments ComparisonComment[]
   attachments ProjectAttachment[]
+  archives  ProjectArchive[] @relation("ProjectArchiveFinalStage")
   activityLogs ProjectActivityLog[]
+  completedAt DateTime?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
@@ -284,6 +297,7 @@ model ProjectRevision {
   reviewedAt     DateTime?
   rejectionReason String?
   attachments    ProjectAttachment[]
+  archivedFiles  ArchivedProjectFile[] @relation("ArchivedProjectFileSourceRevision")
   comments       ProjectComment[]
   activityLogs   ProjectActivityLog[]
   createdAt      DateTime             @default(now())
@@ -343,6 +357,7 @@ model ProjectAttachment {
   submissionReviewStatus SubmissionReviewStatus?
   reviewedAt        DateTime?
   reviewNote        String?
+  archivedFiles     ArchivedProjectFile[] @relation("ArchivedProjectFileSourceAttachment")
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
@@ -397,6 +412,59 @@ model ProjectActivityLog {
   @@index([stageId, createdAt])
   @@index([revisionId, createdAt])
   @@index([actorId])
+}
+
+model ProjectArchive {
+  id                   String              @id @default(cuid())
+  projectId            String              @unique
+  project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  finalStageId         String
+  finalStage           ProjectStage        @relation("ProjectArchiveFinalStage", fields: [finalStageId], references: [id], onDelete: Restrict)
+  archivedById         String
+  archivedBy           User                @relation("ProjectArchiveArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  projectName          String
+  projectCategory      String
+  projectTag           String?
+  archiveCategorySlug  String
+  archiveCategoryLabel String
+  status               ArchiveRecordStatus @default(ARCHIVED)
+  archivedAt           DateTime
+  files                ArchivedProjectFile[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([archiveCategorySlug, archivedAt])
+  @@index([archivedById])
+}
+
+model ArchivedProjectFile {
+  id                   String            @id @default(cuid())
+  archiveId            String
+  archive              ProjectArchive    @relation(fields: [archiveId], references: [id], onDelete: Cascade)
+  projectId            String
+  project              Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceAttachmentId   String
+  sourceAttachment     ProjectAttachment @relation("ArchivedProjectFileSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Restrict)
+  sourceRevisionId     String?
+  sourceRevision       ProjectRevision?  @relation("ArchivedProjectFileSourceRevision", fields: [sourceRevisionId], references: [id], onDelete: SetNull)
+  finalArchiveFileName String
+  originalFileName     String
+  mimeType             String
+  fileSize             Int
+  bucket               String
+  storageKey           String
+  archivedById         String
+  archivedBy           User              @relation("ArchivedProjectFileArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  archivedAt           DateTime
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@unique([archiveId, finalArchiveFileName])
+  @@unique([archiveId, sourceAttachmentId])
+  @@index([projectId, archivedAt])
+  @@index([sourceAttachmentId])
+  @@index([sourceRevisionId])
+  @@index([archivedById])
 }
 
 model Session {

@@ -1,8 +1,9 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectCompareWorkspace } from "@/components/projects/project-compare-workspace";
+import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { getComparisonCommentsForPair } from "@/lib/comparison";
 import {
@@ -30,6 +31,20 @@ export default async function ProjectComparePage({
 
   if (!project) {
     notFound();
+  }
+
+  const completionSummary = await getProjectCompletionSummary(
+    user,
+    slug,
+    history.activeStageId ?? stage,
+  );
+
+  if (completionSummary.isCompleted) {
+    redirect(
+      history.activeStageId
+        ? `/projects/${slug}/chat?stage=${history.activeStageId}`
+        : `/projects/${slug}/chat`,
+    );
   }
 
   const canManageCollaborators =

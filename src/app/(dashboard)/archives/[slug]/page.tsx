@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import {
-  archiveItemsByCategory,
-  getArchiveCategory,
-} from "@/components/archives/archive-data";
+import { getArchiveCategory } from "@/components/archives/archive-data";
 import { ArchiveCategoryWorkspace } from "@/components/archives/archive-category-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { listArchivedFilesByCategory } from "@/lib/archives";
+import { requireUser } from "@/lib/auth";
 
 function BackPill() {
   return (
@@ -31,6 +30,9 @@ export default async function ArchiveCategoryPage({
     notFound();
   }
 
+  const user = await requireUser();
+  const items = await listArchivedFilesByCategory(user, category.slug);
+
   return (
     <DashboardLayout
       topbarProps={{
@@ -40,7 +42,7 @@ export default async function ArchiveCategoryPage({
     >
       <ArchiveCategoryWorkspace
         categoryTitle={category.title}
-        initialItems={archiveItemsByCategory[category.slug]}
+        items={items}
       />
     </DashboardLayout>
   );

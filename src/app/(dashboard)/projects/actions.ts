@@ -3,6 +3,10 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
+import {
+  completeProjectArchive,
+  getProjectArchivePreparation,
+} from "@/lib/archives";
 import { createComparisonComment } from "@/lib/comparison";
 import {
   createStageComment,
@@ -46,6 +50,16 @@ type ComparisonCommentInput = {
 
 function revalidateProjectFlow() {
   revalidateTag(PROJECTS_CACHE_TAG, "max");
+}
+
+function revalidateArchiveFlow(projectId: string, categorySlug?: string) {
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/chat`);
+  revalidatePath("/archives");
+
+  if (categorySlug) {
+    revalidatePath(`/archives/${categorySlug}`);
+  }
 }
 
 export async function createStageRevisionAction(input: StageRevisionInput) {
@@ -207,7 +221,53 @@ export async function markSubmissionCompleteAction(input: {
       error:
         error instanceof Error
           ? error.message
-          : "Unable to mark the stage as complete right now.",
+          : "Unable to approve the submission right now.",
+    };
+  }
+}
+
+export async function prepareProjectCompletionAction(input: {
+  projectId: string;
+  stageId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const preparation = await getProjectArchivePreparation(user, input);
+    return { preparation };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the archive files right now.",
+    };
+  }
+}
+
+export async function completeProjectArchiveAction(input: {
+  projectId: string;
+  stageId: string;
+  archiveCategorySlug?: string;
+  files: Array<{
+    sourceAttachmentId: string;
+    finalArchiveFileName: string;
+  }>;
+}) {
+  const user = await requireUser();
+
+  try {
+    const archive = await completeProjectArchive(user, input);
+    revalidateProjectFlow();
+    revalidateArchiveFlow(input.projectId, archive.archiveCategorySlug);
+
+    return { archive };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to complete and archive the project right now.",
     };
   }
 }

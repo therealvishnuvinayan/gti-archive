@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectChatWorkspace } from "@/components/projects/project-chat-workspace";
+import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
 import { getProjectStageHistory } from "@/lib/project-history";
@@ -19,15 +20,21 @@ export default async function ProjectChatPage({
   const { slug } = await params;
   const { stage } = await searchParams;
   const user = await requireUser();
-  const [project, history, availableCollaborators] = await Promise.all([
-    getProjectById(slug, user),
-    getProjectStageHistory(user, slug, stage),
-    getCollaborators(),
-  ]);
+  const project = await getProjectById(slug, user);
 
   if (!project) {
     notFound();
   }
+
+  const [history, availableCollaborators] = await Promise.all([
+    getProjectStageHistory(user, slug, stage),
+    getCollaborators(),
+  ]);
+  const completionSummary = await getProjectCompletionSummary(
+    user,
+    slug,
+    history.activeStageId ?? stage,
+  );
 
   const canManageCollaborators =
     user.role === UserRole.SUPER_ADMIN ||
@@ -48,6 +55,7 @@ export default async function ProjectChatPage({
         availableCollaborators={availableCollaborators}
         currentUserId={user.id}
         canManageCollaborators={canManageCollaborators}
+        completionSummary={completionSummary}
       />
     </DashboardLayout>
   );

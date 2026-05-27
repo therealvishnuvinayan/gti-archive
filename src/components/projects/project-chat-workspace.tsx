@@ -18,10 +18,12 @@ import {
 
 import {
   acceptStageBriefAction,
+  completeProjectArchiveAction,
   createStageCommentAction,
   createStageRevisionAction,
   markSubmissionCompleteAction,
   markStageCompleteAction,
+  prepareProjectCompletionAction,
   removeProjectCollaboratorAction,
   requestSubmissionRevisionAction,
   saveProjectCollaboratorsAction,
@@ -51,7 +53,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import type {
+  ArchivedProjectFileRecord,
+  ProjectArchivePreparation,
+  ProjectCompletionSummary,
+} from "@/lib/archives";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageHistoryRecord } from "@/lib/project-history";
 import type {
@@ -70,6 +84,7 @@ type ProjectChatWorkspaceProps = {
   availableCollaborators: CollaboratorRecord[];
   currentUserId: string;
   canManageCollaborators: boolean;
+  completionSummary: ProjectCompletionSummary;
 };
 
 type PendingFile = {
@@ -232,6 +247,16 @@ function getLocalFileTypeLabel(fileName: string) {
   return extension && extension.length <= 5 ? extension : "FILE";
 }
 
+function getLocalFileExtension(fileName: string) {
+  const parts = fileName.split(".");
+
+  if (parts.length < 2) {
+    return "";
+  }
+
+  return parts.at(-1)?.toLowerCase() ?? "";
+}
+
 function formatLocalStageDateTime(value: string | Date) {
   const date = value instanceof Date ? value : new Date(value);
 
@@ -259,6 +284,39 @@ function formatLocalFileSize(fileSize: number) {
   }
 
   return `${fileSize} B`;
+}
+
+function getArchiveFileNameError(
+  originalFileName: string,
+  nextFileName: string,
+  otherFileNames: string[],
+) {
+  const trimmedName = nextFileName.trim();
+
+  if (!trimmedName) {
+    return "Archive file name is required.";
+  }
+
+  const originalExtension = getLocalFileExtension(originalFileName);
+  const nextExtension = getLocalFileExtension(trimmedName);
+
+  if (originalExtension && nextExtension !== originalExtension) {
+    return `Keep the .${originalExtension} extension for this file.`;
+  }
+
+  if (!originalExtension && nextExtension) {
+    return "Use the original file extension format for this archive file.";
+  }
+
+  if (
+    otherFileNames.some(
+      (candidate) => candidate.trim().toLowerCase() === trimmedName.toLowerCase(),
+    )
+  ) {
+    return "Archive file names must be unique within this project archive.";
+  }
+
+  return null;
 }
 
 function uploadFileToS3WithProgress(input: {
@@ -342,9 +400,11 @@ function getRevisionStatusMeta(status: RevisionReviewState) {
 function AttachmentHistoryList({
   attachments,
   compact = false,
+  actionsDisabled = false,
 }: {
   attachments: DisplayAttachmentRecord[];
   compact?: boolean;
+  actionsDisabled?: boolean;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -439,7 +499,10 @@ function AttachmentHistoryList({
                     </div>
                   ) : null}
                 </div>
-                {!attachment.uploadState && attachment.previewPath && attachment.downloadPath ? (
+                {!actionsDisabled &&
+                !attachment.uploadState &&
+                attachment.previewPath &&
+                attachment.downloadPath ? (
                   <div className="flex items-center gap-1">
                     <AssetPreviewButton
                       fileName={attachment.originalFileName}
@@ -469,6 +532,80 @@ function AttachmentHistoryList({
             </div>
           );
         })()
+      ))}
+    </div>
+  );
+}
+
+function ArchivedFileList({
+  files,
+}: {
+  files: ArchivedProjectFileRecord[];
+}) {
+  if (files.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 space-y-2.5">
+      {files.map((file) => (
+        <div
+          key={file.id}
+          className="rounded-[16px] border border-[#d7e5d9] bg-white px-3 py-3 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)]"
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`grid h-9 min-w-9 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
+                file.fileTypeLabel,
+              )}`}
+            >
+              {file.fileTypeLabel}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate text-[12px] font-[700] text-[#111712]">
+                  {file.finalArchiveFileName}
+                </p>
+                <span className="inline-flex rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
+                  Archived
+                </span>
+              </div>
+              <p className="mt-0.5 text-[10px] leading-4 text-[#6c756e]">
+                {file.fileSizeLabel} · {file.sourceLabel}
+              </p>
+              <p className="text-[10px] leading-4 text-[#89928b]">
+                Original: {file.originalFileName}
+              </p>
+              <p className="text-[10px] leading-4 text-[#89928b]">
+                Archived by {file.archivedBy} on {file.archivedAt}
+              </p>
+            </div>
+            <div className="flex items-center gap-1">
+              <AssetPreviewButton
+                fileName={file.finalArchiveFileName}
+                mimeType={file.mimeType}
+                previewPath={file.previewPath}
+                downloadPath={file.downloadPath}
+                triggerClassName="size-8 rounded-full text-brand"
+              />
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className="size-8 rounded-full text-brand"
+              >
+                <a
+                  href={file.downloadPath}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Download ${file.finalArchiveFileName}`}
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+              </Button>
+            </div>
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -566,6 +703,7 @@ export function ProjectChatWorkspace({
   availableCollaborators,
   currentUserId,
   canManageCollaborators,
+  completionSummary,
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
@@ -628,6 +766,18 @@ export function ProjectChatWorkspace({
   const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
   const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
+  const [completionOverrides, setCompletionOverrides] =
+    useState<Partial<ProjectCompletionSummary> | null>(null);
+  const [projectCompletionConfirmOpen, setProjectCompletionConfirmOpen] = useState(false);
+  const [projectCompletionError, setProjectCompletionError] = useState<string | null>(null);
+  const [isPreparingProjectCompletion, setIsPreparingProjectCompletion] = useState(false);
+  const [archivePreparation, setArchivePreparation] =
+    useState<ProjectArchivePreparation | null>(null);
+  const [archiveFileNames, setArchiveFileNames] = useState<Record<string, string>>({});
+  const [archiveFileErrors, setArchiveFileErrors] = useState<Record<string, string>>({});
+  const [archiveCategorySlug, setArchiveCategorySlug] = useState<string>("");
+  const [archiveCompletionError, setArchiveCompletionError] = useState<string | null>(null);
+  const [isCompletingProject, setIsCompletingProject] = useState(false);
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -647,6 +797,9 @@ export function ProjectChatWorkspace({
     },
   });
   const messages = history.entries;
+  const completionState = completionOverrides
+    ? { ...completionSummary, ...completionOverrides }
+    : completionSummary;
   const stageCards = useMemo(
     () =>
       project.stageCards.map((stage) => {
@@ -751,7 +904,12 @@ export function ProjectChatWorkspace({
       ),
     [currentUserId, project.collaborators],
   );
-  const isStageCompleted = activeStage?.status === "completed";
+  const isProjectCompleted = completionState.isCompleted;
+  const isFinalStage =
+    Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
+  const canCompleteProject =
+    completionState.canCompleteProject && isProjectOwner && !isProjectCompleted;
+  const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
   const isProjectExecutor = project.executorUserId === currentUserId;
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
   const canReviewSubmissions = project.ownerId === currentUserId;
@@ -791,6 +949,8 @@ export function ProjectChatWorkspace({
         : undefined,
     [displayedMessages, reviewRevisionId],
   );
+  const reviewCompletionIsFinalStage =
+    Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
 
   useEffect(() => {
     return () => {
@@ -1095,6 +1255,178 @@ export function ProjectChatWorkspace({
     });
   }
 
+  function resetProjectCompletionFlow() {
+    setProjectCompletionError(null);
+    setArchiveCompletionError(null);
+    setArchivePreparation(null);
+    setArchiveFileNames({});
+    setArchiveFileErrors({});
+    setArchiveCategorySlug("");
+    setProjectCompletionConfirmOpen(false);
+  }
+
+  function openProjectCompletionConfirm() {
+    setProjectCompletionError(null);
+    setArchiveCompletionError(null);
+    setProjectCompletionConfirmOpen(true);
+  }
+
+  function updateArchiveFileName(sourceAttachmentId: string, nextValue: string) {
+    setArchiveFileNames((current) => {
+      const nextNames = {
+        ...current,
+        [sourceAttachmentId]: nextValue,
+      };
+
+      if (archivePreparation) {
+        const file = archivePreparation.files.find(
+          (candidate) => candidate.sourceAttachmentId === sourceAttachmentId,
+        );
+
+        if (file) {
+          const otherNames = archivePreparation.files
+            .filter((candidate) => candidate.sourceAttachmentId !== sourceAttachmentId)
+            .map(
+              (candidate) =>
+                nextNames[candidate.sourceAttachmentId] ?? candidate.defaultArchiveFileName,
+            );
+          const nextError = getArchiveFileNameError(
+            file.originalFileName,
+            nextValue,
+            otherNames,
+          );
+
+          setArchiveFileErrors((currentErrors) => ({
+            ...currentErrors,
+            [sourceAttachmentId]: nextError ?? "",
+          }));
+        }
+      }
+
+      return nextNames;
+    });
+  }
+
+  async function handlePrepareProjectCompletion() {
+    const activeStageId = activeStage?.id;
+
+    if (!activeStageId) {
+      setProjectCompletionError("This project does not have an active stage.");
+      return;
+    }
+
+    setProjectCompletionError(null);
+    setArchiveCompletionError(null);
+    setIsPreparingProjectCompletion(true);
+
+    try {
+      const result = await prepareProjectCompletionAction({
+        projectId: project.id,
+        stageId: activeStageId,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      setArchivePreparation(result.preparation);
+      setArchiveCategorySlug(result.preparation.selectedCategorySlug);
+      setArchiveFileNames(
+        Object.fromEntries(
+          result.preparation.files.map((file) => [
+            file.sourceAttachmentId,
+            file.defaultArchiveFileName,
+          ]),
+        ),
+      );
+      setArchiveFileErrors({});
+      setProjectCompletionConfirmOpen(false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the archive files right now.";
+      setProjectCompletionError(message);
+      showErrorToast("Unable to prepare project archive.", message);
+    } finally {
+      setIsPreparingProjectCompletion(false);
+    }
+  }
+
+  async function handleCompleteProjectArchive() {
+    if (!archivePreparation) {
+      return;
+    }
+
+    const nextErrors = archivePreparation.files.reduce<Record<string, string>>(
+      (current, file) => {
+        const nextName =
+          archiveFileNames[file.sourceAttachmentId] ?? file.defaultArchiveFileName;
+        const otherNames = archivePreparation.files
+          .filter((candidate) => candidate.sourceAttachmentId !== file.sourceAttachmentId)
+          .map(
+            (candidate) =>
+              archiveFileNames[candidate.sourceAttachmentId] ??
+              candidate.defaultArchiveFileName,
+          );
+        const error = getArchiveFileNameError(
+          file.originalFileName,
+          nextName,
+          otherNames,
+        );
+
+        current[file.sourceAttachmentId] = error ?? "";
+        return current;
+      },
+      {},
+    );
+
+    setArchiveFileErrors(nextErrors);
+
+    if (Object.values(nextErrors).some(Boolean)) {
+      setArchiveCompletionError("Fix the archive file names before continuing.");
+      return;
+    }
+
+    setArchiveCompletionError(null);
+    setIsCompletingProject(true);
+
+    try {
+      const result = await completeProjectArchiveAction({
+        projectId: archivePreparation.projectId,
+        stageId: archivePreparation.finalStageId,
+        archiveCategorySlug,
+        files: archivePreparation.files.map((file) => ({
+          sourceAttachmentId: file.sourceAttachmentId,
+          finalArchiveFileName:
+            archiveFileNames[file.sourceAttachmentId] ?? file.defaultArchiveFileName,
+        })),
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      setCompletionOverrides((current) => ({
+        ...(current ?? {}),
+        isCompleted: true,
+        canCompleteProject: false,
+      }));
+      resetProjectCompletionFlow();
+      showSuccessToast("Project completed and files archived.");
+      refreshHistory();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to complete and archive the project right now.";
+      setArchiveCompletionError(message);
+      showErrorToast("Archive failed.", message);
+    } finally {
+      setIsCompletingProject(false);
+    }
+  }
+
   function closeRevisionReviewDialog() {
     setPendingRevisionReviewId(null);
     setReviewRevisionId(null);
@@ -1366,6 +1698,13 @@ export function ProjectChatWorkspace({
   }
 
   function openRevisionDialog() {
+    if (isProjectCompleted) {
+      const message = "This project has already been completed.";
+      setComposerError(message);
+      showErrorToast("Unable to submit work.", message);
+      return;
+    }
+
     if (isStageCompleted) {
       const message = "This stage is already completed.";
       setComposerError(message);
@@ -1460,6 +1799,11 @@ export function ProjectChatWorkspace({
       return;
     }
 
+    if (isProjectCompleted) {
+      setStageCompleteError("This project has already been completed.");
+      return;
+    }
+
     setStageCompleteError(null);
     setIsMarkingStageComplete(true);
 
@@ -1501,6 +1845,11 @@ export function ProjectChatWorkspace({
 
     if (!activeStageId) {
       setAcceptBriefError("This project does not have an active stage.");
+      return;
+    }
+
+    if (isProjectCompleted) {
+      setAcceptBriefError("This project has already been completed.");
       return;
     }
 
@@ -1559,6 +1908,13 @@ export function ProjectChatWorkspace({
   }
 
   function openCommentUploadDialog() {
+    if (isProjectCompleted) {
+      const message = "This project has already been completed.";
+      setComposerError(message);
+      showErrorToast("Unable to upload files.", message);
+      return;
+    }
+
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
 
@@ -1574,6 +1930,13 @@ export function ProjectChatWorkspace({
     const selectedFiles = Array.isArray(files) ? files : Array.from(files ?? []);
 
     if (selectedFiles.length === 0) {
+      return;
+    }
+
+    if (isProjectCompleted) {
+      const message = "This project has already been completed.";
+      setComposerError(message);
+      showErrorToast("Unable to upload files.", message);
       return;
     }
 
@@ -1632,6 +1995,11 @@ export function ProjectChatWorkspace({
 
     if (!activeStageId) {
       setComposerError("This project does not have an active stage to comment on.");
+      return;
+    }
+
+    if (isProjectCompleted) {
+      setComposerError("This project has already been completed.");
       return;
     }
 
@@ -1836,6 +2204,11 @@ export function ProjectChatWorkspace({
 
     if (!activeStageId) {
       setRevisionDialogError("This project does not have an active stage to upload into.");
+      return;
+    }
+
+    if (isProjectCompleted) {
+      setRevisionDialogError("This project has already been completed.");
       return;
     }
 
@@ -2105,7 +2478,7 @@ export function ProjectChatWorkspace({
         return nextEntries;
       });
 
-      if (status === "APPROVED") {
+      if (status === "APPROVED" && result.revision.stageCompletion) {
         applyStageCompletionLocally(activeStageId);
       }
 
@@ -2113,7 +2486,9 @@ export function ProjectChatWorkspace({
       setReviewCompleteDialogOpen(false);
       showSuccessToast(
         status === "APPROVED"
-          ? "Stage marked as complete."
+          ? result.revision.stageCompletion
+            ? "Stage marked as complete."
+            : "Submission approved. Complete the project to archive the final files."
           : "Revision requested.",
       );
       refreshHistory();
@@ -2141,6 +2516,71 @@ export function ProjectChatWorkspace({
             <div className="rounded-[18px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-[13px] text-[#bd554f]">
               {composerError}
             </div>
+          ) : null}
+
+          {isProjectCompleted ? (
+            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+              <CardContent className="px-5 py-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[16px] font-[700] text-[#173120]">
+                      This project has been completed.
+                    </p>
+                    <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
+                      Only final archived files can be viewed or downloaded.
+                    </p>
+                    {completionState.archivedAt ? (
+                      <p className="mt-1 text-[12px] text-[#6e7a70]">
+                        Archived on {completionState.archivedAt}
+                        {completionState.archiveCategoryLabel
+                          ? ` in ${completionState.archiveCategoryLabel}.`
+                          : "."}
+                      </p>
+                    ) : null}
+                  </div>
+                  {completionState.archiveCategorySlug ? (
+                    <Button asChild size="sm" className="rounded-full text-[12px]">
+                      <Link href={`/archives/${completionState.archiveCategorySlug}`}>
+                        Open Archive
+                      </Link>
+                    </Button>
+                  ) : null}
+                </div>
+
+                {completionState.archivedFiles.length > 0 ? (
+                  <div className="mt-4">
+                    <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
+                      Final Archived Files
+                    </p>
+                    <ArchivedFileList files={completionState.archivedFiles} />
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {!isProjectCompleted && canCompleteProject ? (
+            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+              <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[14px] font-[700] text-[#173120]">
+                    Final stage approved. Complete the project to archive the final files.
+                  </p>
+                  <p className="mt-1 text-[12px] text-[#5f6b62]">
+                    {completionState.approvedFileCount} final file
+                    {completionState.approvedFileCount === 1 ? "" : "s"} ready for archive.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-full text-[12px]"
+                  onClick={openProjectCompletionConfirm}
+                >
+                  Complete Project
+                </Button>
+              </CardContent>
+            </Card>
           ) : null}
 
           {completionPrompt ? (
@@ -2193,7 +2633,7 @@ export function ProjectChatWorkspace({
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 Upload the first revision to start the proof and archive trail.
               </p>
-              {isProjectExecutor && hasAcceptedBrief ? (
+              {!isProjectCompleted && isProjectExecutor && hasAcceptedBrief ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -2208,7 +2648,7 @@ export function ProjectChatWorkspace({
                     Submit First Work
                   </Button>
                 </div>
-              ) : isProjectExecutor ? (
+              ) : !isProjectCompleted && isProjectExecutor ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -2238,7 +2678,9 @@ export function ProjectChatWorkspace({
                   null;
                 const revisionStatusMeta = getRevisionStatusMeta(effectiveRevisionStatus);
                 const canReviewRevision =
-                  canReviewSubmissions && effectiveRevisionStatus === "PENDING_REVIEW";
+                  !isProjectCompleted &&
+                  canReviewSubmissions &&
+                  effectiveRevisionStatus === "PENDING_REVIEW";
 
                 return (
                   <div key={message.id} className="space-y-3">
@@ -2284,7 +2726,10 @@ export function ProjectChatWorkspace({
                               <p className="text-center text-[11px] font-[700] text-white">
                                 Attachments
                               </p>
-                              <AttachmentHistoryList attachments={message.attachments} />
+                              <AttachmentHistoryList
+                                attachments={message.attachments}
+                                actionsDisabled={isProjectCompleted}
+                              />
                             </Card>
                           </div>
                         ) : null}
@@ -2311,7 +2756,10 @@ export function ProjectChatWorkspace({
                             Review Submission
                           </Button>
                         ) : null}
-                        {index === firstRevisionIndex && isProjectExecutor && hasAcceptedBrief ? (
+                        {index === firstRevisionIndex &&
+                        !isProjectCompleted &&
+                        isProjectExecutor &&
+                        hasAcceptedBrief ? (
                           <Button
                             type="button"
                             onClick={openRevisionDialog}
@@ -2327,7 +2775,7 @@ export function ProjectChatWorkspace({
                             Submit Work
                           </Button>
                         ) : null}
-                        {index === firstRevisionIndex && isProjectOwner ? (
+                        {index === firstRevisionIndex && isProjectOwner && !isFinalStage ? (
                           <Button
                             type="button"
                             size="sm"
@@ -2342,7 +2790,7 @@ export function ProjectChatWorkspace({
                             {isStageCompleted ? "Stage completed" : "Mark as complete"}
                           </Button>
                         ) : null}
-                        {index === firstRevisionIndex ? (
+                        {index === firstRevisionIndex && !isProjectCompleted ? (
                           <Button
                             type="button"
                             onClick={() => setDraft(`Replying to ${message.author}: `)}
@@ -2375,7 +2823,11 @@ export function ProjectChatWorkspace({
                 </div>
                 <p className="mt-3 text-[12px] leading-[1.35] text-[#111712]">{message.body}</p>
                 {message.attachments?.length ? (
-                  <AttachmentHistoryList attachments={message.attachments} compact />
+                  <AttachmentHistoryList
+                    attachments={message.attachments}
+                    compact
+                    actionsDisabled={isProjectCompleted}
+                  />
                 ) : null}
               </Card>
             ),
@@ -2383,7 +2835,7 @@ export function ProjectChatWorkspace({
 
           {!hasRevisionEntries && displayedMessages.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {isProjectExecutor && !hasAcceptedBrief ? (
+              {!isProjectCompleted && isProjectExecutor && !hasAcceptedBrief ? (
                 <>
                   <Button
                     type="button"
@@ -2411,7 +2863,7 @@ export function ProjectChatWorkspace({
                   </Button>
                 </>
               ) : null}
-              {isProjectExecutor && hasAcceptedBrief ? (
+              {!isProjectCompleted && isProjectExecutor && hasAcceptedBrief ? (
                 <Button
                   type="button"
                   onClick={openRevisionDialog}
@@ -2427,7 +2879,7 @@ export function ProjectChatWorkspace({
                   Submit Work
                 </Button>
               ) : null}
-              {isProjectOwner && !hasAcceptedBrief ? (
+              {!isProjectCompleted && isProjectOwner && !hasAcceptedBrief ? (
                 <div className="inline-flex items-center rounded-full bg-[#f4f7f4] px-3 py-2 text-[12px] font-medium text-[#5d675f]">
                   Waiting for executor to accept brief.
                 </div>
@@ -2435,153 +2887,163 @@ export function ProjectChatWorkspace({
             </div>
           ) : null}
 
-          <Card className="sticky bottom-0 rounded-[22px] bg-white/95 p-3 backdrop-blur">
-            <input
-              ref={revisionFileInputRef}
-              type="file"
-              multiple
-              className="sr-only"
-              onChange={(event) => {
-                handleRevisionFilesSelected(event.target.files);
-              }}
-            />
-            <input
-              ref={commentAttachmentInputRef}
-              type="file"
-              multiple
-              className="sr-only"
-              onChange={(event) => {
-                handleCommentFilesSelected(event.target.files);
-
-                if (commentAttachmentInputRef.current) {
-                  commentAttachmentInputRef.current.value = "";
-                }
-              }}
-            />
-
-            {pendingCommentFiles.length ? (
-              <div className="mb-3 flex flex-wrap gap-2 rounded-[18px] border border-[#e2e7e2] bg-[#fbfcfa] px-3 py-2.5">
-                {pendingCommentFiles.map((pendingFile) => (
-                  <div
-                    key={pendingFile.id}
-                    className="inline-flex items-center gap-2 rounded-full border border-[#d6dfd7] bg-white px-3 py-1.5 text-[11px] text-[#324138]"
-                  >
-                    {pendingFile.assetType === "STAGE_SUBMISSION" ? (
-                      <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
-                        Submission
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#566259]">
-                        Attachment
-                      </span>
-                    )}
-                    <span className="max-w-[180px] truncate">{pendingFile.file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => removePendingCommentFile(pendingFile.id)}
-                      className="cursor-pointer text-[#7d847e] transition hover:text-[#27322b]"
-                      aria-label={`Remove ${pendingFile.file.name}`}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {aiStatus ? (
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#dbe6da] bg-[#f7fbf6] px-3 py-1.5 text-[12px] font-[600] text-[#31523f]">
-                {isListening ? (
-                  <span className="relative flex size-2.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#d9645b] opacity-70" />
-                    <span className="relative inline-flex size-2.5 rounded-full bg-[#d9645b]" />
-                  </span>
-                ) : (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                )}
-                {aiStatus}
-              </div>
-            ) : null}
-
-            <div className="flex items-center gap-3 rounded-full border border-[#e2e7e2] px-4 py-3">
-              <Input
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder='Add a comment or upload files for this stage revision history.'
-                className="h-auto border-none bg-transparent p-0 text-[14px] shadow-none ring-0 focus-visible:ring-0"
+          {isProjectCompleted ? (
+            <Card className="sticky bottom-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
+              <p className="text-[14px] font-[700] text-[#173120]">Project chat is locked.</p>
+              <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
+                This project has been completed. Only the final archived files remain
+                available for viewing or download.
+              </p>
+            </Card>
+          ) : (
+            <Card className="sticky bottom-0 rounded-[22px] bg-white/95 p-3 backdrop-blur">
+              <input
+                ref={revisionFileInputRef}
+                type="file"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  handleRevisionFilesSelected(event.target.files);
+                }}
               />
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 text-[#5083ff]"
-                  aria-label="Translate message"
-                  onClick={() => {
-                    void handleTranslateDraft();
-                  }}
-                  disabled={isTranslating || isListening || isTranscribing}
-                >
-                  {isTranslating ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+              <input
+                ref={commentAttachmentInputRef}
+                type="file"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  handleCommentFilesSelected(event.target.files);
+
+                  if (commentAttachmentInputRef.current) {
+                    commentAttachmentInputRef.current.value = "";
+                  }
+                }}
+              />
+
+              {pendingCommentFiles.length ? (
+                <div className="mb-3 flex flex-wrap gap-2 rounded-[18px] border border-[#e2e7e2] bg-[#fbfcfa] px-3 py-2.5">
+                  {pendingCommentFiles.map((pendingFile) => (
+                    <div
+                      key={pendingFile.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-[#d6dfd7] bg-white px-3 py-1.5 text-[11px] text-[#324138]"
+                    >
+                      {pendingFile.assetType === "STAGE_SUBMISSION" ? (
+                        <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
+                          Submission
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#566259]">
+                          Attachment
+                        </span>
+                      )}
+                      <span className="max-w-[180px] truncate">{pendingFile.file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removePendingCommentFile(pendingFile.id)}
+                        className="cursor-pointer text-[#7d847e] transition hover:text-[#27322b]"
+                        aria-label={`Remove ${pendingFile.file.name}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {aiStatus ? (
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#dbe6da] bg-[#f7fbf6] px-3 py-1.5 text-[12px] font-[600] text-[#31523f]">
+                  {isListening ? (
+                    <span className="relative flex size-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#d9645b] opacity-70" />
+                      <span className="relative inline-flex size-2.5 rounded-full bg-[#d9645b]" />
+                    </span>
                   ) : (
-                    <Languages className="h-5 w-5" />
-                  )}
-                </Button>
-                <ChatLanguagePicker
-                  languages={SUPPORTED_CHAT_LANGUAGES}
-                  selectedLanguage={selectedOutputLanguage}
-                  disabled={isTranslating || isListening || isTranscribing}
-                  onSelect={(language) => setSelectedOutputLanguageCode(language.code)}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={`size-8 ${isListening ? "bg-[#fff1ef] text-[#d9645b] hover:bg-[#ffe7e3]" : "text-brand"}`}
-                  aria-label={isListening ? "Stop recording" : "Start voice input"}
-                  onClick={() => {
-                    void handleMicrophoneToggle();
-                  }}
-                  disabled={isTranscribing || isTranslating}
-                >
-                  {isTranscribing ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : isListening ? (
-                    <Square className="h-4 w-4 fill-current" />
-                  ) : (
-                    <Mic className="h-5 w-5" />
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 text-brand"
-                  aria-label="Attach file"
-                  onClick={openCommentUploadDialog}
-                >
-                  <Paperclip className="h-5 w-5" />
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    void handleSendComment();
-                  }}
-                  size="sm"
-                  className="text-[12px]"
-                  disabled={isSendingComment || !canSendComment}
-                >
-                  {isSendingComment ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Plus className="h-3.5 w-3.5" />
                   )}
-                  Send
-                </Button>
+                  {aiStatus}
+                </div>
+              ) : null}
+
+              <div className="flex items-center gap-3 rounded-full border border-[#e2e7e2] px-4 py-3">
+                <Input
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder='Add a comment or upload files for this stage revision history.'
+                  className="h-auto border-none bg-transparent p-0 text-[14px] shadow-none ring-0 focus-visible:ring-0"
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-[#5083ff]"
+                    aria-label="Translate message"
+                    onClick={() => {
+                      void handleTranslateDraft();
+                    }}
+                    disabled={isTranslating || isListening || isTranscribing}
+                  >
+                    {isTranslating ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Languages className="h-5 w-5" />
+                    )}
+                  </Button>
+                  <ChatLanguagePicker
+                    languages={SUPPORTED_CHAT_LANGUAGES}
+                    selectedLanguage={selectedOutputLanguage}
+                    disabled={isTranslating || isListening || isTranscribing}
+                    onSelect={(language) => setSelectedOutputLanguageCode(language.code)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={`size-8 ${isListening ? "bg-[#fff1ef] text-[#d9645b] hover:bg-[#ffe7e3]" : "text-brand"}`}
+                    aria-label={isListening ? "Stop recording" : "Start voice input"}
+                    onClick={() => {
+                      void handleMicrophoneToggle();
+                    }}
+                    disabled={isTranscribing || isTranslating}
+                  >
+                    {isTranscribing ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : isListening ? (
+                      <Square className="h-4 w-4 fill-current" />
+                    ) : (
+                      <Mic className="h-5 w-5" />
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-brand"
+                    aria-label="Attach file"
+                    onClick={openCommentUploadDialog}
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      void handleSendComment();
+                    }}
+                    size="sm"
+                    className="text-[12px]"
+                    disabled={isSendingComment || !canSendComment}
+                  >
+                    {isSendingComment ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    Send
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -2617,13 +3079,13 @@ export function ProjectChatWorkspace({
                 </div>
               </dl>
               <div className="mt-5 space-y-2.5">
-                {canCompareSubmissions ? (
+                {!isProjectCompleted && canCompareSubmissions ? (
                   <Button asChild size="sm" className="min-w-[170px] text-[13px]">
                     <Link href={`/projects/${project.id}/compare?stage=${activeStage?.id ?? ""}`}>
                       Compare Submissions
                     </Link>
                   </Button>
-                ) : (
+                ) : !isProjectCompleted ? (
                   <div className="space-y-1.5">
                     <Button type="button" size="sm" disabled className="min-w-[170px] text-[13px]">
                       Compare Submissions
@@ -2632,10 +3094,12 @@ export function ProjectChatWorkspace({
                       Upload at least two submissions to compare.
                     </p>
                   </div>
-                )}
-                <Button asChild size="sm" className="min-w-[110px] text-[13px]">
-                  <Link href="#">Brief</Link>
-                </Button>
+                ) : null}
+                {!isProjectCompleted ? (
+                  <Button asChild size="sm" className="min-w-[110px] text-[13px]">
+                    <Link href="#">Brief</Link>
+                  </Button>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -2653,7 +3117,11 @@ export function ProjectChatWorkspace({
             </CardHeader>
             <CardContent className="pt-0">
               {project.attachments.length > 0 ? (
-                <AttachmentHistoryList attachments={project.attachments} compact />
+                <AttachmentHistoryList
+                  attachments={project.attachments}
+                  compact
+                  actionsDisabled={isProjectCompleted}
+                />
               ) : (
                 <p className="text-[13px] text-[#7a837b]">
                   No project reference files uploaded yet.
@@ -2665,12 +3133,12 @@ export function ProjectChatWorkspace({
           <ProjectCollaboratorsPanel
             collaborators={collaborators}
             onRemove={
-              canManageCollaborators
+              canManageCollaborators && !isProjectCompleted
                 ? (collaboratorId) => removeCollaborator(collaboratorId)
                 : undefined
             }
             onAdd={
-              canManageCollaborators
+              canManageCollaborators && !isProjectCompleted
                 ? () => {
                     setCollaboratorDialogError(undefined);
                     setCollaboratorPickerOpen(true);
@@ -2678,7 +3146,7 @@ export function ProjectChatWorkspace({
                 : undefined
             }
             onParticipantTypeChange={
-              canManageCollaborators
+              canManageCollaborators && !isProjectCompleted
                 ? (collaboratorId, participantType) => {
                     void handleCollaboratorParticipantTypeChange(
                       collaboratorId,
@@ -2688,7 +3156,7 @@ export function ProjectChatWorkspace({
                 : undefined
             }
             onToggleChatVisibility={
-              canManageCollaborators
+              canManageCollaborators && !isProjectCompleted
                 ? (collaboratorId, paused) =>
                     handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
                 : undefined
@@ -2746,9 +3214,17 @@ export function ProjectChatWorkspace({
       />
       <ConfirmationDialog
         isOpen={reviewCompleteDialogOpen}
-        title="Mark stage as complete?"
-        description="This will mark the submitted revision as completed, complete the current stage, and make the next stage available."
-        confirmLabel="Mark as Complete"
+        title={
+          reviewCompletionIsFinalStage
+            ? "Approve final submission?"
+            : "Mark stage as complete?"
+        }
+        description={
+          reviewCompletionIsFinalStage
+            ? "This will approve the submitted revision. You can then complete the project, archive the final files, and lock further chat interaction."
+            : "This will mark the submitted revision as completed, complete the current stage, and make the next stage available."
+        }
+        confirmLabel={reviewCompletionIsFinalStage ? "Approve Submission" : "Mark as Complete"}
         pending={Boolean(pendingRevisionReviewId)}
         error={reviewDialogError ?? undefined}
         onClose={() => {
@@ -2778,6 +3254,197 @@ export function ProjectChatWorkspace({
           void handleMarkStageComplete();
         }}
       />
+      <ConfirmationDialog
+        isOpen={projectCompletionConfirmOpen}
+        title="Complete and archive project?"
+        description="This will complete the project, archive the final files, and stop further chat interaction. Members will only be able to view or download the final archived files."
+        confirmLabel="Continue"
+        pending={isPreparingProjectCompletion}
+        error={projectCompletionError ?? undefined}
+        onClose={() => {
+          if (isPreparingProjectCompletion) {
+            return;
+          }
+
+          setProjectCompletionError(null);
+          setProjectCompletionConfirmOpen(false);
+        }}
+        onConfirm={() => {
+          void handlePrepareProjectCompletion();
+        }}
+      />
+      {archivePreparation ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+          <Card className="flex h-full max-h-[88vh] w-full max-w-[920px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+              <div>
+                <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                  Final Archive Preparation
+                </CardTitle>
+                <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
+                  Review the final files, rename them for archive storage, and choose the
+                  archive category before completing the project.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={resetProjectCompletionFlow}
+                disabled={isCompletingProject}
+                className="shrink-0 border border-line"
+                aria-label="Close archive preparation dialog"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              {archiveCompletionError ? (
+                <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+                  {archiveCompletionError}
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 rounded-[20px] border border-line bg-[#fbfcfa] p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+                <div>
+                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                    Project
+                  </p>
+                  <p className="mt-1 text-[16px] font-[700] text-[#111712]">
+                    {archivePreparation.projectName}
+                  </p>
+                  <p className="mt-1 text-[13px] text-[#687269]">
+                    Final stage: {archivePreparation.finalStageName}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                    Archive Category
+                  </p>
+                  <Select value={archiveCategorySlug} onValueChange={setArchiveCategorySlug}>
+                    <SelectTrigger className="h-11 rounded-[14px] border border-line">
+                      <SelectValue placeholder="Choose archive category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {archivePreparation.categories.map((category) => (
+                        <SelectItem key={category.slug} value={category.slug}>
+                          {category.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {archivePreparation.files.map((file) => {
+                  const nextFileName =
+                    archiveFileNames[file.sourceAttachmentId] ?? file.defaultArchiveFileName;
+                  const inlineError = archiveFileErrors[file.sourceAttachmentId];
+
+                  return (
+                    <div
+                      key={file.sourceAttachmentId}
+                      className="rounded-[20px] border border-[#dbe4dc] bg-white p-4 shadow-[0_10px_26px_rgba(16,26,20,0.05)]"
+                    >
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[10px] font-[800] ${getFileBadgeClass(
+                                file.fileTypeLabel,
+                              )}`}
+                            >
+                              {file.fileTypeLabel}
+                            </span>
+                            <p className="truncate text-[14px] font-[700] text-[#111712]">
+                              {file.originalFileName}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-3 text-[12px] text-[#667168]">
+                            <span>{file.fileSizeLabel}</span>
+                            <span>{file.sourceLabel}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <AssetPreviewButton
+                              fileName={file.originalFileName}
+                              mimeType={file.mimeType}
+                              previewPath={file.previewPath}
+                              downloadPath={file.downloadPath}
+                              iconOnly={false}
+                              triggerClassName="rounded-full border border-line px-3 text-brand"
+                            />
+                            <Button
+                              asChild
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="rounded-full text-[12px]"
+                            >
+                              <a href={file.downloadPath} target="_blank" rel="noreferrer">
+                                <Download className="h-4 w-4" />
+                                Download
+                              </a>
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                            Archive File Name
+                          </p>
+                          <Input
+                            value={nextFileName}
+                            onChange={(event) =>
+                              updateArchiveFileName(
+                                file.sourceAttachmentId,
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Enter archive file name"
+                            className={`h-11 rounded-[14px] border ${inlineError ? "border-[#df6f66]" : "border-line"}`}
+                            disabled={isCompletingProject}
+                          />
+                          {inlineError ? (
+                            <p className="text-[12px] text-[#c14f46]">{inlineError}</p>
+                          ) : (
+                            <p className="text-[11px] text-[#7a837b]">
+                              Keep the original file extension when renaming.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={resetProjectCompletionFlow}
+                  disabled={isCompletingProject}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void handleCompleteProjectArchive();
+                  }}
+                  disabled={isCompletingProject}
+                >
+                  {isCompletingProject ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Complete & Archive
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
       {commentUploadDialogOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="w-full max-w-[560px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
@@ -3017,7 +3684,9 @@ export function ProjectChatWorkspace({
                   Review Submission
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  Review the submitted revision and decide whether to mark this stage as complete or request another revision.
+                  {reviewCompletionIsFinalStage
+                    ? "Review the submitted revision. After approval, the project owner can complete the project and archive the final files."
+                    : "Review the submitted revision and decide whether to mark this stage as complete or request another revision."}
                 </p>
               </div>
               <Button
@@ -3091,7 +3760,10 @@ export function ProjectChatWorkspace({
               {reviewRevisionMessage.attachments?.length ? (
                 <div className="space-y-2">
                   <p className="text-[13px] font-[600] text-[#2d372f]">Submitted Files</p>
-                  <AttachmentHistoryList attachments={reviewRevisionMessage.attachments} />
+                  <AttachmentHistoryList
+                    attachments={reviewRevisionMessage.attachments}
+                    actionsDisabled={isProjectCompleted}
+                  />
                 </div>
               ) : null}
               {reviewRejectMode ? (
@@ -3138,7 +3810,7 @@ export function ProjectChatWorkspace({
                       }}
                       disabled={Boolean(pendingRevisionReviewId)}
                     >
-                      Mark as Complete
+                      {reviewCompletionIsFinalStage ? "Approve Submission" : "Mark as Complete"}
                     </Button>
                   </>
                 ) : (
