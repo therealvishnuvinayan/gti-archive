@@ -11,6 +11,7 @@ import {
 import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
 import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
 import { sendResendEmail } from "@/lib/email/resend";
+import { hasValidPasswordValue } from "@/lib/password-rules";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
@@ -75,7 +76,6 @@ type CollaboratorValidationResult =
     };
 
 const INVITE_EXPIRY_DAYS = 7;
-const MIN_PASSWORD_LENGTH = 8;
 
 const permissionMap: Record<PermissionLevel, PrismaCollaboratorAccess> = {
   full: "FULL",
@@ -579,12 +579,12 @@ export async function acceptCollaboratorInvite(
       : { error: "This invitation link is invalid." };
   }
 
-  if (password.trim().length < MIN_PASSWORD_LENGTH) {
-    return { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+  if (!hasValidPasswordValue(password)) {
+    return { error: "Password is required." };
   }
 
   if (password !== confirmPassword) {
-    return { error: "Password and confirmation password must match." };
+    return { error: "Passwords do not match." };
   }
 
   const updatedUser = await prisma.user.update({

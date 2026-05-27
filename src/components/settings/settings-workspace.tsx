@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   CalendarDays,
-  CheckCircle2,
   Eye,
   EyeOff,
   ImagePlus,
@@ -27,10 +26,6 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  MIN_PASSWORD_LENGTH,
-  getPasswordRequirementChecks,
-} from "@/lib/password-rules";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
 type SettingsWorkspaceProps = {
@@ -276,23 +271,6 @@ function buildPasswordDraft(): PasswordDraft {
     newPassword: "",
     confirmNewPassword: "",
   };
-}
-
-function PasswordRequirementItem({
-  label,
-  isValid,
-}: {
-  label: string;
-  isValid: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-3 text-[14px] text-[#5f6a60]">
-      <CheckCircle2
-        className={`h-4 w-4 shrink-0 ${isValid ? "text-brand" : "text-[#a8b0a8]"}`}
-      />
-      <span>{label}</span>
-    </div>
-  );
 }
 
 function PasswordInputField({
@@ -671,8 +649,6 @@ function ChangePasswordDrawer({
   onToggleVisibility: (field: keyof PasswordDraft) => void;
   onSave: () => void;
 }) {
-  const passwordChecks = getPasswordRequirementChecks(form.newPassword);
-
   if (!isOpen) {
     return null;
   }
@@ -740,30 +716,6 @@ function ChangePasswordDrawer({
                 error={fieldErrors.confirmNewPassword}
                 disabled={saving}
               />
-
-              <div className="rounded-[24px] border border-[#ebefe8] bg-[#fbfcfa] p-5">
-                <p className="text-[26px] font-[700] tracking-[-0.03em] text-[#1b231d]">
-                  Password must contain:
-                </p>
-                <div className="mt-4 space-y-3">
-                  <PasswordRequirementItem
-                    label={`At least ${MIN_PASSWORD_LENGTH} characters`}
-                    isValid={passwordChecks.minLength}
-                  />
-                  <PasswordRequirementItem
-                    label="One uppercase letter (A–Z)"
-                    isValid={passwordChecks.uppercase}
-                  />
-                  <PasswordRequirementItem
-                    label="One number (0–9)"
-                    isValid={passwordChecks.number}
-                  />
-                  <PasswordRequirementItem
-                    label="One special character (!@#$%^&*)"
-                    isValid={passwordChecks.specialCharacter}
-                  />
-                </div>
-              </div>
 
               <div className="space-y-1">
                 <p className="text-[15px] text-[#677266]">Last changed</p>
@@ -1035,15 +987,15 @@ export function SettingsWorkspace({
 
     const nextFieldErrors: typeof passwordFieldErrors = {};
 
-    if (!passwordForm.currentPassword) {
+    if (!passwordForm.currentPassword.trim()) {
       nextFieldErrors.currentPassword = "Current password is required.";
     }
 
-    if (!passwordForm.newPassword) {
+    if (!passwordForm.newPassword.trim()) {
       nextFieldErrors.newPassword = "New password is required.";
     }
 
-    if (!passwordForm.confirmNewPassword) {
+    if (!passwordForm.confirmNewPassword.trim()) {
       nextFieldErrors.confirmNewPassword = "Confirm new password is required.";
     }
 
@@ -1057,7 +1009,7 @@ export function SettingsWorkspace({
     if (passwordForm.newPassword !== passwordForm.confirmNewPassword) {
       setPasswordDrawerError("Please correct the highlighted fields.");
       setPasswordFieldErrors({
-        confirmNewPassword: "New password and confirm password do not match.",
+        confirmNewPassword: "Passwords do not match.",
       });
       showErrorToast("Unable to update password.", "Please review the highlighted fields.");
       return;
@@ -1069,15 +1021,6 @@ export function SettingsWorkspace({
         newPassword: "New password must be different from current password.",
       });
       showErrorToast("Unable to update password.", "Please review the highlighted fields.");
-      return;
-    }
-
-    if (!Object.values(getPasswordRequirementChecks(passwordForm.newPassword)).every(Boolean)) {
-      setPasswordDrawerError("Password does not meet the required rules.");
-      setPasswordFieldErrors({
-        newPassword: "Password does not meet the required rules.",
-      });
-      showErrorToast("Unable to update password.", "Password does not meet the required rules.");
       return;
     }
 

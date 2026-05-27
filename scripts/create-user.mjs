@@ -71,8 +71,8 @@ if (!email || !password) {
   process.exit(1);
 }
 
-if (password.trim().length < 8) {
-  console.error("Password must be at least 8 characters.");
+if (!password.trim()) {
+  console.error("Password is required.");
   process.exit(1);
 }
 

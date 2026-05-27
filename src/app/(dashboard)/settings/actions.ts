@@ -9,7 +9,7 @@ import {
   SESSION_COOKIE_NAME,
   verifyAuthPassword,
 } from "@/lib/auth";
-import { isStrongPassword } from "@/lib/password-rules";
+import { hasValidPasswordValue } from "@/lib/password-rules";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { deleteObjectIfNeeded } from "@/lib/storage/s3";
 
@@ -132,15 +132,15 @@ export async function changePasswordAction(
 
   const fieldErrors: ChangePasswordResult["fieldErrors"] = {};
 
-  if (!parsed.currentPassword) {
+  if (!parsed.currentPassword.trim()) {
     fieldErrors.currentPassword = "Current password is required.";
   }
 
-  if (!parsed.newPassword) {
+  if (!parsed.newPassword.trim()) {
     fieldErrors.newPassword = "New password is required.";
   }
 
-  if (!parsed.confirmNewPassword) {
+  if (!parsed.confirmNewPassword.trim()) {
     fieldErrors.confirmNewPassword = "Confirm new password is required.";
   }
 
@@ -155,7 +155,7 @@ export async function changePasswordAction(
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: {
-        confirmNewPassword: "New password and confirm password do not match.",
+        confirmNewPassword: "Passwords do not match.",
       },
     };
   }
@@ -169,11 +169,11 @@ export async function changePasswordAction(
     };
   }
 
-  if (!isStrongPassword(parsed.newPassword)) {
+  if (!hasValidPasswordValue(parsed.newPassword)) {
     return {
-      error: "Password does not meet the required rules.",
+      error: "Please correct the highlighted fields.",
       fieldErrors: {
-        newPassword: "Password does not meet the required rules.",
+        newPassword: "New password is required.",
       },
     };
   }

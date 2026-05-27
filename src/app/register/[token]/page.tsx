@@ -50,7 +50,7 @@ export default async function RegisterPage({ params }: RegisterPageProps) {
                   Collaborator access
                 </h2>
                 <p className="max-w-[340px] text-[17px] leading-8 text-white/88">
-                  Activate your invitation and set a secure password to enter the GTI Archive portal.
+                  Activate your invitation and set your password to enter the GTI Archive portal.
                 </p>
               </div>
 

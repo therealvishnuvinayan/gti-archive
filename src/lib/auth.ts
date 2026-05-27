@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { MIN_PASSWORD_LENGTH } from "@/lib/password-rules";
+import { hasValidPasswordValue } from "@/lib/password-rules";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const SESSION_COOKIE_NAME = "gti_session";
@@ -84,8 +84,8 @@ function validateCredentials(email: string, password: string) {
     throw new AuthError("Enter a valid email address.");
   }
 
-  if (password.trim().length < MIN_PASSWORD_LENGTH) {
-    throw new AuthError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+  if (!hasValidPasswordValue(password)) {
+    throw new AuthError("Password is required.");
   }
 
   return normalizedEmail;

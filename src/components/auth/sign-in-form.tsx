@@ -83,7 +83,6 @@ export function SignInForm({ hasAnyUsers }: SignInFormProps) {
               name="password"
               autoComplete="current-password"
               required
-              minLength={8}
               placeholder="Enter your password"
               className="w-full bg-transparent text-[17px] text-[#1b231d] outline-none placeholder:text-[#a6ada5]"
             />

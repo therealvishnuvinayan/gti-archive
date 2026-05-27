@@ -74,7 +74,6 @@ export function RegisterForm({ email, action }: RegisterFormProps) {
               name="password"
               autoComplete="new-password"
               required
-              minLength={8}
               placeholder="Create a password"
               className="w-full bg-transparent text-[17px] text-[#1b231d] outline-none placeholder:text-[#a6ada5]"
             />
@@ -100,7 +99,6 @@ export function RegisterForm({ email, action }: RegisterFormProps) {
               name="confirmPassword"
               autoComplete="new-password"
               required
-              minLength={8}
               placeholder="Confirm your password"
               className="w-full bg-transparent text-[17px] text-[#1b231d] outline-none placeholder:text-[#a6ada5]"
             />
