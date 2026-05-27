@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectDetailWorkspace } from "@/components/projects/project-detail-workspace";
+import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
+import { getProjectCompletionWorkflowForUser } from "@/lib/project-completion";
 import { getProjectById } from "@/lib/projects";
 
 export default async function ProjectDetailPage({
@@ -19,6 +21,11 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
+  const [completionSummary, completionWorkflow] = await Promise.all([
+    getProjectCompletionSummary(user, slug, project.currentStageId),
+    getProjectCompletionWorkflowForUser(user, slug),
+  ]);
+
   return (
     <DashboardLayout
       topbarProps={{
@@ -26,7 +33,11 @@ export default async function ProjectDetailPage({
         leadingContent: <ProjectBackButton />,
       }}
     >
-      <ProjectDetailWorkspace project={project} />
+      <ProjectDetailWorkspace
+        project={project}
+        completionSummary={completionSummary}
+        completionWorkflow={completionWorkflow}
+      />
     </DashboardLayout>
   );
 }

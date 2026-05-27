@@ -8,7 +8,10 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { AttachmentAssetType } from "@prisma/client";
+import {
+  AttachmentAssetType,
+  ProjectCompletionDocumentType,
+} from "@prisma/client";
 
 const DEFAULT_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const PROFILE_AVATAR_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
@@ -143,6 +146,14 @@ const profileImageMimeTypes = new Set([
   "image/webp",
 ]);
 
+const completionDocumentExtensions = new Set(["pdf", "png", "jpg", "jpeg", "webp"]);
+const completionDocumentMimeTypes = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+
 export function isAllowedSubmissionImage(fileName: string, mimeType: string) {
   const extension = getFileExtension(fileName);
 
@@ -162,6 +173,15 @@ export function isAllowedProfileImage(fileName: string, mimeType: string) {
   return (
     (!!extension && profileImageExtensions.has(extension)) ||
     profileImageMimeTypes.has(mimeType.toLowerCase())
+  );
+}
+
+export function isAllowedProjectCompletionDocument(fileName: string, mimeType: string) {
+  const extension = getFileExtension(fileName);
+
+  return (
+    (!!extension && completionDocumentExtensions.has(extension)) ||
+    completionDocumentMimeTypes.has(mimeType.toLowerCase())
   );
 }
 
@@ -243,6 +263,28 @@ export function buildProjectAssetKey({
     case AttachmentAssetType.GENERAL_PROJECT_ASSET:
     default:
       return `projects/${projectId}/assets/general/${safeFileName}`;
+  }
+}
+
+type BuildProjectCompletionDocumentKeyInput = {
+  projectId: string;
+  documentType: ProjectCompletionDocumentType;
+  safeFileName: string;
+};
+
+export function buildProjectCompletionDocumentKey({
+  projectId,
+  documentType,
+  safeFileName,
+}: BuildProjectCompletionDocumentKeyInput) {
+  switch (documentType) {
+    case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
+      return `archives/${projectId}/completion/approval/${safeFileName}`;
+    case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
+      return `archives/${projectId}/completion/copyright/${safeFileName}`;
+    case ProjectCompletionDocumentType.INVOICE:
+    default:
+      return `archives/${projectId}/completion/invoices/${safeFileName}`;
   }
 }
 

@@ -73,6 +73,7 @@ export function ArchiveCategoryWorkspace({
           item.projectCategory,
           item.projectTag,
           item.archivedBy,
+          item.recordTypeLabel,
           item.sourceLabel,
         ]
           .join(" ")
@@ -110,8 +111,9 @@ export function ArchiveCategoryWorkspace({
             {categoryTitle}
           </h1>
           <p className="max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
-            Final archived files are read-only. Allowed users can view or download the
-            approved files that were saved when a project was completed.
+            Final archived files and completion documents are read-only. Allowed users
+            can view or download the approved files and completion records that were
+            saved when a project was completed.
           </p>
         </header>
       </MotionSection>
@@ -197,6 +199,9 @@ export function ArchiveCategoryWorkspace({
                             Original: {item.originalFileName}
                           </p>
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#6c756e]">
+                            <span className="rounded-full bg-[#edf2ff] px-2 py-0.5 font-[700] uppercase tracking-[0.08em] text-[#4760c7]">
+                              {item.recordTypeLabel}
+                            </span>
                             <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 font-[700] uppercase tracking-[0.08em] text-[#566259]">
                               {item.fileTypeLabel}
                             </span>

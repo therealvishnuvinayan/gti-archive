@@ -6,6 +6,7 @@ import { ProjectChatWorkspace } from "@/components/projects/project-chat-workspa
 import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
+import { getProjectCompletionWorkflowForUser } from "@/lib/project-completion";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
 import { UserRole } from "@prisma/client";
@@ -30,11 +31,10 @@ export default async function ProjectChatPage({
     getProjectStageHistory(user, slug, stage),
     getCollaborators(),
   ]);
-  const completionSummary = await getProjectCompletionSummary(
-    user,
-    slug,
-    history.activeStageId ?? stage,
-  );
+  const [completionSummary, completionWorkflow] = await Promise.all([
+    getProjectCompletionSummary(user, slug, history.activeStageId ?? stage),
+    getProjectCompletionWorkflowForUser(user, slug),
+  ]);
 
   const canManageCollaborators =
     user.role === UserRole.SUPER_ADMIN ||
@@ -56,6 +56,7 @@ export default async function ProjectChatPage({
         currentUserId={user.id}
         canManageCollaborators={canManageCollaborators}
         completionSummary={completionSummary}
+        completionWorkflow={completionWorkflow}
       />
     </DashboardLayout>
   );

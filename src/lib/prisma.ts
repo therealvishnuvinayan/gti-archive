@@ -4,11 +4,36 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function createPrismaClient() {
+  return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
+}
+
+function getDelegateName(modelName: string) {
+  return `${modelName.slice(0, 1).toLowerCase()}${modelName.slice(1)}`;
+}
+
+function isPrismaClientCompatible(client: PrismaClient) {
+  return Prisma.dmmf.datamodel.models.every((model) => {
+    const delegateName = getDelegateName(model.name) as keyof PrismaClient;
+    return typeof client[delegateName] !== "undefined";
+  });
+}
+
+function getPrismaClient() {
+  const cachedClient = globalForPrisma.prisma;
+
+  if (cachedClient && isPrismaClientCompatible(cachedClient)) {
+    return cachedClient;
+  }
+
+  const nextClient = createPrismaClient();
+  globalForPrisma.prisma = nextClient;
+  return nextClient;
+}
+
+export const prisma = getPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

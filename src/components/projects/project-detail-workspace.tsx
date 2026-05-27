@@ -2,6 +2,10 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  CompletedProjectArchiveSummaryCard,
+  ProjectCompletionChecklist,
+} from "@/components/projects/project-completion-checklist";
 import type { ProjectFlowRecord, ProjectStageRecord } from "@/lib/projects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,9 +16,13 @@ import {
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
+import type { ProjectCompletionSummary } from "@/lib/archives";
+import type { ProjectCompletionWorkflowRecord } from "@/lib/project-completion";
 
 type ProjectDetailWorkspaceProps = {
   project: ProjectFlowRecord;
+  completionSummary: ProjectCompletionSummary;
+  completionWorkflow: ProjectCompletionWorkflowRecord | null;
 };
 
 function getStageCardClasses(stage: ProjectStageRecord) {
@@ -54,7 +62,11 @@ function getStageCardClasses(stage: ProjectStageRecord) {
   }
 }
 
-export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps) {
+export function ProjectDetailWorkspace({
+  project,
+  completionSummary,
+  completionWorkflow,
+}: ProjectDetailWorkspaceProps) {
   const stageGridClasses =
     project.stageCards.length === 1
       ? "max-w-[420px] grid-cols-1"
@@ -127,6 +139,22 @@ export function ProjectDetailWorkspace({ project }: ProjectDetailWorkspaceProps)
           </Card>
         </MotionItem>
       </MotionStaggerGroup>
+
+      {completionSummary.isCompleted ? (
+        <MotionStaggerGroup className="space-y-4" stagger={0.04}>
+          <MotionItem y={10}>
+            <CompletedProjectArchiveSummaryCard completionSummary={completionSummary} />
+          </MotionItem>
+          {completionWorkflow ? (
+            <MotionItem y={10}>
+              <ProjectCompletionChecklist
+                projectId={project.id}
+                workflow={completionWorkflow}
+              />
+            </MotionItem>
+          ) : null}
+        </MotionStaggerGroup>
+      ) : null}
 
       <MotionSection>
       <Card className="rounded-[20px]">

@@ -24,8 +24,8 @@ export function ArchiveOverview({ summaries }: ArchiveOverviewProps) {
             Archives
           </h1>
           <p className="max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
-            Completed project files are grouped by archive category and remain available
-            through secure view and download links.
+            Completed project files and completion documents are grouped by archive
+            category and remain available through secure view and download links.
           </p>
         </header>
       </MotionSection>

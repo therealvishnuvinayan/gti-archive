@@ -43,6 +43,10 @@ import {
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import {
+  CompletedProjectArchiveSummaryCard,
+  ProjectCompletionChecklist,
+} from "@/components/projects/project-completion-checklist";
+import {
   CollaboratorDialog,
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
@@ -62,10 +66,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type {
-  ArchivedProjectFileRecord,
   ProjectArchivePreparation,
   ProjectCompletionSummary,
 } from "@/lib/archives";
+import type { ProjectCompletionWorkflowRecord } from "@/lib/project-completion";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageHistoryRecord } from "@/lib/project-history";
 import type {
@@ -85,6 +89,7 @@ type ProjectChatWorkspaceProps = {
   currentUserId: string;
   canManageCollaborators: boolean;
   completionSummary: ProjectCompletionSummary;
+  completionWorkflow: ProjectCompletionWorkflowRecord | null;
 };
 
 type PendingFile = {
@@ -537,80 +542,6 @@ function AttachmentHistoryList({
   );
 }
 
-function ArchivedFileList({
-  files,
-}: {
-  files: ArchivedProjectFileRecord[];
-}) {
-  if (files.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-3 space-y-2.5">
-      {files.map((file) => (
-        <div
-          key={file.id}
-          className="rounded-[16px] border border-[#d7e5d9] bg-white px-3 py-3 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)]"
-        >
-          <div className="flex items-start gap-3">
-            <div
-              className={`grid h-9 min-w-9 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
-                file.fileTypeLabel,
-              )}`}
-            >
-              {file.fileTypeLabel}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="truncate text-[12px] font-[700] text-[#111712]">
-                  {file.finalArchiveFileName}
-                </p>
-                <span className="inline-flex rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
-                  Archived
-                </span>
-              </div>
-              <p className="mt-0.5 text-[10px] leading-4 text-[#6c756e]">
-                {file.fileSizeLabel} · {file.sourceLabel}
-              </p>
-              <p className="text-[10px] leading-4 text-[#89928b]">
-                Original: {file.originalFileName}
-              </p>
-              <p className="text-[10px] leading-4 text-[#89928b]">
-                Archived by {file.archivedBy} on {file.archivedAt}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              <AssetPreviewButton
-                fileName={file.finalArchiveFileName}
-                mimeType={file.mimeType}
-                previewPath={file.previewPath}
-                downloadPath={file.downloadPath}
-                triggerClassName="size-8 rounded-full text-brand"
-              />
-              <Button
-                asChild
-                variant="ghost"
-                size="icon"
-                className="size-8 rounded-full text-brand"
-              >
-                <a
-                  href={file.downloadPath}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={`Download ${file.finalArchiveFileName}`}
-                >
-                  <Download className="h-4 w-4" />
-                </a>
-              </Button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 async function uploadAssetFile(input: {
   file: File;
   projectId: string;
@@ -704,6 +635,7 @@ export function ProjectChatWorkspace({
   currentUserId,
   canManageCollaborators,
   completionSummary,
+  completionWorkflow,
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
@@ -2519,42 +2451,39 @@ export function ProjectChatWorkspace({
           ) : null}
 
           {isProjectCompleted ? (
-            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="px-5 py-5">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-[16px] font-[700] text-[#173120]">
-                      This project has been completed.
-                    </p>
-                    <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-                      Only final archived files can be viewed or downloaded.
-                    </p>
-                    {completionState.archivedAt ? (
-                      <p className="mt-1 text-[12px] text-[#6e7a70]">
-                        Archived on {completionState.archivedAt}
-                        {completionState.archiveCategoryLabel
-                          ? ` in ${completionState.archiveCategoryLabel}.`
-                          : "."}
-                      </p>
-                    ) : null}
-                  </div>
-                  {completionState.archiveCategorySlug ? (
-                    <Button asChild size="sm" className="rounded-full text-[12px]">
-                      <Link href={`/archives/${completionState.archiveCategorySlug}`}>
-                        Open Archive
-                      </Link>
-                    </Button>
-                  ) : null}
-                </div>
+            <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
+          ) : null}
 
-                {completionState.archivedFiles.length > 0 ? (
-                  <div className="mt-4">
-                    <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
-                      Final Archived Files
-                    </p>
-                    <ArchivedFileList files={completionState.archivedFiles} />
-                  </div>
-                ) : null}
+          {isProjectCompleted && completionWorkflow ? (
+            <ProjectCompletionChecklist
+              projectId={project.id}
+              workflow={completionWorkflow}
+            />
+          ) : null}
+
+          {isProjectCompleted &&
+          !completionWorkflow &&
+          (isProjectOwner || isProjectExecutor) ? (
+            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+              <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[16px] font-[700] text-[#173120]">
+                    Project completion checklist is not available yet.
+                  </p>
+                  <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
+                    This completed project should show Authority Approval, Copyright
+                    Transfer, and Invoice steps here. Reload the page to fetch the
+                    checklist.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-full text-[12px]"
+                  onClick={refreshHistory}
+                >
+                  Reload Checklist
+                </Button>
               </CardContent>
             </Card>
           ) : null}
@@ -2891,8 +2820,8 @@ export function ProjectChatWorkspace({
             <Card className="sticky bottom-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
               <p className="text-[14px] font-[700] text-[#173120]">Project chat is locked.</p>
               <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
-                This project has been completed. Only the final archived files remain
-                available for viewing or download.
+                This project has been completed. Only final archived files and
+                completion documents remain available for viewing or download.
               </p>
             </Card>
           ) : (

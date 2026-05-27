@@ -9,6 +9,11 @@ import {
 } from "@/lib/archives";
 import { createComparisonComment } from "@/lib/comparison";
 import {
+  configureProjectCompletionWorkflow,
+  prepareAuthorityApprovalRequest,
+  prepareCopyrightTransferRequest,
+} from "@/lib/project-completion";
+import {
   createStageComment,
   createStageRevision,
   completeProjectStage,
@@ -56,6 +61,7 @@ function revalidateArchiveFlow(projectId: string, categorySlug?: string) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/chat`);
   revalidatePath("/archives");
+  revalidatePath("/archives/documents");
 
   if (categorySlug) {
     revalidatePath(`/archives/${categorySlug}`);
@@ -268,6 +274,76 @@ export async function completeProjectArchiveAction(input: {
         error instanceof Error
           ? error.message
           : "Unable to complete and archive the project right now.",
+    };
+  }
+}
+
+export async function configureProjectCompletionWorkflowAction(input: {
+  projectId: string;
+  approvalRequired: boolean;
+  copyrightRequired: boolean;
+}) {
+  const user = await requireUser();
+
+  try {
+    const workflow = await configureProjectCompletionWorkflow(user, input);
+    revalidateProjectFlow();
+    revalidateArchiveFlow(input.projectId);
+
+    return { workflow };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update the project completion checklist right now.",
+    };
+  }
+}
+
+export async function prepareAuthorityApprovalRequestAction(input: {
+  projectId: string;
+  contactUserId: string;
+  selectedArchivedFileIds: string[];
+  note?: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const workflow = await prepareAuthorityApprovalRequest(user, input);
+    revalidateProjectFlow();
+    revalidateArchiveFlow(input.projectId);
+
+    return { workflow };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the authority approval request right now.",
+    };
+  }
+}
+
+export async function prepareCopyrightTransferRequestAction(input: {
+  projectId: string;
+  contactUserId: string;
+  note?: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const workflow = await prepareCopyrightTransferRequest(user, input);
+    revalidateProjectFlow();
+    revalidateArchiveFlow(input.projectId);
+
+    return { workflow };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the copyright transfer request right now.",
     };
   }
 }
