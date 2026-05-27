@@ -12,10 +12,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  getProjectCollaboratorTypeMeta,
+  projectCollaboratorParticipantTypes,
+  type ProjectCollaboratorParticipantType,
+} from "@/lib/project-collaborator-participant-types";
 
 export type AccessArea = "project" | "calendar" | "library" | "archive";
 export type PermissionLevel = "full" | "limited" | "none";
-export type CollaboratorType = "Internal" | "External";
+export type CollaboratorType = ProjectCollaboratorParticipantType;
 
 export type CollaboratorForm = {
   name: string;
@@ -121,8 +126,11 @@ export function CollaboratorDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Internal">Internal</SelectItem>
-                  <SelectItem value="External">External</SelectItem>
+                  {projectCollaboratorParticipantTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {getProjectCollaboratorTypeMeta(type).label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </label>

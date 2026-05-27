@@ -17,16 +17,23 @@ import type {
 
 import {
   getDefaultProjectCollaboratorParticipantType,
+  getCollaboratorRoleLabel,
+  getCollaboratorTypeGroup,
   getProjectCollaboratorTypeMeta,
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import {
+  getAccessibleProjectsWhere,
+  hasProjectPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const PROJECTS_CACHE_TAG = "projects";
 
-type BudgetAccessUser = Pick<User, "id">;
-type ProjectAccessUser = Pick<User, "id" | "role">;
+type BudgetAccessUser = PermissionUser;
+type ProjectAccessUser = PermissionUser;
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
@@ -301,7 +308,15 @@ export function canViewProjectBudget(
   currentUser: BudgetAccessUser,
 ) {
   const ownerId = "ownerId" in project ? project.ownerId : project.createdById;
-  return ownerId === currentUser.id;
+
+  return hasProjectPermission(
+    currentUser,
+    {
+      createdById: ownerId,
+      executorUserId: null,
+    },
+    "project.viewBudget",
+  );
 }
 
 function getCreatorName(creator: Pick<User, "name" | "email">) {
@@ -373,7 +388,7 @@ function formatAttachmentFileSize(fileSize: number) {
 }
 
 function mapCollaboratorTypeToGroup(type: CollaboratorType): "internal" | "external" {
-  return type === "EXTERNAL" ? "external" : "internal";
+  return getCollaboratorTypeGroup(type);
 }
 
 function mapProjectCollaboratorAssignmentToRecord(
@@ -390,10 +405,7 @@ function mapProjectCollaboratorAssignmentToRecord(
     id: assignment.user.id,
     name: assignment.user.name?.trim() || assignment.user.email,
     email: assignment.user.email,
-    role:
-      assignment.user.collaboratorType === "EXTERNAL"
-        ? "External Collaborator"
-        : "Collaborator",
+    role: getCollaboratorRoleLabel(assignment.user.collaboratorType),
     group: getProjectCollaboratorTypeMeta(participantType).group,
     participantType,
     chatVisibilityPaused: assignment.chatVisibilityPaused,
@@ -408,20 +420,7 @@ function canAccessProjectRecord(
   },
   currentUser: ProjectAccessUser,
 ) {
-  if (
-    currentUser.role === UserRole.SUPER_ADMIN ||
-    currentUser.role === UserRole.ADMIN ||
-    project.createdById === currentUser.id ||
-    project.executorUserId === currentUser.id
-  ) {
-    return true;
-  }
-
-  return (
-    project.collaborators?.some(
-      (collaborator) => collaborator.userId === currentUser.id,
-    ) ?? false
-  );
+  return hasProjectPermission(currentUser, project, "project.view");
 }
 
 function mapAttachmentToRecord(
@@ -731,6 +730,7 @@ function mapProjectToEditor(
 }
 
 export async function updateProjectCollaborators(
+  actor: PermissionUser,
   projectId: string,
   collaborators: Array<{
     id: string;
@@ -738,6 +738,8 @@ export async function updateProjectCollaborators(
   }>,
   addedById: string,
 ) {
+  await assertProjectCollaboratorManagementAccess(actor, projectId);
+
   const normalizedCollaborators = collaborators.reduce<
     Array<{ id: string; participantType: ProjectCollaboratorParticipantType | null }>
   >((current, collaborator) => {
@@ -879,7 +881,7 @@ export async function updateProjectCollaborators(
 }
 
 async function assertProjectCollaboratorManagementAccess(
-  actor: Pick<User, "id" | "role">,
+  actor: PermissionUser,
   projectId: string,
 ) {
   const project = await withPrismaRetry(() =>
@@ -899,9 +901,14 @@ async function assertProjectCollaboratorManagementAccess(
   }
 
   if (
-    actor.role !== UserRole.SUPER_ADMIN &&
-    actor.role !== UserRole.ADMIN &&
-    project.createdById !== actor.id
+    !hasProjectPermission(
+      actor,
+      {
+        createdById: project.createdById,
+        executorUserId: null,
+      },
+      "project.manageCollaborators",
+    )
   ) {
     throw new Error("You are not allowed to update project collaborators.");
   }
@@ -935,7 +942,7 @@ async function getProjectCollaboratorAssignments(projectId: string) {
 }
 
 export async function removeProjectCollaborator(
-  actor: Pick<User, "id" | "role">,
+  actor: PermissionUser,
   projectId: string,
   collaboratorId: string,
 ) {
@@ -974,7 +981,7 @@ export async function removeProjectCollaborator(
 }
 
 export async function setProjectCollaboratorChatVisibility(
-  actor: Pick<User, "id" | "role">,
+  actor: PermissionUser,
   input: {
     projectId: string;
     collaboratorId: string;
@@ -1155,18 +1162,22 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
   };
 }
 
-export async function getProjectListFilterOptions(): Promise<ProjectListFilterOptions> {
+export async function getProjectListFilterOptions(
+  currentUser: PermissionUser,
+): Promise<ProjectListFilterOptions> {
+  const accessibleProjectsWhere = getAccessibleProjectsWhere(currentUser);
   const projects = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
+          where: accessibleProjectsWhere,
           select: {
             category: true,
             tag: true,
           },
         }),
       ),
-    ["project-list-filter-options"],
+    ["project-list-filter-options", currentUser.id],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -1195,21 +1206,27 @@ export async function getProjectListFilterOptions(): Promise<ProjectListFilterOp
   };
 }
 
-export async function getDashboardProjectCounts(): Promise<DashboardProjectCounts> {
+export async function getDashboardProjectCounts(
+  currentUser: PermissionUser,
+): Promise<DashboardProjectCounts> {
+  const accessibleProjectsWhere = getAccessibleProjectsWhere(currentUser);
   const getCachedCounts = unstable_cache(
     async () =>
       withPrismaRetry(() =>
         Promise.all([
-          prisma.project.count(),
+          prisma.project.count({
+            where: accessibleProjectsWhere,
+          }),
           prisma.project.groupBy({
             by: ["status"],
+            where: accessibleProjectsWhere,
             _count: {
               _all: true,
             },
           }),
         ]),
       ),
-    ["dashboard-project-counts"],
+    ["dashboard-project-counts", currentUser.id],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
@@ -1236,18 +1253,23 @@ export async function getDashboardProjectCounts(): Promise<DashboardProjectCount
   };
 }
 
-export async function getRecentProjects(limit = 5) {
+export async function getRecentProjects(
+  currentUser: PermissionUser,
+  limit = 5,
+) {
+  const accessibleProjectsWhere = getAccessibleProjectsWhere(currentUser);
   const projects = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
+          where: accessibleProjectsWhere,
           orderBy: {
             createdAt: "desc",
           },
           take: limit,
         }),
       ),
-    ["recent-projects", String(limit)],
+    ["recent-projects", currentUser.id, String(limit)],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -1260,19 +1282,25 @@ export async function getRecentProjects(limit = 5) {
   }[];
 }
 
-export async function getProjectsList(filter: ProjectsListFilter) {
+export async function getProjectsList(
+  filter: ProjectsListFilter,
+  currentUser: PermissionUser,
+) {
   const orderBy =
     filter.sort === "oldest"
       ? [{ createdAt: "asc" as const }]
       : filter.sort === "name"
         ? [{ name: "asc" as const }]
         : [{ createdAt: "desc" as const }];
+  const accessibleProjectsWhere = getAccessibleProjectsWhere(currentUser);
 
   const projects = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
-          where: buildProjectsWhere(filter),
+          where: {
+            AND: [accessibleProjectsWhere, buildProjectsWhere(filter)],
+          },
           include: {
             createdBy: {
               select: {
@@ -1318,6 +1346,7 @@ export async function getProjectsList(filter: ProjectsListFilter) {
       ),
     [
       "projects-list",
+      currentUser.id,
       filter.status ?? "all",
       filter.query?.trim().toLowerCase() ?? "",
       filter.category?.trim().toLowerCase() ?? "",
@@ -1332,7 +1361,7 @@ export async function getProjectsList(filter: ProjectsListFilter) {
 
 export async function getProjectById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: PermissionUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -1418,7 +1447,7 @@ export async function getProjectById(
 
 export async function getProjectEditorById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: PermissionUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -1490,7 +1519,7 @@ export async function getProjectEditorById(
     return null;
   }
 
-  if (!canAccessProjectRecord(project, currentUser)) {
+  if (!hasProjectPermission(currentUser, project, "project.update")) {
     return null;
   }
 

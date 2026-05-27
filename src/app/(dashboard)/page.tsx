@@ -13,6 +13,8 @@ import {
 } from "@/components/dashboard/collaboration-card";
 import { ProjectProgressCard } from "@/components/dashboard/project-progress-card";
 import { DeadlineCard } from "@/components/dashboard/deadline-card";
+import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 import { getDashboardProjectCounts, getRecentProjects } from "@/lib/projects";
 import {
   MotionItem,
@@ -83,10 +85,16 @@ const progressSegments = [
 ] as const;
 
 export default async function Home() {
+  const user = await requireUser();
   const [counts, recentProjects] = await Promise.all([
-    getDashboardProjectCounts(),
-    getRecentProjects(),
+    getDashboardProjectCounts(user),
+    getRecentProjects(user),
   ]);
+  const canCreateProject = hasPermission(user, "project.create");
+  // The dashboard upload CTA should only appear when the user can reach a file
+  // upload surface through either the library module or project submission flow.
+  const canUploadAssets =
+    hasPermission(user, "library.view") || hasPermission(user, "file.uploadSubmission");
   const statCards = [
     {
       title: "Total Projects",
@@ -127,18 +135,22 @@ export default async function Home() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/projects/new"
-                className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
-              >
-                + New Project
-              </Link>
-              <button
-                type="button"
-                className="inline-flex min-h-[54px] items-center justify-center rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
-              >
-                + Upload Assets
-              </button>
+              {canCreateProject ? (
+                <Link
+                  href="/projects/new"
+                  className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
+                >
+                  + New Project
+                </Link>
+              ) : null}
+              {canUploadAssets ? (
+                <button
+                  type="button"
+                  className="inline-flex min-h-[54px] items-center justify-center rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
+                >
+                  + Upload Assets
+                </button>
+              ) : null}
             </div>
           </header>
         </MotionSection>

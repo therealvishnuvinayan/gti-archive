@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "../.tmp/permissions-sync",
+    "rootDir": "..",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2020"
+  },
+  "include": [
+    "./sync-permissions.ts",
+    "../src/lib/prisma.ts",
+    "../src/lib/project-collaborator-participant-types.ts",
+    "../src/lib/permissions/definitions.ts",
+    "../src/lib/permissions/profiles.ts"
+  ],
+  "exclude": [
+    "../node_modules",
+    "../.next"
+  ]
+}

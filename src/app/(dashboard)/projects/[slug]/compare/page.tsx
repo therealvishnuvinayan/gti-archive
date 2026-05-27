@@ -1,18 +1,17 @@
 import { notFound, redirect } from "next/navigation";
-
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
-import { ProjectCompareWorkspace } from "@/components/projects/project-compare-workspace";
 import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { getComparisonCommentsForPair } from "@/lib/comparison";
+import { hasProjectPermission } from "@/lib/permissions/resolver";
 import {
   getStageSubmissionAttachments,
   resolveComparisonSelection,
 } from "@/lib/comparison-utils";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
-import { UserRole } from "@prisma/client";
+import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { ProjectBackButton } from "@/components/projects/project-back-button";
+import { ProjectCompareWorkspace } from "@/components/projects/project-compare-workspace";
 
 export default async function ProjectComparePage({
   params,
@@ -47,10 +46,17 @@ export default async function ProjectComparePage({
     );
   }
 
-  const canManageCollaborators =
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN ||
-    project.ownerId === user.id;
+  const canManageCollaborators = hasProjectPermission(
+    user,
+    {
+      createdById: project.ownerId,
+      executorUserId: project.executorUserId ?? null,
+      collaborators: project.collaborators.map((collaborator) => ({
+        userId: collaborator.id,
+      })),
+    },
+    "project.manageCollaborators",
+  );
 
   const submissions = getStageSubmissionAttachments(history.entries);
   const { baseSubmission, compareSubmission } = resolveComparisonSelection(

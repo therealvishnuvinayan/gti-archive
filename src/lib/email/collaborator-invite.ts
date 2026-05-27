@@ -2,6 +2,7 @@ import type {
   CollaboratorInput,
   PermissionLevel,
 } from "@/lib/collaboration";
+import { getCollaboratorTypeLabel } from "@/lib/project-collaborator-participant-types";
 
 type InviteEmailPayload = {
   collaboratorName: string;
@@ -53,6 +54,7 @@ export function buildCollaboratorInviteEmail({
   const subject = `You’ve been invited to GTI Archive`;
   const permissionRows = buildPermissionRows(permissions);
   const safeName = collaboratorName || collaboratorEmail;
+  const collaboratorTypeLabel = getCollaboratorTypeLabel(collaboratorType);
 
   const html = `
     <div style="margin:0; padding:32px 0; background:#eef3ec; font-family: Inter, Arial, sans-serif; color:#111712;">
@@ -61,7 +63,7 @@ export function buildCollaboratorInviteEmail({
           <div style="font-size:13px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.78;">GTI Archive</div>
           <h1 style="margin:18px 0 10px; font-size:36px; line-height:1.04; font-weight:700;">You’ve been invited</h1>
           <p style="margin:0; max-width:480px; font-size:16px; line-height:1.7; color:rgba(255,255,255,0.9);">
-            ${inviterName} invited you to collaborate in GTI Archive as an ${collaboratorType.toLowerCase()} collaborator.
+            ${inviterName} invited you to collaborate in GTI Archive as a ${collaboratorTypeLabel}.
           </p>
         </div>
 
@@ -104,7 +106,7 @@ export function buildCollaboratorInviteEmail({
   const text = [
     "You’ve been invited to GTI Archive",
     "",
-    `${inviterName} invited you as an ${collaboratorType.toLowerCase()} collaborator.`,
+    `${inviterName} invited you as a ${collaboratorTypeLabel}.`,
     "",
     "Assigned access:",
     ...(Object.keys(permissions) as Array<keyof typeof permissions>).map(

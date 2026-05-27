@@ -801,6 +801,7 @@ function ChangePasswordDrawer({
 
 export function SettingsWorkspace({
   user,
+  canManageMasterData = false,
 }: SettingsWorkspaceProps) {
   const router = useRouter();
   const [isProfileDrawerOpen, setProfileDrawerOpen] = useState(false);
@@ -1182,17 +1183,19 @@ export function SettingsWorkspace({
             title="Project Master Data"
             description="Manage reusable project categories, tags, and currencies used across project forms and filters."
             action={
-              <Button
-                asChild
-                type="button"
-                variant="outline"
-                className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
-              >
-                <Link href="/settings/project-master-data">
-                  <Settings2 className="h-4 w-4" />
-                  Open Project Master Data
-                </Link>
-              </Button>
+              canManageMasterData ? (
+                <Button
+                  asChild
+                  type="button"
+                  variant="outline"
+                  className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
+                >
+                  <Link href="/settings/project-master-data">
+                    <Settings2 className="h-4 w-4" />
+                    Open Project Master Data
+                  </Link>
+                </Button>
+              ) : undefined
             }
           >
             <div className="rounded-[22px] bg-[#fbfcfa] p-4">

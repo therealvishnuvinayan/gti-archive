@@ -1,15 +1,14 @@
 import { notFound } from "next/navigation";
-
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
-import { ProjectChatWorkspace } from "@/components/projects/project-chat-workspace";
 import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
+import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { getProjectCompletionWorkflowForUser } from "@/lib/project-completion";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
-import { UserRole } from "@prisma/client";
+import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { ProjectBackButton } from "@/components/projects/project-back-button";
+import { ProjectChatWorkspace } from "@/components/projects/project-chat-workspace";
 
 export default async function ProjectChatPage({
   params,
@@ -27,19 +26,26 @@ export default async function ProjectChatPage({
     notFound();
   }
 
+  const canManageCollaborators = hasProjectPermission(
+    user,
+    {
+      createdById: project.ownerId,
+      executorUserId: project.executorUserId ?? null,
+      collaborators: project.collaborators.map((collaborator) => ({
+        userId: collaborator.id,
+      })),
+    },
+    "project.manageCollaborators",
+  );
+
   const [history, availableCollaborators] = await Promise.all([
     getProjectStageHistory(user, slug, stage),
-    getCollaborators(),
+    canManageCollaborators ? getCollaborators() : Promise.resolve([]),
   ]);
   const [completionSummary, completionWorkflow] = await Promise.all([
     getProjectCompletionSummary(user, slug, history.activeStageId ?? stage),
     getProjectCompletionWorkflowForUser(user, slug),
   ]);
-
-  const canManageCollaborators =
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN ||
-    project.ownerId === user.id;
 
   return (
     <DashboardLayout

@@ -11,6 +11,13 @@ import {
 import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
 import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
 import { sendResendEmail } from "@/lib/email/resend";
+import {
+  getCollaboratorTypeGroup,
+  getCollaboratorTypeLabel,
+  isProjectCollaboratorParticipantType,
+  resolveCollaboratorType,
+  type ProjectCollaboratorParticipantType,
+} from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
@@ -19,13 +26,15 @@ export const CALENDAR_COLLABORATORS_CACHE_TAG = "calendar-collaborators";
 
 export type AccessArea = "project" | "calendar" | "library" | "archive";
 export type PermissionLevel = "full" | "limited" | "none";
-export type CollaboratorType = "Internal" | "External";
+export type CollaboratorType = ProjectCollaboratorParticipantType;
 
 export type CollaboratorRecord = {
   id: string;
   name: string;
   email: string;
   type: CollaboratorType;
+  typeLabel: string;
+  typeGroup: "internal" | "external";
   permissions: Record<AccessArea, PermissionLevel>;
 };
 
@@ -84,16 +93,6 @@ const reversePermissionMap: Record<PrismaCollaboratorAccess, PermissionLevel> = 
   NONE: "none",
 };
 
-const collaboratorTypeMap: Record<CollaboratorType, PrismaCollaboratorType> = {
-  Internal: "INTERNAL",
-  External: "EXTERNAL",
-};
-
-const reverseCollaboratorTypeMap: Record<PrismaCollaboratorType, CollaboratorType> = {
-  INTERNAL: "Internal",
-  EXTERNAL: "External",
-};
-
 function getFallbackName(email: string) {
   const [localPart] = email.split("@");
 
@@ -137,11 +136,15 @@ function mapCollaborator(user: Pick<
   | "libraryAccess"
   | "archiveAccess"
 >): CollaboratorRecord {
+  const resolvedType = resolveCollaboratorType(user.collaboratorType);
+
   return {
     id: user.id,
     name: user.name?.trim() || getFallbackName(user.email),
     email: user.email,
-    type: reverseCollaboratorTypeMap[user.collaboratorType],
+    type: resolvedType,
+    typeLabel: getCollaboratorTypeLabel(resolvedType),
+    typeGroup: getCollaboratorTypeGroup(resolvedType),
     permissions: {
       project: reversePermissionMap[user.projectAccess],
       calendar: reversePermissionMap[user.calendarAccess],
@@ -165,7 +168,7 @@ function validateCollaboratorInput(
     return { error: "Enter a valid collaborator email." };
   }
 
-  if (!(input.type in collaboratorTypeMap)) {
+  if (!isProjectCollaboratorParticipantType(input.type)) {
     return { error: "Choose a valid collaborator type." };
   }
 
@@ -173,7 +176,7 @@ function validateCollaboratorInput(
     data: {
       name,
       email,
-      type: collaboratorTypeMap[input.type],
+      type: input.type as PrismaCollaboratorType,
       projectAccess: permissionMap[input.permissions.project],
       calendarAccess: permissionMap[input.permissions.calendar],
       libraryAccess: permissionMap[input.permissions.library],

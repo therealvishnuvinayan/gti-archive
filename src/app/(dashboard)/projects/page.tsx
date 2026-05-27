@@ -1,11 +1,12 @@
-import { UserRole } from "@prisma/client";
+import { notFound } from "next/navigation";
 
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
-import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
+import { hasPermission } from "@/lib/permissions/resolver";
 import {
   getDashboardProjectCounts,
+  getProjectListFilterOptions,
   getProjectsList,
 } from "@/lib/projects";
 
@@ -45,20 +46,27 @@ export default async function ProjectsPage({
       : "newest";
   const activeCategory = resolvedSearchParams.category?.trim() ?? "";
   const activeTag = resolvedSearchParams.tag?.trim() ?? "";
-  const [user, projects, projectCounts, filterOptions] = await Promise.all([
-    requireUser(),
+  const user = await requireUser();
+
+  if (!hasPermission(user, "project.list") && !hasPermission(user, "project.view")) {
+    notFound();
+  }
+
+  const [projects, projectCounts, filterOptions] = await Promise.all([
     getProjectsList({
       status: activeStatus,
       query,
       category: activeCategory,
       tag: activeTag,
       sort: activeSort,
-    }),
-    getDashboardProjectCounts(),
-    getActiveProjectMasterDataOptions(),
+    }, user),
+    getDashboardProjectCounts(user),
+    getProjectListFilterOptions(user),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
-  const canManageProjects = user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
+  const canCreateProjects = hasPermission(user, "project.create");
+  const canEditProjects = hasPermission(user, "project.update");
+  const canDeleteProjects = hasPermission(user, "project.delete");
 
   return (
     <DashboardLayout>
@@ -66,7 +74,9 @@ export default async function ProjectsPage({
         <ProjectsBrowser
           projects={projects}
           hasAnyProjects={hasAnyProjects}
-          canManageProjects={canManageProjects}
+          canCreateProjects={canCreateProjects}
+          canEditProjects={canEditProjects}
+          canDeleteProjects={canDeleteProjects}
           activeStatus={activeStatus}
           activeSort={activeSort}
           query={query}

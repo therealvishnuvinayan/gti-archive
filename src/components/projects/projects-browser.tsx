@@ -35,7 +35,9 @@ type ProjectFilter = {
 type ProjectsBrowserProps = {
   projects: ProjectCardItem[];
   hasAnyProjects: boolean;
-  canManageProjects: boolean;
+  canCreateProjects: boolean;
+  canEditProjects: boolean;
+  canDeleteProjects: boolean;
   activeStatus: ProjectFilterValue;
   activeSort: ProjectSortValue;
   query: string;
@@ -113,7 +115,9 @@ const ALL_TAGS = "__all_tags__";
 export function ProjectsBrowser({
   projects,
   hasAnyProjects,
-  canManageProjects,
+  canCreateProjects,
+  canEditProjects,
+  canDeleteProjects,
   activeStatus,
   activeSort,
   query,
@@ -305,9 +309,11 @@ export function ProjectsBrowser({
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-end">
-              <Button asChild size="lg" className="min-w-[170px] text-[16px]">
-                <Link href="/projects/new">+ New Project</Link>
-              </Button>
+              {canCreateProjects ? (
+                <Button asChild size="lg" className="min-w-[170px] text-[16px]">
+                  <Link href="/projects/new">+ New Project</Link>
+                </Button>
+              ) : null}
               {hasAnyProjects ? (
                 <ProjectSortDropdown
                   activeSort={activeSort}
@@ -335,7 +341,11 @@ export function ProjectsBrowser({
         >
           {projects.map((project) => (
             <MotionItem key={project.id} y={10} layout>
-              <ProjectCard project={project} canManage={canManageProjects} />
+              <ProjectCard
+                project={project}
+                canEdit={canEditProjects}
+                canDelete={canDeleteProjects}
+              />
             </MotionItem>
           ))}
         </MotionStaggerGroup>

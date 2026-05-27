@@ -6,6 +6,7 @@ import {
 } from "@/lib/comparison-utils";
 import { assertProjectAccess } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
 
 type AccessUser = Pick<
   User,
@@ -21,7 +22,7 @@ function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
     return "Internal Team";
   }
 
-  return user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator";
+  return getCollaboratorRoleLabel(user.collaboratorType);
 }
 
 function formatComparisonTimestamp(date: Date | string | number) {

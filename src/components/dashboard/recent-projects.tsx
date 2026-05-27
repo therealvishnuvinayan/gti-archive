@@ -43,7 +43,7 @@ export function RecentProjects({ title, items }: RecentProjectsProps) {
         </ul>
       ) : (
         <p className="text-[14px] leading-6 text-[#758077]">
-          No projects yet. Create your first project to see it here.
+          No recent projects to show.
         </p>
       )}
     </article>

@@ -11,13 +11,20 @@ import {
 } from "@/lib/calendar";
 import {
   CALENDAR_COLLABORATORS_CACHE_TAG,
+  type CollaboratorRecord,
   updateCalendarCollaborators,
 } from "@/lib/collaboration";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 export async function saveCalendarEventAction(
   input: SaveCalendarEventInput,
 ): Promise<CreateCalendarEventResult> {
   const user = await requireUser();
+
+  if (!hasPermission(user, "calendar.create")) {
+    return { error: "You are not allowed to create calendar events." };
+  }
+
   const result = await createCalendarEvent(user.id, input);
 
   if ("error" in result) {
@@ -30,8 +37,15 @@ export async function saveCalendarEventAction(
   return result;
 }
 
-export async function saveCalendarCollaboratorsAction(collaboratorIds: string[]) {
+export async function saveCalendarCollaboratorsAction(
+  collaboratorIds: string[],
+): Promise<{ collaborators: CollaboratorRecord[] } | { error: string }> {
   const user = await requireUser();
+
+  if (!hasPermission(user, "calendar.assignParticipants")) {
+    return { error: "You are not allowed to manage calendar collaborators." };
+  }
+
   const collaborators = await updateCalendarCollaborators(collaboratorIds, user.id);
 
   revalidatePath("/calendar");

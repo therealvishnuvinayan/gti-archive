@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 import { NotificationCenterProvider } from "@/components/notifications/notification-center";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import type { VisibleSidebarItems } from "@/components/layout/sidebar";
 import type { DashboardUserView } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
 
@@ -12,6 +13,7 @@ type DashboardAppFrameProps = {
   children: React.ReactNode;
   user?: DashboardUserView | null;
   projectBadgeCount?: number;
+  visibleSidebarItems: VisibleSidebarItems;
 };
 
 function BackPill({ href }: { href: string }) {
@@ -95,6 +97,7 @@ export function DashboardAppFrame({
   children,
   user,
   projectBadgeCount,
+  visibleSidebarItems,
 }: DashboardAppFrameProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -108,6 +111,7 @@ export function DashboardAppFrame({
       <DashboardShell
         user={user}
         projectBadgeCount={projectBadgeCount}
+        visibleSidebarItems={visibleSidebarItems}
         topbarProps={getTopbarProps(pathname, searchParams)}
       >
         {children}

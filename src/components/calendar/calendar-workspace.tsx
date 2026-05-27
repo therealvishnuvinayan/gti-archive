@@ -51,6 +51,9 @@ type CalendarWorkspaceProps = {
   initialEvents: CalendarEventRecord[];
   availableCollaborators: CollaboratorRecord[];
   assignedCollaborators: CollaboratorRecord[];
+  canCreateEvents: boolean;
+  canAssignParticipants: boolean;
+  canInviteCollaborators: boolean;
 };
 
 const hours = Array.from({ length: 9 }, (_, index) => 9 + index);
@@ -192,6 +195,9 @@ export function CalendarWorkspace({
   initialEvents,
   availableCollaborators,
   assignedCollaborators,
+  canCreateEvents,
+  canAssignParticipants,
+  canInviteCollaborators,
 }: CalendarWorkspaceProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [view, setView] = useState<CalendarView>("week");
@@ -219,7 +225,7 @@ export function CalendarWorkspace({
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
-    type: "Internal",
+    type: "GTI_INTERNAL_CLIENT",
     permissions: {
       project: "none",
       calendar: "none",
@@ -311,7 +317,7 @@ export function CalendarWorkspace({
     setCollaboratorForm({
       name: "",
       email: "",
-      type: "Internal",
+      type: "GTI_INTERNAL_CLIENT",
       permissions: {
         project: "none",
         calendar: "none",
@@ -351,6 +357,12 @@ export function CalendarWorkspace({
 
     try {
       const result = await saveCalendarCollaboratorsAction(selectedCollaboratorIds);
+
+      if ("error" in result) {
+        setCollaboratorPickerError(result.error);
+        return;
+      }
+
       setAssignedCollaboratorRecords(result.collaborators);
       setCollaboratorPickerOpen(false);
     } catch {
@@ -384,6 +396,12 @@ export function CalendarWorkspace({
         ...selectedCollaboratorIds,
         result.collaborator.id,
       ]);
+
+      if ("error" in calendarResult) {
+        setCollaboratorDialogError(calendarResult.error);
+        return;
+      }
+
       setAssignedCollaboratorRecords(calendarResult.collaborators);
       setCollaboratorDialogOpen(false);
       setCollaboratorPickerOpen(false);
@@ -523,13 +541,15 @@ export function CalendarWorkspace({
             </TabsList>
           </Tabs>
 
-          <Button
-            type="button"
-            onClick={() => openDialog(selectedDate)}
-            className="min-h-[42px] gap-2 px-6 text-[14px]"
-          >
-            Create <Plus className="h-4 w-4" />
-          </Button>
+          {canCreateEvents ? (
+            <Button
+              type="button"
+              onClick={() => openDialog(selectedDate)}
+              className="min-h-[42px] gap-2 px-6 text-[14px]"
+            >
+              Create <Plus className="h-4 w-4" />
+            </Button>
+          ) : null}
         </div>
       </div>
     );
@@ -620,6 +640,10 @@ export function CalendarWorkspace({
   }
 
   function renderCollaborators() {
+    if (!canAssignParticipants) {
+      return null;
+    }
+
     return (
       <Card className="rounded-[20px]">
         <CardHeader className="flex-row items-center justify-between pb-3">
@@ -740,12 +764,15 @@ export function CalendarWorkspace({
                       key={`${dayKey}-${hour}`}
                       type="button"
                       onClick={() =>
-                        openDialog(
-                          day,
-                          `${String(hour).padStart(2, "0")}:00`,
-                          `${String(hour + 1).padStart(2, "0")}:00`,
-                        )
+                        canCreateEvents
+                          ? openDialog(
+                              day,
+                              `${String(hour).padStart(2, "0")}:00`,
+                              `${String(hour + 1).padStart(2, "0")}:00`,
+                            )
+                          : undefined
                       }
+                      disabled={!canCreateEvents}
                       className="block h-[74px] w-full cursor-pointer border-t border-[#dbe2dc] text-left transition-colors first:border-t-0 hover:bg-white/35"
                       aria-label={`Add event on ${dayKey} at ${formatHour(hour)}`}
                     />
@@ -815,7 +842,9 @@ export function CalendarWorkspace({
                     type="button"
                     onClick={() => {
                       setSelectedDate(date);
-                      openDialog(date);
+                      if (canCreateEvents) {
+                        openDialog(date);
+                      }
                     }}
                     variant="secondary"
                     className={`min-h-[126px] rounded-[18px] border p-3 text-left transition-colors ${
@@ -940,7 +969,7 @@ export function CalendarWorkspace({
           setCollaboratorPickerOpen(false);
         }}
         onConfirm={saveAssignedCollaborators}
-        onInviteFallback={openCollaboratorDialog}
+        onInviteFallback={canInviteCollaborators ? openCollaboratorDialog : undefined}
         confirmLabel="Apply Selection"
       />
     </>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { Sidebar } from "@/components/layout/sidebar";
+import { Sidebar, type VisibleSidebarItems } from "@/components/layout/sidebar";
 import { MotionPage } from "@/components/motion/motion-primitives";
 import {
   Topbar,
@@ -21,6 +21,7 @@ type DashboardShellProps = {
   topbarProps?: DashboardShellTopbarProps;
   user: DashboardUserView;
   projectBadgeCount?: number;
+  visibleSidebarItems: VisibleSidebarItems;
 };
 
 export function DashboardShell({
@@ -28,6 +29,7 @@ export function DashboardShell({
   topbarProps,
   user,
   projectBadgeCount,
+  visibleSidebarItems,
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
@@ -39,6 +41,7 @@ export function DashboardShell({
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           projectBadgeCount={projectBadgeCount}
+          visibleSidebarItems={visibleSidebarItems}
         />
 
         <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">

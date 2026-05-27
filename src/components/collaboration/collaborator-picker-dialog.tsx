@@ -55,13 +55,13 @@ export function CollaboratorPickerDialog({
   confirmLabel = "Add Collaborators",
 }: CollaboratorPickerDialogProps) {
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "Internal" | "External">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "internal" | "external">("all");
 
   const filteredCollaborators = useMemo(
     () =>
       collaborators.filter((collaborator) => {
         const matchesType =
-          typeFilter === "all" ? true : collaborator.type === typeFilter;
+          typeFilter === "all" ? true : collaborator.typeGroup === typeFilter;
         const normalizedQuery = query.trim().toLowerCase();
         const matchesQuery = normalizedQuery
           ? collaborator.name.toLowerCase().includes(normalizedQuery) ||
@@ -120,7 +120,7 @@ export function CollaboratorPickerDialog({
             <Select
               value={typeFilter}
               onValueChange={(value) =>
-                setTypeFilter(value as "all" | "Internal" | "External")
+                setTypeFilter(value as "all" | "internal" | "external")
               }
               disabled={saving}
             >
@@ -129,8 +129,8 @@ export function CollaboratorPickerDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="Internal">Internal</SelectItem>
-                <SelectItem value="External">External</SelectItem>
+                <SelectItem value="internal">Internal</SelectItem>
+                <SelectItem value="external">External</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -166,12 +166,12 @@ export function CollaboratorPickerDialog({
                     <Badge
                       variant="secondary"
                       className={
-                        collaborator.type === "Internal"
+                        collaborator.typeGroup === "internal"
                           ? "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]"
                           : "border border-[#f1dfcf] bg-[#fff4ea] text-[#ca7b3b]"
                       }
                     >
-                      {collaborator.type}
+                      {collaborator.typeLabel}
                     </Badge>
                     <div
                       className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border ${

@@ -1,8 +1,7 @@
-import { UserRole } from "@prisma/client";
-
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { getUserDisplayName, requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 function formatRole(role: string) {
   return role
@@ -53,8 +52,7 @@ function formatPasswordChangedAt(date: Date | string | number | null | undefined
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const canManageMasterData =
-    user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
+  const canManageMasterData = hasPermission(user, "settings.manageMasterData");
 
   return (
     <DashboardLayout>

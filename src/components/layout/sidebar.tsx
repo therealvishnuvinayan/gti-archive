@@ -13,6 +13,7 @@ import {
   Library,
   Settings,
   Users,
+  UserRound,
   Archive,
   X,
 } from "lucide-react";
@@ -20,6 +21,17 @@ import {
 import { useNotificationCenter } from "@/components/notifications/notification-center";
 
 type SidebarItem = {
+  visibilityKey:
+    | "dashboard"
+    | "projects"
+    | "calendar"
+    | "collaboration"
+    | "users"
+    | "notifications"
+    | "library"
+    | "archives"
+    | "settings"
+    | "help";
   label: string;
   href: string;
   icon: LucideIcon;
@@ -31,24 +43,42 @@ type SidebarSection = {
   items: SidebarItem[];
 };
 
+export type VisibleSidebarItems = Record<SidebarItem["visibilityKey"], boolean>;
+
 const sidebarSections: SidebarSection[] = [
   {
     title: "Menu",
     items: [
-      { label: "Dashboard", href: "/", icon: LayoutGrid },
-      { label: "Projects", href: "/projects", icon: BookCopy },
-      { label: "Calendar", href: "/calendar", icon: CalendarDays },
-      { label: "Collaboration", href: "/collaboration", icon: Users },
-      { label: "Notifications", href: "/notifications", icon: Bell },
-      { label: "Library", href: "/library", icon: Library },
-      { label: "Archives", href: "/archives", icon: Archive },
+      { visibilityKey: "dashboard", label: "Dashboard", href: "/", icon: LayoutGrid },
+      { visibilityKey: "projects", label: "Projects", href: "/projects", icon: BookCopy },
+      { visibilityKey: "calendar", label: "Calendar", href: "/calendar", icon: CalendarDays },
+      {
+        visibilityKey: "collaboration",
+        label: "Collaboration",
+        href: "/collaboration",
+        icon: Users,
+      },
+      {
+        visibilityKey: "users",
+        label: "Users",
+        href: "/users",
+        icon: UserRound,
+      },
+      {
+        visibilityKey: "notifications",
+        label: "Notifications",
+        href: "/notifications",
+        icon: Bell,
+      },
+      { visibilityKey: "library", label: "Library", href: "/library", icon: Library },
+      { visibilityKey: "archives", label: "Archives", href: "/archives", icon: Archive },
     ],
   },
   {
     title: "General",
     items: [
-      { label: "Settings", href: "/settings", icon: Settings },
-      { label: "Help", href: "/help", icon: HelpCircle },
+      { visibilityKey: "settings", label: "Settings", href: "/settings", icon: Settings },
+      { visibilityKey: "help", label: "Help", href: "/help", icon: HelpCircle },
     ],
   },
 ];
@@ -57,6 +87,7 @@ type SidebarProps = {
   isOpen: boolean;
   onClose: () => void;
   projectBadgeCount?: number;
+  visibleSidebarItems: VisibleSidebarItems;
 };
 
 function LogoMark() {
@@ -73,9 +104,20 @@ function LogoMark() {
   );
 }
 
-export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
+export function Sidebar({
+  isOpen,
+  onClose,
+  projectBadgeCount,
+  visibleSidebarItems,
+}: SidebarProps) {
   const pathname = usePathname();
   const { unreadCount } = useNotificationCenter();
+  const sections = sidebarSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => visibleSidebarItems[item.visibilityKey]),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <>
@@ -105,7 +147,7 @@ export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
         </div>
 
         <nav className="dashboard-scroll-thin flex min-h-0 flex-1 flex-col gap-10 overflow-y-auto pr-1">
-          {sidebarSections.map((section) => (
+          {sections.map((section) => (
             <div key={section.title}>
               <p className="mb-4 px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted/75">
                 {section.title}

@@ -5,6 +5,7 @@ import type {
   CalendarEventType,
 } from "@prisma/client";
 
+import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const CALENDAR_CACHE_TAG = "calendar-events";
@@ -165,7 +166,11 @@ export function parseCalendarEventInput(
   } as const;
 }
 
-export async function getCalendarEvents() {
+export async function getCalendarEvents(user: PermissionUser) {
+  if (!hasPermission(user, "calendar.view")) {
+    return [];
+  }
+
   const events = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
@@ -175,7 +180,7 @@ export async function getCalendarEvents() {
           },
         }),
       ),
-    ["calendar-events"],
+    ["calendar-events", user.id],
     { revalidate: 20, tags: [CALENDAR_CACHE_TAG] },
   )();
 

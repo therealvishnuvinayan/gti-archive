@@ -119,6 +119,8 @@ type ExecutorOption = {
   name: string;
   email: string;
   type: CollaboratorRecord["type"];
+  typeLabel: string;
+  typeGroup: CollaboratorRecord["typeGroup"];
 };
 
 type UploadAssetResponse = {
@@ -223,7 +225,9 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function formatExecutorTypeLabel(type: CollaboratorRecord["type"]) {
-  return type === "External" ? "External Collaborator" : "Internal Collaborator";
+  return getProjectCollaboratorTypeMeta(type).group === "external"
+    ? "External Collaborator"
+    : "Internal Collaborator";
 }
 
 function CreateProjectSubmitButton({
@@ -273,7 +277,7 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "Internal",
+    type: "GTI_INTERNAL_CLIENT",
     permissions: {
       project: "none",
       calendar: "none",
@@ -477,6 +481,8 @@ export function CreateProjectWorkspace({
         name: collaborator.name,
         email: collaborator.email,
         type: collaborator.type,
+        typeLabel: collaborator.typeLabel,
+        typeGroup: collaborator.typeGroup,
       })),
     [availableCollaboratorRecords],
   );
@@ -492,7 +498,7 @@ export function CreateProjectWorkspace({
     }
 
     return executorOptions.filter((option) =>
-      [option.name, option.email, option.type, formatExecutorTypeLabel(option.type)].some(
+      [option.name, option.email, option.typeLabel, formatExecutorTypeLabel(option.type)].some(
         (value) => value.toLowerCase().includes(query),
       ),
     );
@@ -649,12 +655,12 @@ export function CreateProjectWorkspace({
           name: availableCollaborator.name,
           email: availableCollaborator.email,
           role:
-            availableCollaborator.type === "External"
+            availableCollaborator.typeGroup === "external"
               ? "External Collaborator"
               : "Collaborator",
-          group: availableCollaborator.type === "External" ? "external" : "internal",
+          group: availableCollaborator.typeGroup,
           participantType: getDefaultProjectCollaboratorParticipantType(
-            availableCollaborator.type === "External" ? "external" : "internal",
+            availableCollaborator.typeGroup,
           ),
           chatVisibilityPaused: false,
           access: "view",
@@ -689,12 +695,12 @@ export function CreateProjectWorkspace({
           name: result.collaborator.name,
           email: result.collaborator.email,
           role:
-            result.collaborator.type === "External"
+            result.collaborator.typeGroup === "external"
               ? "External Collaborator"
               : "Collaborator",
-          group: result.collaborator.type === "External" ? "external" : "internal",
+          group: result.collaborator.typeGroup,
           participantType: getDefaultProjectCollaboratorParticipantType(
-            result.collaborator.type === "External" ? "external" : "internal",
+            result.collaborator.typeGroup,
           ),
           chatVisibilityPaused: false,
           access: "view",

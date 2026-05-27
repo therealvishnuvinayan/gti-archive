@@ -109,7 +109,7 @@ function getDefaultForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "Internal",
+    type: "GTI_INTERNAL_CLIENT",
     permissions: getDefaultPermissions(),
   };
 }
@@ -125,11 +125,13 @@ function getInitials(name: string) {
 
 type CollaborationWorkspaceProps = {
   initialCollaborators: CollaboratorRecord[];
+  canManageCollaborators: boolean;
   canDeleteCollaborators: boolean;
 };
 
 export function CollaborationWorkspace({
   initialCollaborators,
+  canManageCollaborators,
   canDeleteCollaborators,
 }: CollaborationWorkspaceProps) {
   const [selectedArea, setSelectedArea] = useState<AccessArea>("project");
@@ -465,9 +467,15 @@ export function CollaborationWorkspace({
                 </p>
               </div>
 
-              <Button type="button" onClick={openInviteDialog} className="self-start xl:self-auto">
-                Invite <Plus className="h-4 w-4" />
-              </Button>
+              {canManageCollaborators ? (
+                <Button
+                  type="button"
+                  onClick={openInviteDialog}
+                  className="self-start xl:self-auto"
+                >
+                  Invite <Plus className="h-4 w-4" />
+                </Button>
+              ) : null}
             </div>
 
             <MotionSection y={10}>
@@ -538,7 +546,7 @@ export function CollaborationWorkspace({
                             {collaborator.name}
                           </p>
                           <p className="truncate text-[11px] text-[#56b24c]">
-                            {collaborator.type}
+                            {collaborator.typeLabel}
                           </p>
                           <p className="truncate text-[11px] text-[#8b948d] lg:hidden">
                             {collaborator.email}
@@ -580,16 +588,18 @@ export function CollaborationWorkspace({
                       </div>
 
                       <div className="flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="icon"
-                          onClick={() => openEditDialog(collaborator)}
-                          className="h-9 w-9 border border-[#d9dfda] shadow-none"
-                          aria-label={`Edit ${collaborator.name}`}
-                        >
-                          <PenLine className="h-4 w-4" />
-                        </Button>
+                        {canManageCollaborators ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="icon"
+                            onClick={() => openEditDialog(collaborator)}
+                            className="h-9 w-9 border border-[#d9dfda] shadow-none"
+                            aria-label={`Edit ${collaborator.name}`}
+                          >
+                            <PenLine className="h-4 w-4" />
+                          </Button>
+                        ) : null}
                         {canDeleteCollaborators ? (
                           <Button
                             type="button"

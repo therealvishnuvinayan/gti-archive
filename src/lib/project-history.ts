@@ -25,6 +25,7 @@ import {
 } from "@/lib/project-collaborator-visibility";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
 import {
   buildProjectAssetKey,
   createPresignedDownloadUrl,
@@ -131,7 +132,7 @@ function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
     return "Internal Team";
   }
 
-  return user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator";
+  return getCollaboratorRoleLabel(user.collaboratorType);
 }
 
 function formatHistoryTimestamp(date: Date | string | number) {

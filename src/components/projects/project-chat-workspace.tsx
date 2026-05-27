@@ -855,7 +855,7 @@ export function ProjectChatWorkspace({
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
-    type: "Internal",
+    type: "GTI_INTERNAL_CLIENT",
     permissions: {
       project: "none",
       calendar: "none",
@@ -1177,7 +1177,7 @@ export function ProjectChatWorkspace({
     setCollaboratorForm({
       name: "",
       email: "",
-      type: "Internal",
+      type: "GTI_INTERNAL_CLIENT",
       permissions: {
         project: "none",
         calendar: "none",
@@ -1212,12 +1212,12 @@ export function ProjectChatWorkspace({
           name: availableCollaborator.name,
           email: availableCollaborator.email,
           role:
-            availableCollaborator.type === "External"
+            availableCollaborator.typeGroup === "external"
               ? "External Collaborator"
               : "Collaborator",
-          group: availableCollaborator.type === "External" ? "external" : "internal",
+          group: availableCollaborator.typeGroup,
           participantType: getDefaultProjectCollaboratorParticipantType(
-            availableCollaborator.type === "External" ? "external" : "internal",
+            availableCollaborator.typeGroup,
           ),
           chatVisibilityPaused: false,
           access: "view",
@@ -1298,7 +1298,7 @@ export function ProjectChatWorkspace({
         {
           id: inviteResult.collaborator.id,
           participantType: getDefaultProjectCollaboratorParticipantType(
-            inviteResult.collaborator.type === "External" ? "external" : "internal",
+            inviteResult.collaborator.typeGroup,
           ),
         },
       ]);
