@@ -93,7 +93,15 @@ export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
         }`}
       >
         <div className="mb-10 flex items-start justify-between gap-3 lg:mb-14">
-          <LogoMark />
+          <Link
+            href="/"
+            onClick={onClose}
+            className="inline-flex cursor-pointer"
+            aria-label="Go to dashboard home"
+            title="Go to dashboard home"
+          >
+            <LogoMark />
+          </Link>
           <button
             type="button"
             onClick={onClose}
