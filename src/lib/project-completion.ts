@@ -10,6 +10,12 @@ import {
 } from "@prisma/client";
 
 import { getUserDisplayName } from "@/lib/auth";
+import {
+  notifyApprovalProofUploaded,
+  notifyCopyrightDocumentUploaded,
+  notifyInvoiceUploaded,
+  runNotificationTask,
+} from "@/lib/notification-center";
 import { assertProjectAccess } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
@@ -1298,6 +1304,33 @@ export async function finalizeProjectCompletionDocumentUpload(
       }
     }),
   );
+
+  switch (input.documentType) {
+    case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
+      await runNotificationTask("approval-proof-uploaded", () =>
+        notifyApprovalProofUploaded({
+          projectId: input.projectId,
+          actorId: user.id,
+        }),
+      );
+      break;
+    case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
+      await runNotificationTask("copyright-document-uploaded", () =>
+        notifyCopyrightDocumentUploaded({
+          projectId: input.projectId,
+          actorId: user.id,
+        }),
+      );
+      break;
+    case ProjectCompletionDocumentType.INVOICE:
+      await runNotificationTask("invoice-uploaded", () =>
+        notifyInvoiceUploaded({
+          projectId: input.projectId,
+          actorId: user.id,
+        }),
+      );
+      break;
+  }
 }
 
 export async function getProjectCompletionDocumentDownloadUrlForUser(

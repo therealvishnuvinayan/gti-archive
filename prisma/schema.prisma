@@ -108,6 +108,42 @@ enum ProjectCompletionDocumentType {
   INVOICE
 }
 
+enum NotificationType {
+  PROJECT_ASSIGNED
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  COLLABORATOR_ADDED
+  COLLABORATOR_REMOVED
+  BRIEF_ACCEPTED
+  REVISION_SUBMITTED
+  REVISION_APPROVED
+  REVISION_REJECTED
+  SUBMISSION_PENDING_REVIEW
+  SUBMISSION_COMPLETED
+  SUBMISSION_REVISION_REQUESTED
+  STAGE_COMPLETED
+  NEXT_STAGE_ACTIVATED
+  COMMENT_ADDED
+  FILE_UPLOADED
+  PROJECT_ARCHIVED
+  APPROVAL_REQUIRED
+  APPROVAL_PROOF_UPLOADED
+  COPYRIGHT_TRANSFER_REQUIRED
+  COPYRIGHT_DOCUMENT_UPLOADED
+  INVOICE_UPLOADED
+}
+
+enum NotificationEntityType {
+  PROJECT
+  STAGE
+  REVISION
+  COMMENT
+  ATTACHMENT
+  ARCHIVE
+  COMPLETION_WORKFLOW
+  COMPLETION_DOCUMENT
+}
+
 model User {
   id                String             @id @default(cuid())
   email             String             @unique
@@ -140,6 +176,7 @@ model User {
   approvalContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionApprovalContact")
   copyrightContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionCopyrightContact")
   uploadedCompletionDocuments ProjectCompletionDocument[] @relation("ProjectCompletionDocumentUploadedBy")
+  notifications    Notification[]
   activityLogs      ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
   assignedProjects  Project[]           @relation("ProjectExecutor")
@@ -540,6 +577,33 @@ model ProjectCompletionDocument {
   @@unique([workflowId, type])
   @@index([projectId, type, uploadedAt])
   @@index([uploadedById])
+}
+
+model Notification {
+  id           String                 @id @default(cuid())
+  userId       String
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         NotificationType
+  title        String
+  message      String
+  entityType   NotificationEntityType?
+  entityId     String?
+  projectId    String?
+  stageId      String?
+  revisionId   String?
+  commentId    String?
+  attachmentId String?
+  archiveId    String?
+  url          String?
+  isRead       Boolean                @default(false)
+  readAt       DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead, createdAt])
+  @@index([projectId, createdAt])
+  @@index([type, createdAt])
 }
 
 model Session {

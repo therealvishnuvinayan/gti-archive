@@ -12,6 +12,10 @@ import {
 
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
 import {
+  notifyFileUploaded,
+  runNotificationTask,
+} from "@/lib/notification-center";
+import {
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
   isTimestampHiddenByPauseWindows,
@@ -1499,6 +1503,17 @@ export async function completeAttachmentUpload(
           storageKey: attachment.storageKey,
         },
       },
+    }),
+  );
+
+  await runNotificationTask("file-uploaded", () =>
+    notifyFileUploaded({
+      actorId: user.id,
+      actorName: getDisplayName(user),
+      projectId: attachment.projectId,
+      stageId: attachment.stageId,
+      attachmentId: attachment.id,
+      assetType: attachment.assetType,
     }),
   );
 }

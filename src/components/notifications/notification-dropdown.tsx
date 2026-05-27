@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Bell, ChevronRight } from "lucide-react";
 
 import { useNotificationCenter } from "@/components/notifications/notification-center";
@@ -15,12 +15,25 @@ export function NotificationDropdown() {
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const { recentNotifications, unreadCount, markAllAsRead } = useNotificationCenter();
+  const {
+    recentNotifications,
+    unreadCount,
+    error,
+    isLoading,
+    markAllAsRead,
+    markNotificationAsRead,
+    refreshRecent,
+  } = useNotificationCenter();
+  const handleRefreshOpenDropdown = useEffectEvent(() => {
+    refreshRecent().catch(() => undefined);
+  });
 
   useEffect(() => {
     if (!open) {
       return;
     }
+
+    handleRefreshOpenDropdown();
 
     function handlePointerDown(event: MouseEvent) {
       if (!dropdownRef.current?.contains(event.target as Node)) {
@@ -43,12 +56,23 @@ export function NotificationDropdown() {
     };
   }, [open]);
 
+  async function handleOpenNotification(notificationId: string, href: string) {
+    try {
+      await markNotificationAsRead(notificationId);
+    } catch {
+      // Navigation is more important than surfacing a blocking error here.
+    }
+
+    setOpen(false);
+    router.push(href);
+  }
+
   return (
     <div ref={dropdownRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="relative grid h-[54px] w-[54px] place-items-center rounded-full bg-white text-[#1c241d] shadow-[0_10px_24px_rgba(15,26,20,0.05)] transition-transform hover:-translate-y-0.5"
+        className="relative grid h-[54px] w-[54px] cursor-pointer place-items-center rounded-full bg-white text-[#1c241d] shadow-[0_10px_24px_rgba(15,26,20,0.05)] transition-transform hover:-translate-y-0.5"
         aria-label="Notifications"
         aria-expanded={open}
       >
@@ -69,38 +93,58 @@ export function NotificationDropdown() {
             </div>
             <button
               type="button"
-              onClick={markAllAsRead}
-              className="text-[14px] font-[700] text-brand transition hover:text-[#1f734a]"
+              onClick={() => {
+                markAllAsRead({ showToast: true }).catch(() => undefined);
+              }}
+              className="cursor-pointer text-[14px] font-[700] text-brand transition hover:text-[#1f734a]"
             >
               Mark all as read
             </button>
           </div>
 
           <div className="border-t border-[#eef2ee]">
-            {recentNotifications.map((notification) => (
-              <div
-                key={notification.id}
-                className="grid grid-cols-[14px_minmax(0,1fr)] gap-3 border-b border-[#eef2ee] px-5 py-4 last:border-b-0"
-              >
-                <div className="flex justify-center pt-4">
-                  <NotificationUnreadDot unread={!notification.read} />
-                </div>
-                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-4">
-                  <NotificationVisual notification={notification} size="sm" />
-                  <div className="min-w-0">
-                    <p className="truncate text-[14px] font-[700] leading-5 text-[#18211a]">
-                      {notification.title}
-                    </p>
-                    <p className="mt-1 text-[13px] leading-5 text-[#5f6b62]">
-                      {notification.description}
+            {isLoading ? (
+              <div className="px-6 py-8 text-center text-[14px] text-[#68736a]">
+                Loading notifications...
+              </div>
+            ) : error && recentNotifications.length === 0 ? (
+              <div className="px-6 py-8 text-center text-[14px] text-[#68736a]">
+                Unable to load notifications right now.
+              </div>
+            ) : recentNotifications.length === 0 ? (
+              <div className="px-6 py-8 text-center text-[14px] text-[#68736a]">
+                No notifications yet.
+              </div>
+            ) : (
+              recentNotifications.map((notification) => (
+                <button
+                  key={notification.id}
+                  type="button"
+                  onClick={() =>
+                    handleOpenNotification(notification.id, notification.targetHref)
+                  }
+                  className="grid w-full cursor-pointer grid-cols-[14px_minmax(0,1fr)] gap-3 border-b border-[#eef2ee] px-5 py-4 text-left transition hover:bg-[#f7fbf7] last:border-b-0"
+                >
+                  <div className="flex justify-center pt-4">
+                    <NotificationUnreadDot unread={!notification.read} />
+                  </div>
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-4">
+                    <NotificationVisual notification={notification} size="sm" />
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-[700] leading-5 text-[#18211a]">
+                        {notification.title}
+                      </p>
+                      <p className="mt-1 text-[13px] leading-5 text-[#5f6b62]">
+                        {notification.description}
+                      </p>
+                    </div>
+                    <p className="whitespace-nowrap text-[12px] text-[#7d877f]">
+                      {notification.timestampLabel}
                     </p>
                   </div>
-                  <p className="whitespace-nowrap text-[12px] text-[#7d877f]">
-                    {notification.timestampLabel}
-                  </p>
-                </div>
-              </div>
-            ))}
+                </button>
+              ))
+            )}
           </div>
 
           <div className="border-t border-[#eef2ee] px-5 py-4">

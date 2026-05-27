@@ -1,55 +1,238 @@
 "use client";
 
 import {
+  useCallback,
   createContext,
   useContext,
-  useMemo,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
 
-import { dummyNotifications, type NotificationRecord } from "@/lib/notifications";
+import type {
+  NotificationRecentResponse,
+  NotificationRecord,
+} from "@/lib/notifications";
+import { showSuccessToast } from "@/lib/toast";
 
 type NotificationCenterContextValue = {
-  notifications: NotificationRecord[];
-  unreadCount: number;
   recentNotifications: NotificationRecord[];
-  markAllAsRead: () => void;
-  toggleReadState: (notificationId: string) => void;
+  unreadCount: number;
+  isLoading: boolean;
+  error: string | null;
+  refreshRecent: () => Promise<void>;
+  markAllAsRead: (options?: { showToast?: boolean }) => Promise<void>;
+  markNotificationAsRead: (notificationId: string) => Promise<void>;
+  markNotificationAsUnread: (notificationId: string) => Promise<void>;
+  setNotificationReadState: (
+    notificationId: string,
+    read: boolean,
+  ) => Promise<void>;
 };
 
-const NotificationCenterContext = createContext<NotificationCenterContextValue | null>(null);
+const NotificationCenterContext =
+  createContext<NotificationCenterContextValue | null>(null);
+
+async function fetchRecentNotifications(signal?: AbortSignal) {
+  const response = await fetch("/api/notifications/recent", {
+    method: "GET",
+    cache: "no-store",
+    signal,
+  });
+
+  const payload = (await response.json()) as
+    | NotificationRecentResponse
+    | { error?: string };
+
+  if (!response.ok) {
+    throw new Error(
+      typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+        ? payload.error
+        : "Unable to load notifications right now.",
+    );
+  }
+
+  return payload as NotificationRecentResponse;
+}
+
+async function updateNotificationReadState(notificationId: string, read: boolean) {
+  const response = await fetch(
+    `/api/notifications/${notificationId}/${read ? "read" : "unread"}`,
+    {
+      method: "POST",
+      cache: "no-store",
+    },
+  );
+
+  const payload = (await response.json()) as
+    | { unreadCount: number }
+    | { error?: string };
+
+  if (!response.ok) {
+    throw new Error(
+      typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+        ? payload.error
+        : "Unable to update the notification state.",
+    );
+  }
+
+  return payload as { unreadCount: number };
+}
+
+async function postMarkAllAsRead() {
+  const response = await fetch("/api/notifications/read-all", {
+    method: "POST",
+    cache: "no-store",
+  });
+
+  const payload = (await response.json()) as
+    | { unreadCount: number }
+    | { error?: string };
+
+  if (!response.ok) {
+    throw new Error(
+      typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+        ? payload.error
+        : "Unable to mark notifications as read.",
+    );
+  }
+
+  return payload as { unreadCount: number };
+}
 
 export function NotificationCenterProvider({ children }: { children: ReactNode }) {
-  const [notifications, setNotifications] = useState<NotificationRecord[]>(dummyNotifications);
+  const [recentNotifications, setRecentNotifications] = useState<NotificationRecord[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const value = useMemo<NotificationCenterContextValue>(() => {
-    const orderedNotifications = [...notifications].sort(
-      (left, right) => right.sortOrder - left.sortOrder,
+  const refreshRecent = useCallback(async () => {
+    const payload = await fetchRecentNotifications();
+
+    setRecentNotifications(payload.notifications);
+    setUnreadCount(payload.unreadCount);
+    setError(null);
+    setIsLoading(false);
+  }, []);
+
+  const setNotificationReadState = useCallback(async (notificationId: string, read: boolean) => {
+    setRecentNotifications((current) =>
+      current.map((notification) =>
+        notification.id === notificationId
+          ? { ...notification, read }
+          : notification,
+      ),
     );
+    setUnreadCount((current) => Math.max(0, current + (read ? -1 : 1)));
 
-    return {
-      notifications: orderedNotifications,
-      unreadCount: orderedNotifications.filter((notification) => !notification.read).length,
-      recentNotifications: orderedNotifications.slice(0, 5),
-      markAllAsRead: () => {
-        setNotifications((current) =>
-          current.map((notification) =>
-            notification.read ? notification : { ...notification, read: true },
-          ),
+    try {
+      const payload = await updateNotificationReadState(notificationId, read);
+      setUnreadCount(payload.unreadCount);
+    } catch (nextError) {
+      await refreshRecent().catch(() => undefined);
+      throw nextError;
+    }
+  }, [refreshRecent]);
+
+  const markAllAsRead = useCallback(async (options?: { showToast?: boolean }) => {
+    setRecentNotifications((current) =>
+      current.map((notification) =>
+        notification.read ? notification : { ...notification, read: true },
+      ),
+    );
+    setUnreadCount(0);
+
+    try {
+      const payload = await postMarkAllAsRead();
+      setUnreadCount(payload.unreadCount);
+
+      if (options?.showToast) {
+        showSuccessToast("All notifications marked as read.");
+      }
+    } catch (nextError) {
+      await refreshRecent().catch(() => undefined);
+      throw nextError;
+    }
+  }, [refreshRecent]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetchRecentNotifications(controller.signal)
+      .then((payload) => {
+        setRecentNotifications(payload.notifications);
+        setUnreadCount(payload.unreadCount);
+        setError(null);
+        setIsLoading(false);
+      })
+      .catch((nextError) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to load notifications right now.",
         );
-      },
-      toggleReadState: (notificationId: string) => {
-        setNotifications((current) =>
-          current.map((notification) =>
-            notification.id === notificationId
-              ? { ...notification, read: !notification.read }
-              : notification,
-          ),
+        setIsLoading(false);
+      });
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      refreshRecent().catch((nextError) => {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to refresh notifications right now.",
         );
-      },
+      });
+    }, 30_000);
+
+    function handleFocus() {
+      refreshRecent().catch((nextError) => {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to refresh notifications right now.",
+        );
+      });
+    }
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
     };
-  }, [notifications]);
+  }, [refreshRecent]);
+
+  const value: NotificationCenterContextValue = {
+    recentNotifications,
+    unreadCount,
+    isLoading,
+    error,
+    refreshRecent,
+    markAllAsRead,
+    markNotificationAsRead: (notificationId: string) =>
+      setNotificationReadState(notificationId, true),
+    markNotificationAsUnread: (notificationId: string) =>
+      setNotificationReadState(notificationId, false),
+    setNotificationReadState,
+  };
 
   return (
     <NotificationCenterContext.Provider value={value}>

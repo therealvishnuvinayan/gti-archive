@@ -9,6 +9,11 @@ import type {
 } from "@/app/(dashboard)/projects/new/project-form-state";
 import { requireUser } from "@/lib/auth";
 import {
+  notifyProjectAssignmentChanges,
+  notifyProjectCreated,
+  runNotificationTask,
+} from "@/lib/notification-center";
+import {
   getDefaultProjectCollaboratorParticipantType,
   isProjectCollaboratorParticipantType,
   type ProjectCollaboratorParticipantType,
@@ -620,6 +625,13 @@ export async function createProjectAction(
   revalidatePath(`/projects/${projectId}`);
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 
+  await runNotificationTask("project-created", () =>
+    notifyProjectCreated({
+      projectId,
+      actorId: user.id,
+    }),
+  );
+
   return { projectId, initialBriefStageId, initialBriefCommentId };
 }
 
@@ -645,6 +657,12 @@ export async function updateProjectAction(
       currency: true,
       budget: true,
       createdById: true,
+      executorUserId: true,
+      collaborators: {
+        select: {
+          userId: true,
+        },
+      },
       stages: {
         orderBy: {
           order: "asc",
@@ -740,6 +758,15 @@ export async function updateProjectAction(
       })
     : [];
   const validCollaboratorIds = validCollaborators.map((collaborator) => collaborator.id);
+  const existingCollaboratorIds = existingProject.collaborators.map(
+    (collaborator) => collaborator.userId,
+  );
+  const addedCollaboratorIds = validCollaboratorIds.filter(
+    (collaboratorId) => !existingCollaboratorIds.includes(collaboratorId),
+  );
+  const removedCollaboratorIds = existingCollaboratorIds.filter(
+    (collaboratorId) => !validCollaboratorIds.includes(collaboratorId),
+  );
   const validCollaboratorTypeMap = new Map(
     validCollaborators.map((collaborator) => [
       collaborator.id,
@@ -825,6 +852,17 @@ export async function updateProjectAction(
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/edit`);
   revalidateTag(PROJECTS_CACHE_TAG, "max");
+
+  await runNotificationTask("project-updated", () =>
+    notifyProjectAssignmentChanges({
+      projectId,
+      actorId: user.id,
+      previousExecutorUserId: existingProject.executorUserId,
+      nextExecutorUserId: resolvedExecutor.executorUserId,
+      addedCollaboratorIds,
+      removedCollaboratorIds,
+    }),
+  );
 
   return { projectId };
 }

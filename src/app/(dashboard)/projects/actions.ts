@@ -2,12 +2,26 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 
-import { requireUser } from "@/lib/auth";
+import { getUserDisplayName, requireUser } from "@/lib/auth";
 import {
   completeProjectArchive,
   getProjectArchivePreparation,
 } from "@/lib/archives";
 import { createComparisonComment } from "@/lib/comparison";
+import {
+  getProjectCollaboratorUserIds,
+  notifyApprovalRequired,
+  notifyBriefAccepted,
+  notifyCommentAdded,
+  notifyCopyrightTransferRequired,
+  notifyProjectArchived,
+  notifyProjectAssignmentChanges,
+  notifyRevisionSubmitted,
+  notifyStageSubmissionReviewDecision,
+  notifyStageTransition,
+  notifySubmissionWorkflowDecision,
+  runNotificationTask,
+} from "@/lib/notification-center";
 import {
   configureProjectCompletionWorkflow,
   prepareAuthorityApprovalRequest,
@@ -75,6 +89,16 @@ export async function createStageRevisionAction(input: StageRevisionInput) {
     const revision = await createStageRevision(user, input);
     revalidateProjectFlow();
 
+    await runNotificationTask("revision-submitted", () =>
+      notifyRevisionSubmitted({
+        actorId: user.id,
+        actorName: getUserDisplayName(user),
+        projectId: input.projectId,
+        stageId: input.stageId,
+        revisionId: revision.id,
+      }),
+    );
+
     return {
       revisionId: revision.id,
       title: revision.title,
@@ -92,6 +116,16 @@ export async function createStageCommentAction(input: StageCommentInput) {
   try {
     const comment = await createStageComment(user, input);
     revalidateProjectFlow();
+
+    await runNotificationTask("comment-added", () =>
+      notifyCommentAdded({
+        actorId: user.id,
+        actorName: getUserDisplayName(user),
+        projectId: input.projectId,
+        stageId: input.stageId,
+        commentId: comment.id,
+      }),
+    );
 
     return {
       commentId: comment.id,
@@ -114,6 +148,15 @@ export async function markStageCompleteAction(input: {
     const stage = await completeProjectStage(user, input);
     revalidateProjectFlow();
 
+    await runNotificationTask("stage-transition", () =>
+      notifyStageTransition({
+        projectId: input.projectId,
+        completedStageId: input.stageId,
+        nextStageId: stage.nextStage?.id ?? null,
+        actorId: user.id,
+      }),
+    );
+
     return { stage };
   } catch (error) {
     return {
@@ -134,6 +177,15 @@ export async function acceptStageBriefAction(input: {
   try {
     const result = await startProjectStageWork(user, input);
     revalidateProjectFlow();
+
+    await runNotificationTask("brief-accepted", () =>
+      notifyBriefAccepted({
+        actorId: user.id,
+        actorName: getUserDisplayName(user),
+        projectId: input.projectId,
+        stageId: input.stageId,
+      }),
+    );
 
     return { result };
   } catch (error) {
@@ -174,6 +226,13 @@ export async function approveSubmissionAction(attachmentId: string) {
     });
     revalidateProjectFlow();
 
+    await runNotificationTask("submission-approved", () =>
+      notifyStageSubmissionReviewDecision({
+        attachmentId,
+        status: SubmissionReviewStatus.APPROVED,
+      }),
+    );
+
     return { submission };
   } catch (error) {
     return {
@@ -195,6 +254,13 @@ export async function rejectSubmissionAction(attachmentId: string, note?: string
       note,
     });
     revalidateProjectFlow();
+
+    await runNotificationTask("submission-rejected", () =>
+      notifyStageSubmissionReviewDecision({
+        attachmentId,
+        status: SubmissionReviewStatus.REJECTED,
+      }),
+    );
 
     return { submission };
   } catch (error) {
@@ -220,6 +286,24 @@ export async function markSubmissionCompleteAction(input: {
       status: "APPROVED",
     });
     revalidateProjectFlow();
+
+    await runNotificationTask("submission-completed", async () => {
+      await notifySubmissionWorkflowDecision({
+        projectId: input.projectId,
+        stageId: input.stageId,
+        status: "COMPLETED",
+        actorId: user.id,
+      });
+
+      if (revision.stageCompletion) {
+        await notifyStageTransition({
+          projectId: input.projectId,
+          completedStageId: input.stageId,
+          nextStageId: revision.stageCompletion.nextStage?.id ?? null,
+          actorId: user.id,
+        });
+      }
+    });
 
     return { revision };
   } catch (error) {
@@ -266,6 +350,14 @@ export async function completeProjectArchiveAction(input: {
     const archive = await completeProjectArchive(user, input);
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId, archive.archiveCategorySlug);
+
+    await runNotificationTask("project-archived", () =>
+      notifyProjectArchived({
+        projectId: input.projectId,
+        archiveId: archive.archiveId,
+        actorId: user.id,
+      }),
+    );
 
     return { archive };
   } catch (error) {
@@ -314,6 +406,13 @@ export async function prepareAuthorityApprovalRequestAction(input: {
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId);
 
+    await runNotificationTask("approval-required", () =>
+      notifyApprovalRequired({
+        projectId: input.projectId,
+        actorId: user.id,
+      }),
+    );
+
     return { workflow };
   } catch (error) {
     return {
@@ -336,6 +435,13 @@ export async function prepareCopyrightTransferRequestAction(input: {
     const workflow = await prepareCopyrightTransferRequest(user, input);
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId);
+
+    await runNotificationTask("copyright-required", () =>
+      notifyCopyrightTransferRequired({
+        projectId: input.projectId,
+        actorId: user.id,
+      }),
+    );
 
     return { workflow };
   } catch (error) {
@@ -363,6 +469,15 @@ export async function requestSubmissionRevisionAction(input: {
       reason: input.reason,
     });
     revalidateProjectFlow();
+
+    await runNotificationTask("revision-requested", () =>
+      notifySubmissionWorkflowDecision({
+        projectId: input.projectId,
+        stageId: input.stageId,
+        status: "REVISION_REQUESTED",
+        actorId: user.id,
+      }),
+    );
 
     return { revision };
   } catch (error) {
@@ -392,6 +507,7 @@ export async function saveProjectCollaboratorsAction(
   }
 
   try {
+    const previousCollaboratorIds = await getProjectCollaboratorUserIds(projectId);
     const updatedCollaborators = await updateProjectCollaborators(
       projectId,
       collaborators,
@@ -400,6 +516,21 @@ export async function saveProjectCollaboratorsAction(
 
     revalidateProjectFlow();
     revalidatePath(`/projects/${projectId}/edit`);
+
+    const nextCollaboratorIds = updatedCollaborators.map((collaborator) => collaborator.id);
+
+    await runNotificationTask("project-collaborators-updated", () =>
+      notifyProjectAssignmentChanges({
+        projectId,
+        actorId: user.id,
+        addedCollaboratorIds: nextCollaboratorIds.filter(
+          (collaboratorId) => !previousCollaboratorIds.includes(collaboratorId),
+        ),
+        removedCollaboratorIds: previousCollaboratorIds.filter(
+          (collaboratorId) => !nextCollaboratorIds.includes(collaboratorId),
+        ),
+      }),
+    );
 
     return { collaborators: updatedCollaborators };
   } catch (error) {
@@ -419,6 +550,7 @@ export async function removeProjectCollaboratorAction(
   const user = await requireUser();
 
   try {
+    const previousCollaboratorIds = await getProjectCollaboratorUserIds(projectId);
     const updatedCollaborators = await removeProjectCollaborator(
       user,
       projectId,
@@ -427,6 +559,21 @@ export async function removeProjectCollaboratorAction(
 
     revalidateProjectFlow();
     revalidatePath(`/projects/${projectId}/edit`);
+
+    const nextCollaboratorIds = updatedCollaborators.map((collaborator) => collaborator.id);
+
+    await runNotificationTask("project-collaborator-removed", () =>
+      notifyProjectAssignmentChanges({
+        projectId,
+        actorId: user.id,
+        addedCollaboratorIds: nextCollaboratorIds.filter(
+          (candidateId) => !previousCollaboratorIds.includes(candidateId),
+        ),
+        removedCollaboratorIds: previousCollaboratorIds.filter(
+          (candidateId) => !nextCollaboratorIds.includes(candidateId),
+        ),
+      }),
+    );
 
     return { collaborators: updatedCollaborators };
   } catch (error) {
