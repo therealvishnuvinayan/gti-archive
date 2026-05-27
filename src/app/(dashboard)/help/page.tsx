@@ -5,7 +5,7 @@ export default async function HelpPage() {
   return (
     <DashboardLayout
       topbarProps={{
-        searchPlaceholder: "Search projects, files, people...",
+        searchPlaceholder: "Search help topics, workflows, and guides...",
       }}
     >
       <HelpWorkspace />

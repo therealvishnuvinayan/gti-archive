@@ -1,271 +1,571 @@
-import type { ComponentType } from "react";
+"use client";
+
+import { useDeferredValue, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpenText,
-  CircleHelp,
-  FileArchive,
-  FolderKanban,
-  Headset,
-  Mail,
-  MessageSquareMore,
+  CheckCircle2,
   Search,
-  Settings2,
-  UserCog,
-  Users,
+  Sparkles,
+  Workflow,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  helpCenterIntro,
+  helpCoreWorkflow,
+  helpKeyTerms,
+  helpManagementHighlights,
+  helpSearchKeywords,
+  helpSections,
+  helpTopics,
+  quickStartItems,
+  recommendedGuides,
+  type HelpGuide,
+  type HelpQuickStartItem,
+  type HelpSection,
+  type HelpTopic,
+} from "@/lib/help-center";
+import { cn } from "@/lib/utils";
 
-type HelpCategory = {
+function normalizeSearchValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function flattenSearchValues(values: Array<string | string[] | undefined>) {
+  return values
+    .flatMap((value) => {
+      if (!value) {
+        return [];
+      }
+
+      return Array.isArray(value) ? value : [value];
+    })
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchesQuery(
+  query: string,
+  values: Array<string | string[] | undefined>,
+) {
+  if (!query) {
+    return true;
+  }
+
+  return flattenSearchValues(values).includes(query);
+}
+
+function getSectionSearchValues(section: HelpSection) {
+  return [
+    section.eyebrow,
+    section.title,
+    section.summary,
+    section.keywords,
+    section.callout,
+    section.blocks.map((block) => block.title),
+    section.blocks.flatMap((block) => block.items),
+    section.questions?.map((question) => question.question),
+    section.questions?.map((question) => question.answer),
+  ];
+}
+
+function SectionJumpButton({
+  title,
+  description,
+  icon: Icon,
+  isActive,
+  onClick,
+}: {
   title: string;
   description: string;
-  articleCount: string;
-  icon: ComponentType<{ className?: string }>;
-};
+  icon: HelpQuickStartItem["icon"] | HelpTopic["icon"];
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full cursor-pointer text-left"
+    >
+      <Card
+        className={cn(
+          "rounded-[22px] border border-[#edf2eb] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/25 hover:shadow-[0_20px_50px_rgba(23,39,28,0.08)]",
+          isActive && "border-brand/40 bg-[#f5fbf6]",
+        )}
+      >
+        <div className="flex items-start gap-4">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] bg-[#edf7ef] text-brand">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-[16px] font-[700] tracking-[-0.02em] text-[#151d17]">
+              {title}
+            </h3>
+            <p className="mt-1 text-[13px] leading-6 text-[#6d786f]">
+              {description}
+            </p>
+          </div>
+          <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[#6d786f]" />
+        </div>
+      </Card>
+    </button>
+  );
+}
 
-type SupportOption = {
-  title: string;
-  description: string;
-  actionLabel: string;
-  icon: ComponentType<{ className?: string }>;
-};
+function GuideRow({
+  guide,
+  isActive,
+  onClick,
+}: {
+  guide: HelpGuide;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full cursor-pointer text-left"
+    >
+      <Card
+        className={cn(
+          "rounded-[18px] border border-[#edf2eb] px-4 py-3 transition-colors hover:border-brand/25 hover:bg-[#fbfcfa]",
+          isActive && "border-brand/40 bg-[#f5fbf6]",
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[14px] bg-[#f3f7f2] text-brand">
+            <BookOpenText className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-[14px] font-[700] text-[#182119]">
+              {guide.title}
+            </h3>
+            <p className="mt-1 text-[13px] leading-6 text-[#6f796f]">
+              {guide.description}
+            </p>
+          </div>
+          <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[#748073]" />
+        </div>
+      </Card>
+    </button>
+  );
+}
 
-const helpCategories: HelpCategory[] = [
-  {
-    title: "Getting Started",
-    description: "Learn the basics and set up your account.",
-    articleCount: "5 articles",
-    icon: BookOpenText,
-  },
-  {
-    title: "Projects",
-    description: "Create, manage and track your projects.",
-    articleCount: "8 articles",
-    icon: FolderKanban,
-  },
-  {
-    title: "Collaboration",
-    description: "Work with your team and manage permissions.",
-    articleCount: "6 articles",
-    icon: Users,
-  },
-  {
-    title: "Library & Archives",
-    description: "Organize and access your files and assets.",
-    articleCount: "7 articles",
-    icon: FileArchive,
-  },
-  {
-    title: "Settings & Account",
-    description: "Manage your preferences and account settings.",
-    articleCount: "6 articles",
-    icon: Settings2,
-  },
-];
+function HelpSectionCard({
+  section,
+  isActive,
+}: {
+  section: HelpSection;
+  isActive: boolean;
+}) {
+  return (
+    <Card
+      id={`help-section-${section.id}`}
+      className={cn(
+        "rounded-[28px] border border-[#edf2eb] p-5 sm:p-6",
+        isActive && "border-brand/40 bg-[#fcfefc] shadow-[0_22px_55px_rgba(34,102,70,0.09)]",
+      )}
+    >
+      <div className="space-y-3">
+        <p className="text-[11px] font-[700] uppercase tracking-[0.18em] text-brand/75">
+          {section.eyebrow}
+        </p>
+        <div className="space-y-2">
+          <h2 className="text-[30px] font-[600] tracking-[-0.04em] text-[#131a14]">
+            {section.title}
+          </h2>
+          <p className="max-w-[980px] text-[15px] leading-7 text-[#68736a]">
+            {section.summary}
+          </p>
+        </div>
+      </div>
 
-const popularArticles = [
-  "How to create a new project",
-  "How to upload and organize files",
-  "Managing collaborators and permissions",
-  "How to schedule events in calendar",
-  "Reset your password",
-];
+      {section.callout ? (
+        <div className="mt-5 rounded-[22px] border border-[#d7eadb] bg-[#f3fbf5] px-4 py-4 text-[14px] leading-6 text-[#29563c]">
+          {section.callout}
+        </div>
+      ) : null}
 
-const supportOptions: SupportOption[] = [
-  {
-    title: "Contact Support",
-    description: "Send us an email and we'll get back to you.",
-    actionLabel: "Send Email",
-    icon: Mail,
-  },
-  {
-    title: "Request a Call",
-    description: "Schedule a call with our support team.",
-    actionLabel: "Request Call",
-    icon: MessageSquareMore,
-  },
-  {
-    title: "System Administrator",
-    description:
-      "For access issues or system related problems, please contact your system administrator.",
-    actionLabel: "View Details",
-    icon: UserCog,
-  },
-];
+      <div
+        className={cn(
+          "mt-5 grid gap-4",
+          section.blocks.length === 1
+            ? "grid-cols-1"
+            : section.blocks.length === 2
+              ? "grid-cols-1 xl:grid-cols-2"
+              : "grid-cols-1 xl:grid-cols-3",
+        )}
+      >
+        {section.blocks.map((block) => (
+          <div
+            key={`${section.id}-${block.title}`}
+            className="rounded-[22px] border border-[#edf2eb] bg-[#fbfcfa] p-4"
+          >
+            <h3 className="text-[16px] font-[700] text-[#182119]">
+              {block.title}
+            </h3>
+            {block.ordered ? (
+              <ol className="mt-3 space-y-3">
+                {block.items.map((item, index) => (
+                  <li key={`${block.title}-${index}`} className="flex gap-3">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#edf7ef] text-[11px] font-[700] text-brand">
+                      {index + 1}
+                    </span>
+                    <span className="text-[14px] leading-6 text-[#677268]">
+                      {item}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {block.items.map((item) => (
+                  <li key={item} className="flex gap-3">
+                    <CheckCircle2 className="mt-0.5 h-4.5 w-4.5 shrink-0 text-brand" />
+                    <span className="text-[14px] leading-6 text-[#677268]">
+                      {item}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {section.questions?.length ? (
+        <div className="mt-5 rounded-[24px] border border-[#edf2eb] bg-white p-4 sm:p-5">
+          <h3 className="text-[18px] font-[700] tracking-[-0.03em] text-[#182119]">
+            Common questions
+          </h3>
+          <div className="mt-4 space-y-4">
+            {section.questions.map((question) => (
+              <div
+                key={question.question}
+                className="rounded-[18px] border border-[#eff3ee] bg-[#fbfcfa] px-4 py-4"
+              >
+                <p className="text-[14px] font-[700] text-[#1c241d]">
+                  {question.question}
+                </p>
+                <p className="mt-2 text-[14px] leading-6 text-[#68736a]">
+                  {question.answer}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
 
 export function HelpWorkspace() {
+  const [query, setQuery] = useState("");
+  const [activeSectionId, setActiveSectionId] = useState(helpSections[0]?.id ?? "");
+  const deferredQuery = useDeferredValue(query);
+  const normalizedQuery = normalizeSearchValue(deferredQuery);
+
+  const filteredQuickStart = useMemo(
+    () =>
+      quickStartItems.filter((item) =>
+        matchesQuery(normalizedQuery, [item.title, item.description, item.keywords]),
+      ),
+    [normalizedQuery],
+  );
+  const filteredTopics = useMemo(
+    () =>
+      helpTopics.filter((topic) =>
+        matchesQuery(normalizedQuery, [topic.title, topic.description, topic.keywords]),
+      ),
+    [normalizedQuery],
+  );
+  const filteredGuides = useMemo(
+    () =>
+      recommendedGuides.filter((guide) =>
+        matchesQuery(normalizedQuery, [guide.title, guide.description, guide.keywords]),
+      ),
+    [normalizedQuery],
+  );
+  const filteredSections = useMemo(
+    () =>
+      helpSections.filter((section) =>
+        matchesQuery(normalizedQuery, getSectionSearchValues(section)),
+      ),
+    [normalizedQuery],
+  );
+
+  const totalMatches =
+    filteredQuickStart.length +
+    filteredTopics.length +
+    filteredGuides.length +
+    filteredSections.length;
+
+  function jumpToSection(sectionId: string) {
+    setActiveSectionId(sectionId);
+
+    const sectionElement = document.getElementById(`help-section-${sectionId}`);
+    sectionElement?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <section className="space-y-6">
       <header className="space-y-2">
         <h1 className="text-[44px] font-[600] leading-none tracking-[-0.05em] text-[#121813]">
-          Help
+          {helpCenterIntro.title}
         </h1>
-        <p className="text-[15px] text-[#6f776f]">
-          Find answers, guides and support for using the PMS.
+        <p className="max-w-[880px] text-[15px] text-[#6f776f]">
+          {helpCenterIntro.subtitle}
         </p>
       </header>
 
-      <Card className="rounded-[24px] border border-[#ebefe8] p-5 sm:p-6">
-        <div className="space-y-4">
-          <h2 className="text-[28px] font-[600] leading-tight tracking-[-0.03em] text-[#1b231d]">
-            How can we help you?
-          </h2>
+      <Card className="rounded-[28px] border border-[#edf2eb] p-4 sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <label className="relative flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-[#8d978e]" />
+            <Input
+              id="help-center-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={helpCenterIntro.searchPlaceholder}
+              className="h-[56px] rounded-[20px] border border-[#dfe6de] pl-11 pr-14 text-[15px] text-[#1c241e] shadow-none focus-visible:ring-2 focus-visible:ring-brand/20 placeholder:text-[#9aa39a]"
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer rounded-full p-2 text-[#7b867d] transition-colors hover:bg-[#f1f4f1] hover:text-[#172019]"
+                aria-label="Clear help search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </label>
 
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-            <label className="flex h-[54px] flex-1 items-center gap-3 rounded-2xl border border-[#dfe6de] bg-white px-5">
-              <Search className="h-4.5 w-4.5 text-[#8d978e]" />
-              <Input
-                type="search"
-                placeholder="Search for help articles, guides and more..."
-                className="h-auto border-0 bg-transparent px-0 text-[15px] text-[#1c241e] shadow-none focus-visible:ring-0 placeholder:text-[#9aa39a]"
-              />
-            </label>
+          <Button
+            type="button"
+            size="icon"
+            className="h-[56px] w-[56px] cursor-pointer rounded-[18px]"
+            onClick={() => {
+              const input = document.getElementById(
+                "help-center-search",
+              ) as HTMLInputElement | null;
+              input?.focus();
+            }}
+            aria-label="Focus help search"
+            title="Focus help search"
+          >
+            <Search className="h-5 w-5" />
+          </Button>
+        </div>
 
-            <Card className="flex h-[54px] w-[86px] items-center justify-center rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] shadow-[0_14px_30px_rgba(33,99,68,0.16)]">
-              <div className="relative">
-                <Headset className="h-7 w-7 text-white" />
-                <span className="absolute -right-1.5 -top-1.5 h-2.5 w-2.5 rounded-full bg-[#dff7e5]" />
-              </div>
-            </Card>
-          </div>
+        <div className="mt-3 flex flex-col gap-2 text-[13px] text-[#738076] sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Search across quick starts, topic cards, recommended guides, and detailed product instructions.
+          </p>
+          <p className="text-brand/80">
+            Try: {helpSearchKeywords.slice(0, 5).join(", ")}
+          </p>
         </div>
       </Card>
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-[28px] font-[600] leading-tight tracking-[-0.03em] text-[#1b231d]">
-            Browse by category
-          </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-auto gap-2 px-0 text-[13px] font-semibold text-brand hover:bg-transparent hover:text-brand-dark"
-          >
-            View all articles
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-5">
-          {helpCategories.map((category) => {
-            const Icon = category.icon;
-
-            return (
-              <Card
-                key={category.title}
-                className="rounded-[22px] border border-[#ebefe8] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_50px_rgba(23,39,28,0.08)]"
-              >
-                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#edf7ef] text-brand">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="mt-6 space-y-2">
-                  <h3 className="text-[18px] font-[600] leading-snug text-[#1d241e]">
-                    {category.title}
-                  </h3>
-                  <p className="min-h-[48px] text-[14px] leading-6 text-[#758077]">
-                    {category.description}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="mt-6 h-auto gap-2 px-0 text-[13px] font-semibold text-brand hover:bg-transparent hover:text-brand-dark"
-                >
-                  {category.articleCount}
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <Card className="rounded-[24px] border border-[#ebefe8] p-5 sm:p-6">
-          <h2 className="text-[28px] font-[600] leading-tight tracking-[-0.03em] text-[#1b231d]">
-            Popular articles
-          </h2>
-
-          <div className="mt-5 overflow-hidden rounded-[20px] border border-[#edf2eb]">
-            {popularArticles.map((article, index) => (
-              <Button
-                key={article}
-                type="button"
-                variant="ghost"
-                className={`flex h-auto w-full items-center justify-start gap-3 rounded-none px-4 py-4 text-left hover:bg-[#fafcf9] ${
-                  index !== popularArticles.length - 1
-                    ? "border-b border-[#edf2eb]"
-                    : ""
-                }`}
-              >
-                <CircleHelp className="h-4 w-4 shrink-0 text-[#8fa294]" />
-                <span className="flex-1 text-[14px] font-medium text-[#233026]">
-                  {article}
-                </span>
-                <ArrowRight className="h-4 w-4 text-[#7e877e]" />
-              </Button>
-            ))}
-          </div>
-
-          <Button
-            type="button"
-            variant="ghost"
-            className="mt-5 h-auto gap-2 px-0 text-[13px] font-semibold text-brand hover:bg-transparent hover:text-brand-dark"
-          >
-            View all popular articles
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+      {normalizedQuery ? (
+        <Card className="rounded-[22px] border border-[#e8efe8] bg-[#fbfcfa] px-4 py-3 text-[14px] text-[#536057]">
+          {totalMatches > 0
+            ? `Showing ${totalMatches} matching help results for “${query.trim()}”.`
+            : "No help topics found."}
         </Card>
+      ) : null}
 
-        <Card className="rounded-[24px] border border-[#ebefe8] p-5 sm:p-6">
-          <div className="space-y-2">
-            <h2 className="text-[28px] font-[600] leading-tight tracking-[-0.03em] text-[#1b231d]">
-              Still need help?
+      {totalMatches === 0 && normalizedQuery ? (
+        <Card className="rounded-[28px] border border-dashed border-[#dbe3da] bg-[#fbfcfa] px-5 py-10 text-center">
+          <div className="mx-auto max-w-[520px] space-y-3">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#edf7ef] text-brand">
+              <Search className="h-6 w-6" />
+            </div>
+            <h2 className="text-[26px] font-[600] tracking-[-0.03em] text-[#172019]">
+              No help topics found.
             </h2>
-            <p className="text-[14px] text-[#768078]">
-              Can&apos;t find what you&apos;re looking for? Our support team is
-              here to help.
+            <p className="text-[15px] leading-7 text-[#6d786f]">
+              Try broader terms like project, accept brief, library, archive, notifications, or permissions.
             </p>
           </div>
+        </Card>
+      ) : (
+        <>
+          {filteredQuickStart.length > 0 ? (
+            <section className="space-y-3">
+              <div>
+                <div className="flex items-center gap-2 text-[#1d241e]">
+                  <Sparkles className="h-4.5 w-4.5 text-brand" />
+                  <h2 className="text-[28px] font-[600] tracking-[-0.03em]">
+                    Quick Start
+                  </h2>
+                </div>
+                <p className="mt-1 text-[14px] text-[#728071]">
+                  Start with the most common GTI Archive workflows.
+                </p>
+              </div>
 
-          <div className="mt-5 space-y-4">
-            {supportOptions.map((option) => {
-              const Icon = option.icon;
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+                {filteredQuickStart.map((item) => (
+                  <SectionJumpButton
+                    key={item.id}
+                    title={item.title}
+                    description={item.description}
+                    icon={item.icon}
+                    isActive={activeSectionId === item.sectionId}
+                    onClick={() => jumpToSection(item.sectionId)}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-              return (
-                <Card
-                  key={option.title}
-                  className="flex flex-col gap-4 rounded-[20px] border border-[#edf2eb] bg-[#fcfdfb] px-4 py-4 shadow-none lg:flex-row lg:items-center lg:justify-between"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#edf7ef] text-brand">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-[15px] font-semibold text-[#1d251f]">
-                        {option.title}
-                      </h3>
-                      <p className="max-w-[340px] text-[13px] leading-6 text-[#748075]">
-                        {option.description}
-                      </p>
-                    </div>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="space-y-4">
+              {filteredTopics.length > 0 ? (
+                <Card className="rounded-[28px] border border-[#edf2eb] p-5 sm:p-6">
+                  <div className="space-y-1">
+                    <h2 className="text-[30px] font-[600] tracking-[-0.04em] text-[#151c17]">
+                      Browse Help Topics
+                    </h2>
+                    <p className="text-[14px] text-[#728071]">
+                      Explore the major GTI Archive modules and workflows.
+                    </p>
                   </div>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-[42px] rounded-xl border-[#b8d8c0] bg-white px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
-                  >
-                    {option.actionLabel}
-                  </Button>
+                  <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    {filteredTopics.map((topic) => (
+                      <SectionJumpButton
+                        key={topic.id}
+                        title={topic.title}
+                        description={topic.description}
+                        icon={topic.icon}
+                        isActive={activeSectionId === topic.sectionId}
+                        onClick={() => jumpToSection(topic.sectionId)}
+                      />
+                    ))}
+                  </div>
                 </Card>
-              );
-            })}
+              ) : null}
+
+              {filteredGuides.length > 0 ? (
+                <Card className="rounded-[28px] border border-[#edf2eb] p-5 sm:p-6">
+                  <div className="space-y-1">
+                    <h2 className="text-[30px] font-[600] tracking-[-0.04em] text-[#151c17]">
+                      Recommended Guides
+                    </h2>
+                    <p className="text-[14px] text-[#728071]">
+                      Common workflows users revisit most often.
+                    </p>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    {filteredGuides.map((guide) => (
+                      <GuideRow
+                        key={guide.id}
+                        guide={guide}
+                        isActive={activeSectionId === guide.sectionId}
+                        onClick={() => jumpToSection(guide.sectionId)}
+                      />
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
+            </div>
+
+            <div className="space-y-4">
+              <Card className="rounded-[28px] border border-[#edf2eb] p-5 sm:p-6">
+                <h2 className="text-[28px] font-[600] tracking-[-0.04em] text-[#151c17]">
+                  What GTI Archive helps you manage
+                </h2>
+                <ul className="mt-5 space-y-3">
+                  {helpManagementHighlights.map((item) => (
+                    <li key={item} className="flex gap-3">
+                      <CheckCircle2 className="mt-0.5 h-4.5 w-4.5 shrink-0 text-brand" />
+                      <span className="text-[14px] leading-6 text-[#68736a]">
+                        {item}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+
+              <Card className="rounded-[28px] border border-[#edf2eb] p-5 sm:p-6">
+                <div className="flex items-center gap-2">
+                  <Workflow className="h-5 w-5 text-brand" />
+                  <h2 className="text-[28px] font-[600] tracking-[-0.04em] text-[#151c17]">
+                    Core workflow
+                  </h2>
+                </div>
+                <ol className="mt-5 space-y-3">
+                  {helpCoreWorkflow.map((step, index) => (
+                    <li key={step} className="flex gap-3">
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#edf7ef] text-[12px] font-[700] text-brand">
+                        {index + 1}
+                      </span>
+                      <span className="text-[14px] leading-6 text-[#68736a]">
+                        {step}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+
+              <Card className="rounded-[28px] border border-[#edf2eb] p-5 sm:p-6">
+                <h2 className="text-[28px] font-[600] tracking-[-0.04em] text-[#151c17]">
+                  Key terms
+                </h2>
+                <div className="mt-5 space-y-4">
+                  {helpKeyTerms.map((entry) => (
+                    <div
+                      key={entry.term}
+                      className="rounded-[18px] border border-[#eff3ee] bg-[#fbfcfa] px-4 py-4"
+                    >
+                      <p className="text-[14px] font-[700] text-[#182119]">
+                        {entry.term}
+                      </p>
+                      <p className="mt-1 text-[13px] leading-6 text-[#6d786f]">
+                        {entry.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
           </div>
-        </Card>
-      </div>
+
+          {filteredSections.length > 0 ? (
+            <section className="space-y-4">
+              <div>
+                <h2 className="text-[32px] font-[600] tracking-[-0.04em] text-[#151c17]">
+                  Product Guide
+                </h2>
+                <p className="mt-1 text-[14px] text-[#728071]">
+                  Use these sections to understand the platform end-to-end.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {filteredSections.map((section) => (
+                  <HelpSectionCard
+                    key={section.id}
+                    section={section}
+                    isActive={activeSectionId === section.id}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
