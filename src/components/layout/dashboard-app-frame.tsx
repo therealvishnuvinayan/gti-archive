@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
+import { NotificationCenterProvider } from "@/components/notifications/notification-center";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import type { DashboardUserView } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
@@ -103,12 +104,14 @@ export function DashboardAppFrame({
   }
 
   return (
-    <DashboardShell
-      user={user}
-      projectBadgeCount={projectBadgeCount}
-      topbarProps={getTopbarProps(pathname, searchParams)}
-    >
-      {children}
-    </DashboardShell>
+    <NotificationCenterProvider>
+      <DashboardShell
+        user={user}
+        projectBadgeCount={projectBadgeCount}
+        topbarProps={getTopbarProps(pathname, searchParams)}
+      >
+        {children}
+      </DashboardShell>
+    </NotificationCenterProvider>
   );
 }

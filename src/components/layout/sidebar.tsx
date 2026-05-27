@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   BookCopy,
+  Bell,
   CalendarDays,
   HelpCircle,
   LayoutGrid,
@@ -15,6 +16,8 @@ import {
   Archive,
   X,
 } from "lucide-react";
+
+import { useNotificationCenter } from "@/components/notifications/notification-center";
 
 type SidebarItem = {
   label: string;
@@ -36,6 +39,7 @@ const sidebarSections: SidebarSection[] = [
       { label: "Projects", href: "/projects", icon: BookCopy },
       { label: "Calendar", href: "/calendar", icon: CalendarDays },
       { label: "Collaboration", href: "/collaboration", icon: Users },
+      { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Library", href: "/library", icon: Library },
       { label: "Archives", href: "/archives", icon: Archive },
     ],
@@ -71,6 +75,7 @@ function LogoMark() {
 
 export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
   const pathname = usePathname();
+  const { unreadCount } = useNotificationCenter();
 
   return (
     <>
@@ -111,6 +116,10 @@ export function Sidebar({ isOpen, onClose, projectBadgeCount }: SidebarProps) {
                   const badge =
                     item.href === "/projects" && typeof projectBadgeCount === "number"
                       ? String(projectBadgeCount)
+                      : item.href === "/notifications"
+                        ? unreadCount > 0
+                          ? String(unreadCount)
+                          : undefined
                       : item.badge;
                   const isActive =
                     item.href !== "#" &&

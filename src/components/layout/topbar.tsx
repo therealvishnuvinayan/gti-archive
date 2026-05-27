@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Bell, ChevronDown, LogOut, Menu, MessageSquareText } from "lucide-react";
+import { ChevronDown, LogOut, Menu, MessageSquareText } from "lucide-react";
 
+import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -108,23 +109,15 @@ export function Topbar({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-          {[
-            { label: "Messages", icon: MessageSquareText },
-            { label: "Notifications", icon: Bell },
-          ].map((item) => {
-            const Icon = item.icon;
+          <button
+            type="button"
+            className="grid h-[54px] w-[54px] place-items-center rounded-full bg-white text-[#1c241d] shadow-[0_10px_24px_rgba(15,26,20,0.05)] transition-transform hover:-translate-y-0.5"
+            aria-label="Messages"
+          >
+            <MessageSquareText className="h-[18px] w-[18px]" />
+          </button>
 
-            return (
-              <button
-                key={item.label}
-                type="button"
-                className="grid h-[54px] w-[54px] place-items-center rounded-full bg-white text-[#1c241d] shadow-[0_10px_24px_rgba(15,26,20,0.05)] transition-transform hover:-translate-y-0.5"
-                aria-label={item.label}
-              >
-                <Icon className="h-[18px] w-[18px]" />
-              </button>
-            );
-          })}
+          <NotificationDropdown />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
