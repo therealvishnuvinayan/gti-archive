@@ -2,115 +2,51 @@ import Link from "next/link";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { UpdateList, type UpdateItem } from "@/components/dashboard/update-list";
+import { UpdateList } from "@/components/dashboard/update-list";
 import { ReminderCard } from "@/components/dashboard/reminder-card";
 import {
   RecentProjects,
 } from "@/components/dashboard/recent-projects";
 import {
   CollaborationCard,
-  type Collaborator,
 } from "@/components/dashboard/collaboration-card";
 import { ProjectProgressCard } from "@/components/dashboard/project-progress-card";
 import { DeadlineCard } from "@/components/dashboard/deadline-card";
-import { getDashboardProjectCounts, getRecentProjects } from "@/lib/projects";
+import { requireUser } from "@/lib/auth";
+import { getDashboardSnapshot } from "@/lib/dashboard";
 import {
   MotionItem,
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
 
-const updates: UpdateItem[] = [
-  {
-    title: "Review the Artwork from company DCD",
-    project: "Project Milano ABCD",
-    tone: "critical",
-  },
-  {
-    title: "Review the Submission from company Nixon",
-    project: "Project Mond ABCD",
-    tone: "critical",
-  },
-  {
-    title: "Review the Approval from CEO for Milano ABCD",
-    project: "Project Milano ABCD",
-    tone: "success",
-  },
-  {
-    title: "Review the Changes from CEO for Alster ABCD",
-    project: "Project Alster ABCD",
-    tone: "warning",
-  },
-];
-
-const collaborators: Collaborator[] = [
-  {
-    name: "Sam",
-    task: "Working on",
-    project: "Milano ABCD",
-    status: "Occupied",
-  },
-  {
-    name: "Peter",
-    task: "Working on",
-    project: "Milano ABCD",
-    status: "Rejected",
-  },
-  {
-    name: "Tommy",
-    task: "Working on",
-    project: "Milano ABCD",
-    status: "Free",
-  },
-  {
-    name: "Louis",
-    task: "Working on",
-    project: "Milano ABCD",
-    status: "Free",
-  },
-  {
-    name: "Hennesey",
-    task: "Working on",
-    project: "Milano ABCD",
-    status: "Occupied",
-  },
-];
-
-const progressSegments = [
-  { label: "Completed", value: 55, tone: "completed" },
-  { label: "In Progress", value: 25, tone: "progress" },
-  { label: "Pending", value: 20, tone: "pending" },
-] as const;
-
 export default async function Home() {
-  const [counts, recentProjects] = await Promise.all([
-    getDashboardProjectCounts(),
-    getRecentProjects(),
-  ]);
+  const user = await requireUser();
+  const dashboard = await getDashboardSnapshot(user);
   const statCards = [
     {
       title: "Total Projects",
-      value: `${counts.total}`.padStart(2, "0"),
-      delta: `${counts.total}`.padStart(2, "0"),
+      value: `${dashboard.counts.total}`.padStart(2, "0"),
+      delta: `${dashboard.counts.total}`.padStart(2, "0"),
       note: "Projects in database",
       emphasize: true,
     },
     {
       title: "Ongoing Projects",
-      value: `${counts.ongoing}`.padStart(2, "0"),
-      delta: `${counts.ongoing}`.padStart(2, "0"),
+      value: `${dashboard.counts.ongoing}`.padStart(2, "0"),
+      delta: `${dashboard.counts.ongoing}`.padStart(2, "0"),
       note: "Currently active",
     },
     {
       title: "Pending Projects",
-      value: `${counts.pending}`.padStart(2, "0"),
-      delta: `${counts.pending}`.padStart(2, "0"),
+      value: `${dashboard.counts.pending}`.padStart(2, "0"),
+      delta: `${dashboard.counts.pending}`.padStart(2, "0"),
       note: "Waiting to begin",
     },
     {
       title: "Completed Projects",
-      value: `${counts.completed}`.padStart(2, "0"),
-      delta: `${counts.completed}`.padStart(2, "0"),
+      value: `${dashboard.counts.completed}`.padStart(2, "0"),
+      delta: `${dashboard.counts.completed}`.padStart(2, "0"),
       note: "Delivered projects",
     },
   ] as const;
@@ -133,12 +69,13 @@ export default async function Home() {
               >
                 + New Project
               </Link>
-              <button
-                type="button"
+              <Link
+                href="/library"
+                title="Upload assets from Library"
                 className="inline-flex min-h-[54px] items-center justify-center rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
               >
                 + Upload Assets
-              </button>
+              </Link>
             </div>
           </header>
         </MotionSection>
@@ -160,36 +97,43 @@ export default async function Home() {
         >
           <div className="xl:col-span-6">
             <MotionItem y={12}>
-              <UpdateList title="Important Updates" items={updates} />
+              <UpdateList title="Important Updates" items={dashboard.updates.map((item) => ({
+                title: item.title,
+                project: item.detail,
+                tone: item.tone,
+                href: item.href,
+              }))} />
             </MotionItem>
           </div>
           <div className="xl:col-span-3">
             <MotionItem y={12}>
               <ReminderCard
                 title="Reminder"
-                headline="Review the Artwork from company ABC"
-                project="Project Milano ABCD"
-                actionLabel="Take Action"
+                headline={dashboard.reminder?.headline}
+                project={dashboard.reminder?.project}
+                actionLabel={dashboard.reminder?.actionLabel}
+                actionHref={dashboard.reminder?.actionHref}
+                detailHref={dashboard.reminder?.actionHref}
               />
             </MotionItem>
           </div>
           <div className="xl:col-span-3">
             <MotionItem y={12}>
-              <RecentProjects title="Recent Projects" items={recentProjects} />
+              <RecentProjects title="Recent Projects" items={dashboard.recentProjects} href="/projects" />
             </MotionItem>
           </div>
           <div className="xl:col-span-5">
             <MotionItem y={12}>
-              <CollaborationCard title="Collaboration" items={collaborators} />
+              <CollaborationCard title="Collaboration" items={dashboard.collaborators} href="/collaboration" />
             </MotionItem>
           </div>
           <div className="xl:col-span-4">
             <MotionItem y={12}>
               <ProjectProgressCard
                 title="Project Progress"
-                percentage={55}
-                subtitle="Projects Completed"
-                segments={progressSegments}
+                percentage={dashboard.progress.percentage}
+                subtitle={dashboard.progress.subtitle}
+                segments={dashboard.progress.segments}
               />
             </MotionItem>
           </div>
@@ -197,8 +141,11 @@ export default async function Home() {
             <MotionItem y={12}>
               <DeadlineCard
                 title="Project Deadline"
-                project="Project ABCD"
-                timeLeft="48:50:29"
+                project={dashboard.deadline?.project}
+                detail={dashboard.deadline?.detail}
+                timeLabel={dashboard.deadline?.timeLabel}
+                actionHref={dashboard.deadline?.actionHref}
+                overdue={dashboard.deadline?.overdue}
               />
             </MotionItem>
           </div>

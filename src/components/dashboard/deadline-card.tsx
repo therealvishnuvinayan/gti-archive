@@ -1,15 +1,26 @@
-import { ArrowUpRight, Pause, Square } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 
 type DeadlineCardProps = {
   title: string;
-  project: string;
-  timeLeft: string;
+  project?: string;
+  detail?: string;
+  timeLabel?: string;
+  actionHref?: string;
+  actionLabel?: string;
+  emptyMessage?: string;
+  overdue?: boolean;
 };
 
 export function DeadlineCard({
   title,
   project,
-  timeLeft,
+  detail,
+  timeLabel,
+  actionHref,
+  actionLabel = "Open Project",
+  emptyMessage = "No upcoming deadlines.",
+  overdue = false,
 }: DeadlineCardProps) {
   return (
     <article className="relative overflow-hidden rounded-[24px] bg-[#07130e] p-6 text-white shadow-[0_20px_55px_rgba(7,19,14,0.28)]">
@@ -22,37 +33,47 @@ export function DeadlineCard({
         <div className="mb-10 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em]">{title}</h2>
-            <p className="mt-2 text-[14px] text-white/85">{project}</p>
+            {project ? (
+              <p className="mt-2 text-[14px] text-white/85">{project}</p>
+            ) : null}
           </div>
-          <button
-            type="button"
-            className="grid h-10 w-10 place-items-center rounded-full border border-white/40 bg-white/5 text-white backdrop-blur-sm"
-            aria-label={`${title} details`}
-          >
-            <ArrowUpRight className="h-4 w-4" />
-          </button>
+          {actionHref ? (
+            <Link
+              href={actionHref}
+              className="grid h-10 w-10 place-items-center rounded-full border border-white/40 bg-white/5 text-white backdrop-blur-sm transition-colors hover:bg-white/15"
+              aria-label={`${title} details`}
+              title={`${title} details`}
+            >
+              <ArrowUpRight className="h-4 w-4" />
+            </Link>
+          ) : null}
         </div>
 
-        <p className="text-center text-[40px] font-bold tracking-[-0.04em]">
-          {timeLeft}
-        </p>
-
-        <div className="mt-8 flex items-center justify-center gap-4">
-          <button
-            type="button"
-            className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#121713]"
-            aria-label="Pause timer"
-          >
-            <Pause className="h-4 w-4 fill-current" />
-          </button>
-          <button
-            type="button"
-            className="grid h-10 w-10 place-items-center rounded-full bg-[#ff4a1e] text-white"
-            aria-label="Stop timer"
-          >
-            <Square className="h-4 w-4 fill-current" />
-          </button>
-        </div>
+        {timeLabel ? (
+          <div className="space-y-4">
+            <p
+              className={`text-center text-[34px] font-bold tracking-[-0.04em] ${
+                overdue ? "text-[#ffb9a8]" : ""
+              }`}
+            >
+              {timeLabel}
+            </p>
+            {detail ? (
+              <p className="text-center text-[14px] text-white/80">{detail}</p>
+            ) : null}
+            {actionHref ? (
+              <Link
+                href={actionHref}
+                className="inline-flex min-h-[52px] w-full items-center justify-center rounded-full bg-white text-[16px] font-semibold text-[#101612] transition-transform hover:-translate-y-0.5"
+                title={actionLabel}
+              >
+                {actionLabel}
+              </Link>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-[14px] leading-6 text-white/78">{emptyMessage}</p>
+        )}
       </div>
     </article>
   );

@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import {
   AttachmentStatus,
   AttachmentAssetType,
+  Prisma,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   UserRole,
@@ -31,7 +32,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 export const PROJECTS_CACHE_TAG = "projects";
 
 type BudgetAccessUser = Pick<User, "id">;
-type ProjectAccessUser = Pick<User, "id" | "role">;
+export type ProjectAccessUser = Pick<User, "id" | "role">;
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
@@ -428,6 +429,32 @@ function canAccessProjectRecord(
       (collaborator) => collaborator.userId === currentUser.id,
     ) ?? false
   );
+}
+
+export function buildAccessibleProjectsWhere(
+  currentUser?: ProjectAccessUser,
+): Prisma.ProjectWhereInput {
+  if (
+    !currentUser ||
+    currentUser.role === UserRole.SUPER_ADMIN ||
+    currentUser.role === UserRole.ADMIN
+  ) {
+    return {};
+  }
+
+  return {
+    OR: [
+      { createdById: currentUser.id },
+      { executorUserId: currentUser.id },
+      {
+        collaborators: {
+          some: {
+            userId: currentUser.id,
+          },
+        },
+      },
+    ],
+  };
 }
 
 function mapAttachmentToRecord(
@@ -1202,21 +1229,31 @@ export async function getProjectListFilterOptions(): Promise<ProjectListFilterOp
   };
 }
 
-export async function getDashboardProjectCounts(): Promise<DashboardProjectCounts> {
+export async function getDashboardProjectCounts(
+  currentUser?: ProjectAccessUser,
+): Promise<DashboardProjectCounts> {
+  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
   const getCachedCounts = unstable_cache(
     async () =>
       withPrismaRetry(() =>
         Promise.all([
-          prisma.project.count(),
+          prisma.project.count({
+            where: accessibleWhere,
+          }),
           prisma.project.groupBy({
             by: ["status"],
+            where: accessibleWhere,
             _count: {
               _all: true,
             },
           }),
         ]),
       ),
-    ["dashboard-project-counts"],
+    [
+      "dashboard-project-counts",
+      currentUser?.id ?? "all",
+      currentUser?.role ?? "all",
+    ],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
@@ -1243,18 +1280,25 @@ export async function getDashboardProjectCounts(): Promise<DashboardProjectCount
   };
 }
 
-export async function getRecentProjects(limit = 5) {
+export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUser) {
+  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
   const projects = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
+          where: accessibleWhere,
           orderBy: {
             createdAt: "desc",
           },
           take: limit,
         }),
       ),
-    ["recent-projects", String(limit)],
+    [
+      "recent-projects",
+      String(limit),
+      currentUser?.id ?? "all",
+      currentUser?.role ?? "all",
+    ],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 

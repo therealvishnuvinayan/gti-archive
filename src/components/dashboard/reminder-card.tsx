@@ -1,10 +1,14 @@
+import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 
 type ReminderCardProps = {
   title: string;
-  headline: string;
-  project: string;
-  actionLabel: string;
+  headline?: string;
+  project?: string;
+  actionLabel?: string;
+  actionHref?: string;
+  detailHref?: string;
+  emptyMessage?: string;
 };
 
 export function ReminderCard({
@@ -12,35 +16,50 @@ export function ReminderCard({
   headline,
   project,
   actionLabel,
+  actionHref,
+  detailHref,
+  emptyMessage = "No reminders right now.",
 }: ReminderCardProps) {
   return (
     <article className="rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">
       <div className="mb-7 flex items-start justify-between gap-3">
         <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">{title}</h2>
-        <button
-          type="button"
-          className="grid h-9 w-9 place-items-center rounded-full border border-[#1e241f] bg-white text-[#111712]"
-          aria-label={`${title} details`}
-        >
-          <ArrowUpRight className="h-4 w-4" />
-        </button>
+        {detailHref ? (
+          <Link
+            href={detailHref}
+            className="grid h-9 w-9 place-items-center rounded-full border border-[#1e241f] bg-white text-[#111712] transition-colors hover:bg-brand-soft"
+            aria-label={`${title} details`}
+            title={`${title} details`}
+          >
+            <ArrowUpRight className="h-4 w-4" />
+          </Link>
+        ) : null}
       </div>
 
-      <div className="space-y-6">
-        <div>
-          <p className="text-[21px] font-bold leading-[1.05] tracking-[-0.03em] text-[#236e4c]">
-            {headline}
-          </p>
-          <p className="mt-2 text-[14px] text-[#464d47]">{project}</p>
+      {headline ? (
+        <div className="space-y-6">
+          <div>
+            <p className="text-[21px] font-bold leading-[1.05] tracking-[-0.03em] text-[#236e4c]">
+              {headline}
+            </p>
+            {project ? (
+              <p className="mt-2 text-[14px] text-[#464d47]">{project}</p>
+            ) : null}
+          </div>
+
+          {actionHref && actionLabel ? (
+            <Link
+              href={actionHref}
+              className="inline-flex min-h-[54px] w-full items-center justify-center rounded-full bg-[linear-gradient(90deg,#3b9b69,#13422f)] px-6 text-[17px] font-medium text-white transition-transform hover:-translate-y-0.5"
+              title={actionLabel}
+            >
+              {actionLabel}
+            </Link>
+          ) : null}
         </div>
-
-        <button
-          type="button"
-          className="inline-flex min-h-[54px] w-full items-center justify-center rounded-full bg-[linear-gradient(90deg,#3b9b69,#13422f)] px-6 text-[17px] font-medium text-white transition-transform hover:-translate-y-0.5"
-        >
-          {actionLabel}
-        </button>
-      </div>
+      ) : (
+        <p className="text-[14px] leading-6 text-[#758077]">{emptyMessage}</p>
+      )}
     </article>
   );
 }
