@@ -179,6 +179,7 @@ model User {
   copyrightContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionCopyrightContact")
   uploadedCompletionDocuments ProjectCompletionDocument[] @relation("ProjectCompletionDocumentUploadedBy")
   notifications    Notification[]
+  fileFavorites    FileFavorite[]
   activityLogs      ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
   assignedProjects  Project[]           @relation("ProjectExecutor")
@@ -417,6 +418,7 @@ model ProjectAttachment {
   reviewedBy       User?              @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   baseComparisonComments ComparisonComment[] @relation("ComparisonCommentBaseAttachment")
   compareComparisonComments ComparisonComment[] @relation("ComparisonCommentCompareAttachment")
+  fileFavorites    FileFavorite[]
   fileName         String
   originalFileName String
   mimeType         String
@@ -440,6 +442,20 @@ model ProjectAttachment {
   @@index([reviewedById])
   @@index([status])
   @@index([submissionReviewStatus])
+}
+
+model FileFavorite {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachmentId String
+  attachment   ProjectAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+
+  @@unique([userId, attachmentId])
+  @@index([userId])
+  @@index([attachmentId])
+  @@index([userId, createdAt])
 }
 
 model ComparisonComment {

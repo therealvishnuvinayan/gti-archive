@@ -20,6 +20,7 @@ import {
   getProjectCollaboratorTypeMeta,
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
+import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const PROJECTS_CACHE_TAG = "projects";
@@ -160,6 +161,7 @@ export type ProjectAttachmentRecord = {
   uploadedAt: string;
   previewPath: string;
   downloadPath: string;
+  isFavoritedByCurrentUser: boolean;
 };
 
 export type ProjectChatEntry = {
@@ -433,6 +435,7 @@ function mapAttachmentToRecord(
     createdAt: Date | string | number;
     uploadedBy: Pick<User, "name" | "email">;
   },
+  favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectAttachmentRecord {
   return {
     id: attachment.id,
@@ -449,6 +452,7 @@ function mapAttachmentToRecord(
     uploadedAt: formatAttachmentTimestamp(attachment.createdAt),
     previewPath: `/api/project-assets/${attachment.id}/preview`,
     downloadPath: `/api/project-assets/${attachment.id}/download`,
+    isFavoritedByCurrentUser: favoritedAttachmentIds?.has(attachment.id) ?? false,
   };
 }
 
@@ -543,6 +547,7 @@ function mapStageToCard(
 function mapProjectToFlow(
   project: ProjectWithCreator,
   currentUser: BudgetAccessUser,
+  favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
   const executorDisplayName =
@@ -632,7 +637,9 @@ function mapProjectToFlow(
       ...collaboratorRecords,
     ],
     mentionParticipants,
-    attachments: project.attachments.map(mapAttachmentToRecord),
+    attachments: project.attachments.map((attachment) =>
+      mapAttachmentToRecord(attachment, favoritedAttachmentIds),
+    ),
     chatEntries: [],
     compareNotes: [],
   };
@@ -675,6 +682,7 @@ function formatProjectInputDateTime(date: Date | string | number | null | undefi
 function mapProjectToEditor(
   project: ProjectWithCreator,
   currentUser: BudgetAccessUser,
+  favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectEditorRecord {
   const stages = getProjectStages(project);
   const executorDisplayName =
@@ -716,7 +724,9 @@ function mapProjectToEditor(
     collaborators: (project.collaborators ?? []).map((assignment) => ({
       ...mapProjectCollaboratorAssignmentToRecord(assignment),
     })),
-    attachments: project.attachments.map(mapAttachmentToRecord),
+    attachments: project.attachments.map((attachment) =>
+      mapAttachmentToRecord(attachment, favoritedAttachmentIds),
+    ),
   };
 }
 
@@ -1398,7 +1408,12 @@ export async function getProjectById(
     return null;
   }
 
-  return mapProjectToFlow(project, currentUser);
+  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
+    currentUser.id,
+    project.attachments.map((attachment) => attachment.id),
+  );
+
+  return mapProjectToFlow(project, currentUser, favoritedAttachmentIds);
 }
 
 export async function getProjectEditorById(
@@ -1479,5 +1494,10 @@ export async function getProjectEditorById(
     return null;
   }
 
-  return mapProjectToEditor(project, currentUser);
+  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
+    currentUser.id,
+    project.attachments.map((attachment) => attachment.id),
+  );
+
+  return mapProjectToEditor(project, currentUser, favoritedAttachmentIds);
 }

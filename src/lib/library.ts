@@ -9,6 +9,7 @@ import {
   canBypassCollaboratorVisibility,
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
+import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { deleteObjectIfNeeded, getFileExtension } from "@/lib/storage/s3";
 import {
@@ -201,6 +202,7 @@ function isAttachmentVisibleToUser(
 function mapAttachmentToLibraryItem(
   user: LibraryUser,
   attachment: RawLibraryAttachment,
+  favoritedAttachmentIds?: ReadonlySet<string>,
 ): LibraryItemRecord {
   const type = getLibraryTypeLabel(attachment.originalFileName, attachment.mimeType);
   const isFinance = isFinanceLibraryFile(attachment.originalFileName);
@@ -222,6 +224,7 @@ function mapAttachmentToLibraryItem(
     previewPath: `/api/project-assets/${attachment.id}/preview`,
     downloadPath: `/api/project-assets/${attachment.id}/download`,
     canDelete: canDeleteLibraryAttachment(user, attachment.project.createdById),
+    isFavoritedByCurrentUser: favoritedAttachmentIds?.has(attachment.id) ?? false,
   };
 }
 
@@ -267,6 +270,10 @@ function applyLibraryFilters(
     filteredItems = filteredItems.filter(
       (item) => item.quickCategory === "Quotations/Invoices",
     );
+  }
+
+  if (input.quickMenu === "favourites") {
+    filteredItems = filteredItems.filter((item) => item.isFavoritedByCurrentUser);
   }
 
   filteredItems = applyDateFilter(filteredItems, input.date);
@@ -401,8 +408,12 @@ export async function getLibraryPageDataForUser(
 ): Promise<LibraryPageData> {
   const pageSize = clampPageSize(input.pageSize);
   const rawAttachments = await getAccessibleLibraryAttachments(user);
+  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
+    user.id,
+    rawAttachments.map((attachment) => attachment.id),
+  );
   const visibleItems = rawAttachments.map((attachment) =>
-    mapAttachmentToLibraryItem(user, attachment),
+    mapAttachmentToLibraryItem(user, attachment, favoritedAttachmentIds),
   );
 
   const counts: LibraryQuickMenuCounts = {
@@ -411,7 +422,7 @@ export async function getLibraryPageDataForUser(
       (item) => item.quickCategory === "Quotations/Invoices",
     ).length,
     fromUsers: new Set(visibleItems.map((item) => item.createdById)).size,
-    favourites: 0,
+    favourites: visibleItems.filter((item) => item.isFavoritedByCurrentUser).length,
   };
 
   const filters = {

@@ -49,6 +49,7 @@ export type ProjectEditorInitialAttachment = {
   uploadedAt: string;
   previewPath: string;
   downloadPath: string;
+  isFavoritedByCurrentUser: boolean;
 };
 
 export type ProjectEditorInitialCollaborator = {

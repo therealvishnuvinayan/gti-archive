@@ -34,6 +34,7 @@ import {
 } from "@/components/collaboration/collaborator-dialog";
 import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import {
   getDefaultProjectCollaboratorParticipantType,
   getProjectCollaboratorTypeMeta,
@@ -1491,6 +1492,11 @@ export function CreateProjectWorkspace({
                               previewPath={attachment.previewPath}
                               downloadPath={attachment.downloadPath}
                               triggerClassName="size-8 text-brand"
+                            />
+                            <AttachmentFavoriteButton
+                              attachmentId={attachment.id}
+                              initialIsFavorited={attachment.isFavoritedByCurrentUser}
+                              className="size-8 text-[#7a847d] hover:bg-[#fff4f5]"
                             />
                             <Button
                               asChild

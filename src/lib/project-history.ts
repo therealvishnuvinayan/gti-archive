@@ -15,6 +15,7 @@ import {
   notifyFileUploaded,
   runNotificationTask,
 } from "@/lib/notification-center";
+import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import { getVisibleStageEventRecipientUserIds } from "@/lib/notification-center/recipients";
 import {
   canBypassCollaboratorVisibility,
@@ -188,6 +189,7 @@ function mapAttachmentRecord(
     uploadedBy: Pick<User, "name" | "email">;
   },
   submissionNumber?: number,
+  favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectAttachmentRecord {
   const createdAt = toHistoryDate(attachment.createdAt);
 
@@ -206,6 +208,7 @@ function mapAttachmentRecord(
       : formatHistoryTimestamp(createdAt),
     previewPath: `/api/project-assets/${attachment.id}/preview`,
     downloadPath: `/api/project-assets/${attachment.id}/download`,
+    isFavoritedByCurrentUser: favoritedAttachmentIds?.has(attachment.id) ?? false,
   };
 }
 
@@ -237,6 +240,7 @@ function buildStageSubmissionNumberMap(
 function mapRevisionEntry(
   revision: StageHistoryQueryRecord,
   submissionNumbers: ReadonlyMap<string, number>,
+  favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectChatEntry {
   return {
     id: revision.id,
@@ -252,7 +256,11 @@ function mapRevisionEntry(
     attachments: revision.attachments
       .filter((attachment) => attachment.status === AttachmentStatus.READY)
       .map((attachment) =>
-        mapAttachmentRecord(attachment, submissionNumbers.get(attachment.id)),
+        mapAttachmentRecord(
+          attachment,
+          submissionNumbers.get(attachment.id),
+          favoritedAttachmentIds,
+        ),
       ),
   };
 }
@@ -260,6 +268,7 @@ function mapRevisionEntry(
 function mapCommentEntry(
   comment: StageCommentQueryRecord,
   submissionNumbers: ReadonlyMap<string, number>,
+  favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectChatEntry {
   return {
     id: comment.id,
@@ -276,7 +285,11 @@ function mapCommentEntry(
     attachments: comment.attachments
       .filter((attachment) => attachment.status === AttachmentStatus.READY)
       .map((attachment) =>
-        mapAttachmentRecord(attachment, submissionNumbers.get(attachment.id)),
+        mapAttachmentRecord(
+          attachment,
+          submissionNumbers.get(attachment.id),
+          favoritedAttachmentIds,
+        ),
       ),
   };
 }
@@ -410,7 +423,7 @@ async function getProjectVisibilityPauseWindows(
   return visibilityState?.visibilityPauses ?? [];
 }
 
-async function assertProjectAttachmentVisibility(
+export async function assertProjectAttachmentVisibilityForUser(
   user: AccessUser,
   attachment: {
     projectId: string;
@@ -562,14 +575,21 @@ export async function getProjectStageHistory(
   const pauseWindows = await getProjectVisibilityPauseWindows(user, project);
   const revisions = filterHistoryEntriesOutsidePauseWindows(allRevisions, pauseWindows);
   const comments = filterHistoryEntriesOutsidePauseWindows(allComments, pauseWindows);
+  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
+    user.id,
+    [...revisions, ...comments]
+      .flatMap((entry) => entry.attachments)
+      .filter((attachment) => attachment.status === AttachmentStatus.READY)
+      .map((attachment) => attachment.id),
+  );
   const entries = [
     ...revisions.map((revision) => ({
       createdAt: toHistoryDate(revision.createdAt).getTime(),
-      entry: mapRevisionEntry(revision, submissionNumbers),
+      entry: mapRevisionEntry(revision, submissionNumbers, favoritedAttachmentIds),
     })),
     ...comments.map((comment) => ({
       createdAt: toHistoryDate(comment.createdAt).getTime(),
-      entry: mapCommentEntry(comment, submissionNumbers),
+      entry: mapCommentEntry(comment, submissionNumbers, favoritedAttachmentIds),
     })),
   ]
     .sort((left, right) => right.createdAt - left.createdAt)
@@ -1608,7 +1628,7 @@ export async function getAttachmentDownloadUrlForUser(
   }
 
   await assertProjectAccess(user, attachment.projectId);
-  await assertProjectAttachmentVisibility(user, attachment);
+  await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   return createPresignedDownloadUrl({
     bucket: attachment.bucket,
@@ -1650,7 +1670,7 @@ export async function getAttachmentPreviewUrlForUser(
   }
 
   await assertProjectAccess(user, attachment.projectId);
-  await assertProjectAttachmentVisibility(user, attachment);
+  await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   return createPresignedPreviewUrl({
     bucket: attachment.bucket,
@@ -1690,7 +1710,7 @@ export async function deleteAttachmentForUser(
   }
 
   await assertProjectAccess(user, attachment.projectId);
-  await assertProjectAttachmentVisibility(user, attachment);
+  await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(() => undefined);
 

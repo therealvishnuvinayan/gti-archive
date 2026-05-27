@@ -47,6 +47,7 @@ export type LibraryItemRecord = {
   previewPath: string;
   downloadPath: string;
   canDelete: boolean;
+  isFavoritedByCurrentUser: boolean;
 };
 
 export type LibraryFilterOption = {

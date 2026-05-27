@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { MotionSection } from "@/components/motion/motion-primitives";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -327,12 +328,38 @@ export function LibraryWorkspace({ initialData }: LibraryWorkspaceProps) {
     }
   }
 
-  function handleQuickMenuSelection(nextQuickMenu: LibraryQuickMenuOption) {
-    if (nextQuickMenu === "favourites") {
-      showInfoToast("Favourites will be available soon.");
-      return;
-    }
+  function handleFavoriteChange(itemId: string, isFavorited: boolean) {
+    setData((current) => {
+      const currentItem = current.items.find((item) => item.id === itemId);
+      const wasFavorited = currentItem?.isFavoritedByCurrentUser ?? false;
 
+      let nextItems = current.items.map((item) =>
+        item.id === itemId ? { ...item, isFavoritedByCurrentUser: isFavorited } : item,
+      );
+      let nextTotal = current.total;
+
+      if (activeQuickMenu === "favourites" && !isFavorited) {
+        nextItems = nextItems.filter((item) => item.id !== itemId);
+        nextTotal = Math.max(0, current.total - 1);
+      }
+
+      const favouritesDelta =
+        isFavorited === wasFavorited ? 0 : isFavorited ? 1 : -1;
+
+      return {
+        ...current,
+        items: nextItems,
+        total: nextTotal,
+        totalPages: Math.max(1, Math.ceil(nextTotal / current.pageSize)),
+        counts: {
+          ...current.counts,
+          favourites: Math.max(0, current.counts.favourites + favouritesDelta),
+        },
+      };
+    });
+  }
+
+  function handleQuickMenuSelection(nextQuickMenu: LibraryQuickMenuOption) {
     setLoading(true);
     setActiveQuickMenu(nextQuickMenu);
     setCurrentPage(1);
@@ -403,10 +430,10 @@ export function LibraryWorkspace({ initialData }: LibraryWorkspaceProps) {
                 icon={UserRound}
               />
               <QuickMenuCard
-                active={false}
+                active={activeQuickMenu === "favourites"}
                 title="Favourites"
-                description="This view will be available soon."
-                actionLabel="Coming Soon"
+                description={`${data.counts.favourites} files saved`}
+                actionLabel="View"
                 onClick={() => handleQuickMenuSelection("favourites")}
                 icon={Star}
               />
@@ -580,6 +607,16 @@ export function LibraryWorkspace({ initialData }: LibraryWorkspaceProps) {
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-2">
                             <LibraryPreviewAction item={item} />
+                            <AttachmentFavoriteButton
+                              attachmentId={item.id}
+                              initialIsFavorited={item.isFavoritedByCurrentUser}
+                              onChange={(isFavorited) =>
+                                handleFavoriteChange(item.id, isFavorited)
+                              }
+                              className="h-9 w-9 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
+                              iconClassName="h-4.5 w-4.5"
+                              showToast={true}
+                            />
                             <Button asChild type="button" size="sm" className="min-h-[32px] px-3 text-[11px]">
                               <a
                                 href={item.downloadPath}
@@ -615,6 +652,8 @@ export function LibraryWorkspace({ initialData }: LibraryWorkspaceProps) {
                       <td colSpan={6} className="px-5 py-12 text-center text-[14px] text-[#707a72]">
                         {noLibraryFiles
                           ? "No library files found."
+                          : activeQuickMenu === "favourites"
+                            ? "No favorite files yet. Mark files with the heart icon to find them here later."
                           : noFilteredFiles
                             ? "No files match your filters. Try changing your search or filters."
                             : "No library files found."}

@@ -48,6 +48,7 @@ import {
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import {
   CompletedProjectArchiveSummaryCard,
@@ -639,6 +640,11 @@ function AttachmentHistoryList({
                       previewPath={attachment.previewPath}
                       downloadPath={attachment.downloadPath}
                       triggerClassName="size-8 rounded-full text-brand"
+                    />
+                    <AttachmentFavoriteButton
+                      attachmentId={attachment.id}
+                      initialIsFavorited={attachment.isFavoritedByCurrentUser}
+                      className="size-8 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
                     />
                     <Button
                       asChild
@@ -2186,6 +2192,7 @@ export function ProjectChatWorkspace({
           uploadedAt: "Uploading…",
           previewPath: "",
           downloadPath: "",
+          isFavoritedByCurrentUser: false,
           uploadState: "pending",
           progress: 0,
         })),
@@ -2331,6 +2338,7 @@ export function ProjectChatWorkspace({
             uploadedAt: "Just now",
             previewPath: `/api/project-assets/${result.attachmentId}/preview`,
             downloadPath: `/api/project-assets/${result.attachmentId}/download`,
+            isFavoritedByCurrentUser: false,
             submissionReviewStatus:
               result.pendingFile.assetType === "STAGE_SUBMISSION"
                 ? "PENDING_REVIEW"
@@ -2415,6 +2423,7 @@ export function ProjectChatWorkspace({
           uploadedAt: "Uploading…",
           previewPath: "",
           downloadPath: "",
+          isFavoritedByCurrentUser: false,
           uploadState: "pending",
           progress: 0,
         })),
@@ -2527,6 +2536,7 @@ export function ProjectChatWorkspace({
             uploadedAt: "Just now",
             previewPath: `/api/project-assets/${result.attachmentId}/preview`,
             downloadPath: `/api/project-assets/${result.attachmentId}/download`,
+            isFavoritedByCurrentUser: false,
           })),
         },
         ...current,
