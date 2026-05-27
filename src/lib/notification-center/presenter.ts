@@ -12,23 +12,30 @@ import type {
   NotificationVisualKind,
 } from "@/lib/notifications";
 
-export const systemNotificationTypes = [
+export const workflowNotificationTypes = [
   "PROJECT_ASSIGNED",
   "PROJECT_CREATED",
   "PROJECT_UPDATED",
-  "COLLABORATOR_ADDED",
-  "COLLABORATOR_REMOVED",
+  "BRIEF_ACCEPTED",
+  "REVISION_SUBMITTED",
+  "REVISION_APPROVED",
+  "REVISION_REJECTED",
+  "SUBMISSION_COMPLETED",
+  "SUBMISSION_REVISION_REQUESTED",
   "STAGE_COMPLETED",
   "NEXT_STAGE_ACTIVATED",
   "PROJECT_ARCHIVED",
   "APPROVAL_REQUIRED",
+  "APPROVAL_PROOF_UPLOADED",
   "COPYRIGHT_TRANSFER_REQUIRED",
- ] as const satisfies readonly PrismaNotificationType[];
+  "COPYRIGHT_DOCUMENT_UPLOADED",
+  "INVOICE_UPLOADED",
+] as const satisfies readonly PrismaNotificationType[];
 
-const systemNotificationTypeSet = new Set<PrismaNotificationType>(systemNotificationTypes);
+const workflowNotificationTypeSet = new Set<PrismaNotificationType>(workflowNotificationTypes);
 
-export function isSystemNotificationType(type: PrismaNotificationType) {
-  return systemNotificationTypeSet.has(type);
+export function isWorkflowNotificationType(type: PrismaNotificationType) {
+  return workflowNotificationTypeSet.has(type);
 }
 
 export function mapTypeFilterToNotificationTypes(
@@ -54,8 +61,10 @@ export function mapTypeFilterToNotificationTypes(
       ];
     case "Stage":
       return ["BRIEF_ACCEPTED", "STAGE_COMPLETED", "NEXT_STAGE_ACTIVATED"];
+    case "Mention":
+      return ["MENTION"];
     case "Comment":
-      return ["COMMENT_ADDED", "MENTION"];
+      return ["COMMENT_ADDED"];
     case "File":
       return ["FILE_UPLOADED"];
     case "Archive":
@@ -85,8 +94,9 @@ function mapNotificationType(type: PrismaNotificationType): NotificationType {
     case "STAGE_COMPLETED":
     case "NEXT_STAGE_ACTIVATED":
       return "Stage";
-    case "COMMENT_ADDED":
     case "MENTION":
+      return "Mention";
+    case "COMMENT_ADDED":
       return "Comment";
     case "FILE_UPLOADED":
       return "File";
@@ -310,7 +320,7 @@ export function mapNotificationToView(
     contextTone: mapNotificationContextTone(notification.type),
     read: notification.isRead,
     mention: notification.type === "MENTION",
-    system: isSystemNotificationType(notification.type),
+    workflow: isWorkflowNotificationType(notification.type),
     visualKind: mapNotificationVisualKind(notification.type),
     targetHref: notification.url?.trim() || "/notifications",
   };
@@ -321,13 +331,13 @@ export function buildNotificationCounts(input: {
   unread: number;
   read: number;
   mentions: number;
-  system: number;
+  workflow: number;
 }): NotificationCountSummary {
   return {
     All: input.all,
     Unread: input.unread,
     Read: input.read,
     Mentions: input.mentions,
-    System: input.system,
+    Workflow: input.workflow,
   };
 }

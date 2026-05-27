@@ -2,6 +2,7 @@ export type NotificationType =
   | "Project"
   | "Revision"
   | "Stage"
+  | "Mention"
   | "Comment"
   | "File"
   | "Archive"
@@ -49,7 +50,7 @@ export type NotificationRecord = {
   contextTone: NotificationContextTone;
   read: boolean;
   mention: boolean;
-  system: boolean;
+  workflow: boolean;
   visualKind: NotificationVisualKind;
   actorName?: string;
   actorInitials?: string;
@@ -62,6 +63,7 @@ export const notificationTypeOptions = [
   "Project",
   "Revision",
   "Stage",
+  "Mention",
   "Comment",
   "File",
   "Archive",
@@ -77,12 +79,17 @@ export const notificationTabs = [
   "Unread",
   "Read",
   "Mentions",
-  "System",
+  "Workflow",
 ] as const;
 
 export type NotificationTabFilter = (typeof notificationTabs)[number];
 
-export type NotificationStatusFilter = "all" | "unread" | "read" | "mentions" | "system";
+export type NotificationStatusFilter =
+  | "all"
+  | "unread"
+  | "read"
+  | "mentions"
+  | "workflow";
 
 export type NotificationCountSummary = Record<NotificationTabFilter, number>;
 
@@ -113,8 +120,9 @@ export function parseNotificationStatusParam(
       return "read";
     case "mentions":
       return "mentions";
+    case "workflow":
     case "system":
-      return "system";
+      return "workflow";
     case "all":
     default:
       return "all";
@@ -141,8 +149,8 @@ export function toNotificationStatusParam(
       return "read";
     case "Mentions":
       return "mentions";
-    case "System":
-      return "system";
+    case "Workflow":
+      return "workflow";
     case "All":
     default:
       return "all";
@@ -150,7 +158,7 @@ export function toNotificationStatusParam(
 }
 
 export function toNotificationTabFilter(
-  value: NotificationStatusFilter,
+  value: NotificationStatusFilter | "system",
 ): NotificationTabFilter {
   switch (value) {
     case "unread":
@@ -159,8 +167,10 @@ export function toNotificationTabFilter(
       return "Read";
     case "mentions":
       return "Mentions";
+    case "workflow":
+      return "Workflow";
     case "system":
-      return "System";
+      return "Workflow";
     case "all":
     default:
       return "All";

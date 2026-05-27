@@ -9,7 +9,6 @@ import {
   Mail,
   MailOpen,
   Search,
-  Settings2,
   SlidersHorizontal,
 } from "lucide-react";
 
@@ -47,7 +46,7 @@ const emptyCounts: NotificationCountSummary = {
   Unread: 0,
   Read: 0,
   Mentions: 0,
-  System: 0,
+  Workflow: 0,
 };
 
 function buildNotificationsUrl(input: {
@@ -353,7 +352,7 @@ export function NotificationsPageWorkspace() {
             Notifications
           </h1>
           <p className="mt-3 text-[18px] text-[#68736a]">
-            View, manage, and track all project and system notifications.
+            View, manage, and track all project and workflow notifications.
           </p>
         </div>
 
@@ -376,15 +375,6 @@ export function NotificationsPageWorkspace() {
           >
             <CheckCheck className="h-5 w-5" />
             Mark all as read
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            variant="secondary"
-            className="min-w-[230px] rounded-full text-[17px]"
-          >
-            <Settings2 className="h-5 w-5" />
-            Notification settings
           </Button>
         </div>
       </header>

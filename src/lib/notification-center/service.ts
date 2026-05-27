@@ -12,7 +12,7 @@ import {
   buildNotificationCounts,
   mapNotificationToView,
   mapTypeFilterToNotificationTypes,
-  systemNotificationTypes,
+  workflowNotificationTypes,
 } from "./presenter";
 import type {
   CreateNotificationInput,
@@ -64,10 +64,10 @@ function buildNotificationWhere(input: {
     case "read":
       clauses.push({ isRead: true });
       break;
-    case "system":
+    case "workflow":
       clauses.push({
         type: {
-          in: [...systemNotificationTypes],
+          in: [...workflowNotificationTypes],
         },
       });
       break;
@@ -240,7 +240,7 @@ export async function getNotificationsForUser(
     unreadCount,
     readCount,
     mentionCount,
-    systemCount,
+    workflowCount,
   ] = await withPrismaRetry(() =>
     prisma.$transaction([
       prisma.notification.findMany({
@@ -279,7 +279,7 @@ export async function getNotificationsForUser(
         where: {
           userId: input.userId,
           type: {
-            in: [...systemNotificationTypes],
+            in: [...workflowNotificationTypes],
           },
         },
       }),
@@ -296,7 +296,7 @@ export async function getNotificationsForUser(
       unread: unreadCount,
       read: readCount,
       mentions: mentionCount,
-      system: systemCount,
+      workflow: workflowCount,
     }),
     page,
     pageSize,
