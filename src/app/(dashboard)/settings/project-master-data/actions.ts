@@ -92,7 +92,7 @@ export async function saveProjectCategoryAction(input: SaveMasterDataInput) {
     return { error: "A category with this name already exists." };
   }
 
-  await withPrismaRetry(() =>
+  const category = await withPrismaRetry(() =>
     parsed.id
       ? prisma.projectCategory.update({
           where: {
@@ -117,7 +117,13 @@ export async function saveProjectCategoryAction(input: SaveMasterDataInput) {
 
   await revalidateProjectMasterData();
 
-  return { success: true };
+  return {
+    success: true,
+    item: {
+      id: category.id,
+      name: category.name,
+    },
+  };
 }
 
 export async function saveProjectTagAction(input: SaveMasterDataInput) {
@@ -154,7 +160,7 @@ export async function saveProjectTagAction(input: SaveMasterDataInput) {
     return { error: "A tag with this name already exists." };
   }
 
-  await withPrismaRetry(() =>
+  const tag = await withPrismaRetry(() =>
     parsed.id
       ? prisma.projectTag.update({
           where: {
@@ -179,7 +185,13 @@ export async function saveProjectTagAction(input: SaveMasterDataInput) {
 
   await revalidateProjectMasterData();
 
-  return { success: true };
+  return {
+    success: true,
+    item: {
+      id: tag.id,
+      name: tag.name,
+    },
+  };
 }
 
 export async function saveProjectCurrencyAction(input: SaveMasterDataInput) {

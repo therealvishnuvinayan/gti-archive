@@ -16,6 +16,7 @@ import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 type SaveCollaboratorInput = CollaboratorInput & {
   collaboratorId?: string | null;
+  allowExistingUser?: boolean | null;
 };
 
 export async function saveCollaboratorAction(input: SaveCollaboratorInput) {
@@ -23,14 +24,18 @@ export async function saveCollaboratorAction(input: SaveCollaboratorInput) {
 
   const result = input.collaboratorId
     ? await updateCollaborator(input.collaboratorId, input)
-    : await createCollaborator(getUserDisplayName(user), input);
+    : await createCollaborator(getUserDisplayName(user), input, {
+        allowExistingUser: input.allowExistingUser ?? false,
+      });
 
   if ("error" in result) {
     return result;
   }
 
-  revalidatePath("/collaboration");
-  revalidateTag(COLLABORATORS_CACHE_TAG, "max");
+  if (!result.reusedExistingUser) {
+    revalidatePath("/collaboration");
+    revalidateTag(COLLABORATORS_CACHE_TAG, "max");
+  }
 
   return result;
 }

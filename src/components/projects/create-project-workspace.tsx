@@ -15,6 +15,10 @@ import { useRouter } from "next/navigation";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
+  saveProjectCategoryAction,
+  saveProjectTagAction,
+} from "@/app/(dashboard)/settings/project-master-data/actions";
+import {
   createProjectAction,
   updateProjectAction,
 } from "@/app/(dashboard)/projects/new/actions";
@@ -106,6 +110,8 @@ type CreateProjectWorkspaceProps = {
     code: string;
     name: string;
   }>;
+  canManageProjectMasterData?: boolean;
+  canInviteExecutor?: boolean;
   mode?: "create" | "edit";
   initialValues?: ProjectEditorInitialValues;
   action?: (
@@ -126,6 +132,8 @@ type UploadAssetResponse = {
   uploadUrl?: string;
   error?: string;
 };
+
+type QuickAddMasterDataKind = "category" | "tag";
 
 function getLocalFileTypeLabel(fileName: string) {
   const extension = fileName.split(".").pop()?.toUpperCase();
@@ -177,6 +185,99 @@ function formatBudgetDisplay(value: number, currencyCode: string) {
   return `${formatted} ${currencyCode}`.trim();
 }
 
+function getDefaultProjectCurrencyCode(
+  currencyOptions: Array<{
+    code: string;
+    name: string;
+  }>,
+) {
+  return (
+    currencyOptions.find((currency) => currency.code === "USD")?.code ??
+    currencyOptions[0]?.code ??
+    ""
+  );
+}
+
+function getDefaultExecutorInviteForm(): CollaboratorForm {
+  return {
+    name: "",
+    email: "",
+    type: "Internal",
+    permissions: {
+      project: "full",
+      calendar: "none",
+      library: "none",
+      archive: "none",
+    },
+  };
+}
+
+function buildAssignedCollaboratorRecord(
+  collaborator: CollaboratorRecord,
+): ProjectEditorInitialCollaborator {
+  return {
+    id: collaborator.id,
+    name: collaborator.name,
+    email: collaborator.email,
+    role:
+      collaborator.type === "External"
+        ? "External Collaborator"
+        : "Collaborator",
+    group: collaborator.type === "External" ? "external" : "internal",
+    participantType: getDefaultProjectCollaboratorParticipantType(
+      collaborator.type === "External" ? "external" : "internal",
+    ),
+    access: "view",
+    removable: true,
+  };
+}
+
+function upsertCollaboratorRecord(
+  collaborators: CollaboratorRecord[],
+  collaborator: CollaboratorRecord,
+) {
+  const existingIndex = collaborators.findIndex((item) => item.id === collaborator.id);
+
+  if (existingIndex === -1) {
+    return [...collaborators, collaborator];
+  }
+
+  return collaborators.map((item, index) =>
+    index === existingIndex ? collaborator : item,
+  );
+}
+
+function upsertAssignedCollaboratorRecord(
+  collaborators: ProjectEditorInitialCollaborator[],
+  collaborator: CollaboratorRecord,
+) {
+  if (collaborators.some((item) => item.id === collaborator.id)) {
+    return collaborators;
+  }
+
+  return [...collaborators, buildAssignedCollaboratorRecord(collaborator)];
+}
+
+function mergeUniqueTextOptions(current: string[], incoming: string[]) {
+  const merged = [...current];
+
+  incoming.forEach((value) => {
+    const normalizedValue = value.trim();
+
+    if (
+      normalizedValue &&
+      !merged.some(
+        (existing) =>
+          existing.trim().toLowerCase() === normalizedValue.toLowerCase(),
+      )
+    ) {
+      merged.push(normalizedValue);
+    }
+  });
+
+  return merged.sort((left, right) => left.localeCompare(right));
+}
+
 function MonthPicker({
   label,
   value,
@@ -224,6 +325,210 @@ function FieldError({ message }: { message?: string }) {
 
 function formatExecutorTypeLabel(type: CollaboratorRecord["type"]) {
   return type === "External" ? "External Collaborator" : "Internal Collaborator";
+}
+
+function QuickAddMasterDataDialog({
+  isOpen,
+  kind,
+  value,
+  error,
+  saving,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  kind: QuickAddMasterDataKind;
+  value: string;
+  error?: string;
+  saving: boolean;
+  onClose: () => void;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  const label = kind === "category" ? "Category" : "Tag";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8">
+      <Card className="w-full max-w-[440px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+        <CardContent className="p-6 sm:p-7">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                Add New {label}
+              </h2>
+              <p className="mt-1 text-[14px] text-[#6a706b]">
+                Create a reusable project {label.toLowerCase()} without leaving this form.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={onClose}
+              disabled={saving}
+              className="shrink-0 border border-line"
+              aria-label={`Close add ${label.toLowerCase()} dialog`}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <label className="space-y-2">
+            <span className="block text-[13px] font-[600] text-[#2d372f]">
+              {label} Name <span className="text-[#d3554d]">*</span>
+            </span>
+            <Input
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder={`Enter ${label.toLowerCase()} name`}
+              className="rounded-2xl border border-line"
+              autoFocus
+            />
+          </label>
+
+          {error ? (
+            <div className="mt-4 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={onSubmit} disabled={saving}>
+              {saving ? `Saving ${label}...` : `Save ${label}`}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function InviteExecutorDialog({
+  isOpen,
+  form,
+  error,
+  saving,
+  onClose,
+  onSubmit,
+  onChange,
+}: {
+  isOpen: boolean;
+  form: CollaboratorForm;
+  error?: string;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+  onChange: <K extends keyof CollaboratorForm>(
+    field: K,
+    value: CollaboratorForm[K],
+  ) => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8">
+      <Card className="w-full max-w-[520px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+        <CardContent className="p-6 sm:p-7">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                Invite Executor
+              </h2>
+              <p className="mt-1 text-[14px] text-[#6a706b]">
+                Create or reuse a collaborator and select them as the project executor.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={onClose}
+              disabled={saving}
+              className="shrink-0 border border-line"
+              aria-label="Close invite executor dialog"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {error ? (
+            <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-2 sm:col-span-2">
+              <span className="block text-[13px] font-[600] text-[#2d372f]">
+                Name <span className="text-[#d3554d]">*</span>
+              </span>
+              <Input
+                value={form.name}
+                onChange={(event) => onChange("name", event.target.value)}
+                placeholder="Executor name"
+                className="rounded-2xl border border-line"
+                autoFocus
+              />
+            </label>
+
+            <label className="space-y-2 sm:col-span-2">
+              <span className="block text-[13px] font-[600] text-[#2d372f]">
+                Email <span className="text-[#d3554d]">*</span>
+              </span>
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(event) => onChange("email", event.target.value)}
+                placeholder="user@gulbahartobacco.com"
+                className="rounded-2xl border border-line"
+              />
+            </label>
+
+            <label className="space-y-2 sm:col-span-2">
+              <span className="block text-[13px] font-[600] text-[#2d372f]">
+                Collaborator Type <span className="text-[#d3554d]">*</span>
+              </span>
+              <Select
+                value={form.type}
+                onValueChange={(value) => onChange("type", value as CollaboratorForm["type"])}
+              >
+                <SelectTrigger className="rounded-2xl border border-line">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Internal">Internal</SelectItem>
+                  <SelectItem value="External">External</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+
+          <div className="mt-4 rounded-[18px] border border-[#dde7de] bg-[#f7fbf7] px-4 py-3 text-[12px] text-[#5d6a61]">
+            New executors are invited as collaborators with project access enabled.
+          </div>
+
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={onSubmit} disabled={saving}>
+              {saving ? "Saving Executor..." : "Save Executor"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function CreateProjectSubmitButton({
@@ -288,6 +593,8 @@ export function CreateProjectWorkspace({
   categoryOptions = [],
   tagOptions = [],
   currencyOptions = [],
+  canManageProjectMasterData = false,
+  canInviteExecutor = false,
   mode = "create",
   initialValues,
   action = mode === "edit" ? updateProjectAction : createProjectAction,
@@ -307,6 +614,9 @@ export function CreateProjectWorkspace({
           : false)),
     ) ?? null;
   const [projectName, setProjectName] = useState(initialValues?.name ?? "");
+  const [availableCategoryOptions, setAvailableCategoryOptions] =
+    useState<string[]>(categoryOptions);
+  const [availableTagOptions, setAvailableTagOptions] = useState<string[]>(tagOptions);
   const [projectCategory, setProjectCategory] = useState(initialValues?.category ?? "");
   const [projectExecutor, setProjectExecutor] = useState(
     initialExecutorOption?.name ?? initialValues?.executorName ?? "",
@@ -317,7 +627,7 @@ export function CreateProjectWorkspace({
   const [projectTag, setProjectTag] = useState(initialValues?.tag ?? "");
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
   const [projectCurrency, setProjectCurrency] = useState<string>(
-    initialValues?.currency ?? currencyOptions[0]?.code ?? "",
+    initialValues?.currency ?? getDefaultProjectCurrencyCode(currencyOptions),
   );
   const [projectBrief, setProjectBrief] = useState(initialValues?.description ?? "");
   const [projectStatus, setProjectStatus] = useState<ProjectStatusValue>(
@@ -378,6 +688,17 @@ export function CreateProjectWorkspace({
   const [budgetConflictDialogOpen, setBudgetConflictDialogOpen] = useState(false);
   const [executorPickerOpen, setExecutorPickerOpen] = useState(false);
   const [executorSearch, setExecutorSearch] = useState("");
+  const [quickAddMasterDataKind, setQuickAddMasterDataKind] =
+    useState<QuickAddMasterDataKind | null>(null);
+  const [quickAddMasterDataName, setQuickAddMasterDataName] = useState("");
+  const [quickAddMasterDataError, setQuickAddMasterDataError] = useState<string>();
+  const [quickAddMasterDataSaving, setQuickAddMasterDataSaving] = useState(false);
+  const [executorInviteOpen, setExecutorInviteOpen] = useState(false);
+  const [executorInviteForm, setExecutorInviteForm] = useState<CollaboratorForm>(
+    getDefaultExecutorInviteForm(),
+  );
+  const [executorInviteError, setExecutorInviteError] = useState<string>();
+  const [executorInviteSaving, setExecutorInviteSaving] = useState(false);
   const [dirtyFieldKeys, setDirtyFieldKeys] = useState<Set<string>>(() => new Set());
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const executorPickerRef = useRef<HTMLDivElement | null>(null);
@@ -448,17 +769,17 @@ export function CreateProjectWorkspace({
   );
   const categorySelectOptions = useMemo(
     () =>
-      projectCategory && !categoryOptions.includes(projectCategory)
-        ? [projectCategory, ...categoryOptions]
-        : categoryOptions,
-    [categoryOptions, projectCategory],
+      projectCategory && !availableCategoryOptions.includes(projectCategory)
+        ? [projectCategory, ...availableCategoryOptions]
+        : availableCategoryOptions,
+    [availableCategoryOptions, projectCategory],
   );
   const tagSelectOptions = useMemo(
     () =>
-      projectTag && !tagOptions.includes(projectTag)
-        ? [projectTag, ...tagOptions]
-        : tagOptions,
-    [projectTag, tagOptions],
+      projectTag && !availableTagOptions.includes(projectTag)
+        ? [projectTag, ...availableTagOptions]
+        : availableTagOptions,
+    [availableTagOptions, projectTag],
   );
   const currencySelectOptions = useMemo(() => {
     if (
@@ -620,6 +941,43 @@ export function CreateProjectWorkspace({
     }));
   }
 
+  function setExecutorInviteFormValue<K extends keyof CollaboratorForm>(
+    field: K,
+    value: CollaboratorForm[K],
+  ) {
+    setExecutorInviteForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function openQuickAddMasterData(kind: QuickAddMasterDataKind) {
+    setQuickAddMasterDataKind(kind);
+    setQuickAddMasterDataName("");
+    setQuickAddMasterDataError(undefined);
+  }
+
+  function closeQuickAddMasterData() {
+    setQuickAddMasterDataKind(null);
+    setQuickAddMasterDataName("");
+    setQuickAddMasterDataError(undefined);
+  }
+
+  function openExecutorInvite(prefillValue = "") {
+    const nextForm = getDefaultExecutorInviteForm();
+    const trimmedPrefill = prefillValue.trim();
+
+    if (trimmedPrefill) {
+      if (trimmedPrefill.includes("@")) {
+        nextForm.email = trimmedPrefill;
+      } else {
+        nextForm.name = trimmedPrefill;
+      }
+    }
+
+    setExecutorInviteForm(nextForm);
+    setExecutorInviteError(undefined);
+    setExecutorPickerOpen(false);
+    setExecutorInviteOpen(true);
+  }
+
   function openCollaboratorInvite() {
     setCollaboratorForm(getDefaultCollaboratorForm());
     setCollaboratorError(undefined);
@@ -644,22 +1002,7 @@ export function CreateProjectWorkspace({
 
       return [
         ...current,
-        {
-          id: availableCollaborator.id,
-          name: availableCollaborator.name,
-          email: availableCollaborator.email,
-          role:
-            availableCollaborator.type === "External"
-              ? "External Collaborator"
-              : "Collaborator",
-          group: availableCollaborator.type === "External" ? "external" : "internal",
-          participantType: getDefaultProjectCollaboratorParticipantType(
-            availableCollaborator.type === "External" ? "external" : "internal",
-          ),
-          chatVisibilityPaused: false,
-          access: "view",
-          removable: true,
-        },
+        buildAssignedCollaboratorRecord(availableCollaborator),
       ];
     });
   }
@@ -681,32 +1024,143 @@ export function CreateProjectWorkspace({
         return;
       }
 
-      setAvailableCollaboratorRecords((current) => [...current, result.collaborator]);
-      setAssignedCollaborators((current) => [
-        ...current,
-        {
-          id: result.collaborator.id,
-          name: result.collaborator.name,
-          email: result.collaborator.email,
-          role:
-            result.collaborator.type === "External"
-              ? "External Collaborator"
-              : "Collaborator",
-          group: result.collaborator.type === "External" ? "external" : "internal",
-          participantType: getDefaultProjectCollaboratorParticipantType(
-            result.collaborator.type === "External" ? "external" : "internal",
-          ),
-          chatVisibilityPaused: false,
-          access: "view",
-          removable: true,
-        },
-      ]);
+      setAvailableCollaboratorRecords((current) =>
+        upsertCollaboratorRecord(current, result.collaborator),
+      );
+      setAssignedCollaborators((current) =>
+        upsertAssignedCollaboratorRecord(current, result.collaborator),
+      );
       setDialogOpen(false);
       setPickerOpen(false);
     } catch {
       setCollaboratorError("Unable to save the collaborator right now. Please try again.");
     } finally {
       setCollaboratorSaving(false);
+    }
+  }
+
+  async function handleQuickAddMasterData() {
+    const normalizedName = quickAddMasterDataName.trim();
+
+    if (!quickAddMasterDataKind) {
+      return;
+    }
+
+    if (!normalizedName) {
+      const message = `${
+        quickAddMasterDataKind === "category" ? "Category" : "Tag"
+      } name is required.`;
+      setQuickAddMasterDataError(message);
+      showErrorToast("Unable to save value.", message);
+      return;
+    }
+
+    setQuickAddMasterDataSaving(true);
+    setQuickAddMasterDataError(undefined);
+
+    try {
+      const result =
+        quickAddMasterDataKind === "category"
+          ? await saveProjectCategoryAction({
+              name: normalizedName,
+              description: "",
+              color: "",
+              isActive: true,
+            })
+          : await saveProjectTagAction({
+              name: normalizedName,
+              description: "",
+              color: "",
+              isActive: true,
+            });
+
+      if ("error" in result) {
+        setQuickAddMasterDataError(result.error);
+        showErrorToast(
+          `Unable to add ${quickAddMasterDataKind}.`,
+          result.error,
+        );
+        return;
+      }
+
+      const createdName = result.item?.name ?? normalizedName;
+
+      if (quickAddMasterDataKind === "category") {
+        setAvailableCategoryOptions((current) =>
+          mergeUniqueTextOptions(current, [createdName]),
+        );
+        setProjectCategory(createdName);
+        clearFieldError("category");
+        showSuccessToast("Category added.");
+      } else {
+        setAvailableTagOptions((current) => mergeUniqueTextOptions(current, [createdName]));
+        setProjectTag(createdName);
+        clearFieldError("tag");
+        showSuccessToast("Tag added.");
+      }
+
+      closeQuickAddMasterData();
+    } catch {
+      const message = `Unable to add ${
+        quickAddMasterDataKind === "category" ? "category" : "tag"
+      } right now. Please try again.`;
+      setQuickAddMasterDataError(message);
+      showErrorToast("Unable to save value.", message);
+    } finally {
+      setQuickAddMasterDataSaving(false);
+    }
+  }
+
+  async function handleExecutorInvite() {
+    if (!executorInviteForm.name.trim() || !executorInviteForm.email.trim()) {
+      const message = "Enter both executor name and email.";
+      setExecutorInviteError(message);
+      showErrorToast("Unable to invite executor.", message);
+      return;
+    }
+
+    setExecutorInviteSaving(true);
+    setExecutorInviteError(undefined);
+
+    try {
+      const result = await saveCollaboratorAction({
+        ...executorInviteForm,
+        permissions: {
+          project: "full",
+          calendar: "none",
+          library: "none",
+          archive: "none",
+        },
+        allowExistingUser: true,
+      });
+
+      if ("error" in result) {
+        setExecutorInviteError(result.error);
+        showErrorToast("Unable to invite executor.", result.error);
+        return;
+      }
+
+      setAvailableCollaboratorRecords((current) =>
+        upsertCollaboratorRecord(current, result.collaborator),
+      );
+      setProjectExecutorUserId(result.collaborator.id);
+      setProjectExecutor(result.collaborator.name);
+      setExecutorInviteOpen(false);
+      setExecutorPickerOpen(false);
+      setExecutorSearch("");
+      clearFieldError("executorUserId");
+      clearFieldError("executorName");
+      showSuccessToast("Executor invited.");
+
+      if (result.warning) {
+        showWarningToast("Executor saved with warning.", result.warning);
+      }
+    } catch {
+      const message = "Unable to save the executor right now. Please try again.";
+      setExecutorInviteError(message);
+      showErrorToast("Unable to invite executor.", message);
+    } finally {
+      setExecutorInviteSaving(false);
     }
   }
 
@@ -1147,19 +1601,28 @@ export function CreateProjectWorkspace({
                 <Select
                   value={projectCategory}
                   onValueChange={(nextValue) => {
+                    if (nextValue === "__add_category__") {
+                      openQuickAddMasterData("category");
+                      return;
+                    }
+
                     setProjectCategory(nextValue);
                     clearFieldError("category");
                   }}
-                  disabled={categorySelectOptions.length === 0}
+                  disabled={
+                    categorySelectOptions.length === 0 && !canManageProjectMasterData
+                  }
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
                     <SelectValue
                       placeholder={
-                        categorySelectOptions.length === 0
+                        categorySelectOptions.length === 0 && !canManageProjectMasterData
                           ? "No categories available"
                           : "Select project category"
                       }
-                    />
+                    >
+                      {projectCategory || undefined}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {categorySelectOptions.map((category) => (
@@ -1167,6 +1630,12 @@ export function CreateProjectWorkspace({
                         {category}
                       </SelectItem>
                     ))}
+                    {canManageProjectMasterData ? (
+                      <>
+                        <Separator className="my-1" />
+                        <SelectItem value="__add_category__">+ Add new category</SelectItem>
+                      </>
+                    ) : null}
                   </SelectContent>
                 </Select>
                 <FieldError message={getFieldError("category", fieldErrors.category)} />
@@ -1252,10 +1721,23 @@ export function CreateProjectWorkspace({
                           })
                         ) : (
                           <div className="rounded-[16px] border border-dashed border-[#d7dfd7] bg-[#fbfcfa] px-4 py-5 text-center text-[12px] text-[#7a837b]">
-                            No collaborators found. Add a collaborator first.
+                            No executor found.
                           </div>
                         )}
                       </div>
+
+                      {canInviteExecutor ? (
+                        <>
+                          <Separator className="my-3" />
+                          <button
+                            type="button"
+                            onClick={() => openExecutorInvite(executorSearch)}
+                            className="flex w-full items-center justify-center rounded-[16px] border border-[#dbe7dc] bg-[#f7fbf7] px-3 py-2 text-[13px] font-[700] text-brand transition hover:bg-[#eef8ef]"
+                          >
+                            + Invite new executor
+                          </button>
+                        </>
+                      ) : null}
 
                       {!selectedExecutorOption && projectExecutor ? (
                         <p className="mt-3 text-[11px] text-[#7a837b]">
@@ -1350,12 +1832,19 @@ export function CreateProjectWorkspace({
                 <Select
                   value={projectTag || "__no_tag__"}
                   onValueChange={(nextValue) => {
+                    if (nextValue === "__add_tag__") {
+                      openQuickAddMasterData("tag");
+                      return;
+                    }
+
                     setProjectTag(nextValue === "__no_tag__" ? "" : nextValue);
                     clearFieldError("tag");
                   }}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
-                    <SelectValue placeholder="Select project tag" />
+                    <SelectValue placeholder="Select project tag">
+                      {projectTag || "No tag"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__no_tag__">No tag</SelectItem>
@@ -1364,6 +1853,12 @@ export function CreateProjectWorkspace({
                         {tag}
                       </SelectItem>
                     ))}
+                    {canManageProjectMasterData ? (
+                      <>
+                        <Separator className="my-1" />
+                        <SelectItem value="__add_tag__">+ Add new tag</SelectItem>
+                      </>
+                    ) : null}
                   </SelectContent>
                 </Select>
                 <FieldError message={getFieldError("tag", fieldErrors.tag)} />
@@ -1963,6 +2458,34 @@ export function CreateProjectWorkspace({
         onSubmit={handleCollaboratorInvite}
         onChange={setCollaboratorFormValue}
         onPermissionChange={setCollaboratorPermissionValue}
+      />
+      <QuickAddMasterDataDialog
+        isOpen={quickAddMasterDataKind !== null}
+        kind={quickAddMasterDataKind ?? "category"}
+        value={quickAddMasterDataName}
+        error={quickAddMasterDataError}
+        saving={quickAddMasterDataSaving}
+        onClose={closeQuickAddMasterData}
+        onChange={(value) => {
+          setQuickAddMasterDataName(value);
+          setQuickAddMasterDataError(undefined);
+        }}
+        onSubmit={handleQuickAddMasterData}
+      />
+      <InviteExecutorDialog
+        isOpen={executorInviteOpen}
+        form={executorInviteForm}
+        error={executorInviteError}
+        saving={executorInviteSaving}
+        onClose={() => {
+          setExecutorInviteError(undefined);
+          setExecutorInviteOpen(false);
+        }}
+        onSubmit={handleExecutorInvite}
+        onChange={(field, value) => {
+          setExecutorInviteError(undefined);
+          setExecutorInviteFormValue(field, value);
+        }}
       />
       <CollaboratorPickerDialog
         isOpen={pickerOpen}

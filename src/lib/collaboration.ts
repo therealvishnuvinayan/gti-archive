@@ -49,7 +49,12 @@ export type InviteRegistrationRecord =
 
 type CollaboratorResult =
   | { error: string }
-  | { collaborator: CollaboratorRecord; inviteEmailSent?: boolean; warning?: string };
+  | {
+      collaborator: CollaboratorRecord;
+      inviteEmailSent?: boolean;
+      warning?: string;
+      reusedExistingUser?: boolean;
+    };
 
 type DeleteCollaboratorResult =
   | { error: string }
@@ -296,6 +301,7 @@ export async function updateCalendarCollaborators(
 export async function createCollaborator(
   inviterName: string,
   input: CollaboratorInput,
+  options: { allowExistingUser?: boolean } = {},
 ): Promise<CollaboratorResult> {
   const parsed = validateCollaboratorInput(input);
 
@@ -309,10 +315,24 @@ export async function createCollaborator(
     },
     select: {
       id: true,
+      email: true,
+      name: true,
+      collaboratorType: true,
+      projectAccess: true,
+      calendarAccess: true,
+      libraryAccess: true,
+      archiveAccess: true,
     },
   });
 
   if (existingUser) {
+    if (options.allowExistingUser) {
+      return {
+        collaborator: mapCollaborator(existingUser),
+        reusedExistingUser: true,
+      };
+    }
+
     return { error: "A user with this email already exists." };
   }
 

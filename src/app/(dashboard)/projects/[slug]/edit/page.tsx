@@ -25,6 +25,9 @@ export default async function EditProjectPage({
     getCollaborators(),
     getActiveProjectMasterDataOptions(),
   ]);
+  const canManageProjectMasterData =
+    user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
+  const canInviteExecutor = true;
 
   if (!project) {
     notFound();
@@ -44,6 +47,8 @@ export default async function EditProjectPage({
         currencyOptions={masterDataOptions.currencies}
         mode="edit"
         initialValues={project}
+        canManageProjectMasterData={canManageProjectMasterData}
+        canInviteExecutor={canInviteExecutor}
       />
     </DashboardLayout>
   );
