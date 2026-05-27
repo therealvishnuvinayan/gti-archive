@@ -80,6 +80,8 @@ type DateTimePickerProps = {
   name: string;
   value: string;
   onChange: (value: string) => void;
+  minDate?: Date | null;
+  maxDate?: Date | null;
 };
 
 type PickerPosition = {
@@ -92,6 +94,8 @@ export function DateTimePicker({
   name,
   value,
   onChange,
+  minDate = null,
+  maxDate = null,
 }: DateTimePickerProps) {
   const [open, setOpen] = useState(false);
   const [{ date, time }, setDraft] = useState(() => parseDateTimeValue(value));
@@ -100,11 +104,36 @@ export function DateTimePicker({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  function isDateOutsideBounds(candidate: Date) {
+    const compareDate = new Date(candidate);
+    compareDate.setHours(0, 0, 0, 0);
+
+    if (minDate) {
+      const minBoundary = new Date(minDate);
+      minBoundary.setHours(0, 0, 0, 0);
+
+      if (compareDate < minBoundary) {
+        return true;
+      }
+    }
+
+    if (maxDate) {
+      const maxBoundary = new Date(maxDate);
+      maxBoundary.setHours(0, 0, 0, 0);
+
+      if (compareDate > maxBoundary) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
 
-      if (target?.closest('[data-slot="select-content"]')) {
+      if (target?.closest('[data-slot^="select-"]')) {
         return;
       }
 
@@ -188,7 +217,9 @@ export function DateTimePicker({
                   month={month}
                   selectedDate={parseCalendarDateValue(date)}
                   onMonthChange={setMonth}
+                  isDateDisabled={isDateOutsideBounds}
                   onSelect={(selectedDate) =>
+                    !isDateOutsideBounds(selectedDate) &&
                     setDraft((current) => ({
                       ...current,
                       date: formatCalendarDateValue(selectedDate),
@@ -210,7 +241,7 @@ export function DateTimePicker({
                     <SelectTrigger className="h-10 rounded-2xl border border-line bg-white text-[13px]">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[120]">
                       {timeOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}

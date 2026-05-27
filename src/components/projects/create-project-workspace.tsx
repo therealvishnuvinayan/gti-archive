@@ -185,6 +185,27 @@ function formatBudgetDisplay(value: number, currencyCode: string) {
   return `${formatted} ${currencyCode}`.trim();
 }
 
+function getStartOfDay(date: Date) {
+  const normalizedDate = new Date(date);
+  normalizedDate.setHours(0, 0, 0, 0);
+  return normalizedDate;
+}
+
+function getEndOfDay(date: Date) {
+  const normalizedDate = new Date(date);
+  normalizedDate.setHours(23, 59, 59, 999);
+  return normalizedDate;
+}
+
+function parseStageDateTimeValue(value: string) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function getDefaultProjectCurrencyCode(
   currencyOptions: Array<{
     code: string;
@@ -861,6 +882,63 @@ export function CreateProjectWorkspace({
       totalStageBudget,
     ],
   );
+  const clientStageDateErrors = useMemo(() => {
+    const stageStartDates = stages.map((stage) => parseStageDateTimeValue(stage.plannedStartAt));
+    const stageDueDates = stages.map((stage) => parseStageDateTimeValue(stage.plannedDueAt));
+    const stageStartDateErrors: Array<string | undefined> = Array.from(
+      { length: stages.length },
+      () => undefined,
+    );
+    const stageDueDateErrors: Array<string | undefined> = Array.from(
+      { length: stages.length },
+      () => undefined,
+    );
+
+    if (!startDate || !endDate) {
+      return {
+        stageStartDateErrors,
+        stageDueDateErrors,
+        hasConflict: false,
+      };
+    }
+
+    const projectStartBoundary = getStartOfDay(startDate);
+    const projectEndBoundary = getEndOfDay(endDate);
+
+    stageStartDates.forEach((stageStart, index) => {
+      if (!stageStart) {
+        return;
+      }
+
+      if (stageStart < projectStartBoundary || stageStart > projectEndBoundary) {
+        stageStartDateErrors[index] = "Stage start must be within the project date range.";
+      }
+    });
+
+    stageDueDates.forEach((stageDue, index) => {
+      if (!stageDue) {
+        return;
+      }
+
+      const stageStart = stageStartDates[index];
+
+      if (stageDue < projectStartBoundary || stageDue > projectEndBoundary) {
+        stageDueDateErrors[index] = "Stage due must be within the project date range.";
+        return;
+      }
+
+      if (stageStart && stageDue <= stageStart) {
+        stageDueDateErrors[index] = "Stage due must be after the stage start.";
+      }
+    });
+
+    return {
+      stageStartDateErrors,
+      stageDueDateErrors,
+      hasConflict:
+        stageStartDateErrors.some(Boolean) || stageDueDateErrors.some(Boolean),
+    };
+  }, [endDate, startDate, stages]);
 
   function updateStage(id: string, patch: Partial<StageForm>) {
     setStages((current) =>
@@ -1184,6 +1262,15 @@ export function CreateProjectWorkspace({
 
   function handleProjectFormSubmit(event: React.FormEvent<HTMLFormElement>) {
     setDirtyFieldKeys(new Set());
+
+    if (clientStageDateErrors.hasConflict) {
+      event.preventDefault();
+      showErrorToast(
+        "Stage date conflict.",
+        "Each stage must stay within the project date range.",
+      );
+      return;
+    }
 
     if (!canViewBudget) {
       return;
@@ -2232,13 +2319,21 @@ export function CreateProjectWorkspace({
                     <DateTimePicker
                       name="stageStartDates"
                       value={stage.plannedStartAt}
+                      minDate={startDate}
+                      maxDate={endDate}
                       onChange={(value) => {
                         updateStage(stage.id, { plannedStartAt: value });
                         clearStageFieldError("stageStartDates", index);
                       }}
                     />
                     <FieldError
-                      message={getStageFieldError("stageStartDates", index, fieldErrors.stageStartDates?.[index])}
+                      message={
+                        getStageFieldError(
+                          "stageStartDates",
+                          index,
+                          fieldErrors.stageStartDates?.[index],
+                        ) || clientStageDateErrors.stageStartDateErrors[index]
+                      }
                     />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Due <span className="text-[#d3554d]">*</span>
@@ -2246,13 +2341,21 @@ export function CreateProjectWorkspace({
                     <DateTimePicker
                       name="stageDueDates"
                       value={stage.plannedDueAt}
+                      minDate={startDate}
+                      maxDate={endDate}
                       onChange={(value) => {
                         updateStage(stage.id, { plannedDueAt: value });
                         clearStageFieldError("stageDueDates", index);
                       }}
                     />
                     <FieldError
-                      message={getStageFieldError("stageDueDates", index, fieldErrors.stageDueDates?.[index])}
+                      message={
+                        getStageFieldError(
+                          "stageDueDates",
+                          index,
+                          fieldErrors.stageDueDates?.[index],
+                        ) || clientStageDateErrors.stageDueDateErrors[index]
+                      }
                     />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Description <span className="text-[#d3554d]">*</span>

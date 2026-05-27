@@ -90,6 +90,7 @@ type CalendarMonthGridProps = {
   selectedDate: Date;
   onMonthChange: (date: Date) => void;
   onSelect: (date: Date) => void;
+  isDateDisabled?: (date: Date) => boolean;
   markerDates?: Set<string>;
   compact?: boolean;
   className?: string;
@@ -100,6 +101,7 @@ export function CalendarMonthGrid({
   selectedDate,
   onMonthChange,
   onSelect,
+  isDateDisabled,
   markerDates,
   compact = false,
   className,
@@ -139,7 +141,7 @@ export function CalendarMonthGrid({
             >
               <SelectValue>{monthNames[month.getMonth()]}</SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[120]">
               {monthNames.map((monthName, index) => (
                 <SelectItem key={monthName} value={String(index)}>
                   {monthName}
@@ -164,7 +166,7 @@ export function CalendarMonthGrid({
             >
               <SelectValue>{month.getFullYear()}</SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[120]">
               {yearOptions.map((year) => (
                 <SelectItem key={year} value={String(year)}>
                   {year}
@@ -219,16 +221,20 @@ export function CalendarMonthGrid({
           const inMonth = date.getMonth() === month.getMonth();
           const active = isSameCalendarDay(date, selectedDate);
           const hasMarker = markerDates?.has(formatCalendarDateValue(date));
+          const disabled = isDateDisabled?.(date) ?? false;
 
           return (
             <button
               key={date.toISOString()}
               type="button"
               onClick={() => onSelect(date)}
+              disabled={disabled}
               className={cn(
                 "relative mx-auto grid place-items-center rounded-lg transition-colors",
                 compact ? "h-7 w-7" : "h-8 w-8",
-                active
+                disabled
+                  ? "cursor-not-allowed text-[#c4cac4] opacity-55"
+                  : active
                   ? "bg-[#dff0ff] text-brand"
                   : inMonth
                     ? "text-[#2c342e] hover:bg-[#eef2ea]"
