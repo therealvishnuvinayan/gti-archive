@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ChevronDown, LogOut, Menu, MessageSquareText } from "lucide-react";
 
 import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
@@ -90,8 +90,12 @@ export function Topbar({
   onOpenSidebar,
   leadingContent,
 }: DashboardTopbarProps) {
+  const signOutFormRef = useRef<HTMLFormElement>(null);
+  const [signOutPending, setSignOutPending] = useState(false);
+
   return (
     <header className="rounded-[30px] bg-surface px-4 py-4 shadow-[0_18px_40px_rgba(23,39,28,0.05)] sm:px-6 lg:px-8">
+      <form ref={signOutFormRef} action="/sign-out" method="post" className="hidden" />
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="flex items-center gap-3">
@@ -147,14 +151,24 @@ export function Topbar({
                 <p className="truncate text-[13px] text-muted">{user.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <form action="/sign-out" method="post">
-                <DropdownMenuItem asChild variant="destructive">
-                  <button type="submit" className="flex w-full cursor-pointer items-center">
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </button>
-                </DropdownMenuItem>
-              </form>
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={signOutPending}
+                className="cursor-pointer hover:bg-[#fff4f3] hover:text-[#ba3f31]"
+                onSelect={(event) => {
+                  event.preventDefault();
+
+                  if (signOutPending) {
+                    return;
+                  }
+
+                  setSignOutPending(true);
+                  signOutFormRef.current?.requestSubmit();
+                }}
+              >
+                <LogOut className="h-4 w-4" />
+                {signOutPending ? "Signing out..." : "Sign out"}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

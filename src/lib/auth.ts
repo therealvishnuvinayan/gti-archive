@@ -14,6 +14,16 @@ const DEFAULT_SESSION_DAYS = 1;
 const REMEMBER_ME_SESSION_DAYS = 30;
 const SESSION_CACHE_TTL_SECONDS = 10;
 
+function getSessionCookieOptions(expires?: Date) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    ...(expires ? { expires } : {}),
+  };
+}
+
 export class AuthError extends Error {
   constructor(message: string) {
     super(message);
@@ -99,13 +109,11 @@ async function createSession(userId: string, rememberMe: boolean) {
   );
 
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, session.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    expires: session.expiresAt,
-    path: "/",
-  });
+  cookieStore.set(
+    SESSION_COOKIE_NAME,
+    session.token,
+    getSessionCookieOptions(session.expiresAt),
+  );
 }
 
 function getSessionCacheTag(token: string) {
@@ -209,7 +217,21 @@ export async function signOutCurrentSession() {
     revalidateTag(getSessionCacheTag(sessionToken), "max");
   }
 
-  cookieStore.delete(SESSION_COOKIE_NAME);
+  cookieStore.set(SESSION_COOKIE_NAME, "", {
+    ...getSessionCookieOptions(new Date(0)),
+    maxAge: 0,
+  });
+}
+
+export function getExpiredSessionCookie() {
+  return {
+    name: SESSION_COOKIE_NAME,
+    value: "",
+    options: {
+      ...getSessionCookieOptions(new Date(0)),
+      maxAge: 0,
+    },
+  };
 }
 
 export function getUserDisplayName(user: Pick<User, "name" | "email">) {
