@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
+  deleteCalendarEventAction,
+  removeCalendarCollaboratorAction,
   saveCalendarCollaboratorsAction,
   saveCalendarEventAction,
 } from "@/app/(dashboard)/calendar/actions";
@@ -22,6 +24,7 @@ import {
   type PermissionLevel,
 } from "@/components/collaboration/collaborator-dialog";
 import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   EventDialog,
   type CalendarFormState,
@@ -40,17 +43,19 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
+  CalendarView,
   CalendarEventRecord,
   SaveCalendarEventInput,
 } from "@/lib/calendar";
 import type { CollaboratorRecord } from "@/lib/collaboration";
-
-type CalendarView = "week" | "day" | "month";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
 type CalendarWorkspaceProps = {
   initialEvents: CalendarEventRecord[];
+  initialView: CalendarView;
   availableCollaborators: CollaboratorRecord[];
   assignedCollaborators: CollaboratorRecord[];
+  canManageCollaborators: boolean;
 };
 
 const hours = Array.from({ length: 9 }, (_, index) => 9 + index);
@@ -190,11 +195,13 @@ function getInitials(name: string) {
 
 export function CalendarWorkspace({
   initialEvents,
+  initialView,
   availableCollaborators,
   assignedCollaborators,
+  canManageCollaborators,
 }: CalendarWorkspaceProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(today);
-  const [view, setView] = useState<CalendarView>("week");
+  const [view, setView] = useState<CalendarView>(initialView);
   const [events, setEvents] = useState<CalendarEventRecord[]>([...initialEvents].sort(compareEvents));
   const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
     useState<CollaboratorRecord[]>(availableCollaborators);
@@ -216,6 +223,16 @@ export function CalendarWorkspace({
   const [collaboratorPickerError, setCollaboratorPickerError] = useState<string>();
   const [collaboratorDialogSaving, setCollaboratorDialogSaving] = useState(false);
   const [collaboratorPickerSaving, setCollaboratorPickerSaving] = useState(false);
+  const [pickerSelectedCollaboratorIds, setPickerSelectedCollaboratorIds] = useState<string[]>(
+    () => assignedCollaborators.map((collaborator) => collaborator.id),
+  );
+  const [eventPendingDelete, setEventPendingDelete] = useState<CalendarEventRecord | null>(null);
+  const [eventDeletePending, setEventDeletePending] = useState(false);
+  const [eventDeleteError, setEventDeleteError] = useState<string>();
+  const [collaboratorPendingRemoval, setCollaboratorPendingRemoval] =
+    useState<CollaboratorRecord | null>(null);
+  const [collaboratorRemovalPending, setCollaboratorRemovalPending] = useState(false);
+  const [collaboratorRemovalError, setCollaboratorRemovalError] = useState<string>();
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
@@ -279,9 +296,13 @@ export function CalendarWorkspace({
         }),
     [assignedCollaboratorRecords],
   );
-  const selectedCollaboratorIds = useMemo(
+  const assignedCollaboratorIds = useMemo(
     () => assignedCollaboratorRecords.map((collaborator) => collaborator.id),
     [assignedCollaboratorRecords],
+  );
+  const activeFilterCount = useMemo(
+    () => Object.values(filters).filter(Boolean).length,
+    [filters],
   );
 
   function setFormValue<K extends keyof CalendarFormState>(
@@ -334,14 +355,14 @@ export function CalendarWorkspace({
       return;
     }
 
-    setAssignedCollaboratorRecords((current) => {
-      const exists = current.some((collaborator) => collaborator.id === collaboratorId);
+    setPickerSelectedCollaboratorIds((current) => {
+      const exists = current.includes(collaboratorId);
 
       if (exists) {
-        return current.filter((collaborator) => collaborator.id !== collaboratorId);
+        return current.filter((id) => id !== collaboratorId);
       }
 
-      return [...current, availableCollaborator];
+      return [...current, collaboratorId];
     });
   }
 
@@ -350,10 +371,23 @@ export function CalendarWorkspace({
     setCollaboratorPickerError(undefined);
 
     try {
-      const result = await saveCalendarCollaboratorsAction(selectedCollaboratorIds);
+      const result = await saveCalendarCollaboratorsAction(pickerSelectedCollaboratorIds);
+
+      if ("error" in result) {
+        setCollaboratorPickerError(result.error);
+        showErrorToast("Unable to update calendar collaborators.", result.error);
+        return;
+      }
+
       setAssignedCollaboratorRecords(result.collaborators);
+      setPickerSelectedCollaboratorIds(result.collaborators.map((collaborator) => collaborator.id));
       setCollaboratorPickerOpen(false);
+      showSuccessToast("Calendar collaborators updated.");
     } catch {
+      showErrorToast(
+        "Unable to update calendar collaborators.",
+        "Unable to update the calendar collaborators right now. Please try again.",
+      );
       setCollaboratorPickerError(
         "Unable to update the calendar collaborators right now. Please try again.",
       );
@@ -365,6 +399,7 @@ export function CalendarWorkspace({
   async function saveCollaborator() {
     if (!collaboratorForm.name.trim() || !collaboratorForm.email.trim()) {
       setCollaboratorDialogError("Enter both collaborator name and email.");
+      showErrorToast("Unable to save collaborator.", "Enter both collaborator name and email.");
       return;
     }
 
@@ -376,23 +411,69 @@ export function CalendarWorkspace({
 
       if ("error" in result) {
         setCollaboratorDialogError(result.error);
+        showErrorToast("Unable to save collaborator.", result.error);
         return;
       }
 
       setAvailableCollaboratorRecords((current) => [...current, result.collaborator]);
       const calendarResult = await saveCalendarCollaboratorsAction([
-        ...selectedCollaboratorIds,
+        ...pickerSelectedCollaboratorIds,
         result.collaborator.id,
       ]);
+
+      if ("error" in calendarResult) {
+        setCollaboratorDialogError(calendarResult.error);
+        showErrorToast("Unable to update calendar collaborators.", calendarResult.error);
+        return;
+      }
+
       setAssignedCollaboratorRecords(calendarResult.collaborators);
+      setPickerSelectedCollaboratorIds(
+        calendarResult.collaborators.map((collaborator) => collaborator.id),
+      );
       setCollaboratorDialogOpen(false);
       setCollaboratorPickerOpen(false);
+      showSuccessToast("Collaborator added to the calendar.");
     } catch {
+      showErrorToast(
+        "Unable to save collaborator.",
+        "Unable to save the collaborator right now. Please try again.",
+      );
       setCollaboratorDialogError(
         "Unable to save the collaborator right now. Please try again.",
       );
     } finally {
       setCollaboratorDialogSaving(false);
+    }
+  }
+
+  async function confirmRemoveCollaborator() {
+    if (!collaboratorPendingRemoval) {
+      return;
+    }
+
+    setCollaboratorRemovalPending(true);
+    setCollaboratorRemovalError(undefined);
+
+    try {
+      const result = await removeCalendarCollaboratorAction(collaboratorPendingRemoval.id);
+
+      if ("error" in result) {
+        setCollaboratorRemovalError(result.error);
+        showErrorToast("Unable to remove collaborator.", result.error);
+        return;
+      }
+
+      setAssignedCollaboratorRecords(result.collaborators);
+      setPickerSelectedCollaboratorIds(result.collaborators.map((collaborator) => collaborator.id));
+      setCollaboratorPendingRemoval(null);
+      showSuccessToast("Collaborator removed from the calendar.");
+    } catch {
+      const message = "Unable to remove the collaborator right now. Please try again.";
+      setCollaboratorRemovalError(message);
+      showErrorToast("Unable to remove collaborator.", message);
+    } finally {
+      setCollaboratorRemovalPending(false);
     }
   }
 
@@ -435,6 +516,42 @@ export function CalendarWorkspace({
     }
   }
 
+  function requestDeleteEvent(event: CalendarEventRecord) {
+    setEventDeleteError(undefined);
+    setEventPendingDelete(event);
+  }
+
+  async function confirmDeleteEvent() {
+    if (!eventPendingDelete) {
+      return;
+    }
+
+    setEventDeletePending(true);
+    setEventDeleteError(undefined);
+
+    try {
+      const result = await deleteCalendarEventAction(eventPendingDelete.id);
+
+      if ("error" in result) {
+        setEventDeleteError(result.error);
+        showErrorToast("Unable to delete event.", result.error);
+        return;
+      }
+
+      setEvents((current) =>
+        current.filter((event) => event.id !== result.deletedEventId),
+      );
+      setEventPendingDelete(null);
+      showSuccessToast("Calendar event deleted.");
+    } catch {
+      const message = "Unable to delete the event right now. Please try again.";
+      setEventDeleteError(message);
+      showErrorToast("Unable to delete event.", message);
+    } finally {
+      setEventDeletePending(false);
+    }
+  }
+
   function moveCalendar(direction: "prev" | "next") {
     const offset = direction === "next" ? 1 : -1;
 
@@ -453,6 +570,39 @@ export function CalendarWorkspace({
 
   function toggleFilter(type: CalendarType) {
     setFilters((current) => ({ ...current, [type]: !current[type] }));
+  }
+
+  function renderEventDeleteButton(
+    event: CalendarEventRecord,
+    options?: {
+      className?: string;
+      iconClassName?: string;
+      titlePrefix?: string;
+    },
+  ) {
+    if (!event.canDelete) {
+      return null;
+    }
+
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={
+          options?.className ??
+          "size-7 shrink-0 rounded-full text-[#7f877f] hover:bg-[#fff3f1] hover:text-[#bb4d49]"
+        }
+        aria-label={`Delete ${event.title}`}
+        title={`${options?.titlePrefix ?? "Delete"} ${event.title}`}
+        onClick={(clickEvent) => {
+          clickEvent.stopPropagation();
+          requestDeleteEvent(event);
+        }}
+      >
+        <Trash2 className={options?.iconClassName ?? "h-3.5 w-3.5"} />
+      </Button>
+    );
   }
 
   function renderHeaderControls() {
@@ -567,7 +717,7 @@ export function CalendarWorkspace({
               return (
                 <li key={event.id} className="flex items-start gap-2.5">
                   <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${tone.dot}`} />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className={`text-[11px] leading-[1.25] ${tone.text}`}>
                       {event.title} {event.details ? `- ${event.details}` : ""}
                     </p>
@@ -575,6 +725,7 @@ export function CalendarWorkspace({
                     {monthGridLabel.format(parseCalendarDateValue(event.date))} at {event.start}
                     </p>
                   </div>
+                  {renderEventDeleteButton(event)}
                 </li>
               );
             })}
@@ -624,22 +775,25 @@ export function CalendarWorkspace({
       <Card className="rounded-[20px]">
         <CardHeader className="flex-row items-center justify-between pb-3">
           <CardTitle className="text-[13px]">Collaborators</CardTitle>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 text-brand"
-            onClick={() => {
-              setCollaboratorDialogOpen(false);
-              setCollaboratorDialogError(undefined);
-              setCollaboratorPickerError(undefined);
-              setCollaboratorPickerOpen(true);
-            }}
-            aria-label="Add collaborator"
-            title="Add collaborator"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          {canManageCollaborators ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 text-brand"
+              onClick={() => {
+                setCollaboratorDialogOpen(false);
+                setCollaboratorDialogError(undefined);
+                setCollaboratorPickerError(undefined);
+                setPickerSelectedCollaboratorIds(assignedCollaboratorIds);
+                setCollaboratorPickerOpen(true);
+              }}
+              aria-label="Add collaborator"
+              title="Add collaborator"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent className="pt-0">
           {visibleCollaborators.length > 0 ? (
@@ -650,7 +804,7 @@ export function CalendarWorkspace({
                     <div className="grid h-8 w-8 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[11px] font-[700] text-white">
                       {getInitials(collaborator.name)}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-[600] text-[#232c26]">
                         {collaborator.name}
                       </p>
@@ -667,9 +821,25 @@ export function CalendarWorkspace({
                           ? "Full Access"
                           : collaborator.permissions.calendar === "limited"
                             ? "Limited Access"
-                            : "No Access"}
+                          : "No Access"}
                       </p>
                     </div>
+                    {canManageCollaborators ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 shrink-0 rounded-full text-[#7f877f] hover:bg-[#fff3f1] hover:text-[#bb4d49]"
+                        aria-label={`Remove ${collaborator.name}`}
+                        title={`Remove ${collaborator.name}`}
+                        onClick={() => {
+                          setCollaboratorRemovalError(undefined);
+                          setCollaboratorPendingRemoval(collaborator);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    ) : null}
                   </li>
                 );
               })}
@@ -765,9 +935,16 @@ export function CalendarWorkspace({
                       >
                         <div className={`absolute inset-y-0 left-0 w-1.5 ${tone.edge}`} />
                         <div className="px-3 py-3">
-                          <p className={`text-[11px] font-[600] leading-[1.2] ${tone.text}`}>
-                            {event.title}
-                          </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className={`text-[11px] font-[600] leading-[1.2] ${tone.text}`}>
+                              {event.title}
+                            </p>
+                            {renderEventDeleteButton(event, {
+                              className:
+                                "size-6 shrink-0 rounded-full text-[#5e6b62] hover:bg-white/70 hover:text-[#bb4d49]",
+                              iconClassName: "h-3.5 w-3.5",
+                            })}
+                          </div>
                           {event.details ? (
                             <p className="mt-1 text-[10px] text-[#5e6b62]">{event.details}</p>
                           ) : null}
@@ -810,20 +987,22 @@ export function CalendarWorkspace({
                 const active = isSameCalendarDay(date, selectedDate);
 
                 return (
-                  <Button
+                  <div
                     key={dayKey}
-                    type="button"
-                    onClick={() => {
-                      setSelectedDate(date);
-                      openDialog(date);
-                    }}
-                    variant="secondary"
-                    className={`min-h-[126px] rounded-[18px] border p-3 text-left transition-colors ${
+                    className={`min-h-[126px] rounded-[18px] border p-3 transition-colors ${
                       active
                         ? "border-brand bg-[#edf7ef]"
                         : "border-[#e2e7e1] bg-white hover:border-brand/30"
                     }`}
                   >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDate(date);
+                        openDialog(date);
+                      }}
+                      className="block w-full text-left"
+                    >
                     <div className="flex items-center justify-between">
                       <span
                         className={`text-[13px] font-[700] ${
@@ -840,6 +1019,7 @@ export function CalendarWorkspace({
                         </Badge>
                       ) : null}
                     </div>
+                    </button>
 
                     <div className="mt-3 space-y-1.5">
                       {dayEvents.slice(0, 2).map((event) => {
@@ -848,14 +1028,22 @@ export function CalendarWorkspace({
                         return (
                           <div
                             key={event.id}
-                            className={`rounded-full px-2.5 py-1 text-[10px] font-[600] ${tone.card} ${tone.text}`}
+                            className={`flex items-center justify-between gap-1 rounded-full px-2.5 py-1 text-[10px] font-[600] ${tone.card} ${tone.text}`}
                           >
-                            {event.start} {event.title}
+                            <span className="truncate">
+                              {event.start} {event.title}
+                            </span>
+                            {renderEventDeleteButton(event, {
+                              className:
+                                "size-5 shrink-0 rounded-full text-current hover:bg-white/70 hover:text-[#bb4d49]",
+                              iconClassName: "h-3 w-3",
+                              titlePrefix: "Delete",
+                            })}
                           </div>
                         );
                       })}
                     </div>
-                  </Button>
+                  </div>
                 );
               })}
             </div>
@@ -881,7 +1069,11 @@ export function CalendarWorkspace({
             <div className="mt-5">
               {visibleEvents.length === 0 ? (
                 <Card className="mb-4 rounded-[18px] border border-dashed border-[#dbe2dc] bg-[#f8faf7] px-4 py-3 shadow-none">
-                  No calendar events yet. Use `Create` or click a date/timeslot to add your first event.
+                  {activeFilterCount === 0
+                    ? "All calendar filters are turned off."
+                    : events.length > 0
+                      ? "No calendar items match the current filters."
+                      : "No calendar events yet. Use Create or click a date/timeslot to add your first event."}
                 </Card>
               ) : null}
 
@@ -931,17 +1123,58 @@ export function CalendarWorkspace({
       <CollaboratorPickerDialog
         isOpen={collaboratorPickerOpen}
         collaborators={availableCollaboratorRecords}
-        selectedIds={selectedCollaboratorIds}
+        selectedIds={pickerSelectedCollaboratorIds}
         error={collaboratorPickerError}
         saving={collaboratorPickerSaving}
         onToggle={toggleAssignedCollaborator}
         onClose={() => {
           setCollaboratorPickerError(undefined);
+          setPickerSelectedCollaboratorIds(assignedCollaboratorIds);
           setCollaboratorPickerOpen(false);
         }}
         onConfirm={saveAssignedCollaborators}
         onInviteFallback={openCollaboratorDialog}
         confirmLabel="Apply Selection"
+      />
+      <ConfirmationDialog
+        isOpen={Boolean(collaboratorPendingRemoval)}
+        title="Remove collaborator?"
+        description="This collaborator will no longer have access to this calendar schedule."
+        confirmLabel="Remove"
+        tone="destructive"
+        pending={collaboratorRemovalPending}
+        error={collaboratorRemovalError}
+        onConfirm={confirmRemoveCollaborator}
+        onClose={() => {
+          if (collaboratorRemovalPending) {
+            return;
+          }
+
+          setCollaboratorRemovalError(undefined);
+          setCollaboratorPendingRemoval(null);
+        }}
+      />
+      <ConfirmationDialog
+        isOpen={Boolean(eventPendingDelete)}
+        title="Delete event?"
+        description={
+          eventPendingDelete
+            ? `Delete "${eventPendingDelete.title}" from the calendar?`
+            : ""
+        }
+        confirmLabel="Delete Event"
+        tone="destructive"
+        pending={eventDeletePending}
+        error={eventDeleteError}
+        onConfirm={confirmDeleteEvent}
+        onClose={() => {
+          if (eventDeletePending) {
+            return;
+          }
+
+          setEventDeleteError(undefined);
+          setEventPendingDelete(null);
+        }}
       />
     </>
   );

@@ -217,35 +217,40 @@ export async function getCollaborators() {
   return collaborators.map(mapCollaborator);
 }
 
+async function listCalendarCollaborators() {
+  const collaborators = await withPrismaRetry(() =>
+    prisma.calendarCollaborator.findMany({
+      orderBy: {
+        createdAt: "asc",
+      },
+      select: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            collaboratorType: true,
+            projectAccess: true,
+            calendarAccess: true,
+            libraryAccess: true,
+            archiveAccess: true,
+          },
+        },
+      },
+    }),
+  );
+
+  return collaborators.map((item) => mapCollaborator(item.user));
+}
+
 export async function getCalendarCollaborators() {
   const collaborators = await unstable_cache(
-    async () =>
-      withPrismaRetry(() =>
-        prisma.calendarCollaborator.findMany({
-          orderBy: {
-            createdAt: "asc",
-          },
-          select: {
-            user: {
-              select: {
-                id: true,
-                email: true,
-                name: true,
-                collaboratorType: true,
-                projectAccess: true,
-                calendarAccess: true,
-                libraryAccess: true,
-                archiveAccess: true,
-              },
-            },
-          },
-        }),
-      ),
+    async () => listCalendarCollaborators(),
     ["calendar-collaborators"],
     { revalidate: 20, tags: [CALENDAR_COLLABORATORS_CACHE_TAG] },
   )();
 
-  return collaborators.map((item) => mapCollaborator(item.user));
+  return collaborators;
 }
 
 export async function updateCalendarCollaborators(
@@ -295,7 +300,25 @@ export async function updateCalendarCollaborators(
     ]),
   );
 
-  return getCalendarCollaborators();
+  return listCalendarCollaborators();
+}
+
+export async function removeCalendarCollaborator(collaboratorId: string) {
+  const normalizedId = collaboratorId.trim();
+
+  if (!normalizedId) {
+    return { error: "Collaborator id is missing." } as const;
+  }
+
+  await withPrismaRetry(() =>
+    prisma.calendarCollaborator.deleteMany({
+      where: {
+        userId: normalizedId,
+      },
+    }),
+  );
+
+  return { collaborators: await listCalendarCollaborators() } as const;
 }
 
 export async function createCollaborator(
