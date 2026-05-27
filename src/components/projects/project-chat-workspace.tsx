@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useDropzone } from "react-dropzone";
 import {
   Download,
@@ -77,6 +84,7 @@ import type {
   ProjectChatEntry,
   ProjectCollaboratorRecord,
   ProjectFlowRecord,
+  ProjectMentionParticipantRecord,
   ProjectStageRecord,
 } from "@/lib/projects";
 import type { CollaboratorRecord } from "@/lib/collaboration";
@@ -110,6 +118,17 @@ type DisplayChatEntry = ProjectChatEntry & {
   attachments?: DisplayAttachmentRecord[];
   isOptimistic?: boolean;
   serverEntryId?: string;
+};
+
+type MentionToken = {
+  userId: string;
+  name: string;
+};
+
+type MentionDropdownState = {
+  start: number;
+  end: number;
+  query: string;
 };
 
 type RevisionReviewState = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
@@ -245,6 +264,111 @@ function getInitials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function escapeMentionPattern(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getMentionTriggerState(
+  value: string,
+  caretPosition: number,
+): MentionDropdownState | null {
+  if (caretPosition < 0 || caretPosition > value.length) {
+    return null;
+  }
+
+  const textBeforeCaret = value.slice(0, caretPosition);
+  const mentionStart = textBeforeCaret.lastIndexOf("@");
+
+  if (mentionStart < 0) {
+    return null;
+  }
+
+  const previousCharacter = value[mentionStart - 1];
+
+  if (previousCharacter && !/\s/.test(previousCharacter)) {
+    return null;
+  }
+
+  const query = value.slice(mentionStart + 1, caretPosition);
+
+  if (/\s/.test(query)) {
+    return null;
+  }
+
+  return {
+    start: mentionStart,
+    end: caretPosition,
+    query,
+  };
+}
+
+function resolveCommentMentionUserIds(
+  body: string,
+  mentions: MentionToken[],
+) {
+  return Array.from(
+    new Set(
+      mentions
+        .filter((mention) =>
+          new RegExp(
+            `(^|\\s)@${escapeMentionPattern(mention.name)}(?=[\\s.,!?;:)]|$)`,
+            "u",
+          ).test(body),
+        )
+        .map((mention) => mention.userId),
+    ),
+  );
+}
+
+function renderCommentBodyWithMentions(
+  body: string,
+  mentions?: MentionToken[],
+): ReactNode {
+  if (!mentions?.length) {
+    return body;
+  }
+
+  const orderedMentions = [...mentions].sort((left, right) => right.name.length - left.name.length);
+  const pattern = new RegExp(
+    orderedMentions
+      .map((mention) => `@${escapeMentionPattern(mention.name)}`)
+      .join("|"),
+    "gu",
+  );
+  const segments: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of body.matchAll(pattern)) {
+    const matchIndex = match.index ?? 0;
+    const matchedText = match[0];
+
+    if (matchIndex > lastIndex) {
+      segments.push(body.slice(lastIndex, matchIndex));
+    }
+
+    segments.push(
+      <span
+        key={`${matchedText}-${matchIndex}`}
+        className="inline-flex rounded-full bg-[#edf7ef] px-2 py-0.5 font-[700] text-[#2b8b56]"
+      >
+        {matchedText}
+      </span>,
+    );
+
+    lastIndex = matchIndex + matchedText.length;
+  }
+
+  if (segments.length === 0) {
+    return body;
+  }
+
+  if (lastIndex < body.length) {
+    segments.push(body.slice(lastIndex));
+  }
+
+  return segments;
 }
 
 function getLocalFileTypeLabel(fileName: string) {
@@ -644,6 +768,9 @@ export function ProjectChatWorkspace({
   const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
     useState<CollaboratorRecord[]>(availableCollaborators);
   const [draft, setDraft] = useState("");
+  const [selectedMentionTokens, setSelectedMentionTokens] = useState<MentionToken[]>([]);
+  const [draftSelectionStart, setDraftSelectionStart] = useState(0);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
   const [optimisticComments, setOptimisticComments] = useState<DisplayChatEntry[]>([]);
@@ -713,6 +840,8 @@ export function ProjectChatWorkspace({
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const draftInputRef = useRef<HTMLInputElement | null>(null);
+  const mentionDropdownRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -871,6 +1000,41 @@ export function ProjectChatWorkspace({
 
     return collaborator.group === "external" ? "External Collaborator" : "Internal Team";
   }, [currentUserId, project.collaborators]);
+  const mentionableParticipants = useMemo<ProjectMentionParticipantRecord[]>(
+    () =>
+      project.mentionParticipants.filter(
+        (participant) =>
+          participant.id !== currentUserId && !participant.chatVisibilityPaused,
+      ),
+    [currentUserId, project.mentionParticipants],
+  );
+  const mentionTriggerState = useMemo(
+    () => getMentionTriggerState(draft, draftSelectionStart),
+    [draft, draftSelectionStart],
+  );
+  const mentionSuggestions = useMemo(() => {
+    if (!mentionTriggerState) {
+      return [];
+    }
+
+    const query = mentionTriggerState.query.trim().toLowerCase();
+
+    return mentionableParticipants.filter((participant) => {
+      if (!query) {
+        return true;
+      }
+
+      return (
+        participant.name.toLowerCase().includes(query) ||
+        participant.email?.toLowerCase().includes(query)
+      );
+    });
+  }, [mentionTriggerState, mentionableParticipants]);
+  const mentionDropdownOpen = mentionSuggestions.length > 0 && Boolean(mentionTriggerState);
+  const safeActiveMentionIndex =
+    mentionDropdownOpen && mentionSuggestions.length > 0
+      ? Math.min(activeMentionIndex, mentionSuggestions.length - 1)
+      : 0;
   const reviewRevisionMessage = useMemo(
     () =>
       reviewRevisionId
@@ -883,6 +1047,25 @@ export function ProjectChatWorkspace({
   );
   const reviewCompletionIsFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
+
+  useEffect(() => {
+    if (!mentionDropdownOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!mentionDropdownRef.current?.contains(event.target as Node)) {
+        setActiveMentionIndex(0);
+        setDraftSelectionStart(-1);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [mentionDropdownOpen]);
 
   useEffect(() => {
     return () => {
@@ -1917,9 +2100,44 @@ export function ProjectChatWorkspace({
     setPendingCommentFiles((current) => current.filter((file) => file.id !== fileId));
   }
 
+  function handleSelectMention(participant: ProjectMentionParticipantRecord) {
+    if (!mentionTriggerState) {
+      return;
+    }
+
+    const mentionText = `@${participant.name}`;
+    const textBeforeMention = draft.slice(0, mentionTriggerState.start);
+    const textAfterMention = draft.slice(mentionTriggerState.end);
+    const needsTrailingSpace =
+      textAfterMention.length === 0 || !textAfterMention.startsWith(" ");
+    const nextDraft = `${textBeforeMention}${mentionText}${needsTrailingSpace ? " " : ""}${textAfterMention}`;
+    const nextCursorPosition =
+      textBeforeMention.length + mentionText.length + (needsTrailingSpace ? 1 : 0);
+
+    setDraft(nextDraft);
+    setSelectedMentionTokens((current) => {
+      const nextToken = {
+        userId: participant.id,
+        name: participant.name,
+      };
+
+      return current.some((token) => token.userId === participant.id)
+        ? current
+        : [...current, nextToken];
+    });
+    setActiveMentionIndex(0);
+    setDraftSelectionStart(nextCursorPosition);
+
+    window.requestAnimationFrame(() => {
+      draftInputRef.current?.focus();
+      draftInputRef.current?.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    });
+  }
+
   async function handleSendComment() {
     const body = draft.trim();
     const activeStageId = activeStage?.id;
+    const mentionedUserIds = resolveCommentMentionUserIds(body, selectedMentionTokens);
 
     if (!body && pendingCommentFiles.length === 0) {
       return;
@@ -1952,6 +2170,9 @@ export function ProjectChatWorkspace({
         author: currentUserDisplayName,
         role: currentUserRoleLabel,
         body: body || "Attachment uploaded.",
+        mentions: selectedMentionTokens.filter((mention) =>
+          mentionedUserIds.includes(mention.userId),
+        ),
         createdAt: "Uploading…",
         isOptimistic: true,
         attachments: filesToUpload.map((pendingFile) => ({
@@ -1978,6 +2199,7 @@ export function ProjectChatWorkspace({
         stageId: activeStageId,
         body,
         allowEmptyBody: pendingCommentFiles.length > 0,
+        mentionedUserIds,
       });
 
       if ("error" in commentResult) {
@@ -1990,6 +2212,8 @@ export function ProjectChatWorkspace({
       }));
 
       setDraft("");
+      setSelectedMentionTokens([]);
+      setDraftSelectionStart(0);
       setPendingCommentFiles([]);
 
       const uploadResults = await Promise.allSettled(
@@ -2091,6 +2315,9 @@ export function ProjectChatWorkspace({
           author: currentUserDisplayName,
           role: currentUserRoleLabel,
           body: body || "Attachment uploaded.",
+          mentions: selectedMentionTokens.filter((mention) =>
+            mentionedUserIds.includes(mention.userId),
+          ),
           createdAt: "Just now",
           attachments: successfulUploads.map((result) => ({
             id: result.attachmentId,
@@ -2750,7 +2977,9 @@ export function ProjectChatWorkspace({
                   </div>
                   <span className="ml-auto text-[10px] text-[#7d847e]">{message.createdAt}</span>
                 </div>
-                <p className="mt-3 text-[12px] leading-[1.35] text-[#111712]">{message.body}</p>
+                <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[12px] leading-[1.35] text-[#111712]">
+                  {renderCommentBodyWithMentions(message.body, message.mentions)}
+                </p>
                 {message.attachments?.length ? (
                   <AttachmentHistoryList
                     attachments={message.attachments}
@@ -2893,13 +3122,108 @@ export function ProjectChatWorkspace({
                 </div>
               ) : null}
 
-              <div className="flex items-center gap-3 rounded-full border border-[#e2e7e2] px-4 py-3">
-                <Input
+              <div
+                ref={mentionDropdownRef}
+                className="relative flex items-center gap-3 rounded-full border border-[#e2e7e2] px-4 py-3"
+              >
+                <input
+                  ref={draftInputRef}
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder='Add a comment or upload files for this stage revision history.'
-                  className="h-auto border-none bg-transparent p-0 text-[14px] shadow-none ring-0 focus-visible:ring-0"
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    setDraftSelectionStart(event.target.selectionStart ?? event.target.value.length);
+                  }}
+                  onClick={(event) => {
+                    setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
+                  }}
+                  onBlur={() => {
+                    setDraftSelectionStart(-1);
+                  }}
+                  onKeyUp={(event) => {
+                    setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
+                  }}
+                  onKeyDown={(event) => {
+                    if (!mentionDropdownOpen) {
+                      return;
+                    }
+
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setActiveMentionIndex((current) =>
+                        current + 1 >= mentionSuggestions.length ? 0 : current + 1,
+                      );
+                      return;
+                    }
+
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setActiveMentionIndex((current) =>
+                        current - 1 < 0 ? mentionSuggestions.length - 1 : current - 1,
+                      );
+                      return;
+                    }
+
+                    if (event.key === "Enter") {
+                      const activeMention = mentionSuggestions[safeActiveMentionIndex];
+
+                      if (activeMention) {
+                        event.preventDefault();
+                        handleSelectMention(activeMention);
+                      }
+
+                      return;
+                    }
+
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setActiveMentionIndex(0);
+                      setDraftSelectionStart(-1);
+                    }
+                  }}
+                  placeholder="Add a comment or upload files for this stage revision history."
+                  className="h-auto w-full border-none bg-transparent p-0 text-[14px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
                 />
+                {mentionDropdownOpen ? (
+                  <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-20 overflow-hidden rounded-[22px] border border-[#dbe7dd] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.12)]">
+                    <div className="border-b border-[#eef2ee] px-4 py-2.5 text-[11px] font-[700] uppercase tracking-[0.08em] text-[#6a756d]">
+                      Mention collaborators
+                    </div>
+                    <div className="max-h-[260px] overflow-y-auto py-1.5">
+                      {mentionSuggestions.map((participant, index) => {
+                        const isActive = index === safeActiveMentionIndex;
+
+                        return (
+                          <button
+                            key={participant.id}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSelectMention(participant);
+                            }}
+                            className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition ${
+                              isActive ? "bg-[#f4fbf5]" : "hover:bg-[#f8fbf8]"
+                            }`}
+                          >
+                            <div className="grid h-10 w-10 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[12px] font-[700] text-white">
+                              {getInitials(participant.name)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[14px] font-[700] text-[#173120]">
+                                {participant.name}
+                              </p>
+                              <p className="truncate text-[12px] text-[#68736a]">
+                                {participant.email || participant.role}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-[#edf7ef] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
+                              {participant.role}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"

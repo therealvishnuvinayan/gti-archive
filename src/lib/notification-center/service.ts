@@ -73,7 +73,7 @@ function buildNotificationWhere(input: {
       break;
     case "mentions":
       clauses.push({
-        id: "__mentions_not_supported__",
+        type: "MENTION",
       });
       break;
   }
@@ -239,6 +239,7 @@ export async function getNotificationsForUser(
     allCount,
     unreadCount,
     readCount,
+    mentionCount,
     systemCount,
   ] = await withPrismaRetry(() =>
     prisma.$transaction([
@@ -271,6 +272,12 @@ export async function getNotificationsForUser(
       prisma.notification.count({
         where: {
           userId: input.userId,
+          type: "MENTION",
+        },
+      }),
+      prisma.notification.count({
+        where: {
+          userId: input.userId,
           type: {
             in: [...systemNotificationTypes],
           },
@@ -288,6 +295,7 @@ export async function getNotificationsForUser(
       all: allCount,
       unread: unreadCount,
       read: readCount,
+      mentions: mentionCount,
       system: systemCount,
     }),
     page,

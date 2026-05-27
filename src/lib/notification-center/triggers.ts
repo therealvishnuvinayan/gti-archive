@@ -6,6 +6,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 import {
   getCompletionWorkflowRecipientUserIds,
+  dedupeRecipients,
   getProjectNotificationContext,
   getProjectParticipantUserIds,
   getVisibleStageEventRecipientUserIds,
@@ -450,6 +451,7 @@ export async function notifyCommentAdded(
     projectId: string;
     stageId: string;
     commentId: string;
+    excludedRecipientUserIds?: string[];
   },
 ) {
   const project = await getProjectStageContext(input.projectId, input.stageId);
@@ -466,12 +468,54 @@ export async function notifyCommentAdded(
       excludeUserId: input.actorId,
     },
   );
+  const excludedRecipientUserIds = new Set(
+    dedupeRecipients(input.excludedRecipientUserIds ?? []),
+  );
 
   await createNotificationsForUsers({
-    recipientUserIds: recipients,
+    recipientUserIds: recipients.filter(
+      (recipientUserId) => !excludedRecipientUserIds.has(recipientUserId),
+    ),
     type: "COMMENT_ADDED",
     title: "New comment",
     message: `${input.actorName} commented on ${stage.name}.`,
+    entityType: "COMMENT",
+    entityId: input.commentId,
+    projectId: project.id,
+    stageId: stage.id,
+    commentId: input.commentId,
+    url: buildNotificationUrl({
+      kind: "project-stage",
+      projectId: project.id,
+      stageId: stage.id,
+    }),
+  });
+}
+
+export async function notifyCommentMentioned(
+  input: ActorInput & {
+    projectId: string;
+    stageId: string;
+    commentId: string;
+    mentionedUserIds: string[];
+  },
+) {
+  const project = await getProjectStageContext(input.projectId, input.stageId);
+  const stage = project?.stages?.[0];
+
+  if (!project || !stage) {
+    return;
+  }
+
+  const recipients = dedupeRecipients(input.mentionedUserIds).filter(
+    (recipientUserId) => recipientUserId !== input.actorId,
+  );
+
+  await createNotificationsForUsers({
+    recipientUserIds: recipients,
+    type: "MENTION",
+    title: "You were mentioned",
+    message: `${input.actorName} mentioned you in ${project.name}.`,
     entityType: "COMMENT",
     entityId: input.commentId,
     projectId: project.id,

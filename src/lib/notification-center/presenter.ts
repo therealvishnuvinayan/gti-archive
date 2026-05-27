@@ -55,7 +55,7 @@ export function mapTypeFilterToNotificationTypes(
     case "Stage":
       return ["BRIEF_ACCEPTED", "STAGE_COMPLETED", "NEXT_STAGE_ACTIVATED"];
     case "Comment":
-      return ["COMMENT_ADDED"];
+      return ["COMMENT_ADDED", "MENTION"];
     case "File":
       return ["FILE_UPLOADED"];
     case "Archive":
@@ -86,6 +86,7 @@ function mapNotificationType(type: PrismaNotificationType): NotificationType {
     case "NEXT_STAGE_ACTIVATED":
       return "Stage";
     case "COMMENT_ADDED":
+    case "MENTION":
       return "Comment";
     case "FILE_UPLOADED":
       return "File";
@@ -124,6 +125,8 @@ function mapNotificationContextLabel(type: PrismaNotificationType) {
       return "Stage";
     case "COMMENT_ADDED":
       return "Comment";
+    case "MENTION":
+      return "Mention";
     case "FILE_UPLOADED":
       return "File";
     case "PROJECT_ARCHIVED":
@@ -161,6 +164,7 @@ function mapNotificationContextTone(type: PrismaNotificationType): NotificationC
     case "NEXT_STAGE_ACTIVATED":
       return "review";
     case "COMMENT_ADDED":
+    case "MENTION":
       return "comment";
     case "FILE_UPLOADED":
       return "content";
@@ -202,6 +206,7 @@ function mapNotificationVisualKind(type: PrismaNotificationType): NotificationVi
     case "NEXT_STAGE_ACTIVATED":
       return "stage-completed";
     case "COMMENT_ADDED":
+    case "MENTION":
       return "comment";
     case "FILE_UPLOADED":
       return "file-uploaded";
@@ -304,7 +309,7 @@ export function mapNotificationToView(
     contextLabel: mapNotificationContextLabel(notification.type),
     contextTone: mapNotificationContextTone(notification.type),
     read: notification.isRead,
-    mention: false,
+    mention: notification.type === "MENTION",
     system: isSystemNotificationType(notification.type),
     visualKind: mapNotificationVisualKind(notification.type),
     targetHref: notification.url?.trim() || "/notifications",
@@ -315,13 +320,14 @@ export function buildNotificationCounts(input: {
   all: number;
   unread: number;
   read: number;
+  mentions: number;
   system: number;
 }): NotificationCountSummary {
   return {
     All: input.all,
     Unread: input.unread,
     Read: input.read,
-    Mentions: 0,
+    Mentions: input.mentions,
     System: input.system,
   };
 }

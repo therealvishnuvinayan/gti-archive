@@ -13,6 +13,7 @@ import {
   notifyApprovalRequired,
   notifyBriefAccepted,
   notifyCommentAdded,
+  notifyCommentMentioned,
   notifyCopyrightTransferRequired,
   notifyProjectArchived,
   notifyProjectAssignmentChanges,
@@ -55,6 +56,7 @@ type StageCommentInput = {
   stageId: string;
   body: string;
   allowEmptyBody?: boolean;
+  mentionedUserIds?: string[];
 };
 
 type ComparisonCommentInput = {
@@ -124,12 +126,26 @@ export async function createStageCommentAction(input: StageCommentInput) {
         projectId: input.projectId,
         stageId: input.stageId,
         commentId: comment.id,
+        excludedRecipientUserIds: comment.mentions.map(
+          (mention) => mention.mentionedUserId,
+        ),
+      }),
+    );
+    await runNotificationTask("comment-mentioned", () =>
+      notifyCommentMentioned({
+        actorId: user.id,
+        actorName: getUserDisplayName(user),
+        projectId: input.projectId,
+        stageId: input.stageId,
+        commentId: comment.id,
+        mentionedUserIds: comment.mentions.map((mention) => mention.mentionedUserId),
       }),
     );
 
     return {
       commentId: comment.id,
       revisionId: comment.revisionId,
+      mentionedUserIds: comment.mentions.map((mention) => mention.mentionedUserId),
     };
   } catch (error) {
     return {

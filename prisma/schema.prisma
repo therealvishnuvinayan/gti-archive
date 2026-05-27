@@ -124,6 +124,7 @@ enum NotificationType {
   STAGE_COMPLETED
   NEXT_STAGE_ACTIVATED
   COMMENT_ADDED
+  MENTION
   FILE_UPLOADED
   PROJECT_ARCHIVED
   APPROVAL_REQUIRED
@@ -169,6 +170,7 @@ model User {
   revisions         ProjectRevision[]
   reviewedRevisions ProjectRevision[]   @relation("ProjectRevisionReviewer")
   comments          ProjectComment[]
+  commentMentions   ProjectCommentMention[]
   comparisonComments ComparisonComment[]
   attachments       ProjectAttachment[]
   projectArchives   ProjectArchive[]    @relation("ProjectArchiveArchivedBy")
@@ -377,12 +379,26 @@ model ProjectComment {
   author       User                 @relation(fields: [authorId], references: [id], onDelete: Restrict)
   body         String
   attachments  ProjectAttachment[]
+  mentions     ProjectCommentMention[]
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
   @@index([projectId, stageId, createdAt])
   @@index([revisionId])
   @@index([authorId])
+}
+
+model ProjectCommentMention {
+  id              String         @id @default(cuid())
+  commentId        String
+  comment          ProjectComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  mentionedUserId  String
+  mentionedUser    User          @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
+  createdAt        DateTime      @default(now())
+
+  @@unique([commentId, mentionedUserId])
+  @@index([mentionedUserId, createdAt])
+  @@index([commentId, createdAt])
 }
 
 model ProjectAttachment {

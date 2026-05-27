@@ -138,6 +138,15 @@ export type ProjectCollaboratorRecord = {
   removable?: boolean;
 };
 
+export type ProjectMentionParticipantRecord = {
+  id: string;
+  name: string;
+  email?: string;
+  role: string;
+  group: "internal" | "external";
+  chatVisibilityPaused: boolean;
+};
+
 export type ProjectAttachmentRecord = {
   id: string;
   isSubmission: boolean;
@@ -164,6 +173,10 @@ export type ProjectChatEntry = {
   role: string;
   body: string;
   createdAt: string;
+  mentions?: Array<{
+    userId: string;
+    name: string;
+  }>;
   attachments?: ProjectAttachmentRecord[];
 };
 
@@ -201,6 +214,7 @@ export type ProjectFlowRecord = {
   priority: string;
   stageCards: ProjectStageRecord[];
   collaborators: ProjectCollaboratorRecord[];
+  mentionParticipants: ProjectMentionParticipantRecord[];
   attachments: ProjectAttachmentRecord[];
   chatEntries: ProjectChatEntry[];
   compareNotes: ProjectCompareNote[];
@@ -546,6 +560,41 @@ function mapProjectToFlow(
     .filter((collaborator, index, current) =>
       current.findIndex((item) => item.id === collaborator.id) === index,
     );
+  const mentionParticipants = [
+    {
+      id: project.createdById,
+      name: creatorName,
+      email: project.createdBy.email,
+      role: "Project Owner",
+      group: "internal" as const,
+      chatVisibilityPaused: false,
+    },
+    ...(project.executorUser
+      ? [
+          {
+            id: project.executorUser.id,
+            name:
+              project.executorUser.name?.trim() ||
+              project.executorUser.email,
+            email: project.executorUser.email,
+            role: "Project Executor",
+            group: mapCollaboratorTypeToGroup(project.executorUser.collaboratorType),
+            chatVisibilityPaused: false,
+          },
+        ]
+      : []),
+    ...collaboratorRecords.map((collaborator) => ({
+      id: collaborator.id,
+      name: collaborator.name,
+      email: collaborator.email,
+      role: collaborator.role,
+      group: collaborator.group,
+      chatVisibilityPaused: collaborator.chatVisibilityPaused,
+    })),
+  ].filter(
+    (participant, index, current) =>
+      current.findIndex((item) => item.id === participant.id) === index,
+  );
 
   return {
     id: project.id,
@@ -582,6 +631,7 @@ function mapProjectToFlow(
       },
       ...collaboratorRecords,
     ],
+    mentionParticipants,
     attachments: project.attachments.map(mapAttachmentToRecord),
     chatEntries: [],
     compareNotes: [],

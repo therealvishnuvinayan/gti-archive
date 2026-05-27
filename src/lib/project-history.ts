@@ -15,6 +15,7 @@ import {
   notifyFileUploaded,
   runNotificationTask,
 } from "@/lib/notification-center";
+import { getVisibleStageEventRecipientUserIds } from "@/lib/notification-center/recipients";
 import {
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
@@ -77,6 +78,10 @@ type StageCommentQueryRecord = {
   body: string;
   createdAt: Date;
   author: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
+  mentions: Array<{
+    mentionedUserId: string;
+    mentionedUser: Pick<User, "name" | "email">;
+  }>;
   attachments: Array<{
     id: string;
     assetType: AttachmentAssetType;
@@ -264,6 +269,10 @@ function mapCommentEntry(
     role: getActorRole(comment.author),
     body: comment.body,
     createdAt: formatHistoryTimestamp(comment.createdAt),
+    mentions: comment.mentions.map((mention) => ({
+      userId: mention.mentionedUserId,
+      name: getDisplayName(mention.mentionedUser),
+    })),
     attachments: comment.attachments
       .filter((attachment) => attachment.status === AttachmentStatus.READY)
       .map((attachment) =>
@@ -508,6 +517,17 @@ export async function getProjectStageHistory(
                   collaboratorType: true,
                 },
               },
+              mentions: {
+                select: {
+                  mentionedUserId: true,
+                  mentionedUser: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
               attachments: {
                 orderBy: {
                   createdAt: "asc",
@@ -656,6 +676,7 @@ export async function createStageComment(
     stageId: string;
     body: string;
     allowEmptyBody?: boolean;
+    mentionedUserIds?: string[];
   },
 ) {
   const stage = await withPrismaRetry(() =>
@@ -706,6 +727,28 @@ export async function createStageComment(
     throw new Error("Enter a comment before sending.");
   }
 
+  const requestedMentionUserIds = Array.from(
+    new Set(
+      (input.mentionedUserIds ?? [])
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+  const validMentionUserIds =
+    requestedMentionUserIds.length > 0
+      ? (
+          await getVisibleStageEventRecipientUserIds(input.projectId, new Date(), {
+            includeOwner: true,
+            includeExecutor: true,
+            includeCollaborators: true,
+          })
+        ).filter(
+          (recipientUserId) =>
+            recipientUserId !== user.id &&
+            requestedMentionUserIds.includes(recipientUserId),
+        )
+      : [];
+
   return withPrismaRetry(() =>
     prisma.projectComment.create({
       data: {
@@ -714,10 +757,25 @@ export async function createStageComment(
         revisionId: latestRevision?.id ?? null,
         authorId: user.id,
         body: body || "Attachment uploaded.",
+        mentions:
+          validMentionUserIds.length > 0
+            ? {
+                createMany: {
+                  data: validMentionUserIds.map((mentionedUserId) => ({
+                    mentionedUserId,
+                  })),
+                },
+              }
+            : undefined,
       },
       select: {
         id: true,
         revisionId: true,
+        mentions: {
+          select: {
+            mentionedUserId: true,
+          },
+        },
       },
     }),
   );
