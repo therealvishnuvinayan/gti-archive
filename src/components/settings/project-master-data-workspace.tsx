@@ -27,6 +27,7 @@ import type {
   ProjectMasterDataItemRecord,
   ProjectMasterDataSummary,
 } from "@/lib/project-master-data";
+import { PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH } from "@/lib/project-master-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -48,6 +49,7 @@ type MasterDataFormState = {
 
 type MasterDataFieldErrors = {
   name?: string;
+  description?: string;
   code?: string;
 };
 
@@ -317,6 +319,7 @@ function MasterDataDrawer({
   const label =
     tab === "categories" ? "Category" : tab === "tags" ? "Tag" : "Currency";
   const isCurrency = tab === "currencies";
+  const descriptionLength = form.description.trim().length;
 
   return (
     <div className="fixed inset-0 z-50 bg-[#102116]/30 backdrop-blur-[2px]">
@@ -407,8 +410,25 @@ function MasterDataDrawer({
                     value={form.description}
                     onChange={(event) => onChange("description", event.target.value)}
                     placeholder="Enter description (optional)"
-                    className="min-h-[132px] rounded-[22px] border border-line"
+                    maxLength={PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH}
+                    className={`min-h-[132px] rounded-[22px] border ${
+                      fieldErrors.description ? "border-[#e0a8a6]" : "border-line"
+                    }`}
                   />
+                  {fieldErrors.description ? (
+                    <span className="text-[12px] font-[600] text-[#bb4d49]">
+                      {fieldErrors.description}
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-between gap-3 text-[12px] text-[#6d776e]">
+                      <span>
+                        Keep the {label.toLowerCase()} description concise and reusable.
+                      </span>
+                      <span>
+                        {descriptionLength}/{PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH}
+                      </span>
+                    </span>
+                  )}
                 </label>
 
                 <div className="space-y-3">
@@ -551,6 +571,7 @@ export function ProjectMasterDataWorkspace({
 
   function handleSubmit() {
     const normalizedName = form.name.trim();
+    const normalizedDescriptionLength = form.description.trim().length;
     const nextFieldErrors: MasterDataFieldErrors = {};
 
     if (!normalizedName) {
@@ -565,9 +586,14 @@ export function ProjectMasterDataWorkspace({
       } else if (!/^[A-Z]{3}$/.test(normalizedCode)) {
         nextFieldErrors.code = "Currency code must be 3 uppercase letters.";
       }
+    } else if (
+      normalizedDescriptionLength > PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH
+    ) {
+      const label = activeTab === "categories" ? "Category" : "Tag";
+      nextFieldErrors.description = `${label} description must be ${PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH} characters or fewer.`;
     }
 
-    if (nextFieldErrors.name || nextFieldErrors.code) {
+    if (nextFieldErrors.name || nextFieldErrors.description || nextFieldErrors.code) {
       setFieldErrors(nextFieldErrors);
       showErrorToast("Unable to save value.", "Please review the highlighted fields.");
       return;

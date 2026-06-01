@@ -5,7 +5,10 @@ import { UserRole } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { PROJECT_MASTER_DATA_CACHE_TAG } from "@/lib/project-master-data";
+import {
+  PROJECT_MASTER_DATA_CACHE_TAG,
+  PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH,
+} from "@/lib/project-master-data";
 
 type SaveMasterDataInput = {
   id?: string;
@@ -58,6 +61,20 @@ async function revalidateProjectMasterData() {
   revalidatePath("/settings/project-master-data");
 }
 
+function validateMasterDataDescription(
+  description: string | null,
+  label: "Category" | "Tag",
+) {
+  if (
+    description &&
+    description.length > PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH
+  ) {
+    return `${label} description must be ${PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH} characters or fewer.`;
+  }
+
+  return null;
+}
+
 export async function saveProjectCategoryAction(input: SaveMasterDataInput) {
   await requireAdminUser();
 
@@ -65,6 +82,15 @@ export async function saveProjectCategoryAction(input: SaveMasterDataInput) {
 
   if (!parsed.name) {
     return { error: "Category name is required." };
+  }
+
+  const descriptionError = validateMasterDataDescription(
+    parsed.description,
+    "Category",
+  );
+
+  if (descriptionError) {
+    return { error: descriptionError };
   }
 
   const duplicate = await withPrismaRetry(() =>
@@ -133,6 +159,12 @@ export async function saveProjectTagAction(input: SaveMasterDataInput) {
 
   if (!parsed.name) {
     return { error: "Tag name is required." };
+  }
+
+  const descriptionError = validateMasterDataDescription(parsed.description, "Tag");
+
+  if (descriptionError) {
+    return { error: descriptionError };
   }
 
   const duplicate = await withPrismaRetry(() =>

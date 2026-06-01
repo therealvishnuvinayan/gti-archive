@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const PROJECT_MASTER_DATA_CACHE_TAG = "project-master-data";
+export const PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH = 300;
 
 export type ProjectMasterDataItemRecord = {
   id: string;
