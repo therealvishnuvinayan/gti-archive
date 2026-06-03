@@ -77,6 +77,8 @@ export type ProjectCardRecord = {
   title: string;
   createdOn: string;
   createdBy: string;
+  canEdit: boolean;
+  canDelete: boolean;
   featured?: boolean;
   emphasized?: boolean;
 };
@@ -520,7 +522,11 @@ export function formatProjectStageLabel(project: Pick<Project, "currentStageName
   return `${stageName} : ${statusLabel}`;
 }
 
-function mapProjectToCard(project: ProjectWithCreator, index: number): ProjectCardRecord {
+function mapProjectToCard(
+  project: ProjectWithCreator,
+  index: number,
+  currentUser: ProjectAccessUser,
+): ProjectCardRecord {
   return {
     id: project.id,
     stage: formatProjectStageLabel(project),
@@ -528,6 +534,8 @@ function mapProjectToCard(project: ProjectWithCreator, index: number): ProjectCa
     title: project.name,
     createdOn: formatProjectDate(project.createdAt),
     createdBy: getCreatorName(project.createdBy),
+    canEdit: hasProjectPermission(currentUser, project, "project.update"),
+    canDelete: hasProjectPermission(currentUser, project, "project.delete"),
     featured: index === 0,
     emphasized: index === 3,
   };
@@ -1419,7 +1427,9 @@ export async function getProjectsList(
   const sortedProjects =
     filter.sort === "name" ? [...projects].sort(compareProjectsByName) : projects;
 
-  return sortedProjects.map(mapProjectToCard);
+  return sortedProjects.map((project, index) =>
+    mapProjectToCard(project, index, currentUser),
+  );
 }
 
 export async function getProjectById(

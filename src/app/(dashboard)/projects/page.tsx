@@ -68,10 +68,7 @@ export default async function ProjectsPage({
     getActiveProjectMasterDataOptions(),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
-  const canManageProjects =
-    hasPermission(user, "project.create") ||
-    hasPermission(user, "project.update") ||
-    hasPermission(user, "project.delete");
+  const canCreateProject = hasPermission(user, "project.create");
 
   return (
     <DashboardLayout>
@@ -79,7 +76,7 @@ export default async function ProjectsPage({
         <ProjectsBrowser
           projects={projects}
           hasAnyProjects={hasAnyProjects}
-          canManageProjects={canManageProjects}
+          canCreateProject={canCreateProject}
           activeStatus={activeStatus}
           activeSort={activeSort}
           query={query}

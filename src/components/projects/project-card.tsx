@@ -24,16 +24,17 @@ export type ProjectCardItem = {
   title: string;
   createdOn: string;
   createdBy: string;
+  canEdit: boolean;
+  canDelete: boolean;
   featured?: boolean;
   emphasized?: boolean;
 };
 
 type ProjectCardProps = {
   project: ProjectCardItem;
-  canManage?: boolean;
 };
 
-export function ProjectCard({ project, canManage = false }: ProjectCardProps) {
+export function ProjectCard({ project }: ProjectCardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -85,44 +86,48 @@ export function ProjectCard({ project, canManage = false }: ProjectCardProps) {
               </p>
             </div>
 
-            {canManage ? (
+            {project.canEdit || project.canDelete ? (
               <div className="flex items-center gap-2">
-                <Button
-                  asChild
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className={`h-9 w-9 rounded-[12px] ${
-                    project.featured
-                      ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
-                      : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
-                  }`}
-                  aria-label={`Edit ${project.title}`}
-                  title="Edit project"
-                >
-                  <Link href={`/projects/${project.id}/edit`}>
-                    <Pencil className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => {
-                    setDeleteError(undefined);
-                    setConfirmOpen(true);
-                  }}
-                  disabled={isPending}
-                  className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
-                    project.featured
-                      ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
-                      : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
-                  }`}
-                  aria-label={`Delete ${project.title}`}
-                  title="Delete project"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {project.canEdit ? (
+                  <Button
+                    asChild
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    className={`h-9 w-9 rounded-[12px] ${
+                      project.featured
+                        ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
+                        : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
+                    }`}
+                    aria-label={`Edit ${project.title}`}
+                    title="Edit project"
+                  >
+                    <Link href={`/projects/${project.id}/edit`}>
+                      <Pencil className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                ) : null}
+                {project.canDelete ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => {
+                      setDeleteError(undefined);
+                      setConfirmOpen(true);
+                    }}
+                    disabled={isPending}
+                    className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
+                      project.featured
+                        ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
+                        : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
+                    }`}
+                    aria-label={`Delete ${project.title}`}
+                    title="Delete project"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>

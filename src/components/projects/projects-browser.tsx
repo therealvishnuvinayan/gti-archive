@@ -35,7 +35,7 @@ type ProjectFilter = {
 type ProjectsBrowserProps = {
   projects: ProjectCardItem[];
   hasAnyProjects: boolean;
-  canManageProjects: boolean;
+  canCreateProject: boolean;
   activeStatus: ProjectFilterValue;
   activeSort: ProjectSortValue;
   query: string;
@@ -48,6 +48,7 @@ type ProjectsBrowserProps = {
 
 function getEmptyStateCopy(
   hasAnyProjects: boolean,
+  canCreateProject: boolean,
   activeStatus: ProjectFilterValue,
   query: string,
   category: string,
@@ -63,7 +64,9 @@ function getEmptyStateCopy(
   if (!hasAnyProjects) {
     return {
       title: "No projects found",
-      description: "Create a project to populate the projects board.",
+      description: canCreateProject
+        ? "Create a project to populate the projects board."
+        : "There are no projects to show right now.",
     };
   }
 
@@ -120,7 +123,7 @@ const ALL_TAGS = "__all_tags__";
 export function ProjectsBrowser({
   projects,
   hasAnyProjects,
-  canManageProjects,
+  canCreateProject,
   activeStatus,
   activeSort,
   query,
@@ -137,6 +140,7 @@ export function ProjectsBrowser({
   const hasActiveFilters = Boolean(query || activeCategory || activeTag);
   const emptyState = getEmptyStateCopy(
     hasAnyProjects,
+    canCreateProject,
     activeStatus,
     query,
     activeCategory,
@@ -312,9 +316,11 @@ export function ProjectsBrowser({
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-end">
-              <Button asChild size="lg" className="min-w-[170px] text-[16px]">
-                <Link href="/projects/new">+ New Project</Link>
-              </Button>
+              {canCreateProject ? (
+                <Button asChild size="lg" className="min-w-[170px] text-[16px]">
+                  <Link href="/projects/new">+ New Project</Link>
+                </Button>
+              ) : null}
               {hasAnyProjects ? (
                 <ProjectSortDropdown
                   activeSort={activeSort}
@@ -342,7 +348,7 @@ export function ProjectsBrowser({
         >
           {projects.map((project) => (
             <MotionItem key={project.id} y={10} layout>
-              <ProjectCard project={project} canManage={canManageProjects} />
+              <ProjectCard project={project} />
             </MotionItem>
           ))}
         </MotionStaggerGroup>
