@@ -1,12 +1,18 @@
-import { UserRole } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 import { CollaborationWorkspace } from "@/components/collaboration/collaboration-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 export default async function CollaborationPage() {
   const user = await requireUser();
+
+  if (!hasPermission(user, "collaboration.viewDirectory")) {
+    redirect("/");
+  }
+
   const collaborators = await getCollaborators();
 
   return (
@@ -17,7 +23,12 @@ export default async function CollaborationPage() {
     >
       <CollaborationWorkspace
         initialCollaborators={collaborators}
-        canDeleteCollaborators={user.role === UserRole.SUPER_ADMIN}
+        canSaveCollaborators={
+          hasPermission(user, "collaboration.createUser") &&
+          hasPermission(user, "collaboration.updateUser") &&
+          hasPermission(user, "collaboration.manageModuleAccess")
+        }
+        canDeleteCollaborators={hasPermission(user, "collaboration.deleteGlobal")}
       />
     </DashboardLayout>
   );

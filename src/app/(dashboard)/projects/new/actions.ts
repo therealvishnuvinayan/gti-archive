@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
-import { ProjectStatus, UserRole } from "@prisma/client";
+import { ProjectStatus } from "@prisma/client";
 
 import type {
   ProjectFormFieldErrors,
@@ -15,11 +15,16 @@ import {
 } from "@/lib/notification-center";
 import {
   getDefaultProjectCollaboratorParticipantType,
+  getCollaboratorTypeGroup,
   isProjectCollaboratorParticipantType,
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import { prisma } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import {
+  hasPermission,
+  hasProjectPermission,
+} from "@/lib/permissions/resolver";
 import {
   DEFAULT_PROJECT_PRIORITY,
   isProjectPriority,
@@ -439,7 +444,8 @@ export async function createProjectAction(
   formData: FormData,
 ): Promise<ProjectFormState> {
   const user = await requireUser();
-  if (user.role === UserRole.COLLABORATOR) {
+
+  if (!hasPermission(user, "project.create")) {
     return { error: "You are not allowed to create projects." };
   }
 
@@ -522,7 +528,7 @@ export async function createProjectAction(
   const validCollaboratorTypeMap = new Map(
     validCollaborators.map((collaborator) => [
       collaborator.id,
-      collaborator.collaboratorType === "EXTERNAL" ? "external" : "internal",
+      getCollaboratorTypeGroup(collaborator.collaboratorType),
     ] as const),
   );
   const collaboratorParticipantTypeMap = new Map<
@@ -662,10 +668,6 @@ export async function updateProjectAction(
 ): Promise<ProjectFormState> {
   const user = await requireUser();
 
-  if (user.role === UserRole.COLLABORATOR) {
-    return { error: "You are not allowed to edit projects." };
-  }
-
   const projectId = String(formData.get("projectId") ?? "").trim();
 
   if (!projectId) {
@@ -699,9 +701,17 @@ export async function updateProjectAction(
     return { error: "Project not found." };
   }
 
-  const canViewBudget = existingProject.createdById === user.id;
+  if (!hasProjectPermission(user, existingProject, "project.update")) {
+    return { error: "You are not allowed to edit projects." };
+  }
+
+  const canUpdateBudget = hasProjectPermission(
+    user,
+    existingProject,
+    "project.updateBudget",
+  );
   const validated = validateProjectFormData(parseProjectFormData(formData), {
-    requireBudget: canViewBudget,
+    requireBudget: canUpdateBudget,
   });
 
   if ("error" in validated) {
@@ -732,7 +742,7 @@ export async function updateProjectAction(
     collaboratorParticipantTypes,
   } = validated.data;
 
-  const currencyCode = canViewBudget
+  const currencyCode = canUpdateBudget
     ? await resolveProjectCurrencyCode(currency, {
         allowInactiveCode: existingProject.currency,
       })
@@ -792,7 +802,7 @@ export async function updateProjectAction(
   const validCollaboratorTypeMap = new Map(
     validCollaborators.map((collaborator) => [
       collaborator.id,
-      collaborator.collaboratorType === "EXTERNAL" ? "external" : "internal",
+      getCollaboratorTypeGroup(collaborator.collaboratorType),
     ] as const),
   );
   const collaboratorParticipantTypeMap = new Map<
@@ -818,7 +828,7 @@ export async function updateProjectAction(
         executorUserId: resolvedExecutor.executorUserId,
         tag: tag || null,
         description,
-        budget: canViewBudget ? budget : existingProject.budget,
+        budget: canUpdateBudget ? budget : existingProject.budget,
         currency: currencyCode,
         status,
         priority,
@@ -850,7 +860,7 @@ export async function updateProjectAction(
               name: stageName,
               description: stageDescriptions[index] || null,
               budget:
-                canViewBudget
+                canUpdateBudget
                   ? Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
                     ? parsedStageBudget
                     : index === 0
@@ -892,8 +902,24 @@ export async function updateProjectAction(
 
 export async function deleteProjectAction(projectId: string) {
   const user = await requireUser();
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      createdById: true,
+      executorUserId: true,
+      collaborators: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
 
-  if (user.role === UserRole.COLLABORATOR) {
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!hasProjectPermission(user, project, "project.delete")) {
     throw new Error("You are not allowed to delete projects.");
   }
 

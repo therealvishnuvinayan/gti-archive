@@ -7,11 +7,13 @@ import { NotificationCenterProvider } from "@/components/notifications/notificat
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import type { DashboardUserView } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
+import type { SidebarVisibility } from "@/lib/permissions/resolver";
 
 type DashboardAppFrameProps = {
   children: React.ReactNode;
   user?: DashboardUserView | null;
   projectBadgeCount?: number;
+  sidebarVisibility: SidebarVisibility;
 };
 
 function BackPill({ href }: { href: string }) {
@@ -95,6 +97,7 @@ export function DashboardAppFrame({
   children,
   user,
   projectBadgeCount,
+  sidebarVisibility,
 }: DashboardAppFrameProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -108,6 +111,7 @@ export function DashboardAppFrame({
       <DashboardShell
         user={user}
         projectBadgeCount={projectBadgeCount}
+        sidebarVisibility={sidebarVisibility}
         topbarProps={getTopbarProps(pathname, searchParams)}
       >
         {children}

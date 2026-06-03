@@ -12,6 +12,7 @@ import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
 import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
 import { sendResendEmail } from "@/lib/email/resend";
 import { hasValidPasswordValue } from "@/lib/password-rules";
+import { getCollaboratorTypeGroup } from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
@@ -90,14 +91,15 @@ const reversePermissionMap: Record<PrismaCollaboratorAccess, PermissionLevel> = 
 };
 
 const collaboratorTypeMap: Record<CollaboratorType, PrismaCollaboratorType> = {
-  Internal: "INTERNAL",
-  External: "EXTERNAL",
+  Internal: "GTI_INTERNAL_CLIENT",
+  External: "EXTERNAL_FREELANCER",
 };
 
-const reverseCollaboratorTypeMap: Record<PrismaCollaboratorType, CollaboratorType> = {
-  INTERNAL: "Internal",
-  EXTERNAL: "External",
-};
+function mapCollaboratorTypeToLegacyGroup(
+  type: PrismaCollaboratorType,
+): CollaboratorType {
+  return getCollaboratorTypeGroup(type) === "external" ? "External" : "Internal";
+}
 
 function getFallbackName(email: string) {
   const [localPart] = email.split("@");
@@ -146,7 +148,7 @@ function mapCollaborator(user: Pick<
     id: user.id,
     name: user.name?.trim() || getFallbackName(user.email),
     email: user.email,
-    type: reverseCollaboratorTypeMap[user.collaboratorType],
+    type: mapCollaboratorTypeToLegacyGroup(user.collaboratorType),
     permissions: {
       project: reversePermissionMap[user.projectAccess],
       calendar: reversePermissionMap[user.calendarAccess],

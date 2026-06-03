@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
-import { UserRole } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/permissions/require";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   PROJECT_MASTER_DATA_CACHE_TAG,
@@ -26,20 +26,22 @@ type ToggleMasterDataInput = {
 
 async function requireAdminUser() {
   const user = await requireUser();
-
-  if (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
-    throw new Error("Only administrators can manage project master data.");
-  }
+  requirePermission(
+    user,
+    "settings.manageMasterData",
+    "You do not have permission to manage project master data.",
+  );
 
   return user;
 }
 
 async function requireSuperAdminUser() {
   const user = await requireUser();
-
-  if (user.role !== UserRole.SUPER_ADMIN) {
-    throw new Error("Only super admins can delete project master data.");
-  }
+  requirePermission(
+    user,
+    "settings.deleteMasterData",
+    "You do not have permission to delete project master data.",
+  );
 
   return user;
 }

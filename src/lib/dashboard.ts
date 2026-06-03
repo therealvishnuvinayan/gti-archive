@@ -3,9 +3,10 @@ import { ProjectStatus, type User } from "@prisma/client";
 import { getRecentNotificationsForUser } from "@/lib/notification-center/service";
 import { workflowNotificationTypes } from "@/lib/notification-center/presenter";
 import { buildAccessibleProjectsWhere, getDashboardProjectCounts, getRecentProjects } from "@/lib/projects";
+import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
-type DashboardUser = Pick<User, "id" | "role">;
+type DashboardUser = Pick<User, "id" | "role"> & PermissionUser;
 
 type DashboardProjectRecord = {
   id: string;
@@ -361,10 +362,21 @@ export async function getDashboardSnapshot(
 ): Promise<DashboardSnapshot> {
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
 
+  const canViewProjectCounts = hasPermission(currentUser, "dashboard.viewProjectCounts");
+  const canViewRecentProjects = hasPermission(currentUser, "dashboard.viewRecentProjects");
   const [counts, recentProjects, projects, recentNotifications, unreadWorkflowNotification] =
     await Promise.all([
-      getDashboardProjectCounts(currentUser),
-      getRecentProjects(5, currentUser),
+      canViewProjectCounts
+        ? getDashboardProjectCounts(currentUser)
+        : Promise.resolve({
+            total: 0,
+            ongoing: 0,
+            pending: 0,
+            completed: 0,
+          }),
+      canViewRecentProjects
+        ? getRecentProjects(5, currentUser)
+        : Promise.resolve([]),
       withPrismaRetry(() =>
         prisma.project.findMany({
           where: accessibleWhere,

@@ -5,12 +5,15 @@ import {
   normalizeComparisonPairIds,
 } from "@/lib/comparison-utils";
 import { assertProjectAccess } from "@/lib/project-history";
+import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/resolver";
+import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type AccessUser = Pick<
   User,
   "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
->;
+> &
+  PermissionUser;
 
 function getDisplayName(user: Pick<User, "name" | "email">) {
   return user.name?.trim() || user.email;
@@ -21,7 +24,7 @@ function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
     return "Internal Team";
   }
 
-  return user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator";
+  return getCollaboratorRoleLabel(user.collaboratorType);
 }
 
 function formatComparisonTimestamp(date: Date | string | number) {
@@ -185,6 +188,10 @@ export async function createComparisonComment(
   }
 
   const project = await assertProjectAccess(user, input.projectId);
+
+  if (!hasProjectPermission(user, project, "compare.createComment")) {
+    throw new Error("You do not have permission to comment in compare.");
+  }
 
   if (project.status === "COMPLETED") {
     throw new Error("This project is already completed.");

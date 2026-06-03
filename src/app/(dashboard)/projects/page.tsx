@@ -1,4 +1,4 @@
-import { UserRole } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -8,6 +8,7 @@ import {
   getDashboardProjectCounts,
   getProjectsList,
 } from "@/lib/projects";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 type ProjectFilter = {
   label: string;
@@ -49,20 +50,28 @@ export default async function ProjectsPage({
       : "newest";
   const activeCategory = resolvedSearchParams.category?.trim() ?? "";
   const activeTag = resolvedSearchParams.tag?.trim() ?? "";
-  const [user, projects, projectCounts, filterOptions] = await Promise.all([
-    requireUser(),
+  const user = await requireUser();
+
+  if (!hasPermission(user, "project.list") && !hasPermission(user, "project.view")) {
+    redirect("/");
+  }
+
+  const [projects, projectCounts, filterOptions] = await Promise.all([
     getProjectsList({
       status: activeStatus,
       query,
       category: activeCategory,
       tag: activeTag,
       sort: activeSort,
-    }),
-    getDashboardProjectCounts(),
+    }, user),
+    getDashboardProjectCounts(user),
     getActiveProjectMasterDataOptions(),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
-  const canManageProjects = user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
+  const canManageProjects =
+    hasPermission(user, "project.create") ||
+    hasPermission(user, "project.update") ||
+    hasPermission(user, "project.delete");
 
   return (
     <DashboardLayout>

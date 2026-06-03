@@ -1,25 +1,17 @@
-import { CollaboratorAccess, UserRole, type User } from "@prisma/client";
+import type { User } from "@prisma/client";
+
+import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 
 export type LibraryAccessUser = Pick<
   User,
   "role" | "libraryAccess" | "projectAccess"
->;
+> &
+  PermissionUser;
 
 export function canViewLibrary(user: LibraryAccessUser) {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return true;
-  }
-
-  return user.libraryAccess !== CollaboratorAccess.NONE;
+  return hasPermission(user, "library.view");
 }
 
 export function canUploadLibraryAssets(user: LibraryAccessUser) {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return true;
-  }
-
-  return (
-    user.libraryAccess !== CollaboratorAccess.NONE &&
-    user.projectAccess !== CollaboratorAccess.NONE
-  );
+  return hasPermission(user, "library.uploadAsset");
 }

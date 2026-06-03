@@ -4,7 +4,6 @@ import {
   ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
-  CollaboratorAccess,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   UserRole,
@@ -12,6 +11,14 @@ import {
 } from "@prisma/client";
 
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
+import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
+import type { PermissionKey } from "@/lib/permissions/definitions";
+import {
+  hasPermission,
+  hasProjectPermission,
+  type PermissionUser,
+  type ProjectPermissionContext,
+} from "@/lib/permissions/resolver";
 import {
   notifyFileUploaded,
   runNotificationTask,
@@ -44,7 +51,8 @@ import {
 type AccessUser = Pick<
   User,
   "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
-> & {
+> &
+  PermissionUser & {
   libraryAccess?: User["libraryAccess"];
 };
 
@@ -135,7 +143,7 @@ function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
     return "Internal Team";
   }
 
-  return user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator";
+  return getCollaboratorRoleLabel(user.collaboratorType);
 }
 
 function formatHistoryTimestamp(date: Date | string | number) {
@@ -347,15 +355,7 @@ function isProjectExecutorUser(
 }
 
 function canUserUploadLibraryAssets(user: AccessUser) {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return true;
-  }
-
-  return (
-    user.libraryAccess !== undefined &&
-    user.libraryAccess !== CollaboratorAccess.NONE &&
-    user.projectAccess !== CollaboratorAccess.NONE
-  );
+  return hasPermission(user, "library.uploadAsset");
 }
 
 export async function assertProjectAccess(user: AccessUser, projectId: string) {
@@ -365,17 +365,35 @@ export async function assertProjectAccess(user: AccessUser, projectId: string) {
     throw new Error("Project not found.");
   }
 
-  if (
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN ||
-    project.createdById === user.id ||
-    isProjectExecutorUser(project, user.id) ||
-    project.collaborators.length > 0
-  ) {
+  if (hasProjectPermission(user, project, "project.view")) {
     return project;
   }
 
   throw new Error("You do not have access to this project.");
+}
+
+function assertProjectWorkflowPermission(
+  user: AccessUser,
+  project: ProjectPermissionContext,
+  permissionKey: PermissionKey,
+  message: string,
+) {
+  if (!hasProjectPermission(user, project, permissionKey)) {
+    throw new Error(message);
+  }
+}
+
+function getUploadPermissionKey(assetType: AttachmentAssetType): PermissionKey {
+  switch (assetType) {
+    case AttachmentAssetType.STAGE_SUBMISSION:
+    case AttachmentAssetType.REVISION_ORIGINAL:
+      return "file.uploadSubmission";
+    case AttachmentAssetType.COMMENT_ATTACHMENT:
+      return "chat.uploadAttachment";
+    case AttachmentAssetType.GENERAL_PROJECT_ASSET:
+    default:
+      return "library.uploadAsset";
+  }
 }
 
 function resolveStageId(
@@ -471,8 +489,17 @@ export async function getProjectStageHistory(
   user: AccessUser,
   projectId: string,
   preferredStageId?: string | null,
+  requiredPermissionKey: PermissionKey = "chat.view",
 ): Promise<StageHistoryRecord> {
   const project = await assertProjectAccess(user, projectId);
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    requiredPermissionKey,
+    requiredPermissionKey === "compare.view"
+      ? "You do not have permission to compare project submissions."
+      : "You do not have permission to view project chat.",
+  );
   const activeStageId = resolveStageId(project, preferredStageId);
 
   if (!activeStageId) {
@@ -633,6 +660,13 @@ export async function createStageRevision(
     throw new Error("Stage not found.");
   }
 
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "stage.submitWork",
+    "Only the project executor can submit work for review.",
+  );
+
   if (!isProjectExecutorUser(project, user.id)) {
     throw new Error("Only the project executor can submit work for review.");
   }
@@ -738,6 +772,18 @@ export async function createStageComment(
   }
 
   await assertProjectAccess(user, input.projectId);
+  const project = await getProjectAccessRecord(input.projectId, user.id);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "chat.createComment",
+    "You do not have permission to add project comments.",
+  );
 
   if (stage.project.status === "COMPLETED") {
     throw new Error("This project is already completed.");
@@ -770,6 +816,15 @@ export async function createStageComment(
         .filter(Boolean),
     ),
   );
+
+  if (requestedMentionUserIds.length > 0) {
+    assertProjectWorkflowPermission(
+      user,
+      project,
+      "chat.mentionUser",
+      "You do not have permission to mention users.",
+    );
+  }
   const validMentionUserIds =
     requestedMentionUserIds.length > 0
       ? (
@@ -830,6 +885,13 @@ export async function startProjectStageWork(
   if (!stage) {
     throw new Error("Stage not found.");
   }
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "stage.acceptBrief",
+    "Only the project executor can accept the brief for this stage.",
+  );
 
   if (!isProjectExecutorUser(project, user.id)) {
     throw new Error("Only the project executor can accept the brief for this stage.");
@@ -895,6 +957,13 @@ export async function completeProjectStage(
   if (!project) {
     throw new Error("Project not found.");
   }
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "stage.markStageComplete",
+    "Only the project owner can mark this stage as complete.",
+  );
 
   if (project.createdById !== user.id) {
     throw new Error("Only the project owner can mark this stage as complete.");
@@ -1040,6 +1109,19 @@ export async function reviewStageSubmission(
     throw new Error("Submission not found.");
   }
 
+  if (
+    !hasProjectPermission(
+      user,
+      {
+        createdById: attachment.project.createdById,
+        executorUserId: null,
+      },
+      "stage.reviewSubmission",
+    )
+  ) {
+    throw new Error("Only the project owner can review submissions.");
+  }
+
   if (attachment.project.createdById !== user.id) {
     throw new Error("Only the project owner can review submissions.");
   }
@@ -1119,6 +1201,20 @@ export async function reviewProjectRevision(
   if (!revision) {
     throw new Error("Submission not found.");
   }
+
+  assertProjectWorkflowPermission(
+    user,
+    {
+      createdById: revision.project.createdById,
+      executorUserId: null,
+    },
+    input.status === "APPROVED"
+      ? "stage.markSubmissionComplete"
+      : "stage.requestRevision",
+    input.status === "APPROVED"
+      ? "Only the project owner can review this submission."
+      : "Only the project owner can request revisions.",
+  );
 
   if (revision.project.createdById !== user.id) {
     throw new Error("Only the project owner can review this submission.");
@@ -1332,7 +1428,11 @@ export async function requestAttachmentUpload(
     if (!revision) {
       return { error: "Revision not found." };
     }
-    await assertProjectAccess(user, input.projectId);
+    const project = await assertProjectAccess(user, input.projectId);
+
+    if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
+      return { error: "Only the project executor can submit work for review." };
+    }
 
     if (!isProjectExecutorUser(revision.project, user.id)) {
       return { error: "Only the project executor can submit work for review." };
@@ -1391,7 +1491,15 @@ export async function requestAttachmentUpload(
       return { error: "Comment not found." };
     }
 
-    await assertProjectAccess(user, input.projectId);
+    const project = await assertProjectAccess(user, input.projectId);
+    const uploadPermissionError =
+      input.assetType === AttachmentAssetType.STAGE_SUBMISSION
+        ? "Only the project executor can upload submissions for review."
+        : "You do not have permission to upload chat attachments.";
+
+    if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
+      return { error: uploadPermissionError };
+    }
 
     if (
       input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
@@ -1439,7 +1547,11 @@ export async function requestAttachmentUpload(
       return { error: "Project not found." };
     }
 
-    await assertProjectAccess(user, input.projectId);
+    const accessProject = await assertProjectAccess(user, input.projectId);
+
+    if (!hasProjectPermission(user, accessProject, getUploadPermissionKey(input.assetType))) {
+      return { error: "You do not have permission to upload assets to the library." };
+    }
 
     if (
       input.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
@@ -1556,7 +1668,11 @@ export async function completeAttachmentUpload(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(user, attachment.projectId);
+
+  if (!hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))) {
+    throw new Error("You do not have permission to complete this upload.");
+  }
 
   if (failed) {
     await withPrismaRetry(() =>
@@ -1673,7 +1789,13 @@ export async function getAttachmentDownloadUrlForUser(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(user, attachment.projectId);
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "file.download",
+    "You do not have permission to download this file.",
+  );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   return createPresignedDownloadUrl({
@@ -1715,7 +1837,13 @@ export async function getAttachmentPreviewUrlForUser(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(user, attachment.projectId);
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "file.view",
+    "You do not have permission to preview this file.",
+  );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   return createPresignedPreviewUrl({
@@ -1755,7 +1883,13 @@ export async function deleteAttachmentForUser(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(user, attachment.projectId);
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "file.delete",
+    "You do not have permission to delete this file.",
+  );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(() => undefined);

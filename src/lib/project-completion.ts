@@ -5,7 +5,6 @@ import {
   ProjectCompletionDocumentType,
   ProjectCompletionStepStatus,
   SubmissionReviewStatus,
-  UserRole,
   type User,
 } from "@prisma/client";
 
@@ -16,6 +15,11 @@ import {
   notifyInvoiceUploaded,
   runNotificationTask,
 } from "@/lib/notification-center";
+import {
+  hasProjectPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
+import type { PermissionKey } from "@/lib/permissions/definitions";
 import { assertProjectAccess } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
@@ -33,7 +37,8 @@ import {
 export type ProjectCompletionWorkflowUser = Pick<
   User,
   "id" | "role" | "email" | "name" | "projectAccess" | "collaboratorType"
->;
+> &
+  PermissionUser;
 
 export type ProjectCompletionContactOption = {
   id: string;
@@ -201,43 +206,57 @@ function isProjectOwner(
   return project.createdById === userId;
 }
 
-function isProjectExecutor(
-  project: Pick<ProjectCompletionProjectRecord, "executorUserId">,
-  userId: string,
-) {
-  return Boolean(project.executorUserId && project.executorUserId === userId);
-}
-
 function canViewCompletionWorkflow(
   project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
-  user: Pick<ProjectCompletionWorkflowUser, "id">,
+  user: ProjectCompletionWorkflowUser,
 ) {
-  return isProjectOwner(project, user.id) || isProjectExecutor(project, user.id);
+  return hasProjectPermission(user, project, "completion.viewChecklist");
 }
 
 function canManageCompletionWorkflow(
   project: Pick<ProjectCompletionProjectRecord, "createdById">,
-  user: Pick<ProjectCompletionWorkflowUser, "id">,
+  user: ProjectCompletionWorkflowUser,
 ) {
   return isProjectOwner(project, user.id);
 }
 
 function canUploadInvoiceForProject(
   project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
-  user: Pick<ProjectCompletionWorkflowUser, "id">,
+  user: ProjectCompletionWorkflowUser,
 ) {
-  return isProjectOwner(project, user.id) || isProjectExecutor(project, user.id);
+  return hasProjectPermission(user, project, "completion.uploadInvoice");
 }
 
 function canAccessCompletionDocuments(
   project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
-  user: Pick<ProjectCompletionWorkflowUser, "id" | "role">,
+  user: ProjectCompletionWorkflowUser,
 ) {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return true;
-  }
+  return hasProjectPermission(user, project, "completion.viewChecklist");
+}
 
-  return canUploadInvoiceForProject(project, user);
+function requireCompletionProjectPermission(
+  project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
+  user: ProjectCompletionWorkflowUser,
+  permissionKey: PermissionKey,
+  message: string,
+) {
+  if (!hasProjectPermission(user, project, permissionKey)) {
+    throw new Error(message);
+  }
+}
+
+function getCompletionDocumentUploadPermissionKey(
+  documentType: ProjectCompletionDocumentType,
+) {
+  switch (documentType) {
+    case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
+      return "completion.uploadApprovalProof" satisfies PermissionKey;
+    case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
+      return "completion.uploadCopyrightDocument" satisfies PermissionKey;
+    case ProjectCompletionDocumentType.INVOICE:
+    default:
+      return "completion.uploadInvoice" satisfies PermissionKey;
+  }
 }
 
 function isCompletedProject(project: {
@@ -759,6 +778,18 @@ export async function configureProjectCompletionWorkflow(
   },
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+  requireCompletionProjectPermission(
+    project,
+    user,
+    "completion.setApprovalRequired",
+    "You do not have permission to configure authority approval requirements.",
+  );
+  requireCompletionProjectPermission(
+    project,
+    user,
+    "completion.setCopyrightRequired",
+    "You do not have permission to configure copyright transfer requirements.",
+  );
 
   await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
@@ -833,6 +864,12 @@ export async function prepareAuthorityApprovalRequest(
   },
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+  requireCompletionProjectPermission(
+    project,
+    user,
+    "completion.prepareApproval",
+    "You do not have permission to prepare authority approval requests.",
+  );
 
   if (!project.archive || project.archive.files.length === 0) {
     throw new Error("No final archived files are available for authority approval.");
@@ -910,6 +947,12 @@ export async function prepareCopyrightTransferRequest(
   },
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+  requireCompletionProjectPermission(
+    project,
+    user,
+    "completion.prepareCopyrightTransfer",
+    "You do not have permission to prepare copyright transfer requests.",
+  );
   const contactOptions = mapContactOptions(project);
   validateContactSelection(contactOptions, input.contactUserId, "copyright");
 
@@ -993,6 +1036,13 @@ export async function requestProjectCompletionDocumentUpload(
   if (!project) {
     throw new Error("You do not have access to this completion workflow.");
   }
+
+  requireCompletionProjectPermission(
+    project,
+    user,
+    getCompletionDocumentUploadPermissionKey(input.documentType),
+    "You do not have permission to upload this completion document.",
+  );
 
   const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
 
@@ -1112,6 +1162,12 @@ export async function finalizeProjectCompletionDocumentUpload(
       }
 
       await assertProjectAccess(user, input.projectId);
+      requireCompletionProjectPermission(
+        project,
+        user,
+        getCompletionDocumentUploadPermissionKey(input.documentType),
+        "You do not have permission to upload this completion document.",
+      );
 
       if (!isCompletedProject(project)) {
         throw new Error(

@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "lint": "eslint",
     "typecheck": "tsc --noEmit --project tsconfig.typecheck.json",
+    "permissions:sync": "tsc --project scripts/tsconfig.permissions-sync.json && node .tmp/permissions-sync/scripts/sync-permissions.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "users:create": "node scripts/create-user.mjs"

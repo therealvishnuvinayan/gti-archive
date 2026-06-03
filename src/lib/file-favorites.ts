@@ -5,12 +5,17 @@ import {
   assertProjectAttachmentVisibilityForUser,
   type ProjectHistoryAccessUser,
 } from "@/lib/project-history";
+import {
+  hasProjectPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type FavoriteAccessUser = Pick<
   User,
   "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
->;
+> &
+  PermissionUser;
 
 async function assertAttachmentFavoriteAccess(
   user: FavoriteAccessUser,
@@ -39,7 +44,15 @@ async function assertAttachmentFavoriteAccess(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user as ProjectHistoryAccessUser, attachment.projectId);
+  const project = await assertProjectAccess(
+    user as ProjectHistoryAccessUser,
+    attachment.projectId,
+  );
+
+  if (!hasProjectPermission(user, project, "file.favorite")) {
+    throw new Error("You do not have permission to favorite this file.");
+  }
+
   await assertProjectAttachmentVisibilityForUser(
     user as ProjectHistoryAccessUser,
     attachment,

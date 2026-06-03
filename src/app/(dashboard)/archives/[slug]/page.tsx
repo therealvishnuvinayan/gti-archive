@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { getArchiveCategory } from "@/components/archives/archive-data";
 import { ArchiveCategoryWorkspace } from "@/components/archives/archive-category-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { listArchivedFilesByCategory } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 function BackPill() {
   return (
@@ -31,6 +32,11 @@ export default async function ArchiveCategoryPage({
   }
 
   const user = await requireUser();
+
+  if (!hasPermission(user, "archive.view")) {
+    redirect("/");
+  }
+
   const items = await listArchivedFilesByCategory(user, category.slug);
 
   return (

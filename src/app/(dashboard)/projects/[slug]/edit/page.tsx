@@ -1,11 +1,14 @@
 import { notFound } from "next/navigation";
-import { UserRole } from "@prisma/client";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { CreateProjectWorkspace } from "@/components/projects/create-project-workspace";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
+import {
+  hasPermission,
+  hasProjectPermission,
+} from "@/lib/permissions/resolver";
 import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
 import { getProjectEditorById } from "@/lib/projects";
 
@@ -16,22 +19,30 @@ export default async function EditProjectPage({
 }) {
   const [{ slug }, user] = await Promise.all([params, requireUser()]);
 
-  if (user.role === UserRole.COLLABORATOR) {
-    notFound();
-  }
-
   const [project, collaborators, masterDataOptions] = await Promise.all([
     getProjectEditorById(slug, user),
     getCollaborators(),
     getActiveProjectMasterDataOptions(),
   ]);
-  const canManageProjectMasterData =
-    user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
-  const canInviteExecutor = true;
 
   if (!project) {
     notFound();
   }
+
+  const projectContext = {
+    createdById: project.ownerId,
+    executorUserId: project.executorUserId ?? null,
+    collaborators: project.collaborators.map((collaborator) => ({
+      userId: collaborator.id,
+    })),
+  };
+
+  if (!hasProjectPermission(user, projectContext, "project.update")) {
+    notFound();
+  }
+
+  const canManageProjectMasterData = hasPermission(user, "settings.manageMasterData");
+  const canInviteExecutor = hasPermission(user, "collaboration.createUser");
 
   return (
     <DashboardLayout

@@ -9,7 +9,7 @@ import { getCollaborators } from "@/lib/collaboration";
 import { getProjectCompletionWorkflowForUser } from "@/lib/project-completion";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
-import { UserRole } from "@prisma/client";
+import { hasProjectPermission } from "@/lib/permissions/resolver";
 
 export default async function ProjectChatPage({
   params,
@@ -27,6 +27,18 @@ export default async function ProjectChatPage({
     notFound();
   }
 
+  const projectContext = {
+    createdById: project.ownerId,
+    executorUserId: project.executorUserId ?? null,
+    collaborators: project.collaborators.map((collaborator) => ({
+      userId: collaborator.id,
+    })),
+  };
+
+  if (!hasProjectPermission(user, projectContext, "chat.view")) {
+    notFound();
+  }
+
   const [history, availableCollaborators] = await Promise.all([
     getProjectStageHistory(user, slug, stage),
     getCollaborators(),
@@ -36,10 +48,11 @@ export default async function ProjectChatPage({
     getProjectCompletionWorkflowForUser(user, slug),
   ]);
 
-  const canManageCollaborators =
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN ||
-    project.ownerId === user.id;
+  const canManageCollaborators = hasProjectPermission(
+    user,
+    projectContext,
+    "project.manageCollaborators",
+  );
 
   return (
     <DashboardLayout

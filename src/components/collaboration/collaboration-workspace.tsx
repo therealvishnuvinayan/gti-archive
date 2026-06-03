@@ -125,11 +125,13 @@ function getInitials(name: string) {
 
 type CollaborationWorkspaceProps = {
   initialCollaborators: CollaboratorRecord[];
+  canSaveCollaborators: boolean;
   canDeleteCollaborators: boolean;
 };
 
 export function CollaborationWorkspace({
   initialCollaborators,
+  canSaveCollaborators,
   canDeleteCollaborators,
 }: CollaborationWorkspaceProps) {
   const [selectedArea, setSelectedArea] = useState<AccessArea>("project");
@@ -169,6 +171,7 @@ export function CollaborationWorkspace({
       })),
     [collaborators, selectedArea],
   );
+  const canShowActions = canSaveCollaborators || canDeleteCollaborators;
 
   function setFormValue<K extends keyof CollaboratorForm>(
     field: K,
@@ -465,9 +468,11 @@ export function CollaborationWorkspace({
                 </p>
               </div>
 
-              <Button type="button" onClick={openInviteDialog} className="self-start xl:self-auto">
-                Invite <Plus className="h-4 w-4" />
-              </Button>
+              {canSaveCollaborators ? (
+                <Button type="button" onClick={openInviteDialog} className="self-start xl:self-auto">
+                  Invite <Plus className="h-4 w-4" />
+                </Button>
+              ) : null}
             </div>
 
             <MotionSection y={10}>
@@ -476,9 +481,11 @@ export function CollaborationWorkspace({
                 <div
                   className={cn(
                     "hidden items-center gap-4 border-b border-[#e4e9e4] px-5 py-4 lg:grid",
-                    canDeleteCollaborators
+                    canShowActions && canDeleteCollaborators
                       ? "grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_96px]"
-                      : "grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px]",
+                      : canShowActions
+                        ? "grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px]"
+                        : "grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))]",
                   )}
                 >
                   <span className="text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
@@ -503,9 +510,11 @@ export function CollaborationWorkspace({
                       </div>
                     );
                   })}
-                  <span className="text-right text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
-                    Actions
-                  </span>
+                  {canShowActions ? (
+                    <span className="text-right text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
+                      Actions
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="divide-y divide-[#edf1ed]">
@@ -515,9 +524,11 @@ export function CollaborationWorkspace({
                       layout
                       className={cn(
                         "grid gap-4 px-5 py-4 lg:items-center",
-                        canDeleteCollaborators
+                        canShowActions && canDeleteCollaborators
                           ? "lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_96px]"
-                          : "lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px]",
+                          : canShowActions
+                            ? "lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))_56px]"
+                            : "lg:grid-cols-[minmax(220px,1.25fr)_repeat(4,minmax(68px,84px))]",
                       )}
                     >
                       <div className="flex min-w-0 items-center gap-3">
@@ -579,17 +590,20 @@ export function CollaborationWorkspace({
                         })}
                       </div>
 
+                      {canShowActions ? (
                       <div className="flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="icon"
-                          onClick={() => openEditDialog(collaborator)}
-                          className="h-9 w-9 border border-[#d9dfda] shadow-none"
-                          aria-label={`Edit ${collaborator.name}`}
-                        >
-                          <PenLine className="h-4 w-4" />
-                        </Button>
+                        {canSaveCollaborators ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="icon"
+                            onClick={() => openEditDialog(collaborator)}
+                            className="h-9 w-9 border border-[#d9dfda] shadow-none"
+                            aria-label={`Edit ${collaborator.name}`}
+                          >
+                            <PenLine className="h-4 w-4" />
+                          </Button>
+                        ) : null}
                         {canDeleteCollaborators ? (
                           <Button
                             type="button"
@@ -606,6 +620,7 @@ export function CollaborationWorkspace({
                           </Button>
                         ) : null}
                       </div>
+                      ) : null}
                     </MotionItem>
                   )) : (
                     <div className="px-5 py-12 text-center text-[14px] text-[#6f7771]">

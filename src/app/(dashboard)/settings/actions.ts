@@ -10,6 +10,7 @@ import {
   verifyAuthPassword,
 } from "@/lib/auth";
 import { hasValidPasswordValue } from "@/lib/password-rules";
+import { requirePermission } from "@/lib/permissions/require";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { deleteObjectIfNeeded } from "@/lib/storage/s3";
 
@@ -62,6 +63,7 @@ export async function updateProfileAction(
   input: UpdateProfileInput,
 ): Promise<UpdateProfileResult> {
   const user = await requireUser();
+  requirePermission(user, "settings.updateOwnProfile", "You do not have permission to update your profile.");
   const parsed = normalizeProfileInput(input);
 
   if (!parsed.name) {
@@ -128,6 +130,11 @@ export async function changePasswordAction(
   input: ChangePasswordInput,
 ): Promise<ChangePasswordResult> {
   const sessionUser = await requireUser();
+  requirePermission(
+    sessionUser,
+    "settings.changeOwnPassword",
+    "You do not have permission to change your password.",
+  );
   const parsed = normalizePasswordInput(input);
 
   const fieldErrors: ChangePasswordResult["fieldErrors"] = {};

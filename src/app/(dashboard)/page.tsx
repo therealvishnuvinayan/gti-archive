@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -15,6 +16,7 @@ import { ProjectProgressCard } from "@/components/dashboard/project-progress-car
 import { DeadlineCard } from "@/components/dashboard/deadline-card";
 import { requireUser } from "@/lib/auth";
 import { getDashboardSnapshot } from "@/lib/dashboard";
+import { hasPermission } from "@/lib/permissions/resolver";
 import {
   getDashboardLibraryUploadAccessState,
   getLibraryUploadProjectsForUser,
@@ -27,11 +29,17 @@ import {
 
 export default async function Home() {
   const user = await requireUser();
+
+  if (!hasPermission(user, "dashboard.view")) {
+    redirect("/help");
+  }
+
   const [dashboard, uploadProjects] = await Promise.all([
     getDashboardSnapshot(user),
     getLibraryUploadProjectsForUser(user),
   ]);
   const uploadAccess = getDashboardLibraryUploadAccessState(user);
+  const canCreateProject = hasPermission(user, "project.create");
   const statCards = [
     {
       title: "Total Projects",
@@ -76,12 +84,14 @@ export default async function Home() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/projects/new"
-                className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
-              >
-                + New Project
-              </Link>
+              {canCreateProject ? (
+                <Link
+                  href="/projects/new"
+                  className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
+                >
+                  + New Project
+                </Link>
+              ) : null}
               <UploadAssetsButton
                 canUploadAssets={uploadAccess.canUploadAssets}
                 disabledReason={

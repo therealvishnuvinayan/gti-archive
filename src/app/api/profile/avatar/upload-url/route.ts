@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 import {
   buildUserAvatarKey,
   createPresignedUploadUrl,
@@ -19,6 +20,13 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (!hasPermission(user, "settings.updateOwnProfile")) {
+    return NextResponse.json(
+      { error: "You do not have permission to update your profile photo." },
+      { status: 403 },
+    );
   }
 
   let payload: UploadAvatarPayload = {};

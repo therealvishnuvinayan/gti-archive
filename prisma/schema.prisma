@@ -16,6 +16,12 @@ enum UserRole {
 enum CollaboratorType {
   INTERNAL
   EXTERNAL
+  GTI_INTERNAL_CLIENT
+  GTI_SISTER_COMPANY_INTERNAL_CLIENT
+  EXTERNAL_FREELANCER
+  EXTERNAL_AGENCY
+  EXTERNAL_VENDOR
+  CLIENT_OF_GTI
 }
 
 enum ProjectCollaboratorParticipantType {
@@ -164,7 +170,7 @@ model User {
   passwordHash      String
   passwordChangedAt DateTime?
   role              UserRole           @default(COLLABORATOR)
-  collaboratorType  CollaboratorType   @default(INTERNAL)
+  collaboratorType  CollaboratorType   @default(GTI_INTERNAL_CLIENT)
   projectAccess     CollaboratorAccess @default(NONE)
   calendarAccess    CollaboratorAccess @default(NONE)
   libraryAccess     CollaboratorAccess @default(NONE)
@@ -199,6 +205,62 @@ model User {
   addedCalendarCollaborations CalendarCollaborator[] @relation("CalendarCollaboratorAdder")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+}
+
+model PermissionDefinition {
+  id                          String                         @id @default(cuid())
+  key                         String                         @unique
+  label                       String
+  description                 String
+  group                       String
+  isSystem                    Boolean                        @default(true)
+  rolePermissions             RolePermission[]
+  collaboratorTypePermissions CollaboratorTypePermission[]
+  accessPresetPermissions     AccessPresetPermission[]
+  createdAt                   DateTime                       @default(now())
+  updatedAt                   DateTime                       @updatedAt
+}
+
+model RolePermission {
+  id            String               @id @default(cuid())
+  role          UserRole
+  permissionKey String
+  permission    PermissionDefinition @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
+  enabled       Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([role, permissionKey])
+  @@index([role])
+  @@index([permissionKey])
+}
+
+model CollaboratorTypePermission {
+  id               String               @id @default(cuid())
+  collaboratorType CollaboratorType
+  permissionKey    String
+  permission       PermissionDefinition @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
+  enabled          Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@unique([collaboratorType, permissionKey])
+  @@index([collaboratorType])
+  @@index([permissionKey])
+}
+
+model AccessPresetPermission {
+  id            String               @id @default(cuid())
+  accessPreset  CollaboratorAccess
+  permissionKey String
+  permission    PermissionDefinition @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
+  enabled       Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([accessPreset, permissionKey])
+  @@index([accessPreset])
+  @@index([permissionKey])
 }
 
 model Project {

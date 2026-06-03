@@ -10,9 +10,9 @@ import {
   getStageSubmissionAttachments,
   resolveComparisonSelection,
 } from "@/lib/comparison-utils";
+import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { getProjectById } from "@/lib/projects";
-import { UserRole } from "@prisma/client";
 
 export default async function ProjectComparePage({
   params,
@@ -24,14 +24,25 @@ export default async function ProjectComparePage({
   const { slug } = await params;
   const { stage, base, compare } = await searchParams;
   const user = await requireUser();
-  const [project, history] = await Promise.all([
-    getProjectById(slug, user),
-    getProjectStageHistory(user, slug, stage),
-  ]);
+  const project = await getProjectById(slug, user);
 
   if (!project) {
     notFound();
   }
+
+  const projectContext = {
+    createdById: project.ownerId,
+    executorUserId: project.executorUserId ?? null,
+    collaborators: project.collaborators.map((collaborator) => ({
+      userId: collaborator.id,
+    })),
+  };
+
+  if (!hasProjectPermission(user, projectContext, "compare.view")) {
+    notFound();
+  }
+
+  const history = await getProjectStageHistory(user, slug, stage, "compare.view");
 
   const completionSummary = await getProjectCompletionSummary(
     user,
@@ -47,10 +58,11 @@ export default async function ProjectComparePage({
     );
   }
 
-  const canManageCollaborators =
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN ||
-    project.ownerId === user.id;
+  const canManageCollaborators = hasProjectPermission(
+    user,
+    projectContext,
+    "project.manageCollaborators",
+  );
 
   const submissions = getStageSubmissionAttachments(history.entries);
   const { baseSubmission, compareSubmission } = resolveComparisonSelection(

@@ -11,6 +11,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   Settings2,
+  ShieldCheck,
   UserRoundPlus,
   Users,
   Workflow,
@@ -214,6 +215,14 @@ export const helpTopics: HelpTopic[] = [
     keywords: ["settings", "users", "categories", "tags", "currencies", "master data"],
   },
   {
+    id: "topic-user-permissions",
+    title: "User Permissions",
+    description: "Manage user role assignments and global permission profiles safely from the Users page.",
+    sectionId: "user-permissions",
+    icon: ShieldCheck,
+    keywords: ["user permissions", "manage permissions", "roles", "collaborator type", "permission profiles"],
+  },
+  {
     id: "topic-troubleshooting",
     title: "Troubleshooting",
     description: "Find fixes for missing access, upload delays, budget visibility, calendar visibility, and notifications.",
@@ -307,6 +316,13 @@ export const recommendedGuides: HelpGuide[] = [
     description: "Understand role profiles, collaborator type profiles, and why access is enforced server-side.",
     sectionId: "collaboration-permissions",
     keywords: ["permissions", "role profile", "collaborator type", "access denied"],
+  },
+  {
+    id: "guide-user-permissions",
+    title: "How to manage User Permissions",
+    description: "Use the Users page to assign roles and maintain global permission profiles without per-user overrides.",
+    sectionId: "user-permissions",
+    keywords: ["user permissions", "manage permissions", "users page", "roles", "collaborator type"],
   },
   {
     id: "guide-notifications",
@@ -575,6 +591,70 @@ export const helpSections: HelpSection[] = [
           "Field-level filtering can hide sensitive values such as budget even when the user can see the project.",
           "Calendar, Library, Archive, and project chat visibility can differ based on the assigned profile and workflow role.",
         ],
+      },
+    ],
+  },
+  {
+    id: "user-permissions",
+    eyebrow: "Access Administration",
+    title: "User Permissions",
+    summary:
+      "User Permissions are managed from the Users page by assigning user roles, assigning collaborator types, and editing global permission profiles.",
+    keywords: ["user permissions", "manage permissions", "users page", "roles", "collaborator type", "permission profiles", "hard rules"],
+    blocks: [
+      {
+        title: "What the Users page controls",
+        items: [
+          "User role assignment: SUPER_ADMIN, ADMIN, or COLLABORATOR.",
+          "Collaborator type assignment, such as GTI internal client, sister company internal client, freelancer, agency, vendor, or client of GTI.",
+          "Global role permission profiles and collaborator type permission profiles through Manage Permissions.",
+          "Permission definition sync after a new permission key is added to the product.",
+        ],
+      },
+      {
+        title: "How effective permissions are calculated",
+        ordered: true,
+        items: [
+          "The user receives the permissions enabled for their role profile.",
+          "If the user is a COLLABORATOR, those role permissions are further limited by their collaborator type profile.",
+          "SUPER_ADMIN keeps critical user and permission management permissions even when saved profiles are edited.",
+          "Project ownership, executor status, and membership hard rules are checked after the global permission profile allows an action.",
+        ],
+      },
+      {
+        title: "Important hard rules",
+        items: [
+          "Project budget visibility and budget edits remain owner-controlled.",
+          "Only the project executor accepts briefs, submits stage work, and uploads formal submissions.",
+          "Only the project owner reviews submissions, requests revisions, completes stages, and completes the final archive.",
+          "Checklist actions for approval proof and copyright documents remain owner-only, while invoice upload is owner-or-executor when permitted.",
+          "Users and permission profile management remain SUPER_ADMIN-only in the current product.",
+        ],
+      },
+      {
+        title: "Recommended admin workflow",
+        ordered: true,
+        items: [
+          "Open Users and confirm the person has the correct role and collaborator type.",
+          "Open Manage Permissions and choose the relevant role profile or collaborator type profile.",
+          "Search for the permission key or select the permission group, then enable or disable the capability.",
+          "Save the profile and let active sessions refresh. The app also refreshes permission-sensitive caches.",
+          "If a newly developed permission is missing, run Sync Definitions from the Manage Permissions modal or run pnpm permissions:sync from the project.",
+        ],
+      },
+    ],
+    callout:
+      "Do not solve access problems by creating one-off per-user exceptions. Prefer role and collaborator type profiles so access stays predictable.",
+    questions: [
+      {
+        question: "Why can a permission be enabled but the user still cannot perform the action?",
+        answer:
+          "Global permission keys are necessary but not always sufficient. Project hard rules still check ownership, executor assignment, membership, and sensitive workflow ownership.",
+      },
+      {
+        question: "When should I use Sync Definitions?",
+        answer:
+          "Use it after new permission keys are added in code or after a deployment where the Manage Permissions modal does not show the expected key.",
       },
     ],
   },

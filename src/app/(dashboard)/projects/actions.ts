@@ -42,7 +42,7 @@ import {
   setProjectCollaboratorChatVisibility,
   updateProjectCollaborators,
 } from "@/lib/projects";
-import { SubmissionReviewStatus, UserRole } from "@prisma/client";
+import { SubmissionReviewStatus } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 
 type StageRevisionInput = {
@@ -518,16 +518,12 @@ export async function saveProjectCollaboratorsAction(
 ) {
   const user = await requireUser();
 
-  if (user.role === UserRole.COLLABORATOR) {
-    return { error: "You are not allowed to update project collaborators." };
-  }
-
   try {
     const previousCollaboratorIds = await getProjectCollaboratorUserIds(projectId);
     const updatedCollaborators = await updateProjectCollaborators(
       projectId,
       collaborators,
-      user.id,
+      user,
     );
 
     revalidateProjectFlow();

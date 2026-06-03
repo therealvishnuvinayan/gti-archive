@@ -14,6 +14,7 @@ import {
   Settings2,
   ShieldCheck,
   UserRound,
+  UsersRound,
   X,
 } from "lucide-react";
 
@@ -41,7 +42,10 @@ type SettingsWorkspaceProps = {
     jobTitle: string;
     bio: string;
   };
-  canManageMasterData?: boolean;
+  canUpdateProfile: boolean;
+  canChangePassword: boolean;
+  canViewMasterData?: boolean;
+  canViewUsers?: boolean;
 };
 
 type ProfileDraft = {
@@ -753,6 +757,10 @@ function ChangePasswordDrawer({
 
 export function SettingsWorkspace({
   user,
+  canUpdateProfile,
+  canChangePassword,
+  canViewMasterData = false,
+  canViewUsers = false,
 }: SettingsWorkspaceProps) {
   const router = useRouter();
   const [isProfileDrawerOpen, setProfileDrawerOpen] = useState(false);
@@ -1077,7 +1085,11 @@ export function SettingsWorkspace({
           <SettingsCard
             title="Profile Information"
             description="Update your personal information and how others see you."
-            action={<ActionButton icon={PencilLine} label="Edit Profile" onClick={openDrawer} />}
+            action={
+              canUpdateProfile ? (
+                <ActionButton icon={PencilLine} label="Edit Profile" onClick={openDrawer} />
+              ) : undefined
+            }
           >
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
               <AvatarCircle
@@ -1106,11 +1118,13 @@ export function SettingsWorkspace({
             title="Password"
             description="Update your password regularly to keep your account secure."
             action={
-              <ActionButton
-                icon={LockKeyhole}
-                label="Change Password"
-                onClick={openPasswordDrawer}
-              />
+              canChangePassword ? (
+                <ActionButton
+                  icon={LockKeyhole}
+                  label="Change Password"
+                  onClick={openPasswordDrawer}
+                />
+              ) : undefined
             }
           >
             <div className="space-y-1">
@@ -1121,32 +1135,63 @@ export function SettingsWorkspace({
             </div>
           </SettingsCard>
 
-          <SettingsCard
-            title="Project Master Data"
-            description="Manage reusable project categories, tags, and currencies used across project forms and filters."
-            action={
-              <Button
-                asChild
-                type="button"
-                variant="outline"
-                className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
-              >
-                <Link href="/settings/project-master-data">
-                  <Settings2 className="h-4 w-4" />
-                  Open Project Master Data
-                </Link>
-              </Button>
-            }
-          >
-            <div className="rounded-[22px] bg-[#fbfcfa] p-4">
-              <p className="text-[15px] font-semibold text-[#1e261f]">
-                Categories and tags
-              </p>
-              <p className="mt-1 text-[14px] text-[#748074]">
-                Manage reusable values used across project forms and filters.
-              </p>
-            </div>
-          </SettingsCard>
+          {canViewMasterData ? (
+            <SettingsCard
+              title="Project Master Data"
+              description="Manage reusable project categories, tags, and currencies used across project forms and filters."
+              action={
+                <Button
+                  asChild
+                  type="button"
+                  variant="outline"
+                  className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
+                >
+                  <Link href="/settings/project-master-data">
+                    <Settings2 className="h-4 w-4" />
+                    Open Project Master Data
+                  </Link>
+                </Button>
+              }
+            >
+              <div className="rounded-[22px] bg-[#fbfcfa] p-4">
+                <p className="text-[15px] font-semibold text-[#1e261f]">
+                  Categories and tags
+                </p>
+                <p className="mt-1 text-[14px] text-[#748074]">
+                  Manage reusable values used across project forms and filters.
+                </p>
+              </div>
+            </SettingsCard>
+          ) : null}
+
+          {canViewUsers ? (
+            <SettingsCard
+              title="Users & Permissions"
+              description="Review accounts, assign roles, and configure global permission profiles."
+              action={
+                <Button
+                  asChild
+                  type="button"
+                  variant="outline"
+                  className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
+                >
+                  <Link href="/users">
+                    <UsersRound className="h-4 w-4" />
+                    Open Users
+                  </Link>
+                </Button>
+              }
+            >
+              <div className="rounded-[22px] bg-[#fbfcfa] p-4">
+                <p className="text-[15px] font-semibold text-[#1e261f]">
+                  Role and permission profiles
+                </p>
+                <p className="mt-1 text-[14px] text-[#748074]">
+                  Manage global permissions without creating per-user permission overrides.
+                </p>
+              </div>
+            </SettingsCard>
+          ) : null}
         </div>
       </section>
 

@@ -55,6 +55,7 @@ type CalendarWorkspaceProps = {
   initialView: CalendarView;
   availableCollaborators: CollaboratorRecord[];
   assignedCollaborators: CollaboratorRecord[];
+  canCreateEvents: boolean;
   canManageCollaborators: boolean;
 };
 
@@ -198,6 +199,7 @@ export function CalendarWorkspace({
   initialView,
   availableCollaborators,
   assignedCollaborators,
+  canCreateEvents,
   canManageCollaborators,
 }: CalendarWorkspaceProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(today);
@@ -673,13 +675,15 @@ export function CalendarWorkspace({
             </TabsList>
           </Tabs>
 
-          <Button
-            type="button"
-            onClick={() => openDialog(selectedDate)}
-            className="min-h-[42px] gap-2 px-6 text-[14px]"
-          >
-            Create <Plus className="h-4 w-4" />
-          </Button>
+          {canCreateEvents ? (
+            <Button
+              type="button"
+              onClick={() => openDialog(selectedDate)}
+              className="min-h-[42px] gap-2 px-6 text-[14px]"
+            >
+              Create <Plus className="h-4 w-4" />
+            </Button>
+          ) : null}
         </div>
       </div>
     );
@@ -905,21 +909,28 @@ export function CalendarWorkspace({
 
               return (
                 <div key={dayKey} className="relative border-l border-[#dbe2dc] first:border-l-0">
-                  {hours.map((hour) => (
-                    <button
-                      key={`${dayKey}-${hour}`}
-                      type="button"
-                      onClick={() =>
-                        openDialog(
-                          day,
-                          `${String(hour).padStart(2, "0")}:00`,
-                          `${String(hour + 1).padStart(2, "0")}:00`,
-                        )
-                      }
-                      className="block h-[74px] w-full cursor-pointer border-t border-[#dbe2dc] text-left transition-colors first:border-t-0 hover:bg-white/35"
-                      aria-label={`Add event on ${dayKey} at ${formatHour(hour)}`}
-                    />
-                  ))}
+                  {hours.map((hour) =>
+                    canCreateEvents ? (
+                      <button
+                        key={`${dayKey}-${hour}`}
+                        type="button"
+                        onClick={() =>
+                          openDialog(
+                            day,
+                            `${String(hour).padStart(2, "0")}:00`,
+                            `${String(hour + 1).padStart(2, "0")}:00`,
+                          )
+                        }
+                        className="block h-[74px] w-full cursor-pointer border-t border-[#dbe2dc] text-left transition-colors first:border-t-0 hover:bg-white/35"
+                        aria-label={`Add event on ${dayKey} at ${formatHour(hour)}`}
+                      />
+                    ) : (
+                      <div
+                        key={`${dayKey}-${hour}`}
+                        className="block h-[74px] w-full border-t border-[#dbe2dc] first:border-t-0"
+                      />
+                    ),
+                  )}
 
                   {dayEvents.map((event) => {
                     const tone = toneClasses[event.tone];
@@ -999,7 +1010,9 @@ export function CalendarWorkspace({
                       type="button"
                       onClick={() => {
                         setSelectedDate(date);
-                        openDialog(date);
+                        if (canCreateEvents) {
+                          openDialog(date);
+                        }
                       }}
                       className="block w-full text-left"
                     >

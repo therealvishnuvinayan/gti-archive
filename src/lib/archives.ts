@@ -16,6 +16,12 @@ import {
   type ArchiveCategorySlug,
 } from "@/lib/archive-categories";
 import { getUserDisplayName } from "@/lib/auth";
+import {
+  getAccessibleProjectsWhere,
+  hasPermission,
+  hasProjectPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { assertProjectAccess } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
@@ -27,7 +33,8 @@ import {
 export type ArchiveAccessUser = Pick<
   User,
   "id" | "role" | "email" | "name" | "projectAccess" | "collaboratorType"
->;
+> &
+  PermissionUser;
 
 export type ArchiveCategorySummary = {
   slug: ArchiveCategorySlug;
@@ -159,23 +166,7 @@ function getArchiveFileTypeLabel(fileName: string, mimeType: string) {
 }
 
 function buildAccessibleProjectWhere(user: Pick<User, "id" | "role">) {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return {};
-  }
-
-  return {
-    OR: [
-      { createdById: user.id },
-      { executorUserId: user.id },
-      {
-        collaborators: {
-          some: {
-            userId: user.id,
-          },
-        },
-      },
-    ],
-  };
+  return getAccessibleProjectsWhere(user as ArchiveAccessUser);
 }
 
 async function getProjectArchiveBase(projectId: string) {
@@ -191,6 +182,12 @@ async function getProjectArchiveBase(projectId: string) {
         tag: true,
         status: true,
         createdById: true,
+        executorUserId: true,
+        collaborators: {
+          select: {
+            userId: true,
+          },
+        },
         completedAt: true,
         archivedAt: true,
         stages: {
@@ -395,6 +392,10 @@ function ensureProjectCanBeCompleted(
   project: NonNullable<Awaited<ReturnType<typeof getProjectArchiveBase>>>,
   stageId: string,
 ) {
+  if (!hasProjectPermission(user, project, "project.completeArchive")) {
+    throw new Error("Only the project owner can complete and archive this project.");
+  }
+
   if (project.createdById !== user.id) {
     throw new Error("Only the project owner can complete and archive this project.");
   }
@@ -564,6 +565,10 @@ function mapCompletionDocumentArchiveRecord(input: {
 }
 
 export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
+  if (!hasPermission(user, "archive.view")) {
+    throw new Error("You do not have permission to view archives.");
+  }
+
   const [archivedFiles, completionDocuments] = await withPrismaRetry(() =>
     Promise.all([
       prisma.archivedProjectFile.findMany({
@@ -624,6 +629,10 @@ export async function listArchivedFilesByCategory(
   user: ArchiveAccessUser,
   categorySlug: ArchiveCategorySlug,
 ) {
+  if (!hasPermission(user, "archive.view")) {
+    throw new Error("You do not have permission to view archives.");
+  }
+
   const [files, completionDocuments] = await withPrismaRetry(() =>
     Promise.all([
       prisma.archivedProjectFile.findMany({
@@ -833,9 +842,11 @@ export async function getProjectCompletionSummary(
   const isCompleted = Boolean(
     project.archive || project.archivedAt || project.completedAt || project.status === "COMPLETED",
   );
+  const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
+  const canViewArchivedFiles = hasPermission(user, "archive.view");
 
   const approvedFiles =
-    finalStage && !isCompleted
+    finalStage && canCompleteArchive && !isCompleted
       ? await getFinalStageArchivableAttachments(project.id, finalStage.id)
       : [];
 
@@ -858,27 +869,28 @@ export async function getProjectCompletionSummary(
         ? project.archive.archiveCategorySlug
         : null,
     archiveCategoryLabel: project.archive?.archiveCategoryLabel ?? null,
-    archivedFiles:
-      project.archive?.files.map((file) =>
-        mapArchivedFileRecord({
-          id: file.id,
-          finalArchiveFileName: file.finalArchiveFileName,
-          originalFileName: file.originalFileName,
-          projectId: project.id,
-          projectName: project.name,
-          projectCategory: project.category,
-          projectTag: project.tag,
-          archiveCategorySlug: project.archive?.archiveCategorySlug ?? "artworks",
-          archiveCategoryLabel: project.archive?.archiveCategoryLabel ?? "Artworks",
-          sourceRevisionId: file.sourceRevisionId,
-          sourceRevisionNumber: file.sourceRevision?.revisionNumber ?? null,
-          submissionReviewStatus: file.sourceAttachment.submissionReviewStatus,
-          mimeType: file.mimeType,
-          fileSize: file.fileSize,
-          archivedAt: file.archivedAt,
-          archivedBy: file.archivedBy,
-        }),
-      ) ?? [],
+    archivedFiles: canViewArchivedFiles
+      ? (project.archive?.files.map((file) =>
+          mapArchivedFileRecord({
+            id: file.id,
+            finalArchiveFileName: file.finalArchiveFileName,
+            originalFileName: file.originalFileName,
+            projectId: project.id,
+            projectName: project.name,
+            projectCategory: project.category,
+            projectTag: project.tag,
+            archiveCategorySlug: project.archive?.archiveCategorySlug ?? "artworks",
+            archiveCategoryLabel: project.archive?.archiveCategoryLabel ?? "Artworks",
+            sourceRevisionId: file.sourceRevisionId,
+            sourceRevisionNumber: file.sourceRevision?.revisionNumber ?? null,
+            submissionReviewStatus: file.sourceAttachment.submissionReviewStatus,
+            mimeType: file.mimeType,
+            fileSize: file.fileSize,
+            archivedAt: file.archivedAt,
+            archivedBy: file.archivedBy,
+          }),
+        ) ?? [])
+      : [],
   } satisfies ProjectCompletionSummary;
 }
 
@@ -1100,7 +1112,11 @@ export async function getArchivedFileDownloadUrlForUser(
     throw new Error("Archived file not found.");
   }
 
-  await assertProjectAccess(user, archivedFile.projectId);
+  const project = await assertProjectAccess(user, archivedFile.projectId);
+
+  if (!hasProjectPermission(user, project, "archive.download")) {
+    throw new Error("You do not have permission to download archive files.");
+  }
 
   return createPresignedDownloadUrl({
     bucket: archivedFile.bucket,
@@ -1134,7 +1150,11 @@ export async function getArchivedFilePreviewUrlForUser(
     throw new Error("Archived file not found.");
   }
 
-  await assertProjectAccess(user, archivedFile.projectId);
+  const project = await assertProjectAccess(user, archivedFile.projectId);
+
+  if (!hasProjectPermission(user, project, "archive.view")) {
+    throw new Error("You do not have permission to preview archive files.");
+  }
 
   return createPresignedPreviewUrl({
     bucket: archivedFile.bucket,

@@ -11,6 +11,10 @@ import {
 } from "@/lib/project-collaborator-visibility";
 import { buildAccessibleProjectsWhere, type ProjectAccessUser } from "@/lib/projects";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import {
+  hasPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { deleteObjectIfNeeded, getFileExtension } from "@/lib/storage/s3";
 import { canUploadLibraryAssets, canViewLibrary } from "@/lib/library-access";
@@ -53,7 +57,11 @@ const documentExtensions = new Set([
   "pages",
 ]);
 
-type LibraryUser = Pick<User, "id" | "role" | "name" | "email">;
+type LibraryUser = Pick<
+  User,
+  "id" | "role" | "name" | "email" | "libraryAccess" | "projectAccess"
+> &
+  PermissionUser;
 type LibraryUploadUser = Pick<
   User,
   "id" | "role" | "name" | "email" | "libraryAccess" | "projectAccess"
@@ -173,7 +181,12 @@ function isFinanceLibraryFile(fileName: string) {
 }
 
 function canDeleteLibraryAttachment(user: LibraryUser, ownerId: string) {
-  return user.role === UserRole.SUPER_ADMIN || ownerId === user.id;
+  return (
+    hasPermission(user, "library.deleteFile") &&
+    (user.role === UserRole.SUPER_ADMIN ||
+      user.role === UserRole.ADMIN ||
+      ownerId === user.id)
+  );
 }
 
 function isAttachmentVisibleToUser(
@@ -413,6 +426,22 @@ export async function getLibraryPageDataForUser(
   user: LibraryUser,
   input: LibraryQueryInput = {},
 ): Promise<LibraryPageData> {
+  if (!hasPermission(user, "library.view")) {
+    throw new Error("You do not have permission to view the library.");
+  }
+
+  if (
+    (input.search ||
+      input.projectId ||
+      input.createdById ||
+      input.date ||
+      input.type ||
+      input.quickMenu) &&
+    !hasPermission(user, "library.filter")
+  ) {
+    throw new Error("You do not have permission to filter library files.");
+  }
+
   const pageSize = clampPageSize(input.pageSize);
   const rawAttachments = await getAccessibleLibraryAttachments(user);
   const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(

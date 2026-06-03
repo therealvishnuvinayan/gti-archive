@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { LibraryWorkspace } from "@/components/library/library-workspace";
 import { requireUser } from "@/lib/auth";
@@ -7,6 +9,7 @@ import {
   parseLibraryQuickMenu,
   parseLibraryTypeFilter,
 } from "@/lib/library-shared";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 export default async function LibraryPage({
   searchParams,
@@ -23,6 +26,11 @@ export default async function LibraryPage({
   }>;
 }) {
   const user = await requireUser();
+
+  if (!hasPermission(user, "library.view")) {
+    redirect("/");
+  }
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const initialQuery = {
     search: resolvedSearchParams?.search?.trim() ?? "",
