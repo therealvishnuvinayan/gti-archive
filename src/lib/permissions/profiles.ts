@@ -174,6 +174,21 @@ function getProfileDefaultRowData(
   }));
 }
 
+async function ensurePermissionDefinitionsExist() {
+  await withPrismaRetry(() =>
+    prisma.permissionDefinition.createMany({
+      data: permissionDefinitions.map((definition) => ({
+        key: definition.key,
+        label: definition.label,
+        description: definition.description,
+        group: definition.group,
+        isSystem: definition.isSystem,
+      })),
+      skipDuplicates: true,
+    }),
+  );
+}
+
 const getCachedRoleProfile = cache(async (role: PermissionRole) => {
   try {
     const rows = await withPrismaRetry(() =>
@@ -392,7 +407,7 @@ export async function savePermissionProfile(input: {
   const { profileType, profileKey } = input;
   const profile = await getPermissionProfile(profileType, profileKey);
 
-  await syncPermissionDefinitions();
+  await ensurePermissionDefinitionsExist();
 
   const unknownKeys = Object.keys(input.state).filter((key) => !isPermissionKey(key));
 
@@ -426,67 +441,142 @@ export async function savePermissionProfile(input: {
     permissionKey,
     enabled: nextState[permissionKey],
   }));
+  const enabledPermissionKeys = rows
+    .filter((row) => row.enabled)
+    .map((row) => row.permissionKey);
+  const disabledPermissionKeys = rows
+    .filter((row) => !row.enabled)
+    .map((row) => row.permissionKey);
 
   await withPrismaRetry(() =>
-    prisma.$transaction(
-      rows.map((row) => {
-        const sharedData = {
-          permissionKey: row.permissionKey,
-          enabled: row.enabled,
-        };
+    prisma.$transaction(async (tx) => {
+      switch (profileType) {
+        case "role": {
+          const role = profileKey as PermissionRole;
 
-        switch (profileType) {
-          case "role":
-            return prisma.rolePermission.upsert({
+          await tx.rolePermission.createMany({
+            data: rows.map((row) => ({
+              role,
+              permissionKey: row.permissionKey,
+              enabled: row.enabled,
+            })),
+            skipDuplicates: true,
+          });
+
+          if (enabledPermissionKeys.length > 0) {
+            await tx.rolePermission.updateMany({
               where: {
-                role_permissionKey: {
-                  role: profileKey as PermissionRole,
-                  permissionKey: row.permissionKey,
+                role,
+                permissionKey: {
+                  in: enabledPermissionKeys,
                 },
               },
-              create: {
-                role: profileKey as PermissionRole,
-                ...sharedData,
-              },
-              update: {
-                enabled: row.enabled,
+              data: {
+                enabled: true,
               },
             });
-          case "collaboratorType":
-            return prisma.collaboratorTypePermission.upsert({
+          }
+
+          if (disabledPermissionKeys.length > 0) {
+            await tx.rolePermission.updateMany({
               where: {
-                collaboratorType_permissionKey: {
-                  collaboratorType: profileKey as PrismaCollaboratorType,
-                  permissionKey: row.permissionKey,
+                role,
+                permissionKey: {
+                  in: disabledPermissionKeys,
                 },
               },
-              create: {
-                collaboratorType: profileKey as PrismaCollaboratorType,
-                ...sharedData,
-              },
-              update: {
-                enabled: row.enabled,
+              data: {
+                enabled: false,
               },
             });
-          case "accessPreset":
-            return prisma.accessPresetPermission.upsert({
-              where: {
-                accessPreset_permissionKey: {
-                  accessPreset: profileKey as ModuleAccessValue,
-                  permissionKey: row.permissionKey,
-                },
-              },
-              create: {
-                accessPreset: profileKey as ModuleAccessValue,
-                ...sharedData,
-              },
-              update: {
-                enabled: row.enabled,
-              },
-            });
+          }
+
+          return;
         }
-      }),
-    ),
+        case "collaboratorType": {
+          const collaboratorType = profileKey as PrismaCollaboratorType;
+
+          await tx.collaboratorTypePermission.createMany({
+            data: rows.map((row) => ({
+              collaboratorType,
+              permissionKey: row.permissionKey,
+              enabled: row.enabled,
+            })),
+            skipDuplicates: true,
+          });
+
+          if (enabledPermissionKeys.length > 0) {
+            await tx.collaboratorTypePermission.updateMany({
+              where: {
+                collaboratorType,
+                permissionKey: {
+                  in: enabledPermissionKeys,
+                },
+              },
+              data: {
+                enabled: true,
+              },
+            });
+          }
+
+          if (disabledPermissionKeys.length > 0) {
+            await tx.collaboratorTypePermission.updateMany({
+              where: {
+                collaboratorType,
+                permissionKey: {
+                  in: disabledPermissionKeys,
+                },
+              },
+              data: {
+                enabled: false,
+              },
+            });
+          }
+
+          return;
+        }
+        case "accessPreset": {
+          const accessPreset = profileKey as ModuleAccessValue;
+
+          await tx.accessPresetPermission.createMany({
+            data: rows.map((row) => ({
+              accessPreset,
+              permissionKey: row.permissionKey,
+              enabled: row.enabled,
+            })),
+            skipDuplicates: true,
+          });
+
+          if (enabledPermissionKeys.length > 0) {
+            await tx.accessPresetPermission.updateMany({
+              where: {
+                accessPreset,
+                permissionKey: {
+                  in: enabledPermissionKeys,
+                },
+              },
+              data: {
+                enabled: true,
+              },
+            });
+          }
+
+          if (disabledPermissionKeys.length > 0) {
+            await tx.accessPresetPermission.updateMany({
+              where: {
+                accessPreset,
+                permissionKey: {
+                  in: disabledPermissionKeys,
+                },
+              },
+              data: {
+                enabled: false,
+              },
+            });
+          }
+        }
+      }
+    }),
   );
 
   return {

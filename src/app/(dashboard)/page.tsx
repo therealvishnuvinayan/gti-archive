@@ -31,7 +31,7 @@ export default async function Home() {
   const user = await requireUser();
 
   if (!hasPermission(user, "dashboard.view")) {
-    redirect("/help");
+    redirect("/no-access");
   }
 
   const [dashboard, uploadProjects] = await Promise.all([
