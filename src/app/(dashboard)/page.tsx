@@ -60,8 +60,15 @@ export default async function Home() {
       title: "Pending Projects",
       value: `${dashboard.counts.pending}`.padStart(2, "0"),
       delta: `${dashboard.counts.pending}`.padStart(2, "0"),
-      note: "Waiting or paused",
+      note: "Waiting to start",
       href: "/projects?status=PENDING&sort=newest",
+    },
+    {
+      title: "On Hold Projects",
+      value: `${dashboard.counts.onHold}`.padStart(2, "0"),
+      delta: `${dashboard.counts.onHold}`.padStart(2, "0"),
+      note: "Paused projects",
+      href: "/projects?status=ON_HOLD&sort=newest",
     },
     {
       title: "Completed Projects",
@@ -106,7 +113,7 @@ export default async function Home() {
         </MotionSection>
 
         <MotionStaggerGroup
-          className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5"
           stagger={0.05}
         >
           {statCards.map((card) => (

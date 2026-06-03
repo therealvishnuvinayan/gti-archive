@@ -242,6 +242,7 @@ export type ProjectFlowRecord = {
 export type DashboardProjectCounts = {
   total: number;
   ongoing: number;
+  onHold: number;
   pending: number;
   completed: number;
 };
@@ -1114,11 +1115,7 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
   const statusWhere =
     filter.status === "ALL" || !filter.status
       ? undefined
-      : filter.status === "PENDING"
-        ? {
-            in: ["PENDING", "ON_HOLD"] as ProjectStatus[],
-          }
-        : filter.status;
+      : filter.status;
 
   return {
     ...(statusWhere
@@ -1283,7 +1280,8 @@ export async function getDashboardProjectCounts(
   return {
     total,
     ongoing: counts.ONGOING,
-    pending: counts.PENDING + counts.ON_HOLD,
+    onHold: counts.ON_HOLD,
+    pending: counts.PENDING,
     completed: counts.COMPLETED,
   };
 }

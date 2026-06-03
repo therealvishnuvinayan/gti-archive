@@ -371,6 +371,7 @@ export async function getDashboardSnapshot(
         : Promise.resolve({
             total: 0,
             ongoing: 0,
+            onHold: 0,
             pending: 0,
             completed: 0,
           }),
