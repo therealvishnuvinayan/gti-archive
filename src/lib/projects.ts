@@ -1275,7 +1275,7 @@ export async function getDashboardProjectCounts(
   return {
     total,
     ongoing: counts.ONGOING,
-    pending: counts.PENDING,
+    pending: counts.PENDING + counts.ON_HOLD,
     completed: counts.COMPLETED,
   };
 }

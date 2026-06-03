@@ -41,7 +41,7 @@ export default async function Home() {
       title: "Pending Projects",
       value: `${dashboard.counts.pending}`.padStart(2, "0"),
       delta: `${dashboard.counts.pending}`.padStart(2, "0"),
-      note: "Waiting to begin",
+      note: "Waiting or paused",
     },
     {
       title: "Completed Projects",
