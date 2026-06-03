@@ -425,7 +425,7 @@ export function LibraryWorkspace({ initialData }: LibraryWorkspaceProps) {
                 active={activeQuickMenu === "users"}
                 title="From Users"
                 description={`${data.counts.fromUsers} uploaders available`}
-                actionLabel="Filter"
+                actionLabel="View"
                 onClick={() => handleQuickMenuSelection("users")}
                 icon={UserRound}
               />
