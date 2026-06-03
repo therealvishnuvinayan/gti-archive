@@ -533,6 +533,28 @@ function mapProjectToCard(project: ProjectWithCreator, index: number): ProjectCa
   };
 }
 
+const projectNameCollator = new Intl.Collator("en", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function compareProjectsByName(
+  left: Pick<Project, "id" | "name" | "createdAt">,
+  right: Pick<Project, "id" | "name" | "createdAt">,
+) {
+  const nameDifference = projectNameCollator.compare(left.name.trim(), right.name.trim());
+  if (nameDifference !== 0) {
+    return nameDifference;
+  }
+
+  const createdAtDifference = left.createdAt.getTime() - right.createdAt.getTime();
+  if (createdAtDifference !== 0) {
+    return createdAtDifference;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 function mapStageToCard(
   project: ProjectWithCreator,
   stage: ProjectStage,
@@ -1323,10 +1345,10 @@ export async function getProjectsList(
 ) {
   const orderBy =
     filter.sort === "oldest"
-      ? [{ createdAt: "asc" as const }]
+      ? [{ createdAt: "asc" as const }, { id: "asc" as const }]
       : filter.sort === "name"
-        ? [{ name: "asc" as const }]
-        : [{ createdAt: "desc" as const }];
+        ? [{ name: "asc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }]
+        : [{ createdAt: "desc" as const }, { id: "asc" as const }];
 
   const projects = await unstable_cache(
     async () =>
@@ -1394,7 +1416,10 @@ export async function getProjectsList(
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
-  return projects.map(mapProjectToCard);
+  const sortedProjects =
+    filter.sort === "name" ? [...projects].sort(compareProjectsByName) : projects;
+
+  return sortedProjects.map(mapProjectToCard);
 }
 
 export async function getProjectById(
