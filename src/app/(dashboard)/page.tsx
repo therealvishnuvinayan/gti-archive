@@ -29,6 +29,7 @@ export default async function Home() {
       value: `${dashboard.counts.total}`.padStart(2, "0"),
       delta: `${dashboard.counts.total}`.padStart(2, "0"),
       note: "Projects in database",
+      href: "/projects?status=ALL&sort=newest",
       emphasize: true,
     },
     {
@@ -36,18 +37,21 @@ export default async function Home() {
       value: `${dashboard.counts.ongoing}`.padStart(2, "0"),
       delta: `${dashboard.counts.ongoing}`.padStart(2, "0"),
       note: "Currently active",
+      href: "/projects?status=ONGOING&sort=newest",
     },
     {
       title: "Pending Projects",
       value: `${dashboard.counts.pending}`.padStart(2, "0"),
       delta: `${dashboard.counts.pending}`.padStart(2, "0"),
       note: "Waiting or paused",
+      href: "/projects?status=PENDING&sort=newest",
     },
     {
       title: "Completed Projects",
       value: `${dashboard.counts.completed}`.padStart(2, "0"),
       delta: `${dashboard.counts.completed}`.padStart(2, "0"),
       note: "Delivered projects",
+      href: "/projects?status=COMPLETED&sort=newest",
     },
   ] as const;
 

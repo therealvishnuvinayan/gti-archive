@@ -11,11 +11,13 @@ import {
 
 type ProjectFilter = {
   label: string;
-  value: "ONGOING" | "ON_HOLD" | "COMPLETED";
+  value: "ALL" | "ONGOING" | "PENDING" | "ON_HOLD" | "COMPLETED";
 };
 
 const projectFilters: ProjectFilter[] = [
+  { label: "All", value: "ALL" },
   { label: "Ongoing", value: "ONGOING" },
+  { label: "Pending", value: "PENDING" },
   { label: "On Hold", value: "ON_HOLD" },
   { label: "Completed", value: "COMPLETED" },
 ];
@@ -33,6 +35,8 @@ export default async function ProjectsPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const activeStatus =
+    resolvedSearchParams.status === "ALL" ||
+    resolvedSearchParams.status === "PENDING" ||
     resolvedSearchParams.status === "ON_HOLD" ||
     resolvedSearchParams.status === "COMPLETED"
       ? resolvedSearchParams.status

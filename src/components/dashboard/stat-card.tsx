@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 
 export type StatCardProps = {
@@ -5,6 +6,7 @@ export type StatCardProps = {
   value: string;
   delta: string;
   note: string;
+  href?: string;
   emphasize?: boolean;
 };
 
@@ -13,11 +15,12 @@ export function StatCard({
   value,
   delta,
   note,
+  href,
   emphasize = false,
 }: StatCardProps) {
-  return (
+  const content = (
     <article
-      className={`rounded-[24px] p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6 ${
+      className={`rounded-[24px] p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-transform sm:p-6 ${
         emphasize
           ? "bg-[linear-gradient(135deg,#3d6f59,#5da27a)] text-white"
           : "bg-card text-[#151b16]"
@@ -65,5 +68,21 @@ export function StatCard({
         </span>
       </div>
     </article>
+  );
+
+  if (!href) {
+    return content;
+  }
+
+  return (
+    <Link
+      href={href}
+      aria-label={`View ${title.toLowerCase()}`}
+      className="group block rounded-[24px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+    >
+      <div className="transition-transform duration-150 group-hover:-translate-y-1 group-focus-visible:-translate-y-1">
+        {content}
+      </div>
+    </Link>
   );
 }

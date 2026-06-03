@@ -237,7 +237,7 @@ export type DashboardProjectCounts = {
 };
 
 export type ProjectsListFilter = {
-  status?: "ONGOING" | "ON_HOLD" | "COMPLETED";
+  status?: "ALL" | "ONGOING" | "PENDING" | "ON_HOLD" | "COMPLETED";
   query?: string;
   category?: string;
   tag?: string;
@@ -1114,16 +1114,19 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
   const query = filter.query?.trim();
   const category = filter.category?.trim();
   const tag = filter.tag?.trim();
+  const statusWhere =
+    filter.status === "ALL" || !filter.status
+      ? undefined
+      : filter.status === "PENDING"
+        ? {
+            in: ["PENDING", "ON_HOLD"] as ProjectStatus[],
+          }
+        : filter.status;
 
   return {
-    ...(filter.status
+    ...(statusWhere
       ? {
-          status:
-            filter.status === "ONGOING"
-              ? {
-                  in: ["ONGOING", "PENDING"] as ProjectStatus[],
-                }
-              : filter.status,
+          status: statusWhere,
         }
       : {}),
     ...(query

@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type ProjectFilterValue = "ONGOING" | "ON_HOLD" | "COMPLETED";
+type ProjectFilterValue = "ALL" | "ONGOING" | "PENDING" | "ON_HOLD" | "COMPLETED";
 type ProjectSortValue = "newest" | "oldest" | "name";
 
 type ProjectFilter = {
@@ -68,15 +68,22 @@ function getEmptyStateCopy(
   }
 
   const statusLabel =
-    activeStatus === "ON_HOLD"
-      ? "on hold"
-      : activeStatus === "COMPLETED"
-        ? "completed"
-        : "ongoing";
+    activeStatus === "ALL"
+      ? "project"
+      : activeStatus === "PENDING"
+        ? "pending or paused"
+        : activeStatus === "ON_HOLD"
+          ? "on hold"
+          : activeStatus === "COMPLETED"
+            ? "completed"
+            : "ongoing";
 
   return {
-    title: `No ${statusLabel} projects`,
-    description: `There are no ${statusLabel} projects to show right now.`,
+    title: activeStatus === "ALL" ? "No projects found" : `No ${statusLabel} projects`,
+    description:
+      activeStatus === "ALL"
+        ? "There are no projects to show right now."
+        : `There are no ${statusLabel} projects to show right now.`,
   };
 }
 
