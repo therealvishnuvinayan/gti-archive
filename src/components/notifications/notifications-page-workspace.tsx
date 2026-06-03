@@ -382,7 +382,7 @@ export function NotificationsPageWorkspace() {
       <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_24px_80px_rgba(23,39,28,0.06)]">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="grid flex-1 gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-            <div className="relative">
+            <div className="relative self-start">
               <Search className="pointer-events-none absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8a81]" />
               <Input
                 value={search}
