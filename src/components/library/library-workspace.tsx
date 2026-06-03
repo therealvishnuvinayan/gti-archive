@@ -162,17 +162,28 @@ function LibraryPreviewAction({ item }: { item: LibraryItemRecord }) {
 
 type LibraryWorkspaceProps = {
   initialData: LibraryPageData;
+  initialQuery?: {
+    search: string;
+    projectId: string;
+    createdById: string;
+    date: LibraryDateFilter;
+    type: LibraryTypeFilter;
+    quickMenu: LibraryQuickMenuOption;
+  };
 };
 
-export function LibraryWorkspace({ initialData }: LibraryWorkspaceProps) {
+export function LibraryWorkspace({
+  initialData,
+  initialQuery,
+}: LibraryWorkspaceProps) {
   const [activeQuickMenu, setActiveQuickMenu] =
-    useState<LibraryQuickMenuOption>("assets");
-  const [search, setSearch] = useState("");
+    useState<LibraryQuickMenuOption>(initialQuery?.quickMenu ?? "assets");
+  const [search, setSearch] = useState(initialQuery?.search ?? "");
   const deferredSearch = useDeferredValue(search.trim());
-  const [projectId, setProjectId] = useState("all");
-  const [dateFilter, setDateFilter] = useState<LibraryDateFilter>("all");
-  const [createdById, setCreatedById] = useState("all");
-  const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>("All Types");
+  const [projectId, setProjectId] = useState(initialQuery?.projectId || "all");
+  const [dateFilter, setDateFilter] = useState<LibraryDateFilter>(initialQuery?.date ?? "all");
+  const [createdById, setCreatedById] = useState(initialQuery?.createdById || "all");
+  const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(initialQuery?.type ?? "All Types");
   const [currentPage, setCurrentPage] = useState(initialData.page);
   const [pageSize, setPageSize] = useState<(typeof pageSizeOptions)[number]>(
     initialData.pageSize as (typeof pageSizeOptions)[number],

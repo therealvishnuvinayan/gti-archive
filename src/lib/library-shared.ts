@@ -55,6 +55,30 @@ export type LibraryFilterOption = {
   label: string;
 };
 
+export type LibraryUploadProjectOption = {
+  id: string;
+  label: string;
+  tag: string | null;
+};
+
+export const libraryUploadCategoryOptions = [
+  { value: "PROJECT_ASSET", label: "Project Asset" },
+  { value: "REFERENCE_FILE", label: "Reference File" },
+  { value: "ARTWORK", label: "Artwork" },
+  { value: "DOCUMENT", label: "Document" },
+  { value: "QUOTATION_INVOICE", label: "Quotation / Invoice" },
+  { value: "OTHER", label: "Other" },
+] as const;
+
+export type LibraryUploadCategory =
+  (typeof libraryUploadCategoryOptions)[number]["value"];
+
+export type LibraryUploadMetadata = {
+  source?: "dashboard-library-upload";
+  category?: LibraryUploadCategory;
+  note?: string;
+};
+
 export type LibraryQuickMenuCounts = {
   projectAssets: number;
   quotationsAndInvoices: number;
