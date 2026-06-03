@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { completeAttachmentUpload } from "@/lib/project-history";
+import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 export async function POST(request: Request) {
@@ -12,7 +13,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  let payload: { attachmentId?: string; failed?: boolean; projectId?: string } = {};
+  let payload: {
+    attachmentId?: string;
+    failed?: boolean;
+    projectId?: string;
+    metadata?: LibraryUploadMetadata;
+  } = {};
 
   try {
     payload = (await request.json()) as typeof payload;
@@ -25,7 +31,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    await completeAttachmentUpload(user, payload.attachmentId, Boolean(payload.failed));
+    await completeAttachmentUpload(
+      user,
+      payload.attachmentId,
+      Boolean(payload.failed),
+      payload.metadata,
+    );
     revalidateTag(PROJECTS_CACHE_TAG, "max");
 
     return NextResponse.json({ success: true });

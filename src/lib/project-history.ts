@@ -4,6 +4,7 @@ import {
   ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
+  CollaboratorAccess,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   UserRole,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/project-collaborator-visibility";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   buildProjectAssetKey,
   createPresignedDownloadUrl,
@@ -42,7 +44,9 @@ import {
 type AccessUser = Pick<
   User,
   "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
->;
+> & {
+  libraryAccess?: User["libraryAccess"];
+};
 
 export type ProjectHistoryAccessUser = AccessUser;
 
@@ -340,6 +344,18 @@ function isProjectExecutorUser(
   userId: string,
 ) {
   return Boolean(project.executorUserId && project.executorUserId === userId);
+}
+
+function canUserUploadLibraryAssets(user: AccessUser) {
+  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
+    return true;
+  }
+
+  return (
+    user.libraryAccess !== undefined &&
+    user.libraryAccess !== CollaboratorAccess.NONE &&
+    user.projectAccess !== CollaboratorAccess.NONE
+  );
 }
 
 export async function assertProjectAccess(user: AccessUser, projectId: string) {
@@ -1425,6 +1441,13 @@ export async function requestAttachmentUpload(
 
     await assertProjectAccess(user, input.projectId);
 
+    if (
+      input.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+      !canUserUploadLibraryAssets(user)
+    ) {
+      return { error: "You do not have permission to upload assets to the library." };
+    }
+
     if (project.status === "COMPLETED") {
       return { error: "This project is already completed." };
     }
@@ -1500,6 +1523,7 @@ export async function completeAttachmentUpload(
   user: AccessUser,
   attachmentId: string,
   failed = false,
+  uploadMetadata?: LibraryUploadMetadata,
 ) {
   const attachment = await withPrismaRetry(() =>
     prisma.projectAttachment.findUnique({
@@ -1549,6 +1573,13 @@ export async function completeAttachmentUpload(
     return;
   }
 
+  if (
+    attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+    !canUserUploadLibraryAssets(user)
+  ) {
+    throw new Error("You do not have permission to upload assets to the library.");
+  }
+
   await withPrismaRetry(() =>
     prisma.projectAttachment.update({
       where: {
@@ -1579,6 +1610,21 @@ export async function completeAttachmentUpload(
           commentId: attachment.commentId,
           fileName: attachment.originalFileName,
           storageKey: attachment.storageKey,
+          ...(uploadMetadata?.source
+            ? {
+                source: uploadMetadata.source,
+              }
+            : {}),
+          ...(uploadMetadata?.category
+            ? {
+                category: uploadMetadata.category,
+              }
+            : {}),
+          ...(uploadMetadata?.note
+            ? {
+                note: uploadMetadata.note,
+              }
+            : {}),
         },
       },
     }),

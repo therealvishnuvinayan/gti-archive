@@ -14,7 +14,7 @@ import {
 
 type ProjectSortDropdownProps = {
   activeSort: "newest" | "oldest" | "name";
-  activeStatus: "ONGOING" | "ON_HOLD" | "COMPLETED";
+  activeStatus: "ALL" | "ONGOING" | "PENDING" | "ON_HOLD" | "COMPLETED";
   query: string;
   category: string;
   tag: string;

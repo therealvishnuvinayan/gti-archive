@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { UploadAssetsButton } from "@/components/dashboard/upload-assets-button";
 import { UpdateList } from "@/components/dashboard/update-list";
 import { ReminderCard } from "@/components/dashboard/reminder-card";
 import {
@@ -15,6 +16,10 @@ import { DeadlineCard } from "@/components/dashboard/deadline-card";
 import { requireUser } from "@/lib/auth";
 import { getDashboardSnapshot } from "@/lib/dashboard";
 import {
+  getDashboardLibraryUploadAccessState,
+  getLibraryUploadProjectsForUser,
+} from "@/lib/library";
+import {
   MotionItem,
   MotionSection,
   MotionStaggerGroup,
@@ -22,13 +27,18 @@ import {
 
 export default async function Home() {
   const user = await requireUser();
-  const dashboard = await getDashboardSnapshot(user);
+  const [dashboard, uploadProjects] = await Promise.all([
+    getDashboardSnapshot(user),
+    getLibraryUploadProjectsForUser(user),
+  ]);
+  const uploadAccess = getDashboardLibraryUploadAccessState(user);
   const statCards = [
     {
       title: "Total Projects",
       value: `${dashboard.counts.total}`.padStart(2, "0"),
       delta: `${dashboard.counts.total}`.padStart(2, "0"),
       note: "Projects in database",
+      href: "/projects?status=ALL&sort=newest",
       emphasize: true,
     },
     {
@@ -36,18 +46,21 @@ export default async function Home() {
       value: `${dashboard.counts.ongoing}`.padStart(2, "0"),
       delta: `${dashboard.counts.ongoing}`.padStart(2, "0"),
       note: "Currently active",
+      href: "/projects?status=ONGOING&sort=newest",
     },
     {
       title: "Pending Projects",
       value: `${dashboard.counts.pending}`.padStart(2, "0"),
       delta: `${dashboard.counts.pending}`.padStart(2, "0"),
-      note: "Waiting to begin",
+      note: "Waiting or paused",
+      href: "/projects?status=PENDING&sort=newest",
     },
     {
       title: "Completed Projects",
       value: `${dashboard.counts.completed}`.padStart(2, "0"),
       delta: `${dashboard.counts.completed}`.padStart(2, "0"),
       note: "Delivered projects",
+      href: "/projects?status=COMPLETED&sort=newest",
     },
   ] as const;
 
@@ -69,13 +82,15 @@ export default async function Home() {
               >
                 + New Project
               </Link>
-              <Link
-                href="/library"
-                title="Upload assets from Library"
-                className="inline-flex min-h-[54px] items-center justify-center rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
-              >
-                + Upload Assets
-              </Link>
+              <UploadAssetsButton
+                canUploadAssets={uploadAccess.canUploadAssets}
+                disabledReason={
+                  uploadAccess.canUploadAssets
+                    ? undefined
+                    : "You do not have permission to upload assets."
+                }
+                projects={uploadProjects}
+              />
             </div>
           </header>
         </MotionSection>

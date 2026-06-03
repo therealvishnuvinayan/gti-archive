@@ -9,13 +9,16 @@ import {
   canBypassCollaboratorVisibility,
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
+import { buildAccessibleProjectsWhere, type ProjectAccessUser } from "@/lib/projects";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { deleteObjectIfNeeded, getFileExtension } from "@/lib/storage/s3";
+import { canUploadLibraryAssets, canViewLibrary } from "@/lib/library-access";
 import {
   type LibraryDateFilter,
   type LibraryItemRecord,
   type LibraryPageData,
+  type LibraryUploadProjectOption,
   type LibraryQueryInput,
   type LibraryQuickMenuCounts,
 } from "@/lib/library-shared";
@@ -51,6 +54,10 @@ const documentExtensions = new Set([
 ]);
 
 type LibraryUser = Pick<User, "id" | "role" | "name" | "email">;
+type LibraryUploadUser = Pick<
+  User,
+  "id" | "role" | "name" | "email" | "libraryAccess" | "projectAccess"
+>;
 
 type RawLibraryAttachment = {
   id: string;
@@ -472,6 +479,46 @@ export async function getLibraryPageDataForUser(
     pageSize,
     total,
     totalPages,
+  };
+}
+
+export async function getLibraryUploadProjectsForUser(
+  user: ProjectAccessUser & LibraryUploadUser,
+): Promise<LibraryUploadProjectOption[]> {
+  if (!canUploadLibraryAssets(user)) {
+    return [];
+  }
+
+  const projects = await withPrismaRetry(() =>
+    prisma.project.findMany({
+      where: {
+        ...buildAccessibleProjectsWhere(user),
+        status: {
+          not: "COMPLETED",
+        },
+      },
+      orderBy: {
+        name: "asc",
+      },
+      select: {
+        id: true,
+        name: true,
+        tag: true,
+      },
+    }),
+  );
+
+  return projects.map((project) => ({
+    id: project.id,
+    label: project.name,
+    tag: project.tag?.trim() || null,
+  }));
+}
+
+export function getDashboardLibraryUploadAccessState(user: LibraryUploadUser) {
+  return {
+    canViewLibrary: canViewLibrary(user),
+    canUploadAssets: canUploadLibraryAssets(user),
   };
 }
 

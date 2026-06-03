@@ -407,7 +407,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "What the Dashboard shows",
         items: [
-          "Real scoped project counts for total, ongoing, pending, and completed work.",
+          "Real scoped project counts for total, ongoing, pending or paused, and completed work.",
           "Important updates and reminders pulled from actual workflow activity or notifications.",
           "Recent projects, progress, collaboration context, and nearest deadlines when real data exists.",
           "Quick actions such as New Project and Upload Assets, where Upload Assets takes users into Library.",
