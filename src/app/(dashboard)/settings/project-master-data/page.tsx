@@ -22,6 +22,7 @@ export default async function ProjectMasterDataPage() {
         tags={masterData.tags}
         currencies={masterData.currencies}
         summary={masterData.summary}
+        canManageItems={hasPermission(user, "settings.manageMasterData")}
         canDeleteItems={hasPermission(user, "settings.deleteMasterData")}
       />
     </DashboardLayout>

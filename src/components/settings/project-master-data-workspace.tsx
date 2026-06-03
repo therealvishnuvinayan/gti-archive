@@ -58,6 +58,7 @@ type ProjectMasterDataWorkspaceProps = {
   tags: ProjectMasterDataItemRecord[];
   currencies: ProjectMasterCurrencyRecord[];
   summary: ProjectMasterDataSummary;
+  canManageItems: boolean;
   canDeleteItems: boolean;
 };
 
@@ -145,6 +146,7 @@ function MasterDataTable({
   onAdd,
   onEdit,
   onDelete,
+  canManage,
   canDelete,
   pending,
 }: {
@@ -153,16 +155,20 @@ function MasterDataTable({
   onAdd: () => void;
   onEdit: (item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord) => void;
   onDelete: (item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord) => void;
+  canManage: boolean;
   canDelete: boolean;
   pending: boolean;
 }) {
   const isCurrency = type === "currencies";
+  const canShowActions = canManage || canDelete;
   const emptyLabel =
-    type === "categories"
-      ? "No categories added yet."
-      : type === "tags"
-        ? "No tags added yet."
-        : "No currencies added yet.";
+    !canManage
+      ? "No master data available."
+      : type === "categories"
+        ? "No categories added yet."
+        : type === "tags"
+          ? "No tags added yet."
+          : "No currencies added yet.";
 
   return (
     <Card className="rounded-[28px] border border-[#ebefe8] bg-white shadow-[0_16px_40px_rgba(23,39,28,0.05)]">
@@ -178,20 +184,22 @@ function MasterDataTable({
             </h2>
             <p className="mt-1 text-[14px] text-[#738072]">
               {type === "categories"
-                ? "Manage project categories used across the system."
+                ? `${canManage ? "Manage" : "View"} project categories used across the system.`
                 : type === "tags"
-                  ? "Manage tags used to label and group projects."
-                  : "Manage active currency codes used in project budgets."}
+                  ? `${canManage ? "Manage" : "View"} tags used to label and group projects.`
+                  : `${canManage ? "Manage" : "View"} active currency codes used in project budgets.`}
             </p>
           </div>
-          <Button type="button" onClick={onAdd} className="gap-2 self-start">
-            <Plus className="h-4 w-4" />
-            {type === "categories"
-              ? "Add Category"
-              : type === "tags"
-                ? "Add Tag"
-                : "Add Currency"}
-          </Button>
+          {canManage ? (
+            <Button type="button" onClick={onAdd} className="gap-2 self-start">
+              <Plus className="h-4 w-4" />
+              {type === "categories"
+                ? "Add Category"
+                : type === "tags"
+                  ? "Add Tag"
+                  : "Add Currency"}
+            </Button>
+          ) : null}
         </div>
 
         {items.length === 0 ? (
@@ -206,8 +214,19 @@ function MasterDataTable({
               <thead>
                 <tr className="text-left">
                   {(isCurrency
-                    ? ["Currency Name", "Currency Code", "Status", "Actions"]
-                    : ["Name", "Description", "Color", "Status", "Actions"]
+                    ? [
+                        "Currency Name",
+                        "Currency Code",
+                        "Status",
+                        ...(canShowActions ? ["Actions"] : []),
+                      ]
+                    : [
+                        "Name",
+                        "Description",
+                        "Color",
+                        "Status",
+                        ...(canShowActions ? ["Actions"] : []),
+                      ]
                   ).map((heading) => (
                     <th
                       key={heading}
@@ -245,35 +264,39 @@ function MasterDataTable({
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
                         <StatusPill active={item.isActive} />
                       </td>
-                      <td className="border-b border-[#f1f4f0] px-4 py-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onEdit(item)}
-                            disabled={pending}
-                            className="gap-2 rounded-full"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            Edit
-                          </Button>
-                          {canDelete ? (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="icon"
-                              onClick={() => onDelete(item)}
-                              disabled={pending}
-                              className="h-9 w-9 rounded-[12px] border border-[#f0d6d4] bg-white text-[#c5524d] hover:bg-[#fff6f5] hover:text-[#c5524d]"
-                              aria-label={`Delete ${item.name}`}
-                              title={`Delete ${item.name}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
+                      {canShowActions ? (
+                        <td className="border-b border-[#f1f4f0] px-4 py-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {canManage ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onEdit(item)}
+                                disabled={pending}
+                                className="gap-2 rounded-full"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </Button>
+                            ) : null}
+                            {canDelete ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="icon"
+                                onClick={() => onDelete(item)}
+                                disabled={pending}
+                                className="h-9 w-9 rounded-[12px] border border-[#f0d6d4] bg-white text-[#c5524d] hover:bg-[#fff6f5] hover:text-[#c5524d]"
+                                aria-label={`Delete ${item.name}`}
+                                title={`Delete ${item.name}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -528,6 +551,7 @@ export function ProjectMasterDataWorkspace({
   tags,
   currencies,
   summary,
+  canManageItems,
   canDeleteItems,
 }: ProjectMasterDataWorkspaceProps) {
   const router = useRouter();
@@ -542,6 +566,10 @@ export function ProjectMasterDataWorkspace({
   const [isPending, startTransition] = useTransition();
 
   function openAddDrawer(tab: MasterDataTab) {
+    if (!canManageItems) {
+      return;
+    }
+
     setActiveTab(tab);
     setDialogMode("add");
     setForm(defaultFormState);
@@ -554,6 +582,10 @@ export function ProjectMasterDataWorkspace({
     tab: MasterDataTab,
     item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord,
   ) {
+    if (!canManageItems) {
+      return;
+    }
+
     setActiveTab(tab);
     setDialogMode("edit");
     setForm({
@@ -663,6 +695,10 @@ export function ProjectMasterDataWorkspace({
     tab: MasterDataTab,
     item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord,
   ) {
+    if (!canDeleteItems) {
+      return;
+    }
+
     setError(undefined);
     setFieldErrors({});
     setDeleteError(undefined);
@@ -801,6 +837,7 @@ export function ProjectMasterDataWorkspace({
               onAdd={() => openAddDrawer("categories")}
               onEdit={(item) => openEditDrawer("categories", item)}
               onDelete={(item) => handleDelete("categories", item)}
+              canManage={canManageItems}
               canDelete={canDeleteItems}
               pending={isPending}
             />
@@ -813,6 +850,7 @@ export function ProjectMasterDataWorkspace({
               onAdd={() => openAddDrawer("tags")}
               onEdit={(item) => openEditDrawer("tags", item)}
               onDelete={(item) => handleDelete("tags", item)}
+              canManage={canManageItems}
               canDelete={canDeleteItems}
               pending={isPending}
             />
@@ -825,6 +863,7 @@ export function ProjectMasterDataWorkspace({
               onAdd={() => openAddDrawer("currencies")}
               onEdit={(item) => openEditDrawer("currencies", item)}
               onDelete={(item) => handleDelete("currencies", item)}
+              canManage={canManageItems}
               canDelete={canDeleteItems}
               pending={isPending}
             />
@@ -833,7 +872,7 @@ export function ProjectMasterDataWorkspace({
       </section>
 
       <MasterDataDrawer
-        isOpen={drawerOpen}
+        isOpen={canManageItems && drawerOpen}
         tab={activeTab}
         mode={dialogMode}
         form={form}
