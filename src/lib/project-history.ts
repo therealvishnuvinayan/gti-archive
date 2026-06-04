@@ -166,6 +166,12 @@ export type PrepareStageCommentUploadsResult =
       }>;
     };
 
+export type FinalizePreparedStageCommentUploadsResult = {
+  commentId: string;
+  stageId: string;
+  mentionedUserIds: string[];
+};
+
 function getDisplayName(user: Pick<User, "name" | "email">) {
   return user.name?.trim() || user.email;
 }
@@ -1173,6 +1179,195 @@ export async function prepareStageCommentUploads(
     mentionedUserIds: validMentionUserIds,
     uploads,
   };
+}
+
+export async function cancelPreparedStageCommentUploads(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    commentId: string;
+  },
+) {
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findFirst({
+      where: {
+        id: input.commentId,
+        projectId: input.projectId,
+        authorId: user.id,
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (!comment) {
+    return;
+  }
+
+  await withPrismaRetry(() =>
+    prisma.$transaction([
+      prisma.projectAttachment.deleteMany({
+        where: {
+          projectId: input.projectId,
+          commentId: comment.id,
+          uploadedById: user.id,
+          assetType: {
+            in: [
+              AttachmentAssetType.COMMENT_ATTACHMENT,
+              AttachmentAssetType.STAGE_SUBMISSION,
+            ],
+          },
+        },
+      }),
+      prisma.projectComment.delete({
+        where: {
+          id: comment.id,
+        },
+      }),
+    ]),
+  );
+}
+
+export async function finalizePreparedStageCommentUploads(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    commentId: string;
+  },
+): Promise<FinalizePreparedStageCommentUploadsResult> {
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findFirst({
+      where: {
+        id: input.commentId,
+        projectId: input.projectId,
+        authorId: user.id,
+      },
+      select: {
+        id: true,
+        stageId: true,
+        attachments: {
+          where: {
+            assetType: {
+              in: [
+                AttachmentAssetType.COMMENT_ATTACHMENT,
+                AttachmentAssetType.STAGE_SUBMISSION,
+              ],
+            },
+          },
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+        mentions: {
+          select: {
+            mentionedUserId: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!comment) {
+    throw new Error("Comment not found.");
+  }
+
+  if (
+    comment.attachments.length === 0 ||
+    comment.attachments.some((attachment) => attachment.status !== AttachmentStatus.READY)
+  ) {
+    throw new Error("All attachment uploads must finish before sending the comment.");
+  }
+
+  return {
+    commentId: comment.id,
+    stageId: comment.stageId,
+    mentionedUserIds: comment.mentions.map((mention) => mention.mentionedUserId),
+  };
+}
+
+export async function cancelStageRevisionSubmission(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    revisionId: string;
+  },
+) {
+  const revision = await withPrismaRetry(() =>
+    prisma.projectRevision.findFirst({
+      where: {
+        id: input.revisionId,
+        projectId: input.projectId,
+        stageId: input.stageId,
+        createdById: user.id,
+        status: ProjectRevisionStatus.PENDING_REVIEW,
+        reviewedById: null,
+        reviewedAt: null,
+      },
+      select: {
+        id: true,
+        project: {
+          select: {
+            createdById: true,
+            executorUserId: true,
+            collaborators: {
+              where: {
+                userId: user.id,
+              },
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  if (!revision) {
+    return;
+  }
+
+  const project = assertProjectAccessFromContext(user, revision.project);
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "stage.submitWork",
+    "Only the project executor can submit work for review.",
+  );
+
+  if (!isProjectExecutorUser(revision.project, user.id)) {
+    throw new Error("Only the project executor can cancel this revision.");
+  }
+
+  await withPrismaRetry(() =>
+    prisma.$transaction([
+      prisma.projectAttachment.deleteMany({
+        where: {
+          projectId: input.projectId,
+          stageId: input.stageId,
+          revisionId: revision.id,
+          uploadedById: user.id,
+          assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        },
+      }),
+      prisma.projectActivityLog.deleteMany({
+        where: {
+          projectId: input.projectId,
+          stageId: input.stageId,
+          revisionId: revision.id,
+        },
+      }),
+      prisma.projectRevision.delete({
+        where: {
+          id: revision.id,
+        },
+      }),
+    ]),
+  );
 }
 
 export async function startProjectStageWork(

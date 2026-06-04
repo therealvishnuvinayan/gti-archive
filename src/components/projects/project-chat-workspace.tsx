@@ -26,6 +26,7 @@ import {
 
 import {
   acceptStageBriefAction,
+  cancelStageRevisionSubmissionAction,
   completeProjectArchiveAction,
   createStageCommentAction,
   createStageRevisionAction,
@@ -1026,6 +1027,42 @@ async function completePreparedAttachmentUpload(input: {
 
   if (!completionResponse.ok) {
     throw new Error(completionPayload.error || "Unable to finalise the upload.");
+  }
+}
+
+async function cancelPreparedCommentUpload(input: {
+  commentId: string;
+  projectId: string;
+}) {
+  const response = await fetch("/api/project-assets/chat-comment-upload/cancel", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json()) as { error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Unable to cancel the upload.");
+  }
+}
+
+async function finalizePreparedCommentUpload(input: {
+  commentId: string;
+  projectId: string;
+}) {
+  const response = await fetch("/api/project-assets/chat-comment-upload/finalize", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json()) as { error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Unable to finalize the upload.");
   }
 }
 
@@ -2664,59 +2701,103 @@ export function ProjectChatWorkspace({
               }),
             );
 
-        const failedUploads = uploadResults.filter(
-          (result): result is PromiseRejectedResult => result.status === "rejected",
-        );
-        const successfulUploads = uploadResults
-          .flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
-          .map((result, index, allSuccessfulUploads) => {
-            const successfulSubmissionIndex = allSuccessfulUploads
-              .slice(0, index + 1)
-              .filter(
-                (item) => item.pendingFile.assetType === "STAGE_SUBMISSION",
-              ).length;
+            const failedUploads = uploadResults.filter(
+              (result): result is PromiseRejectedResult => result.status === "rejected",
+            );
+            const successfulUploads = uploadResults
+              .flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+              .map((result, index, allSuccessfulUploads) => {
+                const successfulSubmissionIndex = allSuccessfulUploads
+                  .slice(0, index + 1)
+                  .filter(
+                    (item) => item.pendingFile.assetType === "STAGE_SUBMISSION",
+                  ).length;
 
-            return {
-              ...result,
-              submissionNumber:
-                result.pendingFile.assetType === "STAGE_SUBMISSION"
-                  ? startingSubmissionNumber + successfulSubmissionIndex - 1
-                  : undefined,
-            };
-          });
+                return {
+                  ...result,
+                  submissionNumber:
+                    result.pendingFile.assetType === "STAGE_SUBMISSION"
+                      ? startingSubmissionNumber + successfulSubmissionIndex - 1
+                      : undefined,
+                };
+              });
 
-        if (failedUploads.length > 0) {
-          const message =
-            failedUploads.length === filesToUpload.length
-              ? "Comment saved, but all file uploads failed. Please try attaching them again."
-              : `Comment saved, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`;
-          setComposerError(message);
-          showErrorToast("Attachment upload failed.", message);
-        }
-
-        setIsSendingComment(false);
-
-        if (successfulUploads.length > 0) {
-          void Promise.allSettled(
-            successfulUploads.map((result) =>
-              completePreparedAttachmentUpload({
-                attachmentId: result.attachmentId,
+            if (failedUploads.length > 0) {
+              await cancelPreparedCommentUpload({
+                commentId: preparePayload.commentId,
                 projectId: project.id,
-                file: result.uploadedFile,
-                assetType: result.pendingFile.assetType ?? "COMMENT_ATTACHMENT",
-              }),
-            ),
-          ).then((completionResults) => {
+              }).catch(() => undefined);
+              setOptimisticComments((current) =>
+                current.filter((entry) => entry.id !== optimisticCommentId),
+              );
+              setDraft(body);
+              setSelectedMentionTokens(selectedMentionTokens);
+              setDraftSelectionStart(body.length);
+              setPendingCommentFiles(filesToUpload);
+              setIsSendingComment(false);
+
+              const message =
+                "Comment was not sent because one or more file uploads failed. Please try again.";
+              setComposerError(message);
+              showErrorToast("Attachment upload failed.", message);
+              return;
+            }
+
+            const completionResults = await Promise.allSettled(
+              successfulUploads.map((result) =>
+                completePreparedAttachmentUpload({
+                  attachmentId: result.attachmentId,
+                  projectId: project.id,
+                  file: result.uploadedFile,
+                  assetType: result.pendingFile.assetType ?? "COMMENT_ATTACHMENT",
+                }),
+              ),
+            );
             const failedCompletions = completionResults.filter(
               (result): result is PromiseRejectedResult => result.status === "rejected",
             );
 
             if (failedCompletions.length > 0) {
-              showErrorToast(
-                "Upload finalization failed.",
-                "The file reached storage, but the app could not finish saving it.",
+              await cancelPreparedCommentUpload({
+                commentId: preparePayload.commentId,
+                projectId: project.id,
+              }).catch(() => undefined);
+              setOptimisticComments((current) =>
+                current.filter((entry) => entry.id !== optimisticCommentId),
               );
+              setDraft(body);
+              setSelectedMentionTokens(selectedMentionTokens);
+              setDraftSelectionStart(body.length);
+              setPendingCommentFiles(filesToUpload);
+              setIsSendingComment(false);
+
+              const message =
+                "Comment was not sent because the upload could not be finalized. Please try again.";
+              setComposerError(message);
+              showErrorToast("Attachment upload failed.", message);
               return;
+            }
+
+            try {
+              await finalizePreparedCommentUpload({
+                commentId: preparePayload.commentId,
+                projectId: project.id,
+              });
+            } catch (error) {
+              await cancelPreparedCommentUpload({
+                commentId: preparePayload.commentId,
+                projectId: project.id,
+              }).catch(() => undefined);
+              setOptimisticComments((current) =>
+                current.filter((entry) => entry.id !== optimisticCommentId),
+              );
+              setDraft(body);
+              setSelectedMentionTokens(selectedMentionTokens);
+              setDraftSelectionStart(body.length);
+              setPendingCommentFiles(filesToUpload);
+              setIsSendingComment(false);
+
+              throw error;
             }
 
             setConfirmedComments((current) => [
@@ -2754,8 +2835,7 @@ export function ProjectChatWorkspace({
             setOptimisticComments((current) =>
               current.filter((entry) => entry.id !== optimisticCommentId),
             );
-          });
-        }
+            setIsSendingComment(false);
           } catch (error) {
             filesToUpload.forEach((pendingFile) => {
               updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
@@ -2772,6 +2852,14 @@ export function ProjectChatWorkspace({
 
             const message =
               error instanceof Error ? error.message : "Unable to send the comment right now.";
+            setOptimisticComments((current) =>
+              current.filter((entry) => entry.id !== optimisticCommentId),
+            );
+            setDraft(body);
+            setSelectedMentionTokens(selectedMentionTokens);
+            setDraftSelectionStart(body.length);
+            setPendingCommentFiles(filesToUpload);
+            setIsSendingComment(false);
             setComposerError(message);
             showErrorToast("Unable to send comment.", message);
           }
@@ -2992,12 +3080,19 @@ export function ProjectChatWorkspace({
       );
 
       if (failedUploads.length > 0) {
-        const message =
-          failedUploads.length === filesToUpload.length
-            ? "Revision created, but all file uploads failed. Please try attaching them again."
-            : `Revision created, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`;
-        setComposerError(message);
-        showErrorToast("Submit Work completed with upload issues.", message);
+        const cancelResult = await cancelStageRevisionSubmissionAction({
+          projectId: project.id,
+          stageId: activeStageId,
+          revisionId: revisionResult.revisionId,
+        });
+
+        if ("error" in cancelResult) {
+          throw new Error(cancelResult.error);
+        }
+
+        throw new Error(
+          "Revision was not created because one or more file uploads failed. Please try again.",
+        );
       }
 
       setConfirmedComments((current) => [

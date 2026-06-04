@@ -2,12 +2,7 @@ import { revalidateTag } from "next/cache";
 import { after, NextResponse } from "next/server";
 import { AttachmentAssetType } from "@prisma/client";
 
-import { getCurrentUser, getUserDisplayName } from "@/lib/auth";
-import {
-  notifyCommentAdded,
-  notifyCommentMentioned,
-  runNotificationTaskAfterResponse,
-} from "@/lib/notification-center";
+import { getCurrentUser } from "@/lib/auth";
 import {
   prepareStageCommentUploads,
   type PrepareStageCommentUploadsInput,
@@ -78,27 +73,6 @@ export async function POST(request: Request) {
   after(() => {
     revalidateTag(PROJECTS_CACHE_TAG, "max");
   });
-
-  runNotificationTaskAfterResponse("comment-added", () =>
-    notifyCommentAdded({
-      actorId: user.id,
-      actorName: getUserDisplayName(user),
-      projectId: payload.projectId!,
-      stageId: payload.stageId!,
-      commentId: result.commentId,
-      excludedRecipientUserIds: result.mentionedUserIds,
-    }),
-  );
-  runNotificationTaskAfterResponse("comment-mentioned", () =>
-    notifyCommentMentioned({
-      actorId: user.id,
-      actorName: getUserDisplayName(user),
-      projectId: payload.projectId!,
-      stageId: payload.stageId!,
-      commentId: result.commentId,
-      mentionedUserIds: result.mentionedUserIds,
-    }),
-  );
 
   return NextResponse.json(result);
 }

@@ -31,6 +31,7 @@ import {
   prepareCopyrightTransferRequest,
 } from "@/lib/project-completion";
 import {
+  cancelStageRevisionSubmission,
   createStageComment,
   createStageRevision,
   completeProjectStage,
@@ -156,6 +157,28 @@ export async function createStageRevisionAction(input: StageRevisionInput) {
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Unable to create a revision right now.",
+    };
+  }
+}
+
+export async function cancelStageRevisionSubmissionAction(input: {
+  projectId: string;
+  stageId: string;
+  revisionId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    await cancelStageRevisionSubmission(user, input);
+    revalidateProjectFlow();
+
+    return { success: true };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to cancel the revision right now.",
     };
   }
 }
