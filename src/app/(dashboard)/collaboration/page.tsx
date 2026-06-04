@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { UserRole } from "@prisma/client";
 
 import { CollaborationWorkspace } from "@/components/collaboration/collaboration-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -29,6 +30,12 @@ export default async function CollaborationPage() {
           hasPermission(user, "collaboration.manageModuleAccess")
         }
         canDeleteCollaborators={hasPermission(user, "collaboration.deleteGlobal")}
+        canManagePermissions={
+          user.role === UserRole.SUPER_ADMIN &&
+          hasPermission(user, "users.view") &&
+          hasPermission(user, "users.managePermissions") &&
+          hasPermission(user, "settings.managePermissions")
+        }
       />
     </DashboardLayout>
   );
