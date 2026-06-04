@@ -9,6 +9,8 @@ import {
   MAX_TRANSCRIPTION_BYTES,
   transcribeAudioWithOpenAI,
 } from "@/lib/ai/openai";
+import { AI_PERMISSION_ERROR, canUseChatAiTools } from "@/lib/ai/access";
+import { checkAiRateLimit } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -44,6 +46,17 @@ export async function POST(request: Request) {
     formData.get("targetLanguageCode")?.toString() ?? null,
     formData.get("targetLanguageName")?.toString() ?? null,
   );
+  const projectId = formData.get("projectId")?.toString() ?? null;
+  const stageId = formData.get("stageId")?.toString() ?? null;
+
+  const canUseAiTools = await canUseChatAiTools(user, {
+    projectId,
+    stageId,
+  });
+
+  if (!canUseAiTools) {
+    return NextResponse.json({ error: AI_PERMISSION_ERROR }, { status: 403 });
+  }
 
   if (!(audio instanceof File)) {
     return NextResponse.json({ error: "Recorded audio is missing." }, { status: 400 });
@@ -62,6 +75,23 @@ export async function POST(request: Request) {
 
   if (!targetLanguage) {
     return NextResponse.json({ error: "Choose a valid output language." }, { status: 400 });
+  }
+
+  const rateLimit = checkAiRateLimit({
+    key: `ai:transcribe:${user.id}`,
+    limit: 10,
+  });
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many AI requests. Please try again shortly." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(rateLimit.retryAfterSeconds),
+        },
+      },
+    );
   }
 
   try {

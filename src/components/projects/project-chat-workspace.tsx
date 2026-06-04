@@ -1622,6 +1622,8 @@ export function ProjectChatWorkspace({
           text: draft,
           targetLanguageCode: selectedOutputLanguage.code,
           targetLanguageName: selectedOutputLanguage.name,
+          projectId: project.id,
+          stageId: activeStage?.id ?? project.currentStageId ?? undefined,
         }),
       });
 
@@ -1680,6 +1682,8 @@ export function ProjectChatWorkspace({
       formData.append("audio", audioFile);
       formData.append("targetLanguageCode", selectedOutputLanguage.code);
       formData.append("targetLanguageName", selectedOutputLanguage.name);
+      formData.append("projectId", project.id);
+      formData.append("stageId", activeStage?.id ?? project.currentStageId ?? "");
 
       const response = await fetch("/api/ai/transcribe", {
         method: "POST",
