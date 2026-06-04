@@ -273,6 +273,7 @@ export function CalendarWorkspace({
   const visibleCollaborators = useMemo(
     () =>
       assignedCollaboratorRecords
+        .filter((collaborator) => collaborator.permissions.calendar !== "none")
         .sort((left, right) => {
           if (left.permissions.calendar === right.permissions.calendar) {
             return left.name.localeCompare(right.name);
@@ -298,9 +299,16 @@ export function CalendarWorkspace({
         }),
     [assignedCollaboratorRecords],
   );
+  const calendarAccessCollaboratorRecords = useMemo(
+    () =>
+      availableCollaboratorRecords.filter(
+        (collaborator) => collaborator.permissions.calendar !== "none",
+      ),
+    [availableCollaboratorRecords],
+  );
   const assignedCollaboratorIds = useMemo(
-    () => assignedCollaboratorRecords.map((collaborator) => collaborator.id),
-    [assignedCollaboratorRecords],
+    () => visibleCollaborators.map((collaborator) => collaborator.id),
+    [visibleCollaborators],
   );
   const activeFilterCount = useMemo(
     () => Object.values(filters).filter(Boolean).length,
@@ -337,7 +345,7 @@ export function CalendarWorkspace({
       type: "Internal",
       permissions: {
         project: "none",
-        calendar: "none",
+        calendar: "limited",
         library: "none",
         archive: "none",
       },
@@ -402,6 +410,13 @@ export function CalendarWorkspace({
     if (!collaboratorForm.name.trim() || !collaboratorForm.email.trim()) {
       setCollaboratorDialogError("Enter both collaborator name and email.");
       showErrorToast("Unable to save collaborator.", "Enter both collaborator name and email.");
+      return;
+    }
+
+    if (collaboratorForm.permissions.calendar === "none") {
+      const message = "Choose Limited or Full calendar access before adding this collaborator.";
+      setCollaboratorDialogError(message);
+      showErrorToast("Unable to add calendar collaborator.", message);
       return;
     }
 
@@ -1147,7 +1162,7 @@ export function CalendarWorkspace({
       />
       <CollaboratorPickerDialog
         isOpen={collaboratorPickerOpen}
-        collaborators={availableCollaboratorRecords}
+        collaborators={calendarAccessCollaboratorRecords}
         selectedIds={pickerSelectedCollaboratorIds}
         error={collaboratorPickerError}
         saving={collaboratorPickerSaving}

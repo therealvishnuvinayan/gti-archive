@@ -222,6 +222,13 @@ export async function getCollaborators() {
 async function listCalendarCollaborators() {
   const collaborators = await withPrismaRetry(() =>
     prisma.calendarCollaborator.findMany({
+      where: {
+        user: {
+          calendarAccess: {
+            not: PrismaCollaboratorAccess.NONE,
+          },
+        },
+      },
       orderBy: {
         createdAt: "asc",
       },
@@ -269,6 +276,9 @@ export async function updateCalendarCollaborators(
               in: normalizedIds,
             },
             role: UserRole.COLLABORATOR,
+            calendarAccess: {
+              not: PrismaCollaboratorAccess.NONE,
+            },
           },
           select: {
             id: true,
