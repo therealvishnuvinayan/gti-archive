@@ -131,6 +131,17 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     return { error: "User not found." };
   }
 
+  if (
+    existingUser.id === currentUser.id &&
+    existingUser.role === "SUPER_ADMIN" &&
+    input.role !== "SUPER_ADMIN"
+  ) {
+    return {
+      error:
+        "You cannot change your own Super Admin role. Ask another Super Admin to update your role.",
+    };
+  }
+
   if (existingUser.role === "SUPER_ADMIN" && input.role !== "SUPER_ADMIN") {
     const superAdminCount = await countSuperAdmins();
 

@@ -198,6 +198,7 @@ function EditUserModal({
   error,
   saving,
   isOpen,
+  roleLocked,
   onClose,
   onChange,
   onSave,
@@ -207,6 +208,7 @@ function EditUserModal({
   error?: string;
   saving: boolean;
   isOpen: boolean;
+  roleLocked: boolean;
   onClose: () => void;
   onChange: <K extends keyof UserEditForm>(field: K, value: UserEditForm[K]) => void;
   onSave: () => void;
@@ -265,6 +267,7 @@ function EditUserModal({
               <Select
                 value={form.role}
                 onValueChange={(value) => onChange("role", value as PermissionRole)}
+                disabled={roleLocked}
               >
                 <SelectTrigger className="h-[54px] rounded-[16px] border border-[#dce4dc] px-4 text-[16px] shadow-none">
                   <SelectValue />
@@ -277,6 +280,11 @@ function EditUserModal({
                   ))}
                 </SelectContent>
               </Select>
+              {roleLocked ? (
+                <p className="mt-2 text-[13px] leading-5 text-[#6f776f]">
+                  You cannot change your own Super Admin role.
+                </p>
+              ) : null}
             </label>
 
             <label className="block">
@@ -891,6 +899,8 @@ export function UsersWorkspace({
   const [isDrawerOpen, setDrawerOpen] = useState(false);
   const [isPermissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const isEditingOwnSuperAdmin =
+    editingUser?.id === currentUserId && editingUser.role === "SUPER_ADMIN";
 
   const filteredUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -1171,6 +1181,7 @@ export function UsersWorkspace({
         form={form}
         error={drawerError}
         saving={isPending}
+        roleLocked={isEditingOwnSuperAdmin}
         onClose={closeDrawer}
         onChange={handleFormChange}
         onSave={handleSave}
