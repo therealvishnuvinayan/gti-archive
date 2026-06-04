@@ -92,6 +92,7 @@ function getS3Client() {
   cachedClient = new S3Client({
     region: getRequiredEnv("AWS_REGION"),
     useAccelerateEndpoint: isS3TransferAccelerationEnabled(),
+    requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: getRequiredEnv("AWS_ACCESS_KEY_ID"),
       secretAccessKey: getRequiredEnv("AWS_SECRET_ACCESS_KEY"),

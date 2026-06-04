@@ -1,6 +1,7 @@
 import {
   AttachmentAssetType,
 } from "@prisma/client";
+import { after } from "next/server";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
@@ -54,6 +55,13 @@ export async function runNotificationTask(
   } catch (error) {
     console.error(`[notifications] ${label} failed`, error);
   }
+}
+
+export function runNotificationTaskAfterResponse(
+  label: string,
+  task: () => Promise<void>,
+) {
+  after(() => runNotificationTask(label, task));
 }
 
 export async function notifyProjectCreated(input: {

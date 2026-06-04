@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
+import { after } from "next/server";
 
 import { getUserDisplayName, requireUser } from "@/lib/auth";
 import {
@@ -22,6 +23,7 @@ import {
   notifyStageTransition,
   notifySubmissionWorkflowDecision,
   runNotificationTask,
+  runNotificationTaskAfterResponse,
 } from "@/lib/notification-center";
 import {
   configureProjectCompletionWorkflow,
@@ -73,6 +75,10 @@ function revalidateProjectFlow() {
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 }
 
+function revalidateProjectFlowAfterResponse() {
+  after(revalidateProjectFlow);
+}
+
 function revalidateArchiveFlow(projectId: string, categorySlug?: string) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/chat`);
@@ -117,9 +123,9 @@ export async function createStageCommentAction(input: StageCommentInput) {
 
   try {
     const comment = await createStageComment(user, input);
-    revalidateProjectFlow();
+    revalidateProjectFlowAfterResponse();
 
-    await runNotificationTask("comment-added", () =>
+    runNotificationTaskAfterResponse("comment-added", () =>
       notifyCommentAdded({
         actorId: user.id,
         actorName: getUserDisplayName(user),
@@ -131,7 +137,7 @@ export async function createStageCommentAction(input: StageCommentInput) {
         ),
       }),
     );
-    await runNotificationTask("comment-mentioned", () =>
+    runNotificationTaskAfterResponse("comment-mentioned", () =>
       notifyCommentMentioned({
         actorId: user.id,
         actorName: getUserDisplayName(user),

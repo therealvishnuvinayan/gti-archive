@@ -5,6 +5,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -14,6 +15,9 @@ import type {
   NotificationRecord,
 } from "@/lib/notifications";
 import { showSuccessToast } from "@/lib/toast";
+
+const NOTIFICATION_REFRESH_INTERVAL_MS = 120_000;
+const NOTIFICATION_FOCUS_REFRESH_STALE_MS = 60_000;
 
 type NotificationCenterContextValue = {
   recentNotifications: NotificationRecord[];
@@ -114,14 +118,29 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const refreshPromiseRef = useRef<Promise<void> | null>(null);
+  const lastRefreshAtRef = useRef(0);
 
   const refreshRecent = useCallback(async () => {
-    const payload = await fetchRecentNotifications();
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current;
+    }
 
-    setRecentNotifications(payload.notifications);
-    setUnreadCount(payload.unreadCount);
-    setError(null);
-    setIsLoading(false);
+    const refreshPromise = fetchRecentNotifications()
+      .then((payload) => {
+        setRecentNotifications(payload.notifications);
+        setUnreadCount(payload.unreadCount);
+        setError(null);
+        setIsLoading(false);
+        lastRefreshAtRef.current = Date.now();
+      })
+      .finally(() => {
+        refreshPromiseRef.current = null;
+      });
+
+    refreshPromiseRef.current = refreshPromise;
+
+    return refreshPromise;
   }, []);
 
   const setNotificationReadState = useCallback(async (notificationId: string, read: boolean) => {
@@ -167,13 +186,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   useEffect(() => {
     const controller = new AbortController();
 
-    fetchRecentNotifications(controller.signal)
-      .then((payload) => {
-        setRecentNotifications(payload.notifications);
-        setUnreadCount(payload.unreadCount);
-        setError(null);
-        setIsLoading(false);
-      })
+    refreshRecent()
       .catch((nextError) => {
         if (controller.signal.aborted) {
           return;
@@ -199,9 +212,13 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
             : "Unable to refresh notifications right now.",
         );
       });
-    }, 30_000);
+    }, NOTIFICATION_REFRESH_INTERVAL_MS);
 
     function handleFocus() {
+      if (Date.now() - lastRefreshAtRef.current < NOTIFICATION_FOCUS_REFRESH_STALE_MS) {
+        return;
+      }
+
       refreshRecent().catch((nextError) => {
         setError(
           nextError instanceof Error

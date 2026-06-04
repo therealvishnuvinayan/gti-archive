@@ -4,6 +4,7 @@ import {
   type CollaboratorType as PrismaCollaboratorType,
   type User,
 } from "@prisma/client";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import { resolveCollaboratorType } from "../project-collaborator-participant-types";
@@ -56,6 +57,15 @@ type PermissionRow = {
   permissionKey: string;
   enabled: boolean;
 };
+
+export const PERMISSION_PROFILE_CACHE_TAG = "permission-profiles";
+
+function getPermissionProfileCacheTag(
+  profileType: PermissionProfileType,
+  profileKey: string,
+) {
+  return `permission-profile:${profileType}:${profileKey}`;
+}
 
 function isPermissionKey(value: string): value is PermissionKey {
   return allPermissionKeys.includes(value as PermissionKey);
@@ -190,22 +200,33 @@ async function ensurePermissionDefinitionsExist() {
 }
 
 const getCachedRoleProfile = cache(async (role: PermissionRole) => {
-  try {
-    const rows = await withPrismaRetry(() =>
-      prisma.rolePermission.findMany({
-        where: {
-          role,
-          permissionKey: {
-            in: allPermissionKeys,
+  const getCachedRows = unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.rolePermission.findMany({
+          where: {
+            role,
+            permissionKey: {
+              in: allPermissionKeys,
+            },
           },
-        },
-        select: {
-          permissionKey: true,
-          enabled: true,
-        },
-      }),
-    );
+          select: {
+            permissionKey: true,
+            enabled: true,
+          },
+        }),
+      ),
+    ["permission-profile", "role", role],
+    {
+      tags: [
+        PERMISSION_PROFILE_CACHE_TAG,
+        getPermissionProfileCacheTag("role", role),
+      ],
+    },
+  );
 
+  try {
+    const rows = await getCachedRows();
     return mergeProfileRows("role", role, rows);
   } catch (error) {
     if (isPermissionStorageUnavailable(error)) {
@@ -218,22 +239,33 @@ const getCachedRoleProfile = cache(async (role: PermissionRole) => {
 
 const getCachedCollaboratorTypeProfile = cache(
   async (collaboratorType: CollaboratorTypeValue) => {
-    try {
-      const rows = await withPrismaRetry(() =>
-        prisma.collaboratorTypePermission.findMany({
-          where: {
-            collaboratorType: collaboratorType as PrismaCollaboratorType,
-            permissionKey: {
-              in: allPermissionKeys,
+    const getCachedRows = unstable_cache(
+      async () =>
+        withPrismaRetry(() =>
+          prisma.collaboratorTypePermission.findMany({
+            where: {
+              collaboratorType: collaboratorType as PrismaCollaboratorType,
+              permissionKey: {
+                in: allPermissionKeys,
+              },
             },
-          },
-          select: {
-            permissionKey: true,
-            enabled: true,
-          },
-        }),
-      );
+            select: {
+              permissionKey: true,
+              enabled: true,
+            },
+          }),
+        ),
+      ["permission-profile", "collaboratorType", collaboratorType],
+      {
+        tags: [
+          PERMISSION_PROFILE_CACHE_TAG,
+          getPermissionProfileCacheTag("collaboratorType", collaboratorType),
+        ],
+      },
+    );
 
+    try {
+      const rows = await getCachedRows();
       return mergeProfileRows("collaboratorType", collaboratorType, rows);
     } catch (error) {
       if (isPermissionStorageUnavailable(error)) {
@@ -246,22 +278,33 @@ const getCachedCollaboratorTypeProfile = cache(
 );
 
 const getCachedAccessPresetProfile = cache(async (accessPreset: ModuleAccessValue) => {
-  try {
-    const rows = await withPrismaRetry(() =>
-      prisma.accessPresetPermission.findMany({
-        where: {
-          accessPreset,
-          permissionKey: {
-            in: allPermissionKeys,
+  const getCachedRows = unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.accessPresetPermission.findMany({
+          where: {
+            accessPreset,
+            permissionKey: {
+              in: allPermissionKeys,
+            },
           },
-        },
-        select: {
-          permissionKey: true,
-          enabled: true,
-        },
-      }),
-    );
+          select: {
+            permissionKey: true,
+            enabled: true,
+          },
+        }),
+      ),
+    ["permission-profile", "accessPreset", accessPreset],
+    {
+      tags: [
+        PERMISSION_PROFILE_CACHE_TAG,
+        getPermissionProfileCacheTag("accessPreset", accessPreset),
+      ],
+    },
+  );
 
+  try {
+    const rows = await getCachedRows();
     return mergeProfileRows("accessPreset", accessPreset, rows);
   } catch (error) {
     if (isPermissionStorageUnavailable(error)) {
@@ -578,6 +621,8 @@ export async function savePermissionProfile(input: {
       }
     }),
   );
+  revalidateTag(PERMISSION_PROFILE_CACHE_TAG, "max");
+  revalidateTag(getPermissionProfileCacheTag(profileType, profileKey), "max");
 
   return {
     profileType,

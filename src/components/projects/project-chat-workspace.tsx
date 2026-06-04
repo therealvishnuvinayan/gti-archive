@@ -10,6 +10,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { flushSync } from "react-dom";
 import { useDropzone } from "react-dropzone";
 import {
   Download,
@@ -107,7 +108,7 @@ type PendingFile = {
   assetType?: UploadAssetType;
 };
 
-type UploadProgressState = "pending" | "uploading" | "uploaded" | "error";
+type UploadProgressState = "pending" | "preparing" | "uploading" | "uploaded" | "error";
 
 type DisplayAttachmentRecord = ProjectAttachmentRecord & {
   uploadState?: UploadProgressState;
@@ -164,6 +165,11 @@ const submissionDropzoneAccept = {
   "image/jpeg": [".jpg", ".jpeg"],
   "image/webp": [".webp"],
 };
+const compressibleImageExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
+const compressibleImageMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const IMAGE_UPLOAD_MAX_DIMENSION = 1920;
+const IMAGE_UPLOAD_QUALITY = 0.82;
+let webpSupportCache: boolean | null = null;
 
 const fileTypeStyles: Record<string, string> = {
   AI: "bg-[#2d1207] text-[#ff9d12]",
@@ -416,6 +422,174 @@ function formatLocalFileSize(fileSize: number) {
   return `${fileSize} B`;
 }
 
+function getUploadNow() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function isCompressibleImageFile(file: File) {
+  const extension = getLocalFileExtension(file.name);
+  return (
+    compressibleImageMimeTypes.has(file.type.toLowerCase()) ||
+    compressibleImageExtensions.has(extension)
+  );
+}
+
+function supportsCanvasMimeType(mimeType: string) {
+  if (mimeType !== "image/webp") {
+    return true;
+  }
+
+  if (webpSupportCache !== null) {
+    return webpSupportCache;
+  }
+
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    webpSupportCache = canvas.toDataURL("image/webp").startsWith("data:image/webp");
+  } catch {
+    webpSupportCache = false;
+  }
+
+  return webpSupportCache;
+}
+
+function getImageCompressionMimeType() {
+  return supportsCanvasMimeType("image/webp") ? "image/webp" : "image/jpeg";
+}
+
+function getImageCompressionFileName(fileName: string, mimeType: string) {
+  const extension = mimeType === "image/webp" ? "webp" : "jpg";
+  const trimmedName = fileName.trim();
+  const baseName = trimmedName
+    ? trimmedName.replace(/\.[^/.]+$/, "")
+    : `image-${Date.now()}`;
+
+  return `${baseName || `image-${Date.now()}`}.${extension}`;
+}
+
+function loadImageForCompression(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(imageUrl);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(imageUrl);
+      reject(new Error("Unable to read image."));
+    };
+
+    image.src = imageUrl;
+  });
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  mimeType: string,
+  quality: number,
+) {
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, mimeType, quality);
+  });
+}
+
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+async function prepareImageFileForUpload(file: File) {
+  if (!isCompressibleImageFile(file)) {
+    return file;
+  }
+
+  const startedAt = getUploadNow();
+
+  try {
+    const image = await loadImageForCompression(file);
+    const naturalWidth = image.naturalWidth || image.width;
+    const naturalHeight = image.naturalHeight || image.height;
+
+    if (!naturalWidth || !naturalHeight) {
+      throw new Error("Image dimensions are unavailable.");
+    }
+
+    const scale = Math.min(
+      1,
+      IMAGE_UPLOAD_MAX_DIMENSION / Math.max(naturalWidth, naturalHeight),
+    );
+    const width = Math.max(1, Math.round(naturalWidth * scale));
+    const height = Math.max(1, Math.round(naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    const outputMimeType = getImageCompressionMimeType();
+
+    if (!context) {
+      throw new Error("Image compression is unavailable.");
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+
+    if (outputMimeType === "image/jpeg") {
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, width, height);
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    const compressedBlob = await canvasToBlob(
+      canvas,
+      outputMimeType,
+      IMAGE_UPLOAD_QUALITY,
+    );
+
+    if (!compressedBlob || compressedBlob.size <= 0) {
+      throw new Error("Image compression did not produce a file.");
+    }
+
+    const savedPercent = ((file.size - compressedBlob.size) / file.size) * 100;
+    const useCompressedFile = compressedBlob.size < file.size;
+
+    console.info("upload:compress-image", {
+      originalSize: file.size,
+      compressedSize: compressedBlob.size,
+      savedPercent: Number(Math.max(0, savedPercent).toFixed(1)),
+      durationMs: Math.round(getUploadNow() - startedAt),
+      outputMimeType,
+      usedCompressedFile: useCompressedFile,
+    });
+
+    if (!useCompressedFile) {
+      return file;
+    }
+
+    return new File([compressedBlob], getImageCompressionFileName(file.name, outputMimeType), {
+      type: outputMimeType,
+      lastModified: file.lastModified,
+    });
+  } catch {
+    console.info("upload:compress-image", {
+      originalSize: file.size,
+      compressedSize: file.size,
+      savedPercent: 0,
+      durationMs: Math.round(getUploadNow() - startedAt),
+      usedCompressedFile: false,
+      error: "compression-failed",
+    });
+
+    return file;
+  }
+}
+
 function getArchiveFileNameError(
   originalFileName: string,
   nextFileName: string,
@@ -459,6 +633,17 @@ function uploadFileToS3WithProgress(input: {
 }) {
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
+    const startedAt = getUploadNow();
+
+    function logS3Put(status: number | string) {
+      console.info("upload:s3-put", {
+        status,
+        durationMs: Math.round(getUploadNow() - startedAt),
+        fileSize: input.file.size,
+        mimeType: input.file.type || "application/octet-stream",
+        assetType: input.assetType,
+      });
+    }
 
     request.open("PUT", input.uploadUrl, true);
     request.setRequestHeader(
@@ -476,6 +661,8 @@ function uploadFileToS3WithProgress(input: {
     });
 
     request.addEventListener("load", () => {
+      logS3Put(request.status);
+
       if (request.status >= 200 && request.status < 300) {
         input.onProgress?.(100);
         resolve();
@@ -486,15 +673,25 @@ function uploadFileToS3WithProgress(input: {
     });
 
     request.addEventListener("error", () => {
+      logS3Put("network-error");
       reject(new Error("Upload failed due to a network error."));
     });
 
     request.addEventListener("abort", () => {
+      logS3Put("aborted");
       reject(new Error("Upload was cancelled."));
     });
 
     request.send(input.file);
   });
+}
+
+function logUploadHost(uploadUrl: string) {
+  try {
+    console.info("upload:s3-host", new URL(uploadUrl).host);
+  } catch {
+    // Keep upload diagnostics best-effort only.
+  }
 }
 
 function getRevisionEntryId(
@@ -582,7 +779,9 @@ function AttachmentHistoryList({
                           ? "Failed"
                           : attachment.uploadState === "uploaded"
                             ? "Uploaded"
-                            : "Uploading"}
+                            : attachment.uploadState === "preparing"
+                              ? "Preparing"
+                              : "Uploading"}
                       </span>
                     ) : null}
                     {attachment.isSubmission ? (
@@ -615,11 +814,19 @@ function AttachmentHistoryList({
                       ? attachment.uploadState === "error"
                         ? attachment.errorMessage || "Upload failed."
                         : attachment.uploadState === "uploaded"
-                          ? `${attachment.fileSizeLabel} · Uploaded · Refreshing chat…`
-                          : `${attachment.fileSizeLabel} · ${attachment.progress ?? 0}% uploaded`
+                          ? `${attachment.fileSizeLabel} · Uploaded`
+                          : attachment.uploadState === "preparing"
+                            ? "Preparing image..."
+                            : attachment.uploadState === "pending"
+                              ? `${attachment.fileSizeLabel} · Waiting to upload`
+                              : `${attachment.fileSizeLabel} · ${attachment.progress ?? 0}% uploaded`
                       : `${attachment.fileSizeLabel} · Uploaded by ${attachment.uploadedBy}`}
                   </p>
-                  <p className="text-[10px] leading-4 text-[#89928b]">{attachment.uploadedAt}</p>
+                  {!attachment.uploadState ? (
+                    <p className="text-[10px] leading-4 text-[#89928b]">
+                      {attachment.uploadedAt}
+                    </p>
+                  ) : null}
                   {attachment.uploadState && attachment.uploadState !== "error" ? (
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#edf2ed]">
                       <div
@@ -682,7 +889,19 @@ async function uploadAssetFile(input: {
   fileIndex?: number;
   fileCount?: number;
   onProgress?: (progress: number) => void;
-}): Promise<{ attachmentId: string }> {
+  onPrepareStart?: () => void;
+  onUploadStart?: (file: File) => void;
+}): Promise<{ attachmentId: string; uploadedFile: File }> {
+  let uploadFile = input.file;
+
+  if (isCompressibleImageFile(input.file)) {
+    input.onPrepareStart?.();
+    uploadFile = await prepareImageFileForUpload(input.file);
+  }
+
+  input.onUploadStart?.(uploadFile);
+
+  const uploadUrlStartedAt = getUploadNow();
   const requestUploadResponse = await fetch("/api/project-assets/upload-url", {
     method: "POST",
     headers: {
@@ -693,11 +912,18 @@ async function uploadAssetFile(input: {
       stageId: input.stageId,
       revisionId: input.revisionId ?? null,
       commentId: input.commentId ?? null,
-      originalFileName: input.file.name,
-      mimeType: input.file.type || "application/octet-stream",
-      fileSize: input.file.size,
+      originalFileName: uploadFile.name,
+      mimeType: uploadFile.type || "application/octet-stream",
+      fileSize: uploadFile.size,
       assetType: input.assetType,
     }),
+  });
+  console.info("upload:upload-url", {
+    status: requestUploadResponse.status,
+    durationMs: Math.round(getUploadNow() - uploadUrlStartedAt),
+    fileSize: uploadFile.size,
+    mimeType: uploadFile.type || "application/octet-stream",
+    assetType: input.assetType,
   });
 
   const uploadPayload = (await requestUploadResponse.json()) as {
@@ -710,16 +936,19 @@ async function uploadAssetFile(input: {
     throw new Error(uploadPayload.error || "Unable to prepare the upload.");
   }
 
+  logUploadHost(uploadPayload.uploadUrl);
+
   try {
     await uploadFileToS3WithProgress({
       uploadUrl: uploadPayload.uploadUrl,
-      file: input.file,
+      file: uploadFile,
       fileIndex: input.fileIndex,
       fileCount: input.fileCount,
       assetType: input.assetType,
       onProgress: input.onProgress,
     });
 
+    const completionStartedAt = getUploadNow();
     const completionResponse = await fetch("/api/project-assets/complete", {
       method: "POST",
       headers: {
@@ -730,6 +959,13 @@ async function uploadAssetFile(input: {
         projectId: input.projectId,
       }),
     });
+    console.info("upload:complete", {
+      status: completionResponse.status,
+      durationMs: Math.round(getUploadNow() - completionStartedAt),
+      fileSize: uploadFile.size,
+      mimeType: uploadFile.type || "application/octet-stream",
+      assetType: input.assetType,
+    });
 
     const completionPayload = (await completionResponse.json()) as { error?: string };
 
@@ -739,6 +975,7 @@ async function uploadAssetFile(input: {
 
     return {
       attachmentId: uploadPayload.attachmentId,
+      uploadedFile: uploadFile,
     };
   } catch (error) {
     await fetch("/api/project-assets/complete", {
@@ -756,6 +993,61 @@ async function uploadAssetFile(input: {
     throw error;
   }
 }
+
+async function completePreparedAttachmentUpload(input: {
+  attachmentId: string;
+  projectId: string;
+  file: File;
+  assetType: UploadAssetType;
+}) {
+  const completionStartedAt = getUploadNow();
+  const completionResponse = await fetch(
+    "/api/project-assets/chat-comment-upload/complete",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        attachmentId: input.attachmentId,
+        projectId: input.projectId,
+      }),
+    },
+  );
+  console.info("upload:complete", {
+    status: completionResponse.status,
+    durationMs: Math.round(getUploadNow() - completionStartedAt),
+    fileSize: input.file.size,
+    mimeType: input.file.type || "application/octet-stream",
+    assetType: input.assetType,
+  });
+
+  const completionPayload = (await completionResponse.json()) as { error?: string };
+
+  if (!completionResponse.ok) {
+    throw new Error(completionPayload.error || "Unable to finalise the upload.");
+  }
+}
+
+type PreparedPendingUpload = {
+  pendingFile: PendingFile;
+  uploadFile: File;
+};
+
+type ChatCommentUploadPrepareResponse =
+  | { error?: string }
+  | {
+      commentId: string;
+      revisionId: string | null;
+      mentionedUserIds: string[];
+      uploads: Array<{
+        clientId?: string;
+        attachmentId: string;
+        fileName: string;
+        uploadUrl: string;
+        storageKey: string;
+      }>;
+    };
 
 export function ProjectChatWorkspace({
   project,
@@ -897,7 +1189,9 @@ export function ProjectChatWorkspace({
         return (
           entry.attachments?.some(
             (attachment: DisplayAttachmentRecord) =>
-              attachment.uploadState === "pending" || attachment.uploadState === "uploading",
+              attachment.uploadState === "pending" ||
+              attachment.uploadState === "preparing" ||
+              attachment.uploadState === "uploading",
           ) ?? false
         );
       }),
@@ -2148,6 +2442,39 @@ export function ProjectChatWorkspace({
     });
   }
 
+  async function preparePendingUploadFile(
+    optimisticCommentId: string,
+    pendingFile: PendingFile,
+  ): Promise<PreparedPendingUpload> {
+    let uploadFile = pendingFile.file;
+
+    if (isCompressibleImageFile(pendingFile.file)) {
+      updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+        ...attachment,
+        uploadState: "preparing",
+        progress: 0,
+        uploadedAt: "Preparing image…",
+      }));
+      uploadFile = await prepareImageFileForUpload(pendingFile.file);
+    }
+
+    updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+      ...attachment,
+      originalFileName: uploadFile.name,
+      fileTypeLabel: getLocalFileTypeLabel(uploadFile.name),
+      mimeType: uploadFile.type || "application/octet-stream",
+      fileSizeLabel: formatLocalFileSize(uploadFile.size),
+      uploadState: "uploading",
+      progress: 0,
+      uploadedAt: "Uploading…",
+    }));
+
+    return {
+      pendingFile,
+      uploadFile,
+    };
+  }
+
   async function handleSendComment() {
     const body = draft.trim();
     const activeStageId = activeStage?.id;
@@ -2177,43 +2504,287 @@ export function ProjectChatWorkspace({
           !("uploadState" in attachment) || attachment.uploadState === "uploaded",
       ).length + 1;
 
-    setOptimisticComments((current) => [
-      {
-        id: optimisticCommentId,
-        kind: "comment",
-        author: currentUserDisplayName,
-        role: currentUserRoleLabel,
-        body: body || "Attachment uploaded.",
-        mentions: selectedMentionTokens.filter((mention) =>
-          mentionedUserIds.includes(mention.userId),
-        ),
-        createdAt: "Uploading…",
-        isOptimistic: true,
-        attachments: filesToUpload.map((pendingFile) => ({
-          id: pendingFile.id,
-          isSubmission: pendingFile.assetType === "STAGE_SUBMISSION",
-          originalFileName: pendingFile.file.name,
-          fileTypeLabel: getLocalFileTypeLabel(pendingFile.file.name),
-          mimeType: pendingFile.file.type || "application/octet-stream",
-          fileSizeLabel: formatLocalFileSize(pendingFile.file.size),
-          uploadedBy: currentUserDisplayName,
-          uploadedAt: "Uploading…",
-          previewPath: "",
-          downloadPath: "",
-          isFavoritedByCurrentUser: false,
-          uploadState: "pending",
-          progress: 0,
-        })),
-      },
-      ...current,
-    ]);
+    const optimisticComment: DisplayChatEntry = {
+      id: optimisticCommentId,
+      kind: "comment",
+      author: currentUserDisplayName,
+      role: currentUserRoleLabel,
+      body: body || "Attachment uploaded.",
+      mentions: selectedMentionTokens.filter((mention) =>
+        mentionedUserIds.includes(mention.userId),
+      ),
+      createdAt: "Uploading…",
+      isOptimistic: true,
+      attachments: filesToUpload.map((pendingFile) => ({
+        id: pendingFile.id,
+        isSubmission: pendingFile.assetType === "STAGE_SUBMISSION",
+        originalFileName: pendingFile.file.name,
+        fileTypeLabel: getLocalFileTypeLabel(pendingFile.file.name),
+        mimeType: pendingFile.file.type || "application/octet-stream",
+        fileSizeLabel: formatLocalFileSize(pendingFile.file.size),
+        uploadedBy: currentUserDisplayName,
+        uploadedAt: "Uploading…",
+        previewPath: "",
+        downloadPath: "",
+        isFavoritedByCurrentUser: false,
+        uploadState: "pending",
+        progress: 0,
+      })),
+    };
+
+    if (filesToUpload.length > 0) {
+      flushSync(() => {
+        setOptimisticComments((current) => [optimisticComment, ...current]);
+        setDraft("");
+        setSelectedMentionTokens([]);
+        setDraftSelectionStart(0);
+        setPendingCommentFiles([]);
+        setIsSendingComment(false);
+      });
+    } else {
+      setOptimisticComments((current) => [optimisticComment, ...current]);
+    }
 
     try {
+      if (filesToUpload.length > 0) {
+        const uploadMentionTokens = selectedMentionTokens.filter((mention) =>
+          mentionedUserIds.includes(mention.userId),
+        );
+
+        void (async () => {
+          await waitForNextPaint();
+
+          try {
+            const preparedFiles = await Promise.all(
+              filesToUpload.map((pendingFile) =>
+                preparePendingUploadFile(optimisticCommentId, pendingFile),
+              ),
+            );
+            const prepareStartedAt = getUploadNow();
+            const prepareResponse = await fetch("/api/project-assets/chat-comment-upload", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                projectId: project.id,
+                stageId: activeStageId,
+                body,
+                allowEmptyBody: true,
+                mentionedUserIds,
+                files: preparedFiles.map(({ pendingFile, uploadFile }) => ({
+                  clientId: pendingFile.id,
+                  originalFileName: uploadFile.name,
+                  mimeType: uploadFile.type || "application/octet-stream",
+                  fileSize: uploadFile.size,
+                  assetType: pendingFile.assetType ?? "COMMENT_ATTACHMENT",
+                })),
+              }),
+            });
+            console.info("upload:chat-comment-upload", {
+              status: prepareResponse.status,
+              durationMs: Math.round(getUploadNow() - prepareStartedAt),
+              fileCount: preparedFiles.length,
+            });
+
+            const preparePayload =
+              (await prepareResponse.json()) as ChatCommentUploadPrepareResponse;
+
+            if (
+              !prepareResponse.ok ||
+              "error" in preparePayload ||
+              !("commentId" in preparePayload)
+            ) {
+              throw new Error(
+                "error" in preparePayload && preparePayload.error
+                  ? preparePayload.error
+                  : "Unable to prepare the upload.",
+              );
+            }
+
+            updateOptimisticComment(optimisticCommentId, (entry) => ({
+              ...entry,
+              serverEntryId: preparePayload.commentId,
+            }));
+
+            const uploadByClientId = new Map(
+              preparePayload.uploads.map((upload) => [upload.clientId, upload]),
+            );
+            const uploadResults = await Promise.allSettled(
+              preparedFiles.map(({ pendingFile, uploadFile }, index) => {
+                const upload = uploadByClientId.get(pendingFile.id);
+
+                if (!upload?.attachmentId || !upload.uploadUrl) {
+                  return Promise.reject(new Error("Upload target was not prepared."));
+                }
+
+                logUploadHost(upload.uploadUrl);
+
+                return uploadFileToS3WithProgress({
+                  uploadUrl: upload.uploadUrl,
+                  file: uploadFile,
+                  fileIndex: index + 1,
+                  fileCount: preparedFiles.length,
+                  assetType: pendingFile.assetType ?? "COMMENT_ATTACHMENT",
+                  onProgress: (progress) => {
+                    updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+                      ...attachment,
+                      uploadState: "uploading",
+                      progress,
+                    }));
+                  },
+                })
+                  .then(() => {
+                    updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+                      ...attachment,
+                      uploadState: "uploaded",
+                      progress: 100,
+                      uploadedAt: "Uploaded",
+                    }));
+
+                    return {
+                      pendingFile,
+                      attachmentId: upload.attachmentId,
+                      uploadedFile: uploadFile,
+                    };
+                  })
+                  .catch((error) => {
+                    updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+                      ...attachment,
+                      uploadState: "error",
+                      progress: attachment.progress ?? 0,
+                      uploadedAt: "Upload failed",
+                      errorMessage:
+                        error instanceof Error
+                          ? error.message
+                          : "Unable to upload this file right now.",
+                    }));
+                    throw error;
+                  });
+              }),
+            );
+
+        const failedUploads = uploadResults.filter(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
+        );
+        const successfulUploads = uploadResults
+          .flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+          .map((result, index, allSuccessfulUploads) => {
+            const successfulSubmissionIndex = allSuccessfulUploads
+              .slice(0, index + 1)
+              .filter(
+                (item) => item.pendingFile.assetType === "STAGE_SUBMISSION",
+              ).length;
+
+            return {
+              ...result,
+              submissionNumber:
+                result.pendingFile.assetType === "STAGE_SUBMISSION"
+                  ? startingSubmissionNumber + successfulSubmissionIndex - 1
+                  : undefined,
+            };
+          });
+
+        if (failedUploads.length > 0) {
+          const message =
+            failedUploads.length === filesToUpload.length
+              ? "Comment saved, but all file uploads failed. Please try attaching them again."
+              : `Comment saved, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`;
+          setComposerError(message);
+          showErrorToast("Attachment upload failed.", message);
+        }
+
+        setIsSendingComment(false);
+
+        if (successfulUploads.length > 0) {
+          void Promise.allSettled(
+            successfulUploads.map((result) =>
+              completePreparedAttachmentUpload({
+                attachmentId: result.attachmentId,
+                projectId: project.id,
+                file: result.uploadedFile,
+                assetType: result.pendingFile.assetType ?? "COMMENT_ATTACHMENT",
+              }),
+            ),
+          ).then((completionResults) => {
+            const failedCompletions = completionResults.filter(
+              (result): result is PromiseRejectedResult => result.status === "rejected",
+            );
+
+            if (failedCompletions.length > 0) {
+              showErrorToast(
+                "Upload finalization failed.",
+                "The file reached storage, but the app could not finish saving it.",
+              );
+              return;
+            }
+
+            setConfirmedComments((current) => [
+              {
+                id: `confirmed-comment-${preparePayload.commentId}`,
+                serverEntryId: preparePayload.commentId,
+                revisionId: preparePayload.revisionId ?? undefined,
+                kind: "comment",
+                author: currentUserDisplayName,
+                role: currentUserRoleLabel,
+                body: body || "Attachment uploaded.",
+                mentions: uploadMentionTokens,
+                createdAt: "Just now",
+                attachments: successfulUploads.map((result) => ({
+                  id: result.attachmentId,
+                  isSubmission: result.pendingFile.assetType === "STAGE_SUBMISSION",
+                  submissionNumber: result.submissionNumber,
+                  originalFileName: result.uploadedFile.name,
+                  fileTypeLabel: getLocalFileTypeLabel(result.uploadedFile.name),
+                  mimeType: result.uploadedFile.type || "application/octet-stream",
+                  fileSizeLabel: formatLocalFileSize(result.uploadedFile.size),
+                  uploadedBy: currentUserDisplayName,
+                  uploadedAt: "Just now",
+                  previewPath: `/api/project-assets/${result.attachmentId}/preview`,
+                  downloadPath: `/api/project-assets/${result.attachmentId}/download`,
+                  isFavoritedByCurrentUser: false,
+                  submissionReviewStatus:
+                    result.pendingFile.assetType === "STAGE_SUBMISSION"
+                      ? "PENDING_REVIEW"
+                      : null,
+                })),
+              },
+              ...current,
+            ]);
+            setOptimisticComments((current) =>
+              current.filter((entry) => entry.id !== optimisticCommentId),
+            );
+          });
+        }
+          } catch (error) {
+            filesToUpload.forEach((pendingFile) => {
+              updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                uploadState: "error",
+                progress: attachment.progress ?? 0,
+                uploadedAt: "Upload failed",
+                errorMessage:
+                  error instanceof Error
+                    ? error.message
+                    : "Unable to upload this file right now.",
+              }));
+            });
+
+            const message =
+              error instanceof Error ? error.message : "Unable to send the comment right now.";
+            setComposerError(message);
+            showErrorToast("Unable to send comment.", message);
+          }
+        })();
+
+        return;
+      }
+
       const commentResult = await createStageCommentAction({
         projectId: project.id,
         stageId: activeStageId,
         body,
-        allowEmptyBody: pendingCommentFiles.length > 0,
+        allowEmptyBody: false,
         mentionedUserIds,
       });
 
@@ -2231,96 +2802,6 @@ export function ProjectChatWorkspace({
       setDraftSelectionStart(0);
       setPendingCommentFiles([]);
 
-      const uploadResults = await Promise.allSettled(
-        filesToUpload.map((pendingFile, index) => {
-          updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
-            ...attachment,
-            uploadState: "uploading",
-            progress: 0,
-            uploadedAt: "Uploading…",
-          }));
-
-          return uploadAssetFile({
-            file: pendingFile.file,
-            projectId: project.id,
-            stageId: activeStageId,
-            revisionId: commentResult.revisionId,
-            commentId: commentResult.commentId,
-            assetType: pendingFile.assetType ?? "COMMENT_ATTACHMENT",
-            fileIndex: index + 1,
-            fileCount: filesToUpload.length,
-            onProgress: (progress) => {
-              updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
-                ...attachment,
-                uploadState: "uploading",
-                progress,
-              }));
-            },
-          })
-            .then((uploadResult) => {
-              updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
-                ...attachment,
-                uploadState: "uploaded",
-                progress: 100,
-                uploadedAt: "Uploaded. Refreshing…",
-              }));
-              return uploadResult;
-            })
-            .catch((error) => {
-              updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
-                ...attachment,
-                uploadState: "error",
-                progress: attachment.progress ?? 0,
-                uploadedAt: "Upload failed",
-                errorMessage:
-                  error instanceof Error
-                    ? error.message
-                    : "Unable to upload this file right now.",
-              }));
-              throw error;
-            });
-        }),
-      );
-
-      const failedUploads = uploadResults.filter(
-        (result): result is PromiseRejectedResult => result.status === "rejected",
-      );
-      const successfulUploads = uploadResults
-        .flatMap((result, index) =>
-          result.status === "fulfilled"
-            ? [
-                {
-                  pendingFile: filesToUpload[index],
-                  attachmentId: result.value.attachmentId,
-                },
-              ]
-            : [],
-        )
-        .map((result, index, allSuccessfulUploads) => {
-          const successfulSubmissionIndex = allSuccessfulUploads
-            .slice(0, index + 1)
-            .filter(
-              (item) => item.pendingFile.assetType === "STAGE_SUBMISSION",
-            ).length;
-
-          return {
-            ...result,
-            submissionNumber:
-              result.pendingFile.assetType === "STAGE_SUBMISSION"
-                ? startingSubmissionNumber + successfulSubmissionIndex - 1
-                : undefined,
-          };
-        });
-
-      if (failedUploads.length > 0) {
-        const message =
-          failedUploads.length === filesToUpload.length
-            ? "Comment saved, but all file uploads failed. Please try attaching them again."
-            : `Comment saved, but ${failedUploads.length} file upload${failedUploads.length === 1 ? "" : "s"} failed.`;
-        setComposerError(message);
-        showErrorToast("Attachment upload failed.", message);
-      }
-
       setConfirmedComments((current) => [
         {
           id: `confirmed-comment-${commentResult.commentId}`,
@@ -2334,24 +2815,7 @@ export function ProjectChatWorkspace({
             mentionedUserIds.includes(mention.userId),
           ),
           createdAt: "Just now",
-          attachments: successfulUploads.map((result) => ({
-            id: result.attachmentId,
-            isSubmission: result.pendingFile.assetType === "STAGE_SUBMISSION",
-            submissionNumber: result.submissionNumber,
-            originalFileName: result.pendingFile.file.name,
-            fileTypeLabel: getLocalFileTypeLabel(result.pendingFile.file.name),
-            mimeType: result.pendingFile.file.type || "application/octet-stream",
-            fileSizeLabel: formatLocalFileSize(result.pendingFile.file.size),
-            uploadedBy: currentUserDisplayName,
-            uploadedAt: "Just now",
-            previewPath: `/api/project-assets/${result.attachmentId}/preview`,
-            downloadPath: `/api/project-assets/${result.attachmentId}/download`,
-            isFavoritedByCurrentUser: false,
-            submissionReviewStatus:
-              result.pendingFile.assetType === "STAGE_SUBMISSION"
-                ? "PENDING_REVIEW"
-                : null,
-          })),
+          attachments: [],
         },
         ...current,
       ]);
@@ -2359,7 +2823,6 @@ export function ProjectChatWorkspace({
         current.filter((entry) => entry.id !== optimisticCommentId),
       );
       setIsSendingComment(false);
-      refreshHistory();
     } catch (error) {
       setOptimisticComments((current) =>
         current.filter((entry) => entry.id !== optimisticCommentId),
@@ -2458,19 +2921,32 @@ export function ProjectChatWorkspace({
 
       const uploadResults = await Promise.allSettled(
         filesToUpload.map((pendingFile) => {
-          updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
-            ...attachment,
-            uploadState: "uploading",
-            progress: 0,
-            uploadedAt: "Uploading…",
-          }));
-
           return uploadAssetFile({
             file: pendingFile.file,
             projectId: project.id,
             stageId: activeStageId,
             revisionId: revisionResult.revisionId,
             assetType: "REVISION_ORIGINAL",
+            onPrepareStart: () => {
+              updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                uploadState: "preparing",
+                progress: 0,
+                uploadedAt: "Preparing image…",
+              }));
+            },
+            onUploadStart: (uploadFile) => {
+              updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
+                ...attachment,
+                originalFileName: uploadFile.name,
+                fileTypeLabel: getLocalFileTypeLabel(uploadFile.name),
+                mimeType: uploadFile.type || "application/octet-stream",
+                fileSizeLabel: formatLocalFileSize(uploadFile.size),
+                uploadState: "uploading",
+                progress: 0,
+                uploadedAt: "Uploading…",
+              }));
+            },
             onProgress: (progress) => {
               updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
                 ...attachment,
@@ -2484,9 +2960,13 @@ export function ProjectChatWorkspace({
                 ...attachment,
                 uploadState: "uploaded",
                 progress: 100,
-                uploadedAt: "Uploaded. Refreshing…",
+                uploadedAt: "Uploaded",
               }));
-              return { pendingFile, attachmentId: uploadResult.attachmentId };
+              return {
+                pendingFile,
+                attachmentId: uploadResult.attachmentId,
+                uploadedFile: uploadResult.uploadedFile,
+              };
             })
             .catch((error) => {
               updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
@@ -2536,10 +3016,10 @@ export function ProjectChatWorkspace({
           attachments: successfulUploads.map((result) => ({
             id: result.attachmentId,
             isSubmission: false,
-            originalFileName: result.pendingFile.file.name,
-            fileTypeLabel: getLocalFileTypeLabel(result.pendingFile.file.name),
-            mimeType: result.pendingFile.file.type || "application/octet-stream",
-            fileSizeLabel: formatLocalFileSize(result.pendingFile.file.size),
+            originalFileName: result.uploadedFile.name,
+            fileTypeLabel: getLocalFileTypeLabel(result.uploadedFile.name),
+            mimeType: result.uploadedFile.type || "application/octet-stream",
+            fileSizeLabel: formatLocalFileSize(result.uploadedFile.size),
             uploadedBy: currentUserDisplayName,
             uploadedAt: "Just now",
             previewPath: `/api/project-assets/${result.attachmentId}/preview`,

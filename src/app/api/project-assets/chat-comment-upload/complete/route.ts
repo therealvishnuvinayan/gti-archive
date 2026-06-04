@@ -2,8 +2,7 @@ import { revalidateTag } from "next/cache";
 import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { completeAttachmentUpload } from "@/lib/project-history";
-import type { LibraryUploadMetadata } from "@/lib/library-shared";
+import { completePreparedChatAttachmentUpload } from "@/lib/project-history";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 export async function POST(request: Request) {
@@ -15,9 +14,8 @@ export async function POST(request: Request) {
 
   let payload: {
     attachmentId?: string;
-    failed?: boolean;
     projectId?: string;
-    metadata?: LibraryUploadMetadata;
+    failed?: boolean;
   } = {};
 
   try {
@@ -26,17 +24,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid completion request." }, { status: 400 });
   }
 
-  if (!payload.attachmentId) {
-    return NextResponse.json({ error: "Attachment id is required." }, { status: 400 });
+  if (!payload.attachmentId || !payload.projectId) {
+    return NextResponse.json(
+      { error: "Attachment and project are required." },
+      { status: 400 },
+    );
   }
 
   try {
-    await completeAttachmentUpload(
-      user,
-      payload.attachmentId,
-      Boolean(payload.failed),
-      payload.metadata,
-    );
+    await completePreparedChatAttachmentUpload(user, {
+      attachmentId: payload.attachmentId,
+      projectId: payload.projectId,
+      failed: Boolean(payload.failed),
+    });
     after(() => {
       revalidateTag(PROJECTS_CACHE_TAG, "max");
     });
