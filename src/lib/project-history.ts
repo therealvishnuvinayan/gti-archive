@@ -1790,17 +1790,19 @@ export async function reviewProjectRevision(
         const stageIndex = orderedStages.findIndex((item) => item.id === revision.stageId);
         const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
 
-        if (nextStage) {
-          await tx.projectStage.update({
-            where: {
-              id: revision.stageId,
-            },
-            data: {
-              status: "COMPLETED",
-              completedAt: new Date(),
-            },
-          });
+        const completedAt = new Date();
 
+        await tx.projectStage.update({
+          where: {
+            id: revision.stageId,
+          },
+          data: {
+            status: "COMPLETED",
+            completedAt,
+          },
+        });
+
+        if (nextStage) {
           const nextStageStatus =
             nextStage.status === "PENDING" ? "ONGOING" : nextStage.status;
 
@@ -1834,6 +1836,22 @@ export async function reviewProjectRevision(
               status: nextStage.status === "PENDING" ? "ONGOING" : nextStage.status,
             },
             allStagesCompleted: false,
+          };
+        } else {
+          await tx.project.update({
+            where: {
+              id: revision.projectId,
+            },
+            data: {
+              currentStageName: revision.stage.name,
+            },
+          });
+
+          stageCompletion = {
+            id: revision.stageId,
+            status: "COMPLETED",
+            nextStage: null,
+            allStagesCompleted: true,
           };
         }
       }
