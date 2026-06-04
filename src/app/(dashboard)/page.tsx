@@ -16,6 +16,7 @@ import { ProjectProgressCard } from "@/components/dashboard/project-progress-car
 import { DeadlineCard } from "@/components/dashboard/deadline-card";
 import { requireUser } from "@/lib/auth";
 import { getDashboardSnapshot } from "@/lib/dashboard";
+import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
 import { hasPermission } from "@/lib/permissions/resolver";
 import {
   getDashboardLibraryUploadAccessState,
@@ -31,7 +32,7 @@ export default async function Home() {
   const user = await requireUser();
 
   if (!hasPermission(user, "dashboard.view")) {
-    redirect("/no-access");
+    redirect(getAuthenticatedDefaultRoute(user));
   }
 
   const [dashboard, uploadProjects] = await Promise.all([
