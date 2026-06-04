@@ -9,15 +9,16 @@ import { hasPermission } from "@/lib/permissions/resolver";
 import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
 
 export default async function NewProjectPage() {
-  const [user, collaborators, masterDataOptions] = await Promise.all([
-    requireUser(),
-    getCollaborators(),
-    getActiveProjectMasterDataOptions(),
-  ]);
+  const user = await requireUser();
 
   if (!hasPermission(user, "project.create")) {
     redirect("/projects");
   }
+
+  const [collaborators, masterDataOptions] = await Promise.all([
+    getCollaborators(),
+    getActiveProjectMasterDataOptions(),
+  ]);
 
   const canManageProjectMasterData = hasPermission(user, "settings.manageMasterData");
   const canInviteExecutor = hasPermission(user, "collaboration.createUser");

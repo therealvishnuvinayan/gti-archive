@@ -5,12 +5,9 @@ import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { CreateProjectWorkspace } from "@/components/projects/create-project-workspace";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
-import {
-  hasPermission,
-  hasProjectPermission,
-} from "@/lib/permissions/resolver";
+import { hasPermission } from "@/lib/permissions/resolver";
 import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
-import { getProjectEditorById } from "@/lib/projects";
+import { getProjectEditAccessById, getProjectEditorById } from "@/lib/projects";
 
 export default async function EditProjectPage({
   params,
@@ -18,6 +15,11 @@ export default async function EditProjectPage({
   params: Promise<{ slug: string }>;
 }) {
   const [{ slug }, user] = await Promise.all([params, requireUser()]);
+  const projectAccess = await getProjectEditAccessById(slug, user);
+
+  if (!projectAccess?.canEdit) {
+    notFound();
+  }
 
   const [project, collaborators, masterDataOptions] = await Promise.all([
     getProjectEditorById(slug, user),
@@ -26,18 +28,6 @@ export default async function EditProjectPage({
   ]);
 
   if (!project) {
-    notFound();
-  }
-
-  const projectContext = {
-    createdById: project.ownerId,
-    executorUserId: project.executorUserId ?? null,
-    collaborators: project.collaborators.map((collaborator) => ({
-      userId: collaborator.id,
-    })),
-  };
-
-  if (!hasProjectPermission(user, projectContext, "project.update")) {
     notFound();
   }
 

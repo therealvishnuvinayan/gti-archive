@@ -1603,3 +1603,31 @@ export async function getProjectEditorById(
 
   return mapProjectToEditor(project, currentUser, favoritedAttachmentIds);
 }
+
+export async function getProjectEditAccessById(
+  id: string,
+  currentUser: ProjectAccessUser,
+) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id },
+      select: {
+        createdById: true,
+        executorUserId: true,
+        collaborators: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!project || !canAccessProjectRecord(project, currentUser)) {
+    return null;
+  }
+
+  return {
+    canEdit: hasProjectPermission(currentUser, project, "project.update"),
+  };
+}
