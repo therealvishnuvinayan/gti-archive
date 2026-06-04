@@ -709,6 +709,7 @@ export async function updateProjectAction(
     select: {
       currency: true,
       budget: true,
+      status: true,
       createdById: true,
       executorUserId: true,
       collaborators: {
@@ -869,6 +870,7 @@ export async function updateProjectAction(
   );
   const submittedExistingStageIds = stageIds.filter(Boolean);
   const submittedExistingStageIdSet = new Set(submittedExistingStageIds);
+  const projectStatusChanged = existingProject.status !== status;
 
   if (submittedExistingStageIdSet.size !== submittedExistingStageIds.length) {
     return { error: "Unable to update project stages. Please refresh and try again." };
@@ -955,6 +957,9 @@ export async function updateProjectAction(
           plannedStartAt: stageStartDates[index],
           plannedDueAt: stageDueDates[index],
           order: index + 1,
+          ...(projectStatusChanged
+            ? { status: stageStatuses[index] ?? ProjectStatus.PENDING }
+            : {}),
         };
 
         if (existingStage) {
