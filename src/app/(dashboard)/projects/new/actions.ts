@@ -151,6 +151,9 @@ function parseProjectFormData(formData: FormData) {
   const stageDueDates = formData
     .getAll("stageDueDates")
     .map((value) => String(value).trim());
+  const stageIds = formData
+    .getAll("stageIds")
+    .map((value) => String(value).trim());
   const collaboratorIds = [...new Set(
     formData
       .getAll("collaboratorIds")
@@ -179,6 +182,7 @@ function parseProjectFormData(formData: FormData) {
     stageDescriptions,
     stageStartDates,
     stageDueDates,
+    stageIds,
     collaboratorIds,
     collaboratorParticipantTypes,
   };
@@ -439,6 +443,32 @@ async function resolveProjectExecutor(
   };
 }
 
+function stageHasLinkedHistory(stage: {
+  actualStartedAt: Date | null;
+  startedById: string | null;
+  completedAt: Date | null;
+  status: ProjectStatus;
+  _count: {
+    comments: number;
+    revisions: number;
+    attachments: number;
+    comparisonComments: number;
+    archives: number;
+    activityLogs: number;
+  };
+}) {
+  return (
+    Boolean(stage.actualStartedAt || stage.startedById || stage.completedAt) ||
+    stage.status !== ProjectStatus.PENDING ||
+    stage._count.comments > 0 ||
+    stage._count.revisions > 0 ||
+    stage._count.attachments > 0 ||
+    stage._count.comparisonComments > 0 ||
+    stage._count.archives > 0 ||
+    stage._count.activityLogs > 0
+  );
+}
+
 export async function createProjectAction(
   _previousState: ProjectFormState,
   formData: FormData,
@@ -691,7 +721,22 @@ export async function updateProjectAction(
           order: "asc",
         },
         select: {
+          id: true,
           budget: true,
+          status: true,
+          actualStartedAt: true,
+          startedById: true,
+          completedAt: true,
+          _count: {
+            select: {
+              comments: true,
+              revisions: true,
+              attachments: true,
+              comparisonComments: true,
+              archives: true,
+              activityLogs: true,
+            },
+          },
         },
       },
     },
@@ -737,6 +782,7 @@ export async function updateProjectAction(
     stageStartDates,
     stageDueDates,
     stageStatuses,
+    stageIds,
     currentStageName,
     collaboratorIds,
     collaboratorParticipantTypes,
@@ -818,63 +864,115 @@ export async function updateProjectAction(
     }),
   );
 
+  const existingStageById = new Map(
+    existingProject.stages.map((stage) => [stage.id, stage] as const),
+  );
+  const submittedExistingStageIds = stageIds.filter(Boolean);
+  const submittedExistingStageIdSet = new Set(submittedExistingStageIds);
+
+  if (submittedExistingStageIdSet.size !== submittedExistingStageIds.length) {
+    return { error: "Unable to update project stages. Please refresh and try again." };
+  }
+
+  if (submittedExistingStageIds.some((stageId) => !existingStageById.has(stageId))) {
+    return { error: "Unable to update project stages. Please refresh and try again." };
+  }
+
+  const removedStages = existingProject.stages.filter(
+    (stage) => !submittedExistingStageIdSet.has(stage.id),
+  );
+
+  if (removedStages.some(stageHasLinkedHistory)) {
+    return {
+      error:
+        "This stage cannot be removed because it already has chat, submissions, or files.",
+    };
+  }
+
   try {
-    await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        name,
-        category,
-        executorName: resolvedExecutor.executorName,
-        executorUserId: resolvedExecutor.executorUserId,
-        tag: tag || null,
-        description,
-        budget: canUpdateBudget ? budget : existingProject.budget,
-        currency: currencyCode,
-        status,
-        priority,
-        startDate,
-        endDate,
-        currentStageName,
-        stageCount: stageNames.length,
-        collaborators: {
-          deleteMany: {},
-          createMany: {
-            data: validCollaboratorIds.map((collaboratorId) => ({
-              userId: collaboratorId,
-              addedById: user.id,
-              participantType:
-                collaboratorParticipantTypeMap.get(collaboratorId) ??
-                getDefaultProjectCollaboratorParticipantType(
-                  validCollaboratorTypeMap.get(collaboratorId) ?? "external",
-                ),
-            })),
-            skipDuplicates: true,
+    await prisma.$transaction(async (tx) => {
+      await tx.project.update({
+        where: { id: projectId },
+        data: {
+          name,
+          category,
+          executorName: resolvedExecutor.executorName,
+          executorUserId: resolvedExecutor.executorUserId,
+          tag: tag || null,
+          description,
+          budget: canUpdateBudget ? budget : existingProject.budget,
+          currency: currencyCode,
+          status,
+          priority,
+          startDate,
+          endDate,
+          currentStageName,
+          stageCount: stageNames.length,
+          collaborators: {
+            deleteMany: {},
+            createMany: {
+              data: validCollaboratorIds.map((collaboratorId) => ({
+                userId: collaboratorId,
+                addedById: user.id,
+                participantType:
+                  collaboratorParticipantTypeMap.get(collaboratorId) ??
+                  getDefaultProjectCollaboratorParticipantType(
+                    validCollaboratorTypeMap.get(collaboratorId) ?? "external",
+                  ),
+              })),
+              skipDuplicates: true,
+            },
           },
         },
-        stages: {
-          deleteMany: {},
-          create: stageNames.map((stageName, index) => {
-            const parsedStageBudget = parseBudget(stageBudgets[index] ?? "");
+      });
 
-            return {
-              name: stageName,
-              description: stageDescriptions[index] || null,
-              budget:
-                canUpdateBudget
-                  ? Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
-                    ? parsedStageBudget
-                    : index === 0
-                      ? budget
-                      : null
-                  : existingProject.stages[index]?.budget ?? null,
-              plannedStartAt: stageStartDates[index],
-              plannedDueAt: stageDueDates[index],
-              status: stageStatuses[index],
-              order: index + 1,
-            };
-          }),
-        },
-      },
+      if (removedStages.length > 0) {
+        await tx.projectStage.deleteMany({
+          where: {
+            projectId,
+            id: {
+              in: removedStages.map((stage) => stage.id),
+            },
+          },
+        });
+      }
+
+      for (const [index, stageName] of stageNames.entries()) {
+        const stageId = stageIds[index]?.trim() ?? "";
+        const existingStage = stageId ? existingStageById.get(stageId) : null;
+        const parsedStageBudget = parseBudget(stageBudgets[index] ?? "");
+        const nextBudget = canUpdateBudget
+          ? Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
+            ? parsedStageBudget
+            : index === 0
+              ? budget
+              : null
+          : existingStage?.budget ?? null;
+        const stageData = {
+          name: stageName,
+          description: stageDescriptions[index] || null,
+          budget: nextBudget,
+          plannedStartAt: stageStartDates[index],
+          plannedDueAt: stageDueDates[index],
+          order: index + 1,
+        };
+
+        if (existingStage) {
+          await tx.projectStage.update({
+            where: { id: existingStage.id },
+            data: stageData,
+          });
+          continue;
+        }
+
+        await tx.projectStage.create({
+          data: {
+            ...stageData,
+            projectId,
+            status: stageStatuses[index] ?? ProjectStatus.PENDING,
+          },
+        });
+      }
     });
   } catch {
     return { error: "Unable to update the project right now. Please try again." };

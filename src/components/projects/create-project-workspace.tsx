@@ -94,6 +94,7 @@ type ProjectStatusValue = (typeof projectStatusOptions)[number]["value"];
 
 type StageForm = {
   id: string;
+  persistedId?: string;
   name: string;
   budget: string;
   description: string;
@@ -682,6 +683,7 @@ export function CreateProjectWorkspace({
     initialValues?.stages.length
         ? initialValues.stages.map((stage) => ({
           id: stage.id,
+          persistedId: stage.id,
           name: stage.name,
           budget: stage.budget,
           description: stage.description,
@@ -2306,6 +2308,7 @@ export function CreateProjectWorkspace({
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Name <span className="text-[#d3554d]">*</span>
                     </p>
+                    <input type="hidden" name="stageIds" value={stage.persistedId ?? ""} />
                     <Input
                       value={stage.name}
                       onChange={(event) => {
