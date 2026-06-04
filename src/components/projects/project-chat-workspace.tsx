@@ -3264,12 +3264,6 @@ export function ProjectChatWorkspace({
     <section className="space-y-6">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-4">
-          {composerError ? (
-            <div className="rounded-[18px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-[13px] text-[#bd554f]">
-              {composerError}
-            </div>
-          ) : null}
-
           {isProjectCompleted ? (
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
@@ -3712,6 +3706,12 @@ export function ProjectChatWorkspace({
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   )}
                   {aiStatus}
+                </div>
+              ) : null}
+
+              {composerError ? (
+                <div className="mb-3 rounded-[18px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-[13px] text-[#bd554f]">
+                  {composerError}
                 </div>
               ) : null}
 
