@@ -11,7 +11,7 @@ import {
 import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
 import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
 import { sendResendEmail } from "@/lib/email/resend";
-import { hasValidPasswordValue } from "@/lib/password-rules";
+import { getPasswordValidationMessage } from "@/lib/password-rules";
 import { getCollaboratorTypeGroup } from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
@@ -604,8 +604,10 @@ export async function acceptCollaboratorInvite(
       : { error: "This invitation link is invalid." };
   }
 
-  if (!hasValidPasswordValue(password)) {
-    return { error: "Password is required." };
+  const passwordValidationMessage = getPasswordValidationMessage(password);
+
+  if (passwordValidationMessage) {
+    return { error: passwordValidationMessage };
   }
 
   if (password !== confirmPassword) {

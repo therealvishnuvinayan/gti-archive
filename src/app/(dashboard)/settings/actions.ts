@@ -9,7 +9,7 @@ import {
   SESSION_COOKIE_NAME,
   verifyAuthPassword,
 } from "@/lib/auth";
-import { hasValidPasswordValue } from "@/lib/password-rules";
+import { getPasswordValidationMessage } from "@/lib/password-rules";
 import { requirePermission } from "@/lib/permissions/require";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { buildUserAvatarPrefix, deleteObjectIfNeeded } from "@/lib/storage/s3";
@@ -192,11 +192,13 @@ export async function changePasswordAction(
     };
   }
 
-  if (!hasValidPasswordValue(parsed.newPassword)) {
+  const passwordValidationMessage = getPasswordValidationMessage(parsed.newPassword);
+
+  if (passwordValidationMessage) {
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: {
-        newPassword: "New password is required.",
+        newPassword: passwordValidationMessage,
       },
     };
   }

@@ -27,6 +27,10 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  getPasswordValidationMessage,
+  PASSWORD_REQUIREMENTS,
+} from "@/lib/password-rules";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
 type SettingsWorkspaceProps = {
@@ -711,6 +715,20 @@ function ChangePasswordDrawer({
                 disabled={saving}
               />
 
+              <div className="rounded-[20px] border border-[#dfe8df] bg-[#f7faf7] px-5 py-4">
+                <p className="text-[14px] font-[700] text-[#253129]">
+                  Password requirements
+                </p>
+                <ul className="mt-3 space-y-2 text-[14px] text-[#68736a]">
+                  {PASSWORD_REQUIREMENTS.map((requirement) => (
+                    <li key={requirement} className="flex gap-2">
+                      <span className="mt-[0.45em] h-1.5 w-1.5 rounded-full bg-brand" />
+                      <span>{requirement}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
               <PasswordInputField
                 label="Confirm New Password"
                 value={form.confirmNewPassword}
@@ -1018,6 +1036,17 @@ export function SettingsWorkspace({
       setPasswordDrawerError("Please correct the highlighted fields.");
       setPasswordFieldErrors({
         confirmNewPassword: "Passwords do not match.",
+      });
+      showErrorToast("Unable to update password.", "Please review the highlighted fields.");
+      return;
+    }
+
+    const passwordValidationMessage = getPasswordValidationMessage(passwordForm.newPassword);
+
+    if (passwordValidationMessage) {
+      setPasswordDrawerError("Please correct the highlighted fields.");
+      setPasswordFieldErrors({
+        newPassword: passwordValidationMessage,
       });
       showErrorToast("Unable to update password.", "Please review the highlighted fields.");
       return;

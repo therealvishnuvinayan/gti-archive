@@ -2,22 +2,23 @@
 
 import { useActionState, useState } from "react";
 import type { FormEvent } from "react";
-import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { useFormStatus } from "react-dom";
+import { Eye, EyeOff, LockKeyhole } from "lucide-react";
 
 import {
-  initialRegisterState,
-  type RegisterState,
-} from "@/app/register/register-state";
+  resetPasswordAction,
+} from "@/app/reset-password/[token]/actions";
 import {
   getPasswordValidationMessage,
   PASSWORD_REQUIREMENTS,
 } from "@/lib/password-rules";
+import type { ResetPasswordResult } from "@/lib/password-reset";
 
-type RegisterFormProps = {
-  email: string;
-  action: (state: RegisterState, formData: FormData) => Promise<RegisterState>;
+type ResetPasswordFormProps = {
+  token: string;
 };
+
+const initialResetPasswordState: ResetPasswordResult = {};
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -28,15 +29,15 @@ function SubmitButton() {
       disabled={pending}
       className="inline-flex h-[58px] w-full items-center justify-center rounded-[18px] bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-[18px] font-semibold text-white shadow-[0_18px_38px_rgba(23,90,59,0.18)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
     >
-      {pending ? "Setting password..." : "Set Password"}
+      {pending ? "Updating..." : "Update Password"}
     </button>
   );
 }
 
-export function RegisterForm({ email, action }: RegisterFormProps) {
-  const [state, formAction] = useActionState<RegisterState, FormData>(
-    action,
-    initialRegisterState,
+export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+  const [state, formAction] = useActionState<ResetPasswordResult, FormData>(
+    resetPasswordAction.bind(null, token),
+    initialResetPasswordState,
   );
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -66,32 +67,17 @@ export function RegisterForm({ email, action }: RegisterFormProps) {
     <form action={formAction} onSubmit={handleSubmit} className="space-y-8">
       <div className="space-y-2">
         <h1 className="text-[42px] font-[600] leading-[1.05] tracking-[-0.04em] text-[#19211b] sm:text-[52px]">
-          Set your password
+          Set new password
         </h1>
         <p className="text-[17px] text-[#738076]">
-          Finish your collaborator registration to access GTI Archive.
+          Choose a new password for your GTI Archive account.
         </p>
       </div>
 
       <div className="space-y-6">
         <label className="block space-y-3">
           <span className="block text-[16px] font-semibold text-[#1f2821]">
-            Email address
-          </span>
-          <span className="flex h-[62px] items-center gap-4 rounded-[18px] border border-[#d9e0d8] bg-[#f7faf7] px-5 shadow-[0_10px_34px_rgba(24,40,29,0.04)]">
-            <Mail className="h-5 w-5 text-[#8d968d]" />
-            <input
-              type="email"
-              value={email}
-              disabled
-              className="w-full bg-transparent text-[17px] text-[#1b231d] outline-none"
-            />
-          </span>
-        </label>
-
-        <label className="block space-y-3">
-          <span className="block text-[16px] font-semibold text-[#1f2821]">
-            Password
+            New password
           </span>
           <span className="flex h-[62px] items-center gap-4 rounded-[18px] border border-[#d9e0d8] bg-white px-5 shadow-[0_10px_34px_rgba(24,40,29,0.04)]">
             <LockKeyhole className="h-5 w-5 text-[#8d968d]" />
@@ -113,6 +99,11 @@ export function RegisterForm({ email, action }: RegisterFormProps) {
               {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </span>
+          {state.fieldErrors?.password ? (
+            <span className="block text-[13px] font-medium text-[#ba3f31]">
+              {state.fieldErrors.password}
+            </span>
+          ) : null}
         </label>
 
         <label className="block space-y-3">
@@ -142,6 +133,11 @@ export function RegisterForm({ email, action }: RegisterFormProps) {
               )}
             </button>
           </span>
+          {state.fieldErrors?.confirmPassword ? (
+            <span className="block text-[13px] font-medium text-[#ba3f31]">
+              {state.fieldErrors.confirmPassword}
+            </span>
+          ) : null}
         </label>
 
         <div className="rounded-[18px] border border-[#dfe8df] bg-[#f7faf7] px-5 py-4">
