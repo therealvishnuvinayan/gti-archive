@@ -191,6 +191,7 @@ export type ProjectChatEntry = {
   revisionStatus?: ProjectRevisionStatus | null;
   rejectionReason?: string | null;
   author: string;
+  authorAvatarSrc?: string | null;
   role: string;
   body: string;
   createdAt: string;

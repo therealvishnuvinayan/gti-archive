@@ -98,6 +98,7 @@ type ProjectChatWorkspaceProps = {
   history: StageHistoryRecord;
   availableCollaborators: CollaboratorRecord[];
   currentUserId: string;
+  currentUserAvatarSrc?: string | null;
   canManageCollaborators: boolean;
   completionSummary: ProjectCompletionSummary;
   completionWorkflow: ProjectCompletionWorkflowRecord | null;
@@ -272,6 +273,44 @@ function getInitials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function ChatAvatar({
+  name,
+  src,
+  size = "md",
+}: {
+  name: string;
+  src?: string | null;
+  size?: "sm" | "md";
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const sizeClassName =
+    size === "sm" ? "h-6 w-6 text-[10px]" : "h-7 w-7 text-[10px]";
+
+  if (src && !imageFailed) {
+    return (
+      <div
+        className={`grid ${sizeClassName} shrink-0 place-items-center overflow-hidden rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] font-[700] text-white`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={`${name} avatar`}
+          className="h-full w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`grid ${sizeClassName} shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] font-[700] text-white`}
+    >
+      {getInitials(name)}
+    </div>
+  );
 }
 
 function escapeMentionPattern(value: string) {
@@ -1092,6 +1131,7 @@ export function ProjectChatWorkspace({
   history,
   availableCollaborators,
   currentUserId,
+  currentUserAvatarSrc,
   canManageCollaborators,
   completionSummary,
   completionWorkflow,
@@ -2346,6 +2386,7 @@ export function ProjectChatWorkspace({
           serverEntryId: result.result.activityComment.id,
           kind: "comment",
           author: currentUserDisplayName,
+          authorAvatarSrc: currentUserAvatarSrc,
           role: currentUserRoleLabel,
           body: result.result.activityComment.body,
           createdAt: "Just now",
@@ -2545,6 +2586,7 @@ export function ProjectChatWorkspace({
       id: optimisticCommentId,
       kind: "comment",
       author: currentUserDisplayName,
+      authorAvatarSrc: currentUserAvatarSrc,
       role: currentUserRoleLabel,
       body: body || "Attachment uploaded.",
       mentions: selectedMentionTokens.filter((mention) =>
@@ -2807,6 +2849,7 @@ export function ProjectChatWorkspace({
                 revisionId: preparePayload.revisionId ?? undefined,
                 kind: "comment",
                 author: currentUserDisplayName,
+                authorAvatarSrc: currentUserAvatarSrc,
                 role: currentUserRoleLabel,
                 body: body || "Attachment uploaded.",
                 mentions: uploadMentionTokens,
@@ -2897,6 +2940,7 @@ export function ProjectChatWorkspace({
           revisionId: commentResult.revisionId ?? undefined,
           kind: "comment",
           author: currentUserDisplayName,
+          authorAvatarSrc: currentUserAvatarSrc,
           role: currentUserRoleLabel,
           body: body || "Attachment uploaded.",
           mentions: selectedMentionTokens.filter((mention) =>
@@ -2967,6 +3011,7 @@ export function ProjectChatWorkspace({
         revisionStatus: "PENDING_REVIEW",
         rejectionReason: null,
         author: currentUserDisplayName,
+        authorAvatarSrc: currentUserAvatarSrc,
         role: currentUserRoleLabel,
         body: summary,
         createdAt: "Uploading…",
@@ -3105,6 +3150,7 @@ export function ProjectChatWorkspace({
           revisionStatus: "PENDING_REVIEW",
           rejectionReason: null,
           author: currentUserDisplayName,
+          authorAvatarSrc: currentUserAvatarSrc,
           role: currentUserRoleLabel,
           body: summary,
           createdAt: "Just now",
@@ -3219,6 +3265,7 @@ export function ProjectChatWorkspace({
               serverEntryId: result.revision.rejectionComment.id,
               kind: "comment",
               author: currentUserDisplayName,
+              authorAvatarSrc: currentUserAvatarSrc,
               role: currentUserRoleLabel,
               body: result.revision.rejectionComment.body,
               createdAt: "Just now",
@@ -3441,9 +3488,10 @@ export function ProjectChatWorkspace({
                             </span>
                           </div>
                           <div className="mt-2 flex items-center gap-2">
-                            <div className="grid h-7 w-7 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
-                              {getInitials(message.author)}
-                            </div>
+                            <ChatAvatar
+                              name={message.author}
+                              src={message.authorAvatarSrc}
+                            />
                             <div>
                               <p className="text-[12px] font-[600]">{message.author}</p>
                               <p className="text-[10px] text-[#93d68a]">{message.role}</p>
@@ -3555,9 +3603,11 @@ export function ProjectChatWorkspace({
                 className="rounded-[8px] border border-[#4b4d4b] bg-white p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
               >
                 <div className="flex items-center gap-2">
-                  <div className="grid h-6 w-6 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[700] text-white">
-                    {getInitials(message.author)}
-                  </div>
+                  <ChatAvatar
+                    name={message.author}
+                    src={message.authorAvatarSrc}
+                    size="sm"
+                  />
                   <div>
                     <p className="text-[12px] font-[700] text-[#111712]">{message.author}</p>
                     <p className="text-[10px] text-[#8acb74]">{message.role}</p>

@@ -69,7 +69,10 @@ type StageHistoryQueryRecord = {
   rejectionReason: string | null;
   reviewedAt: Date | null;
   createdAt: Date;
-  createdBy: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
+  createdBy: Pick<
+    User,
+    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+  >;
   attachments: Array<{
     id: string;
     assetType: AttachmentAssetType;
@@ -90,7 +93,10 @@ type StageCommentQueryRecord = {
   revisionId: string | null;
   body: string;
   createdAt: Date;
-  author: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
+  author: Pick<
+    User,
+    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+  >;
   mentions: Array<{
     mentionedUserId: string;
     mentionedUser: Pick<User, "name" | "email">;
@@ -182,6 +188,12 @@ function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
   }
 
   return getCollaboratorRoleLabel(user.collaboratorType);
+}
+
+function getProfileAvatarSrc(user: Pick<User, "avatarUrl">) {
+  return user.avatarUrl
+    ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
+    : null;
 }
 
 function formatHistoryTimestamp(date: Date | string | number) {
@@ -300,6 +312,7 @@ function mapRevisionEntry(
     revisionStatus: revision.status,
     rejectionReason: revision.rejectionReason,
     author: getDisplayName(revision.createdBy),
+    authorAvatarSrc: getProfileAvatarSrc(revision.createdBy),
     role: getActorRole(revision.createdBy),
     body: revision.summary?.trim() || "Revision uploaded.",
     createdAt: formatHistoryTimestamp(revision.createdAt),
@@ -325,6 +338,7 @@ function mapCommentEntry(
     revisionId: comment.revisionId ?? undefined,
     kind: "comment",
     author: getDisplayName(comment.author),
+    authorAvatarSrc: getProfileAvatarSrc(comment.author),
     role: getActorRole(comment.author),
     body: comment.body,
     createdAt: formatHistoryTimestamp(comment.createdAt),
@@ -579,6 +593,7 @@ export async function getProjectStageHistory(
                   email: true,
                   role: true,
                   collaboratorType: true,
+                  avatarUrl: true,
                 },
               },
               attachments: {
@@ -620,6 +635,7 @@ export async function getProjectStageHistory(
                   email: true,
                   role: true,
                   collaboratorType: true,
+                  avatarUrl: true,
                 },
               },
               mentions: {

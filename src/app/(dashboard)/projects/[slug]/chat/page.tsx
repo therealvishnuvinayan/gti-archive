@@ -53,6 +53,9 @@ export default async function ProjectChatPage({
     projectContext,
     "project.manageCollaborators",
   );
+  const currentUserAvatarSrc = user.avatarUrl
+    ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
+    : null;
 
   return (
     <DashboardLayout
@@ -67,6 +70,7 @@ export default async function ProjectChatPage({
         history={history}
         availableCollaborators={availableCollaborators}
         currentUserId={user.id}
+        currentUserAvatarSrc={currentUserAvatarSrc}
         canManageCollaborators={canManageCollaborators}
         completionSummary={completionSummary}
         completionWorkflow={completionWorkflow}
