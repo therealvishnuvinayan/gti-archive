@@ -480,6 +480,14 @@ export function CalendarWorkspace({
   }
 
   function openDialog(date: Date, start = "09:00", end = "10:00") {
+    if (!canCreateEvents) {
+      showErrorToast(
+        "Calendar is read-only.",
+        "You do not have permission to create calendar events.",
+      );
+      return;
+    }
+
     setDialogError(undefined);
     setDialogTitle("Create event");
     setForm(getDefaultForm(formatCalendarDateValue(date), start, end));
@@ -1086,7 +1094,9 @@ export function CalendarWorkspace({
                     ? "All calendar filters are turned off."
                     : events.length > 0
                       ? "No calendar items match the current filters."
-                      : "No calendar events yet. Use Create or click a date/timeslot to add your first event."}
+                      : canCreateEvents
+                        ? "No calendar events yet. Use Create or click a date/timeslot to add your first event."
+                        : "No calendar items to display. You have read-only access to this calendar."}
                 </Card>
               ) : null}
 
@@ -1098,7 +1108,9 @@ export function CalendarWorkspace({
             </div>
             {view === "week" ? (
               <p className="mt-4 text-[12px] text-[#7a837b]">
-                Week {activeWeekNumber} selected. Click any timeslot to add a new event.
+                {canCreateEvents
+                  ? `Week ${activeWeekNumber} selected. Click any timeslot to add a new event.`
+                  : `Week ${activeWeekNumber} selected. You have read-only access to this calendar.`}
               </p>
             ) : null}
           </Card>
