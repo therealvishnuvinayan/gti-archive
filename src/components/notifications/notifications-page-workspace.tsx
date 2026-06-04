@@ -49,6 +49,46 @@ const emptyCounts: NotificationCountSummary = {
   Workflow: 0,
 };
 
+type NotificationPageItem = number | "start-ellipsis" | "end-ellipsis";
+
+function getVisibleNotificationPageItems(
+  currentPage: number,
+  totalPages: number,
+): NotificationPageItem[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  let startPage = Math.max(2, currentPage - 2);
+  let endPage = Math.min(totalPages - 1, currentPage + 2);
+
+  if (currentPage <= 4) {
+    startPage = 2;
+    endPage = 6;
+  } else if (currentPage >= totalPages - 3) {
+    startPage = totalPages - 5;
+    endPage = totalPages - 1;
+  }
+
+  const pageItems: NotificationPageItem[] = [1];
+
+  if (startPage > 2) {
+    pageItems.push("start-ellipsis");
+  }
+
+  for (let page = startPage; page <= endPage; page += 1) {
+    pageItems.push(page);
+  }
+
+  if (endPage < totalPages - 1) {
+    pageItems.push("end-ellipsis");
+  }
+
+  pageItems.push(totalPages);
+
+  return pageItems;
+}
+
 function buildNotificationsUrl(input: {
   page: number;
   pageSize: number;
@@ -343,6 +383,7 @@ export function NotificationsPageWorkspace() {
 
   const showingFrom = total === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
   const showingTo = total === 0 ? 0 : Math.min(currentPage * rowsPerPage, total);
+  const visiblePageItems = getVisibleNotificationPageItems(currentPage, totalPages);
 
   return (
     <section className="space-y-6">
@@ -506,23 +547,34 @@ export function NotificationsPageWorkspace() {
                   <ChevronLeft className="h-4 w-4" />
                 </button>
 
-                {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    onClick={() => {
-                      setLoading(true);
-                      setCurrentPage(page);
-                    }}
-                    className={`grid h-11 min-w-11 cursor-pointer place-items-center rounded-[16px] px-3 text-[15px] font-[700] transition ${
-                      page === currentPage
-                        ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_14px_28px_rgba(34,102,70,0.24)]"
-                        : "border border-[#dce4dc] bg-white text-[#314036] hover:bg-[#f6faf6]"
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
+                {visiblePageItems.map((pageItem) =>
+                  typeof pageItem === "number" ? (
+                    <button
+                      key={pageItem}
+                      type="button"
+                      onClick={() => {
+                        setLoading(true);
+                        setCurrentPage(pageItem);
+                      }}
+                      className={`grid h-11 min-w-11 cursor-pointer place-items-center rounded-[16px] px-3 text-[15px] font-[700] transition ${
+                        pageItem === currentPage
+                          ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_14px_28px_rgba(34,102,70,0.24)]"
+                          : "border border-[#dce4dc] bg-white text-[#314036] hover:bg-[#f6faf6]"
+                      }`}
+                      aria-current={pageItem === currentPage ? "page" : undefined}
+                    >
+                      {pageItem}
+                    </button>
+                  ) : (
+                    <span
+                      key={pageItem}
+                      className="grid h-11 min-w-8 place-items-center px-1 text-[15px] font-[700] text-[#7b867d]"
+                      aria-hidden="true"
+                    >
+                      ...
+                    </span>
+                  ),
+                )}
 
                 <button
                   type="button"
