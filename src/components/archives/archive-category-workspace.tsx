@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, X } from "lucide-react";
 
 import { getFileTypeIcon } from "@/components/archives/archive-data";
 import {
@@ -40,6 +40,10 @@ const defaultFilters: ArchiveFilters = {
   archivedBy: "",
   projectTag: "",
 };
+
+const ALL_PROJECTS = "__all_projects__";
+const ALL_USERS = "__all_users__";
+const ALL_TAGS = "__all_tags__";
 
 function uniqueValues(items: ArchivedProjectFileRecord[], key: keyof ArchivedProjectFileRecord) {
   return Array.from(new Set(items.map((item) => item[key] as string).filter(Boolean))).sort(
@@ -98,9 +102,16 @@ export function ArchiveCategoryWorkspace({
       return true;
     });
   }, [filters, items]);
+  const hasActiveFilters = Boolean(
+    filters.search || filters.projectName || filters.archivedBy || filters.projectTag,
+  );
 
   function updateFilter<K extends keyof ArchiveFilters>(key: K, value: ArchiveFilters[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  function clearFilters() {
+    setFilters(defaultFilters);
   }
 
   return (
@@ -130,13 +141,19 @@ export function ArchiveCategoryWorkspace({
               />
 
               <Select
-                value={filters.projectName}
-                onValueChange={(value) => updateFilter("projectName", value)}
+                value={filters.projectName || ALL_PROJECTS}
+                onValueChange={(value) =>
+                  updateFilter(
+                    "projectName",
+                    value === ALL_PROJECTS ? "" : value,
+                  )
+                }
               >
                 <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-                  <SelectValue placeholder="Project" />
+                  <SelectValue placeholder="All Projects" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={ALL_PROJECTS}>All Projects</SelectItem>
                   {options.projectName.map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
@@ -146,13 +163,16 @@ export function ArchiveCategoryWorkspace({
               </Select>
 
               <Select
-                value={filters.archivedBy}
-                onValueChange={(value) => updateFilter("archivedBy", value)}
+                value={filters.archivedBy || ALL_USERS}
+                onValueChange={(value) =>
+                  updateFilter("archivedBy", value === ALL_USERS ? "" : value)
+                }
               >
                 <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-                  <SelectValue placeholder="Archived by" />
+                  <SelectValue placeholder="All Users" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={ALL_USERS}>All Users</SelectItem>
                   {options.archivedBy.map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
@@ -162,13 +182,16 @@ export function ArchiveCategoryWorkspace({
               </Select>
 
               <Select
-                value={filters.projectTag}
-                onValueChange={(value) => updateFilter("projectTag", value)}
+                value={filters.projectTag || ALL_TAGS}
+                onValueChange={(value) =>
+                  updateFilter("projectTag", value === ALL_TAGS ? "" : value)
+                }
               >
                 <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-                  <SelectValue placeholder="Project tag" />
+                  <SelectValue placeholder="All Tags" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={ALL_TAGS}>All Tags</SelectItem>
                   {options.projectTag.map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
@@ -178,6 +201,20 @@ export function ArchiveCategoryWorkspace({
               </Select>
             </div>
           </Card>
+
+          {hasActiveFilters ? (
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={clearFilters}
+                className="h-9 rounded-full bg-white/80 px-4 text-[12px] font-[700] text-[#536057] hover:bg-white"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear filters
+              </Button>
+            </div>
+          ) : null}
 
           <MotionStaggerGroup className="mt-4 space-y-3" stagger={0.035}>
             {visibleItems.map((item) => {
@@ -256,8 +293,24 @@ export function ArchiveCategoryWorkspace({
 
             {visibleItems.length === 0 ? (
               <MotionItem y={8}>
-                <div className="rounded-[20px] border border-brand/25 bg-white px-5 py-10 text-center text-[14px] text-[#707a72]">
-                  No archived files match the current filters.
+                <div className="rounded-[20px] border border-brand/25 bg-white px-5 py-10 text-center">
+                  <p className="text-[16px] font-[700] text-[#18211a]">
+                    No archive files match your filters.
+                  </p>
+                  <p className="mt-2 text-[14px] text-[#707a72]">
+                    Try clearing filters or changing your search.
+                  </p>
+                  {hasActiveFilters ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={clearFilters}
+                      className="mt-5"
+                    >
+                      <X className="h-4 w-4" />
+                      Clear filters
+                    </Button>
+                  ) : null}
                 </div>
               </MotionItem>
             ) : null}
