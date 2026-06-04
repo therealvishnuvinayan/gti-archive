@@ -7,10 +7,13 @@ import {
   ArrowRight,
   CalendarDays,
   Pencil,
+  Pin,
+  PinOff,
   Trash2,
   UserRound,
 } from "lucide-react";
 
+import { toggleProjectPinAction } from "@/app/(dashboard)/projects/actions";
 import { deleteProjectAction } from "@/app/(dashboard)/projects/new/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,10 +27,10 @@ export type ProjectCardItem = {
   title: string;
   createdOn: string;
   createdBy: string;
+  isPinned: boolean;
+  canPin: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  featured?: boolean;
-  emphasized?: boolean;
 };
 
 type ProjectCardProps = {
@@ -39,6 +42,19 @@ export function ProjectCard({ project }: ProjectCardProps) {
   const [isPending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string>();
+  const [pinError, setPinError] = useState<string>();
+
+  function handleTogglePin() {
+    setPinError(undefined);
+    startTransition(async () => {
+      try {
+        await toggleProjectPinAction(project.id);
+        router.refresh();
+      } catch {
+        setPinError("Unable to update the pinned project right now.");
+      }
+    });
+  }
 
   function handleDelete() {
     setDeleteError(undefined);
@@ -57,20 +73,18 @@ export function ProjectCard({ project }: ProjectCardProps) {
     <>
       <Card
         className={`h-full rounded-[26px] border p-5 shadow-[0_18px_42px_rgba(23,39,28,0.05)] transition-transform hover:-translate-y-0.5 ${
-          project.featured
+          project.isPinned
             ? "border-[#7eb496] bg-[radial-gradient(circle_at_top_right,rgba(193,239,204,0.28),transparent_35%),linear-gradient(135deg,#456c58,#78bf93)] text-white"
-            : project.emphasized
-              ? "border-[#dbe6dd] bg-card"
-              : "border-[#e8eee8] bg-card"
+            : "border-[#e8eee8] bg-card"
         }`}
       >
         <CardContent className="flex h-full flex-col p-0">
           <div className="mb-5 flex items-start justify-between gap-3">
             <div className="space-y-3">
               <Badge
-                variant={project.featured ? "secondary" : "outline"}
+                variant={project.isPinned ? "secondary" : "outline"}
                 className={`max-w-full truncate ${
-                  project.featured
+                  project.isPinned
                     ? "border-white/15 bg-white/14 text-[#ecfff0]"
                     : "border-[#d5e3d6] bg-[#fbfdfb] text-brand"
                 }`}
@@ -79,15 +93,38 @@ export function ProjectCard({ project }: ProjectCardProps) {
               </Badge>
               <p
                 className={`text-[13px] font-[600] ${
-                  project.featured ? "text-[#dff6e3]" : "text-[#64aa76]"
+                  project.isPinned ? "text-[#dff6e3]" : "text-[#64aa76]"
                 }`}
               >
                 {project.category}
               </p>
             </div>
 
-            {project.canEdit || project.canDelete ? (
+            {project.canPin || project.canEdit || project.canDelete ? (
               <div className="flex items-center gap-2">
+                {project.canPin ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={handleTogglePin}
+                    disabled={isPending}
+                    aria-pressed={project.isPinned}
+                    className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
+                      project.isPinned
+                        ? "border border-white/35 bg-white/10 text-[#a6ef9b] hover:bg-white/18"
+                        : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
+                    }`}
+                    aria-label={`${project.isPinned ? "Unpin" : "Pin"} ${project.title}`}
+                    title={project.isPinned ? "Unpin project" : "Pin project"}
+                  >
+                    {project.isPinned ? (
+                      <PinOff className="h-4 w-4" />
+                    ) : (
+                      <Pin className="h-4 w-4" />
+                    )}
+                  </Button>
+                ) : null}
                 {project.canEdit ? (
                   <Button
                     asChild
@@ -95,7 +132,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
                     variant="secondary"
                     size="icon"
                     className={`h-9 w-9 rounded-[12px] ${
-                      project.featured
+                      project.isPinned
                         ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
                         : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
                     }`}
@@ -118,7 +155,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
                     }}
                     disabled={isPending}
                     className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
-                      project.featured
+                      project.isPinned
                         ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
                         : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
                     }`}
@@ -134,7 +171,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
 
           <h3
             className={`min-h-[78px] text-[31px] font-extrabold leading-[1.05] tracking-[-0.04em] sm:text-[33px] ${
-              project.featured ? "text-white" : "text-[#18211a]"
+              project.isPinned ? "text-white" : "text-[#18211a]"
             }`}
           >
             {project.title}
@@ -142,7 +179,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
 
           <div
             className={`mt-6 space-y-3 border-t pt-5 text-[14px] ${
-              project.featured
+              project.isPinned
                 ? "border-white/15 text-[#e7f8eb]"
                 : "border-[#edf2ec] text-[#4e5950]"
             }`}
@@ -160,9 +197,9 @@ export function ProjectCard({ project }: ProjectCardProps) {
           <Button
             asChild
             size="lg"
-            variant={project.featured ? "default" : "outline"}
+            variant={project.isPinned ? "default" : "outline"}
             className={`mt-6 w-full ${
-              project.featured
+              project.isPinned
                 ? "bg-[#184e36] text-white shadow-[0_14px_34px_rgba(11,42,28,0.24)]"
                 : "border-brand/35 bg-white text-brand"
             }`}
@@ -172,6 +209,15 @@ export function ProjectCard({ project }: ProjectCardProps) {
               <ArrowRight className="ml-auto h-4 w-4" />
             </Link>
           </Button>
+          {pinError ? (
+            <p
+              className={`mt-3 text-[13px] font-[600] ${
+                project.isPinned ? "text-[#ffe6e2]" : "text-[#b44d45]"
+              }`}
+            >
+              {pinError}
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 

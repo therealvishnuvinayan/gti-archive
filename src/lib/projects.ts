@@ -77,10 +77,10 @@ export type ProjectCardRecord = {
   title: string;
   createdOn: string;
   createdBy: string;
+  isPinned: boolean;
+  canPin: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  featured?: boolean;
-  emphasized?: boolean;
 };
 
 export type ProjectEditorRecord = {
@@ -524,7 +524,6 @@ export function formatProjectStageLabel(project: Pick<Project, "currentStageName
 
 function mapProjectToCard(
   project: ProjectWithCreator,
-  index: number,
   currentUser: ProjectAccessUser,
 ): ProjectCardRecord {
   return {
@@ -534,10 +533,10 @@ function mapProjectToCard(
     title: project.name,
     createdOn: formatProjectDate(project.createdAt),
     createdBy: getCreatorName(project.createdBy),
+    isPinned: project.isPinned,
+    canPin: hasProjectPermission(currentUser, project, "project.update"),
     canEdit: hasProjectPermission(currentUser, project, "project.update"),
     canDelete: hasProjectPermission(currentUser, project, "project.delete"),
-    featured: index === 0,
-    emphasized: index === 3,
   };
 }
 
@@ -547,9 +546,13 @@ const projectNameCollator = new Intl.Collator("en", {
 });
 
 function compareProjectsByName(
-  left: Pick<Project, "id" | "name" | "createdAt">,
-  right: Pick<Project, "id" | "name" | "createdAt">,
+  left: Pick<Project, "id" | "name" | "createdAt" | "isPinned">,
+  right: Pick<Project, "id" | "name" | "createdAt" | "isPinned">,
 ) {
+  if (left.isPinned !== right.isPinned) {
+    return left.isPinned ? -1 : 1;
+  }
+
   const nameDifference = projectNameCollator.compare(left.name.trim(), right.name.trim());
   if (nameDifference !== 0) {
     return nameDifference;
@@ -1353,10 +1356,15 @@ export async function getProjectsList(
 ) {
   const orderBy =
     filter.sort === "oldest"
-      ? [{ createdAt: "asc" as const }, { id: "asc" as const }]
+      ? [{ isPinned: "desc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }]
       : filter.sort === "name"
-        ? [{ name: "asc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }]
-        : [{ createdAt: "desc" as const }, { id: "asc" as const }];
+        ? [
+            { isPinned: "desc" as const },
+            { name: "asc" as const },
+            { createdAt: "asc" as const },
+            { id: "asc" as const },
+          ]
+        : [{ isPinned: "desc" as const }, { createdAt: "desc" as const }, { id: "asc" as const }];
 
   const projects = await unstable_cache(
     async () =>
@@ -1427,9 +1435,7 @@ export async function getProjectsList(
   const sortedProjects =
     filter.sort === "name" ? [...projects].sort(compareProjectsByName) : projects;
 
-  return sortedProjects.map((project, index) =>
-    mapProjectToCard(project, index, currentUser),
-  );
+  return sortedProjects.map((project) => mapProjectToCard(project, currentUser));
 }
 
 export async function getProjectById(

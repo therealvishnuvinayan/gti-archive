@@ -44,6 +44,8 @@ import {
   setProjectCollaboratorChatVisibility,
   updateProjectCollaborators,
 } from "@/lib/projects";
+import { hasProjectPermission } from "@/lib/permissions/resolver";
+import { prisma } from "@/lib/prisma";
 import { SubmissionReviewStatus } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 
@@ -77,6 +79,46 @@ function revalidateProjectFlow() {
 
 function revalidateProjectFlowAfterResponse() {
   after(revalidateProjectFlow);
+}
+
+export async function toggleProjectPinAction(projectId: string) {
+  const user = await requireUser();
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      createdById: true,
+      executorUserId: true,
+      isPinned: true,
+      collaborators: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!hasProjectPermission(user, project, "project.update")) {
+    throw new Error("You are not allowed to pin projects.");
+  }
+
+  const updatedProject = await prisma.project.update({
+    where: { id: projectId },
+    data: {
+      isPinned: !project.isPinned,
+    },
+    select: {
+      isPinned: true,
+    },
+  });
+
+  revalidatePath("/projects");
+  revalidateProjectFlow();
+
+  return updatedProject;
 }
 
 function revalidateArchiveFlow(projectId: string, categorySlug?: string) {
