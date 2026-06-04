@@ -28,9 +28,9 @@ export type DashboardTopbarProps = {
 };
 
 const defaultUser: DashboardUserView = {
-  name: "Demo User",
-  email: "demouser@gulbahartobacco.com",
-  initials: "DU",
+  name: "Account",
+  email: "User account",
+  initials: "A",
   avatarSrc: null,
 };
 
