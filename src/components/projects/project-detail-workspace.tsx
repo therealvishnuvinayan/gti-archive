@@ -3,6 +3,7 @@ import { Download } from "lucide-react";
 
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
+import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import {
   CompletedProjectArchiveSummaryCard,
   ProjectCompletionChecklist,
@@ -81,17 +82,19 @@ export function ProjectDetailWorkspace({
         className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]"
         stagger={0.05}
       >
-        <MotionItem y={10}>
-          <Card className="rounded-[20px] border-none bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-            <h1 className="text-[23px] font-[700] leading-[1.15] tracking-[-0.03em]">
-              {project.title}
-            </h1>
-            <p className="mt-1 text-[16px] font-[700] leading-[1.1] text-[#86d66f]">
-              {project.category}
-            </p>
-            <div className="mt-3 flex flex-col gap-2 text-[13px] text-white/95 sm:flex-row sm:items-end sm:justify-between">
+        <MotionItem y={10} className="h-full">
+          <Card className="flex h-full min-h-[220px] flex-col justify-between rounded-[20px] border-none bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-6 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] xl:min-h-[266px]">
+            <div>
+              <h1 className="text-[28px] font-[700] leading-[1.12] tracking-[-0.03em]">
+                {project.title}
+              </h1>
+              <p className="mt-1.5 text-[16px] font-[700] leading-[1.1] text-[#86d66f]">
+                {project.category}
+              </p>
+            </div>
+            <div className="mt-8 flex flex-col gap-2 text-[13px] text-white/95 sm:flex-row sm:items-end sm:justify-between">
               <p>Created By : {project.createdBy}</p>
-              <p className="text-[14px] font-[500] text-[#83db71]">
+              <p className="text-[15px] font-[700] text-[#83db71]">
                 {project.currentStageName} : {project.statusLabel}
               </p>
             </div>
@@ -239,10 +242,7 @@ export function ProjectDetailWorkspace({
       </Card>
       </MotionSection>
 
-      <MotionStaggerGroup
-        className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]"
-        stagger={0.05}
-      >
+      <MotionStaggerGroup className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]" stagger={0.05}>
         <MotionItem y={10}>
           <Card className="rounded-[20px]">
             <CardHeader>
@@ -258,7 +258,9 @@ export function ProjectDetailWorkspace({
           </Card>
         </MotionItem>
 
-        <MotionItem y={10}>
+        <MotionItem y={10} className="space-y-4">
+          <ProjectCollaboratorsPanel collaborators={project.collaborators} />
+
           <Card className="rounded-[20px]">
             <CardHeader>
             <CardTitle className="text-[20px]">
