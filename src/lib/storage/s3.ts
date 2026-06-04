@@ -185,11 +185,15 @@ export function isAllowedProjectCompletionDocument(fileName: string, mimeType: s
   );
 }
 
+export function buildUserAvatarPrefix(userId: string) {
+  return `users/${userId}/avatar/`;
+}
+
 export function buildUserAvatarKey(userId: string, originalFileName: string) {
   const safeFileName = sanitizeFileName(originalFileName);
   const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safeFileName}`;
 
-  return `users/${userId}/avatar/${uniqueFileName}`;
+  return `${buildUserAvatarPrefix(userId)}${uniqueFileName}`;
 }
 
 type BuildProjectAssetKeyInput = {

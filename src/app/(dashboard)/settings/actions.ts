@@ -12,7 +12,7 @@ import {
 import { hasValidPasswordValue } from "@/lib/password-rules";
 import { requirePermission } from "@/lib/permissions/require";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { deleteObjectIfNeeded } from "@/lib/storage/s3";
+import { buildUserAvatarPrefix, deleteObjectIfNeeded } from "@/lib/storage/s3";
 
 type UpdateProfileInput = {
   name: string;
@@ -82,6 +82,22 @@ export async function updateProfileAction(
         bio: "Short bio must be 300 characters or fewer.",
       },
     };
+  }
+
+  const hasSubmittedNewAvatar =
+    Boolean(parsed.avatarUrl) && parsed.avatarUrl !== user.avatarUrl;
+
+  if (hasSubmittedNewAvatar) {
+    const allowedAvatarPrefix = buildUserAvatarPrefix(user.id);
+
+    if (
+      !parsed.avatarUrl?.startsWith(allowedAvatarPrefix) ||
+      parsed.avatarUrl.length <= allowedAvatarPrefix.length
+    ) {
+      return {
+        error: "Invalid profile photo. Please upload the photo again.",
+      };
+    }
   }
 
   await withPrismaRetry(() =>
