@@ -219,14 +219,14 @@ export function ProjectsBrowser({
             </h1>
 
             <form onSubmit={handleSearchSubmit} className="w-full lg:w-auto">
-              <label className="relative block lg:w-[360px] xl:w-[400px]">
+              <label className="relative block lg:w-[520px] xl:w-[560px]">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#91a091]" />
                 <Input
                   key={query}
                   ref={searchInputRef}
                   type="search"
                   defaultValue={query}
-                  placeholder="Search projects..."
+                  placeholder="Search by project name, owner, category, tag, or executor..."
                   className="h-[52px] rounded-[18px] border border-[#dde6dd] bg-white pl-11 pr-4 text-[15px] shadow-[0_10px_28px_rgba(18,34,25,0.05)]"
                 />
                 <button type="submit" className="sr-only">
