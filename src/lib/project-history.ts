@@ -282,7 +282,9 @@ function buildStageSubmissionNumberMap(
     .flatMap((entry) => entry.attachments)
     .filter(
       (attachment) =>
-        attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+        (attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION ||
+          (attachment.assetType === AttachmentAssetType.REVISION_ORIGINAL &&
+            isAllowedSubmissionImage(attachment.originalFileName, attachment.mimeType))) &&
         attachment.status === AttachmentStatus.READY,
     )
     .filter(

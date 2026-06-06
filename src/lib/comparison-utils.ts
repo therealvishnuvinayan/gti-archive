@@ -35,9 +35,13 @@ export function isComparableStageSubmissionAttachment(
 export function getStageSubmissionAttachments(
   entries: ProjectChatEntry[],
 ): ProjectAttachmentRecord[] {
-  const submissions = entries
-    .flatMap((entry) => entry.attachments ?? [])
-    .filter(isComparableStageSubmissionAttachment);
+  const submissions = entries.flatMap((entry) =>
+    (entry.attachments ?? []).filter(
+      (attachment) =>
+        isComparableStageSubmissionAttachment(attachment) ||
+        (entry.kind === "revision" && hasComparableSubmissionType(attachment)),
+    ),
+  );
 
   return submissions
     .filter(
