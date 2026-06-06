@@ -1036,7 +1036,7 @@ export function UsersWorkspace({
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search users..."
+                  placeholder="Search by name, email, role, type, or status..."
                   className="h-[48px] rounded-[16px] border border-[#dde6dd] pl-11 pr-4 shadow-none"
                 />
               </div>
