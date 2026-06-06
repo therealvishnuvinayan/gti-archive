@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
@@ -127,6 +128,16 @@ export function DashboardAppFrame({
 }: DashboardAppFrameProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    document.documentElement.classList.add("dashboard-document-scroll-lock");
+    document.body.classList.add("dashboard-document-scroll-lock");
+
+    return () => {
+      document.documentElement.classList.remove("dashboard-document-scroll-lock");
+      document.body.classList.remove("dashboard-document-scroll-lock");
+    };
+  }, []);
 
   if (!pathname || !user) {
     return <>{children}</>;

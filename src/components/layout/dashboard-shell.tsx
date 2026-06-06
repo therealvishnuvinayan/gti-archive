@@ -36,7 +36,7 @@ export function DashboardShell({
   const pathname = usePathname();
 
   return (
-    <div className="h-[100svh] overflow-hidden bg-background p-3 sm:p-4 lg:p-6">
+    <div className="h-[100dvh] overflow-hidden bg-background p-3 sm:p-4 lg:p-6">
       <div className="mx-auto flex h-full max-w-[1600px] gap-4 lg:gap-5">
         <Sidebar
           isOpen={sidebarOpen}

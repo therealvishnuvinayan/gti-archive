@@ -2520,6 +2520,13 @@ export function CreateProjectWorkspace({
             </MotionStaggerGroup>
           </div>
           </MotionSection>
+
+          <div className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf7] px-4 pb-4 pt-1">
+            <CreateProjectSubmitButton
+              mode={mode}
+              uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
+            />
+          </div>
         </CardContent>
       </Card>
       </MotionSection>
@@ -2677,11 +2684,6 @@ export function CreateProjectWorkspace({
             </Button>
           </div>
 
-          <Separator className="mt-6" />
-          <CreateProjectSubmitButton
-            mode={mode}
-            uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
-          />
           </CardContent>
         </Card>
         </MotionItem>

@@ -51,6 +51,12 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+html.dashboard-document-scroll-lock,
+body.dashboard-document-scroll-lock {
+  height: 100dvh;
+  overflow: hidden;
+}
+
 button,
 input {
   font: inherit;
