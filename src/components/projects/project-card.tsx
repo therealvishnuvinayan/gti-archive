@@ -35,14 +35,18 @@ export type ProjectCardItem = {
 
 type ProjectCardProps = {
   project: ProjectCardItem;
+  returnHref?: string;
 };
 
-export function ProjectCard({ project }: ProjectCardProps) {
+export function ProjectCard({ project, returnHref }: ProjectCardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string>();
   const [pinError, setPinError] = useState<string>();
+  const projectHref = returnHref
+    ? `/projects/${project.id}?returnTo=${encodeURIComponent(returnHref)}`
+    : `/projects/${project.id}`;
 
   function handleTogglePin() {
     setPinError(undefined);
@@ -204,7 +208,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
                 : "border-brand/35 bg-white text-brand"
             }`}
           >
-            <Link href={`/projects/${project.id}`}>
+            <Link href={projectHref}>
               View Project
               <ArrowRight className="ml-auto h-4 w-4" />
             </Link>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useRef, useTransition } from "react";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 
@@ -135,9 +135,12 @@ export function ProjectsBrowser({
 }: ProjectsBrowserProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const hasActiveFilters = Boolean(query || activeCategory || activeTag);
+  const currentSearch = searchParams.toString();
+  const currentProjectsHref = currentSearch ? `${pathname}?${currentSearch}` : pathname;
   const emptyState = getEmptyStateCopy(
     hasAnyProjects,
     canCreateProject,
@@ -348,7 +351,7 @@ export function ProjectsBrowser({
         >
           {projects.map((project) => (
             <MotionItem key={project.id} y={10} layout>
-              <ProjectCard project={project} />
+              <ProjectCard project={project} returnHref={currentProjectsHref} />
             </MotionItem>
           ))}
         </MotionStaggerGroup>

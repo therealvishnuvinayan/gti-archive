@@ -24,6 +24,30 @@ function BackPill({ href }: { href: string }) {
   );
 }
 
+function getProjectsReturnHref(value: string | null) {
+  if (!value) {
+    return "/projects";
+  }
+
+  try {
+    const decodedValue = decodeURIComponent(value);
+
+    if (decodedValue === "/projects" || decodedValue.startsWith("/projects?")) {
+      return decodedValue;
+    }
+  } catch {
+    if (value === "/projects" || value.startsWith("/projects?")) {
+      return value;
+    }
+  }
+
+  if (value === "/projects" || value.startsWith("/projects?")) {
+    return value;
+  }
+
+  return "/projects";
+}
+
 function getTopbarProps(
   pathname: string,
   searchParams: URLSearchParams,
@@ -80,7 +104,9 @@ function getTopbarProps(
 
   if (projectSegments.length === 2 && projectSegments[0] === "projects") {
     return {
-      leadingContent: <BackPill href="/projects" />,
+      leadingContent: (
+        <BackPill href={getProjectsReturnHref(searchParams.get("returnTo"))} />
+      ),
     };
   }
 

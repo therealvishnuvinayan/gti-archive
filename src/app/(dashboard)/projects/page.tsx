@@ -37,6 +37,7 @@ export default async function ProjectsPage({
   const resolvedSearchParams = await searchParams;
   const activeStatus =
     resolvedSearchParams.status === "ALL" ||
+    resolvedSearchParams.status === "ONGOING" ||
     resolvedSearchParams.status === "PENDING" ||
     resolvedSearchParams.status === "ON_HOLD" ||
     resolvedSearchParams.status === "COMPLETED"
