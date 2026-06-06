@@ -1179,15 +1179,15 @@ export function CreateProjectWorkspace({
       const createdName = result.item?.name ?? normalizedName;
 
       if (quickAddMasterDataKind === "category") {
+        setProjectCategory(createdName);
         setAvailableCategoryOptions((current) =>
           mergeUniqueTextOptions(current, [createdName]),
         );
-        setProjectCategory(createdName);
         clearFieldError("category");
         showSuccessToast("Category added.");
       } else {
-        setAvailableTagOptions((current) => mergeUniqueTextOptions(current, [createdName]));
         setProjectTag(createdName);
+        setAvailableTagOptions((current) => mergeUniqueTextOptions(current, [createdName]));
         clearFieldError("tag");
         showSuccessToast("Tag added.");
       }
@@ -1702,6 +1702,7 @@ export function CreateProjectWorkspace({
               <label className="block">
                 <RequiredLabel>Project Category</RequiredLabel>
                 <Select
+                  key={`project-category-${projectCategory || "empty"}-${categorySelectOptions.join("\u001f")}`}
                   value={projectCategory}
                   onValueChange={(nextValue) => {
                     if (nextValue === "__add_category__") {
@@ -1723,9 +1724,7 @@ export function CreateProjectWorkspace({
                           ? "No categories available"
                           : "Select project category"
                       }
-                    >
-                      {projectCategory || undefined}
-                    </SelectValue>
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {categorySelectOptions.map((category) => (
@@ -1933,6 +1932,7 @@ export function CreateProjectWorkspace({
               <label className="block">
                 <FieldLabel>Project Tag</FieldLabel>
                 <Select
+                  key={`project-tag-${projectTag || "empty"}-${tagSelectOptions.join("\u001f")}`}
                   value={projectTag || "__no_tag__"}
                   onValueChange={(nextValue) => {
                     if (nextValue === "__add_tag__") {
@@ -1945,9 +1945,7 @@ export function CreateProjectWorkspace({
                   }}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
-                    <SelectValue placeholder="Select project tag">
-                      {projectTag || "No tag"}
-                    </SelectValue>
+                    <SelectValue placeholder="Select project tag" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__no_tag__">No tag</SelectItem>

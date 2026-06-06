@@ -135,9 +135,23 @@ function SelectItem({
 }
 
 function SelectValue({
+  children,
+  placeholder,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Value>) {
-  return <SelectPrimitive.Value data-slot="select-value" {...props} />;
+  const fallbackPlaceholder =
+    placeholder ??
+    (typeof children === "string" || typeof children === "number"
+      ? String(children)
+      : undefined);
+
+  return (
+    <SelectPrimitive.Value
+      data-slot="select-value"
+      placeholder={fallbackPlaceholder}
+      {...props}
+    />
+  );
 }
 
 export {
