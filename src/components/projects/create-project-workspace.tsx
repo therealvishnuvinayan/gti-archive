@@ -148,6 +148,18 @@ function getLocalFileTypeLabel(fileName: string) {
   return extension && extension.length <= 5 ? extension : "FILE";
 }
 
+function formatLocalFileSize(fileSize: number) {
+  if (fileSize >= 1024 * 1024) {
+    return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (fileSize >= 1024) {
+    return `${(fileSize / 1024).toFixed(1)} KB`;
+  }
+
+  return `${fileSize} B`;
+}
+
 function formatDateValue(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -1327,7 +1339,7 @@ export function CreateProjectWorkspace({
       stageId?: string | null;
       commentId?: string | null;
     },
-  ) {
+  ): Promise<ProjectEditorInitialAttachment> {
     if (!projectId) {
       throw new Error("Save the project first before uploading attachments.");
     }
@@ -1383,6 +1395,19 @@ export function CreateProjectWorkspace({
       if (!completeResponse.ok) {
         throw new Error(completePayload.error || "Unable to complete the attachment upload.");
       }
+
+      return {
+        id: uploadPayload.attachmentId,
+        originalFileName: file.name,
+        fileTypeLabel: getLocalFileTypeLabel(file.name),
+        mimeType: file.type || "application/octet-stream",
+        fileSizeLabel: formatLocalFileSize(file.size),
+        uploadedBy: "You",
+        uploadedAt: "Just now",
+        previewPath: `/api/project-assets/${uploadPayload.attachmentId}/preview`,
+        downloadPath: `/api/project-assets/${uploadPayload.attachmentId}/download`,
+        isFavoritedByCurrentUser: false,
+      };
     } catch (error) {
       await fetch("/api/project-assets/complete", {
         method: "POST",
@@ -1426,15 +1451,27 @@ export function CreateProjectWorkspace({
     }
 
     setIsUploadingAttachments(true);
+    setPendingProjectFiles((current) => [...current, ...selectedFiles]);
 
     try {
       for (const file of selectedFiles) {
-        await uploadProjectAsset(file, initialValues.id);
+        const attachment = await uploadProjectAsset(file, initialValues.id);
+        setProjectAttachments((current) =>
+          current.some((item) => item.id === attachment.id)
+            ? current
+            : [...current, attachment],
+        );
+        setPendingProjectFiles((current) =>
+          current.filter((pendingFile) => pendingFile !== file),
+        );
       }
       refreshProjectData();
     } catch (error) {
       setAttachmentError(
         error instanceof Error ? error.message : "Unable to upload the project attachments right now.",
+      );
+      setPendingProjectFiles((current) =>
+        current.filter((pendingFile) => !selectedFiles.includes(pendingFile)),
       );
     } finally {
       setIsUploadingAttachments(false);
