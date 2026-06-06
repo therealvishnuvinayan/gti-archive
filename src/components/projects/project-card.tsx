@@ -79,11 +79,11 @@ export function ProjectCard({ project }: ProjectCardProps) {
         }`}
       >
         <CardContent className="flex h-full flex-col p-0">
-          <div className="mb-5 flex items-start justify-between gap-3">
-            <div className="space-y-3">
+          <div className="mb-5 flex min-w-0 items-start justify-between gap-3 overflow-hidden">
+            <div className="min-w-0 flex-1 space-y-3">
               <Badge
                 variant={project.isPinned ? "secondary" : "outline"}
-                className={`max-w-full truncate ${
+                className={`max-w-full truncate whitespace-nowrap ${
                   project.isPinned
                     ? "border-white/15 bg-white/14 text-[#ecfff0]"
                     : "border-[#d5e3d6] bg-[#fbfdfb] text-brand"
@@ -92,7 +92,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
                 {project.stage}
               </Badge>
               <p
-                className={`text-[13px] font-[600] ${
+                className={`truncate text-[13px] font-[600] ${
                   project.isPinned ? "text-[#dff6e3]" : "text-[#64aa76]"
                 }`}
               >
@@ -101,7 +101,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
             </div>
 
             {project.canPin || project.canEdit || project.canDelete ? (
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 {project.canPin ? (
                   <Button
                     type="button"
@@ -186,11 +186,11 @@ export function ProjectCard({ project }: ProjectCardProps) {
           >
             <p className="flex items-center gap-2.5">
               <CalendarDays className="h-4 w-4 shrink-0" />
-              <span>Created on {project.createdOn}</span>
+              <span className="min-w-0 truncate">Created on {project.createdOn}</span>
             </p>
-            <p className="flex items-center gap-2.5">
+            <p className="flex min-w-0 items-center gap-2.5">
               <UserRound className="h-4 w-4 shrink-0" />
-              <span>Created by {project.createdBy}</span>
+              <span className="min-w-0 truncate">Created by {project.createdBy}</span>
             </p>
           </div>
 
