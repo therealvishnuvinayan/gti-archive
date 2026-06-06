@@ -2586,6 +2586,16 @@ export function CreateProjectWorkspace({
         </MotionItem>
       </MotionStaggerGroup>
 
+      <CollaboratorPickerDialog
+        isOpen={pickerOpen}
+        collaborators={availableCollaboratorRecords}
+        selectedIds={selectedCollaboratorIds}
+        onToggle={toggleAssignedCollaborator}
+        onClose={() => setPickerOpen(false)}
+        onConfirm={() => setPickerOpen(false)}
+        onInviteFallback={openCollaboratorInvite}
+        confirmLabel="Apply Selection"
+      />
       <CollaboratorDialog
         isOpen={dialogOpen}
         mode="invite"
@@ -2627,16 +2637,6 @@ export function CreateProjectWorkspace({
           setExecutorInviteError(undefined);
           setExecutorInviteFormValue(field, value);
         }}
-      />
-      <CollaboratorPickerDialog
-        isOpen={pickerOpen}
-        collaborators={availableCollaboratorRecords}
-        selectedIds={selectedCollaboratorIds}
-        onToggle={toggleAssignedCollaborator}
-        onClose={() => setPickerOpen(false)}
-        onConfirm={() => setPickerOpen(false)}
-        onInviteFallback={openCollaboratorInvite}
-        confirmLabel="Apply Selection"
       />
       <ConfirmationDialog
         isOpen={budgetConflictDialogOpen}
