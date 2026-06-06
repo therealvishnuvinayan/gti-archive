@@ -222,7 +222,7 @@ export function ArchiveCategoryWorkspace({
 
               return (
                 <MotionItem key={item.id} layout className="rounded-[20px]">
-                  <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[2.2fr_1.2fr_1fr_1.1fr_0.9fr]">
+                  <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[minmax(0,2.2fr)_minmax(150px,1.2fr)_minmax(120px,1fr)_minmax(120px,1.1fr)_minmax(220px,auto)]">
                     <div className="min-w-0">
                       <div className="flex items-start gap-3">
                         <Card className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
@@ -265,20 +265,20 @@ export function ArchiveCategoryWorkspace({
                       <p className="text-[#687269]">Archived by</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 xl:self-start">
+                    <div className="flex flex-wrap items-center gap-2 xl:justify-end xl:self-start">
                       <AssetPreviewButton
                         fileName={item.finalArchiveFileName}
                         mimeType={item.mimeType}
                         previewPath={item.previewPath}
                         downloadPath={item.downloadPath}
-                        triggerClassName="min-h-[40px] rounded-xl border border-[#ecefed] bg-white px-2 py-2 text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
+                        triggerClassName="h-10 min-w-[94px] justify-center rounded-full border border-[#ecefed] bg-white px-3 text-[13px] font-[600] text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
                         iconOnly={false}
                       />
                       <Button
                         asChild
                         type="button"
                         variant="secondary"
-                        className="min-h-[40px] rounded-xl border border-[#ecefed] bg-white px-2 py-2 text-[10px] font-[600] text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
+                        className="h-10 min-w-[118px] justify-center rounded-full border border-[#ecefed] bg-white px-3 text-[13px] font-[600] text-[#3a443d] shadow-[0_8px_20px_rgba(16,26,20,0.08)]"
                       >
                         <a href={item.downloadPath} target="_blank" rel="noreferrer">
                           <Download className="h-4 w-4 text-brand" />
