@@ -539,7 +539,9 @@ function mapProjectToCard(
     canEdit:
       project.status !== "COMPLETED" &&
       hasProjectPermission(currentUser, project, "project.update"),
-    canDelete: hasProjectPermission(currentUser, project, "project.delete"),
+    canDelete:
+      project.status !== "COMPLETED" &&
+      hasProjectPermission(currentUser, project, "project.delete"),
   };
 }
 

@@ -1012,6 +1012,7 @@ export async function deleteProjectAction(projectId: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: {
+      status: true,
       createdById: true,
       executorUserId: true,
       collaborators: {
@@ -1028,6 +1029,10 @@ export async function deleteProjectAction(projectId: string) {
 
   if (!hasProjectPermission(user, project, "project.delete")) {
     throw new Error("You are not allowed to delete projects.");
+  }
+
+  if (project.status === ProjectStatus.COMPLETED) {
+    throw new Error("Completed projects cannot be deleted.");
   }
 
   await prisma.project.delete({
