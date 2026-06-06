@@ -7,6 +7,7 @@ import { Download, Loader2, Lock, Upload } from "lucide-react";
 
 import {
   configureProjectCompletionWorkflowAction,
+  markProjectInvoiceNotRequiredAction,
   prepareAuthorityApprovalRequestAction,
   prepareCopyrightTransferRequestAction,
 } from "@/app/(dashboard)/projects/actions";
@@ -565,7 +566,7 @@ function ProjectCompletionChecklistBody({
   );
   const [copyrightNote, setCopyrightNote] = useState(workflow.copyrightNote ?? "");
   const [pendingAction, setPendingAction] = useState<
-    "requirements" | "approval" | "copyright" | null
+    "requirements" | "approval" | "copyright" | "invoice" | null
   >(null);
   const [uploadingDocumentType, setUploadingDocumentType] =
     useState<CompletionDocumentTypeValue | null>(null);
@@ -710,6 +711,33 @@ function ProjectCompletionChecklistBody({
           : "Unable to prepare the copyright transfer request right now.";
       setWorkflowError(message);
       showErrorToast("Unable to prepare copyright transfer.", message);
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleMarkInvoiceNotRequired() {
+    setWorkflowError(null);
+    setPendingAction("invoice");
+
+    try {
+      const result = await markProjectInvoiceNotRequiredAction({
+        projectId,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      applyWorkflowUpdate(result.workflow);
+      showSuccessToast("Invoice marked as not required.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to mark invoice as not required right now.";
+      setWorkflowError(message);
+      showErrorToast("Unable to update invoice step.", message);
     } finally {
       setPendingAction(null);
     }
@@ -1250,6 +1278,10 @@ function ProjectCompletionChecklistBody({
               <Lock className="h-3.5 w-3.5" />
               Invoice is locked until the previous steps are completed or skipped.
             </div>
+          ) : workflowState.invoiceStatus === "NOT_REQUIRED" ? (
+            <p className="mt-4 text-[13px] text-[#5f6b62]">
+              Invoice is marked as not required for this project.
+            </p>
           ) : workflowState.invoiceDocument ? (
             <div className="mt-4 space-y-3">
               <p className="text-[13px] text-[#2b8b56]">
@@ -1260,21 +1292,43 @@ function ProjectCompletionChecklistBody({
               </p>
               <CompletionDocumentList documents={[workflowState.invoiceDocument]} />
             </div>
-          ) : workflowState.canUploadInvoice ? (
-            <div className="mt-4 flex justify-end">
-              <Button
-                type="button"
-                className="rounded-full text-[12px]"
-                disabled={uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice}
-                onClick={() => invoiceInputRef.current?.click()}
-              >
-                {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Upload className="h-3.5 w-3.5" />
-                )}
-                Upload Invoice
-              </Button>
+          ) : workflowState.canUploadInvoice || workflowState.canManage ? (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              {workflowState.canManage ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-full text-[12px]"
+                  disabled={
+                    pendingAction === "invoice" ||
+                    uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice
+                  }
+                  onClick={handleMarkInvoiceNotRequired}
+                >
+                  {pendingAction === "invoice" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : null}
+                  Mark Not Required
+                </Button>
+              ) : null}
+              {workflowState.canUploadInvoice ? (
+                <Button
+                  type="button"
+                  className="rounded-full text-[12px]"
+                  disabled={
+                    pendingAction === "invoice" ||
+                    uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice
+                  }
+                  onClick={() => invoiceInputRef.current?.click()}
+                >
+                  {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                  Upload Invoice
+                </Button>
+              ) : null}
             </div>
           ) : (
             <p className="mt-4 text-[13px] text-[#5f6b62]">

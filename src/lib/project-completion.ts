@@ -286,6 +286,10 @@ function getNextInvoiceStatus(
     return ProjectCompletionStepStatus.COMPLETED;
   }
 
+  if (currentStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
+    return ProjectCompletionStepStatus.NOT_REQUIRED;
+  }
+
   return isStepResolved(approvalStatus) && isStepResolved(copyrightStatus)
     ? ProjectCompletionStepStatus.PENDING
     : ProjectCompletionStepStatus.NOT_STARTED;
@@ -1007,6 +1011,75 @@ export async function prepareCopyrightTransferRequest(
   return workflow;
 }
 
+export async function markProjectInvoiceNotRequired(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+  },
+) {
+  const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+
+  await withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const workflow = await ensureWorkflowExistsTx(tx, project.id);
+
+      if (
+        !isStepResolved(workflow.approvalStatus) ||
+        !isStepResolved(workflow.copyrightStatus)
+      ) {
+        throw new Error(
+          "Complete or skip authority approval and copyright transfer before marking invoice as not required.",
+        );
+      }
+
+      if (workflow.invoiceStatus === ProjectCompletionStepStatus.COMPLETED) {
+        throw new Error("Invoice has already been completed.");
+      }
+
+      if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
+        return;
+      }
+
+      const invoiceDocument = await tx.projectCompletionDocument.findUnique({
+        where: {
+          workflowId_type: {
+            workflowId: workflow.id,
+            type: ProjectCompletionDocumentType.INVOICE,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (invoiceDocument) {
+        throw new Error("An invoice document has already been uploaded.");
+      }
+
+      const completedAt = new Date();
+
+      await tx.projectCompletionWorkflow.update({
+        where: {
+          projectId: project.id,
+        },
+        data: {
+          invoiceStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+          invoiceCompletedAt: null,
+          completedAt,
+        },
+      });
+    }),
+  );
+
+  const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
+
+  if (!workflow) {
+    throw new Error("Unable to load the updated project completion workflow.");
+  }
+
+  return workflow;
+}
+
 export async function requestProjectCompletionDocumentUpload(
   user: ProjectCompletionWorkflowUser,
   input: RequestProjectCompletionDocumentUploadInput,
@@ -1084,6 +1157,10 @@ export async function requestProjectCompletionDocumentUpload(
         throw new Error(
           "Complete or skip authority approval and copyright transfer before uploading the invoice.",
         );
+      }
+
+      if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
+        throw new Error("Invoice is marked as not required for this project.");
       }
       break;
   }
@@ -1312,6 +1389,10 @@ export async function finalizeProjectCompletionDocumentUpload(
             throw new Error(
               "Complete or skip authority approval and copyright transfer before uploading the invoice.",
             );
+          }
+
+          if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
+            throw new Error("Invoice is marked as not required for this project.");
           }
 
           await tx.projectCompletionDocument.upsert({

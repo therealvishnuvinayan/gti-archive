@@ -27,6 +27,7 @@ import {
 } from "@/lib/notification-center";
 import {
   configureProjectCompletionWorkflow,
+  markProjectInvoiceNotRequired,
   prepareAuthorityApprovalRequest,
   prepareCopyrightTransferRequest,
 } from "@/lib/project-completion";
@@ -537,6 +538,27 @@ export async function prepareCopyrightTransferRequestAction(input: {
         error instanceof Error
           ? error.message
           : "Unable to prepare the copyright transfer request right now.",
+    };
+  }
+}
+
+export async function markProjectInvoiceNotRequiredAction(input: {
+  projectId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const workflow = await markProjectInvoiceNotRequired(user, input);
+    revalidateProjectFlow();
+    revalidateArchiveFlow(input.projectId);
+
+    return { workflow };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to mark invoice as not required right now.",
     };
   }
 }
