@@ -536,7 +536,9 @@ function mapProjectToCard(
     createdBy: getCreatorName(project.createdBy),
     isPinned: project.isPinned,
     canPin: hasProjectPermission(currentUser, project, "project.update"),
-    canEdit: hasProjectPermission(currentUser, project, "project.update"),
+    canEdit:
+      project.status !== "COMPLETED" &&
+      hasProjectPermission(currentUser, project, "project.update"),
     canDelete: hasProjectPermission(currentUser, project, "project.delete"),
   };
 }
@@ -1619,6 +1621,7 @@ export async function getProjectEditAccessById(
     prisma.project.findUnique({
       where: { id },
       select: {
+        status: true,
         createdById: true,
         executorUserId: true,
         collaborators: {
@@ -1635,6 +1638,8 @@ export async function getProjectEditAccessById(
   }
 
   return {
-    canEdit: hasProjectPermission(currentUser, project, "project.update"),
+    canEdit:
+      project.status !== "COMPLETED" &&
+      hasProjectPermission(currentUser, project, "project.update"),
   };
 }

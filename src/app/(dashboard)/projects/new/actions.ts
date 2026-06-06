@@ -751,6 +751,10 @@ export async function updateProjectAction(
     return { error: "You are not allowed to edit projects." };
   }
 
+  if (existingProject.status === ProjectStatus.COMPLETED) {
+    return { error: "Completed projects cannot be edited." };
+  }
+
   const canUpdateBudget = hasProjectPermission(
     user,
     existingProject,
