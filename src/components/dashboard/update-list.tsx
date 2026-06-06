@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 export type UpdateItem = {
+  id: string;
   title: string;
   project: string;
   tone: "critical" | "success" | "warning";
@@ -49,7 +50,7 @@ export function UpdateList({ title, items }: UpdateListProps) {
             );
 
             return (
-              <li key={`${item.title}-${item.project}`}>
+              <li key={item.id}>
                 {item.href ? (
                   <Link
                     href={item.href}

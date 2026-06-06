@@ -132,6 +132,7 @@ export default async function Home() {
             <UpdateList
               title="Important Updates"
               items={dashboard.updates.map((item) => ({
+                id: item.id,
                 title: item.title,
                 project: item.detail,
                 tone: item.tone,

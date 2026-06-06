@@ -53,6 +53,7 @@ type DashboardStageRecord = {
 };
 
 export type DashboardUpdateRecord = {
+  id: string;
   title: string;
   detail: string;
   tone: "critical" | "success" | "warning";
@@ -448,6 +449,7 @@ export async function getDashboardSnapshot(
     ]);
 
   const updates = recentNotifications.notifications.map((notification) => ({
+    id: notification.id,
     title: notification.title,
     detail: notification.description,
     tone: mapNotificationTone(notification.visualKind),
