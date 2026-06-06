@@ -617,7 +617,7 @@ function AttachmentHistoryList({
   }
 
   return (
-    <div className={compact ? "mt-3 space-y-2" : "mt-3 space-y-2.5"}>
+    <div className={compact ? "mt-3 min-w-0 max-w-full space-y-2" : "mt-3 min-w-0 max-w-full space-y-2.5"}>
       {attachments.map((attachment) => (
         (() => {
           const effectiveSubmissionStatus = attachment.isSubmission
@@ -627,21 +627,21 @@ function AttachmentHistoryList({
           return (
             <div
               key={attachment.id}
-              className={`rounded-[14px] border border-white/15 bg-white/92 px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${
+              className={`w-full min-w-0 max-w-full overflow-hidden rounded-[14px] border border-white/15 bg-white/92 px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${
                 compact ? "sm:max-w-[360px]" : ""
               }`}
             >
-              <div className="flex items-start gap-3">
+              <div className="flex min-w-0 items-start gap-3">
                 <div
-                  className={`grid h-8 min-w-8 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
                     attachment.fileTypeLabel,
                   )}`}
                 >
                   {attachment.fileTypeLabel}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-[12px] font-[700] text-[#111712]">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <p className="min-w-0 max-w-full flex-1 truncate text-[12px] font-[700] text-[#111712]">
                       {attachment.originalFileName}
                     </p>
                     {attachment.uploadState ? (
@@ -715,7 +715,7 @@ function AttachmentHistoryList({
                 !attachment.uploadState &&
                 attachment.previewPath &&
                 attachment.downloadPath ? (
-                  <div className="flex items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1">
                     <AssetPreviewButton
                       fileName={attachment.originalFileName}
                       mimeType={attachment.mimeType}
@@ -3284,9 +3284,9 @@ export function ProjectChatWorkspace({
 
                 return (
                   <div key={message.id} className="space-y-3">
-                    <Card className="flex-1 rounded-[20px] border-none bg-[linear-gradient(135deg,#2f8d5d,#476f5a)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-                      <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)] xl:items-center">
-                        <div className="max-w-[220px]">
+                    <Card className="min-w-0 flex-1 overflow-hidden rounded-[20px] border-none bg-[linear-gradient(135deg,#2f8d5d,#476f5a)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
+                      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,220px)_minmax(0,1fr)] xl:items-center">
+                        <div className="min-w-0 max-w-[220px]">
                           <div className="flex flex-wrap items-center gap-2">
                             <h1 className="text-[18px] font-[700] text-[#95d867]">
                               {message.title}
@@ -3322,8 +3322,8 @@ export function ProjectChatWorkspace({
                         </div>
 
                         {message.attachments?.length ? (
-                          <div className="mx-auto min-w-0 max-w-[420px]">
-                            <Card className="rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
+                          <div className="w-full min-w-0 max-w-full justify-self-stretch xl:max-w-[380px]">
+                            <Card className="w-full min-w-0 overflow-hidden rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
                               <p className="text-center text-[11px] font-[700] text-white">
                                 Attachments
                               </p>
