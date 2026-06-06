@@ -15,7 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
   MotionItem,
-  MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
 import type { ProjectCompletionSummary } from "@/lib/archives";
@@ -69,262 +68,235 @@ export function ProjectDetailWorkspace({
   completionSummary,
   completionWorkflow,
 }: ProjectDetailWorkspaceProps) {
-  const stageGridClasses =
-    project.stageCards.length === 1
-      ? "max-w-[420px] grid-cols-1"
-      : project.stageCards.length === 2
-        ? "md:grid-cols-2"
-        : "xl:grid-cols-3";
+  const stageGridClasses = "grid-cols-[repeat(auto-fit,minmax(210px,240px))]";
 
   return (
-    <section className="mx-auto max-w-[1320px] space-y-5">
+    <section className="mx-auto w-full max-w-[1180px]">
       <MotionStaggerGroup
-        className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]"
+        className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_260px]"
         stagger={0.05}
       >
-        <MotionItem y={10} className="h-full">
-          <Card className="flex h-full min-h-[220px] flex-col justify-between rounded-[20px] border-none bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-6 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] xl:min-h-[266px]">
-            <div>
-              <h1 className="text-[28px] font-[700] leading-[1.12] tracking-[-0.03em]">
-                {project.title}
-              </h1>
-              <p className="mt-1.5 text-[16px] font-[700] leading-[1.1] text-[#86d66f]">
-                {project.category}
-              </p>
+        <MotionItem y={10} className="min-w-0 space-y-4">
+          <Card className="rounded-[18px] border-none bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-4 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:px-5">
+            <div className="flex min-h-[92px] flex-col justify-between gap-6">
+              <div>
+                <h1 className="text-[25px] font-[800] leading-[1.08] tracking-[-0.03em]">
+                  {project.title}
+                </h1>
+                <p className="mt-1 text-[22px] font-[800] leading-[1.05] text-[#86d66f]">
+                  {project.category}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 text-[12px] font-[600] text-white/95 sm:flex-row sm:items-end sm:justify-between">
+                <p>Project Owner : {project.createdBy}</p>
+                <p className="text-[15px] font-[800] text-[#83db71]">
+                  {project.currentStageName} : {project.statusLabel}
+                </p>
+              </div>
             </div>
-            <div className="mt-8 flex flex-col gap-2 text-[13px] text-white/95 sm:flex-row sm:items-end sm:justify-between">
-              <p>Created By : {project.createdBy}</p>
-              <p className="text-[15px] font-[700] text-[#83db71]">
-                {project.currentStageName} : {project.statusLabel}
+          </Card>
+
+          <Card className="rounded-[18px] bg-white shadow-[0_18px_42px_rgba(23,39,28,0.05)]">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-[22px]">Project Stages</CardTitle>
+              <p className="mt-1 text-[13px] text-[#6b756d]">
+                Open a stage to continue discussion and revision work. Use compare from the stage flow.
               </p>
-            </div>
+            </CardHeader>
+
+            {project.stageCards.length > 0 ? (
+              <CardContent className="pt-0">
+                <MotionStaggerGroup
+                  className={`grid justify-start gap-3 ${stageGridClasses}`}
+                  stagger={0.045}
+                >
+                  {project.stageCards.map((stage) => {
+                    const styles = getStageCardClasses(stage);
+                    const stageInactive = stage.status === "pending";
+
+                    return (
+                      <MotionItem key={stage.id} y={10}>
+                        <Card className={`min-h-[250px] rounded-[10px] p-4 ${styles.card}`}>
+                          <Badge
+                            variant="secondary"
+                            className={`max-w-full truncate border-none bg-white/12 text-[13px] font-[800] leading-tight ${styles.label}`}
+                          >
+                            {stage.label}
+                          </Badge>
+                          <p className="mt-1 truncate text-[12px] font-[600] leading-tight text-white/90">
+                            {stage.subtitle}
+                          </p>
+                          {stage.description ? (
+                            <p className="mt-2 line-clamp-2 text-[12px] leading-[1.35] text-white/82">
+                              {stage.description}
+                            </p>
+                          ) : null}
+                          <h3 className="mt-3 line-clamp-2 min-h-[44px] text-[20px] font-[800] leading-[1.08] text-white">
+                            {stage.title}
+                          </h3>
+                          <div className={`mt-3 space-y-0.5 text-[13px] ${styles.meta}`}>
+                            <p>Created on {stage.createdOn}</p>
+                            <p>Stage Budget: {stage.budget}</p>
+                          </div>
+
+                          <Separator className="my-3 bg-white/12" />
+
+                          <Button
+                            asChild
+                            className={
+                              stageInactive
+                                ? "pointer-events-none w-full rounded-full bg-[#f1f1f1] text-[#d7d7d7] shadow-none"
+                                : "w-full rounded-full bg-[#0c4c34] text-white hover:bg-[#0a402c]"
+                            }
+                          >
+                            <Link href={`/projects/${project.id}/chat?stage=${stage.id}`}>
+                              Open Stage
+                            </Link>
+                          </Button>
+                        </Card>
+                      </MotionItem>
+                    );
+                  })}
+                </MotionStaggerGroup>
+              </CardContent>
+            ) : (
+              <CardContent>
+                <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-5 py-10 text-center text-[15px] text-[#6e776f]">
+                  No stages are attached to this project yet.
+                </div>
+              </CardContent>
+            )}
+          </Card>
+
+          {completionSummary.isCompleted ? (
+            <MotionStaggerGroup className="space-y-4" stagger={0.04}>
+              <MotionItem y={10}>
+                <CompletedProjectArchiveSummaryCard completionSummary={completionSummary} />
+              </MotionItem>
+              {completionWorkflow ? (
+                <MotionItem y={10}>
+                  <ProjectCompletionChecklist
+                    projectId={project.id}
+                    workflow={completionWorkflow}
+                  />
+                </MotionItem>
+              ) : null}
+            </MotionStaggerGroup>
+          ) : null}
+
+          <Card className="rounded-[18px]">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[20px]">Project Brief</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#39433c]">
+                {project.description}
+              </p>
+            </CardContent>
           </Card>
         </MotionItem>
 
-        <MotionItem y={10}>
-          <Card className="rounded-[20px] border border-brand/40">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[21px] text-brand">
-                Project Overview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <dl className="space-y-1.5 text-[13px] text-[#242b26]">
+        <MotionItem y={10} className="min-w-0 space-y-4">
+          <Card className="rounded-[18px] border border-brand/40 shadow-none">
+            <CardContent className="p-4">
+              <h2 className="text-[18px] font-[800] text-brand">Project Overview</h2>
+              <dl className="mt-3 space-y-1.5 text-[12px] leading-5 text-[#242b26]">
                 <div>
-                  <dt className="inline font-[700]">Budget:</dt>{" "}
+                  <dt className="inline font-[800]">Budget:</dt>{" "}
                   <dd className="inline">{project.budget}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Stages:</dt>{" "}
+                  <dt className="inline font-[800]">Stages:</dt>{" "}
                   <dd className="inline">{project.stageCount}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Project Started:</dt>{" "}
+                  <dt className="inline font-[800]">Project Started:</dt>{" "}
                   <dd className="inline">{project.startDate}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Project Deadline:</dt>{" "}
+                  <dt className="inline font-[800]">Project Deadline:</dt>{" "}
                   <dd className="inline">{project.endDate}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Executor:</dt>{" "}
+                  <dt className="inline font-[800]">Executor:</dt>{" "}
                   <dd className="inline">{project.executorName}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Tag:</dt>{" "}
+                  <dt className="inline font-[800]">Tag:</dt>{" "}
                   <dd className="inline">{project.tag}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Priority:</dt>{" "}
+                  <dt className="inline font-[800]">Priority:</dt>{" "}
                   <dd className="inline">{project.priority}</dd>
                 </div>
               </dl>
             </CardContent>
           </Card>
-        </MotionItem>
-      </MotionStaggerGroup>
 
-      {completionSummary.isCompleted ? (
-        <MotionStaggerGroup className="space-y-4" stagger={0.04}>
-          <MotionItem y={10}>
-            <CompletedProjectArchiveSummaryCard completionSummary={completionSummary} />
-          </MotionItem>
-          {completionWorkflow ? (
-            <MotionItem y={10}>
-              <ProjectCompletionChecklist
-                projectId={project.id}
-                workflow={completionWorkflow}
-              />
-            </MotionItem>
-          ) : null}
-        </MotionStaggerGroup>
-      ) : null}
-
-      <MotionSection>
-      <Card className="rounded-[20px]">
-        <CardHeader className="pb-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <CardTitle className="text-[22px]">
-              Project Stages
-            </CardTitle>
-            <p className="mt-1 text-[14px] text-[#6b756d]">
-              Open a stage to continue discussion and revision work. Use compare from the stage flow.
-            </p>
-          </div>
-        </div>
-        </CardHeader>
-
-        {project.stageCards.length > 0 ? (
-          <CardContent className="pt-0">
-            <MotionStaggerGroup
-              className={`grid gap-4 ${stageGridClasses}`}
-              stagger={0.045}
-            >
-            {project.stageCards.map((stage) => {
-              const styles = getStageCardClasses(stage);
-              const stageInactive = stage.status === "pending";
-
-              return (
-                <MotionItem key={stage.id} y={10}>
-                  <Card
-                    className={`rounded-[18px] p-4 shadow-[0_18px_42px_rgba(23,39,28,0.05)] ${styles.card}`}
-                  >
-                    <Badge
-                      variant="secondary"
-                      className={`w-fit border-none bg-white/12 text-[16px] font-[700] leading-tight ${styles.label}`}
-                    >
-                      {stage.label}
-                    </Badge>
-                    <p className="mt-1 text-[14px] leading-tight text-white/90">
-                      {stage.subtitle}
-                    </p>
-                    {stage.description ? (
-                      <p className="mt-2 text-[12px] leading-[1.4] text-white/82">
-                        {stage.description}
-                      </p>
-                    ) : null}
-                    <h3 className="mt-3 text-[20px] font-[700] leading-[1.08] text-white">
-                      {stage.title}
-                    </h3>
-                    <div className={`mt-3 space-y-0.5 text-[14px] ${styles.meta}`}>
-                      <p>Created on {stage.createdOn}</p>
-                      <p>Stage Budget: {stage.budget}</p>
-                      <p>Stage Start: {stage.plannedStartAt}</p>
-                      <p>Stage Due: {stage.plannedDueAt}</p>
-                    </div>
-
-                    <Separator className="my-3 bg-white/12" />
-
-                    <div className="mt-4 space-y-2.5">
-                      <Button
-                        asChild
-                        className={stageInactive ? "pointer-events-none bg-[#f1f1f1] text-[#d7d7d7] shadow-none" : "w-full"}
-                      >
-                        <Link href={`/projects/${project.id}/chat?stage=${stage.id}`}>
-                          Open Stage
-                        </Link>
-                      </Button>
-                    </div>
-                  </Card>
-                </MotionItem>
-              );
-            })}
-            </MotionStaggerGroup>
-          </CardContent>
-        ) : (
-          <CardContent>
-            <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-5 py-10 text-center text-[15px] text-[#6e776f]">
-              No stages are attached to this project yet.
-            </div>
-          </CardContent>
-        )}
-      </Card>
-      </MotionSection>
-
-      <MotionStaggerGroup className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]" stagger={0.05}>
-        <MotionItem y={10}>
-          <Card className="rounded-[20px]">
-            <CardHeader>
-            <CardTitle className="text-[20px]">
-              Project Brief
-            </CardTitle>
-            </CardHeader>
-            <CardContent>
-            <p className="whitespace-pre-wrap text-[15px] leading-7 text-[#39433c]">
-              {project.description}
-            </p>
-            </CardContent>
-          </Card>
-        </MotionItem>
-
-        <MotionItem y={10} className="space-y-4">
           <ProjectCollaboratorsPanel collaborators={project.collaborators} />
 
-          <Card className="rounded-[20px]">
-            <CardHeader>
-            <CardTitle className="text-[20px]">
-              Project Assets
-            </CardTitle>
+          <Card className="rounded-[18px]">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[20px]">Project Assets</CardTitle>
             </CardHeader>
             <CardContent>
-            {project.attachments.length > 0 ? (
-              <div className="space-y-3">
-                {project.attachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="flex items-start justify-between gap-3 rounded-[16px] border border-[#dce6dd] bg-[#fbfcfa] px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-[700] text-[#243028]">
-                        {attachment.originalFileName}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-[#7a837b]">
-                        <span>{attachment.fileSizeLabel}</span>
-                        <span>·</span>
-                        <span>{attachment.uploadedBy}</span>
-                        <span>·</span>
-                        <span>{attachment.uploadedAt}</span>
+              {project.attachments.length > 0 ? (
+                <div className="space-y-3">
+                  {project.attachments.map((attachment) => (
+                    <div
+                      key={attachment.id}
+                      className="flex items-start justify-between gap-3 rounded-[16px] border border-[#dce6dd] bg-[#fbfcfa] px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-[700] text-[#243028]">
+                          {attachment.originalFileName}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-[#7a837b]">
+                          <span>{attachment.fileSizeLabel}</span>
+                          <span>·</span>
+                          <span>{attachment.uploadedBy}</span>
+                          <span>·</span>
+                          <span>{attachment.uploadedAt}</span>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <AssetPreviewButton
+                          fileName={attachment.originalFileName}
+                          mimeType={attachment.mimeType}
+                          previewPath={attachment.previewPath}
+                          downloadPath={attachment.downloadPath}
+                          triggerClassName="size-8 text-brand"
+                        />
+                        <AttachmentFavoriteButton
+                          attachmentId={attachment.id}
+                          initialIsFavorited={attachment.isFavoritedByCurrentUser}
+                          className="size-8 text-[#7a847d] hover:bg-[#fff4f5]"
+                        />
+                        <Button
+                          asChild
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-brand"
+                        >
+                          <a
+                            href={attachment.downloadPath}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`Download ${attachment.originalFileName}`}
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <AssetPreviewButton
-                        fileName={attachment.originalFileName}
-                        mimeType={attachment.mimeType}
-                        previewPath={attachment.previewPath}
-                        downloadPath={attachment.downloadPath}
-                        triggerClassName="size-8 text-brand"
-                      />
-                      <AttachmentFavoriteButton
-                        attachmentId={attachment.id}
-                        initialIsFavorited={attachment.isFavoritedByCurrentUser}
-                        className="size-8 text-[#7a847d] hover:bg-[#fff4f5]"
-                      />
-                      <Button
-                        asChild
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-brand"
-                      >
-                        <a
-                          href={attachment.downloadPath}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={`Download ${attachment.originalFileName}`}
-                        >
-                          <Download className="h-4 w-4" />
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-8 text-center text-[14px] text-[#6e776f]">
-                No project-level attachments uploaded yet.
-              </div>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-8 text-center text-[14px] text-[#6e776f]">
+                  No project-level attachments uploaded yet.
+                </div>
+              )}
             </CardContent>
           </Card>
         </MotionItem>
