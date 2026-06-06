@@ -110,7 +110,7 @@ type PendingFile = {
   assetType?: UploadAssetType;
 };
 
-type UploadProgressState = "pending" | "preparing" | "uploading" | "uploaded" | "error";
+type UploadProgressState = "pending" | "uploading" | "uploaded" | "error";
 
 type DisplayAttachmentRecord = ProjectAttachmentRecord & {
   uploadState?: UploadProgressState;
@@ -167,11 +167,6 @@ const submissionDropzoneAccept = {
   "image/jpeg": [".jpg", ".jpeg"],
   "image/webp": [".webp"],
 };
-const compressibleImageExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
-const compressibleImageMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
-const IMAGE_UPLOAD_MAX_DIMENSION = 1920;
-const IMAGE_UPLOAD_QUALITY = 0.82;
-let webpSupportCache: boolean | null = null;
 
 const fileTypeStyles: Record<string, string> = {
   AI: "bg-[#2d1207] text-[#ff9d12]",
@@ -466,168 +461,12 @@ function getUploadNow() {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
-function isCompressibleImageFile(file: File) {
-  const extension = getLocalFileExtension(file.name);
-  return (
-    compressibleImageMimeTypes.has(file.type.toLowerCase()) ||
-    compressibleImageExtensions.has(extension)
-  );
-}
-
-function supportsCanvasMimeType(mimeType: string) {
-  if (mimeType !== "image/webp") {
-    return true;
-  }
-
-  if (webpSupportCache !== null) {
-    return webpSupportCache;
-  }
-
-  try {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1;
-    canvas.height = 1;
-    webpSupportCache = canvas.toDataURL("image/webp").startsWith("data:image/webp");
-  } catch {
-    webpSupportCache = false;
-  }
-
-  return webpSupportCache;
-}
-
-function getImageCompressionMimeType() {
-  return supportsCanvasMimeType("image/webp") ? "image/webp" : "image/jpeg";
-}
-
-function getImageCompressionFileName(fileName: string, mimeType: string) {
-  const extension = mimeType === "image/webp" ? "webp" : "jpg";
-  const trimmedName = fileName.trim();
-  const baseName = trimmedName
-    ? trimmedName.replace(/\.[^/.]+$/, "")
-    : `image-${Date.now()}`;
-
-  return `${baseName || `image-${Date.now()}`}.${extension}`;
-}
-
-function loadImageForCompression(file: File) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const imageUrl = URL.createObjectURL(file);
-    const image = new Image();
-
-    image.onload = () => {
-      URL.revokeObjectURL(imageUrl);
-      resolve(image);
-    };
-
-    image.onerror = () => {
-      URL.revokeObjectURL(imageUrl);
-      reject(new Error("Unable to read image."));
-    };
-
-    image.src = imageUrl;
-  });
-}
-
-function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  mimeType: string,
-  quality: number,
-) {
-  return new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, mimeType, quality);
-  });
-}
-
 function waitForNextPaint() {
   return new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => resolve());
     });
   });
-}
-
-async function prepareImageFileForUpload(file: File) {
-  if (!isCompressibleImageFile(file)) {
-    return file;
-  }
-
-  const startedAt = getUploadNow();
-
-  try {
-    const image = await loadImageForCompression(file);
-    const naturalWidth = image.naturalWidth || image.width;
-    const naturalHeight = image.naturalHeight || image.height;
-
-    if (!naturalWidth || !naturalHeight) {
-      throw new Error("Image dimensions are unavailable.");
-    }
-
-    const scale = Math.min(
-      1,
-      IMAGE_UPLOAD_MAX_DIMENSION / Math.max(naturalWidth, naturalHeight),
-    );
-    const width = Math.max(1, Math.round(naturalWidth * scale));
-    const height = Math.max(1, Math.round(naturalHeight * scale));
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-    const outputMimeType = getImageCompressionMimeType();
-
-    if (!context) {
-      throw new Error("Image compression is unavailable.");
-    }
-
-    canvas.width = width;
-    canvas.height = height;
-
-    if (outputMimeType === "image/jpeg") {
-      context.fillStyle = "#ffffff";
-      context.fillRect(0, 0, width, height);
-    }
-
-    context.drawImage(image, 0, 0, width, height);
-
-    const compressedBlob = await canvasToBlob(
-      canvas,
-      outputMimeType,
-      IMAGE_UPLOAD_QUALITY,
-    );
-
-    if (!compressedBlob || compressedBlob.size <= 0) {
-      throw new Error("Image compression did not produce a file.");
-    }
-
-    const savedPercent = ((file.size - compressedBlob.size) / file.size) * 100;
-    const useCompressedFile = compressedBlob.size < file.size;
-
-    console.info("upload:compress-image", {
-      originalSize: file.size,
-      compressedSize: compressedBlob.size,
-      savedPercent: Number(Math.max(0, savedPercent).toFixed(1)),
-      durationMs: Math.round(getUploadNow() - startedAt),
-      outputMimeType,
-      usedCompressedFile: useCompressedFile,
-    });
-
-    if (!useCompressedFile) {
-      return file;
-    }
-
-    return new File([compressedBlob], getImageCompressionFileName(file.name, outputMimeType), {
-      type: outputMimeType,
-      lastModified: file.lastModified,
-    });
-  } catch {
-    console.info("upload:compress-image", {
-      originalSize: file.size,
-      compressedSize: file.size,
-      savedPercent: 0,
-      durationMs: Math.round(getUploadNow() - startedAt),
-      usedCompressedFile: false,
-      error: "compression-failed",
-    });
-
-    return file;
-  }
 }
 
 function getArchiveFileNameError(
@@ -819,9 +658,7 @@ function AttachmentHistoryList({
                           ? "Failed"
                           : attachment.uploadState === "uploaded"
                             ? "Uploaded"
-                            : attachment.uploadState === "preparing"
-                              ? "Preparing"
-                              : "Uploading"}
+                            : "Uploading"}
                       </span>
                     ) : null}
                     {attachment.isSubmission ? (
@@ -855,11 +692,9 @@ function AttachmentHistoryList({
                         ? attachment.errorMessage || "Upload failed."
                         : attachment.uploadState === "uploaded"
                           ? `${attachment.fileSizeLabel} · Uploaded`
-                          : attachment.uploadState === "preparing"
-                            ? "Preparing image..."
-                            : attachment.uploadState === "pending"
-                              ? `${attachment.fileSizeLabel} · Waiting to upload`
-                              : `${attachment.fileSizeLabel} · ${attachment.progress ?? 0}% uploaded`
+                          : attachment.uploadState === "pending"
+                            ? `${attachment.fileSizeLabel} · Waiting to upload`
+                            : `${attachment.fileSizeLabel} · ${attachment.progress ?? 0}% uploaded`
                       : `${attachment.fileSizeLabel} · Uploaded by ${attachment.uploadedBy}`}
                   </p>
                   {!attachment.uploadState ? (
@@ -929,15 +764,9 @@ async function uploadAssetFile(input: {
   fileIndex?: number;
   fileCount?: number;
   onProgress?: (progress: number) => void;
-  onPrepareStart?: () => void;
   onUploadStart?: (file: File) => void;
 }): Promise<{ attachmentId: string; uploadedFile: File }> {
-  let uploadFile = input.file;
-
-  if (isCompressibleImageFile(input.file)) {
-    input.onPrepareStart?.();
-    uploadFile = await prepareImageFileForUpload(input.file);
-  }
+  const uploadFile = input.file;
 
   input.onUploadStart?.(uploadFile);
 
@@ -1267,7 +1096,6 @@ export function ProjectChatWorkspace({
           entry.attachments?.some(
             (attachment: DisplayAttachmentRecord) =>
               attachment.uploadState === "pending" ||
-              attachment.uploadState === "preparing" ||
               attachment.uploadState === "uploading",
           ) ?? false
         );
@@ -2524,17 +2352,7 @@ export function ProjectChatWorkspace({
     optimisticCommentId: string,
     pendingFile: PendingFile,
   ): Promise<PreparedPendingUpload> {
-    let uploadFile = pendingFile.file;
-
-    if (isCompressibleImageFile(pendingFile.file)) {
-      updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
-        ...attachment,
-        uploadState: "preparing",
-        progress: 0,
-        uploadedAt: "Preparing image…",
-      }));
-      uploadFile = await prepareImageFileForUpload(pendingFile.file);
-    }
+    const uploadFile = pendingFile.file;
 
     updateOptimisticAttachment(optimisticCommentId, pendingFile.id, (attachment) => ({
       ...attachment,
@@ -3060,14 +2878,6 @@ export function ProjectChatWorkspace({
             stageId: activeStageId,
             revisionId: revisionResult.revisionId,
             assetType: "REVISION_ORIGINAL",
-            onPrepareStart: () => {
-              updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
-                ...attachment,
-                uploadState: "preparing",
-                progress: 0,
-                uploadedAt: "Preparing image…",
-              }));
-            },
             onUploadStart: (uploadFile) => {
               updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
                 ...attachment,
