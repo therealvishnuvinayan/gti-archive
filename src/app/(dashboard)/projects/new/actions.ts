@@ -71,17 +71,23 @@ function validateBudgetAllocation(input: {
 
   const totalStageBudget = stageBudgets.reduce((sum, budget) => sum + budget, 0);
 
-  if (totalStageBudget <= input.projectBudget) {
+  if (totalStageBudget === input.projectBudget) {
     return null;
   }
 
-  const difference = totalStageBudget - input.projectBudget;
+  const difference = Math.abs(totalStageBudget - input.projectBudget);
+  const mismatchLabel =
+    totalStageBudget > input.projectBudget ? "over budget" : "unallocated";
+  const mismatchDescription =
+    totalStageBudget > input.projectBudget
+      ? "stage budgets add up to"
+      : "stage budgets only add up to";
 
   return {
-    error: `Stage budgets exceed the total project budget. Total project budget is ${formatBudgetValue(
+    error: `Stage budgets must equal the total project budget. Total project budget is ${formatBudgetValue(
       input.projectBudget,
       input.currencyCode,
-    )}, but stage budgets add up to ${formatBudgetValue(
+    )}, but ${mismatchDescription} ${formatBudgetValue(
       totalStageBudget,
       input.currencyCode,
     )}.`,
@@ -89,7 +95,7 @@ function validateBudgetAllocation(input: {
       budgetSummary: `Total stage budgets are ${formatBudgetValue(
         difference,
         input.currencyCode,
-      )} over budget.`,
+      )} ${mismatchLabel}.`,
       budget: `Project budget is ${formatBudgetValue(
         input.projectBudget,
         input.currencyCode,

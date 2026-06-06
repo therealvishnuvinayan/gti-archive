@@ -205,6 +205,18 @@ function formatBudgetDisplay(value: number, currencyCode: string) {
   return `${formatted} ${currencyCode}`.trim();
 }
 
+function formatBudgetDifference(value: number, currencyCode: string) {
+  if (value < 0) {
+    return `${formatBudgetDisplay(Math.abs(value), currencyCode)} over budget`;
+  }
+
+  if (value > 0) {
+    return `${formatBudgetDisplay(value, currencyCode)} unallocated`;
+  }
+
+  return formatBudgetDisplay(0, currencyCode);
+}
+
 function getStartOfDay(date: Date) {
   const normalizedDate = new Date(date);
   normalizedDate.setHours(0, 0, 0, 0);
@@ -790,6 +802,10 @@ export function CreateProjectWorkspace({
       }),
     [canViewBudget, parsedStageBudgets, stages],
   );
+  const hasMissingStageBudgetInputs = useMemo(
+    () => canViewBudget && stages.some((stage) => !stage.budget.trim()),
+    [canViewBudget, stages],
+  );
   const remainingStageBudget = useMemo(() => {
     if (!canViewBudget || !Number.isFinite(parsedProjectBudget)) {
       return null;
@@ -801,11 +817,13 @@ export function CreateProjectWorkspace({
     () =>
       canViewBudget &&
       Number.isFinite(parsedProjectBudget) &&
+      !hasMissingStageBudgetInputs &&
       !hasInvalidStageBudgetInputs &&
-      totalStageBudget > parsedProjectBudget,
+      totalStageBudget !== parsedProjectBudget,
     [
       canViewBudget,
       hasInvalidStageBudgetInputs,
+      hasMissingStageBudgetInputs,
       parsedProjectBudget,
       totalStageBudget,
     ],
@@ -880,9 +898,7 @@ export function CreateProjectWorkspace({
           : "—",
       remainingStageBudget:
         canViewBudget && remainingStageBudget !== null
-          ? remainingStageBudget < 0
-            ? `${formatBudgetDisplay(Math.abs(remainingStageBudget), projectCurrency ?? "")} over budget`
-            : formatBudgetDisplay(remainingStageBudget, projectCurrency ?? "")
+          ? formatBudgetDifference(remainingStageBudget, projectCurrency ?? "")
           : "—",
       stages: stages.length,
       started: startDate ? formatDateValue(startDate) : "—",
@@ -1307,7 +1323,7 @@ export function CreateProjectWorkspace({
       event.preventDefault();
       showWarningToast(
         "Budget conflict.",
-        "Total stage budgets exceed the project budget.",
+        "Project budget must equal the total stage budgets.",
       );
       setBudgetConflictDialogOpen(true);
     }
@@ -1961,6 +1977,11 @@ export function CreateProjectWorkspace({
                           fieldErrors.budgetSummary,
                         )}
                       </div>
+                    ) : hasBudgetConflict && remainingStageBudget !== null ? (
+                      <div className="mt-3 rounded-[16px] border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[12px] font-medium text-[#ba3f31]">
+                        Project budget must equal the total stage budgets. Difference:{" "}
+                        {formatBudgetDifference(remainingStageBudget, projectCurrency || "")}.
+                      </div>
                     ) : null}
                   </>
                 ) : null}
@@ -2301,11 +2322,54 @@ export function CreateProjectWorkspace({
               </Button>
             </div>
 
+            {canViewBudget ? (
+              <div
+                className={`mt-3 grid gap-2 rounded-[18px] border px-4 py-3 text-[12px] sm:grid-cols-3 ${
+                  hasBudgetConflict
+                    ? "border-[#f5c7c2] bg-[#fff4f3]"
+                    : "border-[#dbe7dd] bg-[#f7fbf7]"
+                }`}
+              >
+                <div>
+                  <p className="text-[10px] font-[800] uppercase tracking-[0.12em] text-[#7a837b]">
+                    Project Budget
+                  </p>
+                  <p className="mt-1 font-[700] text-[#173120]">
+                    {Number.isFinite(parsedProjectBudget)
+                      ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
+                      : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-[800] uppercase tracking-[0.12em] text-[#7a837b]">
+                    Stage Total
+                  </p>
+                  <p className="mt-1 font-[700] text-[#173120]">
+                    {formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-[800] uppercase tracking-[0.12em] text-[#7a837b]">
+                    Difference
+                  </p>
+                  <p
+                    className={`mt-1 font-[700] ${
+                      hasBudgetConflict ? "text-[#ba3f31]" : "text-brand"
+                    }`}
+                  >
+                    {remainingStageBudget !== null
+                      ? formatBudgetDifference(remainingStageBudget, projectCurrency || "")
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
             {canViewBudget && hasBudgetConflict && remainingStageBudget !== null ? (
               <div className="mt-3 rounded-[18px] border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[12px] text-[#ba3f31]">
                 <p className="font-[700]">Budget conflict</p>
                 <p className="mt-1">
-                  The total stage budget is higher than the project budget. Please adjust the project budget or reduce the stage budgets before saving.
+                  Project budget must equal the total stage budgets before saving.
                 </p>
                 <dl className="mt-2 space-y-1">
                   <div>
@@ -2325,7 +2389,7 @@ export function CreateProjectWorkspace({
                   <div>
                     <dt className="inline font-[700]">Difference:</dt>{" "}
                     <dd className="inline">
-                      {formatBudgetDisplay(Math.abs(remainingStageBudget), projectCurrency || "")} over budget
+                      {formatBudgetDifference(remainingStageBudget, projectCurrency || "")}
                     </dd>
                   </div>
                 </dl>
@@ -2678,7 +2742,7 @@ export function CreateProjectWorkspace({
       <ConfirmationDialog
         isOpen={budgetConflictDialogOpen}
         title="Budget conflict"
-        description="The total stage budget is higher than the project budget. Please adjust the project budget or reduce the stage budgets before saving."
+        description="Project budget must equal the total stage budgets before saving."
         confirmLabel="Review Budget"
         cancelLabel="Close"
         onClose={() => setBudgetConflictDialogOpen(false)}
@@ -2695,7 +2759,9 @@ export function CreateProjectWorkspace({
               )}\nDifference: ${formatBudgetDisplay(
                 Math.abs(remainingStageBudget),
                 projectCurrency || "",
-              )} over budget`
+              )} ${
+                remainingStageBudget < 0 ? "over budget" : "unallocated"
+              }`
             : undefined
         }
       />
