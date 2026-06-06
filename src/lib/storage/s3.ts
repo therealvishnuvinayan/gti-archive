@@ -29,6 +29,7 @@ const allowedExtensions = new Set([
   "rar",
   "doc",
   "docx",
+  "csv",
   "xls",
   "xlsx",
   "ppt",
