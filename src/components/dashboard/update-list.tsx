@@ -33,7 +33,7 @@ export function UpdateList({ title, items }: UpdateListProps) {
       <h2 className="mb-5 text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">{title}</h2>
 
       {items.length > 0 ? (
-        <ul className="space-y-4">
+        <ul className="dashboard-scroll-thin -mr-2 max-h-[292px] space-y-4 overflow-y-auto pr-2">
           {items.map((item) => {
             const tone = toneClasses[item.tone];
             const content = (

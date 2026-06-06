@@ -125,63 +125,58 @@ export default async function Home() {
         </MotionStaggerGroup>
 
         <MotionStaggerGroup
-          className="grid grid-cols-1 gap-4 xl:grid-cols-12"
+          className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.65fr)_minmax(260px,1fr)_minmax(260px,1fr)]"
           stagger={0.045}
         >
-          <div className="xl:col-span-6">
-            <MotionItem y={12}>
-              <UpdateList title="Important Updates" items={dashboard.updates.map((item) => ({
+          <MotionItem className="grid content-start gap-4" y={12}>
+            <UpdateList
+              title="Important Updates"
+              items={dashboard.updates.map((item) => ({
                 title: item.title,
                 project: item.detail,
                 tone: item.tone,
                 href: item.href,
-              }))} />
-            </MotionItem>
-          </div>
-          <div className="xl:col-span-3">
-            <MotionItem y={12}>
-              <ReminderCard
-                title="Reminder"
-                headline={dashboard.reminder?.headline}
-                project={dashboard.reminder?.project}
-                actionLabel={dashboard.reminder?.actionLabel}
-                actionHref={dashboard.reminder?.actionHref}
-                detailHref={dashboard.reminder?.actionHref}
-              />
-            </MotionItem>
-          </div>
-          <div className="xl:col-span-3">
-            <MotionItem y={12}>
-              <RecentProjects title="Recent Projects" items={dashboard.recentProjects} href="/projects" />
-            </MotionItem>
-          </div>
-          <div className="xl:col-span-5">
-            <MotionItem y={12}>
-              <CollaborationCard title="Collaboration" items={dashboard.collaborators} href="/collaboration" />
-            </MotionItem>
-          </div>
-          <div className="xl:col-span-4">
-            <MotionItem y={12}>
-              <ProjectProgressCard
-                title="Project Progress"
-                percentage={dashboard.progress.percentage}
-                subtitle={dashboard.progress.subtitle}
-                segments={dashboard.progress.segments}
-              />
-            </MotionItem>
-          </div>
-          <div className="xl:col-span-3">
-            <MotionItem y={12}>
-              <DeadlineCard
-                title="Project Deadline"
-                project={dashboard.deadline?.project}
-                detail={dashboard.deadline?.detail}
-                timeLabel={dashboard.deadline?.timeLabel}
-                actionHref={dashboard.deadline?.actionHref}
-                overdue={dashboard.deadline?.overdue}
-              />
-            </MotionItem>
-          </div>
+              }))}
+            />
+            <CollaborationCard
+              title="Collaboration"
+              items={dashboard.collaborators}
+              href="/collaboration"
+            />
+          </MotionItem>
+
+          <MotionItem className="grid content-start gap-4" y={12}>
+            <ReminderCard
+              title="Reminder"
+              headline={dashboard.reminder?.headline}
+              project={dashboard.reminder?.project}
+              actionLabel={dashboard.reminder?.actionLabel}
+              actionHref={dashboard.reminder?.actionHref}
+              detailHref={dashboard.reminder?.actionHref}
+            />
+            <ProjectProgressCard
+              title="Project Progress"
+              percentage={dashboard.progress.percentage}
+              subtitle={dashboard.progress.subtitle}
+              segments={dashboard.progress.segments}
+            />
+          </MotionItem>
+
+          <MotionItem className="grid content-start gap-4 lg:col-span-2 xl:col-span-1" y={12}>
+            <RecentProjects
+              title="Recent Projects"
+              items={dashboard.recentProjects}
+              href="/projects"
+            />
+            <DeadlineCard
+              title="Project Deadline"
+              project={dashboard.deadline?.project}
+              detail={dashboard.deadline?.detail}
+              timeLabel={dashboard.deadline?.timeLabel}
+              actionHref={dashboard.deadline?.actionHref}
+              overdue={dashboard.deadline?.overdue}
+            />
+          </MotionItem>
         </MotionStaggerGroup>
       </section>
     </DashboardLayout>

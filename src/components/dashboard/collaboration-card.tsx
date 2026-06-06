@@ -41,7 +41,7 @@ export function CollaborationCard({ title, items, href }: CollaborationCardProps
       </div>
 
       {items.length > 0 ? (
-        <ul className="space-y-4">
+        <ul className="dashboard-scroll-thin -mr-2 max-h-[300px] space-y-3 overflow-y-auto pr-2">
           {items.map((item) => {
             const content = (
               <div className="flex min-w-0 items-center gap-3">
@@ -64,7 +64,7 @@ export function CollaborationCard({ title, items, href }: CollaborationCardProps
                 {item.href ? (
                   <Link
                     href={item.href}
-                    className="flex items-center gap-3 rounded-[18px] px-1 py-1 transition-colors hover:bg-[#f5faf5]"
+                    className="flex items-center gap-3 rounded-[18px] px-1 py-1.5 transition-colors hover:bg-[#f5faf5]"
                     title={`${item.name} on ${item.project}`}
                   >
                     {content}

@@ -36,7 +36,7 @@ export function RecentProjects({ title, items, href }: RecentProjectsProps) {
       </div>
 
       {items.length > 0 ? (
-        <ul className="space-y-5">
+        <ul className="dashboard-scroll-thin -mr-2 max-h-[260px] space-y-5 overflow-y-auto pr-2">
           {items.map((item) => (
             <li key={item.name} className="flex items-start gap-3">
               <span className={`mt-1 h-6 w-6 shrink-0 rounded-full ${dotTone[item.tone]}`} />
