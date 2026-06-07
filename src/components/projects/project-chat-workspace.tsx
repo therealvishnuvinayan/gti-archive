@@ -14,6 +14,7 @@ import { flushSync } from "react-dom";
 import { useDropzone } from "react-dropzone";
 import {
   Download,
+  FileText,
   Languages,
   Loader2,
   Mic,
@@ -753,6 +754,100 @@ function AttachmentHistoryList({
   );
 }
 
+function BriefDialog({
+  isOpen,
+  labelledById,
+  title,
+  heading,
+  context,
+  body,
+  emptyMessage,
+  attachmentsTitle,
+  attachments,
+  onClose,
+}: {
+  isOpen: boolean;
+  labelledById: string;
+  title: string;
+  heading: string;
+  context?: string;
+  body: string;
+  emptyMessage: string;
+  attachmentsTitle: string;
+  attachments: DisplayAttachmentRecord[];
+  onClose: () => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={labelledById}
+    >
+      <Card className="flex max-h-[88vh] w-full max-w-[720px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+        <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+          <div>
+            <CardTitle
+              id={labelledById}
+              className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]"
+            >
+              {title}
+            </CardTitle>
+            <p className="mt-2 text-[14px] font-[700] text-[#111712]">
+              {heading}
+            </p>
+            {context ? (
+              <p className="mt-1 text-[13px] leading-5 text-[#6a706b]">
+                {context}
+              </p>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            onClick={onClose}
+            className="shrink-0 border border-line"
+            aria-label={`Close ${title.toLowerCase()}`}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+          {body ? (
+            <section className="rounded-[20px] border border-line bg-[#fbfcfa] p-4">
+              <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#253028]">
+                {body}
+              </p>
+            </section>
+          ) : (
+            <div className="rounded-[20px] border border-line bg-[#fbfcfa] px-4 py-5 text-[14px] leading-6 text-[#6a706b]">
+              {emptyMessage}
+            </div>
+          )}
+
+          <section className="mt-5 rounded-[20px] border border-line bg-white p-4">
+            <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+              {attachmentsTitle}
+            </p>
+            {attachments.length > 0 ? (
+              <AttachmentHistoryList attachments={attachments} compact />
+            ) : (
+              <p className="mt-2 text-[13px] leading-5 text-[#7a837b]">
+                No attachments available.
+              </p>
+            )}
+          </section>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 async function uploadAssetFile(input: {
   file: File;
   projectId: string;
@@ -1006,7 +1101,8 @@ export function ProjectChatWorkspace({
   const [stageCompleteError, setStageCompleteError] = useState<string | null>(null);
   const [isMarkingStageComplete, setIsMarkingStageComplete] = useState(false);
   const [acceptBriefDialogOpen, setAcceptBriefDialogOpen] = useState(false);
-  const [briefDialogOpen, setBriefDialogOpen] = useState(false);
+  const [projectBriefDialogOpen, setProjectBriefDialogOpen] = useState(false);
+  const [stageBriefDialogOpen, setStageBriefDialogOpen] = useState(false);
   const [acceptBriefError, setAcceptBriefError] = useState<string | null>(null);
   const [isAcceptingBrief, setIsAcceptingBrief] = useState(false);
   const [stageCardOverrides, setStageCardOverrides] = useState<
@@ -1184,7 +1280,8 @@ export function ProjectChatWorkspace({
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
   const projectBriefText = project.description.trim();
   const stageBriefText = activeStage?.description.trim() ?? "";
-  const hasBriefContent = Boolean(projectBriefText || stageBriefText);
+  const projectBriefAttachments = project.attachments;
+  const stageBriefAttachments = activeStage?.briefAttachments ?? [];
   const canReviewSubmissions = project.ownerId === currentUserId;
   const stageExecutionStatus = isStageCompleted
     ? "Completed"
@@ -3790,16 +3887,28 @@ export function ProjectChatWorkspace({
                     </p>
                   </div>
                 ) : null}
-                {!isProjectCompleted ? (
+                <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     size="sm"
-                    onClick={() => setBriefDialogOpen(true)}
-                    className="min-w-[110px] text-[13px]"
+                    onClick={() => setProjectBriefDialogOpen(true)}
+                    className="min-w-[132px] text-[13px]"
                   >
-                    Brief
+                    <FileText className="h-4 w-4" />
+                    Project Brief
                   </Button>
-                ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setStageBriefDialogOpen(true)}
+                    disabled={!activeStage}
+                    className="min-w-[120px] text-[13px]"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Stage Brief
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -3888,7 +3997,7 @@ export function ProjectChatWorkspace({
       <ConfirmationDialog
         isOpen={acceptBriefDialogOpen}
         title="Accept brief and start work?"
-        description="This confirms that you have reviewed the project brief and are starting work on this stage. The stage timer will start from this moment."
+        description="This confirms that you have reviewed the Project Brief and Stage Brief and are starting work on this stage. The stage timer will start from this moment."
         confirmLabel="Accept & Start Work"
         pending={isAcceptingBrief}
         error={acceptBriefError ?? undefined}
@@ -3961,88 +4070,30 @@ export function ProjectChatWorkspace({
           void handlePrepareProjectCompletion();
         }}
       />
-      {briefDialogOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="project-brief-title"
-        >
-          <Card className="flex max-h-[88vh] w-full max-w-[720px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
-            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
-              <div>
-                <CardTitle
-                  id="project-brief-title"
-                  className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]"
-                >
-                  Project Brief
-                </CardTitle>
-                <p className="mt-2 text-[14px] font-[700] text-[#111712]">
-                  {project.title}
-                </p>
-                {activeStage ? (
-                  <p className="mt-1 text-[13px] leading-5 text-[#6a706b]">
-                    Current stage: {activeStage.label}
-                  </p>
-                ) : null}
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                onClick={() => setBriefDialogOpen(false)}
-                className="shrink-0 border border-line"
-                aria-label="Close project brief"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
-              {hasBriefContent ? (
-                <div className="space-y-4">
-                  {projectBriefText ? (
-                    <section className="rounded-[20px] border border-line bg-[#fbfcfa] p-4">
-                      <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
-                        Brief
-                      </p>
-                      <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-[#253028]">
-                        {projectBriefText}
-                      </p>
-                    </section>
-                  ) : null}
-                  {stageBriefText ? (
-                    <section className="rounded-[20px] border border-line bg-[#fbfcfa] p-4">
-                      <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
-                        Stage Notes
-                      </p>
-                      <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-[#253028]">
-                        {stageBriefText}
-                      </p>
-                    </section>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="rounded-[20px] border border-line bg-[#fbfcfa] px-4 py-5 text-[14px] leading-6 text-[#6a706b]">
-                  No brief has been added for this project.
-                </div>
-              )}
-
-              <section className="mt-5 rounded-[20px] border border-line bg-white p-4">
-                <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
-                  Brief / Reference Attachments
-                </p>
-                {project.attachments.length > 0 ? (
-                  <AttachmentHistoryList attachments={project.attachments} compact />
-                ) : (
-                  <p className="mt-2 text-[13px] leading-5 text-[#7a837b]">
-                    No brief/reference files available.
-                  </p>
-                )}
-              </section>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
+      <BriefDialog
+        isOpen={projectBriefDialogOpen}
+        labelledById="project-brief-title"
+        title="Project Brief"
+        heading={project.title}
+        context={activeStage ? `Current stage: ${activeStage.label}` : undefined}
+        body={projectBriefText}
+        emptyMessage="No project brief has been added."
+        attachmentsTitle="Project Brief Attachments"
+        attachments={projectBriefAttachments}
+        onClose={() => setProjectBriefDialogOpen(false)}
+      />
+      <BriefDialog
+        isOpen={stageBriefDialogOpen}
+        labelledById="stage-brief-title"
+        title="Stage Brief"
+        heading={activeStage?.label ?? "Current stage"}
+        context={project.title}
+        body={stageBriefText}
+        emptyMessage="No stage brief has been added for this stage."
+        attachmentsTitle="Stage Brief Attachments"
+        attachments={stageBriefAttachments}
+        onClose={() => setStageBriefDialogOpen(false)}
+      />
       {archivePreparation ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="flex h-full max-h-[88vh] w-full max-w-[920px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">

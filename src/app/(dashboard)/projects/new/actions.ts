@@ -271,7 +271,7 @@ function validateProjectFormData(
       fieldErrors: {
         stageNames: [...["Stage name is required."]],
         stageBudgets: [...["Stage budget is required."]],
-        stageDescriptions: [...["Stage description is required."]],
+        stageDescriptions: [...["Stage brief is required."]],
         stageStartDates: [...["Stage start is required."]],
         stageDueDates: [...["Stage due is required."]],
       },
@@ -290,7 +290,7 @@ function validateProjectFormData(
     return Number.isFinite(budget) && budget > 0 ? undefined : "Enter a valid stage budget.";
   });
   const stageDescriptionErrors: Array<string | undefined> = parsed.stageDescriptions.map((value) =>
-    value ? undefined : "Stage description is required.",
+    value ? undefined : "Stage brief is required.",
   );
   const stageStartDateErrors: Array<string | undefined> = parsed.stageStartDates.map((value) =>
     value ? undefined : "Stage start is required.",
@@ -581,6 +581,7 @@ export async function createProjectAction(
   );
 
   let projectId: string;
+  let createdStageIds: string[] = [];
   let initialBriefStageId: string | undefined;
   let initialBriefCommentId: string | undefined;
 
@@ -655,12 +656,19 @@ export async function createProjectAction(
       let initialCommentId: string | undefined;
 
       if (firstStageId) {
+        const firstStageBrief = stageDescriptions[0]?.trim() ?? "";
+        const initialBriefBody = [
+          `Project Brief:\n${description}`,
+          firstStageBrief ? `Stage Brief:\n${firstStageBrief}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n");
         const initialComment = await tx.projectComment.create({
           data: {
             projectId: createdProject.id,
             stageId: firstStageId,
             authorId: user.id,
-            body: description,
+            body: initialBriefBody,
           },
           select: {
             id: true,
@@ -677,6 +685,7 @@ export async function createProjectAction(
       };
     });
     projectId = project.id;
+    createdStageIds = project.stages.map((stage) => stage.id);
     initialBriefStageId = project.stages[0]?.id;
     initialBriefCommentId = project.initialCommentId;
   } catch {
@@ -695,7 +704,7 @@ export async function createProjectAction(
     }),
   );
 
-  return { projectId, initialBriefStageId, initialBriefCommentId };
+  return { projectId, createdStageIds, initialBriefStageId, initialBriefCommentId };
 }
 
 export async function updateProjectAction(
@@ -993,6 +1002,18 @@ export async function updateProjectAction(
     return { error: "Unable to update the project right now. Please try again." };
   }
 
+  const updatedStages = await prisma.projectStage.findMany({
+    where: {
+      projectId,
+    },
+    orderBy: {
+      order: "asc",
+    },
+    select: {
+      id: true,
+    },
+  });
+
   revalidatePath("/");
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
@@ -1010,7 +1031,7 @@ export async function updateProjectAction(
     }),
   );
 
-  return { projectId };
+  return { projectId, createdStageIds: updatedStages.map((stage) => stage.id) };
 }
 
 export async function deleteProjectAction(projectId: string) {

@@ -86,10 +86,10 @@ export const quickStartItems: HelpQuickStartItem[] = [
   {
     id: "quick-stage-budget",
     title: "Add project stages and budgets",
-    description: "Break work into stages with names, dates, budgets, and descriptions.",
+    description: "Break work into stages with names, dates, budgets, and stage briefs.",
     sectionId: "project-lifecycle",
     icon: Workflow,
-    keywords: ["stage", "budget", "timeline", "due date", "stage description"],
+    keywords: ["stage", "budget", "timeline", "due date", "stage brief"],
   },
   {
     id: "quick-assign-executor",
@@ -152,11 +152,11 @@ export const helpTopics: HelpTopic[] = [
   },
   {
     id: "topic-stages",
-    title: "Stages & Briefs",
-    description: "Learn how stage setup, the project brief, Accept Brief, and timer start work.",
+    title: "Project Brief and Stage Brief",
+    description: "Learn the difference between the main project brief and stage-specific briefs.",
     sectionId: "stages-briefs",
     icon: Workflow,
-    keywords: ["stages", "brief", "accept brief", "timer", "stage chat"],
+    keywords: ["stages", "project brief", "stage brief", "accept brief", "stage chat"],
   },
   {
     id: "topic-submissions",
@@ -263,10 +263,24 @@ export const recommendedGuides: HelpGuide[] = [
   },
   {
     id: "guide-accept-brief",
-    title: "How project briefs and Accept Brief work",
-    description: "See how the first stage brief is delivered and why work starts only after acceptance.",
+    title: "Understanding Project Brief and Stage Brief",
+    description: "See how the main project requirement differs from each stage-specific instruction.",
     sectionId: "stages-briefs",
-    keywords: ["accept brief", "first chat message", "brief attachments"],
+    keywords: ["project brief", "stage brief", "brief attachments"],
+  },
+  {
+    id: "guide-stage-briefs",
+    title: "How stage briefs work",
+    description: "Understand how each stage can carry its own brief and attachments.",
+    sectionId: "stages-briefs",
+    keywords: ["stage brief", "stage chat", "attachments"],
+  },
+  {
+    id: "guide-review-briefs-before-stage",
+    title: "How executors review brief information before starting a stage",
+    description: "Use the Project Brief and Stage Brief buttons in Stage Chat before accepting work.",
+    sectionId: "stages-briefs",
+    keywords: ["executor", "project brief", "stage brief", "accept brief"],
   },
   {
     id: "guide-stage-timer",
@@ -390,9 +404,9 @@ export const helpSections: HelpSection[] = [
         ordered: true,
         items: [
           "Create the project and define the brief, executor, stages, budget, dates, and collaborators.",
-          "Attach brief files if needed and confirm the first stage details.",
-          "The first stage opens with the project brief as the first stage chat message.",
-          "The executor reads the brief and clicks Accept Brief / Start Work.",
+          "Attach project brief files if needed and add stage briefs for the stage-level work.",
+          "The first stage opens with project brief context and the Stage 1 Brief in stage chat.",
+          "The executor reviews the Project Brief and Stage Brief, then clicks Accept Brief / Start Work.",
           "Stage discussion, attachments, mentions, and working collaboration continue inside the stage chat.",
           "The executor submits work for owner review.",
           "The project owner marks the submission complete or requests a revision with a reason.",
@@ -457,10 +471,11 @@ export const helpSections: HelpSection[] = [
       {
         title: "Project details you define",
         items: [
-          "Project Name and Project Brief are the required core fields.",
+          "Project Name and Project Brief are the required core fields. The Project Brief is the main project-level requirement.",
           "Project Category and Project Tag come from Project Master Data, with quick-add support from the form.",
           "Project Executor is mandatory and is the person or company responsible for execution.",
           "Project Status, Project Priority, timeline dates, and collaborators shape the working context shown across the system.",
+          "Project Brief attachments stay at project level and apply across the whole project.",
         ],
       },
       {
@@ -486,25 +501,37 @@ export const helpSections: HelpSection[] = [
   {
     id: "stages-briefs",
     eyebrow: "Stage Work",
-    title: "Stages & briefs",
+    title: "Project Brief and Stage Brief",
     summary:
-      "Stages break a project into trackable work units. The brief for the first stage appears as the first stage chat message, and work does not officially start until the executor accepts it.",
-    keywords: ["stages", "brief", "accept brief", "timer", "stage description"],
+      "A Project Brief explains the full project requirement. A Stage Brief explains what needs to happen in the current stage.",
+    keywords: ["stages", "project brief", "stage brief", "accept brief", "timer"],
     blocks: [
       {
-        title: "How stages are defined",
+        title: "Brief types",
         items: [
-          "Each stage has a name, description, budget, planned start date, and planned due date.",
-          "Stage descriptions explain the scope of work for that part of the project.",
-          "The first stage anchors the initial brief and starts the active working conversation.",
+          "Project Brief is the main project-level requirement and applies across the whole project.",
+          "Stage Brief is the stage-specific instruction and applies only to the current stage.",
+          "Each stage can have its own Stage Brief, budget, planned start date, and planned due date.",
+          "Stage Brief replaces the old Stage Description wording in the product.",
+          "Attachments can be linked to project briefs or stage briefs where available.",
         ],
       },
       {
-        title: "Accept Brief and timer rules",
+        title: "How stage briefs work",
+        items: [
+          "Stage 1 can have a different Stage Brief from Stage 2 or later stages.",
+          "When an executor opens Stage 1, they should review the Project Brief and the Stage 1 Brief.",
+          "When an executor opens Stage 2, they should review the Project Brief and the Stage 2 Brief.",
+          "Stage Chat keeps separate Project Brief and Stage Brief buttons so the context is clear.",
+        ],
+      },
+      {
+        title: "How executors review brief information before starting a stage",
         ordered: true,
         items: [
-          "The project is created and the first stage brief appears in stage chat.",
-          "The executor reviews the brief and any brief attachments.",
+          "Open Stage Chat for the current stage.",
+          "Use Project Brief to review the main project-level requirement and project brief attachments.",
+          "Use Stage Brief to review the current stage instruction and stage brief attachments.",
           "The executor clicks Accept Brief / Start Work to confirm they are beginning the stage.",
           "Only after acceptance does the stage timer start.",
           "Before acceptance, the timer should remain in a not-started or waiting state.",
@@ -669,7 +696,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "What belongs in each area",
         items: [
-          "Library includes brief attachments, chat attachments, project assets, submissions, and other non-archived working files.",
+          "Library includes project brief attachments, stage brief attachments, chat attachments, project assets, submissions, and other non-archived working files.",
           "Archives contains final completed files plus completion records such as approval proof, copyright transfer documents, and invoices.",
           "Favorites are personal bookmarks. If one user favorites a file, that favorite does not apply to everyone else.",
         ],
@@ -685,7 +712,8 @@ export const helpSections: HelpSection[] = [
       {
         title: "How files stay traceable",
         items: [
-          "Brief attachments tie back to the project setup context.",
+          "Project brief attachments tie back to the overall project setup context.",
+          "Stage brief attachments tie back to the stage where that instruction applies.",
           "Chat attachments stay associated with the stage discussion where they were shared.",
           "Submissions remain linked to the revision history they belong to.",
           "Archived files preserve the final handover record after completion.",
@@ -904,6 +932,14 @@ export const helpCoreWorkflow = [
 
 export const helpKeyTerms = [
   {
+    term: "Project Brief",
+    description: "The main project-level requirement that applies across the full project.",
+  },
+  {
+    term: "Stage Brief",
+    description: "The stage-specific instruction for what needs to be done in the current stage.",
+  },
+  {
     term: "Project Owner",
     description: "The user who creates or owns the project and reviews submissions.",
   },
@@ -931,6 +967,8 @@ export const helpKeyTerms = [
 
 export const helpSearchKeywords = [
   "create project",
+  "project brief",
+  "stage brief",
   "accept brief",
   "submit work",
   "request revision",

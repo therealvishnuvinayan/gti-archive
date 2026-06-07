@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useActionState,
   useEffect,
   useMemo,
@@ -100,6 +101,8 @@ type StageForm = {
   description: string;
   plannedStartAt: string;
   plannedDueAt: string;
+  attachments: ProjectEditorInitialAttachment[];
+  pendingFiles: File[];
 };
 
 type MonthPickerProps = {
@@ -713,6 +716,8 @@ export function CreateProjectWorkspace({
           description: stage.description,
           plannedStartAt: stage.plannedStartAt,
           plannedDueAt: stage.plannedDueAt,
+          attachments: stage.attachments,
+          pendingFiles: [],
         }))
       : [
           {
@@ -722,6 +727,8 @@ export function CreateProjectWorkspace({
             description: "",
             plannedStartAt: "",
             plannedDueAt: "",
+            attachments: [],
+            pendingFiles: [],
           },
         ],
   );
@@ -761,6 +768,7 @@ export function CreateProjectWorkspace({
   const [executorInviteSaving, setExecutorInviteSaving] = useState(false);
   const [dirtyFieldKeys, setDirtyFieldKeys] = useState<Set<string>>(() => new Set());
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const stageAttachmentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const executorPickerRef = useRef<HTMLDivElement | null>(null);
   const handledCreatedProjectIdRef = useRef<string | null>(null);
   const handledEditProjectIdRef = useRef<string | null>(null);
@@ -1057,6 +1065,8 @@ export function CreateProjectWorkspace({
         description: "",
         plannedStartAt: formatDateTimeInputValue(startDate),
         plannedDueAt: formatDateTimeInputValue(endDate),
+        attachments: [],
+        pendingFiles: [],
       },
     ]);
   }
@@ -1456,14 +1466,14 @@ export function CreateProjectWorkspace({
     });
   }
 
-  async function uploadProjectAsset(
+  const uploadProjectAsset = useCallback(async (
     file: File,
     projectId: string,
     options?: {
       stageId?: string | null;
       commentId?: string | null;
     },
-  ): Promise<ProjectEditorInitialAttachment> {
+  ): Promise<ProjectEditorInitialAttachment> => {
     if (!projectId) {
       throw new Error("Save the project first before uploading attachments.");
     }
@@ -1547,7 +1557,7 @@ export function CreateProjectWorkspace({
 
       throw error;
     }
-  }
+  }, []);
 
   async function handleAttachmentSelection(files: FileList | null) {
     const selectedFiles = Array.from(files ?? []);
@@ -1606,8 +1616,180 @@ export function CreateProjectWorkspace({
     }
   }
 
+  async function handleStageAttachmentSelection(stageId: string, files: FileList | null) {
+    const selectedFiles = Array.from(files ?? []);
+
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    const stage = stages.find((item) => item.id === stageId);
+
+    if (!stage) {
+      return;
+    }
+
+    setAttachmentError(undefined);
+    updateStage(stageId, {
+      pendingFiles: [...stage.pendingFiles, ...selectedFiles],
+    });
+
+    if (stageAttachmentInputRefs.current[stageId]) {
+      stageAttachmentInputRefs.current[stageId]!.value = "";
+    }
+
+    if (mode === "create" || !stage.persistedId) {
+      return;
+    }
+
+    if (!initialValues?.id) {
+      setAttachmentError("Save the project first before uploading stage brief attachments.");
+      return;
+    }
+
+    setIsUploadingAttachments(true);
+
+    try {
+      for (const file of selectedFiles) {
+        const attachment = await uploadProjectAsset(file, initialValues.id, {
+          stageId: stage.persistedId,
+        });
+        setStages((current) =>
+          current.map((item) =>
+            item.id === stageId
+              ? {
+                  ...item,
+                  attachments: item.attachments.some(
+                    (existingAttachment) => existingAttachment.id === attachment.id,
+                  )
+                    ? item.attachments
+                    : [...item.attachments, attachment],
+                  pendingFiles: item.pendingFiles.filter((pendingFile) => pendingFile !== file),
+                }
+              : item,
+          ),
+        );
+      }
+      refreshProjectData();
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error
+          ? error.message
+          : "Unable to upload the stage brief attachments right now.",
+      );
+      setStages((current) =>
+        current.map((item) =>
+          item.id === stageId
+            ? {
+                ...item,
+                pendingFiles: item.pendingFiles.filter(
+                  (pendingFile) => !selectedFiles.includes(pendingFile),
+                ),
+              }
+            : item,
+        ),
+      );
+    } finally {
+      setIsUploadingAttachments(false);
+    }
+  }
+
+  const uploadQueuedStageAttachments = useCallback(async (
+    projectId: string,
+    orderedStageIds: string[],
+  ) => {
+    for (const [index, stage] of stages.entries()) {
+      const persistedStageId = stage.persistedId ?? orderedStageIds[index];
+
+      if (!persistedStageId || stage.pendingFiles.length === 0) {
+        continue;
+      }
+
+      for (const file of stage.pendingFiles) {
+        const attachment = await uploadProjectAsset(file, projectId, {
+          stageId: persistedStageId,
+        });
+        setStages((current) =>
+          current.map((item) =>
+            item.id === stage.id
+              ? {
+                  ...item,
+                  persistedId: persistedStageId,
+                  attachments: item.attachments.some(
+                    (existingAttachment) => existingAttachment.id === attachment.id,
+                  )
+                    ? item.attachments
+                    : [...item.attachments, attachment],
+                  pendingFiles: item.pendingFiles.filter((pendingFile) => pendingFile !== file),
+                }
+              : item,
+          ),
+        );
+      }
+    }
+  }, [stages, uploadProjectAsset]);
+
   function removePendingProjectFile(index: number) {
     setPendingProjectFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
+
+  function removePendingStageFile(stageId: string, index: number) {
+    setStages((current) =>
+      current.map((stage) =>
+        stage.id === stageId
+          ? {
+              ...stage,
+              pendingFiles: stage.pendingFiles.filter((_, fileIndex) => fileIndex !== index),
+            }
+          : stage,
+      ),
+    );
+  }
+
+  async function removeStageAttachment(stageId: string, attachmentId: string) {
+    if (!initialValues?.id) {
+      return;
+    }
+
+    setDeletingAttachmentId(attachmentId);
+    setAttachmentError(undefined);
+
+    try {
+      const response = await fetch(
+        `/api/project-assets/${attachmentId}?projectId=${encodeURIComponent(initialValues.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to delete the stage brief attachment right now.");
+      }
+
+      setStages((current) =>
+        current.map((stage) =>
+          stage.id === stageId
+            ? {
+                ...stage,
+                attachments: stage.attachments.filter(
+                  (attachment) => attachment.id !== attachmentId,
+                ),
+              }
+            : stage,
+        ),
+      );
+      refreshProjectData();
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error
+          ? error.message
+          : "Unable to delete the stage brief attachment right now.",
+      );
+    } finally {
+      setDeletingAttachmentId(null);
+    }
   }
 
   useEffect(() => {
@@ -1670,10 +1852,10 @@ export function CreateProjectWorkspace({
     handledCreatedProjectIdRef.current = formState.projectId;
 
     const projectId = formState.projectId;
-    const initialBriefStageId = formState.initialBriefStageId ?? null;
-    const initialBriefCommentId = formState.initialBriefCommentId ?? null;
+    const createdStageIds = formState.createdStageIds ?? [];
+    const hasPendingStageFiles = stages.some((stage) => stage.pendingFiles.length > 0);
 
-    if (pendingProjectFiles.length === 0) {
+    if (pendingProjectFiles.length === 0 && !hasPendingStageFiles) {
       showSuccessToast("Project created successfully.");
       router.replace(`/projects/${projectId}`);
       return;
@@ -1687,17 +1869,23 @@ export function CreateProjectWorkspace({
 
       try {
         for (const file of pendingProjectFiles) {
-          await uploadProjectAsset(file, projectId, {
-            stageId: initialBriefStageId,
-            commentId: initialBriefCommentId,
-          });
+          await uploadProjectAsset(file, projectId);
         }
+
+        await uploadQueuedStageAttachments(projectId, createdStageIds);
 
         if (cancelled) {
           return;
         }
 
         setPendingProjectFiles([]);
+        setStages((current) =>
+          current.map((stage, index) => ({
+            ...stage,
+            persistedId: stage.persistedId ?? createdStageIds[index],
+            pendingFiles: [],
+          })),
+        );
         showSuccessToast("Project created successfully.");
         router.replace(`/projects/${projectId}`);
       } catch (error) {
@@ -1728,12 +1916,14 @@ export function CreateProjectWorkspace({
       cancelled = true;
     };
   }, [
-    formState.initialBriefCommentId,
-    formState.initialBriefStageId,
+    formState.createdStageIds,
     formState.projectId,
     mode,
     pendingProjectFiles,
     router,
+    stages,
+    uploadQueuedStageAttachments,
+    uploadProjectAsset,
   ]);
 
   useEffect(() => {
@@ -1746,9 +1936,79 @@ export function CreateProjectWorkspace({
     }
 
     handledEditProjectIdRef.current = formState.projectId;
-    showSuccessToast("Project updated successfully.");
-    router.replace(`/projects/${formState.projectId}`);
-  }, [formState.projectId, mode, router]);
+    const projectId = formState.projectId;
+    const updatedStageIds = formState.createdStageIds ?? [];
+    const hasPendingStageFiles = stages.some((stage) => stage.pendingFiles.length > 0);
+
+    if (pendingProjectFiles.length === 0 && !hasPendingStageFiles) {
+      showSuccessToast("Project updated successfully.");
+      router.replace(`/projects/${projectId}`);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function completeQueuedUploads() {
+      setIsUploadingAttachments(true);
+      setAttachmentError(undefined);
+
+      try {
+        for (const file of pendingProjectFiles) {
+          await uploadProjectAsset(file, projectId);
+        }
+
+        await uploadQueuedStageAttachments(projectId, updatedStageIds);
+
+        if (cancelled) {
+          return;
+        }
+
+        setPendingProjectFiles([]);
+        setStages((current) =>
+          current.map((stage, index) => ({
+            ...stage,
+            persistedId: stage.persistedId ?? updatedStageIds[index],
+            pendingFiles: [],
+          })),
+        );
+        showSuccessToast("Project updated successfully.");
+        router.replace(`/projects/${projectId}`);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setAttachmentError(
+          error instanceof Error
+            ? `${error.message} The project was saved, but one attachment upload did not finish.`
+            : "The project was saved, but one attachment upload did not finish.",
+        );
+        showErrorToast(
+          "Project saved, but attachment upload failed.",
+          "You can retry the attachment upload from edit mode.",
+        );
+      } finally {
+        if (!cancelled) {
+          setIsUploadingAttachments(false);
+        }
+      }
+    }
+
+    void completeQueuedUploads();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    formState.createdStageIds,
+    formState.projectId,
+    mode,
+    pendingProjectFiles,
+    router,
+    stages,
+    uploadQueuedStageAttachments,
+    uploadProjectAsset,
+  ]);
 
   async function removeProjectAttachment(attachmentId: string) {
     if (!initialValues?.id) {
@@ -2200,7 +2460,7 @@ export function CreateProjectWorkspace({
                       type="button"
                       onClick={() => attachmentInputRef.current?.click()}
                       className="cursor-pointer"
-                      aria-label="Add project attachment files"
+                      aria-label="Add project brief attachment files"
                     >
                       <Paperclip className="h-5 w-5" />
                     </button>
@@ -2232,7 +2492,7 @@ export function CreateProjectWorkspace({
                   <CardContent className="px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[12px] font-semibold text-brand">
-                        Project Attachments
+                        Project Brief Attachments
                       </p>
                       <div className="flex items-center gap-2">
                         {isUploadingAttachments ? (
@@ -2350,7 +2610,7 @@ export function CreateProjectWorkspace({
                       </ul>
                     ) : (
                       <p className="mt-3 text-[11px] text-[#7a837b]">
-                        No project-level attachments uploaded yet.
+                        No project brief attachments uploaded yet.
                       </p>
                     )}
                     <div className="mt-3 flex justify-end gap-3">
@@ -2605,7 +2865,7 @@ export function CreateProjectWorkspace({
                       }
                     />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
-                      Stage Description <span className="text-[#d3554d]">*</span>
+                      Stage Brief <span className="text-[#d3554d]">*</span>
                     </p>
                     <Textarea
                       value={stage.description}
@@ -2615,12 +2875,135 @@ export function CreateProjectWorkspace({
                       }}
                       name="stageDescriptions"
                       required
-                      placeholder={`Stage ${index + 1} Description...`}
+                      placeholder="Describe what should be done in this stage."
                       className="mt-3 min-h-[84px] bg-[#f7faf7] text-[12px]"
                     />
                     <FieldError
                       message={getStageFieldError("stageDescriptions", index, fieldErrors.stageDescriptions?.[index])}
                     />
+                    <div className="mt-3 rounded-[14px] border border-[#dce6dd] bg-[#fbfdfb] px-3 py-2.5">
+                      <input
+                        ref={(node) => {
+                          stageAttachmentInputRefs.current[stage.id] = node;
+                        }}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => {
+                          void handleStageAttachmentSelection(stage.id, event.target.files);
+                        }}
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6f7d72]">
+                          Stage Brief Attachments
+                        </p>
+                        <Badge variant="secondary">
+                          {stage.attachments.length + stage.pendingFiles.length}
+                        </Badge>
+                      </div>
+                      {stage.attachments.length > 0 || stage.pendingFiles.length > 0 ? (
+                        <ul className="mt-2 space-y-2">
+                          {stage.attachments.map((attachment) => (
+                            <li
+                              key={attachment.id}
+                              className="flex items-center justify-between gap-2 rounded-[12px] bg-white px-2.5 py-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-[12px] font-medium text-[#243028]">
+                                  {attachment.originalFileName}
+                                </p>
+                                <p className="truncate text-[10px] text-[#7a837b]">
+                                  {attachment.fileSizeLabel} · {attachment.uploadedBy}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <AssetPreviewButton
+                                  fileName={attachment.originalFileName}
+                                  mimeType={attachment.mimeType}
+                                  previewPath={attachment.previewPath}
+                                  downloadPath={attachment.downloadPath}
+                                  triggerClassName="size-7 text-brand"
+                                />
+                                <AttachmentFavoriteButton
+                                  attachmentId={attachment.id}
+                                  initialIsFavorited={attachment.isFavoritedByCurrentUser}
+                                  className="size-7 text-[#7a847d] hover:bg-[#fff4f5]"
+                                />
+                                <Button
+                                  asChild
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-brand"
+                                >
+                                  <a
+                                    href={attachment.downloadPath}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    aria-label={`Download ${attachment.originalFileName}`}
+                                  >
+                                    <Download className="h-3.5 w-3.5" />
+                                  </a>
+                                </Button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void removeStageAttachment(stage.id, attachment.id);
+                                  }}
+                                  disabled={deletingAttachmentId === attachment.id}
+                                  className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44] disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label={`Remove ${attachment.originalFileName}`}
+                                >
+                                  {deletingAttachmentId === attachment.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <X className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                          {stage.pendingFiles.map((file, fileIndex) => (
+                            <li
+                              key={`${stage.id}-${file.name}-${file.size}-${fileIndex}`}
+                              className="flex items-center justify-between gap-2 rounded-[12px] border border-dashed border-[#d7dfd7] bg-white px-2.5 py-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-[12px] font-medium text-[#243028]">
+                                  {file.name}
+                                </p>
+                                <p className="truncate text-[10px] text-[#7a837b]">
+                                  {formatLocalFileSize(file.size)} · Pending upload
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removePendingStageFile(stage.id, fileIndex)}
+                                className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44]"
+                                aria-label={`Remove ${file.name}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-[11px] text-[#7a837b]">
+                          No stage brief attachments uploaded yet.
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => stageAttachmentInputRefs.current[stage.id]?.click()}
+                        disabled={isUploadingAttachments}
+                        className="mt-2 w-full justify-center text-[12px]"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                        Add files
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
                 </MotionItem>

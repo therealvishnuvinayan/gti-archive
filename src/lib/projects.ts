@@ -34,6 +34,9 @@ import {
   getAccessibleProjectsWhere,
   hasPermission,
   hasProjectPermission,
+  isProjectAdmin,
+  isProjectExecutor,
+  isProjectOwner,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import type { PermissionKey } from "@/lib/permissions/definitions";
@@ -61,6 +64,9 @@ type ProjectWithCreator = Project & {
   >;
   attachments: Array<{
     id: string;
+    stageId: string | null;
+    revisionId: string | null;
+    commentId: string | null;
     assetType: AttachmentAssetType;
     originalFileName: string;
     mimeType: string;
@@ -107,6 +113,7 @@ export type ProjectEditorRecord = {
     description: string;
     plannedStartAt: string;
     plannedDueAt: string;
+    attachments: ProjectAttachmentRecord[];
   }>;
   collaborators: ProjectCollaboratorRecord[];
   attachments: ProjectAttachmentRecord[];
@@ -133,6 +140,7 @@ export type ProjectStageRecord = {
   plannedDueAt: string;
   plannedDueAtValue: string | null;
   status: ProjectStageVisualStatus;
+  briefAttachments: ProjectAttachmentRecord[];
 };
 
 function toProjectIsoString(
@@ -430,6 +438,43 @@ function canAccessProjectRecord(
   return hasProjectPermission(currentUser, project, "project.view");
 }
 
+function canViewBriefContent(
+  project: Pick<Project, "createdById" | "executorUserId">,
+  currentUser: ProjectAccessUser,
+) {
+  return (
+    isProjectAdmin(currentUser) ||
+    isProjectOwner(currentUser, project) ||
+    isProjectExecutor(currentUser, project)
+  );
+}
+
+function isStageBriefAttachment(
+  attachment: Pick<
+    ProjectWithCreator["attachments"][number],
+    "assetType" | "stageId" | "revisionId" | "commentId"
+  >,
+) {
+  return (
+    attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+    Boolean(attachment.stageId) &&
+    !attachment.revisionId &&
+    !attachment.commentId
+  );
+}
+
+function isProjectBriefAttachment(
+  attachment: Pick<
+    ProjectWithCreator["attachments"][number],
+    "assetType" | "stageId" | "revisionId" | "commentId"
+  >,
+) {
+  return (
+    attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+    !isStageBriefAttachment(attachment)
+  );
+}
+
 export function buildAccessibleProjectsWhere(
   currentUser?: ProjectAccessUser,
 ): Prisma.ProjectWhereInput {
@@ -576,12 +621,14 @@ function mapStageToCard(
   project: ProjectWithCreator,
   stage: ProjectStage,
   allowBudgetView: boolean,
+  canViewBrief: boolean,
+  briefAttachments: ProjectAttachmentRecord[] = [],
 ): ProjectStageRecord {
   return {
     id: stage.id,
     label: `${stage.name} : ${projectStatusMeta[stage.status].label}`,
     subtitle: project.category,
-    description: stage.description?.trim() || "",
+    description: canViewBrief ? stage.description?.trim() || "" : "",
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
     budget: allowBudgetView
@@ -594,12 +641,13 @@ function mapStageToCard(
     plannedDueAt: formatProjectDateTime(stage.plannedDueAt),
     plannedDueAtValue: toProjectIsoString(stage.plannedDueAt),
     status: mapStageStatusToVisual(stage.status),
+    briefAttachments: canViewBrief ? briefAttachments : [],
   };
 }
 
 function mapProjectToFlow(
   project: ProjectWithCreator,
-  currentUser: BudgetAccessUser,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
@@ -609,9 +657,28 @@ function mapProjectToFlow(
     project.executorName?.trim() ||
     "—";
   const allowBudgetView = canViewProjectBudget(project, currentUser);
+  const allowBriefView = canViewBriefContent(project, currentUser);
   const stages = getProjectStages(project);
   const currentStage =
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
+  const projectBriefAttachments = project.attachments
+    .filter(isProjectBriefAttachment)
+    .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
+  const stageBriefAttachmentMap = new Map<string, ProjectAttachmentRecord[]>();
+
+  project.attachments
+    .filter(isStageBriefAttachment)
+    .forEach((attachment) => {
+      if (!attachment.stageId) {
+        return;
+      }
+
+      const existingAttachments = stageBriefAttachmentMap.get(attachment.stageId) ?? [];
+      stageBriefAttachmentMap.set(attachment.stageId, [
+        ...existingAttachments,
+        mapAttachmentToRecord(attachment, favoritedAttachmentIds),
+      ]);
+    });
 
   const collaboratorRecords = (project.collaborators ?? [])
     .map(mapProjectCollaboratorAssignmentToRecord)
@@ -662,7 +729,7 @@ function mapProjectToFlow(
     title: project.name,
     category: project.category,
     executorName: executorDisplayName,
-    description: project.description,
+    description: allowBriefView ? project.description : "",
     budget: allowBudgetView ? formatProjectBudget(project.budget, project.currency) : "Restricted",
     currency: allowBudgetView ? project.currency : null,
     statusLabel: projectStatusMeta[project.status].label,
@@ -675,7 +742,15 @@ function mapProjectToFlow(
     createdBy: creatorName,
     tag: project.tag?.trim() || "—",
     priority: formatProjectPriority(project.priority ?? DEFAULT_PROJECT_PRIORITY),
-    stageCards: stages.map((stage) => mapStageToCard(project, stage, allowBudgetView)),
+    stageCards: stages.map((stage) =>
+      mapStageToCard(
+        project,
+        stage,
+        allowBudgetView,
+        allowBriefView,
+        stageBriefAttachmentMap.get(stage.id) ?? [],
+      ),
+    ),
     collaborators: [
       {
         id: project.createdById,
@@ -690,9 +765,7 @@ function mapProjectToFlow(
       ...collaboratorRecords,
     ],
     mentionParticipants,
-    attachments: project.attachments.map((attachment) =>
-      mapAttachmentToRecord(attachment, favoritedAttachmentIds),
-    ),
+    attachments: allowBriefView ? projectBriefAttachments : [],
     chatEntries: [],
     compareNotes: [],
   };
@@ -734,7 +807,7 @@ function formatProjectInputDateTime(date: Date | string | number | null | undefi
 
 function mapProjectToEditor(
   project: ProjectWithCreator,
-  currentUser: BudgetAccessUser,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectEditorRecord {
   const stages = getProjectStages(project);
@@ -744,6 +817,25 @@ function mapProjectToEditor(
     project.executorName?.trim() ||
     "";
   const allowBudgetView = canViewProjectBudget(project, currentUser);
+  const allowBriefView = canViewBriefContent(project, currentUser);
+  const projectBriefAttachments = project.attachments
+    .filter(isProjectBriefAttachment)
+    .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
+  const stageBriefAttachmentMap = new Map<string, ProjectAttachmentRecord[]>();
+
+  project.attachments
+    .filter(isStageBriefAttachment)
+    .forEach((attachment) => {
+      if (!attachment.stageId) {
+        return;
+      }
+
+      const existingAttachments = stageBriefAttachmentMap.get(attachment.stageId) ?? [];
+      stageBriefAttachmentMap.set(attachment.stageId, [
+        ...existingAttachments,
+        mapAttachmentToRecord(attachment, favoritedAttachmentIds),
+      ]);
+    });
 
   return {
     id: project.id,
@@ -754,7 +846,7 @@ function mapProjectToEditor(
     executorUserId: project.executorUserId ?? null,
     tag: project.tag?.trim() || "",
     priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
-    description: project.description,
+    description: allowBriefView ? project.description : "",
     budget: allowBudgetView ? String(project.budget) : "",
     currency: allowBudgetView ? project.currency : null,
     canViewBudget: allowBudgetView,
@@ -772,16 +864,15 @@ function mapProjectToEditor(
               ? String(project.budget)
               : ""
           : "",
-      description: stage.description?.trim() || "",
+      description: allowBriefView ? stage.description?.trim() || "" : "",
       plannedStartAt: formatProjectInputDateTime(stage.plannedStartAt ?? project.startDate),
       plannedDueAt: formatProjectInputDateTime(stage.plannedDueAt ?? project.endDate),
+      attachments: allowBriefView ? stageBriefAttachmentMap.get(stage.id) ?? [] : [],
     })),
     collaborators: (project.collaborators ?? []).map((assignment) => ({
       ...mapProjectCollaboratorAssignmentToRecord(assignment),
     })),
-    attachments: project.attachments.map((attachment) =>
-      mapAttachmentToRecord(attachment, favoritedAttachmentIds),
-    ),
+    attachments: allowBriefView ? projectBriefAttachments : [],
   };
 }
 
@@ -1429,6 +1520,9 @@ export async function getProjectsList(
               },
               select: {
                 id: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
                 assetType: true,
                 originalFileName: true,
                 mimeType: true,
@@ -1515,6 +1609,9 @@ export async function getProjectById(
               },
               select: {
                 id: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
                 assetType: true,
                 originalFileName: true,
                 mimeType: true,
@@ -1531,7 +1628,7 @@ export async function getProjectById(
           },
         }),
       ),
-    ["project-by-id", id, currentUser.id],
+    ["project-by-id", id, currentUser.id, currentUser.role],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -1601,6 +1698,9 @@ export async function getProjectEditorById(
               },
               select: {
                 id: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
                 assetType: true,
                 originalFileName: true,
                 mimeType: true,
@@ -1617,7 +1717,7 @@ export async function getProjectEditorById(
           },
         }),
       ),
-    ["project-editor-by-id", id, currentUser.id],
+    ["project-editor-by-id", id, currentUser.id, currentUser.role],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 

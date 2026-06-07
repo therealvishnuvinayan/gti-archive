@@ -26,6 +26,7 @@ export type ProjectFormState = {
   projectId?: string;
   initialBriefStageId?: string;
   initialBriefCommentId?: string;
+  createdStageIds?: string[];
   fieldErrors?: ProjectFormFieldErrors;
 };
 
@@ -38,6 +39,7 @@ export type ProjectEditorInitialStage = {
   description: string;
   plannedStartAt: string;
   plannedDueAt: string;
+  attachments: ProjectEditorInitialAttachment[];
 };
 
 export type ProjectEditorInitialAttachment = {
