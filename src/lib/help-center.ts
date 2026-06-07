@@ -557,6 +557,17 @@ export const helpSections: HelpSection[] = [
         ],
       },
       {
+        title: "Accept Brief and Stage Start",
+        items: [
+          "Main Executors must review both the Project Brief and the current Stage Brief before starting stage work.",
+          "Only Main Executors can accept the brief and start the stage timer.",
+          "Normal Executors and Project Collaborators cannot accept the brief.",
+          "If multiple Main Executors are assigned, any one Main Executor can accept the brief for the current stage.",
+          "Once accepted, the stage shows who accepted the brief and when the timer started.",
+          "After a stage is accepted, Accept Brief disappears for all Main Executors on that stage.",
+        ],
+      },
+      {
         title: "How Main Executors review brief information before starting a stage",
         ordered: true,
         items: [

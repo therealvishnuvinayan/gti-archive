@@ -49,6 +49,9 @@ export const PROJECTS_CACHE_TAG = "projects";
 
 type BudgetAccessUser = Pick<User, "id">;
 export type ProjectAccessUser = PermissionUser;
+type ProjectStageWithStarter = ProjectStage & {
+  startedBy?: Pick<User, "name" | "email"> | null;
+};
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
@@ -64,7 +67,7 @@ type ProjectWithCreator = Project & {
       >;
     }
   >;
-  stages: ProjectStage[];
+  stages: ProjectStageWithStarter[];
   collaborators?: Array<
     ProjectCollaborator & {
       user: Pick<
@@ -150,6 +153,7 @@ export type ProjectStageRecord = {
   budget: string;
   actualStartedAt: string;
   actualStartedAtValue: string | null;
+  startedByName: string | null;
   plannedStartAt: string;
   plannedStartAtValue: string | null;
   plannedDueAt: string;
@@ -218,7 +222,7 @@ export type ProjectAttachmentRecord = {
 
 export type ProjectChatEntry = {
   id: string;
-  kind: "revision" | "comment";
+  kind: "revision" | "comment" | "system";
   revisionId?: string;
   title?: string;
   revisionStatus?: ProjectRevisionStatus | null;
@@ -645,7 +649,7 @@ function mapStageStatusToVisual(status: ProjectStatus): ProjectStageVisualStatus
   }
 }
 
-function buildSyntheticStages(project: Project): ProjectStage[] {
+function buildSyntheticStages(project: Project): ProjectStageWithStarter[] {
   return Array.from({ length: Math.max(project.stageCount, 1) }, (_, index) => ({
     id: `${project.id}-stage-${index + 1}`,
     projectId: project.id,
@@ -732,7 +736,7 @@ function compareProjectsByName(
 
 function mapStageToCard(
   project: ProjectWithCreator,
-  stage: ProjectStage,
+  stage: ProjectStageWithStarter,
   allowBudgetView: boolean,
   canViewBrief: boolean,
   briefAttachments: ProjectAttachmentRecord[] = [],
@@ -749,6 +753,7 @@ function mapStageToCard(
       : "Restricted",
     actualStartedAt: formatProjectDateTime(stage.actualStartedAt),
     actualStartedAtValue: toProjectIsoString(stage.actualStartedAt),
+    startedByName: stage.startedBy ? getCreatorName(stage.startedBy) : null,
     plannedStartAt: formatProjectDateTime(stage.plannedStartAt),
     plannedStartAtValue: toProjectIsoString(stage.plannedStartAt),
     plannedDueAt: formatProjectDateTime(stage.plannedDueAt),
@@ -1769,7 +1774,16 @@ export async function getProjectById(
                 },
               },
             },
-            stages: true,
+            stages: {
+              include: {
+                startedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
             collaborators: {
               orderBy: {
                 createdAt: "asc",
@@ -1870,7 +1884,16 @@ export async function getProjectEditorById(
                 },
               },
             },
-            stages: true,
+            stages: {
+              include: {
+                startedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
             collaborators: {
               orderBy: {
                 createdAt: "asc",

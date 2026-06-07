@@ -13,6 +13,7 @@ import {
 import { flushSync } from "react-dom";
 import { useDropzone } from "react-dropzone";
 import {
+  CheckCircle2,
   Download,
   FileText,
   Languages,
@@ -606,6 +607,33 @@ function getRevisionStatusMeta(status: RevisionReviewState) {
   }
 }
 
+function SystemActivityCard({ message }: { message: DisplayChatEntry }) {
+  return (
+    <div className="flex justify-center">
+      <div className="w-full max-w-[760px] rounded-[16px] border border-[#cfe3d2] bg-[#f7fbf1] px-4 py-3 shadow-[0_10px_24px_rgba(23,39,28,0.05)]">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#e4f3e7] text-brand">
+            <CheckCircle2 className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-[800] text-[#173120]">
+              {message.title ?? "Project activity"}
+            </p>
+            <p className="mt-1 text-[12px] leading-5 text-[#405044]">
+              {message.body}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-[700] uppercase tracking-[0.08em] text-[#6c776e]">
+              <span>{message.author}</span>
+              <span aria-hidden="true">·</span>
+              <span>{message.createdAt}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AttachmentHistoryList({
   attachments,
   compact = false,
@@ -1114,6 +1142,7 @@ export function ProjectChatWorkspace({
       {
         actualStartedAt: string;
         actualStartedAtValue: string | null;
+        startedByName?: string | null;
         status?: ProjectStageRecord["status"];
       }
     >
@@ -1175,6 +1204,8 @@ export function ProjectChatWorkspace({
               ...stage,
               actualStartedAt: override.actualStartedAt,
               actualStartedAtValue: override.actualStartedAtValue,
+              startedByName: override.startedByName ?? stage.startedByName,
+              status: override.status ?? stage.status,
             }
           : stage;
       }),
@@ -1288,15 +1319,15 @@ export function ProjectChatWorkspace({
   );
   const isMainProjectExecutor = useMemo(
     () =>
-      !isProjectOwner &&
-      (project.executors.length > 0
+      project.executors.length > 0
         ? project.executors.some(
             (executor) =>
               executor.id === currentUserId && executor.role === "MAIN_EXECUTOR",
           )
-        : project.executorUserId === currentUserId),
-    [currentUserId, isProjectOwner, project.executorUserId, project.executors],
+        : project.executorUserId === currentUserId,
+    [currentUserId, project.executorUserId, project.executors],
   );
+  const canSubmitWorkAsMainExecutor = isMainProjectExecutor && !isProjectOwner;
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
   const projectBriefText = project.description.trim();
   const stageBriefText = activeStage?.description.trim() ?? "";
@@ -1307,8 +1338,30 @@ export function ProjectChatWorkspace({
     ? "Completed"
     : hasAcceptedBrief
       ? "In progress"
-      : "Waiting for executor";
+      : "Waiting for Main Executor to accept brief";
   const hasRevisionEntries = displayedMessages.some((message) => message.kind === "revision");
+  const hasBriefAcceptedSystemMessage = displayedMessages.some(
+    (message) =>
+      message.kind === "system" &&
+      (message.title ?? "").toLowerCase() === "brief accepted",
+  );
+  const stageStartSystemMessage = useMemo<DisplayChatEntry | null>(() => {
+    if (!activeStage?.actualStartedAtValue || hasBriefAcceptedSystemMessage) {
+      return null;
+    }
+
+    const actorName = activeStage.startedByName ?? "Main Executor";
+
+    return {
+      id: `stage-started-${activeStage.id}`,
+      kind: "system",
+      title: "Brief accepted",
+      author: actorName,
+      role: "Main Executor",
+      body: `${actorName} accepted the project and stage brief and started work on this stage.`,
+      createdAt: activeStage.actualStartedAt,
+    };
+  }, [activeStage, hasBriefAcceptedSystemMessage]);
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
   const currentUserDisplayName = useMemo(() => {
@@ -2216,6 +2269,8 @@ export function ProjectChatWorkspace({
               actualStartedAtValue:
                 current[completedStageId]?.actualStartedAtValue ??
                 completedStage.actualStartedAtValue,
+              startedByName:
+                current[completedStageId]?.startedByName ?? completedStage.startedByName,
               status: "completed",
             },
           }
@@ -2228,6 +2283,8 @@ export function ProjectChatWorkspace({
                 current[nextStage.id]?.actualStartedAt ?? nextStage.actualStartedAt,
               actualStartedAtValue:
                 current[nextStage.id]?.actualStartedAtValue ?? nextStage.actualStartedAtValue,
+              startedByName:
+                current[nextStage.id]?.startedByName ?? nextStage.startedByName,
               status: nextStage.status === "pending" ? "in-progress" : nextStage.status,
             },
           }
@@ -2328,13 +2385,16 @@ export function ProjectChatWorkspace({
         [activeStageId]: {
           actualStartedAt: startedAtLabel,
           actualStartedAtValue: startedAtValue,
+          startedByName: currentUserDisplayName,
+          status: "in-progress",
         },
       }));
       setConfirmedComments((current) => [
         {
           id: `confirmed-comment-${result.result.activityComment.id}`,
           serverEntryId: result.result.activityComment.id,
-          kind: "comment",
+          kind: "system",
+          title: "Brief accepted",
           author: currentUserDisplayName,
           authorAvatarSrc: currentUserAvatarSrc,
           role: currentUserRoleLabel,
@@ -2369,7 +2429,7 @@ export function ProjectChatWorkspace({
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
 
-    if (!isMainProjectExecutor) {
+    if (!canSubmitWorkAsMainExecutor) {
       commentAttachmentInputRef.current?.click();
       return;
     }
@@ -2391,7 +2451,7 @@ export function ProjectChatWorkspace({
       return;
     }
 
-    const selectedAssetType: CommentUploadIntent = isMainProjectExecutor
+    const selectedAssetType: CommentUploadIntent = canSubmitWorkAsMainExecutor
       ? commentUploadIntent
       : "COMMENT_ATTACHMENT";
 
@@ -3344,6 +3404,10 @@ export function ProjectChatWorkspace({
             </Card>
           ) : null}
 
+          {stageStartSystemMessage ? (
+            <SystemActivityCard message={stageStartSystemMessage} />
+          ) : null}
+
           {displayedMessages.length === 0 ? (
             <Card className="border border-dashed border-[#d8e1d8] px-6 py-10 text-center">
               <CardTitle className="text-[20px]">
@@ -3355,7 +3419,7 @@ export function ProjectChatWorkspace({
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 Upload the first revision to start the proof and archive trail.
               </p>
-              {!isProjectCompleted && isMainProjectExecutor && hasAcceptedBrief ? (
+              {!isProjectCompleted && canSubmitWorkAsMainExecutor && hasAcceptedBrief ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -3370,7 +3434,7 @@ export function ProjectChatWorkspace({
                     Submit First Work
                   </Button>
                 </div>
-              ) : !isProjectCompleted && isMainProjectExecutor ? (
+              ) : !isProjectCompleted && !isStageCompleted && isMainProjectExecutor ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -3382,12 +3446,20 @@ export function ProjectChatWorkspace({
                     Accept Brief
                   </Button>
                 </div>
+              ) : !isProjectCompleted && !hasAcceptedBrief ? (
+                <div className="mt-5 flex justify-center">
+                  <div className="inline-flex items-center rounded-full bg-[#f4f7f4] px-3 py-2 text-[12px] font-medium text-[#5d675f]">
+                    Waiting for Main Executor to accept brief.
+                  </div>
+                </div>
               ) : null}
             </Card>
           ) : null}
 
           {displayedMessages.map((message, index) =>
-            message.kind === "revision" ? (
+            message.kind === "system" ? (
+              <SystemActivityCard key={message.id} message={message} />
+            ) : message.kind === "revision" ? (
               (() => {
                 const revisionEntryId = getRevisionEntryId(message);
                 const effectiveRevisionStatus =
@@ -3481,7 +3553,7 @@ export function ProjectChatWorkspace({
                         ) : null}
                         {index === firstRevisionIndex &&
                         !isProjectCompleted &&
-                        isMainProjectExecutor &&
+                        canSubmitWorkAsMainExecutor &&
                         hasAcceptedBrief ? (
                           <Button
                             type="button"
@@ -3562,7 +3634,10 @@ export function ProjectChatWorkspace({
 
           {!hasRevisionEntries && displayedMessages.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {!isProjectCompleted && isMainProjectExecutor && !hasAcceptedBrief ? (
+              {!isProjectCompleted &&
+              !isStageCompleted &&
+              isMainProjectExecutor &&
+              !hasAcceptedBrief ? (
                 <>
                   <Button
                     type="button"
@@ -3590,7 +3665,7 @@ export function ProjectChatWorkspace({
                   </Button>
                 </>
               ) : null}
-              {!isProjectCompleted && isMainProjectExecutor && hasAcceptedBrief ? (
+              {!isProjectCompleted && canSubmitWorkAsMainExecutor && hasAcceptedBrief ? (
                 <Button
                   type="button"
                   onClick={openRevisionDialog}
@@ -3606,9 +3681,12 @@ export function ProjectChatWorkspace({
                   Submit Work
                 </Button>
               ) : null}
-              {!isProjectCompleted && isProjectOwner && !hasAcceptedBrief ? (
+              {!isProjectCompleted &&
+              !isStageCompleted &&
+              !isMainProjectExecutor &&
+              !hasAcceptedBrief ? (
                 <div className="inline-flex items-center rounded-full bg-[#f4f7f4] px-3 py-2 text-[12px] font-medium text-[#5d675f]">
-                  Waiting for executor to accept brief.
+                  Waiting for Main Executor to accept brief.
                 </div>
               ) : null}
             </div>
@@ -3894,8 +3972,12 @@ export function ProjectChatWorkspace({
                   </dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Stage Started :</dt>{" "}
+                  <dt className="inline font-[700]">Started At :</dt>{" "}
                   <dd className="inline">{activeStage?.actualStartedAt ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-[700]">Started By :</dt>{" "}
+                  <dd className="inline">{activeStage?.startedByName ?? "—"}</dd>
                 </div>
                 <div>
                   <dt className="inline font-[700]">Stage Deadline :</dt>{" "}

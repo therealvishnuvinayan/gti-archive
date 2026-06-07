@@ -4,6 +4,7 @@ import {
   ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
+  ProjectStatus,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   UserRole,
@@ -332,11 +333,37 @@ function mapRevisionEntry(
   };
 }
 
+function isBriefAcceptedSystemBody(body: string) {
+  const normalizedBody = body.trim().toLowerCase();
+  return (
+    (normalizedBody.includes("accepted the brief") ||
+      normalizedBody.includes("accepted the project and stage brief")) &&
+    normalizedBody.includes("started work on this stage")
+  );
+}
+
 function mapCommentEntry(
   comment: StageCommentQueryRecord,
   submissionNumbers: ReadonlyMap<string, number>,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectChatEntry {
+  if (isBriefAcceptedSystemBody(comment.body)) {
+    const actorName = getDisplayName(comment.author);
+
+    return {
+      id: comment.id,
+      revisionId: comment.revisionId ?? undefined,
+      kind: "system",
+      title: "Brief accepted",
+      author: actorName,
+      role: getActorRole(comment.author),
+      body: `${actorName} accepted the project and stage brief and started work on this stage.`,
+      createdAt: formatHistoryTimestamp(comment.createdAt),
+      mentions: [],
+      attachments: [],
+    };
+  }
+
   return {
     id: comment.id,
     revisionId: comment.revisionId ?? undefined,
@@ -377,6 +404,7 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
           },
         },
         status: true,
+        archivedAt: true,
         currency: true,
         budget: true,
         endDate: true,
@@ -417,15 +445,12 @@ function isMainProjectExecutorUser(
   },
   userId: string,
 ) {
-  return (
-    project.createdById !== userId &&
-    isMainProjectExecutor(
-      { id: userId },
-      {
-        executorUserId: project.executorUserId ?? null,
-        executors: project.executors,
-      },
-    )
+  return isMainProjectExecutor(
+    { id: userId },
+    {
+      executorUserId: project.executorUserId ?? null,
+      executors: project.executors,
+    },
   );
 }
 
@@ -1456,8 +1481,16 @@ export async function startProjectStageWork(
     throw new Error("This project is already completed.");
   }
 
+  if (project.archivedAt) {
+    throw new Error("This project has already been archived.");
+  }
+
   if (stage.actualStartedAt) {
     throw new Error("This stage has already been started.");
+  }
+
+  if (stage.status === ProjectStatus.COMPLETED) {
+    throw new Error("This stage is already completed.");
   }
 
   return withPrismaRetry(() =>
@@ -1471,10 +1504,12 @@ export async function startProjectStageWork(
         data: {
           actualStartedAt: startedAt,
           startedById: user.id,
+          status: ProjectStatus.ONGOING,
         },
         select: {
           id: true,
           actualStartedAt: true,
+          status: true,
         },
       });
 
@@ -1483,7 +1518,7 @@ export async function startProjectStageWork(
           projectId: input.projectId,
           stageId: stage.id,
           authorId: user.id,
-          body: `${getDisplayName(user)} accepted the brief and started work on this stage.`,
+          body: `${getDisplayName(user)} accepted the project and stage brief and started work on this stage.`,
         },
         select: {
           id: true,

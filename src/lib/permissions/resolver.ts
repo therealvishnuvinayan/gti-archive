@@ -200,6 +200,7 @@ export function hasProjectPermission(
     case "collaborator.changeAccess":
       return isProjectAdmin(user) || isProjectOwner(user, project);
     case "stage.acceptBrief":
+      return isMainProjectExecutor(user, project);
     case "stage.submitWork":
     case "file.uploadSubmission":
       return !isProjectOwner(user, project) && isMainProjectExecutor(user, project);
