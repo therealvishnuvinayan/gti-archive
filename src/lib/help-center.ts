@@ -86,10 +86,10 @@ export const quickStartItems: HelpQuickStartItem[] = [
   {
     id: "quick-stage-budget",
     title: "Add project stages and budgets",
-    description: "Break work into stages with names, dates, budgets, and stage briefs.",
+    description: "Break work into stages with names, dates, budgets, and stage briefs that fit the project timeline.",
     sectionId: "project-lifecycle",
     icon: Workflow,
-    keywords: ["stage", "budget", "timeline", "due date", "stage brief"],
+    keywords: ["stage", "budget", "timeline", "due date", "stage brief", "overlap"],
   },
   {
     id: "quick-assign-executor",
@@ -243,9 +243,16 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-stage-budgets",
     title: "How to add stages and budgets",
-    description: "Plan each stage without letting the stage total exceed the project budget.",
+    description: "Plan stage budgets, Stage Briefs, and stage dates within the project timeline.",
     sectionId: "project-lifecycle",
-    keywords: ["stage budget", "budget conflict", "stage dates"],
+    keywords: ["stage budget", "budget conflict", "stage dates", "stage brief"],
+  },
+  {
+    id: "guide-stage-timeline-validation",
+    title: "Stage Timeline Validation",
+    description: "Understand how project dates, stage dates, stage order, and overlap checks work.",
+    sectionId: "stages-briefs",
+    keywords: ["stage timeline", "overlap", "stage dates", "project dates"],
   },
   {
     id: "guide-assign-executor",
@@ -474,8 +481,17 @@ export const helpSections: HelpSection[] = [
           "Project Name and Project Brief are the required core fields. The Project Brief is the main project-level requirement.",
           "Project Category and Project Tag come from Project Master Data, with quick-add support from the form.",
           "Project Executor is mandatory and is the person or company responsible for execution.",
-          "Project Status, Project Priority, timeline dates, and collaborators shape the working context shown across the system.",
+          "Project Status, Project Priority, Project Start Date, Project End Date, and collaborators shape the working context shown across the system.",
           "Project Brief attachments stay at project level and apply across the whole project.",
+        ],
+      },
+      {
+        title: "Create and edit timeline fields",
+        items: [
+          "Project Start Date and Project End Date define the overall project window.",
+          "Each stage has a Stage Start Date, Stage Due Date, Stage Brief, and stage budget.",
+          "Stage dates must stay inside the project date range before the project can be saved.",
+          "Stage Brief values remain separate from timeline validation and should not be lost when dates are corrected.",
         ],
       },
       {
@@ -523,6 +539,17 @@ export const helpSections: HelpSection[] = [
           "When an executor opens Stage 1, they should review the Project Brief and the Stage 1 Brief.",
           "When an executor opens Stage 2, they should review the Project Brief and the Stage 2 Brief.",
           "Stage Chat keeps separate Project Brief and Stage Brief buttons so the context is clear.",
+        ],
+      },
+      {
+        title: "Stage Timeline Validation",
+        items: [
+          "Project dates define the overall project window.",
+          "Every stage must stay inside the project date range.",
+          "Stage Due Date must be after Stage Start Date.",
+          "Stages should not overlap each other.",
+          "Stage order should follow the project workflow, so Stage 2 should not start before Stage 1 ends.",
+          "Validation messages highlight timeline conflicts before invalid stage dates are saved.",
         ],
       },
       {
@@ -969,6 +996,7 @@ export const helpSearchKeywords = [
   "create project",
   "project brief",
   "stage brief",
+  "stage timeline validation",
   "accept brief",
   "submit work",
   "request revision",

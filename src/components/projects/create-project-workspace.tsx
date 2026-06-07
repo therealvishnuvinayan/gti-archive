@@ -241,6 +241,118 @@ function parseStageDateTimeValue(value: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function validateClientStageTimeline(input: {
+  stages: StageForm[];
+  projectStartDate: Date | null;
+  projectEndDate: Date | null;
+  includeRequired: boolean;
+}) {
+  const stageStartDateErrors: Array<string | undefined> = Array.from(
+    { length: input.stages.length },
+    () => undefined,
+  );
+  const stageDueDateErrors: Array<string | undefined> = Array.from(
+    { length: input.stages.length },
+    () => undefined,
+  );
+  const projectStartDateError =
+    input.includeRequired && !input.projectStartDate
+      ? "Project start date is required."
+      : undefined;
+  let projectEndDateError =
+    input.includeRequired && !input.projectEndDate
+      ? "Project end date is required."
+      : undefined;
+
+  if (input.projectStartDate && input.projectEndDate) {
+    const projectStartBoundary = getStartOfDay(input.projectStartDate);
+    const projectEndBoundary = getEndOfDay(input.projectEndDate);
+
+    if (getStartOfDay(input.projectEndDate) <= projectStartBoundary) {
+      projectEndDateError = "Project end date must be after the start date.";
+    }
+
+    const validRanges = new Map<number, { start: Date; due: Date }>();
+
+    input.stages.forEach((stage, index) => {
+      const stageStart = parseStageDateTimeValue(stage.plannedStartAt);
+      const stageDue = parseStageDateTimeValue(stage.plannedDueAt);
+
+      if (!stage.plannedStartAt && input.includeRequired) {
+        stageStartDateErrors[index] = "Stage start is required.";
+      } else if (stage.plannedStartAt && !stageStart) {
+        stageStartDateErrors[index] = "Choose a valid stage start.";
+      }
+
+      if (!stage.plannedDueAt && input.includeRequired) {
+        stageDueDateErrors[index] = "Stage due is required.";
+      } else if (stage.plannedDueAt && !stageDue) {
+        stageDueDateErrors[index] = "Choose a valid stage due time.";
+      }
+
+      if (!stageStart || !stageDue) {
+        return;
+      }
+
+      if (stageStart < projectStartBoundary || stageStart > projectEndBoundary) {
+        stageStartDateErrors[index] = "Stage start must be within the project date range.";
+      }
+
+      if (stageDue < projectStartBoundary || stageDue > projectEndBoundary) {
+        stageDueDateErrors[index] = "Stage due must be within the project date range.";
+      }
+
+      if (stageDue <= stageStart) {
+        stageDueDateErrors[index] = "Stage due must be after the stage start.";
+      }
+
+      if (!stageStartDateErrors[index] && !stageDueDateErrors[index]) {
+        validRanges.set(index, {
+          start: stageStart,
+          due: stageDue,
+        });
+      }
+    });
+
+    for (let index = 1; index < input.stages.length; index += 1) {
+      const previousRange = validRanges.get(index - 1);
+      const currentRange = validRanges.get(index);
+
+      if (!previousRange || !currentRange) {
+        continue;
+      }
+
+      if (currentRange.start < previousRange.due) {
+        stageStartDateErrors[index] = `Stage ${index + 1} cannot start before Stage ${index} ends.`;
+        validRanges.delete(index);
+      }
+    }
+  } else if (input.includeRequired) {
+    input.stages.forEach((stage, index) => {
+      if (!stage.plannedStartAt) {
+        stageStartDateErrors[index] = "Stage start is required.";
+      }
+
+      if (!stage.plannedDueAt) {
+        stageDueDateErrors[index] = "Stage due is required.";
+      }
+    });
+  }
+
+  const hasConflict =
+    Boolean(projectStartDateError || projectEndDateError) ||
+    stageStartDateErrors.some(Boolean) ||
+    stageDueDateErrors.some(Boolean);
+
+  return {
+    projectStartDateError,
+    projectEndDateError,
+    stageStartDateErrors,
+    stageDueDateErrors,
+    hasConflict,
+  };
+}
+
 function getDefaultProjectCurrencyCode(
   currencyOptions: Array<{
     code: string;
@@ -766,6 +878,7 @@ export function CreateProjectWorkspace({
   );
   const [executorInviteError, setExecutorInviteError] = useState<string>();
   const [executorInviteSaving, setExecutorInviteSaving] = useState(false);
+  const [timelineSubmitAttempted, setTimelineSubmitAttempted] = useState(false);
   const [dirtyFieldKeys, setDirtyFieldKeys] = useState<Set<string>>(() => new Set());
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const stageAttachmentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -950,62 +1063,13 @@ export function CreateProjectWorkspace({
     ],
   );
   const clientStageDateErrors = useMemo(() => {
-    const stageStartDates = stages.map((stage) => parseStageDateTimeValue(stage.plannedStartAt));
-    const stageDueDates = stages.map((stage) => parseStageDateTimeValue(stage.plannedDueAt));
-    const stageStartDateErrors: Array<string | undefined> = Array.from(
-      { length: stages.length },
-      () => undefined,
-    );
-    const stageDueDateErrors: Array<string | undefined> = Array.from(
-      { length: stages.length },
-      () => undefined,
-    );
-
-    if (!startDate || !endDate) {
-      return {
-        stageStartDateErrors,
-        stageDueDateErrors,
-        hasConflict: false,
-      };
-    }
-
-    const projectStartBoundary = getStartOfDay(startDate);
-    const projectEndBoundary = getEndOfDay(endDate);
-
-    stageStartDates.forEach((stageStart, index) => {
-      if (!stageStart) {
-        return;
-      }
-
-      if (stageStart < projectStartBoundary || stageStart > projectEndBoundary) {
-        stageStartDateErrors[index] = "Stage start must be within the project date range.";
-      }
+    return validateClientStageTimeline({
+      stages,
+      projectStartDate: startDate,
+      projectEndDate: endDate,
+      includeRequired: timelineSubmitAttempted,
     });
-
-    stageDueDates.forEach((stageDue, index) => {
-      if (!stageDue) {
-        return;
-      }
-
-      const stageStart = stageStartDates[index];
-
-      if (stageDue < projectStartBoundary || stageDue > projectEndBoundary) {
-        stageDueDateErrors[index] = "Stage due must be within the project date range.";
-        return;
-      }
-
-      if (stageStart && stageDue <= stageStart) {
-        stageDueDateErrors[index] = "Stage due must be after the stage start.";
-      }
-    });
-
-    return {
-      stageStartDateErrors,
-      stageDueDateErrors,
-      hasConflict:
-        stageStartDateErrors.some(Boolean) || stageDueDateErrors.some(Boolean),
-    };
-  }, [endDate, startDate, stages]);
+  }, [endDate, startDate, stages, timelineSubmitAttempted]);
 
   function updateStage(id: string, patch: Partial<StageForm>) {
     setStages((current) =>
@@ -1436,12 +1500,20 @@ export function CreateProjectWorkspace({
 
   function handleProjectFormSubmit(event: React.FormEvent<HTMLFormElement>) {
     setDirtyFieldKeys(new Set());
+    setTimelineSubmitAttempted(true);
 
-    if (clientStageDateErrors.hasConflict) {
+    const timelineValidation = validateClientStageTimeline({
+      stages,
+      projectStartDate: startDate,
+      projectEndDate: endDate,
+      includeRequired: true,
+    });
+
+    if (timelineValidation.hasConflict) {
       event.preventDefault();
       showErrorToast(
-        "Stage date conflict.",
-        "Each stage must stay within the project date range.",
+        "Stage timeline conflict.",
+        "Please review the highlighted stage timeline fields.",
       );
       return;
     }
@@ -1818,7 +1890,9 @@ export function CreateProjectWorkspace({
       return;
     }
 
-    const toastKey = `${mode}:${formState.error}:${fieldErrors.budgetSummary ?? ""}`;
+    const toastKey = `${mode}:${formState.error}:${fieldErrors.budgetSummary ?? ""}:${
+      fieldErrors.stageStartDates?.join("|") ?? ""
+    }:${fieldErrors.stageDueDates?.join("|") ?? ""}`;
 
     if (lastFormToastKeyRef.current === toastKey) {
       return;
@@ -1831,6 +1905,18 @@ export function CreateProjectWorkspace({
       return;
     }
 
+    if (
+      formState.error === "Please review the highlighted stage timeline fields." ||
+      fieldErrors.stageStartDates?.some(Boolean) ||
+      fieldErrors.stageDueDates?.some(Boolean)
+    ) {
+      showErrorToast(
+        mode === "edit" ? "Unable to update project." : "Unable to create project.",
+        "Please review the highlighted stage timeline fields.",
+      );
+      return;
+    }
+
     showErrorToast(
       mode === "edit" ? "Unable to update project." : "Unable to create project.",
       formState.error === "Please correct the highlighted fields." ||
@@ -1838,7 +1924,13 @@ export function CreateProjectWorkspace({
         ? "Please review the highlighted fields."
         : formState.error,
     );
-  }, [fieldErrors.budgetSummary, formState.error, mode]);
+  }, [
+    fieldErrors.budgetSummary,
+    fieldErrors.stageDueDates,
+    fieldErrors.stageStartDates,
+    formState.error,
+    mode,
+  ]);
 
   useEffect(() => {
     if (mode !== "create" || !formState.projectId) {
@@ -2646,11 +2738,16 @@ export function CreateProjectWorkspace({
                 onMonthChange={setStartMonth}
               />
               <FieldError
-                message={getFieldError(
-                  "startDate",
-                  fieldErrors.startDate,
-                )}
+                message={
+                  getFieldError("startDate", fieldErrors.startDate) ||
+                  clientStageDateErrors.projectStartDateError
+                }
               />
+              {mode === "create" && !startDate ? (
+                <p className="mt-2 rounded-[14px] border border-[#dbe7dd] bg-[#f7fbf7] px-3 py-2 text-[11px] font-medium text-[#6f786f]">
+                  Calendar view defaults to today. Select a Project Start Date to confirm or change it.
+                </p>
+              ) : null}
             </MotionItem>
             <MotionItem y={8}>
               <MonthPicker
@@ -2664,10 +2761,10 @@ export function CreateProjectWorkspace({
                 onMonthChange={setEndMonth}
               />
               <FieldError
-                message={getFieldError(
-                  "endDate",
-                  fieldErrors.endDate,
-                )}
+                message={
+                  getFieldError("endDate", fieldErrors.endDate) ||
+                  clientStageDateErrors.projectEndDateError
+                }
               />
             </MotionItem>
           </MotionStaggerGroup>
@@ -2765,13 +2862,13 @@ export function CreateProjectWorkspace({
             ) : null}
 
             <MotionStaggerGroup
-              className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3"
+              className="mt-3 grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-3"
               stagger={0.04}
             >
               {stages.map((stage, index) => (
-                <MotionItem key={stage.id} y={8} layout>
-                <Card className="rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
-                  <CardContent className="p-4">
+                <MotionItem key={stage.id} y={8} layout className="min-w-0">
+                <Card className="min-w-0 overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
+                  <CardContent className="min-w-0 p-4">
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
                       Stage Name <span className="text-[#d3554d]">*</span>
                     </p>
@@ -2784,7 +2881,7 @@ export function CreateProjectWorkspace({
                       }}
                       name="stageNames"
                       required
-                      className="min-h-[38px] border-brand text-center text-[14px] font-[500] text-brand"
+                      className="min-h-[38px] min-w-0 border-brand text-center text-[14px] font-[500] text-brand"
                     />
                     <FieldError
                       message={getStageFieldError("stageNames", index, fieldErrors.stageNames?.[index])}
@@ -2906,9 +3003,9 @@ export function CreateProjectWorkspace({
                           {stage.attachments.map((attachment) => (
                             <li
                               key={attachment.id}
-                              className="flex items-center justify-between gap-2 rounded-[12px] bg-white px-2.5 py-2"
+                              className="flex min-w-0 items-center justify-between gap-2 rounded-[12px] bg-white px-2.5 py-2"
                             >
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <p className="truncate text-[12px] font-medium text-[#243028]">
                                   {attachment.originalFileName}
                                 </p>
@@ -2966,9 +3063,9 @@ export function CreateProjectWorkspace({
                           {stage.pendingFiles.map((file, fileIndex) => (
                             <li
                               key={`${stage.id}-${file.name}-${file.size}-${fileIndex}`}
-                              className="flex items-center justify-between gap-2 rounded-[12px] border border-dashed border-[#d7dfd7] bg-white px-2.5 py-2"
+                              className="flex min-w-0 items-center justify-between gap-2 rounded-[12px] border border-dashed border-[#d7dfd7] bg-white px-2.5 py-2"
                             >
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <p className="truncate text-[12px] font-medium text-[#243028]">
                                   {file.name}
                                 </p>

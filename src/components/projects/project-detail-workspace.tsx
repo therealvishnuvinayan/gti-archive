@@ -115,11 +115,11 @@ export function ProjectDetailWorkspace({
                     const stageInactive = stage.status === "pending";
 
                     return (
-                      <MotionItem key={stage.id} y={10}>
-                        <Card className={`min-h-[250px] rounded-[10px] p-4 ${styles.card}`}>
+                      <MotionItem key={stage.id} y={10} className="min-w-0">
+                        <Card className={`min-h-[250px] min-w-0 overflow-hidden rounded-[10px] p-4 ${styles.card}`}>
                           <Badge
                             variant="secondary"
-                            className={`max-w-full truncate border-none bg-white/12 text-[13px] font-[800] leading-tight ${styles.label}`}
+                            className={`max-w-full min-w-0 truncate border-none bg-white/12 text-[13px] font-[800] leading-tight ${styles.label}`}
                           >
                             {stage.label}
                           </Badge>

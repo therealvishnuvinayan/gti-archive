@@ -129,6 +129,18 @@ function getInitialStageStatuses(
   );
 }
 
+function getStartOfDay(date: Date) {
+  const normalizedDate = new Date(date);
+  normalizedDate.setHours(0, 0, 0, 0);
+  return normalizedDate;
+}
+
+function getEndOfDay(date: Date) {
+  const normalizedDate = new Date(date);
+  normalizedDate.setHours(23, 59, 59, 999);
+  return normalizedDate;
+}
+
 function parseProjectFormData(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
@@ -191,6 +203,91 @@ function parseProjectFormData(formData: FormData) {
     stageIds,
     collaboratorIds,
     collaboratorParticipantTypes,
+  };
+}
+
+function validateStageTimeline(
+  parsed: ReturnType<typeof parseProjectFormData>,
+  projectStartDate: Date,
+  projectEndDate: Date,
+) {
+  const stageStartDateErrors: Array<string | undefined> = Array.from(
+    { length: parsed.stageNames.length },
+    () => undefined,
+  );
+  const stageDueDateErrors: Array<string | undefined> = Array.from(
+    { length: parsed.stageNames.length },
+    () => undefined,
+  );
+  const projectStartBoundary = getStartOfDay(projectStartDate);
+  const projectEndBoundary = getEndOfDay(projectEndDate);
+  const validRanges = new Map<number, { start: Date; due: Date }>();
+
+  parsed.stageNames.forEach((_, index) => {
+    const stageStartInput = parsed.stageStartDates[index] ?? "";
+    const stageDueInput = parsed.stageDueDates[index] ?? "";
+    const stageStart = stageStartInput ? new Date(stageStartInput) : null;
+    const stageDue = stageDueInput ? new Date(stageDueInput) : null;
+
+    if (!stageStartInput) {
+      stageStartDateErrors[index] = "Stage start is required.";
+    } else if (!stageStart || Number.isNaN(stageStart.getTime())) {
+      stageStartDateErrors[index] = "Choose a valid stage start.";
+    }
+
+    if (!stageDueInput) {
+      stageDueDateErrors[index] = "Stage due is required.";
+    } else if (!stageDue || Number.isNaN(stageDue.getTime())) {
+      stageDueDateErrors[index] = "Choose a valid stage due time.";
+    }
+
+    if (
+      !stageStart ||
+      !stageDue ||
+      Number.isNaN(stageStart.getTime()) ||
+      Number.isNaN(stageDue.getTime())
+    ) {
+      return;
+    }
+
+    if (stageStart < projectStartBoundary || stageStart > projectEndBoundary) {
+      stageStartDateErrors[index] = "Stage start must be within the project date range.";
+    }
+
+    if (stageDue < projectStartBoundary || stageDue > projectEndBoundary) {
+      stageDueDateErrors[index] = "Stage due must be within the project date range.";
+    }
+
+    if (stageDue <= stageStart) {
+      stageDueDateErrors[index] = "Stage due must be after the stage start.";
+    }
+
+    if (!stageStartDateErrors[index] && !stageDueDateErrors[index]) {
+      validRanges.set(index, {
+        start: stageStart,
+        due: stageDue,
+      });
+    }
+  });
+
+  for (let index = 1; index < parsed.stageNames.length; index += 1) {
+    const previousRange = validRanges.get(index - 1);
+    const currentRange = validRanges.get(index);
+
+    if (!previousRange || !currentRange) {
+      continue;
+    }
+
+    if (currentRange.start < previousRange.due) {
+      stageStartDateErrors[index] = `Stage ${index + 1} cannot start before Stage ${index} ends.`;
+      validRanges.delete(index);
+    }
+  }
+
+  return {
+    stageStartDateErrors,
+    stageDueDateErrors,
+    hasErrors: stageStartDateErrors.some(Boolean) || stageDueDateErrors.some(Boolean),
   };
 }
 
@@ -258,7 +355,7 @@ function validateProjectFormData(
     };
   }
 
-  if (startDate > endDate) {
+  if (getStartOfDay(endDate) <= getStartOfDay(startDate)) {
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: { endDate: "Project end date must be after the start date." },
@@ -292,54 +389,9 @@ function validateProjectFormData(
   const stageDescriptionErrors: Array<string | undefined> = parsed.stageDescriptions.map((value) =>
     value ? undefined : "Stage brief is required.",
   );
-  const stageStartDateErrors: Array<string | undefined> = parsed.stageStartDates.map((value) =>
-    value ? undefined : "Stage start is required.",
-  );
-  const stageDueDateErrors: Array<string | undefined> = parsed.stageDueDates.map((value) =>
-    value ? undefined : "Stage due is required.",
-  );
-
-  const projectStartBoundary = new Date(parsed.startDateInput);
-  projectStartBoundary.setHours(0, 0, 0, 0);
-  const projectEndBoundary = new Date(parsed.endDateInput);
-  projectEndBoundary.setHours(23, 59, 59, 999);
-
-  parsed.stageStartDates.forEach((value, index) => {
-    if (!value) return;
-
-    const stageStart = new Date(value);
-
-    if (Number.isNaN(stageStart.getTime())) {
-      stageStartDateErrors[index] = "Choose a valid stage start.";
-      return;
-    }
-
-    if (stageStart < projectStartBoundary || stageStart > projectEndBoundary) {
-      stageStartDateErrors[index] = "Stage start must be within the project date range.";
-    }
-  });
-
-  parsed.stageDueDates.forEach((value, index) => {
-    if (!value) return;
-
-    const stageDue = new Date(value);
-    const stageStartValue = parsed.stageStartDates[index];
-    const stageStart = stageStartValue ? new Date(stageStartValue) : null;
-
-    if (Number.isNaN(stageDue.getTime())) {
-      stageDueDateErrors[index] = "Choose a valid stage due time.";
-      return;
-    }
-
-    if (stageDue < projectStartBoundary || stageDue > projectEndBoundary) {
-      stageDueDateErrors[index] = "Stage due must be within the project date range.";
-      return;
-    }
-
-    if (stageStart && !Number.isNaN(stageStart.getTime()) && stageDue <= stageStart) {
-      stageDueDateErrors[index] = "Stage due must be after the stage start.";
-    }
-  });
+  const stageTimelineValidation = validateStageTimeline(parsed, startDate, endDate);
+  const stageStartDateErrors = stageTimelineValidation.stageStartDateErrors;
+  const stageDueDateErrors = stageTimelineValidation.stageDueDateErrors;
 
   if (
     stageNameErrors.some(Boolean) ||
@@ -349,7 +401,9 @@ function validateProjectFormData(
     stageDueDateErrors.some(Boolean)
   ) {
     return {
-      error: "Please correct the highlighted stage fields.",
+      error: stageTimelineValidation.hasErrors
+        ? "Please review the highlighted stage timeline fields."
+        : "Please correct the highlighted stage fields.",
       fieldErrors: {
         stageNames: stageNameErrors,
         stageBudgets: stageBudgetErrors,
