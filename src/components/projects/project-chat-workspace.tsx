@@ -47,7 +47,6 @@ import {
 import { getStageSubmissionAttachments } from "@/lib/comparison-utils";
 import {
   getDefaultProjectCollaboratorParticipantType,
-  type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
@@ -1027,6 +1026,7 @@ export function ProjectChatWorkspace({
   } | null>(null);
   const [reviewCompleteDialogOpen, setReviewCompleteDialogOpen] = useState(false);
   const [collaboratorPickerOpen, setCollaboratorPickerOpen] = useState(false);
+  const [draftCollaboratorIds, setDraftCollaboratorIds] = useState<string[]>([]);
   const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
   const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
@@ -1156,13 +1156,16 @@ export function ProjectChatWorkspace({
 
     return stageCards.find((stage) => stage.id === stageId) ?? stageCards[0];
   }, [project.currentStageId, stageCards, stageId]);
-  const selectedCollaboratorIds = useMemo(
+  const committedCollaboratorIds = useMemo(
     () =>
       collaborators
         .filter((collaborator) => collaborator.access !== "owner")
         .map((collaborator) => collaborator.id),
     [collaborators],
   );
+  const selectedCollaboratorIds = collaboratorPickerOpen
+    ? draftCollaboratorIds
+    : committedCollaboratorIds;
   const isProjectOwner = useMemo(
     () =>
       project.collaborators.some(
@@ -1377,6 +1380,7 @@ export function ProjectChatWorkspace({
 
   function openCollaboratorInvite() {
     setCollaboratorPickerOpen(false);
+    setDraftCollaboratorIds([]);
     setCollaboratorForm({
       name: "",
       email: "",
@@ -1392,6 +1396,12 @@ export function ProjectChatWorkspace({
     setCollaboratorDialogOpen(true);
   }
 
+  function openCollaboratorPicker() {
+    setCollaboratorDialogError(undefined);
+    setDraftCollaboratorIds(committedCollaboratorIds);
+    setCollaboratorPickerOpen(true);
+  }
+
   function toggleAssignedCollaborator(collaboratorId: string) {
     const availableCollaborator = availableCollaboratorRecords.find(
       (collaborator) => collaborator.id === collaboratorId,
@@ -1401,44 +1411,68 @@ export function ProjectChatWorkspace({
       return;
     }
 
-    setCollaborators((current) => {
-      const exists = current.some((collaborator) => collaborator.id === collaboratorId);
+    setDraftCollaboratorIds((current) => {
+      const exists = current.includes(collaboratorId);
 
       if (exists) {
-        return current.filter((collaborator) => collaborator.id !== collaboratorId);
+        return current.filter((id) => id !== collaboratorId);
       }
 
-      return [
-        ...current,
-        {
-          id: availableCollaborator.id,
-          name: availableCollaborator.name,
-          email: availableCollaborator.email,
-          role:
-            availableCollaborator.type === "External"
-              ? "External Collaborator"
-              : "Collaborator",
-          group: availableCollaborator.type === "External" ? "external" : "internal",
-          participantType: getDefaultProjectCollaboratorParticipantType(
-            availableCollaborator.type === "External" ? "external" : "internal",
-          ),
-          chatVisibilityPaused: false,
-          access: "view",
-          removable: true,
-        },
-      ];
+      return [...current, collaboratorId];
     });
+  }
+
+  function buildCollaboratorSelection(selectedIds: string[]) {
+    const committedCollaboratorMap = new Map(
+      collaborators
+        .filter((collaborator) => collaborator.access !== "owner")
+        .map((collaborator) => [collaborator.id, collaborator] as const),
+    );
+    const availableCollaboratorMap = new Map(
+      availableCollaboratorRecords.map((collaborator) => [collaborator.id, collaborator] as const),
+    );
+
+    return selectedIds.reduce<ProjectCollaboratorRecord[]>((selection, collaboratorId) => {
+      const committedCollaborator = committedCollaboratorMap.get(collaboratorId);
+
+      if (committedCollaborator) {
+        selection.push(committedCollaborator);
+        return selection;
+      }
+
+      const availableCollaborator = availableCollaboratorMap.get(collaboratorId);
+
+      if (!availableCollaborator) {
+        return selection;
+      }
+
+      const group = availableCollaborator.type === "External" ? "external" : "internal";
+      selection.push({
+        id: availableCollaborator.id,
+        name: availableCollaborator.name,
+        email: availableCollaborator.email,
+        role: availableCollaborator.type === "External" ? "External Collaborator" : "Collaborator",
+        group,
+        participantType: getDefaultProjectCollaboratorParticipantType(group),
+        chatVisibilityPaused: false,
+        access: "view",
+        removable: true,
+      });
+
+      return selection;
+    }, []);
   }
 
   async function applyCollaboratorsSelection() {
     setCollaboratorSaving(true);
+    setCollaboratorDialogError(undefined);
+
+    const nextCollaborators = buildCollaboratorSelection(draftCollaboratorIds);
 
     try {
       const result = await saveProjectCollaboratorsAction(
         project.id,
-        collaborators
-          .filter((collaborator) => collaborator.access !== "owner")
-          .map((collaborator) => ({
+        nextCollaborators.map((collaborator) => ({
             id: collaborator.id,
             participantType: collaborator.participantType,
           })),
@@ -1452,6 +1486,7 @@ export function ProjectChatWorkspace({
 
       applyUpdatedCollaborators(result.collaborators);
       setCollaboratorPickerOpen(false);
+      setDraftCollaboratorIds([]);
       setCollaboratorDialogError(undefined);
       showSuccessToast("Project collaborators updated successfully.");
     } catch (error) {
@@ -1522,52 +1557,6 @@ export function ProjectChatWorkspace({
           : "Unable to save the collaborator right now. Please try again.";
       setCollaboratorDialogError(message);
       showErrorToast("Unable to add collaborator.", message);
-    } finally {
-      setCollaboratorSaving(false);
-    }
-  }
-
-  async function handleCollaboratorParticipantTypeChange(
-    collaboratorId: string,
-    participantType: ProjectCollaboratorParticipantType,
-  ) {
-    const nextCollaborators = collaborators.map((collaborator) =>
-      collaborator.id === collaboratorId
-        ? { ...collaborator, participantType }
-        : collaborator,
-    );
-
-    setCollaborators(nextCollaborators);
-    setCollaboratorSaving(true);
-    setCollaboratorDialogError(undefined);
-
-    try {
-      const result = await saveProjectCollaboratorsAction(
-        project.id,
-        nextCollaborators
-          .filter((collaborator) => collaborator.access !== "owner")
-          .map((collaborator) => ({
-            id: collaborator.id,
-            participantType: collaborator.participantType,
-          })),
-      );
-
-      if ("error" in result) {
-        setCollaboratorDialogError(result.error);
-        showErrorToast("Unable to update collaborator type.", result.error);
-        refreshHistory();
-        return;
-      }
-
-      applyUpdatedCollaborators(result.collaborators);
-      showSuccessToast("Collaborator type updated successfully.");
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to update collaborator type right now.";
-      setCollaboratorDialogError(message);
-      showErrorToast("Unable to update collaborator type.", message);
     } finally {
       setCollaboratorSaving(false);
     }
@@ -3850,20 +3839,7 @@ export function ProjectChatWorkspace({
             }
             onAdd={
               canManageCollaborators && !isProjectCompleted
-                ? () => {
-                    setCollaboratorDialogError(undefined);
-                    setCollaboratorPickerOpen(true);
-                  }
-                : undefined
-            }
-            onParticipantTypeChange={
-              canManageCollaborators && !isProjectCompleted
-                ? (collaboratorId, participantType) => {
-                    void handleCollaboratorParticipantTypeChange(
-                      collaboratorId,
-                      participantType,
-                    );
-                  }
+                ? openCollaboratorPicker
                 : undefined
             }
             onToggleChatVisibility={
@@ -3884,6 +3860,7 @@ export function ProjectChatWorkspace({
         onToggle={toggleAssignedCollaborator}
         onClose={() => {
           setCollaboratorDialogError(undefined);
+          setDraftCollaboratorIds([]);
           setCollaboratorPickerOpen(false);
         }}
         onConfirm={() => {

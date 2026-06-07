@@ -22,6 +22,7 @@ import {
   createProjectAction,
   updateProjectAction,
 } from "@/app/(dashboard)/projects/new/actions";
+import { saveProjectCollaboratorsAction } from "@/app/(dashboard)/projects/actions";
 import {
   initialProjectFormState,
   type ProjectEditorInitialAttachment,
@@ -39,11 +40,9 @@ import {
 import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
+import { ProjectCollaboratorsSummary } from "@/components/projects/project-collaborators-panel";
 import {
   getDefaultProjectCollaboratorParticipantType,
-  getProjectCollaboratorTypeMeta,
-  projectCollaboratorParticipantTypes,
-  type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import {
   MotionItem,
@@ -70,6 +69,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
+import type { ProjectCollaboratorRecord } from "@/lib/projects";
 import {
   DEFAULT_PROJECT_PRIORITY,
   formatProjectPriority,
@@ -736,6 +736,7 @@ export function CreateProjectWorkspace({
   const [pendingProjectFiles, setPendingProjectFiles] = useState<File[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [draftCollaboratorIds, setDraftCollaboratorIds] = useState<string[]>([]);
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>(
     getDefaultCollaboratorForm(),
   );
@@ -829,7 +830,22 @@ export function CreateProjectWorkspace({
     ],
   );
   const selectedCollaboratorIds = useMemo(
-    () => assignedCollaborators.map((collaborator) => collaborator.id),
+    () =>
+      pickerOpen
+        ? draftCollaboratorIds
+        : assignedCollaborators.map((collaborator) => collaborator.id),
+    [assignedCollaborators, draftCollaboratorIds, pickerOpen],
+  );
+  const collaboratorSummaryRecords = useMemo<ProjectCollaboratorRecord[]>(
+    () =>
+      assignedCollaborators.map((collaborator) => ({
+        ...collaborator,
+        chatVisibilityPaused:
+          "chatVisibilityPaused" in collaborator &&
+          typeof collaborator.chatVisibilityPaused === "boolean"
+            ? collaborator.chatVisibilityPaused
+            : false,
+      })),
     [assignedCollaborators],
   );
   const categorySelectOptions = useMemo(
@@ -1102,7 +1118,15 @@ export function CreateProjectWorkspace({
   function openCollaboratorInvite() {
     setCollaboratorForm(getDefaultCollaboratorForm());
     setCollaboratorError(undefined);
+    setPickerOpen(false);
+    setDraftCollaboratorIds([]);
     setDialogOpen(true);
+  }
+
+  function openProjectCollaboratorPicker() {
+    setCollaboratorError(undefined);
+    setDraftCollaboratorIds(assignedCollaborators.map((collaborator) => collaborator.id));
+    setPickerOpen(true);
   }
 
   function toggleAssignedCollaborator(collaboratorId: string) {
@@ -1114,18 +1138,88 @@ export function CreateProjectWorkspace({
       return;
     }
 
-    setAssignedCollaborators((current) => {
-      const exists = current.some((collaborator) => collaborator.id === collaboratorId);
+    setDraftCollaboratorIds((current) => {
+      const exists = current.includes(collaboratorId);
 
       if (exists) {
-        return current.filter((collaborator) => collaborator.id !== collaboratorId);
+        return current.filter((id) => id !== collaboratorId);
       }
 
-      return [
-        ...current,
-        buildAssignedCollaboratorRecord(availableCollaborator),
-      ];
+      return [...current, collaboratorId];
     });
+  }
+
+  function buildAssignedCollaboratorSelection(selectedIds: string[]) {
+    const assignedCollaboratorMap = new Map(
+      assignedCollaborators.map((collaborator) => [collaborator.id, collaborator] as const),
+    );
+    const availableCollaboratorMap = new Map(
+      availableCollaboratorRecords.map((collaborator) => [collaborator.id, collaborator] as const),
+    );
+
+    return selectedIds.reduce<ProjectEditorInitialCollaborator[]>((selection, collaboratorId) => {
+      const assignedCollaborator = assignedCollaboratorMap.get(collaboratorId);
+
+      if (assignedCollaborator) {
+        selection.push(assignedCollaborator);
+        return selection;
+      }
+
+      const availableCollaborator = availableCollaboratorMap.get(collaboratorId);
+
+      if (availableCollaborator) {
+        selection.push(buildAssignedCollaboratorRecord(availableCollaborator));
+      }
+
+      return selection;
+    }, []);
+  }
+
+  async function applyCollaboratorsSelection() {
+    const nextCollaborators = buildAssignedCollaboratorSelection(draftCollaboratorIds);
+
+    if (mode !== "edit" || !initialValues?.id) {
+      setAssignedCollaborators(nextCollaborators);
+      setPickerOpen(false);
+      setDraftCollaboratorIds([]);
+      return;
+    }
+
+    setCollaboratorSaving(true);
+    setCollaboratorError(undefined);
+
+    try {
+      const result = await saveProjectCollaboratorsAction(
+        initialValues.id,
+        nextCollaborators
+          .filter((collaborator) => collaborator.access !== "owner")
+          .map((collaborator) => ({
+            id: collaborator.id,
+            participantType: collaborator.participantType,
+          })),
+      );
+
+      if ("error" in result) {
+        setCollaboratorError(result.error);
+        showErrorToast("Unable to update collaborators.", result.error);
+        return;
+      }
+
+      setAssignedCollaborators(result.collaborators);
+      setPickerOpen(false);
+      setDraftCollaboratorIds([]);
+      showSuccessToast("Project collaborators updated successfully.");
+      refreshProjectData();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to update project collaborators right now.";
+      setCollaboratorError(message);
+      showErrorToast("Unable to update collaborators.", message);
+    } finally {
+      setCollaboratorSaving(false);
+    }
   }
 
   async function handleCollaboratorInvite() {
@@ -1148,11 +1242,38 @@ export function CreateProjectWorkspace({
       setAvailableCollaboratorRecords((current) =>
         upsertCollaboratorRecord(current, result.collaborator),
       );
-      setAssignedCollaborators((current) =>
-        upsertAssignedCollaboratorRecord(current, result.collaborator),
+      const nextAssignedCollaborators = upsertAssignedCollaboratorRecord(
+        assignedCollaborators,
+        result.collaborator,
       );
+
+      if (mode === "edit" && initialValues?.id) {
+        const saveResult = await saveProjectCollaboratorsAction(
+          initialValues.id,
+          nextAssignedCollaborators
+            .filter((collaborator) => collaborator.access !== "owner")
+            .map((collaborator) => ({
+              id: collaborator.id,
+              participantType: collaborator.participantType,
+            })),
+        );
+
+        if ("error" in saveResult) {
+          setCollaboratorError(saveResult.error);
+          showErrorToast("Unable to add collaborator.", saveResult.error);
+          return;
+        }
+
+        setAssignedCollaborators(saveResult.collaborators);
+        refreshProjectData();
+      } else {
+        setAssignedCollaborators(nextAssignedCollaborators);
+      }
+
       setDialogOpen(false);
       setPickerOpen(false);
+      setDraftCollaboratorIds([]);
+      showSuccessToast("Collaborator added successfully.");
     } catch {
       setCollaboratorError("Unable to save the collaborator right now. Please try again.");
     } finally {
@@ -1333,19 +1454,6 @@ export function CreateProjectWorkspace({
     startRefresh(() => {
       router.refresh();
     });
-  }
-
-  function updateAssignedCollaboratorParticipantType(
-    collaboratorId: string,
-    participantType: ProjectCollaboratorParticipantType,
-  ) {
-    setAssignedCollaborators((current) =>
-      current.map((collaborator) =>
-        collaborator.id === collaboratorId
-          ? { ...collaborator, participantType }
-          : collaborator,
-      ),
-    );
   }
 
   async function uploadProjectAsset(
@@ -2592,100 +2700,12 @@ export function CreateProjectWorkspace({
         </Card>
         </MotionItem>
         <MotionItem y={10}>
-        <Card>
-          <CardHeader className="pb-3">
-          <CardTitle className="text-[20px] text-[#111712]">
-            Project Collaborators
-          </CardTitle>
-          </CardHeader>
-
-          <CardContent className="pt-0">
-          <div className="space-y-3">
-            {assignedCollaborators.length > 0 ? (
-              assignedCollaborators.map((collaborator) => (
-                <div
-                  key={collaborator.id}
-                  className="rounded-[16px] border border-[#e3e8e2] bg-[#fbfcfa] px-4 py-3"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-[600] text-[#1f2923]">
-                        {collaborator.name}
-                      </p>
-                      <p className="truncate text-[11px] text-[#7f877f]">
-                        {collaborator.email ?? collaborator.role}
-                      </p>
-                      <div className="mt-2">
-                        <Badge
-                          variant="secondary"
-                          className={getProjectCollaboratorTypeMeta(
-                            collaborator.participantType,
-                          ).badgeClassName}
-                        >
-                          {getProjectCollaboratorTypeMeta(collaborator.participantType).label}
-                        </Badge>
-                      </div>
-                      <div className="mt-3 max-w-[260px]">
-                        <p className="mb-1 text-[11px] font-[600] text-[#7f877f]">
-                          Collaborator Type
-                        </p>
-                        <Select
-                          value={
-                            collaborator.participantType ??
-                            getDefaultProjectCollaboratorParticipantType(collaborator.group)
-                          }
-                          onValueChange={(value) =>
-                            updateAssignedCollaboratorParticipantType(
-                              collaborator.id,
-                              value as ProjectCollaboratorParticipantType,
-                            )
-                          }
-                        >
-                          <SelectTrigger className="h-9 rounded-full border border-line bg-white text-[12px] font-medium">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projectCollaboratorParticipantTypes.map((participantType) => (
-                              <SelectItem key={participantType} value={participantType}>
-                                {getProjectCollaboratorTypeMeta(participantType).label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className={`shrink-0 ${
-                        collaborator.group === "external"
-                          ? "border border-[#f1dfcf] bg-[#fff4ea] text-[#ca7b3b]"
-                          : "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]"
-                      }`}
-                    >
-                      {collaborator.group === "external" ? "External" : "Internal"}
-                    </Badge>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-[13px] text-[#7a837b]">
-                No collaborators added yet.
-              </p>
-            )}
-
-            <Button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              variant="ghost"
-              size="sm"
-              className="px-0 text-[14px] font-[600] text-brand"
-            >
-              Add Collaborator
-            </Button>
-          </div>
-
-          </CardContent>
-        </Card>
+        <ProjectCollaboratorsSummary
+          collaborators={collaboratorSummaryRecords}
+          onAdd={openProjectCollaboratorPicker}
+          addLabel="Add Collaborator"
+          saving={collaboratorSaving}
+        />
         </MotionItem>
       </MotionStaggerGroup>
 
@@ -2693,9 +2713,17 @@ export function CreateProjectWorkspace({
         isOpen={pickerOpen}
         collaborators={availableCollaboratorRecords}
         selectedIds={selectedCollaboratorIds}
+        error={collaboratorError}
+        saving={collaboratorSaving}
         onToggle={toggleAssignedCollaborator}
-        onClose={() => setPickerOpen(false)}
-        onConfirm={() => setPickerOpen(false)}
+        onClose={() => {
+          setCollaboratorError(undefined);
+          setDraftCollaboratorIds([]);
+          setPickerOpen(false);
+        }}
+        onConfirm={() => {
+          void applyCollaboratorsSelection();
+        }}
         onInviteFallback={openCollaboratorInvite}
         confirmLabel="Apply Selection"
       />

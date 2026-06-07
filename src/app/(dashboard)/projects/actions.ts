@@ -605,8 +605,9 @@ export const rejectStageSubmissionAction = requestSubmissionRevisionAction;
 export async function saveProjectCollaboratorsAction(
   projectId: string,
   collaborators: Array<{
-    id: string;
-    participantType: ProjectCollaboratorParticipantType | null;
+    id?: string;
+    userId?: string;
+    participantType?: ProjectCollaboratorParticipantType | null;
   }>,
 ) {
   const user = await requireUser();

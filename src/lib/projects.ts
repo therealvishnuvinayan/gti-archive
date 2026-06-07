@@ -21,6 +21,7 @@ import {
   getCollaboratorTypeGroup,
   getDefaultProjectCollaboratorParticipantType,
   getProjectCollaboratorTypeMeta,
+  isProjectCollaboratorParticipantType,
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import {
@@ -787,8 +788,9 @@ function mapProjectToEditor(
 export async function updateProjectCollaborators(
   projectId: string,
   collaborators: Array<{
-    id: string;
-    participantType: ProjectCollaboratorParticipantType | null;
+    id?: string;
+    userId?: string;
+    participantType?: ProjectCollaboratorParticipantType | null;
   }>,
   actor: ProjectAccessUser,
 ) {
@@ -798,18 +800,28 @@ export async function updateProjectCollaborators(
     "project.manageCollaborators",
   );
 
+  if (!Array.isArray(collaborators)) {
+    throw new Error("Collaborator selection is required.");
+  }
+
   const normalizedCollaborators = collaborators.reduce<
     Array<{ id: string; participantType: ProjectCollaboratorParticipantType | null }>
   >((current, collaborator) => {
-    const id = collaborator.id.trim();
+    const id = (collaborator.userId ?? collaborator.id ?? "").trim();
 
     if (!id || current.some((item) => item.id === id)) {
       return current;
     }
 
+    const participantType =
+      collaborator.participantType &&
+      isProjectCollaboratorParticipantType(collaborator.participantType)
+        ? collaborator.participantType
+        : null;
+
     current.push({
       id,
-      participantType: collaborator.participantType,
+      participantType,
     });
     return current;
   }, []);
@@ -833,6 +845,11 @@ export async function updateProjectCollaborators(
     : [];
 
   const validIds = validCollaborators.map((collaborator) => collaborator.id);
+
+  if (validIds.length !== normalizedIds.length) {
+    throw new Error("One or more selected collaborators could not be found.");
+  }
+
   const validCollaboratorTypeMap = new Map(
     validCollaborators.map((collaborator) => [
       collaborator.id,
@@ -852,16 +869,29 @@ export async function updateProjectCollaborators(
       },
       select: {
         userId: true,
+        participantType: true,
       },
     }),
   );
   const existingIds = new Set(existingAssignments.map((assignment) => assignment.userId));
+  const existingParticipantTypeMap = new Map(
+    existingAssignments.map((assignment) => [
+      assignment.userId,
+      assignment.participantType as ProjectCollaboratorParticipantType | null,
+    ]),
+  );
   const nextIds = new Set(validIds);
   const idsToDelete = existingAssignments
     .map((assignment) => assignment.userId)
     .filter((userId) => !nextIds.has(userId));
   const idsToCreate = validIds.filter((userId) => !existingIds.has(userId));
   const idsToUpdate = validIds.filter((userId) => existingIds.has(userId));
+  const resolveParticipantType = (userId: string) =>
+    validCollaboratorMap.get(userId) ??
+    existingParticipantTypeMap.get(userId) ??
+    getDefaultProjectCollaboratorParticipantType(
+      validCollaboratorTypeMap.get(userId) ?? "external",
+    );
 
   await withPrismaRetry(() =>
     prisma.$transaction([
@@ -886,11 +916,7 @@ export async function updateProjectCollaborators(
             },
           },
           data: {
-            participantType:
-              validCollaboratorMap.get(userId) ??
-              getDefaultProjectCollaboratorParticipantType(
-                validCollaboratorTypeMap.get(userId) ?? "external",
-              ),
+            participantType: resolveParticipantType(userId),
           },
         }),
       ),
@@ -901,11 +927,7 @@ export async function updateProjectCollaborators(
                 projectId,
                 userId,
                 addedById: actor.id,
-                participantType:
-                  validCollaboratorMap.get(userId) ??
-                  getDefaultProjectCollaboratorParticipantType(
-                    validCollaboratorTypeMap.get(userId) ?? "external",
-                  ),
+                participantType: resolveParticipantType(userId),
               })),
               skipDuplicates: true,
             }),
