@@ -4,9 +4,17 @@ import {
   type ComparisonCommentRecord,
   normalizeComparisonPairIds,
 } from "@/lib/comparison-utils";
-import { assertProjectAccess } from "@/lib/project-history";
+import {
+  assertProjectAccess,
+  assertProjectAttachmentVisibilityForUser,
+} from "@/lib/project-history";
 import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
+import {
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows,
+} from "@/lib/project-collaborator-visibility";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type AccessUser = Pick<
@@ -80,7 +88,7 @@ async function assertComparableSubmissionPair(
     compareAttachmentId: string;
   },
 ) {
-  await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(user, input.projectId);
 
   const [normalizedBaseAttachmentId, normalizedCompareAttachmentId] =
     normalizeComparisonPairIds(input.baseAttachmentId, input.compareAttachmentId);
@@ -104,6 +112,8 @@ async function assertComparableSubmissionPair(
         id: true,
         originalFileName: true,
         mimeType: true,
+        projectId: true,
+        createdAt: true,
       },
     }),
   );
@@ -120,10 +130,42 @@ async function assertComparableSubmissionPair(
     throw new Error("Only PNG, JPG, JPEG, and WebP submissions can be compared right now.");
   }
 
+  for (const attachment of attachments) {
+    await assertProjectAttachmentVisibilityForUser(user, {
+      projectId: attachment.projectId,
+      createdAt: attachment.createdAt,
+      project: {
+        createdById: project.createdById,
+      },
+    });
+  }
+
   return {
     normalizedBaseAttachmentId,
     normalizedCompareAttachmentId,
+    project,
   };
+}
+
+async function getComparisonCommentVisibilityPauseWindows(
+  user: AccessUser,
+  projectId: string,
+  projectOwnerId: string,
+) {
+  if (canBypassCollaboratorVisibility(user, projectOwnerId)) {
+    return [];
+  }
+
+  const visibilityState = await getProjectCollaboratorVisibilityState(
+    projectId,
+    user.id,
+  );
+
+  if (!visibilityState) {
+    return [];
+  }
+
+  return visibilityState.visibilityPauses;
 }
 
 export async function getComparisonCommentsForPair(
@@ -135,7 +177,7 @@ export async function getComparisonCommentsForPair(
     compareAttachmentId: string;
   },
 ) {
-  const { normalizedBaseAttachmentId, normalizedCompareAttachmentId } =
+  const { normalizedBaseAttachmentId, normalizedCompareAttachmentId, project } =
     await assertComparableSubmissionPair(user, input);
 
   const comments = await withPrismaRetry(() =>
@@ -162,7 +204,20 @@ export async function getComparisonCommentsForPair(
     }),
   );
 
-  return comments.map(mapComparisonCommentRecord);
+  const pauseWindows = await getComparisonCommentVisibilityPauseWindows(
+    user,
+    input.projectId,
+    project.createdById,
+  );
+  const visibleComments =
+    pauseWindows.length > 0
+      ? comments.filter(
+          (comment) =>
+            !isTimestampHiddenByPauseWindows(comment.createdAt, pauseWindows),
+        )
+      : comments;
+
+  return visibleComments.map(mapComparisonCommentRecord);
 }
 
 export async function createComparisonComment(

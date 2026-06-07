@@ -1124,24 +1124,46 @@ export async function updateProjectAction(
           endDate,
           currentStageName,
           stageCount: stageNames.length,
-          collaborators: {
-            deleteMany: {},
-            createMany: {
-              data: validCollaboratorIds.map((collaboratorId) => ({
-                userId: collaboratorId,
-                addedById: user.id,
-                participantType:
-                  collaboratorParticipantTypeMap.get(collaboratorId) ??
-                  existingCollaboratorParticipantTypeMap.get(collaboratorId) ??
-                  getDefaultProjectCollaboratorParticipantType(
-                    validCollaboratorTypeMap.get(collaboratorId) ?? "external",
-                  ),
-              })),
-              skipDuplicates: true,
-            },
-          },
         },
       });
+
+      if (removedCollaboratorIds.length > 0) {
+        await tx.projectCollaborator.deleteMany({
+          where: {
+            projectId,
+            userId: {
+              in: removedCollaboratorIds,
+            },
+          },
+        });
+      }
+
+      for (const collaboratorId of validCollaboratorIds) {
+        const participantType =
+          collaboratorParticipantTypeMap.get(collaboratorId) ??
+          existingCollaboratorParticipantTypeMap.get(collaboratorId) ??
+          getDefaultProjectCollaboratorParticipantType(
+            validCollaboratorTypeMap.get(collaboratorId) ?? "external",
+          );
+
+        await tx.projectCollaborator.upsert({
+          where: {
+            projectId_userId: {
+              projectId,
+              userId: collaboratorId,
+            },
+          },
+          update: {
+            participantType,
+          },
+          create: {
+            projectId,
+            userId: collaboratorId,
+            addedById: user.id,
+            participantType,
+          },
+        });
+      }
 
       const nextExecutorMap = new Map(
         resolvedExecutors.executors.map((executor) => [executor.userId, executor] as const),

@@ -10,6 +10,12 @@ import {
 
 import { getUserDisplayName } from "@/lib/auth";
 import {
+  assertProjectTimestampVisibleForUser,
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows,
+} from "@/lib/project-collaborator-visibility";
+import {
   notifyApprovalProofUploaded,
   notifyCopyrightDocumentUploaded,
   notifyInvoiceUploaded,
@@ -455,6 +461,7 @@ async function getProjectCompletionProject(projectId: string) {
                 originalFileName: true,
                 mimeType: true,
                 fileSize: true,
+                archivedAt: true,
                 sourceRevisionId: true,
                 sourceRevision: {
                   select: {
@@ -597,6 +604,7 @@ async function ensureProjectCompletionDocumentAccess(
         mimeType: true,
         bucket: true,
         storageKey: true,
+        uploadedAt: true,
         project: {
           select: {
             createdById: true,
@@ -622,6 +630,13 @@ async function ensureProjectCompletionDocumentAccess(
   if (!canAccessCompletionDocuments(document.project, user)) {
     throw new Error("You do not have access to this completion document.");
   }
+
+  await assertProjectTimestampVisibleForUser(user, {
+    projectId: document.projectId,
+    projectOwnerId: document.project.createdById,
+    timestamp: document.uploadedAt,
+    message: "You do not have access to this completion document.",
+  });
 
   return document;
 }
@@ -739,6 +754,76 @@ function mapWorkflowRecord(
   } satisfies ProjectCompletionWorkflowRecord;
 }
 
+async function filterCompletionProjectForVisibility(
+  project: ProjectCompletionProjectRecord,
+  user: ProjectCompletionWorkflowUser,
+): Promise<ProjectCompletionProjectRecord> {
+  if (canBypassCollaboratorVisibility(user, project.createdById)) {
+    return project;
+  }
+
+  const visibilityState = await getProjectCollaboratorVisibilityState(
+    project.id,
+    user.id,
+  );
+
+  if (!visibilityState) {
+    return project;
+  }
+
+  const hideAllVisibleFiles =
+    visibilityState.chatVisibilityPaused &&
+    visibilityState.visibilityPauses.length === 0;
+
+  if (!hideAllVisibleFiles && visibilityState.visibilityPauses.length === 0) {
+    return project;
+  }
+
+  const visibleArchiveFiles =
+    project.archive?.files.filter((file) => {
+      if (hideAllVisibleFiles) {
+        return false;
+      }
+
+      return !isTimestampHiddenByPauseWindows(
+        file.archivedAt,
+        visibilityState.visibilityPauses,
+      );
+    }) ?? [];
+  const visibleArchiveFileIds = new Set(visibleArchiveFiles.map((file) => file.id));
+  const visibleDocuments =
+    project.completionWorkflow?.documents.filter((document) => {
+      if (hideAllVisibleFiles) {
+        return false;
+      }
+
+      return !isTimestampHiddenByPauseWindows(
+        document.uploadedAt,
+        visibilityState.visibilityPauses,
+      );
+    }) ?? [];
+
+  return {
+    ...project,
+    archive: project.archive
+      ? {
+          ...project.archive,
+          files: visibleArchiveFiles,
+        }
+      : null,
+    completionWorkflow: project.completionWorkflow
+      ? {
+          ...project.completionWorkflow,
+          approvalSelectedArchivedFileIds:
+            project.completionWorkflow.approvalSelectedArchivedFileIds.filter(
+              (fileId) => visibleArchiveFileIds.has(fileId),
+            ),
+          documents: visibleDocuments,
+        }
+      : null,
+  };
+}
+
 function validateContactSelection(
   contactOptions: ProjectCompletionContactOption[],
   contactUserId: string,
@@ -784,10 +869,13 @@ export async function getProjectCompletionWorkflowForUser(
       throw new Error("Unable to load the project completion workflow.");
     }
 
-    return mapWorkflowRecord(refreshedProject, user);
+    return mapWorkflowRecord(
+      await filterCompletionProjectForVisibility(refreshedProject, user),
+      user,
+    );
   }
 
-  return mapWorkflowRecord(project, user);
+  return mapWorkflowRecord(await filterCompletionProjectForVisibility(project, user), user);
 }
 
 export async function configureProjectCompletionWorkflow(

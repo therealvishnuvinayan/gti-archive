@@ -12,6 +12,7 @@ import type { ProjectCollaboratorRecord, ProjectExecutorRecord } from "@/lib/pro
 
 type ProjectCollaboratorsPanelProps = {
   collaborators: ProjectCollaboratorRecord[];
+  currentUserId?: string;
   onRemove?: (id: string) => void | Promise<void>;
   onAdd?: () => void;
   addLabel?: string;
@@ -21,6 +22,9 @@ type ProjectCollaboratorsPanelProps = {
 
 type ProjectExecutorsPanelProps = {
   executors: ProjectExecutorRecord[];
+  currentUserId?: string;
+  onToggleChatVisibility?: (id: string, paused: boolean) => void | Promise<void>;
+  saving?: boolean;
 };
 
 type PendingCollaboratorAction =
@@ -35,6 +39,16 @@ type PendingCollaboratorAction =
   | {
       kind: "resume";
       collaborator: ProjectCollaboratorRecord;
+    };
+
+type PendingExecutorAction =
+  | {
+      kind: "pause";
+      executor: ProjectExecutorRecord;
+    }
+  | {
+      kind: "resume";
+      executor: ProjectExecutorRecord;
     };
 
 function getInitials(name: string) {
@@ -91,14 +105,18 @@ function CollaboratorTypeBadge({
 function CollaboratorCompactRow({
   collaborator,
   actions,
+  showChatVisibilityState = false,
 }: {
   collaborator: ProjectCollaboratorRecord;
   actions?: ReactNode;
+  showChatVisibilityState?: boolean;
 }) {
+  const showPausedState = showChatVisibilityState && collaborator.chatVisibilityPaused;
+
   return (
     <li
       className={`flex min-h-[54px] items-center gap-3 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-2 ${
-        collaborator.chatVisibilityPaused ? "opacity-70" : ""
+        showPausedState ? "opacity-70" : ""
       }`}
     >
       <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[800] text-white">
@@ -109,7 +127,7 @@ function CollaboratorCompactRow({
           <p className="truncate text-[13px] font-[700] leading-5 text-[#111712]">
             {collaborator.name}
           </p>
-          {collaborator.chatVisibilityPaused ? (
+          {showPausedState ? (
             <span className="shrink-0 rounded-full bg-[#f1f4f1] px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 tracking-[0.06em] text-[#68726a]">
               Chat paused
             </span>
@@ -134,16 +152,37 @@ function CollaboratorCompactRow({
   );
 }
 
-function ExecutorCompactRow({ executor }: { executor: ProjectExecutorRecord }) {
+function ExecutorCompactRow({
+  executor,
+  actions,
+  showChatVisibilityState = false,
+}: {
+  executor: ProjectExecutorRecord;
+  actions?: ReactNode;
+  showChatVisibilityState?: boolean;
+}) {
+  const showPausedState = showChatVisibilityState && executor.chatVisibilityPaused;
+
   return (
-    <li className="flex min-h-[54px] items-center gap-3 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-2">
+    <li
+      className={`flex min-h-[54px] items-center gap-3 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-2 ${
+        showPausedState ? "opacity-70" : ""
+      }`}
+    >
       <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#d7efe0,#2f8d5d)] text-[10px] font-[800] text-white">
         {getInitials(executor.name)}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-[700] leading-5 text-[#111712]">
-          {executor.name}
-        </p>
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate text-[13px] font-[700] leading-5 text-[#111712]">
+            {executor.name}
+          </p>
+          {showPausedState ? (
+            <span className="shrink-0 rounded-full bg-[#f1f4f1] px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 tracking-[0.06em] text-[#68726a]">
+              Chat paused
+            </span>
+          ) : null}
+        </div>
         <p className="truncate text-[11px] leading-4 text-[#7a837b]">
           {executor.email ?? executor.roleLabel}
         </p>
@@ -164,16 +203,27 @@ function ExecutorCompactRow({ executor }: { executor: ProjectExecutorRecord }) {
           </span>
         </div>
       </div>
+      {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </li>
   );
 }
 
 function ProjectExecutorsModal({
   executors,
+  currentUserId,
+  showChatVisibilityState,
+  saving,
+  onRequestChatVisibilityAction,
   isOpen,
   onClose,
 }: {
   executors: ProjectExecutorRecord[];
+  currentUserId?: string;
+  showChatVisibilityState: boolean;
+  saving?: boolean;
+  onRequestChatVisibilityAction?: (
+    action: PendingExecutorAction,
+  ) => void;
   isOpen: boolean;
   onClose: () => void;
 }) {
@@ -245,9 +295,45 @@ function ProjectExecutorsModal({
           <div className="mt-4 max-h-[430px] overflow-y-auto pr-1">
             {filteredExecutors.length > 0 ? (
               <ul className="space-y-2">
-                {filteredExecutors.map((executor) => (
-                  <ExecutorCompactRow key={executor.id} executor={executor} />
-                ))}
+                {filteredExecutors.map((executor) => {
+                  const canToggle =
+                    Boolean(onRequestChatVisibilityAction) &&
+                    executor.id !== currentUserId;
+
+                  return (
+                    <ExecutorCompactRow
+                      key={executor.id}
+                      executor={executor}
+                      showChatVisibilityState={showChatVisibilityState}
+                      actions={
+                        canToggle ? (
+                          <Button
+                            type="button"
+                            onClick={() =>
+                              onRequestChatVisibilityAction?.({
+                                kind: executor.chatVisibilityPaused ? "resume" : "pause",
+                                executor,
+                              })
+                            }
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-[#6a746c]"
+                            disabled={saving}
+                            aria-label={`${
+                              executor.chatVisibilityPaused ? "Restore" : "Hide"
+                            } chat access for ${executor.name}`}
+                          >
+                            {executor.chatVisibilityPaused ? (
+                              <Eye className="h-4 w-4" />
+                            ) : (
+                              <EyeOff className="h-4 w-4" />
+                            )}
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  );
+                })}
               </ul>
             ) : (
               <div className="rounded-[16px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-5 py-10 text-center">
@@ -263,8 +349,15 @@ function ProjectExecutorsModal({
   );
 }
 
-export function ProjectExecutorsPanel({ executors }: ProjectExecutorsPanelProps) {
+export function ProjectExecutorsPanel({
+  executors,
+  currentUserId,
+  onToggleChatVisibility,
+  saving = false,
+}: ProjectExecutorsPanelProps) {
   const [viewAllOpen, setViewAllOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingExecutorAction | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const sortedExecutors = useMemo(
     () =>
       [...executors].sort((left, right) => {
@@ -278,6 +371,42 @@ export function ProjectExecutorsPanel({ executors }: ProjectExecutorsPanelProps)
   );
   const visibleExecutors = sortedExecutors.slice(0, 5);
   const hiddenExecutorCount = Math.max(sortedExecutors.length - visibleExecutors.length, 0);
+  const showChatVisibilityState = Boolean(onToggleChatVisibility);
+
+  async function handleConfirmAction() {
+    if (!pendingAction) {
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      await Promise.resolve(
+        onToggleChatVisibility?.(
+          pendingAction.executor.id,
+          pendingAction.kind === "pause",
+        ),
+      );
+      setPendingAction(null);
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update chat visibility right now.",
+      );
+    }
+  }
+
+  const confirmationTitle =
+    pendingAction?.kind === "pause"
+      ? "Hide executor from chat?"
+      : "Restore chat access?";
+  const confirmationDescription =
+    pendingAction?.kind === "pause"
+      ? "They will not see new chat messages or files until access is restored."
+      : "They will see new messages and files from this point forward.";
+  const confirmationLabel =
+    pendingAction?.kind === "pause" ? "Hide from Chat" : "Restore Access";
 
   return (
     <>
@@ -307,9 +436,45 @@ export function ProjectExecutorsPanel({ executors }: ProjectExecutorsPanelProps)
         <CardContent className="pt-0">
           {visibleExecutors.length > 0 ? (
             <ul className="space-y-2">
-              {visibleExecutors.map((executor) => (
-                <ExecutorCompactRow key={executor.id} executor={executor} />
-              ))}
+              {visibleExecutors.map((executor) => {
+                const canToggle =
+                  Boolean(onToggleChatVisibility) && executor.id !== currentUserId;
+
+                return (
+                  <ExecutorCompactRow
+                    key={executor.id}
+                    executor={executor}
+                    showChatVisibilityState={showChatVisibilityState}
+                    actions={
+                      canToggle ? (
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setActionError(null);
+                            setPendingAction({
+                              kind: executor.chatVisibilityPaused ? "resume" : "pause",
+                              executor,
+                            });
+                          }}
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-[#6a746c]"
+                          disabled={saving}
+                          aria-label={`${
+                            executor.chatVisibilityPaused ? "Restore" : "Hide"
+                          } chat access for ${executor.name}`}
+                        >
+                          {executor.chatVisibilityPaused ? (
+                            <Eye className="h-4 w-4" />
+                          ) : (
+                            <EyeOff className="h-4 w-4" />
+                          )}
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                );
+              })}
             </ul>
           ) : (
             <p className="rounded-[14px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-4 py-5 text-[13px] text-[#7a837b]">
@@ -342,8 +507,41 @@ export function ProjectExecutorsPanel({ executors }: ProjectExecutorsPanelProps)
 
       <ProjectExecutorsModal
         executors={sortedExecutors}
+        currentUserId={currentUserId}
+        showChatVisibilityState={showChatVisibilityState}
+        saving={saving}
+        onRequestChatVisibilityAction={
+          onToggleChatVisibility
+            ? (action) => {
+                setActionError(null);
+                setPendingAction(action);
+              }
+            : undefined
+        }
         isOpen={viewAllOpen}
         onClose={() => setViewAllOpen(false)}
+      />
+
+      <ConfirmationDialog
+        isOpen={pendingAction !== null}
+        title={confirmationTitle}
+        description={confirmationDescription}
+        confirmLabel={confirmationLabel}
+        cancelLabel="Cancel"
+        tone="default"
+        pending={saving}
+        error={actionError ?? undefined}
+        onClose={() => {
+          if (saving) {
+            return;
+          }
+
+          setActionError(null);
+          setPendingAction(null);
+        }}
+        onConfirm={() => {
+          void handleConfirmAction();
+        }}
       />
     </>
   );
@@ -351,10 +549,12 @@ export function ProjectExecutorsPanel({ executors }: ProjectExecutorsPanelProps)
 
 function ProjectCollaboratorsModal({
   collaborators,
+  showChatVisibilityState,
   isOpen,
   onClose,
 }: {
   collaborators: ProjectCollaboratorRecord[];
+  showChatVisibilityState: boolean;
   isOpen: boolean;
   onClose: () => void;
 }) {
@@ -433,6 +633,7 @@ function ProjectCollaboratorsModal({
                   <CollaboratorCompactRow
                     key={collaborator.id}
                     collaborator={collaborator}
+                    showChatVisibilityState={showChatVisibilityState}
                   />
                 ))}
               </ul>
@@ -452,6 +653,7 @@ function ProjectCollaboratorsModal({
 
 export function ProjectCollaboratorsSummary({
   collaborators,
+  currentUserId,
   onRemove,
   onAdd,
   addLabel = "Add Collaborator",
@@ -463,6 +665,7 @@ export function ProjectCollaboratorsSummary({
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const visibleCollaborators = collaborators.slice(0, 5);
   const hiddenCollaboratorCount = Math.max(collaborators.length - visibleCollaborators.length, 0);
+  const showChatVisibilityState = Boolean(onToggleChatVisibility);
 
   async function handleConfirmAction() {
     if (!pendingAction) {
@@ -499,20 +702,20 @@ export function ProjectCollaboratorsSummary({
     pendingAction?.kind === "remove"
       ? "Remove collaborator?"
       : pendingAction?.kind === "pause"
-        ? "Pause chat visibility for this collaborator?"
-        : "Resume chat visibility for this collaborator?";
+        ? "Hide collaborator from chat?"
+        : "Restore chat access?";
   const confirmationDescription =
     pendingAction?.kind === "remove"
       ? "This collaborator will be removed from the project and will no longer have access to project collaboration features."
       : pendingAction?.kind === "pause"
-        ? "This collaborator will still see older chat history, but new messages and files created while paused will be hidden from them."
-        : "This collaborator will start seeing new chat messages and files again. Items created during earlier paused periods will stay hidden.";
+        ? "They will not see new chat messages or files until access is restored."
+        : "They will see new messages and files from this point forward.";
   const confirmationLabel =
     pendingAction?.kind === "remove"
       ? "Remove Collaborator"
       : pendingAction?.kind === "pause"
-        ? "Pause Chat Visibility"
-        : "Resume Chat Visibility";
+        ? "Hide from Chat"
+        : "Restore Access";
 
   return (
     <>
@@ -558,10 +761,16 @@ export function ProjectCollaboratorsSummary({
                 <CollaboratorCompactRow
                   key={collaborator.id}
                   collaborator={collaborator}
+                  showChatVisibilityState={showChatVisibilityState}
                   actions={
-                    collaborator.removable && (onToggleChatVisibility || onRemove) ? (
+                    (collaborator.removable && onRemove) ||
+                    (onToggleChatVisibility &&
+                      collaborator.access !== "owner" &&
+                      collaborator.id !== currentUserId) ? (
                       <>
-                        {onToggleChatVisibility ? (
+                        {onToggleChatVisibility &&
+                        collaborator.access !== "owner" &&
+                        collaborator.id !== currentUserId ? (
                           <Button
                             type="button"
                             onClick={() => {
@@ -576,17 +785,17 @@ export function ProjectCollaboratorsSummary({
                             className="size-8 text-[#6a746c]"
                             disabled={saving}
                             aria-label={`${
-                              collaborator.chatVisibilityPaused ? "Resume" : "Pause"
-                            } chat visibility for ${collaborator.name}`}
+                              collaborator.chatVisibilityPaused ? "Restore" : "Hide"
+                            } chat access for ${collaborator.name}`}
                           >
                             {collaborator.chatVisibilityPaused ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
                               <Eye className="h-4 w-4" />
+                            ) : (
+                              <EyeOff className="h-4 w-4" />
                             )}
                           </Button>
                         ) : null}
-                        {onRemove ? (
+                        {collaborator.removable && onRemove ? (
                           <Button
                             type="button"
                             onClick={() => {
@@ -642,6 +851,7 @@ export function ProjectCollaboratorsSummary({
 
       <ProjectCollaboratorsModal
         collaborators={collaborators}
+        showChatVisibilityState={showChatVisibilityState}
         isOpen={viewAllOpen}
         onClose={() => setViewAllOpen(false)}
       />

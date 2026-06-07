@@ -514,6 +514,7 @@ function buildProjectExecutorRecord(
     role,
     roleLabel: formatProjectExecutorRoleLabel(role),
     group: executor.type === "External" ? "external" : "internal",
+    chatVisibilityPaused: false,
   };
 }
 
@@ -901,6 +902,7 @@ export function CreateProjectWorkspace({
             role: "MAIN_EXECUTOR",
             roleLabel: formatProjectExecutorRoleLabel("MAIN_EXECUTOR"),
             group: "internal",
+            chatVisibilityPaused: false,
           },
         ];
       }

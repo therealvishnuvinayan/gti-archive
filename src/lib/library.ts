@@ -82,6 +82,9 @@ type RawLibraryAttachment = {
     tag: string | null;
     createdById: string;
     executorUserId: string | null;
+    executors: Array<{
+      userId: string;
+    }>;
     collaborators: Array<{
       userId: string;
       chatVisibilityPaused: boolean;
@@ -194,20 +197,19 @@ function isAttachmentVisibleToUser(
   user: LibraryUser,
   attachment: RawLibraryAttachment,
 ) {
-  if (
-    canBypassCollaboratorVisibility(user, attachment.project.createdById) ||
-    attachment.project.createdById === user.id ||
-    attachment.project.executorUserId === user.id
-  ) {
+  if (canBypassCollaboratorVisibility(user, attachment.project.createdById)) {
     return true;
   }
 
+  const isExecutor =
+    attachment.project.executorUserId === user.id ||
+    attachment.project.executors.some((executor) => executor.userId === user.id);
   const collaborator = attachment.project.collaborators.find(
     (item) => item.userId === user.id,
   );
 
   if (!collaborator) {
-    return false;
+    return isExecutor;
   }
 
   if (collaborator.chatVisibilityPaused && collaborator.visibilityPauses.length === 0) {

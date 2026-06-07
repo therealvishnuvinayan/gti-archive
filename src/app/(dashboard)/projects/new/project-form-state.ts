@@ -75,6 +75,7 @@ export type ProjectEditorInitialExecutor = {
   role: ProjectExecutorRole;
   roleLabel: string;
   group: "internal" | "external";
+  chatVisibilityPaused: boolean;
 };
 
 export type ProjectEditorInitialValues = {

@@ -43,6 +43,8 @@ type ProjectCompareWorkspaceProps = {
   initialCompareAttachmentId?: string | null;
   initialComments: ComparisonCommentRecord[];
   canManageCollaborators: boolean;
+  canManageChatVisibility: boolean;
+  currentUserId: string;
 };
 
 type ImageDimensions = {
@@ -466,6 +468,8 @@ export function ProjectCompareWorkspace({
   initialCompareAttachmentId,
   initialComments,
   canManageCollaborators,
+  canManageChatVisibility,
+  currentUserId,
 }: ProjectCompareWorkspaceProps) {
   const router = useRouter();
   const [isSelectionPending, startSelectionTransition] = useTransition();
@@ -907,11 +911,12 @@ export function ProjectCompareWorkspace({
 
           <ProjectCollaboratorsPanel
             collaborators={collaborators}
+            currentUserId={currentUserId}
             onRemove={
               canManageCollaborators ? (collaboratorId) => removeCollaborator(collaboratorId) : undefined
             }
             onToggleChatVisibility={
-              canManageCollaborators
+              canManageChatVisibility
                 ? (collaboratorId, paused) =>
                     handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
                 : undefined

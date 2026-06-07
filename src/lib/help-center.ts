@@ -285,6 +285,13 @@ export const recommendedGuides: HelpGuide[] = [
     keywords: ["invite collaborator", "internal", "external", "permission profile"],
   },
   {
+    id: "guide-chat-visibility",
+    title: "Chat Visibility and Collaborator Access",
+    description: "Manager guidance for hiding or restoring chat visibility for collaborators and executors.",
+    sectionId: "collaboration-permissions",
+    keywords: ["chat visibility", "hide collaborator", "restore chat access", "executor visibility", "manager"],
+  },
+  {
     id: "guide-accept-brief",
     title: "Understanding Project Brief and Stage Brief",
     description: "See how the main project requirement differs from each stage-specific instruction.",
@@ -783,6 +790,15 @@ export const helpSections: HelpSection[] = [
           "Collaborator types such as internal client, agency, freelancer, vendor, or client of GTI shape default access expectations.",
           "Hard business rules still apply even when broader permissions exist. For example, only the owner reviews submissions and only Main Executors submit work.",
           "Sensitive fields and protected actions must be enforced server-side, not only hidden in the UI.",
+        ],
+      },
+      {
+        title: "Chat Visibility and Collaborator Access",
+        items: [
+          "Project owners and managers with collaborator visibility permission can hide or restore chat visibility for collaborators and executors from the project participant panels.",
+          "When access is hidden, the participant keeps older visible history but does not receive or see new chat messages, attachments, comparison comments, library files, or related notifications created during the hidden period.",
+          "Restoring access only affects new activity from that point forward. Items created during earlier hidden periods remain hidden.",
+          "Managers cannot hide themselves, and project owner visibility cannot be changed from the participant controls.",
         ],
       },
       {

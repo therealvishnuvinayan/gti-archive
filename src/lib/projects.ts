@@ -31,6 +31,11 @@ import {
   formatProjectPriority,
   type ProjectPriorityValue,
 } from "@/lib/project-priority";
+import {
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows,
+} from "@/lib/project-collaborator-visibility";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
   getAccessibleProjectsWhere,
@@ -196,6 +201,7 @@ export type ProjectExecutorRecord = {
   role: ProjectExecutorRole;
   roleLabel: string;
   group: "internal" | "external";
+  chatVisibilityPaused: boolean;
 };
 
 export type ProjectMentionParticipantRecord = {
@@ -483,6 +489,7 @@ function mapProjectExecutorAssignmentToRecord(
   assignment: ProjectExecutor & {
     user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
   },
+  visibilityStateByUserId: ReadonlyMap<string, boolean>,
 ): ProjectExecutorRecord {
   return {
     id: assignment.user.id,
@@ -491,12 +498,26 @@ function mapProjectExecutorAssignmentToRecord(
     role: assignment.role,
     roleLabel: formatProjectExecutorRole(assignment.role),
     group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
+    chatVisibilityPaused: visibilityStateByUserId.get(assignment.user.id) ?? false,
   };
 }
 
-function getProjectExecutorRecords(project: Pick<ProjectWithCreator, "executorName" | "executorUserId" | "executorUser" | "executors">) {
+function getProjectExecutorRecords(
+  project: Pick<
+    ProjectWithCreator,
+    "executorName" | "executorUserId" | "executorUser" | "executors" | "collaborators"
+  >,
+) {
+  const visibilityStateByUserId = new Map(
+    (project.collaborators ?? []).map((collaborator) => [
+      collaborator.userId,
+      collaborator.chatVisibilityPaused,
+    ] as const),
+  );
   const mappedExecutors = (project.executors ?? [])
-    .map(mapProjectExecutorAssignmentToRecord)
+    .map((assignment) =>
+      mapProjectExecutorAssignmentToRecord(assignment, visibilityStateByUserId),
+    )
     .filter((executor, index, current) =>
       current.findIndex((item) => item.id === executor.id) === index,
     )
@@ -524,6 +545,7 @@ function getProjectExecutorRecords(project: Pick<ProjectWithCreator, "executorNa
       group: project.executorUser
         ? mapCollaboratorTypeToGroup(project.executorUser.collaboratorType)
         : "internal",
+      chatVisibilityPaused: visibilityStateByUserId.get(project.executorUserId) ?? false,
     },
   ];
 }
@@ -547,6 +569,20 @@ function getProjectExecutorDisplayName(executors: ProjectExecutorRecord[]) {
   return remainingCount > 0
     ? `${firstExecutor.name} +${remainingCount}`
     : firstExecutor.name;
+}
+
+function maskExecutorVisibilityState(executor: ProjectExecutorRecord) {
+  return {
+    ...executor,
+    chatVisibilityPaused: false,
+  };
+}
+
+function maskCollaboratorVisibilityState(collaborator: ProjectCollaboratorRecord) {
+  return {
+    ...collaborator,
+    chatVisibilityPaused: false,
+  };
 }
 
 function canAccessProjectRecord(
@@ -595,6 +631,39 @@ function isProjectBriefAttachment(
   return (
     attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
     !isStageBriefAttachment(attachment)
+  );
+}
+
+async function getProjectAttachmentsVisibleToUser(
+  currentUser: ProjectAccessUser,
+  project: Pick<ProjectWithCreator, "id" | "createdById" | "attachments">,
+) {
+  if (canBypassCollaboratorVisibility(currentUser, project.createdById)) {
+    return project.attachments;
+  }
+
+  const visibilityState = await getProjectCollaboratorVisibilityState(
+    project.id,
+    currentUser.id,
+  );
+
+  if (!visibilityState) {
+    return project.attachments;
+  }
+
+  if (
+    visibilityState.chatVisibilityPaused &&
+    visibilityState.visibilityPauses.length === 0
+  ) {
+    return [];
+  }
+
+  return project.attachments.filter(
+    (attachment) =>
+      !isTimestampHiddenByPauseWindows(
+        attachment.createdAt,
+        visibilityState.visibilityPauses,
+      ),
   );
 }
 
@@ -778,7 +847,15 @@ function mapProjectToFlow(
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
-  const executorRecords = getProjectExecutorRecords(project);
+  const rawExecutorRecords = getProjectExecutorRecords(project);
+  const canViewChatVisibilityState = hasProjectPermission(
+    currentUser,
+    project,
+    "collaborator.pauseVisibility",
+  );
+  const executorRecords = canViewChatVisibilityState
+    ? rawExecutorRecords
+    : rawExecutorRecords.map(maskExecutorVisibilityState);
   const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
@@ -818,11 +895,14 @@ function mapProjectToFlow(
       );
     });
 
-  const collaboratorRecords = (project.collaborators ?? [])
+  const rawCollaboratorRecords = (project.collaborators ?? [])
     .map(mapProjectCollaboratorAssignmentToRecord)
     .filter((collaborator, index, current) =>
       current.findIndex((item) => item.id === collaborator.id) === index,
     );
+  const collaboratorRecords = canViewChatVisibilityState
+    ? rawCollaboratorRecords
+    : rawCollaboratorRecords.map(maskCollaboratorVisibilityState);
   const mentionParticipants = [
     {
       id: project.createdById,
@@ -838,7 +918,7 @@ function mapProjectToFlow(
       email: executor.email,
       role: executor.roleLabel,
       group: executor.group,
-      chatVisibilityPaused: false,
+      chatVisibilityPaused: executor.chatVisibilityPaused,
     })),
     ...collaboratorRecords.map((collaborator) => ({
       id: collaborator.id,
@@ -1364,13 +1444,25 @@ export async function setProjectCollaboratorChatVisibility(
     paused: boolean;
   },
 ) {
-  await assertProjectCollaboratorManagementAccess(
+  const project = await assertProjectCollaboratorManagementAccess(
     actor,
     input.projectId,
     "collaborator.pauseVisibility",
   );
 
-  const assignment = await withPrismaRetry(() =>
+  if (input.collaboratorId === actor.id) {
+    throw new Error("You cannot change your own chat visibility.");
+  }
+
+  if (input.collaboratorId === project.createdById) {
+    throw new Error("Project owner chat visibility cannot be changed.");
+  }
+
+  const isExecutorTarget =
+    project.executorUserId === input.collaboratorId ||
+    project.executors.some((executor) => executor.userId === input.collaboratorId);
+
+  let assignment = await withPrismaRetry(() =>
     prisma.projectCollaborator.findUnique({
       where: {
         projectId_userId: {
@@ -1387,7 +1479,42 @@ export async function setProjectCollaboratorChatVisibility(
   );
 
   if (!assignment) {
-    throw new Error("Collaborator not found.");
+    if (!input.paused || !isExecutorTarget) {
+      throw new Error("Collaborator not found.");
+    }
+
+    const targetUser = await withPrismaRetry(() =>
+      prisma.user.findUnique({
+        where: {
+          id: input.collaboratorId,
+        },
+        select: {
+          collaboratorType: true,
+        },
+      }),
+    );
+
+    if (!targetUser) {
+      throw new Error("Collaborator not found.");
+    }
+
+    assignment = await withPrismaRetry(() =>
+      prisma.projectCollaborator.create({
+        data: {
+          projectId: input.projectId,
+          userId: input.collaboratorId,
+          addedById: actor.id,
+          participantType: getDefaultProjectCollaboratorParticipantType(
+            mapCollaboratorTypeToGroup(targetUser.collaboratorType),
+          ),
+        },
+        select: {
+          projectId: true,
+          userId: true,
+          chatVisibilityPaused: true,
+        },
+      }),
+    );
   }
 
   if (assignment.chatVisibilityPaused === input.paused) {
@@ -1875,12 +2002,23 @@ export async function getProjectById(
     return null;
   }
 
+  const visibleAttachments = await getProjectAttachmentsVisibleToUser(
+    currentUser,
+    project,
+  );
   const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
     currentUser.id,
-    project.attachments.map((attachment) => attachment.id),
+    visibleAttachments.map((attachment) => attachment.id),
   );
 
-  return mapProjectToFlow(project, currentUser, favoritedAttachmentIds);
+  return mapProjectToFlow(
+    {
+      ...project,
+      attachments: visibleAttachments,
+    },
+    currentUser,
+    favoritedAttachmentIds,
+  );
 }
 
 export async function getProjectEditorById(

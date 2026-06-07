@@ -67,6 +67,11 @@ export default async function ProjectComparePage({
     projectContext,
     "project.manageCollaborators",
   );
+  const canManageChatVisibility = hasProjectPermission(
+    user,
+    projectContext,
+    "collaborator.pauseVisibility",
+  );
 
   const submissions = getStageSubmissionAttachments(history.entries);
   const { baseSubmission, compareSubmission } = resolveComparisonSelection(
@@ -108,6 +113,8 @@ export default async function ProjectComparePage({
         initialCompareAttachmentId={compareSubmission?.id ?? null}
         initialComments={comparisonComments}
         canManageCollaborators={canManageCollaborators}
+        canManageChatVisibility={canManageChatVisibility}
+        currentUserId={user.id}
       />
     </DashboardLayout>
   );

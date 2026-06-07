@@ -104,6 +104,7 @@ type ProjectChatWorkspaceProps = {
   currentUserId: string;
   currentUserAvatarSrc?: string | null;
   canManageCollaborators: boolean;
+  canManageChatVisibility: boolean;
   completionSummary: ProjectCompletionSummary;
   completionWorkflow: ProjectCompletionWorkflowRecord | null;
 };
@@ -1104,6 +1105,7 @@ export function ProjectChatWorkspace({
   currentUserId,
   currentUserAvatarSrc,
   canManageCollaborators,
+  canManageChatVisibility,
   completionSummary,
   completionWorkflow,
 }: ProjectChatWorkspaceProps) {
@@ -1111,6 +1113,7 @@ export function ProjectChatWorkspace({
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
     project.collaborators,
   );
+  const [executors, setExecutors] = useState(project.executors);
   const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
     useState<CollaboratorRecord[]>(availableCollaborators);
   const [draft, setDraft] = useState("");
@@ -1558,6 +1561,20 @@ export function ProjectChatWorkspace({
       const owner = current.find((collaborator) => collaborator.access === "owner");
       return owner ? [owner, ...updatedCollaborators] : updatedCollaborators;
     });
+    setExecutors((current) =>
+      current.map((executor) => {
+        const updatedExecutor = updatedCollaborators.find(
+          (collaborator) => collaborator.id === executor.id,
+        );
+
+        return updatedExecutor
+          ? {
+              ...executor,
+              chatVisibilityPaused: updatedExecutor.chatVisibilityPaused,
+            }
+          : executor;
+      }),
+    );
   }
 
   async function removeCollaborator(id: string) {
@@ -4454,10 +4471,21 @@ export function ProjectChatWorkspace({
             </CardContent>
           </Card>
 
-          <ProjectExecutorsPanel executors={project.executors} />
+          <ProjectExecutorsPanel
+            executors={executors}
+            currentUserId={currentUserId}
+            onToggleChatVisibility={
+              canManageChatVisibility && !isProjectCompleted
+                ? (executorId, paused) =>
+                    handleCollaboratorChatVisibilityToggle(executorId, paused)
+                : undefined
+            }
+            saving={collaboratorSaving}
+          />
 
           <ProjectCollaboratorsPanel
             collaborators={collaborators}
+            currentUserId={currentUserId}
             onRemove={
               canManageCollaborators && !isProjectCompleted
                 ? (collaboratorId) => removeCollaborator(collaboratorId)
@@ -4469,7 +4497,7 @@ export function ProjectChatWorkspace({
                 : undefined
             }
             onToggleChatVisibility={
-              canManageCollaborators && !isProjectCompleted
+              canManageChatVisibility && !isProjectCompleted
                 ? (collaboratorId, paused) =>
                     handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
                 : undefined

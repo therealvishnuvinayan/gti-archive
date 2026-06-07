@@ -57,6 +57,11 @@ export default async function ProjectChatPage({
     projectContext,
     "project.manageCollaborators",
   );
+  const canManageChatVisibility = hasProjectPermission(
+    user,
+    projectContext,
+    "collaborator.pauseVisibility",
+  );
   const currentUserAvatarSrc = user.avatarUrl
     ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
     : null;
@@ -76,6 +81,7 @@ export default async function ProjectChatPage({
         currentUserId={user.id}
         currentUserAvatarSrc={currentUserAvatarSrc}
         canManageCollaborators={canManageCollaborators}
+        canManageChatVisibility={canManageChatVisibility}
         completionSummary={completionSummary}
         completionWorkflow={completionWorkflow}
       />

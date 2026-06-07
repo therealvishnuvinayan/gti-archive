@@ -8,6 +8,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   getCompletionWorkflowRecipientUserIds,
   dedupeRecipients,
+  filterRecipientsVisibleForStageEvent,
   getProjectNotificationContext,
   getProjectParticipantUserIds,
   getVisibleStageEventRecipientUserIds,
@@ -74,9 +75,14 @@ export async function notifyProjectCreated(input: {
     return;
   }
 
-  if (project.executorUserId && project.executorUserId !== input.actorId) {
+  const executorIds = dedupeRecipients([
+    project.executorUserId,
+    ...project.executors.map((executor) => executor.userId),
+  ]).filter((userId) => userId !== input.actorId);
+
+  if (executorIds.length > 0) {
     await createNotificationsForUsers({
-      recipientUserIds: [project.executorUserId],
+      recipientUserIds: executorIds,
       type: "PROJECT_ASSIGNED",
       title: "Project assigned to you",
       message: `You have been assigned as executor for ${project.name}.`,
@@ -93,7 +99,7 @@ export async function notifyProjectCreated(input: {
   const collaboratorIds = project.collaborators
     .map((collaborator) => collaborator.userId)
     .filter(
-      (userId) => userId !== input.actorId && userId !== project.executorUserId,
+      (userId) => userId !== input.actorId && !executorIds.includes(userId),
     );
 
   await createNotificationsForUsers({
@@ -301,8 +307,14 @@ export async function notifyStageSubmissionReviewDecision(
     return;
   }
 
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    attachment.project.id,
+    [attachment.project.executorUserId],
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [attachment.project.executorUserId],
+    recipientUserIds: recipients,
     type:
       input.status === "APPROVED" ? "REVISION_APPROVED" : "REVISION_REJECTED",
     title:
@@ -337,8 +349,14 @@ export async function notifySubmissionWorkflowDecision(input: {
     return;
   }
 
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    [project.executorUserId],
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [project.executorUserId],
+    recipientUserIds: recipients,
     type:
       input.status === "COMPLETED"
         ? "SUBMISSION_COMPLETED"
@@ -437,8 +455,14 @@ export async function notifyStageTransition(input: {
     return;
   }
 
+  const nextStageRecipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    [project.executorUserId],
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [project.executorUserId],
+    recipientUserIds: nextStageRecipients,
     type: "NEXT_STAGE_ACTIVATED",
     title: "Next stage activated",
     message: `${nextStage.name} is now ready to start.`,
@@ -469,9 +493,24 @@ export async function notifyCommentAdded(
     return;
   }
 
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findUnique({
+      where: {
+        id: input.commentId,
+      },
+      select: {
+        createdAt: true,
+      },
+    }),
+  );
+
+  if (!comment) {
+    return;
+  }
+
   const recipients = await getVisibleStageEventRecipientUserIds(
     project.id,
-    new Date(),
+    comment.createdAt,
     {
       excludeUserId: input.actorId,
     },
@@ -515,8 +554,28 @@ export async function notifyCommentMentioned(
     return;
   }
 
-  const recipients = dedupeRecipients(input.mentionedUserIds).filter(
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findUnique({
+      where: {
+        id: input.commentId,
+      },
+      select: {
+        createdAt: true,
+      },
+    }),
+  );
+
+  if (!comment) {
+    return;
+  }
+
+  const mentionedRecipients = dedupeRecipients(input.mentionedUserIds).filter(
     (recipientUserId) => recipientUserId !== input.actorId,
+  );
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    mentionedRecipients,
+    comment.createdAt,
   );
 
   await createNotificationsForUsers({
@@ -559,13 +618,29 @@ export async function notifyFileUploaded(
     return;
   }
 
-  const recipients = input.stageId
-    ? await getVisibleStageEventRecipientUserIds(project.id, new Date(), {
-        excludeUserId: input.actorId,
-      })
-    : await getProjectParticipantUserIds(project.id, {
-        excludeUserId: input.actorId,
-      });
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findUnique({
+      where: {
+        id: input.attachmentId,
+      },
+      select: {
+        createdAt: true,
+      },
+    }),
+  );
+
+  if (!attachment) {
+    return;
+  }
+
+  const baseRecipients = await getProjectParticipantUserIds(project.id, {
+    excludeUserId: input.actorId,
+  });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    baseRecipients,
+    attachment.createdAt,
+  );
 
   await createNotificationsForUsers({
     recipientUserIds: recipients,
@@ -603,9 +678,29 @@ export async function notifyProjectArchived(input: {
     return;
   }
 
-  const recipients = await getProjectParticipantUserIds(project.id, {
+  const archive = await withPrismaRetry(() =>
+    prisma.projectArchive.findUnique({
+      where: {
+        id: input.archiveId,
+      },
+      select: {
+        archivedAt: true,
+      },
+    }),
+  );
+
+  if (!archive) {
+    return;
+  }
+
+  const baseRecipients = await getProjectParticipantUserIds(project.id, {
     excludeUserId: input.actorId,
   });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    baseRecipients,
+    archive.archivedAt,
+  );
 
   await createNotificationsForUsers({
     recipientUserIds: recipients,
@@ -633,8 +728,14 @@ export async function notifyApprovalRequired(input: {
     return;
   }
 
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    [project.executorUserId],
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [project.executorUserId],
+    recipientUserIds: recipients,
     type: "APPROVAL_REQUIRED",
     title: "Approval required",
     message: `Authority approval is required for ${project.name}.`,
@@ -657,9 +758,14 @@ export async function notifyApprovalProofUploaded(input: {
     return;
   }
 
-  const recipients = await getCompletionWorkflowRecipientUserIds(project.id, {
+  const baseRecipients = await getCompletionWorkflowRecipientUserIds(project.id, {
     excludeUserId: input.actorId,
   });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    baseRecipients,
+    new Date(),
+  );
 
   await createNotificationsForUsers({
     recipientUserIds: recipients,
@@ -685,8 +791,14 @@ export async function notifyCopyrightTransferRequired(input: {
     return;
   }
 
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    [project.executorUserId],
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [project.executorUserId],
+    recipientUserIds: recipients,
     type: "COPYRIGHT_TRANSFER_REQUIRED",
     title: "Copyright transfer required",
     message: `Copyright transfer is required for ${project.name}.`,
@@ -709,9 +821,14 @@ export async function notifyCopyrightDocumentUploaded(input: {
     return;
   }
 
-  const recipients = await getCompletionWorkflowRecipientUserIds(project.id, {
+  const baseRecipients = await getCompletionWorkflowRecipientUserIds(project.id, {
     excludeUserId: input.actorId,
   });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    baseRecipients,
+    new Date(),
+  );
 
   await createNotificationsForUsers({
     recipientUserIds: recipients,

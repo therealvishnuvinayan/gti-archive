@@ -6,6 +6,9 @@ type ProjectNotificationContext = {
   name: string;
   createdById: string;
   executorUserId: string | null;
+  executors: Array<{
+    userId: string;
+  }>;
   collaborators: Array<{
     userId: string;
     chatVisibilityPaused: boolean;
@@ -27,6 +30,11 @@ export async function getProjectNotificationContext(projectId: string) {
         name: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+          },
+        },
         collaborators: {
           select: {
             userId: true,
@@ -111,6 +119,9 @@ export async function getProjectParticipantUserIds(
   const recipients = dedupeRecipients([
     options.includeOwner === false ? null : project.createdById,
     options.includeExecutor === false ? null : project.executorUserId,
+    ...(options.includeExecutor === false
+      ? []
+      : project.executors.map((executor) => executor.userId)),
     ...(options.includeCollaborators === false
       ? []
       : project.collaborators.map((collaborator) => collaborator.userId)),
@@ -133,16 +144,20 @@ export async function filterRecipientsVisibleForStageEvent(
   const collaboratorMap = new Map(
     project.collaborators.map((collaborator) => [collaborator.userId, collaborator] as const),
   );
+  const executorUserIds = new Set([
+    project.executorUserId,
+    ...project.executors.map((executor) => executor.userId),
+  ].filter(Boolean) as string[]);
 
   return recipientUserIds.filter((recipientUserId) => {
-    if (recipientUserId === project.createdById || recipientUserId === project.executorUserId) {
+    if (recipientUserId === project.createdById) {
       return true;
     }
 
     const collaborator = collaboratorMap.get(recipientUserId);
 
     if (!collaborator) {
-      return false;
+      return executorUserIds.has(recipientUserId);
     }
 
     if (collaborator.chatVisibilityPaused && collaborator.visibilityPauses.length === 0) {

@@ -30,6 +30,7 @@ import {
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import { getVisibleStageEventRecipientUserIds } from "@/lib/notification-center/recipients";
 import {
+  assertProjectTimestampVisibleForUser,
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
   isTimestampHiddenByPauseWindows,
@@ -658,22 +659,12 @@ export async function assertProjectAttachmentVisibilityForUser(
     };
   },
 ) {
-  if (canBypassCollaboratorVisibility(user, attachment.project.createdById)) {
-    return;
-  }
-
-  const visibilityState = await getProjectCollaboratorVisibilityState(
-    attachment.projectId,
-    user.id,
-  );
-  const pauseWindows = visibilityState?.visibilityPauses ?? [];
-
-  if (
-    pauseWindows.length > 0 &&
-    isTimestampHiddenByPauseWindows(attachment.createdAt, pauseWindows)
-  ) {
-    throw new Error("You do not have permission to access this file.");
-  }
+  await assertProjectTimestampVisibleForUser(user, {
+    projectId: attachment.projectId,
+    projectOwnerId: attachment.project.createdById,
+    timestamp: attachment.createdAt,
+    message: "You do not have permission to access this file.",
+  });
 }
 
 export async function getProjectStageHistory(
