@@ -3,7 +3,10 @@ import { Download } from "lucide-react";
 
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
-import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
+import {
+  ProjectCollaboratorsPanel,
+  ProjectExecutorsPanel,
+} from "@/components/projects/project-collaborators-panel";
 import {
   CompletedProjectArchiveSummaryCard,
   ProjectCompletionChecklist,
@@ -232,6 +235,8 @@ export function ProjectDetailWorkspace({
               </dl>
             </CardContent>
           </Card>
+
+          <ProjectExecutorsPanel executors={project.executors} />
 
           <ProjectCollaboratorsPanel collaborators={project.collaborators} />
 

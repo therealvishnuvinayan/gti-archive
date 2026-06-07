@@ -7,6 +7,7 @@ import {
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   UserRole,
+  type ProjectExecutorRole,
   type User,
 } from "@prisma/client";
 
@@ -16,6 +17,7 @@ import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
   hasPermission,
   hasProjectPermission,
+  isMainProjectExecutor,
   type PermissionUser,
   type ProjectPermissionContext,
 } from "@/lib/permissions/resolver";
@@ -368,6 +370,12 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
         id: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         status: true,
         currency: true,
         budget: true,
@@ -401,11 +409,24 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
   );
 }
 
-function isProjectExecutorUser(
-  project: { executorUserId?: string | null },
+function isMainProjectExecutorUser(
+  project: {
+    createdById?: string | null;
+    executorUserId?: string | null;
+    executors?: Array<{ userId: string; role: ProjectExecutorRole }>;
+  },
   userId: string,
 ) {
-  return Boolean(project.executorUserId && project.executorUserId === userId);
+  return (
+    project.createdById !== userId &&
+    isMainProjectExecutor(
+      { id: userId },
+      {
+        executorUserId: project.executorUserId ?? null,
+        executors: project.executors,
+      },
+    )
+  );
 }
 
 function canUserUploadLibraryAssets(user: AccessUser) {
@@ -731,11 +752,11 @@ export async function createStageRevision(
     user,
     project,
     "stage.submitWork",
-    "Only the project executor can submit work for review.",
+    "Only a Main Executor can submit work for review.",
   );
 
-  if (!isProjectExecutorUser(project, user.id)) {
-    throw new Error("Only the project executor can submit work for review.");
+  if (!isMainProjectExecutorUser(project, user.id)) {
+    throw new Error("Only a Main Executor can submit work for review.");
   }
 
   if (project.status === "COMPLETED") {
@@ -828,6 +849,12 @@ export async function createStageComment(
           select: {
             createdById: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
             status: true,
             collaborators: {
               where: {
@@ -1001,6 +1028,12 @@ export async function prepareStageCommentUploads(
           select: {
             createdById: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
             status: true,
             collaborators: {
               where: {
@@ -1048,11 +1081,11 @@ export async function prepareStageCommentUploads(
 
   if (hasSubmissionUpload) {
     if (!hasProjectPermission(user, project, "file.uploadSubmission")) {
-      return { error: "Only the project executor can upload submissions for review." };
+      return { error: "Only a Main Executor can upload submissions for review." };
     }
 
-    if (!isProjectExecutorUser(stage.project, user.id)) {
-      return { error: "Only the project executor can upload submissions for review." };
+    if (!isMainProjectExecutorUser(stage.project, user.id)) {
+      return { error: "Only a Main Executor can upload submissions for review." };
     }
 
     if (!stage.actualStartedAt) {
@@ -1330,6 +1363,12 @@ export async function cancelStageRevisionSubmission(
           select: {
             createdById: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
             collaborators: {
               where: {
                 userId: user.id,
@@ -1354,11 +1393,11 @@ export async function cancelStageRevisionSubmission(
     user,
     project,
     "stage.submitWork",
-    "Only the project executor can submit work for review.",
+    "Only a Main Executor can submit work for review.",
   );
 
-  if (!isProjectExecutorUser(revision.project, user.id)) {
-    throw new Error("Only the project executor can cancel this revision.");
+  if (!isMainProjectExecutorUser(revision.project, user.id)) {
+    throw new Error("Only a Main Executor can cancel this revision.");
   }
 
   await withPrismaRetry(() =>
@@ -1406,11 +1445,11 @@ export async function startProjectStageWork(
     user,
     project,
     "stage.acceptBrief",
-    "Only the project executor can accept the brief for this stage.",
+    "Only a Main Executor can accept the brief for this stage.",
   );
 
-  if (!isProjectExecutorUser(project, user.id)) {
-    throw new Error("Only the project executor can accept the brief for this stage.");
+  if (!isMainProjectExecutorUser(project, user.id)) {
+    throw new Error("Only a Main Executor can accept the brief for this stage.");
   }
 
   if (project.status === "COMPLETED") {
@@ -1952,6 +1991,12 @@ export async function requestAttachmentUpload(
             select: {
               createdById: true,
               executorUserId: true,
+              executors: {
+                select: {
+                  userId: true,
+                  role: true,
+                },
+              },
               status: true,
               collaborators: {
                 where: {
@@ -1973,11 +2018,11 @@ export async function requestAttachmentUpload(
     const project = assertProjectAccessFromContext(user, revision.project);
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
-      return { error: "Only the project executor can submit work for review." };
+      return { error: "Only a Main Executor can submit work for review." };
     }
 
-    if (!isProjectExecutorUser(revision.project, user.id)) {
-      return { error: "Only the project executor can submit work for review." };
+    if (!isMainProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only a Main Executor can submit work for review." };
     }
 
     if (revision.project.status === "COMPLETED") {
@@ -2022,6 +2067,12 @@ export async function requestAttachmentUpload(
             select: {
               createdById: true,
               executorUserId: true,
+              executors: {
+                select: {
+                  userId: true,
+                  role: true,
+                },
+              },
               status: true,
               collaborators: {
                 where: {
@@ -2044,7 +2095,7 @@ export async function requestAttachmentUpload(
     const project = assertProjectAccessFromContext(user, comment.project);
     const uploadPermissionError =
       input.assetType === AttachmentAssetType.STAGE_SUBMISSION
-        ? "Only the project executor can upload submissions for review."
+        ? "Only a Main Executor can upload submissions for review."
         : "You do not have permission to upload chat attachments.";
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
@@ -2053,9 +2104,9 @@ export async function requestAttachmentUpload(
 
     if (
       input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-      !isProjectExecutorUser(comment.project, user.id)
+      !isMainProjectExecutorUser(comment.project, user.id)
     ) {
-      return { error: "Only the project executor can upload submissions for review." };
+      return { error: "Only a Main Executor can upload submissions for review." };
     }
 
     if (
@@ -2209,6 +2260,12 @@ export async function completeAttachmentUpload(
           select: {
             createdById: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
             collaborators: {
               where: {
                 userId: user.id,

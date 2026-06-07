@@ -30,6 +30,10 @@ export default async function ProjectChatPage({
   const projectContext = {
     createdById: project.ownerId,
     executorUserId: project.executorUserId ?? null,
+    executors: project.executors.map((executor) => ({
+      userId: executor.id,
+      role: executor.role,
+    })),
     collaborators: project.collaborators.map((collaborator) => ({
       userId: collaborator.id,
     })),

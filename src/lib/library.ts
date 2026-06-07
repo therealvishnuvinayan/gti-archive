@@ -395,6 +395,12 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
             tag: true,
             createdById: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
             collaborators: {
               where: {
                 userId: user.id,

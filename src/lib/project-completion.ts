@@ -206,8 +206,13 @@ function isProjectOwner(
   return project.createdById === userId;
 }
 
+type ProjectCompletionPermissionProject = Pick<
+  ProjectCompletionProjectRecord,
+  "createdById" | "executorUserId" | "executors"
+>;
+
 function canViewCompletionWorkflow(
-  project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
+  project: ProjectCompletionPermissionProject,
   user: ProjectCompletionWorkflowUser,
 ) {
   return hasProjectPermission(user, project, "completion.viewChecklist");
@@ -221,21 +226,21 @@ function canManageCompletionWorkflow(
 }
 
 function canUploadInvoiceForProject(
-  project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
+  project: ProjectCompletionPermissionProject,
   user: ProjectCompletionWorkflowUser,
 ) {
   return hasProjectPermission(user, project, "completion.uploadInvoice");
 }
 
 function canAccessCompletionDocuments(
-  project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
+  project: ProjectCompletionPermissionProject,
   user: ProjectCompletionWorkflowUser,
 ) {
   return hasProjectPermission(user, project, "completion.viewChecklist");
 }
 
 function requireCompletionProjectPermission(
-  project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
+  project: ProjectCompletionPermissionProject,
   user: ProjectCompletionWorkflowUser,
   permissionKey: PermissionKey,
   message: string,
@@ -338,7 +343,7 @@ function mapContactOptions(project: ProjectCompletionProjectRecord) {
   addContact(project.createdBy, "Project Owner");
 
   if (project.executorUser) {
-    addContact(project.executorUser, "Project Executor");
+    addContact(project.executorUser, "Main Executor");
   }
 
   for (const collaborator of project.collaborators) {
@@ -399,6 +404,12 @@ async function getProjectCompletionProject(projectId: string) {
         status: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         archivedAt: true,
         completedAt: true,
         createdBy: {
@@ -590,6 +601,12 @@ async function ensureProjectCompletionDocumentAccess(
           select: {
             createdById: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
           },
         },
       },
@@ -1223,6 +1240,12 @@ export async function finalizeProjectCompletionDocumentUpload(
           id: true,
           createdById: true,
           executorUserId: true,
+          executors: {
+            select: {
+              userId: true,
+              role: true,
+            },
+          },
           status: true,
           archivedAt: true,
           completedAt: true,

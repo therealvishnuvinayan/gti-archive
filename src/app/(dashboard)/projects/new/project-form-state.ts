@@ -1,4 +1,5 @@
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
+import type { ProjectExecutorRole } from "@prisma/client";
 
 export type ProjectFormFieldErrors = {
   name?: string;
@@ -66,12 +67,22 @@ export type ProjectEditorInitialCollaborator = {
   removable?: boolean;
 };
 
+export type ProjectEditorInitialExecutor = {
+  id: string;
+  name: string;
+  email?: string;
+  role: ProjectExecutorRole;
+  roleLabel: string;
+  group: "internal" | "external";
+};
+
 export type ProjectEditorInitialValues = {
   id: string;
   name: string;
   category: string;
   executorName: string;
   executorUserId?: string | null;
+  executors: ProjectEditorInitialExecutor[];
   tag: string;
   description: string;
   budget: string;

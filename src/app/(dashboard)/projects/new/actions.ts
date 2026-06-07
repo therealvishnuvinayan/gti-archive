@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
-import { ProjectStatus } from "@prisma/client";
+import {
+  ProjectExecutorRole,
+  ProjectStatus,
+  type CollaboratorType,
+} from "@prisma/client";
 
 import type {
   ProjectFormFieldErrors,
@@ -112,6 +116,10 @@ function isProjectStatus(value: string): value is ProjectStatus {
   return Object.values(ProjectStatus).includes(value as ProjectStatus);
 }
 
+function isProjectExecutorRole(value: string): value is ProjectExecutorRole {
+  return Object.values(ProjectExecutorRole).includes(value as ProjectExecutorRole);
+}
+
 function getInitialStageStatuses(
   projectStatus: ProjectStatus,
   stageCount: number,
@@ -172,6 +180,12 @@ function parseProjectFormData(formData: FormData) {
   const stageIds = formData
     .getAll("stageIds")
     .map((value) => String(value).trim());
+  const executorIds = formData
+    .getAll("executorIds")
+    .map((value) => String(value).trim());
+  const executorRoles = formData
+    .getAll("executorRoles")
+    .map((value) => String(value).trim());
   const collaboratorIds = [...new Set(
     formData
       .getAll("collaboratorIds")
@@ -201,8 +215,63 @@ function parseProjectFormData(formData: FormData) {
     stageStartDates,
     stageDueDates,
     stageIds,
+    executorIds,
+    executorRoles,
     collaboratorIds,
     collaboratorParticipantTypes,
+  };
+}
+
+function normalizeProjectExecutorAssignments(
+  parsed: ReturnType<typeof parseProjectFormData>,
+) {
+  const assignmentMap = new Map<string, { userId: string; role: ProjectExecutorRole }>();
+  let hasInvalidRole = false;
+
+  parsed.executorIds.forEach((executorId, index) => {
+    if (!executorId) {
+      return;
+    }
+
+    const roleInput = parsed.executorRoles[index] ?? "";
+
+    if (!isProjectExecutorRole(roleInput)) {
+      hasInvalidRole = true;
+      return;
+    }
+
+    assignmentMap.set(executorId, {
+      userId: executorId,
+      role: roleInput,
+    });
+  });
+
+  if (assignmentMap.size === 0 && parsed.executorUserId) {
+    assignmentMap.set(parsed.executorUserId, {
+      userId: parsed.executorUserId,
+      role: ProjectExecutorRole.MAIN_EXECUTOR,
+    });
+  }
+
+  const assignments = [...assignmentMap.values()];
+  const hasMainExecutor = assignments.some(
+    (assignment) => assignment.role === ProjectExecutorRole.MAIN_EXECUTOR,
+  );
+
+  if (hasInvalidRole) {
+    return {
+      error: "Choose a valid executor role.",
+    };
+  }
+
+  if (!hasMainExecutor) {
+    return {
+      error: "Add at least one Main Executor.",
+    };
+  }
+
+  return {
+    assignments,
   };
 }
 
@@ -297,11 +366,12 @@ function validateProjectFormData(
 ) {
   const requireBudget = options.requireBudget ?? true;
   const fieldErrors: ProjectFormFieldErrors = {};
+  const executorValidation = normalizeProjectExecutorAssignments(parsed);
 
   if (!parsed.name) fieldErrors.name = "Project name is required.";
   if (!parsed.category) fieldErrors.category = "Project category is required.";
-  if (!parsed.executorName) {
-    fieldErrors.executorUserId = "Project executor is required.";
+  if ("error" in executorValidation) {
+    fieldErrors.executorUserId = executorValidation.error;
   }
   if (!parsed.description) fieldErrors.description = "Project brief is required.";
   if (requireBudget && !parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
@@ -314,6 +384,8 @@ function validateProjectFormData(
     return { error: "Please fill the required fields.", fieldErrors };
   }
 
+  const executorAssignments =
+    "assignments" in executorValidation ? executorValidation.assignments : [];
   const budget = parseBudget(parsed.budgetInput);
   const status = isProjectStatus(parsed.statusInput) ? parsed.statusInput : null;
   const priority = parsed.priorityInput
@@ -428,6 +500,7 @@ function validateProjectFormData(
   return {
     data: {
       ...parsed,
+      executorAssignments,
       budget,
       currency: parsed.currencyInput,
       status,
@@ -469,37 +542,76 @@ async function resolveProjectCurrencyCode(
   return currency?.code ?? null;
 }
 
-async function resolveProjectExecutor(
-  executorUserId: string,
-  fallbackExecutorName: string,
-) {
-  const normalizedId = executorUserId.trim();
+type ResolvedProjectExecutor = {
+  userId: string;
+  name: string;
+  role: ProjectExecutorRole;
+  collaboratorType: CollaboratorType;
+};
 
-  if (!normalizedId) {
-    return fallbackExecutorName
-      ? { executorUserId: null, executorName: fallbackExecutorName }
-      : null;
+async function resolveProjectExecutors(
+  executorAssignments: Array<{ userId: string; role: ProjectExecutorRole }> | undefined,
+) {
+  const normalizedExecutorAssignments = executorAssignments ?? [];
+  const executorIds = normalizedExecutorAssignments.map((assignment) => assignment.userId);
+  const executorUsers = executorIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: {
+            in: executorIds,
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          collaboratorType: true,
+        },
+      })
+    : [];
+  const executorUserMap = new Map(
+    executorUsers.map((executorUser) => [executorUser.id, executorUser] as const),
+  );
+
+  if (executorUsers.length !== executorIds.length) {
+    return null;
   }
 
-  const executorUser = await prisma.user.findUnique({
-    where: {
-      id: normalizedId,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      collaboratorType: true,
-    },
+  const executors = normalizedExecutorAssignments.map<ResolvedProjectExecutor | null>((assignment) => {
+    const executorUser = executorUserMap.get(assignment.userId);
+
+    if (!executorUser) {
+      return null;
+    }
+
+    return {
+      userId: executorUser.id,
+      name: executorUser.name?.trim() || executorUser.email,
+      role: assignment.role,
+      collaboratorType: executorUser.collaboratorType,
+    };
   });
 
-  if (!executorUser) {
+  if (executors.some((executor) => executor === null)) {
+    return null;
+  }
+
+  const resolvedExecutors = executors.filter(
+    (executor): executor is ResolvedProjectExecutor => executor !== null,
+  );
+  const legacyExecutor =
+    resolvedExecutors.find(
+      (executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
+    ) ?? resolvedExecutors[0];
+
+  if (!legacyExecutor) {
     return null;
   }
 
   return {
-    executorUserId: executorUser.id,
-    executorName: executorUser.name?.trim() || executorUser.email,
+    executors: resolvedExecutors,
+    executorUserId: legacyExecutor.userId,
+    executorName: legacyExecutor.name,
   };
 }
 
@@ -550,8 +662,7 @@ export async function createProjectAction(
   const {
     name,
     category,
-    executorName,
-    executorUserId,
+    executorAssignments,
     tag,
     description,
     budget,
@@ -580,12 +691,12 @@ export async function createProjectAction(
     };
   }
 
-  const resolvedExecutor = await resolveProjectExecutor(executorUserId, executorName);
+  const resolvedExecutors = await resolveProjectExecutors(executorAssignments);
 
-  if (!resolvedExecutor) {
+  if (!resolvedExecutors) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { executorUserId: "Choose a valid project executor." },
+      fieldErrors: { executorUserId: "Choose valid project executors." },
     };
   }
 
@@ -593,7 +704,7 @@ export async function createProjectAction(
     ...new Set(
       [
         ...collaboratorIds,
-        resolvedExecutor.executorUserId,
+        ...resolvedExecutors.executors.map((executor) => executor.userId),
       ].filter(
         (collaboratorId): collaboratorId is string =>
           Boolean(collaboratorId) && collaboratorId !== user.id,
@@ -645,8 +756,8 @@ export async function createProjectAction(
         data: {
           name,
           category,
-          executorName: resolvedExecutor.executorName,
-          executorUserId: resolvedExecutor.executorUserId,
+          executorName: resolvedExecutors.executorName,
+          executorUserId: resolvedExecutors.executorUserId,
           tag: tag || null,
           description,
           budget,
@@ -658,6 +769,16 @@ export async function createProjectAction(
           currentStageName,
           stageCount: stageNames.length,
           createdById: user.id,
+          executors: {
+            createMany: {
+              data: resolvedExecutors.executors.map((executor) => ({
+                userId: executor.userId,
+                role: executor.role,
+                addedById: user.id,
+              })),
+              skipDuplicates: true,
+            },
+          },
           collaborators: {
             createMany: {
                 data: validCollaboratorIds.map((collaboratorId) => ({
@@ -781,9 +902,16 @@ export async function updateProjectAction(
       status: true,
       createdById: true,
       executorUserId: true,
+      executors: {
+        select: {
+          userId: true,
+          role: true,
+        },
+      },
       collaborators: {
         select: {
           userId: true,
+          participantType: true,
         },
       },
       stages: {
@@ -840,8 +968,7 @@ export async function updateProjectAction(
   const {
     name,
     category,
-    executorName,
-    executorUserId,
+    executorAssignments,
     tag,
     description,
     budget,
@@ -875,12 +1002,12 @@ export async function updateProjectAction(
     };
   }
 
-  const resolvedExecutor = await resolveProjectExecutor(executorUserId, executorName);
+  const resolvedExecutors = await resolveProjectExecutors(executorAssignments);
 
-  if (!resolvedExecutor) {
+  if (!resolvedExecutors) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { executorUserId: "Choose a valid project executor." },
+      fieldErrors: { executorUserId: "Choose valid project executors." },
     };
   }
 
@@ -888,7 +1015,7 @@ export async function updateProjectAction(
     ...new Set(
       [
         ...collaboratorIds,
-        resolvedExecutor.executorUserId,
+        ...resolvedExecutors.executors.map((executor) => executor.userId),
       ].filter(
         (collaboratorId): collaboratorId is string =>
           Boolean(collaboratorId) && collaboratorId !== existingProject.createdById,
@@ -912,6 +1039,12 @@ export async function updateProjectAction(
   const validCollaboratorIds = validCollaborators.map((collaborator) => collaborator.id);
   const existingCollaboratorIds = existingProject.collaborators.map(
     (collaborator) => collaborator.userId,
+  );
+  const existingCollaboratorParticipantTypeMap = new Map(
+    existingProject.collaborators.map((collaborator) => [
+      collaborator.userId,
+      collaborator.participantType as ProjectCollaboratorParticipantType | null,
+    ]),
   );
   const addedCollaboratorIds = validCollaboratorIds.filter(
     (collaboratorId) => !existingCollaboratorIds.includes(collaboratorId),
@@ -971,8 +1104,8 @@ export async function updateProjectAction(
         data: {
           name,
           category,
-          executorName: resolvedExecutor.executorName,
-          executorUserId: resolvedExecutor.executorUserId,
+          executorName: resolvedExecutors.executorName,
+          executorUserId: resolvedExecutors.executorUserId,
           tag: tag || null,
           description,
           budget: canUpdateBudget ? budget : existingProject.budget,
@@ -991,6 +1124,7 @@ export async function updateProjectAction(
                 addedById: user.id,
                 participantType:
                   collaboratorParticipantTypeMap.get(collaboratorId) ??
+                  existingCollaboratorParticipantTypeMap.get(collaboratorId) ??
                   getDefaultProjectCollaboratorParticipantType(
                     validCollaboratorTypeMap.get(collaboratorId) ?? "external",
                   ),
@@ -1000,6 +1134,57 @@ export async function updateProjectAction(
           },
         },
       });
+
+      const nextExecutorMap = new Map(
+        resolvedExecutors.executors.map((executor) => [executor.userId, executor] as const),
+      );
+      const existingExecutorMap = new Map(
+        existingProject.executors.map((executor) => [executor.userId, executor] as const),
+      );
+      const executorIdsToDelete = existingProject.executors
+        .map((executor) => executor.userId)
+        .filter((executorId) => !nextExecutorMap.has(executorId));
+
+      if (executorIdsToDelete.length > 0) {
+        await tx.projectExecutor.deleteMany({
+          where: {
+            projectId,
+            userId: {
+              in: executorIdsToDelete,
+            },
+          },
+        });
+      }
+
+      for (const executor of resolvedExecutors.executors) {
+        const existingExecutor = existingExecutorMap.get(executor.userId);
+
+        if (!existingExecutor) {
+          await tx.projectExecutor.create({
+            data: {
+              projectId,
+              userId: executor.userId,
+              role: executor.role,
+              addedById: user.id,
+            },
+          });
+          continue;
+        }
+
+        if (existingExecutor.role !== executor.role) {
+          await tx.projectExecutor.update({
+            where: {
+              projectId_userId: {
+                projectId,
+                userId: executor.userId,
+              },
+            },
+            data: {
+              role: executor.role,
+            },
+          });
+        }
+      }
 
       if (removedStages.length > 0) {
         await tx.projectStage.deleteMany({
@@ -1079,7 +1264,7 @@ export async function updateProjectAction(
       projectId,
       actorId: user.id,
       previousExecutorUserId: existingProject.executorUserId,
-      nextExecutorUserId: resolvedExecutor.executorUserId,
+      nextExecutorUserId: resolvedExecutors.executorUserId,
       addedCollaboratorIds,
       removedCollaboratorIds,
     }),

@@ -3,6 +3,7 @@ import {
   AttachmentStatus,
   AttachmentAssetType,
   Prisma,
+  ProjectExecutorRole,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   UserRole,
@@ -11,6 +12,7 @@ import type {
   CollaboratorType,
   Project,
   ProjectCollaborator,
+  ProjectExecutor,
   ProjectStage,
   ProjectStatus,
   User,
@@ -36,6 +38,7 @@ import {
   hasProjectPermission,
   isProjectAdmin,
   isProjectExecutor,
+  isMainProjectExecutor,
   isProjectOwner,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
@@ -50,6 +53,17 @@ export type ProjectAccessUser = PermissionUser;
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
   executorUser?: Pick<User, "id" | "name" | "email" | "collaboratorType"> | null;
+  executors?: Array<
+    ProjectExecutor & {
+      user: Pick<
+        User,
+        | "id"
+        | "name"
+        | "email"
+        | "collaboratorType"
+      >;
+    }
+  >;
   stages: ProjectStage[];
   collaborators?: Array<
     ProjectCollaborator & {
@@ -97,6 +111,7 @@ export type ProjectEditorRecord = {
   category: string;
   executorName: string;
   executorUserId?: string | null;
+  executors: ProjectExecutorRecord[];
   tag: string;
   priority: ProjectPriorityValue;
   description: string;
@@ -167,6 +182,15 @@ export type ProjectCollaboratorRecord = {
   removable?: boolean;
 };
 
+export type ProjectExecutorRecord = {
+  id: string;
+  name: string;
+  email?: string;
+  role: ProjectExecutorRole;
+  roleLabel: string;
+  group: "internal" | "external";
+};
+
 export type ProjectMentionParticipantRecord = {
   id: string;
   name: string;
@@ -226,6 +250,7 @@ export type ProjectFlowRecord = {
   id: string;
   ownerId: string;
   executorUserId?: string | null;
+  executors: ProjectExecutorRecord[];
   canViewBudget: boolean;
   title: string;
   category: string;
@@ -429,8 +454,94 @@ function mapProjectCollaboratorAssignmentToRecord(
   };
 }
 
+export function formatProjectExecutorRole(role: ProjectExecutorRole) {
+  return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
+}
+
+function compareProjectExecutorRecords(
+  left: ProjectExecutorRecord,
+  right: ProjectExecutorRecord,
+) {
+  if (left.role !== right.role) {
+    return left.role === ProjectExecutorRole.MAIN_EXECUTOR ? -1 : 1;
+  }
+
+  return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+}
+
+function mapProjectExecutorAssignmentToRecord(
+  assignment: ProjectExecutor & {
+    user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
+  },
+): ProjectExecutorRecord {
+  return {
+    id: assignment.user.id,
+    name: assignment.user.name?.trim() || assignment.user.email,
+    email: assignment.user.email,
+    role: assignment.role,
+    roleLabel: formatProjectExecutorRole(assignment.role),
+    group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
+  };
+}
+
+function getProjectExecutorRecords(project: Pick<ProjectWithCreator, "executorName" | "executorUserId" | "executorUser" | "executors">) {
+  const mappedExecutors = (project.executors ?? [])
+    .map(mapProjectExecutorAssignmentToRecord)
+    .filter((executor, index, current) =>
+      current.findIndex((item) => item.id === executor.id) === index,
+    )
+    .sort(compareProjectExecutorRecords);
+
+  if (mappedExecutors.length > 0) {
+    return mappedExecutors;
+  }
+
+  if (!project.executorUserId) {
+    return [];
+  }
+
+  return [
+    {
+      id: project.executorUserId,
+      name:
+        project.executorUser?.name?.trim() ||
+        project.executorUser?.email ||
+        project.executorName?.trim() ||
+        "Main Executor",
+      email: project.executorUser?.email,
+      role: ProjectExecutorRole.MAIN_EXECUTOR,
+      roleLabel: formatProjectExecutorRole(ProjectExecutorRole.MAIN_EXECUTOR),
+      group: project.executorUser
+        ? mapCollaboratorTypeToGroup(project.executorUser.collaboratorType)
+        : "internal",
+    },
+  ];
+}
+
+function getProjectExecutorDisplayName(executors: ProjectExecutorRecord[]) {
+  if (executors.length === 0) {
+    return "—";
+  }
+
+  const mainExecutors = executors.filter(
+    (executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
+  );
+  const primaryExecutors = mainExecutors.length > 0 ? mainExecutors : executors;
+  const firstExecutor = primaryExecutors[0];
+
+  if (!firstExecutor) {
+    return "—";
+  }
+
+  const remainingCount = executors.length - 1;
+  return remainingCount > 0
+    ? `${firstExecutor.name} +${remainingCount}`
+    : firstExecutor.name;
+}
+
 function canAccessProjectRecord(
   project: Pick<Project, "createdById" | "executorUserId"> & {
+    executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
     collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
   },
   currentUser: ProjectAccessUser,
@@ -439,7 +550,9 @@ function canAccessProjectRecord(
 }
 
 function canViewBriefContent(
-  project: Pick<Project, "createdById" | "executorUserId">,
+  project: Pick<Project, "createdById" | "executorUserId"> & {
+    executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
+  },
   currentUser: ProjectAccessUser,
 ) {
   return (
@@ -651,11 +764,8 @@ function mapProjectToFlow(
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
-  const executorDisplayName =
-    project.executorUser?.name?.trim() ||
-    project.executorUser?.email ||
-    project.executorName?.trim() ||
-    "—";
+  const executorRecords = getProjectExecutorRecords(project);
+  const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
   const stages = getProjectStages(project);
@@ -694,20 +804,14 @@ function mapProjectToFlow(
       group: "internal" as const,
       chatVisibilityPaused: false,
     },
-    ...(project.executorUser
-      ? [
-          {
-            id: project.executorUser.id,
-            name:
-              project.executorUser.name?.trim() ||
-              project.executorUser.email,
-            email: project.executorUser.email,
-            role: "Project Executor",
-            group: mapCollaboratorTypeToGroup(project.executorUser.collaboratorType),
-            chatVisibilityPaused: false,
-          },
-        ]
-      : []),
+    ...executorRecords.map((executor) => ({
+      id: executor.id,
+      name: executor.name,
+      email: executor.email,
+      role: executor.roleLabel,
+      group: executor.group,
+      chatVisibilityPaused: false,
+    })),
     ...collaboratorRecords.map((collaborator) => ({
       id: collaborator.id,
       name: collaborator.name,
@@ -725,6 +829,7 @@ function mapProjectToFlow(
     id: project.id,
     ownerId: project.createdById,
     executorUserId: project.executorUserId ?? null,
+    executors: executorRecords,
     canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
@@ -811,11 +916,8 @@ function mapProjectToEditor(
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectEditorRecord {
   const stages = getProjectStages(project);
-  const executorDisplayName =
-    project.executorUser?.name?.trim() ||
-    project.executorUser?.email ||
-    project.executorName?.trim() ||
-    "";
+  const executorRecords = getProjectExecutorRecords(project);
+  const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
   const projectBriefAttachments = project.attachments
@@ -844,6 +946,7 @@ function mapProjectToEditor(
     category: project.category,
     executorName: executorDisplayName,
     executorUserId: project.executorUserId ?? null,
+    executors: executorRecords,
     tag: project.tag?.trim() || "",
     priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
     description: allowBriefView ? project.description : "",
@@ -1065,6 +1168,12 @@ async function assertProjectCollaboratorManagementAccess(
         id: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
       },
     }),
   );
@@ -1107,6 +1216,71 @@ async function getProjectCollaboratorAssignments(projectId: string) {
   );
 
   return assignments.map(mapProjectCollaboratorAssignmentToRecord);
+}
+
+export async function getProjectExecutors(projectId: string) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: {
+        id: projectId,
+      },
+      select: {
+        executorName: true,
+        executorUserId: true,
+        executorUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            collaboratorType: true,
+          },
+        },
+        executors: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                collaboratorType: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  return project ? getProjectExecutorRecords(project) : [];
+}
+
+export async function requireMainExecutor(projectId: string, userId: string) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: {
+        id: projectId,
+      },
+      select: {
+        executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!isMainProjectExecutor({ id: userId }, project)) {
+    throw new Error("Only a Main Executor can perform this action.");
+  }
+
+  return project;
 }
 
 export async function removeProjectCollaborator(
@@ -1583,6 +1757,18 @@ export async function getProjectById(
                 collaboratorType: true,
               },
             },
+            executors: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
             stages: true,
             collaborators: {
               orderBy: {
@@ -1672,6 +1858,18 @@ export async function getProjectEditorById(
                 collaboratorType: true,
               },
             },
+            executors: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
             stages: true,
             collaborators: {
               orderBy: {
@@ -1748,6 +1946,12 @@ export async function getProjectEditAccessById(
         status: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         collaborators: {
           select: {
             userId: true,

@@ -36,6 +36,12 @@ export async function canUseChatAiTools(
       select: {
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         status: true,
         collaborators: {
           select: {

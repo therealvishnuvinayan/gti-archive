@@ -28,6 +28,7 @@ import {
   initialProjectFormState,
   type ProjectEditorInitialAttachment,
   type ProjectEditorInitialCollaborator,
+  type ProjectEditorInitialExecutor,
   type ProjectEditorInitialValues,
   type ProjectFormFieldErrors,
   type ProjectFormState,
@@ -137,6 +138,8 @@ type ExecutorOption = {
   email: string;
   type: CollaboratorRecord["type"];
 };
+
+type ProjectExecutorRoleValue = ProjectEditorInitialExecutor["role"];
 
 type UploadAssetResponse = {
   attachmentId?: string;
@@ -495,6 +498,28 @@ function formatExecutorTypeLabel(type: CollaboratorRecord["type"]) {
   return type === "External" ? "External Collaborator" : "Internal Collaborator";
 }
 
+function formatProjectExecutorRoleLabel(role: ProjectExecutorRoleValue) {
+  return role === "MAIN_EXECUTOR" ? "Main Executor" : "Executor";
+}
+
+function buildProjectExecutorRecord(
+  executor: ExecutorOption,
+  role: ProjectExecutorRoleValue,
+): ProjectEditorInitialExecutor {
+  return {
+    id: executor.id,
+    name: executor.name,
+    email: executor.email,
+    role,
+    roleLabel: formatProjectExecutorRoleLabel(role),
+    group: executor.type === "External" ? "external" : "internal",
+  };
+}
+
+function hasMainExecutor(executors: ProjectEditorInitialExecutor[]) {
+  return executors.some((executor) => executor.role === "MAIN_EXECUTOR");
+}
+
 function QuickAddMasterDataDialog({
   isOpen,
   kind,
@@ -772,26 +797,11 @@ export function CreateProjectWorkspace({
     action,
     initialProjectFormState,
   );
-  const initialExecutorOption =
-    availableCollaborators.find(
-      (collaborator) =>
-        collaborator.id === initialValues?.executorUserId ||
-        ((!initialValues?.executorUserId && initialValues?.executorName
-          ? collaborator.name.trim().toLowerCase() === initialValues.executorName.trim().toLowerCase() ||
-            collaborator.email.trim().toLowerCase() === initialValues.executorName.trim().toLowerCase()
-          : false)),
-    ) ?? null;
   const [projectName, setProjectName] = useState(initialValues?.name ?? "");
   const [availableCategoryOptions, setAvailableCategoryOptions] =
     useState<string[]>(categoryOptions);
   const [availableTagOptions, setAvailableTagOptions] = useState<string[]>(tagOptions);
   const [projectCategory, setProjectCategory] = useState(initialValues?.category ?? "");
-  const [projectExecutor, setProjectExecutor] = useState(
-    initialExecutorOption?.name ?? initialValues?.executorName ?? "",
-  );
-  const [projectExecutorUserId, setProjectExecutorUserId] = useState(
-    initialExecutorOption?.id ?? initialValues?.executorUserId ?? "",
-  );
   const [projectTag, setProjectTag] = useState(initialValues?.tag ?? "");
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
   const [projectCurrency, setProjectCurrency] = useState<string>(
@@ -849,6 +859,52 @@ export function CreateProjectWorkspace({
   const [assignedCollaborators, setAssignedCollaborators] = useState<ProjectEditorInitialCollaborator[]>(
     initialValues?.collaborators ?? [],
   );
+  const [projectExecutors, setProjectExecutors] = useState<ProjectEditorInitialExecutor[]>(
+    () => {
+      if (initialValues?.executors.length) {
+        return initialValues.executors;
+      }
+
+      const fallbackExecutor = availableCollaborators.find(
+        (collaborator) =>
+          collaborator.id === initialValues?.executorUserId ||
+          ((!initialValues?.executorUserId && initialValues?.executorName
+            ? collaborator.name.trim().toLowerCase() ===
+                initialValues.executorName.trim().toLowerCase() ||
+              collaborator.email.trim().toLowerCase() ===
+                initialValues.executorName.trim().toLowerCase()
+            : false)),
+      );
+
+      if (fallbackExecutor) {
+        return [
+          buildProjectExecutorRecord(
+            {
+              id: fallbackExecutor.id,
+              name: fallbackExecutor.name,
+              email: fallbackExecutor.email,
+              type: fallbackExecutor.type,
+            },
+            "MAIN_EXECUTOR",
+          ),
+        ];
+      }
+
+      if (initialValues?.executorUserId && initialValues.executorName) {
+        return [
+          {
+            id: initialValues.executorUserId,
+            name: initialValues.executorName,
+            role: "MAIN_EXECUTOR",
+            roleLabel: formatProjectExecutorRoleLabel("MAIN_EXECUTOR"),
+            group: "internal",
+          },
+        ];
+      }
+
+      return [];
+    },
+  );
   const [projectAttachments, setProjectAttachments] = useState<ProjectEditorInitialAttachment[]>(
     initialValues?.attachments ?? [],
   );
@@ -867,6 +923,10 @@ export function CreateProjectWorkspace({
   const [budgetConflictDialogOpen, setBudgetConflictDialogOpen] = useState(false);
   const [executorPickerOpen, setExecutorPickerOpen] = useState(false);
   const [executorSearch, setExecutorSearch] = useState("");
+  const [executorRoleDraft, setExecutorRoleDraft] =
+    useState<ProjectExecutorRoleValue>("MAIN_EXECUTOR");
+  const [executorRemovalTarget, setExecutorRemovalTarget] =
+    useState<ProjectEditorInitialExecutor | null>(null);
   const [quickAddMasterDataKind, setQuickAddMasterDataKind] =
     useState<QuickAddMasterDataKind | null>(null);
   const [quickAddMasterDataName, setQuickAddMasterDataName] = useState("");
@@ -1003,9 +1063,9 @@ export function CreateProjectWorkspace({
       })),
     [availableCollaboratorRecords],
   );
-  const selectedExecutorOption = useMemo(
-    () => executorOptions.find((option) => option.id === projectExecutorUserId) ?? null,
-    [executorOptions, projectExecutorUserId],
+  const selectedExecutorIds = useMemo(
+    () => new Set(projectExecutors.map((executor) => executor.id)),
+    [projectExecutors],
   );
   const filteredExecutorOptions = useMemo(() => {
     const query = executorSearch.trim().toLowerCase();
@@ -1020,6 +1080,25 @@ export function CreateProjectWorkspace({
       ),
     );
   }, [executorOptions, executorSearch]);
+  const primaryProjectExecutor = useMemo(
+    () =>
+      projectExecutors.find((executor) => executor.role === "MAIN_EXECUTOR") ??
+      projectExecutors[0] ??
+      null,
+    [projectExecutors],
+  );
+  const projectExecutor = primaryProjectExecutor?.name ?? "";
+  const projectExecutorUserId = primaryProjectExecutor?.id ?? "";
+  const executorOverviewLabel = useMemo(() => {
+    if (!primaryProjectExecutor) {
+      return "—";
+    }
+
+    const remainingCount = Math.max(projectExecutors.length - 1, 0);
+    return remainingCount > 0
+      ? `${primaryProjectExecutor.name} +${remainingCount}`
+      : primaryProjectExecutor.name;
+  }, [primaryProjectExecutor, projectExecutors.length]);
   const overview = useMemo(
     () => ({
       budget: canViewBudget
@@ -1040,7 +1119,7 @@ export function CreateProjectWorkspace({
       stages: stages.length,
       started: startDate ? formatDateValue(startDate) : "—",
       deadline: endDate ? formatDateValue(endDate) : "—",
-      executor: projectExecutor || "—",
+      executor: executorOverviewLabel,
       tag: projectTag || "—",
       status:
         projectStatusOptions.find((option) => option.value === projectStatus)?.label || "—",
@@ -1050,7 +1129,7 @@ export function CreateProjectWorkspace({
       canViewBudget,
       projectBudget,
       projectCurrency,
-      projectExecutor,
+      executorOverviewLabel,
       projectTag,
       projectPriority,
       projectStatus,
@@ -1201,6 +1280,91 @@ export function CreateProjectWorkspace({
     setCollaboratorError(undefined);
     setDraftCollaboratorIds(assignedCollaborators.map((collaborator) => collaborator.id));
     setPickerOpen(true);
+  }
+
+  function upsertProjectExecutor(
+    executor: ExecutorOption,
+    role: ProjectExecutorRoleValue,
+  ) {
+    const nextExecutor = buildProjectExecutorRecord(executor, role);
+
+    setProjectExecutors((current) => {
+      const existingIndex = current.findIndex((item) => item.id === executor.id);
+
+      if (existingIndex === -1) {
+        return [...current, nextExecutor];
+      }
+
+      return current.map((item, index) =>
+        index === existingIndex
+          ? {
+              ...item,
+              role,
+              roleLabel: formatProjectExecutorRoleLabel(role),
+            }
+          : item,
+      );
+    });
+    clearFieldError("executorUserId");
+    clearFieldError("executorName");
+  }
+
+  function updateProjectExecutorRole(
+    executorId: string,
+    role: ProjectExecutorRoleValue,
+  ) {
+    setProjectExecutors((current) => {
+      const target = current.find((executor) => executor.id === executorId);
+
+      if (!target || target.role === role) {
+        return current;
+      }
+
+      if (
+        target.role === "MAIN_EXECUTOR" &&
+        role !== "MAIN_EXECUTOR" &&
+        current.filter((executor) => executor.role === "MAIN_EXECUTOR").length <= 1
+      ) {
+        showErrorToast(
+          "Main Executor required.",
+          "At least one Main Executor must remain assigned to the project.",
+        );
+        return current;
+      }
+
+      return current.map((executor) =>
+        executor.id === executorId
+          ? {
+              ...executor,
+              role,
+              roleLabel: formatProjectExecutorRoleLabel(role),
+            }
+          : executor,
+      );
+    });
+    clearFieldError("executorUserId");
+    clearFieldError("executorName");
+  }
+
+  function removeProjectExecutor(executor: ProjectEditorInitialExecutor) {
+    if (
+      executor.role === "MAIN_EXECUTOR" &&
+      projectExecutors.filter((item) => item.role === "MAIN_EXECUTOR").length <= 1
+    ) {
+      showErrorToast(
+        "Main Executor required.",
+        "At least one Main Executor must remain assigned to the project.",
+      );
+      setExecutorRemovalTarget(null);
+      return;
+    }
+
+    setProjectExecutors((current) =>
+      current.filter((item) => item.id !== executor.id),
+    );
+    setExecutorRemovalTarget(null);
+    clearFieldError("executorUserId");
+    clearFieldError("executorName");
   }
 
   function toggleAssignedCollaborator(collaboratorId: string) {
@@ -1459,8 +1623,15 @@ export function CreateProjectWorkspace({
       setAvailableCollaboratorRecords((current) =>
         upsertCollaboratorRecord(current, result.collaborator),
       );
-      setProjectExecutorUserId(result.collaborator.id);
-      setProjectExecutor(result.collaborator.name);
+      upsertProjectExecutor(
+        {
+          id: result.collaborator.id,
+          name: result.collaborator.name,
+          email: result.collaborator.email,
+          type: result.collaborator.type,
+        },
+        executorRoleDraft,
+      );
       setExecutorInviteOpen(false);
       setExecutorPickerOpen(false);
       setExecutorSearch("");
@@ -1501,6 +1672,15 @@ export function CreateProjectWorkspace({
   function handleProjectFormSubmit(event: React.FormEvent<HTMLFormElement>) {
     setDirtyFieldKeys(new Set());
     setTimelineSubmitAttempted(true);
+
+    if (!hasMainExecutor(projectExecutors)) {
+      event.preventDefault();
+      showErrorToast(
+        "Main Executor required.",
+        "Add at least one Main Executor before saving the project.",
+      );
+      return;
+    }
 
     const timelineValidation = validateClientStageTimeline({
       stages,
@@ -2149,6 +2329,12 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="category" value={projectCategory} />
       <input type="hidden" name="executorName" value={projectExecutor} />
       <input type="hidden" name="executorUserId" value={projectExecutorUserId} />
+      {projectExecutors.map((executor) => (
+        <div key={executor.id}>
+          <input type="hidden" name="executorIds" value={executor.id} />
+          <input type="hidden" name="executorRoles" value={executor.role} />
+        </div>
+      ))}
       <input type="hidden" name="tag" value={projectTag} />
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
@@ -2254,120 +2440,6 @@ export function CreateProjectWorkspace({
                   </SelectContent>
                 </Select>
                 <FieldError message={getFieldError("category", fieldErrors.category)} />
-              </label>
-
-              <label className="block">
-                <RequiredLabel>Project Executor</RequiredLabel>
-                <div ref={executorPickerRef} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExecutorPickerOpen((current) => !current);
-                      setExecutorSearch("");
-                    }}
-                    className="flex h-[42px] w-full items-center justify-between rounded-full border border-line bg-white px-4 text-left text-[12px] font-medium text-[#111712] shadow-[0_6px_16px_rgba(16,29,21,0.04)]"
-                    aria-haspopup="listbox"
-                    aria-expanded={executorPickerOpen}
-                  >
-                    <span className="truncate">
-                      {selectedExecutorOption?.name ||
-                        projectExecutor ||
-                        "Search and select executor"}
-                    </span>
-                    <ChevronDown className="h-4 w-4 shrink-0 text-[#7b857d]" />
-                  </button>
-
-                  {executorPickerOpen ? (
-                    <div className="absolute z-30 mt-2 w-full rounded-[20px] border border-[#dde6de] bg-white p-3 shadow-[0_24px_50px_rgba(17,31,23,0.12)]">
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a948c]" />
-                        <Input
-                          value={executorSearch}
-                          onChange={(event) => setExecutorSearch(event.target.value)}
-                          placeholder="Search and select executor"
-                          className="h-10 pl-9 text-[12px]"
-                          autoFocus
-                        />
-                      </div>
-
-                      <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
-                        {filteredExecutorOptions.length > 0 ? (
-                          filteredExecutorOptions.map((option) => {
-                            const isSelected = option.id === projectExecutorUserId;
-
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => {
-                                  setProjectExecutorUserId(option.id);
-                                  setProjectExecutor(option.name);
-                                  setExecutorPickerOpen(false);
-                                  setExecutorSearch("");
-                                  clearFieldError("executorUserId");
-                                  clearFieldError("executorName");
-                                }}
-                                className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2 text-left transition ${
-                                  isSelected
-                                    ? "bg-[#eef7ef]"
-                                    : "bg-[#fbfcfa] hover:bg-[#f3f8f3]"
-                                }`}
-                              >
-                                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
-                                  {isSelected ? (
-                                    <Check className="h-4 w-4 text-brand" />
-                                  ) : (
-                                    <span className="h-2.5 w-2.5 rounded-full bg-[#d6dfd8]" />
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="truncate text-[13px] font-[700] text-[#162019]">
-                                    {option.name}
-                                  </p>
-                                  <p className="truncate text-[11px] text-[#6f796f]">
-                                    {option.email}
-                                  </p>
-                                  <p className="mt-1 text-[10px] font-[700] uppercase tracking-[0.08em] text-brand">
-                                    {formatExecutorTypeLabel(option.type)}
-                                  </p>
-                                </div>
-                              </button>
-                            );
-                          })
-                        ) : (
-                          <div className="rounded-[16px] border border-dashed border-[#d7dfd7] bg-[#fbfcfa] px-4 py-5 text-center text-[12px] text-[#7a837b]">
-                            No executor found.
-                          </div>
-                        )}
-                      </div>
-
-                      {canInviteExecutor ? (
-                        <>
-                          <Separator className="my-3" />
-                          <button
-                            type="button"
-                            onClick={() => openExecutorInvite(executorSearch)}
-                            className="flex w-full items-center justify-center rounded-[16px] border border-[#dbe7dc] bg-[#f7fbf7] px-3 py-2 text-[13px] font-[700] text-brand transition hover:bg-[#eef8ef]"
-                          >
-                            + Invite new executor
-                          </button>
-                        </>
-                      ) : null}
-
-                      {!selectedExecutorOption && projectExecutor ? (
-                        <p className="mt-3 text-[11px] text-[#7a837b]">
-                          Current saved executor: <span className="font-[700] text-[#243028]">{projectExecutor}</span>
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-                <FieldError
-                  message={
-                    getFieldError("executorUserId", fieldErrors.executorUserId) ||
-                    getFieldError("executorName", fieldErrors.executorName)
-                  }
-                />
               </label>
 
               <label className="block">
@@ -3180,6 +3252,199 @@ export function CreateProjectWorkspace({
         </Card>
         </MotionItem>
         <MotionItem y={10}>
+        <Card className="rounded-[20px]">
+          <CardHeader className="flex-col items-start gap-2 pb-3">
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-[20px] leading-[1.15]">
+                  Project Executors
+                </CardTitle>
+                <p className="mt-1 text-[12px] font-[600] text-[#7a837b]">
+                  {projectExecutors.length} {projectExecutors.length === 1 ? "member" : "members"}
+                </p>
+              </div>
+            </div>
+            <div ref={executorPickerRef} className="relative w-full">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setExecutorPickerOpen((current) => !current);
+                  setExecutorSearch("");
+                }}
+                className="-ml-2 h-auto px-2 py-1 text-[13px] font-[600] text-brand"
+                aria-haspopup="listbox"
+                aria-expanded={executorPickerOpen}
+              >
+                <Plus className="h-4 w-4" />
+                Add Executor
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+
+              {executorPickerOpen ? (
+                <div className="absolute z-30 mt-2 w-full rounded-[20px] border border-[#dde6de] bg-white p-3 shadow-[0_24px_50px_rgba(17,31,23,0.12)]">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["MAIN_EXECUTOR", "EXECUTOR"] as ProjectExecutorRoleValue[]).map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setExecutorRoleDraft(role)}
+                        className={`rounded-full px-3 py-2 text-[11px] font-[800] transition ${
+                          executorRoleDraft === role
+                            ? "bg-brand text-white"
+                            : "border border-[#dbe7dc] bg-[#f7fbf7] text-brand"
+                        }`}
+                      >
+                        {formatProjectExecutorRoleLabel(role)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative mt-3">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a948c]" />
+                    <Input
+                      value={executorSearch}
+                      onChange={(event) => setExecutorSearch(event.target.value)}
+                      placeholder="Search and select executor"
+                      className="h-10 pl-9 text-[12px]"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
+                    {filteredExecutorOptions.length > 0 ? (
+                      filteredExecutorOptions.map((option) => {
+                        const isSelected = selectedExecutorIds.has(option.id);
+
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => {
+                              upsertProjectExecutor(option, executorRoleDraft);
+                              setExecutorPickerOpen(false);
+                              setExecutorSearch("");
+                            }}
+                            className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2 text-left transition ${
+                              isSelected
+                                ? "bg-[#eef7ef]"
+                                : "bg-[#fbfcfa] hover:bg-[#f3f8f3]"
+                            }`}
+                          >
+                            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
+                              {isSelected ? (
+                                <Check className="h-4 w-4 text-brand" />
+                              ) : (
+                                <span className="h-2.5 w-2.5 rounded-full bg-[#d6dfd8]" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-[700] text-[#162019]">
+                                {option.name}
+                              </p>
+                              <p className="truncate text-[11px] text-[#6f796f]">
+                                {option.email}
+                              </p>
+                              <p className="mt-1 text-[10px] font-[700] uppercase tracking-[0.08em] text-brand">
+                                {isSelected ? "Update role" : formatExecutorTypeLabel(option.type)}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-[16px] border border-dashed border-[#d7dfd7] bg-[#fbfcfa] px-4 py-5 text-center text-[12px] text-[#7a837b]">
+                        No executor found.
+                      </div>
+                    )}
+                  </div>
+
+                  {canInviteExecutor ? (
+                    <>
+                      <Separator className="my-3" />
+                      <button
+                        type="button"
+                        onClick={() => openExecutorInvite(executorSearch)}
+                        className="flex w-full items-center justify-center rounded-[16px] border border-[#dbe7dc] bg-[#f7fbf7] px-3 py-2 text-[13px] font-[700] text-brand transition hover:bg-[#eef8ef]"
+                      >
+                        + Invite new executor
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </CardHeader>
+
+          <CardContent className="pt-0">
+            {projectExecutors.length > 0 ? (
+              <ul className="space-y-2">
+                {projectExecutors.map((executor) => (
+                  <li
+                    key={executor.id}
+                    className="flex min-h-[58px] items-start gap-3 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-2"
+                  >
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#d7efe0,#2f8d5d)] text-[10px] font-[800] text-white">
+                      {executor.name
+                        .split(" ")
+                        .map((part) => part[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-[700] leading-5 text-[#111712]">
+                        {executor.name}
+                      </p>
+                      <p className="truncate text-[11px] leading-4 text-[#7a837b]">
+                        {executor.email ?? executor.roleLabel}
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        {(["MAIN_EXECUTOR", "EXECUTOR"] as ProjectExecutorRoleValue[]).map((role) => (
+                          <button
+                            key={role}
+                            type="button"
+                            onClick={() => updateProjectExecutorRole(executor.id, role)}
+                            className={`rounded-full px-2 py-1 text-[10px] font-[800] transition ${
+                              executor.role === role
+                                ? "bg-brand text-white"
+                                : "border border-[#dbe7dc] bg-white text-brand"
+                            }`}
+                          >
+                            {role === "MAIN_EXECUTOR" ? "Main" : "Executor"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 text-[#ff6e68]"
+                      onClick={() => setExecutorRemovalTarget(executor)}
+                      aria-label={`Remove ${executor.name}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="rounded-[14px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-4 py-5 text-[13px] text-[#7a837b]">
+                No executors added yet.
+              </p>
+            )}
+            <FieldError
+              message={
+                getFieldError("executorUserId", fieldErrors.executorUserId) ||
+                getFieldError("executorName", fieldErrors.executorName)
+              }
+            />
+          </CardContent>
+        </Card>
+        </MotionItem>
+        <MotionItem y={10}>
         <ProjectCollaboratorsSummary
           collaborators={collaboratorSummaryRecords}
           onAdd={openProjectCollaboratorPicker}
@@ -3247,6 +3512,24 @@ export function CreateProjectWorkspace({
         onChange={(field, value) => {
           setExecutorInviteError(undefined);
           setExecutorInviteFormValue(field, value);
+        }}
+      />
+      <ConfirmationDialog
+        isOpen={executorRemovalTarget !== null}
+        title="Remove project executor?"
+        description={
+          executorRemovalTarget
+            ? `${executorRemovalTarget.name} will no longer be assigned as a project executor. They may remain a project collaborator if they were added separately.`
+            : ""
+        }
+        confirmLabel="Remove Executor"
+        cancelLabel="Cancel"
+        tone="destructive"
+        onClose={() => setExecutorRemovalTarget(null)}
+        onConfirm={() => {
+          if (executorRemovalTarget) {
+            removeProjectExecutor(executorRemovalTarget);
+          }
         }}
       />
       <ConfirmationDialog

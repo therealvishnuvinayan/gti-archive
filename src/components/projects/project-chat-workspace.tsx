@@ -61,7 +61,10 @@ import {
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
 import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
-import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
+import {
+  ProjectCollaboratorsPanel,
+  ProjectExecutorsPanel,
+} from "@/components/projects/project-collaborators-panel";
 import { StageTimeRemainingCard } from "@/components/projects/stage-time-remaining-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1276,7 +1279,24 @@ export function ProjectChatWorkspace({
   const canCompleteProject =
     completionState.canCompleteProject && isProjectOwner && !isProjectCompleted;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
-  const isProjectExecutor = project.executorUserId === currentUserId;
+  const isProjectExecutor = useMemo(
+    () =>
+      project.executors.length > 0
+        ? project.executors.some((executor) => executor.id === currentUserId)
+        : project.executorUserId === currentUserId,
+    [currentUserId, project.executorUserId, project.executors],
+  );
+  const isMainProjectExecutor = useMemo(
+    () =>
+      !isProjectOwner &&
+      (project.executors.length > 0
+        ? project.executors.some(
+            (executor) =>
+              executor.id === currentUserId && executor.role === "MAIN_EXECUTOR",
+          )
+        : project.executorUserId === currentUserId),
+    [currentUserId, isProjectOwner, project.executorUserId, project.executors],
+  );
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
   const projectBriefText = project.description.trim();
   const stageBriefText = activeStage?.description.trim() ?? "";
@@ -1292,13 +1312,29 @@ export function ProjectChatWorkspace({
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
   const currentUserDisplayName = useMemo(() => {
+    const executor = project.executors.find(
+      (candidate) => candidate.id === currentUserId,
+    );
+
+    if (executor) {
+      return executor.name;
+    }
+
     const collaborator = project.collaborators.find(
       (candidate) => candidate.id === currentUserId,
     );
 
     return collaborator?.name || "You";
-  }, [currentUserId, project.collaborators]);
+  }, [currentUserId, project.collaborators, project.executors]);
   const currentUserRoleLabel = useMemo(() => {
+    const executor = project.executors.find(
+      (candidate) => candidate.id === currentUserId,
+    );
+
+    if (executor) {
+      return executor.roleLabel;
+    }
+
     const collaborator = project.collaborators.find(
       (candidate) => candidate.id === currentUserId,
     );
@@ -1308,7 +1344,7 @@ export function ProjectChatWorkspace({
     }
 
     return collaborator.group === "external" ? "External Collaborator" : "Internal Team";
-  }, [currentUserId, project.collaborators]);
+  }, [currentUserId, project.collaborators, project.executors]);
   const mentionableParticipants = useMemo<ProjectMentionParticipantRecord[]>(
     () =>
       project.mentionParticipants.filter(
@@ -2333,7 +2369,7 @@ export function ProjectChatWorkspace({
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
 
-    if (!isProjectExecutor) {
+    if (!isMainProjectExecutor) {
       commentAttachmentInputRef.current?.click();
       return;
     }
@@ -2355,7 +2391,7 @@ export function ProjectChatWorkspace({
       return;
     }
 
-    const selectedAssetType: CommentUploadIntent = isProjectExecutor
+    const selectedAssetType: CommentUploadIntent = isMainProjectExecutor
       ? commentUploadIntent
       : "COMMENT_ATTACHMENT";
 
@@ -3319,7 +3355,7 @@ export function ProjectChatWorkspace({
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 Upload the first revision to start the proof and archive trail.
               </p>
-              {!isProjectCompleted && isProjectExecutor && hasAcceptedBrief ? (
+              {!isProjectCompleted && isMainProjectExecutor && hasAcceptedBrief ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -3334,7 +3370,7 @@ export function ProjectChatWorkspace({
                     Submit First Work
                   </Button>
                 </div>
-              ) : !isProjectCompleted && isProjectExecutor ? (
+              ) : !isProjectCompleted && isMainProjectExecutor ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -3445,7 +3481,7 @@ export function ProjectChatWorkspace({
                         ) : null}
                         {index === firstRevisionIndex &&
                         !isProjectCompleted &&
-                        isProjectExecutor &&
+                        isMainProjectExecutor &&
                         hasAcceptedBrief ? (
                           <Button
                             type="button"
@@ -3526,7 +3562,7 @@ export function ProjectChatWorkspace({
 
           {!hasRevisionEntries && displayedMessages.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {!isProjectCompleted && isProjectExecutor && !hasAcceptedBrief ? (
+              {!isProjectCompleted && isMainProjectExecutor && !hasAcceptedBrief ? (
                 <>
                   <Button
                     type="button"
@@ -3554,7 +3590,7 @@ export function ProjectChatWorkspace({
                   </Button>
                 </>
               ) : null}
-              {!isProjectCompleted && isProjectExecutor && hasAcceptedBrief ? (
+              {!isProjectCompleted && isMainProjectExecutor && hasAcceptedBrief ? (
                 <Button
                   type="button"
                   onClick={openRevisionDialog}
@@ -3938,6 +3974,8 @@ export function ProjectChatWorkspace({
               )}
             </CardContent>
           </Card>
+
+          <ProjectExecutorsPanel executors={project.executors} />
 
           <ProjectCollaboratorsPanel
             collaborators={collaborators}

@@ -1,4 +1,12 @@
-import { Prisma, UserRole, type Project, type ProjectCollaborator, type User } from "@prisma/client";
+import {
+  Prisma,
+  ProjectExecutorRole,
+  UserRole,
+  type Project,
+  type ProjectCollaborator,
+  type ProjectExecutor,
+  type User,
+} from "@prisma/client";
 
 import {
   defaultRolePermissions,
@@ -14,6 +22,7 @@ export type ProjectPermissionContext = Pick<
   Project,
   "createdById" | "executorUserId"
 > & {
+  executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
   collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
 };
 
@@ -46,7 +55,7 @@ function isProjectMember(
   user: PermissionUser,
   project: ProjectPermissionContext,
 ) {
-  if (project.createdById === user.id || project.executorUserId === user.id) {
+  if (project.createdById === user.id || isProjectExecutor(user, project)) {
     return true;
   }
 
@@ -69,8 +78,27 @@ export function isProjectOwner(
 
 export function isProjectExecutor(
   user: Pick<PermissionUser, "id">,
-  project: Pick<ProjectPermissionContext, "executorUserId">,
+  project: Pick<ProjectPermissionContext, "executorUserId" | "executors">,
 ) {
+  if (project.executors && project.executors.length > 0) {
+    return project.executors.some((executor) => executor.userId === user.id);
+  }
+
+  return Boolean(project.executorUserId && project.executorUserId === user.id);
+}
+
+export function isMainProjectExecutor(
+  user: Pick<PermissionUser, "id">,
+  project: Pick<ProjectPermissionContext, "executorUserId" | "executors">,
+) {
+  if (project.executors && project.executors.length > 0) {
+    return project.executors.some(
+      (executor) =>
+        executor.userId === user.id &&
+        executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
+    );
+  }
+
   return Boolean(project.executorUserId && project.executorUserId === user.id);
 }
 
@@ -115,6 +143,13 @@ export function getAccessibleProjectsWhere(user: PermissionUser): Prisma.Project
     OR: [
       { createdById: user.id },
       { executorUserId: user.id },
+      {
+        executors: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
       {
         collaborators: {
           some: {
@@ -167,7 +202,7 @@ export function hasProjectPermission(
     case "stage.acceptBrief":
     case "stage.submitWork":
     case "file.uploadSubmission":
-      return isProjectExecutor(user, project);
+      return !isProjectOwner(user, project) && isMainProjectExecutor(user, project);
     case "stage.reviewSubmission":
     case "stage.requestRevision":
     case "stage.markSubmissionComplete":

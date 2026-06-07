@@ -53,6 +53,11 @@ enum ProjectPriority {
   URGENT
 }
 
+enum ProjectExecutorRole {
+  MAIN_EXECUTOR
+  EXECUTOR
+}
+
 enum CalendarEventType {
   PROJECTS
   EVENTS
@@ -197,6 +202,8 @@ model User {
   activityLogs      ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
   assignedProjects  Project[]           @relation("ProjectExecutor")
+  projectExecutorAssignments ProjectExecutor[] @relation("ProjectExecutorUser")
+  addedProjectExecutorAssignments ProjectExecutor[] @relation("ProjectExecutorAddedBy")
   startedProjectStages ProjectStage[]   @relation("ProjectStageStarter")
   reviewedStageSubmissions ProjectAttachment[] @relation("SubmissionReviewer")
   calendarEvents    CalendarEvent[]
@@ -304,6 +311,7 @@ model Project {
   attachments      ProjectAttachment[]
   activityLogs     ProjectActivityLog[]
   collaborators    ProjectCollaborator[]
+  executors        ProjectExecutor[]
   archive          ProjectArchive?
   archivedFiles    ArchivedProjectFile[]
   completionWorkflow ProjectCompletionWorkflow?
@@ -366,6 +374,23 @@ model ProjectCollaborator {
   @@id([projectId, userId])
   @@index([userId])
   @@index([addedById])
+}
+
+model ProjectExecutor {
+  projectId String
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation("ProjectExecutorUser", fields: [userId], references: [id], onDelete: Cascade)
+  role      ProjectExecutorRole @default(EXECUTOR)
+  addedById String?
+  addedBy   User?               @relation("ProjectExecutorAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@index([addedById])
+  @@index([role])
 }
 
 model ProjectCollaboratorVisibilityPause {

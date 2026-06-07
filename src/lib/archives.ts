@@ -183,6 +183,12 @@ async function getProjectArchiveBase(projectId: string) {
         status: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         collaborators: {
           select: {
             userId: true,

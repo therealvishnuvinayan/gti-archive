@@ -338,13 +338,13 @@ const permissionMetadata: Record<
   },
   "stage.acceptBrief": {
     label: "Accept briefs",
-    description: "Accept and start stage work when executor rules allow it.",
+    description: "Accept and start stage work when Main Executor rules allow it.",
     moduleGated: true,
     hardRule: true,
   },
   "stage.submitWork": {
     label: "Submit work",
-    description: "Submit stage work when executor rules allow it.",
+    description: "Submit stage work when Main Executor rules allow it.",
     moduleGated: true,
     hardRule: true,
   },
@@ -446,7 +446,7 @@ const permissionMetadata: Record<
   },
   "file.uploadSubmission": {
     label: "Upload submissions",
-    description: "Upload stage submissions when executor rules allow it.",
+    description: "Upload stage submissions when Main Executor rules allow it.",
     moduleGated: true,
     hardRule: true,
   },
