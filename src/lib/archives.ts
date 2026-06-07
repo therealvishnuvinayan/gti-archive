@@ -106,6 +106,12 @@ export type ProjectCompletionSummary = {
   isSelectedStageFinal: boolean;
   canCompleteProject: boolean;
   approvedFileCount: number;
+  allStagesCompleted: boolean;
+  incompleteStages: Array<{
+    id: string;
+    name: string;
+    status: string;
+  }>;
   archiveCategorySlug: ArchiveCategorySlug | null;
   archiveCategoryLabel: string | null;
   archivedFiles: ArchivedProjectFileRecord[];
@@ -393,6 +399,52 @@ function normalizePreparedArchiveFiles(files: ArchivableAttachment[]) {
   }));
 }
 
+function formatProjectStageStatus(status: string) {
+  switch (status) {
+    case "COMPLETED":
+      return "Completed";
+    case "ONGOING":
+      return "In Progress";
+    case "PENDING":
+      return "Pending";
+    case "ON_HOLD":
+      return "On Hold";
+    default:
+      return status
+        .toLowerCase()
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+  }
+}
+
+function getIncompleteProjectStages(
+  project: { stages: Array<{ id: string; name: string; status: string }> },
+) {
+  return project.stages
+    .filter((stage) => stage.status !== "COMPLETED")
+    .map((stage) => ({
+      id: stage.id,
+      name: stage.name,
+      status: formatProjectStageStatus(stage.status),
+    }));
+}
+
+function getAllStagesCompletionError(
+  project: { stages: Array<{ id: string; name: string; status: string }> },
+) {
+  const incompleteStages = getIncompleteProjectStages(project);
+
+  if (incompleteStages.length === 0) {
+    return null;
+  }
+
+  return [
+    "All stages must be completed before the project can be completed.",
+    ...incompleteStages.map((stage) => `${stage.name} — ${stage.status}`),
+  ].join("\n");
+}
+
 function ensureProjectCanBeCompleted(
   user: ArchiveAccessUser,
   project: NonNullable<Awaited<ReturnType<typeof getProjectArchiveBase>>>,
@@ -418,6 +470,12 @@ function ensureProjectCanBeCompleted(
 
   if (finalStage.id !== stageId) {
     throw new Error("Project completion is only available in the final stage.");
+  }
+
+  const allStagesCompletionError = getAllStagesCompletionError(project);
+
+  if (allStagesCompletionError) {
+    throw new Error(allStagesCompletionError);
   }
 
   return finalStage;
@@ -517,7 +575,7 @@ function getCompletionDocumentArchiveTypeLabel(type: ProjectCompletionDocumentTy
       return "Copyright Transfer";
     case ProjectCompletionDocumentType.INVOICE:
     default:
-      return "Invoice";
+      return "Final Invoice";
   }
 }
 
@@ -845,6 +903,8 @@ export async function getProjectCompletionSummary(
   const finalStage = project.stages.at(-1) ?? null;
   const stageIdToCheck = selectedStageId ?? finalStage?.id ?? null;
   const isSelectedStageFinal = Boolean(finalStage && stageIdToCheck === finalStage.id);
+  const incompleteStages = getIncompleteProjectStages(project);
+  const allStagesCompleted = incompleteStages.length === 0 && project.stages.length > 0;
   const isCompleted = Boolean(
     project.archive || project.archivedAt || project.completedAt || project.status === "COMPLETED",
   );
@@ -867,9 +927,12 @@ export async function getProjectCompletionSummary(
       project.createdById === user.id &&
       Boolean(finalStage) &&
       isSelectedStageFinal &&
+      allStagesCompleted &&
       !isCompleted &&
       approvedFiles.length > 0,
     approvedFileCount: approvedFiles.length,
+    allStagesCompleted,
+    incompleteStages,
     archiveCategorySlug:
       project.archive && isArchiveCategorySlug(project.archive.archiveCategorySlug)
         ? project.archive.archiveCategorySlug
@@ -982,6 +1045,16 @@ export async function completeProjectArchive(
               id: true,
             },
           },
+          stages: {
+            orderBy: {
+              order: "asc",
+            },
+            select: {
+              id: true,
+              name: true,
+              status: true,
+            },
+          },
         },
       });
 
@@ -1000,6 +1073,12 @@ export async function completeProjectArchive(
         latestProject.status === "COMPLETED"
       ) {
         throw new Error("Project is already completed.");
+      }
+
+      const allStagesCompletionError = getAllStagesCompletionError(latestProject);
+
+      if (allStagesCompletionError) {
+        throw new Error(allStagesCompletionError);
       }
 
       const archive = await tx.projectArchive.create({
@@ -1032,16 +1111,6 @@ export async function completeProjectArchive(
         },
         select: {
           id: true,
-        },
-      });
-
-      await tx.projectStage.update({
-        where: {
-          id: finalStage.id,
-        },
-        data: {
-          status: "COMPLETED",
-          completedAt: archivedAt,
         },
       });
 

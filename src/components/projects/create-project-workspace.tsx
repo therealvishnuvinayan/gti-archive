@@ -100,6 +100,7 @@ type StageForm = {
   name: string;
   budget: string;
   description: string;
+  invoiceRequired: boolean;
   plannedStartAt: string;
   plannedDueAt: string;
   attachments: ProjectEditorInitialAttachment[];
@@ -836,6 +837,7 @@ export function CreateProjectWorkspace({
           name: stage.name,
           budget: stage.budget,
           description: stage.description,
+          invoiceRequired: stage.invoiceRequired ?? true,
           plannedStartAt: stage.plannedStartAt,
           plannedDueAt: stage.plannedDueAt,
           attachments: stage.attachments,
@@ -847,6 +849,7 @@ export function CreateProjectWorkspace({
             name: "Stage 1",
             budget: "",
             description: "",
+            invoiceRequired: true,
             plannedStartAt: "",
             plannedDueAt: "",
             attachments: [],
@@ -1206,6 +1209,7 @@ export function CreateProjectWorkspace({
         name: `Stage ${current.length + 1}`,
         budget: "",
         description: "",
+        invoiceRequired: true,
         plannedStartAt: formatDateTimeInputValue(startDate),
         plannedDueAt: formatDateTimeInputValue(endDate),
         attachments: [],
@@ -3050,6 +3054,47 @@ export function CreateProjectWorkspace({
                     <FieldError
                       message={getStageFieldError("stageDescriptions", index, fieldErrors.stageDescriptions?.[index])}
                     />
+                    <div className="mt-3 rounded-[14px] border border-[#dce6dd] bg-[#fbfdfb] px-3 py-2.5">
+                      <input
+                        type="hidden"
+                        name="stageInvoiceRequired"
+                        value={stage.invoiceRequired ? "true" : "false"}
+                      />
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6f7d72]">
+                            Invoice Required
+                          </p>
+                          <p className="mt-1 text-[11px] leading-4 text-[#7a837b]">
+                            Main Executor uploads the invoice before stage completion.
+                          </p>
+                        </div>
+                        <div className="inline-flex rounded-full border border-[#dce6dd] bg-white p-1">
+                          <button
+                            type="button"
+                            onClick={() => updateStage(stage.id, { invoiceRequired: true })}
+                            className={`rounded-full px-3 py-1.5 text-[11px] font-[700] transition ${
+                              stage.invoiceRequired
+                                ? "bg-brand text-white"
+                                : "text-[#627068] hover:bg-[#f4f8f4]"
+                            }`}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateStage(stage.id, { invoiceRequired: false })}
+                            className={`rounded-full px-3 py-1.5 text-[11px] font-[700] transition ${
+                              !stage.invoiceRequired
+                                ? "bg-brand text-white"
+                                : "text-[#627068] hover:bg-[#f4f8f4]"
+                            }`}
+                          >
+                            No
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                     <div className="mt-3 rounded-[14px] border border-[#dce6dd] bg-[#fbfdfb] px-3 py-2.5">
                       <input
                         ref={(node) => {

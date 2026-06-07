@@ -78,6 +78,7 @@ enum AttachmentAssetType {
   REVISION_PREVIEW
   REVISION_THUMBNAIL
   COMMENT_ATTACHMENT
+  STAGE_INVOICE
   FINAL_ARCHIVE
   GENERAL_PROJECT_ASSET
 }
@@ -430,6 +431,7 @@ model ProjectStage {
   budget    Int?
   plannedStartAt DateTime?
   plannedDueAt DateTime?
+  invoiceRequired Boolean @default(true)
   actualStartedAt DateTime?
   startedById String?
   startedBy User? @relation("ProjectStageStarter", fields: [startedById], references: [id], onDelete: SetNull)

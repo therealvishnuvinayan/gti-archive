@@ -38,6 +38,7 @@ export type ProjectEditorInitialStage = {
   name: string;
   budget: string;
   description: string;
+  invoiceRequired: boolean;
   plannedStartAt: string;
   plannedDueAt: string;
   attachments: ProjectEditorInitialAttachment[];

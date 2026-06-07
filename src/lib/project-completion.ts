@@ -179,7 +179,7 @@ function getCompletionDocumentTypeLabel(type: ProjectCompletionDocumentType) {
       return "Copyright Transfer";
     case ProjectCompletionDocumentType.INVOICE:
     default:
-      return "Invoice";
+      return "Final Invoice";
   }
 }
 
@@ -1045,12 +1045,12 @@ export async function markProjectInvoiceNotRequired(
         !isStepResolved(workflow.copyrightStatus)
       ) {
         throw new Error(
-          "Complete or skip authority approval and copyright transfer before marking invoice as not required.",
+          "Complete or skip authority approval and copyright transfer before marking final invoice as not required.",
         );
       }
 
       if (workflow.invoiceStatus === ProjectCompletionStepStatus.COMPLETED) {
-        throw new Error("Invoice has already been completed.");
+        throw new Error("Final invoice has already been completed.");
       }
 
       if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
@@ -1070,7 +1070,7 @@ export async function markProjectInvoiceNotRequired(
       });
 
       if (invoiceDocument) {
-        throw new Error("An invoice document has already been uploaded.");
+        throw new Error("A final invoice document has already been uploaded.");
       }
 
       const completedAt = new Date();
@@ -1167,17 +1167,17 @@ export async function requestProjectCompletionDocumentUpload(
       break;
     case ProjectCompletionDocumentType.INVOICE:
       if (!workflow.canUploadInvoice) {
-        throw new Error("Only the project owner or project executor can upload the invoice.");
+        throw new Error("Only the project owner or project executor can upload the final invoice.");
       }
 
       if (!workflow.isInvoiceUnlocked) {
         throw new Error(
-          "Complete or skip authority approval and copyright transfer before uploading the invoice.",
+          "Complete or skip authority approval and copyright transfer before uploading the final invoice.",
         );
       }
 
       if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
-        throw new Error("Invoice is marked as not required for this project.");
+        throw new Error("Final invoice is marked as not required for this project.");
       }
       break;
   }
@@ -1402,7 +1402,7 @@ export async function finalizeProjectCompletionDocumentUpload(
           break;
         case ProjectCompletionDocumentType.INVOICE:
           if (!canUploadInvoice) {
-            throw new Error("Only the project owner or project executor can upload the invoice.");
+            throw new Error("Only the project owner or project executor can upload the final invoice.");
           }
 
           if (
@@ -1410,12 +1410,12 @@ export async function finalizeProjectCompletionDocumentUpload(
             !isStepResolved(workflow.copyrightStatus)
           ) {
             throw new Error(
-              "Complete or skip authority approval and copyright transfer before uploading the invoice.",
+              "Complete or skip authority approval and copyright transfer before uploading the final invoice.",
             );
           }
 
           if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
-            throw new Error("Invoice is marked as not required for this project.");
+            throw new Error("Final invoice is marked as not required for this project.");
           }
 
           await tx.projectCompletionDocument.upsert({

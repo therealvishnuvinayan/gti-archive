@@ -169,7 +169,8 @@ type TranscribeApiResponse = {
 type UploadAssetType =
   | "REVISION_ORIGINAL"
   | "COMMENT_ATTACHMENT"
-  | "STAGE_SUBMISSION";
+  | "STAGE_SUBMISSION"
+  | "STAGE_INVOICE";
 type CommentUploadIntent = "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
 const MAX_RECORDING_DURATION_MS = 60_000;
 const submissionExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
@@ -1144,6 +1145,8 @@ export function ProjectChatWorkspace({
     useState<CommentUploadIntent>("COMMENT_ATTACHMENT");
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [isUploadingRevision, setIsUploadingRevision] = useState(false);
+  const [isUploadingStageInvoice, setIsUploadingStageInvoice] = useState(false);
+  const [stageInvoiceError, setStageInvoiceError] = useState<string | null>(null);
   const [selectedOutputLanguageCode, setSelectedOutputLanguageCode] = useState(
     DEFAULT_CHAT_LANGUAGE.code,
   );
@@ -1170,6 +1173,7 @@ export function ProjectChatWorkspace({
         actualStartedAtValue: string | null;
         startedByName?: string | null;
         status?: ProjectStageRecord["status"];
+        invoiceAttachment?: ProjectStageRecord["invoiceAttachment"];
       }
     >
   >({});
@@ -1199,6 +1203,7 @@ export function ProjectChatWorkspace({
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const stageInvoiceInputRef = useRef<HTMLInputElement | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const mentionDropdownRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1232,6 +1237,10 @@ export function ProjectChatWorkspace({
               actualStartedAtValue: override.actualStartedAtValue,
               startedByName: override.startedByName ?? stage.startedByName,
               status: override.status ?? stage.status,
+              invoiceAttachment:
+                override.invoiceAttachment === undefined
+                  ? stage.invoiceAttachment
+                  : override.invoiceAttachment,
             }
           : stage;
       }),
@@ -1355,6 +1364,7 @@ export function ProjectChatWorkspace({
   const canCompleteProject =
     completionState.canCompleteProject && isProjectOwner && !isProjectCompleted;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
+  const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
   const isProjectExecutor = useMemo(
     () =>
       project.executors.length > 0
@@ -1373,6 +1383,14 @@ export function ProjectChatWorkspace({
     [currentUserId, project.executorUserId, project.executors],
   );
   const canSubmitWorkAsMainExecutor = isMainProjectExecutor && !isProjectOwner;
+  const canUploadStageInvoice =
+    Boolean(activeStage?.id) &&
+    Boolean(activeStage?.invoiceRequired) &&
+    !stageInvoiceAttachment &&
+    isMainProjectExecutor &&
+    !isProjectOwner &&
+    !isStageCompleted &&
+    !isProjectCompleted;
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
   const canSubmitNewRevision =
     canSubmitWorkAsMainExecutor &&
@@ -3299,6 +3317,99 @@ export function ProjectChatWorkspace({
     }
   }
 
+  async function handleStageInvoiceSelected(files: FileList | null) {
+    const invoiceFile = Array.from(files ?? [])[0] ?? null;
+    const activeStageId = activeStage?.id;
+
+    if (stageInvoiceInputRef.current) {
+      stageInvoiceInputRef.current.value = "";
+    }
+
+    if (!invoiceFile) {
+      return;
+    }
+
+    if (!activeStageId) {
+      const message = "This project does not have an active stage.";
+      setStageInvoiceError(message);
+      showErrorToast("Unable to upload invoice.", message);
+      return;
+    }
+
+    if (!canUploadStageInvoice) {
+      const message = "Only a Main Executor can upload the invoice for this stage.";
+      setStageInvoiceError(message);
+      showErrorToast("Unable to upload invoice.", message);
+      return;
+    }
+
+    setStageInvoiceError(null);
+    setIsUploadingStageInvoice(true);
+
+    try {
+      const result = await uploadAssetFile({
+        file: invoiceFile,
+        projectId: project.id,
+        stageId: activeStageId,
+        assetType: "STAGE_INVOICE",
+      });
+      const invoiceAttachment: ProjectAttachmentRecord = {
+        id: result.attachmentId,
+        isSubmission: false,
+        originalFileName: result.uploadedFile.name,
+        fileTypeLabel: getLocalFileTypeLabel(result.uploadedFile.name),
+        mimeType: result.uploadedFile.type || "application/octet-stream",
+        fileSizeLabel: formatLocalFileSize(result.uploadedFile.size),
+        uploadedBy: currentUserDisplayName,
+        uploadedAt: "Just now",
+        previewPath: `/api/project-assets/${result.attachmentId}/preview`,
+        downloadPath: `/api/project-assets/${result.attachmentId}/download`,
+        isFavoritedByCurrentUser: false,
+      };
+      const stageName = activeStage?.label ?? "this stage";
+
+      setStageCardOverrides((current) => ({
+        ...current,
+        [activeStageId]: {
+          actualStartedAt:
+            current[activeStageId]?.actualStartedAt ??
+            activeStage?.actualStartedAt ??
+            "—",
+          actualStartedAtValue:
+            current[activeStageId]?.actualStartedAtValue ??
+            activeStage?.actualStartedAtValue ??
+            null,
+          startedByName:
+            current[activeStageId]?.startedByName ?? activeStage?.startedByName,
+          status: current[activeStageId]?.status ?? activeStage?.status,
+          invoiceAttachment,
+        },
+      }));
+      setConfirmedComments((current) => [
+        {
+          id: `confirmed-invoice-${result.attachmentId}`,
+          kind: "system",
+          title: "Invoice uploaded",
+          author: currentUserDisplayName,
+          authorAvatarSrc: currentUserAvatarSrc,
+          role: currentUserRoleLabel,
+          body: `${currentUserDisplayName} uploaded invoice for ${stageName}.`,
+          createdAt: "Just now",
+        },
+        ...current,
+      ]);
+      showSuccessToast("Invoice uploaded.");
+      refreshHistory();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to upload the invoice right now.";
+      setStageInvoiceError(message);
+      showErrorToast("Unable to upload invoice.", message);
+    } finally {
+      setIsUploadingStageInvoice(false);
+    }
+  }
+
   async function handleRevisionReview(
     status: Extract<RevisionReviewState, "APPROVED" | "REJECTED">,
   ) {
@@ -3423,7 +3534,7 @@ export function ProjectChatWorkspace({
         status === "APPROVED"
           ? result.revision.stageCompletion
             ? "Stage marked as complete."
-            : "Submission approved. Complete the project to archive the final files."
+            : "Submission approved."
           : "Revision requested.",
       );
       refreshHistory();
@@ -3469,7 +3580,7 @@ export function ProjectChatWorkspace({
                   </p>
                   <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
                     This completed project should show Authority Approval, Copyright
-                    Transfer, and Invoice steps here. Reload the page to fetch the
+                    Transfer, and Final Invoice steps here. Reload the page to fetch the
                     checklist.
                   </p>
                 </div>
@@ -3490,11 +3601,11 @@ export function ProjectChatWorkspace({
               <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[14px] font-[700] text-[#173120]">
-                    Final stage approved. Complete the project to archive the final files.
+                    All stages completed. Complete the project to archive the final files.
                   </p>
                   <p className="mt-1 text-[12px] text-[#5f6b62]">
                     {completionState.approvedFileCount} final file
-                    {completionState.approvedFileCount === 1 ? "" : "s"} ready for archive.
+                    {completionState.approvedFileCount === 1 ? "" : "s"} ready for final archive.
                   </p>
                 </div>
                 <Button
@@ -3509,13 +3620,38 @@ export function ProjectChatWorkspace({
             </Card>
           ) : null}
 
+          {!isProjectCompleted &&
+          isProjectOwner &&
+          isFinalStage &&
+          !completionState.allStagesCompleted ? (
+            <Card className="rounded-[20px] border border-[#f0c9c7] bg-[#fff7f6] shadow-none">
+              <CardContent className="px-5 py-4">
+                <p className="text-[14px] font-[800] text-[#9f3f39]">
+                  Project cannot be completed yet.
+                </p>
+                <p className="mt-1 text-[12px] leading-5 text-[#7c514d]">
+                  Complete all stages before final project completion.
+                </p>
+                {completionState.incompleteStages.length > 0 ? (
+                  <ul className="mt-3 space-y-1 text-[12px] text-[#7c514d]">
+                    {completionState.incompleteStages.map((stage) => (
+                      <li key={stage.id}>
+                        {stage.name} — {stage.status}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {completionPrompt ? (
             <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
               <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[14px] font-[700] text-[#173120]">
                     {completionPrompt.allStagesCompleted
-                      ? "All stages completed."
+                      ? "All stages completed. Final project completion is now available."
                       : "Stage completed. You can now move to the next stage."}
                   </p>
                   {completionPrompt.nextStageLabel && !completionPrompt.allStagesCompleted ? (
@@ -3906,6 +4042,14 @@ export function ProjectChatWorkspace({
                   }
                 }}
               />
+              <input
+                ref={stageInvoiceInputRef}
+                type="file"
+                className="sr-only"
+                onChange={(event) => {
+                  void handleStageInvoiceSelected(event.target.files);
+                }}
+              />
 
               {replyingToRevision ? (
                 <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#cfe3d2] bg-[#f7fbf6] px-3 py-2.5 text-[12px] text-[#304138]">
@@ -4240,6 +4384,58 @@ export function ProjectChatWorkspace({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] text-[#111712]">
+                Stage Invoice
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {activeStage?.invoiceRequired === false ? (
+                <p className="text-[13px] leading-5 text-[#6f786f]">
+                  Invoice not required for this stage.
+                </p>
+              ) : stageInvoiceAttachment ? (
+                <AttachmentHistoryList
+                  attachments={[stageInvoiceAttachment]}
+                  compact
+                />
+              ) : canUploadStageInvoice ? (
+                <div className="space-y-3">
+                  <p className="text-[13px] leading-5 text-[#6f786f]">
+                    Invoice required for this stage.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="min-w-[150px] text-[13px]"
+                    disabled={isUploadingStageInvoice}
+                    onClick={() => {
+                      setStageInvoiceError(null);
+                      stageInvoiceInputRef.current?.click();
+                    }}
+                  >
+                    {isUploadingStageInvoice ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Upload Invoice
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-[13px] leading-5 text-[#6f786f]">
+                  Waiting for Main Executor to upload invoice.
+                </p>
+              )}
+              {stageInvoiceError ? (
+                <p className="mt-3 rounded-[14px] border border-[#f3c6c2] bg-[#fff5f3] px-3 py-2 text-[12px] leading-5 text-[#a64038]">
+                  {stageInvoiceError}
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-[20px] text-[#111712]">
                 Project Reference Files
               </CardTitle>
             </CardHeader>
@@ -4339,7 +4535,7 @@ export function ProjectChatWorkspace({
         }
         description={
           reviewCompletionIsFinalStage
-            ? "This will approve the submitted revision. You can then complete the project, archive the final files, and lock further chat interaction."
+            ? "This will approve the submitted revision and complete the final stage. Project completion and final archive happen after all stages are complete."
             : "This will mark the submitted revision as completed, complete the current stage, and make the next stage available."
         }
         confirmLabel={reviewCompletionIsFinalStage ? "Approve Submission" : "Mark as Complete"}
@@ -4374,8 +4570,8 @@ export function ProjectChatWorkspace({
       />
       <ConfirmationDialog
         isOpen={projectCompletionConfirmOpen}
-        title="Complete and archive project?"
-        description="This will complete the project, archive the final files, and stop further chat interaction. Members will only be able to view or download the final archived files."
+        title="Complete Project?"
+        description="All stages must be completed first. This will archive the selected final files and stop further chat interaction. Stage invoices stay in stage history and Library."
         confirmLabel="Continue"
         pending={isPreparingProjectCompletion}
         error={projectCompletionError ?? undefined}
@@ -4421,11 +4617,12 @@ export function ProjectChatWorkspace({
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
               <div>
                 <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
-                  Final Archive Preparation
+                  Final Archive Files
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  Review the final files, rename them for archive storage, and choose the
-                  archive category before completing the project.
+                  Review only the final files, rename them for archive storage, and choose the
+                  archive category before completing the project. Working files remain in logs,
+                  Library, and stage history.
                 </p>
               </div>
               <Button
@@ -4533,7 +4730,7 @@ export function ProjectChatWorkspace({
 
                         <div className="space-y-2">
                           <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
-                            Archive File Name
+                            Final Archive File Name
                           </p>
                           <Input
                             value={nextFileName}
@@ -4580,7 +4777,7 @@ export function ProjectChatWorkspace({
                   {isCompletingProject ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : null}
-                  Complete & Archive
+                  Complete Project
                 </Button>
               </div>
             </CardContent>
@@ -4829,7 +5026,7 @@ export function ProjectChatWorkspace({
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
                   {reviewCompletionIsFinalStage
-                    ? "Review the submitted revision. After approval, the project owner can complete the project and archive the final files."
+                    ? "Review the submitted revision. Approval completes the final stage; project completion and final archive are handled after all stages are complete."
                     : "Review the submitted revision and decide whether to mark this stage as complete or request another revision."}
                 </p>
               </div>

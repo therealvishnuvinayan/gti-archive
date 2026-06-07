@@ -560,7 +560,7 @@ export async function markProjectInvoiceNotRequiredAction(input: {
       error:
         error instanceof Error
           ? error.message
-          : "Unable to mark invoice as not required right now.",
+          : "Unable to mark final invoice as not required right now.",
     };
   }
 }

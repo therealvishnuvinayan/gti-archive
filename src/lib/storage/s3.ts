@@ -259,6 +259,13 @@ export function buildProjectAssetKey({
 
       return `projects/${projectId}/stages/${stageId}/comments/${commentId}/attachments/${safeFileName}`;
     }
+    case AttachmentAssetType.STAGE_INVOICE: {
+      if (!stageId) {
+        throw new Error("Stage invoice assets require stageId.");
+      }
+
+      return `projects/${projectId}/stages/${stageId}/invoice/${safeFileName}`;
+    }
     case AttachmentAssetType.FINAL_ARCHIVE: {
       if (!stageId) {
         throw new Error("Final archive assets require stageId.");

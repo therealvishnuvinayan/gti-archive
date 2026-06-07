@@ -177,6 +177,9 @@ function parseProjectFormData(formData: FormData) {
   const stageDueDates = formData
     .getAll("stageDueDates")
     .map((value) => String(value).trim());
+  const stageInvoiceRequired = formData
+    .getAll("stageInvoiceRequired")
+    .map((value) => String(value).trim() !== "false");
   const stageIds = formData
     .getAll("stageIds")
     .map((value) => String(value).trim());
@@ -214,6 +217,7 @@ function parseProjectFormData(formData: FormData) {
     stageDescriptions,
     stageStartDates,
     stageDueDates,
+    stageInvoiceRequired,
     stageIds,
     executorIds,
     executorRoles,
@@ -676,6 +680,7 @@ export async function createProjectAction(
     stageDescriptions,
     stageStartDates,
     stageDueDates,
+    stageInvoiceRequired,
     stageStatuses,
     currentStageName,
     collaboratorIds,
@@ -808,6 +813,7 @@ export async function createProjectAction(
                       : null,
                 plannedStartAt: stageStartDates[index],
                 plannedDueAt: stageDueDates[index],
+                invoiceRequired: stageInvoiceRequired[index] ?? true,
                 status: stageStatuses[index],
                 order: index + 1,
               };
@@ -922,6 +928,7 @@ export async function updateProjectAction(
           id: true,
           budget: true,
           status: true,
+          invoiceRequired: true,
           actualStartedAt: true,
           startedById: true,
           completedAt: true,
@@ -982,6 +989,7 @@ export async function updateProjectAction(
     stageDescriptions,
     stageStartDates,
     stageDueDates,
+    stageInvoiceRequired,
     stageStatuses,
     stageIds,
     currentStageName,
@@ -1214,6 +1222,7 @@ export async function updateProjectAction(
           budget: nextBudget,
           plannedStartAt: stageStartDates[index],
           plannedDueAt: stageDueDates[index],
+          invoiceRequired: stageInvoiceRequired[index] ?? existingStage?.invoiceRequired ?? true,
           order: index + 1,
           ...(projectStatusChanged
             ? { status: stageStatuses[index] ?? ProjectStatus.PENDING }

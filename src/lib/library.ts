@@ -32,6 +32,7 @@ const libraryAssetTypes = [
   AttachmentAssetType.COMMENT_ATTACHMENT,
   AttachmentAssetType.STAGE_SUBMISSION,
   AttachmentAssetType.REVISION_ORIGINAL,
+  AttachmentAssetType.STAGE_INVOICE,
 ] as const;
 
 const financeFilePattern = /\b(invoice|quotation|quote|inv)\b/i;
@@ -224,8 +225,11 @@ function mapAttachmentToLibraryItem(
   attachment: RawLibraryAttachment,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): LibraryItemRecord {
-  const type = getLibraryTypeLabel(attachment.originalFileName, attachment.mimeType);
-  const isFinance = isFinanceLibraryFile(attachment.originalFileName);
+  const isStageInvoice = attachment.assetType === AttachmentAssetType.STAGE_INVOICE;
+  const type = isStageInvoice
+    ? "Invoice/Quotation"
+    : getLibraryTypeLabel(attachment.originalFileName, attachment.mimeType);
+  const isFinance = isStageInvoice || isFinanceLibraryFile(attachment.originalFileName);
 
   return {
     id: attachment.id,

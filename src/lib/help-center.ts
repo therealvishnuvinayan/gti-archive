@@ -92,6 +92,14 @@ export const quickStartItems: HelpQuickStartItem[] = [
     keywords: ["stage", "budget", "timeline", "due date", "stage brief", "overlap"],
   },
   {
+    id: "quick-stage-invoices",
+    title: "Set stage invoice rules",
+    description: "Choose whether each stage requires a Main Executor invoice before completion.",
+    sectionId: "stage-invoices",
+    icon: ArrowUpFromLine,
+    keywords: ["stage invoice", "invoice required", "main executor", "complete stage"],
+  },
+  {
     id: "quick-assign-executor",
     title: "Assign project executors",
     description: "Choose Main Executors and Executors responsible for execution.",
@@ -167,6 +175,14 @@ export const helpTopics: HelpTopic[] = [
     keywords: ["submission", "revision", "mark as complete", "request revision", "review"],
   },
   {
+    id: "topic-stage-invoices",
+    title: "Stage Invoices",
+    description: "Track per-stage invoice requirements, Main Executor uploads, and invoice status.",
+    sectionId: "stage-invoices",
+    icon: ArrowUpFromLine,
+    keywords: ["stage invoice", "invoice required", "upload invoice", "main executor", "owner"],
+  },
+  {
     id: "topic-collaboration",
     title: "Collaboration & Permissions",
     description: "Understand roles, collaborator types, project participants, and server-enforced access.",
@@ -185,10 +201,10 @@ export const helpTopics: HelpTopic[] = [
   {
     id: "topic-completion",
     title: "Project Completion",
-    description: "Complete the final stage, archive final files, and manage approval, copyright, and invoice steps.",
+    description: "Complete all stages, archive final files, and manage authority approval, copyright transfer, and final invoice steps.",
     sectionId: "project-completion",
     icon: Archive,
-    keywords: ["project completion", "approval", "copyright", "invoice", "final stage"],
+    keywords: ["project completion", "approval", "copyright", "final invoice", "final stage"],
   },
   {
     id: "topic-calendar",
@@ -283,6 +299,13 @@ export const recommendedGuides: HelpGuide[] = [
     keywords: ["stage brief", "stage chat", "attachments"],
   },
   {
+    id: "guide-stage-invoices",
+    title: "How stage invoices work",
+    description: "Set stage invoice requirements and understand who uploads invoices before completion.",
+    sectionId: "stage-invoices",
+    keywords: ["stage invoice", "invoice required", "upload invoice", "main executor"],
+  },
+  {
     id: "guide-review-briefs-before-stage",
     title: "How Main Executors review brief information before starting a stage",
     description: "Use the Project Brief and Stage Brief buttons in Stage Chat before accepting work.",
@@ -333,10 +356,31 @@ export const recommendedGuides: HelpGuide[] = [
   },
   {
     id: "guide-final-archive",
-    title: "How final project archive works",
-    description: "Complete the final stage, rename final files if needed, and move them to Archives.",
+    title: "Final archive files",
+    description: "Rename and archive only the final selected files after every stage is complete.",
     sectionId: "project-completion",
     keywords: ["final archive", "rename final files", "complete project"],
+  },
+  {
+    id: "guide-authority-approval",
+    title: "Authority approval",
+    description: "Decide whether project-level authority approval is required and track proof upload.",
+    sectionId: "project-completion",
+    keywords: ["authority approval", "approval proof", "project owner", "completion"],
+  },
+  {
+    id: "guide-copyright-transfer",
+    title: "Copyright transfer",
+    description: "Decide whether signed copyright transfer is required before final completion closure.",
+    sectionId: "project-completion",
+    keywords: ["copyright transfer", "signed document", "project owner", "completion"],
+  },
+  {
+    id: "guide-stage-vs-final-invoice",
+    title: "Stage invoice vs final invoice",
+    description: "Understand stage invoices in Stage Chat and the final invoice in project completion.",
+    sectionId: "project-completion",
+    keywords: ["stage invoice", "final invoice", "completion invoice"],
   },
   {
     id: "guide-library-vs-archives",
@@ -376,9 +420,9 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-checklist",
     title: "How the project completion checklist works",
-    description: "Manage authority approval, copyright transfer, and invoicing after project completion.",
+    description: "Manage authority approval, copyright transfer, and final invoice steps in order.",
     sectionId: "project-completion",
-    keywords: ["completion checklist", "authority approval", "copyright", "invoice"],
+    keywords: ["completion checklist", "authority approval", "copyright", "final invoice"],
   },
 ];
 
@@ -430,11 +474,12 @@ export const helpSections: HelpSection[] = [
           "A Main Executor reviews the Project Brief and Stage Brief, then clicks Accept Brief / Start Work.",
           "Stage discussion, attachments, mentions, and working collaboration continue inside the stage chat.",
           "A Main Executor submits work for owner review.",
+          "If the stage requires an invoice, a Main Executor uploads it in Stage Chat before completion.",
           "The project owner marks the submission complete or requests a revision with a reason.",
           "The cycle repeats until the stage is accepted.",
-          "The final stage completion opens the archive and post-completion flow.",
+          "After every stage is completed, the project owner opens final project completion.",
           "Final files are renamed if needed, moved to Archives, and the chat becomes view-only.",
-          "Authority approval, copyright transfer, and invoice steps continue through the completion checklist.",
+          "Authority approval, copyright transfer, and final invoice steps continue through the completion checklist.",
         ],
       },
       {
@@ -525,6 +570,7 @@ export const helpSections: HelpSection[] = [
         items: [
           "The create and edit pages keep a running overview of budget, allocated stages, remaining budget, primary executor, tag, status, priority, and stage count.",
           "The project creator becomes Project Owner automatically and remains the submission reviewer by business rule.",
+          "Each stage defaults to Invoice Required, and the owner can switch individual stages to not required when setting up or editing the project.",
         ],
       },
     ],
@@ -557,6 +603,15 @@ export const helpSections: HelpSection[] = [
           "When a Main Executor opens Stage 2, they should review the Project Brief and the Stage 2 Brief.",
           "Stage Chat keeps separate Project Brief and Stage Brief buttons so the context is clear.",
           "Stage Chat shows Project Executors above Project Collaborators so execution responsibility stays visible.",
+        ],
+      },
+      {
+        title: "Stage invoice setting",
+        items: [
+          "Each stage has its own Invoice Required setting.",
+          "Invoice Required defaults to Yes unless the owner changes that stage to No.",
+          "The setting belongs to the stage, not the overall project.",
+          "Stage invoices are uploaded from Stage Chat and stay linked to the stage history.",
         ],
       },
       {
@@ -604,6 +659,55 @@ export const helpSections: HelpSection[] = [
     ],
   },
   {
+    id: "stage-invoices",
+    eyebrow: "Finance Workflow",
+    title: "Stage Invoices",
+    summary:
+      "Invoices belong to stages because stages are the actual work units. A required stage invoice must be uploaded by a Main Executor before that stage can be completed.",
+    keywords: ["stage invoice", "invoice required", "main executor", "owner", "library"],
+    blocks: [
+      {
+        title: "How invoice requirement works",
+        items: [
+          "Invoice Required is set per stage during project creation or editing.",
+          "The default is Required, so owners should switch it off only for stages that do not need an invoice.",
+          "A required invoice blocks stage completion until a ready invoice file exists for that stage.",
+          "Stages marked not required can be completed without an invoice.",
+        ],
+      },
+      {
+        title: "Who uploads the invoice",
+        items: [
+          "Only a Main Executor assigned to the project can upload a stage invoice.",
+          "Project Owners can see invoice status and view uploaded invoice files, but they do not upload the invoice.",
+          "Normal Executors and collaborators cannot upload stage invoices in this phase.",
+          "The server enforces this rule, so hiding or showing the button is not the only protection.",
+        ],
+      },
+      {
+        title: "Where invoices appear",
+        items: [
+          "Stage Chat shows whether the current stage invoice is required, waiting, not required, or uploaded.",
+          "Uploaded invoices appear in the stage history as Invoice uploaded.",
+          "Library lists stage invoices under Quotations/Invoices.",
+          "Stage invoices do not automatically move into Archives; final archive files remain separate.",
+        ],
+      },
+    ],
+    questions: [
+      {
+        question: "Can a Project Owner upload the stage invoice?",
+        answer:
+          "No. The current business rule is Main Executor-only invoice upload. Owners can monitor status and view the uploaded invoice.",
+      },
+      {
+        question: "Can there be multiple invoices for one stage?",
+        answer:
+          "The current phase allows one active invoice per stage. Replacement can be added later if the business workflow needs it.",
+      },
+    ],
+  },
+  {
     id: "submissions-revisions",
     eyebrow: "Review Flow",
     title: "Submissions & revisions",
@@ -625,6 +729,7 @@ export const helpSections: HelpSection[] = [
         ordered: true,
         items: [
           "A Main Executor submits work as a revision.",
+          "If an invoice is required for the stage, a Main Executor uploads it before the owner completes the stage.",
           "The project owner reviews the Pending Review revision.",
           "The owner chooses Mark as Complete to accept the work, or Request Revision to send it back.",
           "Request Revision stores a revision brief or reason on that revision.",
@@ -644,6 +749,7 @@ export const helpSections: HelpSection[] = [
         items: [
           "Only the project owner reviews and completes submissions.",
           "Only Main Executors submit formal revisions; collaborators cannot submit or review revisions.",
+          "A required stage invoice must be uploaded before the owner can complete that stage.",
           "Old revisions remain visible as project history and should not disappear when a new revision is submitted.",
           "A Revision Requested Revision 1 stays part of the record while the next submission becomes Revision 2.",
         ],
@@ -721,8 +827,9 @@ export const helpSections: HelpSection[] = [
         items: [
           "Project budget visibility and budget edits remain owner-controlled.",
           "Only Main Executors accept briefs, submit stage work, and upload formal submissions.",
+          "Only Main Executors upload stage invoices.",
           "Only the project owner reviews submissions, requests revisions, completes stages, and completes the final archive.",
-          "Checklist actions for approval proof and copyright documents remain owner-only, while invoice upload is owner-or-executor when permitted.",
+          "Checklist actions for approval proof and copyright documents remain owner-only.",
           "Users and permission profile management remain SUPER_ADMIN-only in the current product.",
         ],
       },
@@ -758,14 +865,15 @@ export const helpSections: HelpSection[] = [
     eyebrow: "Files & Traceability",
     title: "Library & Archives",
     summary:
-      "Library stores active working files. Archives stores final completed files and completion documents after project closeout. Favorites are personal to each user.",
+      "Library stores active working files and stage invoices. Archives stores final completed files and completion documents after project closeout. Favorites are personal to each user.",
     keywords: ["library", "archives", "favorites", "files", "preview", "download", "delete"],
     blocks: [
       {
         title: "What belongs in each area",
         items: [
-          "Library includes project brief attachments, stage brief attachments, chat attachments, project assets, submissions, and other non-archived working files.",
-          "Archives contains final completed files plus completion records such as approval proof, copyright transfer documents, and invoices.",
+          "Library includes project brief attachments, stage brief attachments, chat attachments, project assets, submissions, stage invoices, and other non-archived working files.",
+          "Stage invoices appear under Quotations/Invoices and stay tied to their stage.",
+          "Archives contains final completed files plus completion records such as approval proof and copyright transfer documents.",
           "Favorites are personal bookmarks. If one user favorites a file, that favorite does not apply to everyone else.",
         ],
       },
@@ -784,6 +892,7 @@ export const helpSections: HelpSection[] = [
           "Stage brief attachments tie back to the stage where that instruction applies.",
           "Chat attachments stay associated with the stage discussion where they were shared.",
           "Submissions remain linked to the revision history they belong to.",
+          "Stage invoices remain linked to the stage and invoice upload history.",
           "Archived files preserve the final handover record after completion.",
         ],
       },
@@ -901,35 +1010,46 @@ export const helpSections: HelpSection[] = [
   {
     id: "project-completion",
     eyebrow: "Closeout",
-    title: "Project completion & archive",
+    title: "Final Project Completion",
     summary:
-      "Final completion closes the last stage, moves final files to Archives, locks the chat from further edits, and opens the post-completion checklist.",
-    keywords: ["project completion", "archive", "authority approval", "copyright", "invoice"],
+      "Final project completion starts only after every stage is complete. It archives selected final files, handles authority approval, copyright transfer, and the final invoice, then keeps all working history available.",
+    keywords: ["project completion", "archive", "authority approval", "copyright", "stage invoice", "final invoice"],
     blocks: [
       {
-        title: "What happens at final completion",
+        title: "Before project completion can start",
         ordered: true,
         items: [
-          "The project owner accepts the final stage submission.",
-          "The completion flow opens and final files can be renamed before archive if needed.",
-          "Final files move into Archives with the right project metadata.",
-          "The chat becomes locked for further interaction while remaining viewable for reference.",
+          "Each stage must be completed first, including the final stage.",
+          "If a stage requires a stage invoice, that invoice must already be uploaded before the stage can be completed.",
+          "The project owner opens Complete Project only after there are no incomplete stages.",
+          "The completion flow prepares the final archive files and then the project-level completion checklist.",
         ],
       },
       {
-        title: "Post-completion checklist",
+        title: "Completion checklist order",
+        ordered: true,
         items: [
-          "Authority Approval can be marked required or not required. If required, proof is uploaded later.",
-          "Copyright Transfer can be required or not required. If required, the signed document is uploaded later.",
-          "Invoice steps open after the approval and copyright prerequisites are satisfied or marked not required.",
+          "Authority Approval is marked required or not required by the project owner. If required, approval proof is uploaded as a completion document.",
+          "Copyright Transfer is marked required or not required by the project owner. If required, the signed transfer document is uploaded as a completion document.",
+          "Final Invoice unlocks only after Authority Approval and Copyright Transfer are completed or marked not required.",
+          "Final Archive Files contain only the selected final files. Working files remain in logs, Library, and stage history.",
         ],
       },
       {
-        title: "Current product notes",
+        title: "Stage invoice vs final invoice",
         items: [
-          "Completion documents remain archived separately from normal working files.",
-          "The owner and executor are the main actors in the post-completion checklist.",
-          "External email or notification sending for these later completion steps is designed as a later phase rather than a guarantee of the current build.",
+          "Stage Invoice belongs to one stage and is uploaded by a Main Executor in Stage Chat.",
+          "Final Invoice belongs to the project completion package and is separate from stage invoices.",
+          "Stage invoices block stage completion when required. Final invoice follows the authority and copyright steps.",
+          "Do not move stage invoices into Archives automatically; they stay traceable through stage logs and Library.",
+        ],
+      },
+      {
+        title: "Control and visibility",
+        items: [
+          "The project owner controls final completion decisions, including marking authority approval or copyright transfer as required or not required.",
+          "Final files are viewable from Archives after completion, while original working files remain in logs, Library, and history.",
+          "After project completion, chat interaction is locked while viewing and downloads follow the existing access rules.",
         ],
       },
     ],
@@ -985,6 +1105,8 @@ export const helpManagementHighlights = [
   "Stages, budgets, and key milestones",
   "Team collaboration and permission profiles",
   "Working files in Library and final files in Archives",
+  "Stage invoices tracked under Quotations/Invoices",
+  "Final invoice handled in project completion",
   "Calendar schedules, reminders, and deadlines",
   "Notifications, mentions, and activity updates",
   "Completion checklist and archived handover documents",
@@ -995,7 +1117,8 @@ export const helpCoreWorkflow = [
   "Assign Main Executors, Executors, and collaborators.",
   "Accept the brief and start the timer.",
   "Discuss work, upload files, and submit revisions.",
-  "Review, revise, complete, and archive the project.",
+  "Upload required stage invoices before stage completion.",
+  "Review, revise, complete all stages, archive final files, and finish project completion.",
 ];
 
 export const helpKeyTerms = [
@@ -1032,6 +1155,18 @@ export const helpKeyTerms = [
     description: "Formal work output from the executor that requires owner review.",
   },
   {
+    term: "Stage Invoice",
+    description: "A stage-level invoice uploaded by a Main Executor when that stage requires one.",
+  },
+  {
+    term: "Final Invoice",
+    description: "A project-completion invoice handled after authority approval and copyright transfer are resolved.",
+  },
+  {
+    term: "Final Archive Files",
+    description: "The selected final files moved into Archives during project completion.",
+  },
+  {
     term: "Library",
     description: "Working, non-archived files across active projects.",
   },
@@ -1046,6 +1181,11 @@ export const helpSearchKeywords = [
   "project brief",
   "stage brief",
   "stage timeline validation",
+  "stage invoice",
+  "final invoice",
+  "authority approval",
+  "copyright transfer",
+  "final archive files",
   "accept brief",
   "submit work",
   "request revision",

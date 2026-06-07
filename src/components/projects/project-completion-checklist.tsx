@@ -730,14 +730,14 @@ function ProjectCompletionChecklistBody({
       }
 
       applyWorkflowUpdate(result.workflow);
-      showSuccessToast("Invoice marked as not required.");
+      showSuccessToast("Final invoice marked as not required.");
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "Unable to mark invoice as not required right now.";
+          : "Unable to mark final invoice as not required right now.";
       setWorkflowError(message);
-      showErrorToast("Unable to update invoice step.", message);
+      showErrorToast("Unable to update final invoice step.", message);
     } finally {
       setPendingAction(null);
     }
@@ -770,7 +770,7 @@ function ProjectCompletionChecklistBody({
           ? "Authority approval completed."
           : documentType === COMPLETION_DOCUMENT_TYPES.copyright
             ? "Copyright transfer completed."
-            : "Invoice uploaded.";
+            : "Final invoice uploaded.";
 
       showSuccessToast(label);
     } catch (error) {
@@ -833,18 +833,19 @@ function ProjectCompletionChecklistBody({
             <CardTitle className="text-[22px] text-[#173120]">Project Completion</CardTitle>
             <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
               Before closing the project fully, confirm whether this project requires
-              authority approval, copyright transfer, and invoicing.
+              authority approval, copyright transfer, and final invoicing. Stage invoices
+              are handled on each stage.
             </p>
           </div>
           <div className="rounded-full bg-[#f7fbf6] px-3 py-1.5 text-[11px] font-[700] uppercase tracking-[0.08em] text-[#5f6b62]">
-            Owner & Executor Only
+            Owner-Controlled
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           {[
             { title: "Authority Approval", meta: approvalStatusMeta },
             { title: "Copyright Transfer", meta: copyrightStatusMeta },
-            { title: "Invoice", meta: invoiceStatusMeta },
+            { title: "Final Invoice", meta: invoiceStatusMeta },
           ].map((item) => (
             <div
               key={item.title}
@@ -875,7 +876,7 @@ function ProjectCompletionChecklistBody({
             </p>
             <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
               Before closing the project fully, confirm whether this project requires
-              authority approval, copyright transfer, and invoicing.
+              authority approval, copyright transfer, and a final invoice.
             </p>
 
             {workflowState.canManage ? (
@@ -1260,10 +1261,11 @@ function ProjectCompletionChecklistBody({
         <div className="rounded-[20px] border border-[#dce6dd] bg-[#fbfcfa] p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[16px] font-[700] text-[#173120]">Invoice</p>
+              <p className="text-[16px] font-[700] text-[#173120]">Final Invoice</p>
               <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-                The invoice can be uploaded after authority approval and copyright
-                transfer are completed or marked not required.
+                Stage invoices are handled per stage. This final invoice belongs to
+                the project completion package and unlocks after authority approval
+                and copyright transfer are completed or marked not required.
               </p>
             </div>
             <span
@@ -1276,16 +1278,16 @@ function ProjectCompletionChecklistBody({
           {!workflowState.isInvoiceUnlocked ? (
             <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-[12px] text-[#5f6b62]">
               <Lock className="h-3.5 w-3.5" />
-              Invoice is locked until the previous steps are completed or skipped.
+              Final invoice is locked until the previous steps are completed or skipped.
             </div>
           ) : workflowState.invoiceStatus === "NOT_REQUIRED" ? (
             <p className="mt-4 text-[13px] text-[#5f6b62]">
-              Invoice is marked as not required for this project.
+              Final invoice is marked as not required for this project.
             </p>
           ) : workflowState.invoiceDocument ? (
             <div className="mt-4 space-y-3">
               <p className="text-[13px] text-[#2b8b56]">
-                Invoice Completed
+                Final Invoice Completed
                 {workflowState.invoiceCompletedAt
                   ? ` on ${workflowState.invoiceCompletedAt}.`
                   : "."}
@@ -1308,7 +1310,7 @@ function ProjectCompletionChecklistBody({
                   {pendingAction === "invoice" ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : null}
-                  Mark Not Required
+                  Mark Final Invoice Not Required
                 </Button>
               ) : null}
               {workflowState.canUploadInvoice ? (
@@ -1326,13 +1328,13 @@ function ProjectCompletionChecklistBody({
                   ) : (
                     <Upload className="h-3.5 w-3.5" />
                   )}
-                  Upload Invoice
+                  Upload Final Invoice
                 </Button>
               ) : null}
             </div>
           ) : (
             <p className="mt-4 text-[13px] text-[#5f6b62]">
-              The project owner or executor can upload the invoice once this step is
+              The project owner or executor can upload the final invoice once this step is
               unlocked.
             </p>
           )}

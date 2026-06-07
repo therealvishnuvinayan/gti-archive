@@ -127,6 +127,7 @@ export type ProjectEditorRecord = {
   stages: Array<{
     id: string;
     name: string;
+    invoiceRequired: boolean;
     budget: string;
     description: string;
     plannedStartAt: string;
@@ -159,6 +160,8 @@ export type ProjectStageRecord = {
   plannedDueAt: string;
   plannedDueAtValue: string | null;
   status: ProjectStageVisualStatus;
+  invoiceRequired: boolean;
+  invoiceAttachment: ProjectAttachmentRecord | null;
   briefAttachments: ProjectAttachmentRecord[];
 };
 
@@ -665,6 +668,7 @@ function buildSyntheticStages(project: Project): ProjectStageWithStarter[] {
     actualStartedAt: null,
     startedById: null,
     completedAt: null,
+    invoiceRequired: true,
     plannedStartAt: project.startDate,
     plannedDueAt: project.endDate,
     status: index === 0 ? project.status : "PENDING",
@@ -762,6 +766,8 @@ function mapStageToCard(
     plannedDueAt: formatProjectDateTime(stage.plannedDueAt),
     plannedDueAtValue: toProjectIsoString(stage.plannedDueAt),
     status: mapStageStatusToVisual(stage.status),
+    invoiceRequired: stage.invoiceRequired,
+    invoiceAttachment: null,
     briefAttachments: canViewBrief ? briefAttachments : [],
   };
 }
@@ -783,6 +789,7 @@ function mapProjectToFlow(
     .filter(isProjectBriefAttachment)
     .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
   const stageBriefAttachmentMap = new Map<string, ProjectAttachmentRecord[]>();
+  const stageInvoiceAttachmentMap = new Map<string, ProjectAttachmentRecord>();
 
   project.attachments
     .filter(isStageBriefAttachment)
@@ -796,6 +803,19 @@ function mapProjectToFlow(
         ...existingAttachments,
         mapAttachmentToRecord(attachment, favoritedAttachmentIds),
       ]);
+    });
+
+  project.attachments
+    .filter((attachment) => attachment.assetType === AttachmentAssetType.STAGE_INVOICE)
+    .forEach((attachment) => {
+      if (!attachment.stageId || stageInvoiceAttachmentMap.has(attachment.stageId)) {
+        return;
+      }
+
+      stageInvoiceAttachmentMap.set(
+        attachment.stageId,
+        mapAttachmentToRecord(attachment, favoritedAttachmentIds),
+      );
     });
 
   const collaboratorRecords = (project.collaborators ?? [])
@@ -855,15 +875,16 @@ function mapProjectToFlow(
     createdBy: creatorName,
     tag: project.tag?.trim() || "—",
     priority: formatProjectPriority(project.priority ?? DEFAULT_PROJECT_PRIORITY),
-    stageCards: stages.map((stage) =>
-      mapStageToCard(
+    stageCards: stages.map((stage) => ({
+      ...mapStageToCard(
         project,
         stage,
         allowBudgetView,
         allowBriefView,
         stageBriefAttachmentMap.get(stage.id) ?? [],
       ),
-    ),
+      invoiceAttachment: stageInvoiceAttachmentMap.get(stage.id) ?? null,
+    })),
     collaborators: [
       {
         id: project.createdById,
@@ -967,6 +988,7 @@ function mapProjectToEditor(
     stages: stages.map((stage, index) => ({
       id: stage.id,
       name: stage.name,
+      invoiceRequired: stage.invoiceRequired,
       budget:
         allowBudgetView
           ? stage.budget && stage.budget > 0
@@ -1694,7 +1716,12 @@ export async function getProjectsList(
             stages: true,
             attachments: {
               where: {
-                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                assetType: {
+                  in: [
+                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                    "STAGE_INVOICE" as AttachmentAssetType,
+                  ],
+                },
                 status: "READY" as AttachmentStatus,
               },
               orderBy: {
@@ -1804,7 +1831,12 @@ export async function getProjectById(
             },
             attachments: {
               where: {
-                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                assetType: {
+                  in: [
+                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                    "STAGE_INVOICE" as AttachmentAssetType,
+                  ],
+                },
                 status: "READY" as AttachmentStatus,
               },
               orderBy: {
@@ -1914,7 +1946,12 @@ export async function getProjectEditorById(
             },
             attachments: {
               where: {
-                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                assetType: {
+                  in: [
+                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                    "STAGE_INVOICE" as AttachmentAssetType,
+                  ],
+                },
                 status: "READY" as AttachmentStatus,
               },
               orderBy: {

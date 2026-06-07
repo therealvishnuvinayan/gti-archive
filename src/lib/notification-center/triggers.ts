@@ -730,23 +730,43 @@ export async function notifyCopyrightDocumentUploaded(input: {
 export async function notifyInvoiceUploaded(input: {
   projectId: string;
   actorId: string;
+  actorName?: string;
+  stageId?: string | null;
+  attachmentId?: string;
 }) {
-  const project = await getProjectNotificationContext(input.projectId);
+  const project = input.stageId
+    ? await getProjectStageContext(input.projectId, input.stageId)
+    : await getProjectNotificationContext(input.projectId);
 
   if (!project || !project.createdById || project.createdById === input.actorId) {
     return;
   }
 
+  const stage = "stages" in project ? project.stages?.[0] ?? null : null;
+
   await createNotificationsForUsers({
     recipientUserIds: [project.createdById],
     type: "INVOICE_UPLOADED",
     title: "Invoice uploaded",
-    message: `Invoice has been uploaded for ${project.name}.`,
-    entityType: "COMPLETION_DOCUMENT",
+    message:
+      input.stageId && stage
+        ? `${input.actorName ?? "Main Executor"} uploaded invoice for ${stage.name}.`
+        : `Invoice has been uploaded for ${project.name}.`,
+    entityType: input.attachmentId ? "ATTACHMENT" : "COMPLETION_DOCUMENT",
+    entityId: input.attachmentId,
     projectId: project.id,
-    url: buildNotificationUrl({
-      kind: "project",
-      projectId: project.id,
-    }),
+    stageId: input.stageId ?? undefined,
+    attachmentId: input.attachmentId,
+    url:
+      input.stageId && stage
+        ? buildNotificationUrl({
+            kind: "project-stage",
+            projectId: project.id,
+            stageId: input.stageId,
+          })
+        : buildNotificationUrl({
+            kind: "project",
+            projectId: project.id,
+          }),
   });
 }
