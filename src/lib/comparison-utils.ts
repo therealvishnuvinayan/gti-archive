@@ -39,7 +39,9 @@ export function getStageSubmissionAttachments(
     (entry.attachments ?? []).filter(
       (attachment) =>
         isComparableStageSubmissionAttachment(attachment) ||
-        (entry.kind === "revision" && hasComparableSubmissionType(attachment)),
+        (entry.kind === "revision" &&
+          Boolean(attachment.submissionNumber) &&
+          hasComparableSubmissionType(attachment)),
     ),
   );
 
@@ -73,26 +75,61 @@ export function resolveComparisonSelection(
   preferredBaseId?: string | null,
   preferredCompareId?: string | null,
 ) {
-  if (submissions.length === 0) {
+  if (submissions.length < 2) {
     return {
-      baseSubmission: null,
+      baseSubmission: submissions[0] ?? null,
       compareSubmission: null,
     };
   }
 
-  const baseSubmission =
-    submissions.find((submission) => submission.id === preferredBaseId) ?? submissions[0];
+  const latestSubmission = submissions.at(-1) ?? null;
+  const previousSubmission = submissions.at(-2) ?? submissions[0] ?? null;
+  const preferredBaseSubmission =
+    submissions.find((submission) => submission.id === preferredBaseId) ?? null;
+  const preferredCompareSubmission =
+    submissions.find((submission) => submission.id === preferredCompareId) ?? null;
 
-  const compareCandidates = submissions.filter(
-    (submission) => submission.id !== baseSubmission.id,
-  );
-  const compareSubmission =
-    compareCandidates.find((submission) => submission.id === preferredCompareId) ??
-    compareCandidates.at(-1) ??
-    null;
+  if (
+    preferredBaseSubmission &&
+    preferredCompareSubmission &&
+    preferredBaseSubmission.id !== preferredCompareSubmission.id
+  ) {
+    return {
+      baseSubmission: preferredBaseSubmission,
+      compareSubmission: preferredCompareSubmission,
+    };
+  }
+
+  if (preferredCompareSubmission) {
+    const preferredCompareIndex = submissions.findIndex(
+      (submission) => submission.id === preferredCompareSubmission.id,
+    );
+    const fallbackBaseSubmission =
+      submissions[preferredCompareIndex - 1] ??
+      submissions.find((submission) => submission.id !== preferredCompareSubmission.id) ??
+      null;
+
+    return {
+      baseSubmission: fallbackBaseSubmission,
+      compareSubmission: preferredCompareSubmission,
+    };
+  }
+
+  if (preferredBaseSubmission) {
+    const fallbackCompareSubmission =
+      submissions
+        .slice()
+        .reverse()
+        .find((submission) => submission.id !== preferredBaseSubmission.id) ?? null;
+
+    return {
+      baseSubmission: preferredBaseSubmission,
+      compareSubmission: fallbackCompareSubmission,
+    };
+  }
 
   return {
-    baseSubmission,
-    compareSubmission,
+    baseSubmission: previousSubmission,
+    compareSubmission: latestSubmission,
   };
 }

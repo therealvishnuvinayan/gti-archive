@@ -668,6 +668,12 @@ export function ProjectCompareWorkspace({
   }
 
   const hasEnoughSubmissions = submissions.length >= 2;
+  const insufficientSubmissionMessage =
+    submissions.length === 0
+      ? "No image submissions available for comparison."
+      : submissions.length === 1
+        ? "Upload another image revision to compare changes."
+        : null;
 
   return (
     <section className="space-y-6">
@@ -714,7 +720,7 @@ export function ProjectCompareWorkspace({
           {!hasEnoughSubmissions ? (
             <Card className="rounded-[20px] border border-dashed border-[#d7e3d8] bg-white p-6 text-center shadow-[0_12px_28px_rgba(19,28,22,0.04)]">
               <CardTitle className="text-[20px] text-[#111712]">
-                Upload at least two image submissions to compare.
+                {insufficientSubmissionMessage}
               </CardTitle>
               <p className="mt-2 text-[13px] text-[#6f786f]">
                 Only same-stage PNG, JPG, JPEG, and WebP submissions are supported here.
@@ -722,7 +728,7 @@ export function ProjectCompareWorkspace({
             </Card>
           ) : null}
 
-          {submissions.length > 0 ? (
+          {hasEnoughSubmissions ? (
             <div className="grid gap-4 xl:grid-cols-2">
               <ComparisonSelectionCard
                 label="Base Submission"

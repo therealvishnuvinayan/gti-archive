@@ -79,7 +79,7 @@ function mapComparisonCommentRecord(comment: {
   };
 }
 
-async function assertComparableSubmissionPair(
+async function resolveComparableSubmissionPair(
   user: AccessUser,
   input: {
     projectId: string;
@@ -87,14 +87,28 @@ async function assertComparableSubmissionPair(
     baseAttachmentId: string;
     compareAttachmentId: string;
   },
+  options: {
+    throwOnInvalidPair?: boolean;
+  } = {},
 ) {
   const project = await assertProjectAccess(user, input.projectId);
+
+  if (!hasProjectPermission(user, project, "compare.view")) {
+    throw new Error("You do not have permission to compare project submissions.");
+  }
 
   const [normalizedBaseAttachmentId, normalizedCompareAttachmentId] =
     normalizeComparisonPairIds(input.baseAttachmentId, input.compareAttachmentId);
 
   if (normalizedBaseAttachmentId === normalizedCompareAttachmentId) {
-    throw new Error("Select two different submissions to compare.");
+    if (options.throwOnInvalidPair) {
+      throw new Error("Select two different submissions to compare.");
+    }
+
+    return {
+      status: "invalid_pair" as const,
+      project,
+    };
   }
 
   const attachments = await withPrismaRetry(() =>
@@ -105,7 +119,12 @@ async function assertComparableSubmissionPair(
         },
         projectId: input.projectId,
         stageId: input.stageId,
-        assetType: AttachmentAssetType.STAGE_SUBMISSION,
+        assetType: {
+          in: [
+            AttachmentAssetType.STAGE_SUBMISSION,
+            AttachmentAssetType.REVISION_ORIGINAL,
+          ],
+        },
         status: AttachmentStatus.READY,
       },
       select: {
@@ -119,7 +138,14 @@ async function assertComparableSubmissionPair(
   );
 
   if (attachments.length !== 2) {
-    throw new Error("Comparison submissions were not found for this stage.");
+    if (options.throwOnInvalidPair) {
+      throw new Error("Comparison submissions were not found for this stage.");
+    }
+
+    return {
+      status: "missing_submissions" as const,
+      project,
+    };
   }
 
   if (
@@ -127,7 +153,14 @@ async function assertComparableSubmissionPair(
       !isComparableImageAttachment(attachment.originalFileName, attachment.mimeType),
     )
   ) {
-    throw new Error("Only PNG, JPG, JPEG, and WebP submissions can be compared right now.");
+    if (options.throwOnInvalidPair) {
+      throw new Error("Only PNG, JPG, JPEG, and WebP submissions can be compared right now.");
+    }
+
+    return {
+      status: "unsupported_submissions" as const,
+      project,
+    };
   }
 
   for (const attachment of attachments) {
@@ -141,6 +174,7 @@ async function assertComparableSubmissionPair(
   }
 
   return {
+    status: "ready" as const,
     normalizedBaseAttachmentId,
     normalizedCompareAttachmentId,
     project,
@@ -177,16 +211,19 @@ export async function getComparisonCommentsForPair(
     compareAttachmentId: string;
   },
 ) {
-  const { normalizedBaseAttachmentId, normalizedCompareAttachmentId, project } =
-    await assertComparableSubmissionPair(user, input);
+  const pair = await resolveComparableSubmissionPair(user, input);
+
+  if (pair.status !== "ready") {
+    return [];
+  }
 
   const comments = await withPrismaRetry(() =>
     prisma.comparisonComment.findMany({
       where: {
         projectId: input.projectId,
         stageId: input.stageId,
-        baseAttachmentId: normalizedBaseAttachmentId,
-        compareAttachmentId: normalizedCompareAttachmentId,
+        baseAttachmentId: pair.normalizedBaseAttachmentId,
+        compareAttachmentId: pair.normalizedCompareAttachmentId,
       },
       orderBy: {
         createdAt: "asc",
@@ -207,7 +244,7 @@ export async function getComparisonCommentsForPair(
   const pauseWindows = await getComparisonCommentVisibilityPauseWindows(
     user,
     input.projectId,
-    project.createdById,
+    pair.project.createdById,
   );
   const visibleComments =
     pauseWindows.length > 0
@@ -252,16 +289,21 @@ export async function createComparisonComment(
     throw new Error("This project is already completed.");
   }
 
-  const { normalizedBaseAttachmentId, normalizedCompareAttachmentId } =
-    await assertComparableSubmissionPair(user, input);
+  const pair = await resolveComparableSubmissionPair(user, input, {
+    throwOnInvalidPair: true,
+  });
+
+  if (pair.status !== "ready") {
+    throw new Error("Comparison submissions were not found for this stage.");
+  }
 
   const comment = await withPrismaRetry(() =>
     prisma.comparisonComment.create({
       data: {
         projectId: input.projectId,
         stageId: input.stageId,
-        baseAttachmentId: normalizedBaseAttachmentId,
-        compareAttachmentId: normalizedCompareAttachmentId,
+        baseAttachmentId: pair.normalizedBaseAttachmentId,
+        compareAttachmentId: pair.normalizedCompareAttachmentId,
         xPercent: Math.min(100, Math.max(0, input.xPercent)),
         yPercent: Math.min(100, Math.max(0, input.yPercent)),
         body,
