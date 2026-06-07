@@ -141,6 +141,14 @@ type MentionDropdownState = {
 
 type RevisionReviewState = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 
+type RevisionReplyTarget = {
+  revisionId: string;
+  label: string;
+};
+
+const pendingRevisionReviewMessage =
+  "Revision submitted. Waiting for project owner review.";
+
 type TranslateApiResponse = {
   sourceLanguageCode: string;
   sourceLanguageName: string;
@@ -585,6 +593,14 @@ function getRevisionEntryId(
   }
 
   return entry.revisionId ?? entry.serverEntryId ?? entry.id;
+}
+
+function getRevisionLabel(entry: Pick<DisplayChatEntry, "title" | "revisionNumber">) {
+  if (entry.revisionNumber) {
+    return `Revision ${entry.revisionNumber}`;
+  }
+
+  return entry.title?.trim() || "Revision";
 }
 
 function getRevisionStatusMeta(status: RevisionReviewState) {
@@ -1097,6 +1113,8 @@ export function ProjectChatWorkspace({
   const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
     useState<CollaboratorRecord[]>(availableCollaborators);
   const [draft, setDraft] = useState("");
+  const [replyingToRevision, setReplyingToRevision] =
+    useState<RevisionReplyTarget | null>(null);
   const [selectedMentionTokens, setSelectedMentionTokens] = useState<MentionToken[]>([]);
   const [draftSelectionStart, setDraftSelectionStart] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
@@ -1106,7 +1124,15 @@ export function ProjectChatWorkspace({
   const [confirmedComments, setConfirmedComments] = useState<DisplayChatEntry[]>([]);
   const [pendingRevisionReviewId, setPendingRevisionReviewId] = useState<string | null>(null);
   const [revisionReviewOverrides, setRevisionReviewOverrides] = useState<
-    Record<string, { status: RevisionReviewState; rejectionReason: string | null }>
+    Record<
+      string,
+      {
+        status: RevisionReviewState;
+        rejectionReason: string | null;
+        reviewedBy?: string | null;
+        reviewedAt?: string | null;
+      }
+    >
   >({});
   const [pendingRevisionFiles, setPendingRevisionFiles] = useState<PendingFile[]>([]);
   const [reviewRevisionId, setReviewRevisionId] = useState<string | null>(null);
@@ -1271,10 +1297,29 @@ export function ProjectChatWorkspace({
   );
   const canCompareSubmissions = stageSubmissions.length >= 2;
   const canSendComment = draft.trim().length > 0 || pendingCommentFiles.length > 0;
-  const firstRevisionIndex = useMemo(
-    () => displayedMessages.findIndex((entry) => entry.kind === "revision"),
+  const revisionMessages = useMemo(
+    () => displayedMessages.filter((entry) => entry.kind === "revision"),
     [displayedMessages],
   );
+  const latestRevisionMessage = revisionMessages[0] ?? null;
+  const latestRevisionEntryId = latestRevisionMessage
+    ? getRevisionEntryId(latestRevisionMessage)
+    : null;
+  const latestRevisionStatus = latestRevisionMessage
+    ? revisionReviewOverrides[getRevisionEntryId(latestRevisionMessage)]?.status ??
+      latestRevisionMessage.revisionStatus ??
+      "PENDING_REVIEW"
+    : null;
+  const hasPendingRevisionReview = latestRevisionStatus === "PENDING_REVIEW";
+  const revisionLabelById = useMemo(() => {
+    const labels = new Map<string, string>();
+
+    revisionMessages.forEach((entry) => {
+      labels.set(getRevisionEntryId(entry), getRevisionLabel(entry));
+    });
+
+    return labels;
+  }, [revisionMessages]);
 
   const activeStage = useMemo<ProjectStageRecord | undefined>(() => {
     if (!stageId) {
@@ -1329,6 +1374,18 @@ export function ProjectChatWorkspace({
   );
   const canSubmitWorkAsMainExecutor = isMainProjectExecutor && !isProjectOwner;
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
+  const canSubmitNewRevision =
+    canSubmitWorkAsMainExecutor &&
+    hasAcceptedBrief &&
+    !isStageCompleted &&
+    !isProjectCompleted &&
+    !hasPendingRevisionReview;
+  const showPendingRevisionReviewStatus =
+    canSubmitWorkAsMainExecutor &&
+    hasAcceptedBrief &&
+    !isStageCompleted &&
+    !isProjectCompleted &&
+    hasPendingRevisionReview;
   const projectBriefText = project.description.trim();
   const stageBriefText = activeStage?.description.trim() ?? "";
   const projectBriefAttachments = project.attachments;
@@ -2201,6 +2258,13 @@ export function ProjectChatWorkspace({
   }
 
   function openRevisionDialog() {
+    if (!canSubmitWorkAsMainExecutor) {
+      const message = "Only a Main Executor can submit work for review.";
+      setComposerError(message);
+      showErrorToast("Unable to submit work.", message);
+      return;
+    }
+
     if (isProjectCompleted) {
       const message = "This project has already been completed.";
       setComposerError(message);
@@ -2219,6 +2283,12 @@ export function ProjectChatWorkspace({
       const message = "Please accept the brief before submitting work.";
       setComposerError(message);
       showErrorToast("Unable to submit work.", message);
+      return;
+    }
+
+    if (hasPendingRevisionReview) {
+      setComposerError(pendingRevisionReviewMessage);
+      showErrorToast("Unable to submit work.", pendingRevisionReviewMessage);
       return;
     }
 
@@ -2469,6 +2539,12 @@ export function ProjectChatWorkspace({
       return;
     }
 
+    if (selectedAssetType === "STAGE_SUBMISSION" && hasPendingRevisionReview) {
+      setComposerError(pendingRevisionReviewMessage);
+      showErrorToast("Unable to submit work.", pendingRevisionReviewMessage);
+      return;
+    }
+
     if (selectedAssetType === "STAGE_SUBMISSION") {
       const invalidFile = selectedFiles.find((file) => !isSubmissionFile(file));
 
@@ -2494,6 +2570,18 @@ export function ProjectChatWorkspace({
 
   function removePendingCommentFile(fileId: string) {
     setPendingCommentFiles((current) => current.filter((file) => file.id !== fileId));
+  }
+
+  function startRevisionReply(message: DisplayChatEntry) {
+    const revisionId = message.revisionId ?? getRevisionEntryId(message);
+    const label = getRevisionLabel(message);
+
+    setReplyingToRevision({ revisionId, label });
+    setComposerError(null);
+
+    window.requestAnimationFrame(() => {
+      draftInputRef.current?.focus();
+    });
   }
 
   function handleSelectMention(participant: ProjectMentionParticipantRecord) {
@@ -2557,6 +2645,8 @@ export function ProjectChatWorkspace({
     const body = draft.trim();
     const activeStageId = activeStage?.id;
     const mentionedUserIds = resolveCommentMentionUserIds(body, selectedMentionTokens);
+    const revisionReplyTarget = replyingToRevision;
+    const commentRevisionId = revisionReplyTarget?.revisionId ?? null;
 
     if (!body && pendingCommentFiles.length === 0) {
       return;
@@ -2585,6 +2675,7 @@ export function ProjectChatWorkspace({
     const optimisticComment: DisplayChatEntry = {
       id: optimisticCommentId,
       kind: "comment",
+      revisionId: commentRevisionId ?? undefined,
       author: currentUserDisplayName,
       authorAvatarSrc: currentUserAvatarSrc,
       role: currentUserRoleLabel,
@@ -2615,6 +2706,7 @@ export function ProjectChatWorkspace({
       flushSync(() => {
         setOptimisticComments((current) => [optimisticComment, ...current]);
         setDraft("");
+        setReplyingToRevision(null);
         setSelectedMentionTokens([]);
         setDraftSelectionStart(0);
         setPendingCommentFiles([]);
@@ -2648,6 +2740,7 @@ export function ProjectChatWorkspace({
               body: JSON.stringify({
                 projectId: project.id,
                 stageId: activeStageId,
+                revisionId: commentRevisionId,
                 body,
                 allowEmptyBody: true,
                 mentionedUserIds,
@@ -2773,6 +2866,7 @@ export function ProjectChatWorkspace({
                 current.filter((entry) => entry.id !== optimisticCommentId),
               );
               setDraft(body);
+              setReplyingToRevision(revisionReplyTarget);
               setSelectedMentionTokens(selectedMentionTokens);
               setDraftSelectionStart(body.length);
               setPendingCommentFiles(filesToUpload);
@@ -2808,6 +2902,7 @@ export function ProjectChatWorkspace({
                 current.filter((entry) => entry.id !== optimisticCommentId),
               );
               setDraft(body);
+              setReplyingToRevision(revisionReplyTarget);
               setSelectedMentionTokens(selectedMentionTokens);
               setDraftSelectionStart(body.length);
               setPendingCommentFiles(filesToUpload);
@@ -2834,6 +2929,7 @@ export function ProjectChatWorkspace({
                 current.filter((entry) => entry.id !== optimisticCommentId),
               );
               setDraft(body);
+              setReplyingToRevision(revisionReplyTarget);
               setSelectedMentionTokens(selectedMentionTokens);
               setDraftSelectionStart(body.length);
               setPendingCommentFiles(filesToUpload);
@@ -2899,6 +2995,7 @@ export function ProjectChatWorkspace({
               current.filter((entry) => entry.id !== optimisticCommentId),
             );
             setDraft(body);
+            setReplyingToRevision(revisionReplyTarget);
             setSelectedMentionTokens(selectedMentionTokens);
             setDraftSelectionStart(body.length);
             setPendingCommentFiles(filesToUpload);
@@ -2914,6 +3011,7 @@ export function ProjectChatWorkspace({
       const commentResult = await createStageCommentAction({
         projectId: project.id,
         stageId: activeStageId,
+        revisionId: commentRevisionId,
         body,
         allowEmptyBody: false,
         mentionedUserIds,
@@ -2929,6 +3027,7 @@ export function ProjectChatWorkspace({
       }));
 
       setDraft("");
+      setReplyingToRevision(null);
       setSelectedMentionTokens([]);
       setDraftSelectionStart(0);
       setPendingCommentFiles([]);
@@ -2992,6 +3091,16 @@ export function ProjectChatWorkspace({
       return;
     }
 
+    if (hasPendingRevisionReview) {
+      setRevisionDialogError(pendingRevisionReviewMessage);
+      return;
+    }
+
+    if (!canSubmitWorkAsMainExecutor) {
+      setRevisionDialogError("Only a Main Executor can submit work for review.");
+      return;
+    }
+
     if (!summary) {
       setRevisionDialogError("Enter the revision details before creating it.");
       return;
@@ -3049,6 +3158,7 @@ export function ProjectChatWorkspace({
       updateOptimisticComment(optimisticRevisionId, (entry) => ({
         ...entry,
         title: revisionResult.title,
+        revisionNumber: revisionResult.revisionNumber,
         serverEntryId: revisionResult.revisionId,
       }));
 
@@ -3139,6 +3249,7 @@ export function ProjectChatWorkspace({
           revisionId: revisionResult.revisionId,
           kind: "revision",
           title: revisionResult.title,
+          revisionNumber: revisionResult.revisionNumber,
           revisionStatus: "PENDING_REVIEW",
           rejectionReason: null,
           author: currentUserDisplayName,
@@ -3199,6 +3310,7 @@ export function ProjectChatWorkspace({
     }
 
     const revisionEntryId = getRevisionEntryId(reviewRevisionMessage);
+    const reviewRevisionLabel = getRevisionLabel(reviewRevisionMessage);
     const rejectionReason = reviewRejectReason.trim();
 
     if (status === "REJECTED" && !rejectionReason) {
@@ -3230,12 +3342,16 @@ export function ProjectChatWorkspace({
 
       const nextStatus = result.revision.status as RevisionReviewState;
       const nextReason = result.revision.rejectionReason ?? null;
+      const reviewedBy = result.revision.reviewedBy ?? currentUserDisplayName;
+      const reviewedAt = "Just now";
 
       setRevisionReviewOverrides((current) => ({
         ...current,
         [revisionEntryId]: {
           status: nextStatus,
           rejectionReason: nextReason,
+          reviewedBy,
+          reviewedAt,
         },
       }));
 
@@ -3246,6 +3362,8 @@ export function ProjectChatWorkspace({
                 ...entry,
                 revisionStatus: nextStatus,
                 rejectionReason: nextReason,
+                reviewedBy,
+                reviewedAt,
               }
             : entry,
         );
@@ -3255,11 +3373,37 @@ export function ProjectChatWorkspace({
             {
               id: `confirmed-comment-${result.revision.rejectionComment.id}`,
               serverEntryId: result.revision.rejectionComment.id,
-              kind: "comment",
+              revisionId: reviewRevisionMessage.revisionId,
+              kind: "system",
+              title: "Revision requested",
               author: currentUserDisplayName,
               authorAvatarSrc: currentUserAvatarSrc,
               role: currentUserRoleLabel,
-              body: result.revision.rejectionComment.body,
+              body: `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.`,
+              createdAt: "Just now",
+            },
+            ...nextEntries,
+          ];
+        }
+
+        if (status === "APPROVED") {
+          const systemTitle = result.revision.stageCompletion
+            ? "Stage completed"
+            : "Submission completed";
+          const systemBody = result.revision.stageCompletion
+            ? `${currentUserDisplayName} completed this stage after approving ${reviewRevisionLabel}.`
+            : `${currentUserDisplayName} marked ${reviewRevisionLabel} as completed.`;
+
+          return [
+            {
+              id: `confirmed-system-${revisionEntryId}-${nextStatus}`,
+              revisionId: reviewRevisionMessage.revisionId,
+              kind: "system",
+              title: systemTitle,
+              author: currentUserDisplayName,
+              authorAvatarSrc: currentUserAvatarSrc,
+              role: currentUserRoleLabel,
+              body: systemBody,
               createdAt: "Just now",
             },
             ...nextEntries,
@@ -3419,7 +3563,7 @@ export function ProjectChatWorkspace({
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 Upload the first revision to start the proof and archive trail.
               </p>
-              {!isProjectCompleted && canSubmitWorkAsMainExecutor && hasAcceptedBrief ? (
+              {canSubmitNewRevision ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -3433,6 +3577,12 @@ export function ProjectChatWorkspace({
                     )}
                     Submit First Work
                   </Button>
+                </div>
+              ) : showPendingRevisionReviewStatus ? (
+                <div className="mt-5 flex justify-center">
+                  <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-[700] text-[#9d651b]">
+                    {pendingRevisionReviewMessage}
+                  </div>
                 </div>
               ) : !isProjectCompleted && !isStageCompleted && isMainProjectExecutor ? (
                 <div className="mt-5 flex justify-center">
@@ -3456,21 +3606,28 @@ export function ProjectChatWorkspace({
             </Card>
           ) : null}
 
-          {displayedMessages.map((message, index) =>
+          {displayedMessages.map((message) =>
             message.kind === "system" ? (
               <SystemActivityCard key={message.id} message={message} />
             ) : message.kind === "revision" ? (
               (() => {
                 const revisionEntryId = getRevisionEntryId(message);
+                const reviewOverride = revisionReviewOverrides[revisionEntryId];
                 const effectiveRevisionStatus =
-                  revisionReviewOverrides[revisionEntryId]?.status ??
+                  reviewOverride?.status ??
                   message.revisionStatus ??
                   "PENDING_REVIEW";
                 const effectiveRejectionReason =
-                  revisionReviewOverrides[revisionEntryId]?.rejectionReason ??
+                  reviewOverride?.rejectionReason ??
                   message.rejectionReason ??
                   null;
+                const effectiveReviewedBy =
+                  reviewOverride?.reviewedBy ?? message.reviewedBy ?? null;
+                const effectiveReviewedAt =
+                  reviewOverride?.reviewedAt ?? message.reviewedAt ?? null;
                 const revisionStatusMeta = getRevisionStatusMeta(effectiveRevisionStatus);
+                const revisionLabel = getRevisionLabel(message);
+                const isLatestRevision = revisionEntryId === latestRevisionEntryId;
                 const canReviewRevision =
                   !isProjectCompleted &&
                   canReviewSubmissions &&
@@ -3483,7 +3640,7 @@ export function ProjectChatWorkspace({
                         <div className="min-w-0 max-w-[220px]">
                           <div className="flex flex-wrap items-center gap-2">
                             <h1 className="text-[18px] font-[700] text-[#95d867]">
-                              {message.title}
+                              {revisionLabel}
                             </h1>
                             <span
                               className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${revisionStatusMeta.badgeClassName}`}
@@ -3501,18 +3658,29 @@ export function ProjectChatWorkspace({
                               <p className="text-[10px] text-[#93d68a]">{message.role}</p>
                             </div>
                           </div>
+                          <p className="mt-2 text-[10px] font-[800] uppercase tracking-[0.08em] text-white/65">
+                            Submitted {message.createdAt}
+                          </p>
                           <p className="mt-3 text-[12px] leading-[1.45] text-white/90">
                             {message.body}
                           </p>
                           {effectiveRejectionReason ? (
-                            <div className="mt-3 rounded-[16px] border border-[#ffffff29] bg-[#fff2f1]/95 px-3 py-2.5 text-[11px] leading-5 text-[#7d2822]">
-                              <p className="font-[700] uppercase tracking-[0.08em] text-[#bb4d49]">
-                                Revision Brief
+                            <div className="mt-4 rounded-[18px] border border-[#ffd3ce] bg-[#fff7f6] px-4 py-3 text-[#6f2721] shadow-[0_12px_28px_rgba(63,22,17,0.16)]">
+                              <p className="text-[12px] font-[800] text-[#a73831]">
+                                Revision Request for {revisionLabel}
                               </p>
-                              <p className="mt-1">{effectiveRejectionReason}</p>
+                              <p className="mt-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#b7655d]">
+                                {effectiveReviewedBy
+                                  ? `Requested by ${effectiveReviewedBy}${
+                                      effectiveReviewedAt ? ` · ${effectiveReviewedAt}` : ""
+                                    }`
+                                  : "Requested by Project Owner"}
+                              </p>
+                              <p className="mt-2 text-[12px] font-[700] leading-5">
+                                {effectiveRejectionReason}
+                              </p>
                             </div>
                           ) : null}
-                          <p className="mt-2 text-[10px] text-white/70">{message.createdAt}</p>
                         </div>
 
                         {message.attachments?.length ? (
@@ -3531,7 +3699,7 @@ export function ProjectChatWorkspace({
                       </div>
                     </Card>
 
-                    {canReviewRevision || index === firstRevisionIndex ? (
+                    {canReviewRevision || isLatestRevision || !isProjectCompleted ? (
                       <div className="flex flex-wrap gap-2">
                         {canReviewRevision ? (
                           <Button
@@ -3551,16 +3719,13 @@ export function ProjectChatWorkspace({
                             Review Submission
                           </Button>
                         ) : null}
-                        {index === firstRevisionIndex &&
-                        !isProjectCompleted &&
-                        canSubmitWorkAsMainExecutor &&
-                        hasAcceptedBrief ? (
+                        {isLatestRevision && canSubmitNewRevision ? (
                           <Button
                             type="button"
                             onClick={openRevisionDialog}
                             size="sm"
                             className="rounded-full text-[12px]"
-                            disabled={isUploadingRevision || isStageCompleted}
+                            disabled={isUploadingRevision}
                           >
                             {isUploadingRevision ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3570,7 +3735,12 @@ export function ProjectChatWorkspace({
                             Submit Work
                           </Button>
                         ) : null}
-                        {index === firstRevisionIndex && isProjectOwner && !isFinalStage ? (
+                        {isLatestRevision && showPendingRevisionReviewStatus ? (
+                          <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-[700] text-[#9d651b]">
+                            {pendingRevisionReviewMessage}
+                          </div>
+                        ) : null}
+                        {isLatestRevision && isProjectOwner && !isFinalStage ? (
                           <Button
                             type="button"
                             size="sm"
@@ -3585,10 +3755,10 @@ export function ProjectChatWorkspace({
                             {isStageCompleted ? "Stage completed" : "Mark as complete"}
                           </Button>
                         ) : null}
-                        {index === firstRevisionIndex && !isProjectCompleted ? (
+                        {!isProjectCompleted ? (
                           <Button
                             type="button"
-                            onClick={() => setDraft(`Replying to ${message.author}: `)}
+                            onClick={() => startRevisionReply(message)}
                             size="sm"
                             variant="secondary"
                             className="rounded-full text-[12px]"
@@ -3602,33 +3772,50 @@ export function ProjectChatWorkspace({
                 );
               })()
             ) : (
-              <Card
-                key={message.id}
-                className="rounded-[8px] border border-[#4b4d4b] bg-white p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
-              >
-                <div className="flex items-center gap-2">
-                  <ChatAvatar
-                    name={message.author}
-                    src={message.authorAvatarSrc}
-                    size="sm"
-                  />
-                  <div>
-                    <p className="text-[12px] font-[700] text-[#111712]">{message.author}</p>
-                    <p className="text-[10px] text-[#8acb74]">{message.role}</p>
-                  </div>
-                  <span className="ml-auto text-[10px] text-[#7d847e]">{message.createdAt}</span>
-                </div>
-                <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[12px] leading-[1.35] text-[#111712]">
-                  {renderCommentBodyWithMentions(message.body, message.mentions)}
-                </p>
-                {message.attachments?.length ? (
-                  <AttachmentHistoryList
-                    attachments={message.attachments}
-                    compact
-                    actionsDisabled={isProjectCompleted}
-                  />
-                ) : null}
-              </Card>
+              (() => {
+                const linkedRevisionLabel = message.revisionId
+                  ? revisionLabelById.get(message.revisionId) ?? "Revision"
+                  : null;
+
+                return (
+                  <Card
+                    key={message.id}
+                    className={
+                      linkedRevisionLabel
+                        ? "rounded-[12px] border border-[#cfe3d2] bg-[#f7fbf6] p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
+                        : "rounded-[8px] border border-[#4b4d4b] bg-white p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
+                    }
+                  >
+                    {linkedRevisionLabel ? (
+                      <div className="mb-2 inline-flex items-center rounded-full bg-[#e8f4ea] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
+                        Comment on {linkedRevisionLabel}
+                      </div>
+                    ) : null}
+                    <div className="flex items-center gap-2">
+                      <ChatAvatar
+                        name={message.author}
+                        src={message.authorAvatarSrc}
+                        size="sm"
+                      />
+                      <div>
+                        <p className="text-[12px] font-[700] text-[#111712]">{message.author}</p>
+                        <p className="text-[10px] text-[#8acb74]">{message.role}</p>
+                      </div>
+                      <span className="ml-auto text-[10px] text-[#7d847e]">{message.createdAt}</span>
+                    </div>
+                    <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[12px] leading-[1.35] text-[#111712]">
+                      {renderCommentBodyWithMentions(message.body, message.mentions)}
+                    </p>
+                    {message.attachments?.length ? (
+                      <AttachmentHistoryList
+                        attachments={message.attachments}
+                        compact
+                        actionsDisabled={isProjectCompleted}
+                      />
+                    ) : null}
+                  </Card>
+                );
+              })()
             ),
           )}
 
@@ -3654,18 +3841,9 @@ export function ProjectChatWorkspace({
                     ) : null}
                     Accept Brief
                   </Button>
-                  <Button
-                    type="button"
-                    onClick={() => setDraft(`Replying to ${currentUserDisplayName}: `)}
-                    size="sm"
-                    variant="secondary"
-                    className="rounded-full text-[12px]"
-                  >
-                    Add Comments
-                  </Button>
                 </>
               ) : null}
-              {!isProjectCompleted && canSubmitWorkAsMainExecutor && hasAcceptedBrief ? (
+              {canSubmitNewRevision ? (
                 <Button
                   type="button"
                   onClick={openRevisionDialog}
@@ -3680,6 +3858,10 @@ export function ProjectChatWorkspace({
                   )}
                   Submit Work
                 </Button>
+              ) : showPendingRevisionReviewStatus ? (
+                <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-[700] text-[#9d651b]">
+                  {pendingRevisionReviewMessage}
+                </div>
               ) : null}
               {!isProjectCompleted &&
               !isStageCompleted &&
@@ -3724,6 +3906,25 @@ export function ProjectChatWorkspace({
                   }
                 }}
               />
+
+              {replyingToRevision ? (
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#cfe3d2] bg-[#f7fbf6] px-3 py-2.5 text-[12px] text-[#304138]">
+                  <span className="font-[800] text-brand">
+                    Reply to {replyingToRevision.label}
+                  </span>
+                  <span className="text-[#66736a]">
+                    This comment will stay linked to the revision.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingToRevision(null)}
+                    className="ml-auto inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-[#6d776f] transition hover:bg-white hover:text-[#27322b]"
+                    aria-label="Clear revision reply context"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
 
               {pendingCommentFiles.length ? (
                 <div className="mb-3 flex flex-wrap gap-2 rounded-[18px] border border-[#e2e7e2] bg-[#fbfcfa] px-3 py-2.5">
@@ -4441,13 +4642,13 @@ export function ProjectChatWorkspace({
               <button
                 type="button"
                 onClick={() => {
-                  if (!hasAcceptedBrief || isStageCompleted) {
+                  if (!hasAcceptedBrief || isStageCompleted || hasPendingRevisionReview) {
                     return;
                   }
 
                   setCommentUploadIntent("STAGE_SUBMISSION");
                 }}
-                disabled={!hasAcceptedBrief || isStageCompleted}
+                disabled={!hasAcceptedBrief || isStageCompleted || hasPendingRevisionReview}
                 className={`w-full rounded-[22px] border px-5 py-4 text-left transition ${
                   commentUploadIntent === "STAGE_SUBMISSION"
                     ? "border-brand bg-[#f4fbf5] shadow-[0_10px_24px_rgba(18,35,23,0.06)]"
@@ -4475,6 +4676,8 @@ export function ProjectChatWorkspace({
               <div className="rounded-[18px] border border-[#e4e8e3] bg-[#fafcf9] px-4 py-3 text-[12px] text-[#657067]">
                 {isStageCompleted
                   ? "This stage is completed. New submissions are locked."
+                  : hasPendingRevisionReview
+                  ? pendingRevisionReviewMessage
                   : hasAcceptedBrief
                   ? "Submissions must be PNG, JPG, JPEG, or WebP images."
                   : "Accept the brief before submitting work files for review."}
@@ -4601,7 +4804,7 @@ export function ProjectChatWorkspace({
                     onClick={() => {
                       void handleCreateRevision();
                     }}
-                    disabled={isUploadingRevision}
+                    disabled={isUploadingRevision || !canSubmitNewRevision}
                   >
                     {isUploadingRevision ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

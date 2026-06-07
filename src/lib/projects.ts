@@ -224,9 +224,12 @@ export type ProjectChatEntry = {
   id: string;
   kind: "revision" | "comment" | "system";
   revisionId?: string;
+  revisionNumber?: number;
   title?: string;
   revisionStatus?: ProjectRevisionStatus | null;
   rejectionReason?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
   author: string;
   authorAvatarSrc?: string | null;
   role: string;

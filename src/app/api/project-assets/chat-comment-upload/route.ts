@@ -54,6 +54,7 @@ export async function POST(request: Request) {
   const result = await prepareStageCommentUploads(user, {
     projectId: payload.projectId,
     stageId: payload.stageId,
+    revisionId: typeof payload.revisionId === "string" ? payload.revisionId : null,
     body: payload.body,
     allowEmptyBody: Boolean(payload.allowEmptyBody),
     mentionedUserIds: payload.mentionedUserIds ?? [],

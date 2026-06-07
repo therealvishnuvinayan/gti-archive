@@ -60,6 +60,7 @@ type StageRevisionInput = {
 type StageCommentInput = {
   projectId: string;
   stageId: string;
+  revisionId?: string | null;
   body: string;
   allowEmptyBody?: boolean;
   mentionedUserIds?: string[];
@@ -154,6 +155,7 @@ export async function createStageRevisionAction(input: StageRevisionInput) {
     return {
       revisionId: revision.id,
       title: revision.title,
+      revisionNumber: revision.revisionNumber,
     };
   } catch (error) {
     return {

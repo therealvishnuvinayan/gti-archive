@@ -71,6 +71,7 @@ type StageHistoryQueryRecord = {
   status: ProjectRevisionStatus;
   rejectionReason: string | null;
   reviewedAt: Date | null;
+  reviewedBy: Pick<User, "name" | "email"> | null;
   createdAt: Date;
   createdBy: Pick<
     User,
@@ -154,6 +155,7 @@ export type StageCommentUploadFileInput = {
 export type PrepareStageCommentUploadsInput = {
   projectId: string;
   stageId: string;
+  revisionId?: string | null;
   body: string;
   allowEmptyBody?: boolean;
   mentionedUserIds?: string[];
@@ -312,10 +314,15 @@ function mapRevisionEntry(
   return {
     id: revision.id,
     revisionId: revision.id,
+    revisionNumber: revision.revisionNumber,
     kind: "revision",
     title: revision.title,
     revisionStatus: revision.status,
     rejectionReason: revision.rejectionReason,
+    reviewedBy: revision.reviewedBy ? getDisplayName(revision.reviewedBy) : null,
+    reviewedAt: revision.reviewedAt
+      ? formatHistoryTimestamp(revision.reviewedAt)
+      : null,
     author: getDisplayName(revision.createdBy),
     authorAvatarSrc: getProfileAvatarSrc(revision.createdBy),
     role: getActorRole(revision.createdBy),
@@ -342,6 +349,18 @@ function isBriefAcceptedSystemBody(body: string) {
   );
 }
 
+function getRevisionRequestSystemDetails(body: string) {
+  const match = body.trim().match(/^Revision brief for Revision (\d+):\s*(.*)$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    revisionLabel: `Revision ${match[1]}`,
+  };
+}
+
 function mapCommentEntry(
   comment: StageCommentQueryRecord,
   submissionNumbers: ReadonlyMap<string, number>,
@@ -358,6 +377,25 @@ function mapCommentEntry(
       author: actorName,
       role: getActorRole(comment.author),
       body: `${actorName} accepted the project and stage brief and started work on this stage.`,
+      createdAt: formatHistoryTimestamp(comment.createdAt),
+      mentions: [],
+      attachments: [],
+    };
+  }
+
+  const revisionRequestSystemDetails = getRevisionRequestSystemDetails(comment.body);
+
+  if (revisionRequestSystemDetails) {
+    const actorName = getDisplayName(comment.author);
+
+    return {
+      id: comment.id,
+      revisionId: comment.revisionId ?? undefined,
+      kind: "system",
+      title: "Revision requested",
+      author: actorName,
+      role: getActorRole(comment.author),
+      body: `${actorName} requested a revision for ${revisionRequestSystemDetails.revisionLabel}.`,
       createdAt: formatHistoryTimestamp(comment.createdAt),
       mentions: [],
       attachments: [],
@@ -644,6 +682,12 @@ export async function getProjectStageHistory(
                   avatarUrl: true,
                 },
               },
+              reviewedBy: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
               attachments: {
                 orderBy: {
                   createdAt: "asc",
@@ -788,6 +832,10 @@ export async function createStageRevision(
     throw new Error("This project is already completed.");
   }
 
+  if (project.archivedAt) {
+    throw new Error("This project has already been archived.");
+  }
+
   if (stage.status === "COMPLETED") {
     throw new Error("This stage is already completed.");
   }
@@ -797,6 +845,23 @@ export async function createStageRevision(
   }
 
   const revision = await withPrismaRetry(async () => {
+    const pendingRevision = await prisma.projectRevision.findFirst({
+      where: {
+        projectId: input.projectId,
+        stageId: stage.id,
+        status: ProjectRevisionStatus.PENDING_REVIEW,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (pendingRevision) {
+      throw new Error(
+        "A revision is already pending review. Please wait for the project owner to review it.",
+      );
+    }
+
     const latestRevision = await prisma.projectRevision.findFirst({
       where: {
         stageId: stage.id,
@@ -857,6 +922,7 @@ export async function createStageComment(
   input: {
     projectId: string;
     stageId: string;
+    revisionId?: string | null;
     body: string;
     allowEmptyBody?: boolean;
     mentionedUserIds?: string[];
@@ -881,6 +947,7 @@ export async function createStageComment(
               },
             },
             status: true,
+            archivedAt: true,
             collaborators: {
               where: {
                 userId: user.id,
@@ -922,6 +989,26 @@ export async function createStageComment(
   }
 
   const body = input.body.trim();
+  const requestedRevisionId = input.revisionId?.trim() || null;
+
+  if (requestedRevisionId) {
+    const revision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          id: requestedRevisionId,
+          projectId: input.projectId,
+          stageId: stage.id,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+
+    if (!revision) {
+      throw new Error("Revision not found.");
+    }
+  }
 
   if (!body && !input.allowEmptyBody) {
     throw new Error("Enter a comment before sending.");
@@ -963,7 +1050,7 @@ export async function createStageComment(
       data: {
         projectId: input.projectId,
         stageId: stage.id,
-        revisionId: stage.revisions[0]?.id ?? null,
+        revisionId: requestedRevisionId,
         authorId: user.id,
         body: body || "Attachment uploaded.",
         mentions:
@@ -1060,6 +1147,7 @@ export async function prepareStageCommentUploads(
               },
             },
             status: true,
+            archivedAt: true,
             collaborators: {
               where: {
                 userId: user.id,
@@ -1100,6 +1188,10 @@ export async function prepareStageCommentUploads(
     return { error: "This project is already completed." };
   }
 
+  if (stage.project.archivedAt) {
+    return { error: "This project has already been archived." };
+  }
+
   const hasSubmissionUpload = uploadFiles.some(
     (file) => file.assetType === AttachmentAssetType.STAGE_SUBMISSION,
   );
@@ -1119,6 +1211,26 @@ export async function prepareStageCommentUploads(
 
     if (stage.status === "COMPLETED") {
       return { error: "This stage is already completed." };
+    }
+
+    const pendingRevision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          projectId: input.projectId,
+          stageId: stage.id,
+          status: ProjectRevisionStatus.PENDING_REVIEW,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+
+    if (pendingRevision) {
+      return {
+        error:
+          "A revision is already pending review. Please wait for the project owner to review it.",
+      };
     }
   }
 
@@ -1160,7 +1272,27 @@ export async function prepareStageCommentUploads(
             requestedMentionUserIds.includes(recipientUserId),
         )
       : [];
-  const latestRevisionId = stage.revisions[0]?.id ?? null;
+  const requestedRevisionId = input.revisionId?.trim() || null;
+
+  if (requestedRevisionId) {
+    const revision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          id: requestedRevisionId,
+          projectId: input.projectId,
+          stageId: stage.id,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+
+    if (!revision) {
+      return { error: "Revision not found." };
+    }
+  }
+
   const commentId = randomUUID();
   const preparedFiles = uploadFiles.map((file) => {
     const attachmentId = randomUUID();
@@ -1175,7 +1307,7 @@ export async function prepareStageCommentUploads(
       storageKey: buildProjectAssetKey({
         projectId: input.projectId,
         stageId: stage.id,
-        revisionId: latestRevisionId,
+        revisionId: requestedRevisionId,
         commentId,
         assetType: file.assetType,
         safeFileName: uniqueFileName,
@@ -1190,7 +1322,7 @@ export async function prepareStageCommentUploads(
           id: commentId,
           projectId: input.projectId,
           stageId: stage.id,
-          revisionId: latestRevisionId,
+          revisionId: requestedRevisionId,
           authorId: user.id,
           body: body || "Attachment uploaded.",
           mentions:
@@ -1213,7 +1345,7 @@ export async function prepareStageCommentUploads(
           id: file.attachmentId,
           projectId: input.projectId,
           stageId: stage.id,
-          revisionId: latestRevisionId,
+          revisionId: requestedRevisionId,
           commentId,
           uploadedById: user.id,
           fileName: file.uniqueFileName,
@@ -1251,7 +1383,7 @@ export async function prepareStageCommentUploads(
 
   return {
     commentId,
-    revisionId: latestRevisionId,
+    revisionId: requestedRevisionId,
     mentionedUserIds: validMentionUserIds,
     uploads,
   };
@@ -1841,6 +1973,12 @@ export async function reviewProjectRevision(
           status: true,
           rejectionReason: true,
           reviewedAt: true,
+          reviewedBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
         },
       });
 
@@ -1966,6 +2104,9 @@ export async function reviewProjectRevision(
 
       return {
         ...updatedRevision,
+        reviewedBy: updatedRevision.reviewedBy
+          ? getDisplayName(updatedRevision.reviewedBy)
+          : null,
         rejectionComment,
         stageCompletion,
       };
