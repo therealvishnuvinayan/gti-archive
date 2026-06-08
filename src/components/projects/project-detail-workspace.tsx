@@ -115,7 +115,13 @@ export function ProjectDetailWorkspace({
                 >
                   {project.stageCards.map((stage) => {
                     const styles = getStageCardClasses(stage);
-                    const stageInactive = stage.status === "pending";
+                    const stageOpenable = stage.status === "in-progress";
+                    const stageCompleted = stage.status === "completed";
+                    const stageDisabledTitle =
+                      stage.status === "on-hold"
+                        ? "This stage is on hold."
+                        : "This stage is not active yet.";
+                    const stageButtonLabel = stageCompleted ? "View Stage" : "Open Stage";
 
                     return (
                       <MotionItem key={stage.id} y={10} className="min-w-0">
@@ -144,18 +150,25 @@ export function ProjectDetailWorkspace({
 
                           <Separator className="mb-3 mt-auto bg-white/12" />
 
-                          <Button
-                            asChild
-                            className={
-                              stageInactive
-                                ? "pointer-events-none min-h-9 w-full rounded-full bg-[#f1f1f1] px-4 py-2 text-[12px] text-[#d7d7d7] shadow-none"
-                                : "min-h-9 w-full rounded-full bg-[#0c4c34] px-4 py-2 text-[12px] text-white hover:bg-[#0a402c]"
-                            }
-                          >
-                            <Link href={`/projects/${project.id}/chat?stage=${stage.id}`}>
+                          {stageOpenable || stageCompleted ? (
+                            <Button
+                              asChild
+                              className="min-h-9 w-full rounded-full bg-[#0c4c34] px-4 py-2 text-[12px] text-white hover:bg-[#0a402c]"
+                            >
+                              <Link href={`/projects/${project.id}/chat?stage=${stage.id}`}>
+                                {stageButtonLabel}
+                              </Link>
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              disabled
+                              title={stageDisabledTitle}
+                              className="min-h-9 w-full cursor-not-allowed rounded-full bg-[#e8ece8] px-4 py-2 text-[12px] text-[#98a09a] shadow-none hover:bg-[#e8ece8] disabled:opacity-100"
+                            >
                               Open Stage
-                            </Link>
-                          </Button>
+                            </Button>
+                          )}
                         </Card>
                       </MotionItem>
                     );
