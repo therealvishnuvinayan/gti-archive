@@ -2,6 +2,8 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import {
+  AttachmentAssetType,
+  AttachmentStatus,
   ProjectExecutorRole,
   ProjectStatus,
   type CollaboratorType,
@@ -198,6 +200,18 @@ function parseProjectFormData(formData: FormData) {
   const collaboratorParticipantTypes = formData
     .getAll("collaboratorParticipantTypes")
     .map((value) => String(value).trim());
+  const projectAttachmentIds = [
+    ...new Set(
+      formData
+        .getAll("projectAttachmentIds")
+        .map((value) => String(value).trim())
+        .filter(Boolean),
+    ),
+  ];
+  const stageAttachmentIds = formData
+    .getAll("stageAttachmentIds")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
 
   return {
     name,
@@ -223,7 +237,85 @@ function parseProjectFormData(formData: FormData) {
     executorRoles,
     collaboratorIds,
     collaboratorParticipantTypes,
+    projectAttachmentIds,
+    stageAttachmentIds,
   };
+}
+
+async function validateSubmittedProjectAttachments(input: {
+  projectId: string;
+  projectAttachmentIds: string[];
+  stageAttachmentIds: string[];
+}) {
+  const submittedIds = [
+    ...new Set([...input.projectAttachmentIds, ...input.stageAttachmentIds]),
+  ];
+
+  if (submittedIds.length === 0) {
+    return null;
+  }
+
+  const attachments = await prisma.projectAttachment.findMany({
+    where: {
+      id: {
+        in: submittedIds,
+      },
+    },
+    select: {
+      id: true,
+      projectId: true,
+      stageId: true,
+      assetType: true,
+      status: true,
+    },
+  });
+  const attachmentById = new Map(attachments.map((attachment) => [attachment.id, attachment]));
+
+  if (submittedIds.some((attachmentId) => !attachmentById.has(attachmentId))) {
+    return {
+      error: "One or more attachments failed to upload. Please remove them or try again.",
+      fieldErrors: {
+        attachments: "One or more attachments failed to upload. Please remove them or try again.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  const hasUploadingAttachment = attachments.some(
+    (attachment) => attachment.status === AttachmentStatus.UPLOADING,
+  );
+
+  if (hasUploadingAttachment) {
+    return {
+      error: "Please wait for all attachments to finish uploading.",
+      fieldErrors: {
+        attachments: "Please wait for all attachments to finish uploading.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  const hasBrokenAttachment = attachments.some(
+    (attachment) =>
+      attachment.projectId !== input.projectId ||
+      attachment.status !== AttachmentStatus.READY ||
+      attachment.assetType !== AttachmentAssetType.GENERAL_PROJECT_ASSET,
+  );
+  const hasMismatchedProjectAttachment = input.projectAttachmentIds.some(
+    (attachmentId) => attachmentById.get(attachmentId)?.stageId,
+  );
+  const hasMismatchedStageAttachment = input.stageAttachmentIds.some(
+    (attachmentId) => !attachmentById.get(attachmentId)?.stageId,
+  );
+
+  if (hasBrokenAttachment || hasMismatchedProjectAttachment || hasMismatchedStageAttachment) {
+    return {
+      error: "One or more attachments failed to upload. Please remove them or try again.",
+      fieldErrors: {
+        attachments: "One or more attachments failed to upload. Please remove them or try again.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  return null;
 }
 
 function normalizeProjectExecutorAssignments(
@@ -995,7 +1087,19 @@ export async function updateProjectAction(
     currentStageName,
     collaboratorIds,
     collaboratorParticipantTypes,
+    projectAttachmentIds,
+    stageAttachmentIds,
   } = validated.data;
+
+  const submittedAttachmentValidation = await validateSubmittedProjectAttachments({
+    projectId,
+    projectAttachmentIds,
+    stageAttachmentIds,
+  });
+
+  if (submittedAttachmentValidation) {
+    return submittedAttachmentValidation;
+  }
 
   const currencyCode = canUpdateBudget
     ? await resolveProjectCurrencyCode(currency, {

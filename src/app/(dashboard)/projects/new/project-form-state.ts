@@ -15,6 +15,7 @@ export type ProjectFormFieldErrors = {
   status?: string;
   startDate?: string;
   endDate?: string;
+  attachments?: string;
   stageNames?: Array<string | undefined>;
   stageBudgets?: Array<string | undefined>;
   stageDescriptions?: Array<string | undefined>;

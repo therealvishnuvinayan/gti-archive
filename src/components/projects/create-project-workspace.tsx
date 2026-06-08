@@ -955,6 +955,8 @@ export function CreateProjectWorkspace({
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
+  const displayedAttachmentError =
+    attachmentError ?? getFieldError("attachments", fieldErrors.attachments);
   const parsedProjectBudget = useMemo(() => parseBudgetInput(projectBudget), [projectBudget]);
   const parsedStageBudgets = useMemo(
     () => stages.map((stage) => parseBudgetInput(stage.budget)),
@@ -1679,6 +1681,33 @@ export function CreateProjectWorkspace({
     setDirtyFieldKeys(new Set());
     setTimelineSubmitAttempted(true);
 
+    if (mode === "edit" && (isUploadingAttachments || pendingProjectFiles.length > 0)) {
+      event.preventDefault();
+      const message = "Please wait for all attachments to finish uploading.";
+      setAttachmentError(message);
+      showErrorToast("Attachments still uploading.", message);
+      return;
+    }
+
+    if (mode === "edit" && attachmentError) {
+      event.preventDefault();
+      const message = "One or more attachments failed to upload. Please remove them or try again.";
+      setAttachmentError(message);
+      showErrorToast("Unable to save project.", message);
+      return;
+    }
+
+    if (
+      mode === "edit" &&
+      stages.some((stage) => stage.persistedId && stage.pendingFiles.length > 0)
+    ) {
+      event.preventDefault();
+      const message = "Please wait for all attachments to finish uploading.";
+      setAttachmentError(message);
+      showErrorToast("Attachments still uploading.", message);
+      return;
+    }
+
     if (!hasMainExecutor(projectExecutors)) {
       event.preventDefault();
       showErrorToast(
@@ -1825,6 +1854,7 @@ export function CreateProjectWorkspace({
     }
 
     setAttachmentError(undefined);
+    clearFieldError("attachments");
 
     if (mode === "create") {
       setPendingProjectFiles((current) => [...current, ...selectedFiles]);
@@ -1888,6 +1918,7 @@ export function CreateProjectWorkspace({
     }
 
     setAttachmentError(undefined);
+    clearFieldError("attachments");
     updateStage(stageId, {
       pendingFiles: [...stage.pendingFiles, ...selectedFiles],
     });
@@ -1988,10 +2019,12 @@ export function CreateProjectWorkspace({
   }, [stages, uploadProjectAsset]);
 
   function removePendingProjectFile(index: number) {
+    clearFieldError("attachments");
     setPendingProjectFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
   }
 
   function removePendingStageFile(stageId: string, index: number) {
+    clearFieldError("attachments");
     setStages((current) =>
       current.map((stage) =>
         stage.id === stageId
@@ -2011,6 +2044,7 @@ export function CreateProjectWorkspace({
 
     setDeletingAttachmentId(attachmentId);
     setAttachmentError(undefined);
+    clearFieldError("attachments");
 
     try {
       const response = await fetch(
@@ -2295,6 +2329,7 @@ export function CreateProjectWorkspace({
 
     setDeletingAttachmentId(attachmentId);
     setAttachmentError(undefined);
+    clearFieldError("attachments");
 
     try {
       const response = await fetch(
@@ -2354,6 +2389,9 @@ export function CreateProjectWorkspace({
             value={collaborator.participantType ?? ""}
           />
         </div>
+      ))}
+      {projectAttachments.map((attachment) => (
+        <input key={attachment.id} type="hidden" name="projectAttachmentIds" value={attachment.id} />
       ))}
       {mode === "edit" && initialValues ? (
         <input type="hidden" name="projectId" value={initialValues.id} />
@@ -2649,9 +2687,9 @@ export function CreateProjectWorkspace({
                 }}
               />
 
-              {attachmentError ? (
+              {displayedAttachmentError ? (
                 <div className="mt-3 rounded-[16px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] text-[#bb4d49]">
-                  {attachmentError}
+                  {displayedAttachmentError}
                 </div>
               ) : null}
 
@@ -2951,6 +2989,14 @@ export function CreateProjectWorkspace({
                       Stage Name <span className="text-[#d3554d]">*</span>
                     </p>
                     <input type="hidden" name="stageIds" value={stage.persistedId ?? ""} />
+                    {stage.attachments.map((attachment) => (
+                      <input
+                        key={attachment.id}
+                        type="hidden"
+                        name="stageAttachmentIds"
+                        value={attachment.id}
+                      />
+                    ))}
                     <Input
                       value={stage.name}
                       onChange={(event) => {
