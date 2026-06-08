@@ -228,7 +228,15 @@ export const helpTopics: HelpTopic[] = [
     description: "Manage your profile, password, categories, tags, currencies, users, and permission profiles.",
     sectionId: "settings-users-master-data",
     icon: Settings2,
-    keywords: ["settings", "users", "categories", "tags", "currencies", "master data"],
+    keywords: ["settings", "users", "profile", "password", "categories", "tags", "currencies", "master data"],
+  },
+  {
+    id: "topic-account-access",
+    title: "Account Access",
+    description: "Understand sign-in, sign-out, password reset, invitation registration, and no-access behavior.",
+    sectionId: "account-access",
+    icon: ShieldCheck,
+    keywords: ["sign in", "sign out", "logout", "forgot password", "reset password", "no access", "invitation"],
   },
   {
     id: "topic-user-permissions",
@@ -334,6 +342,13 @@ export const recommendedGuides: HelpGuide[] = [
     keywords: ["attachment", "upload", "submission", "files"],
   },
   {
+    id: "guide-upload-assets",
+    title: "How Upload Assets works",
+    description: "Upload general project assets from the Dashboard into Library with project, category, and file details.",
+    sectionId: "library-archives",
+    keywords: ["upload assets", "dashboard upload", "project asset", "reference file", "artwork", "library"],
+  },
+  {
     id: "guide-submit-review",
     title: "How to submit work",
     description: "Main Executors submit accepted stage work as numbered revisions for owner review.",
@@ -416,6 +431,27 @@ export const recommendedGuides: HelpGuide[] = [
     description: "Use the Users page to assign roles and maintain global permission profiles without per-user overrides.",
     sectionId: "user-permissions",
     keywords: ["user permissions", "manage permissions", "users page", "roles", "collaborator type"],
+  },
+  {
+    id: "guide-account-access",
+    title: "How account access works",
+    description: "Use sign-in, sign-out, password reset, and invitation links safely.",
+    sectionId: "account-access",
+    keywords: ["account access", "sign in", "sign out", "reset password", "remember me", "invite"],
+  },
+  {
+    id: "guide-password-rules",
+    title: "Password rules",
+    description: "Passwords need at least 6 characters, one uppercase letter, and one number.",
+    sectionId: "account-access",
+    keywords: ["password rules", "change password", "reset password", "uppercase", "number"],
+  },
+  {
+    id: "guide-project-master-data",
+    title: "Project Master Data rules",
+    description: "Manage active project categories, tags, and currencies used in project setup.",
+    sectionId: "settings-users-master-data",
+    keywords: ["project master data", "categories", "tags", "currencies", "active", "inactive"],
   },
   {
     id: "guide-notifications",
@@ -574,9 +610,18 @@ export const helpSections: HelpSection[] = [
         title: "Budget and visibility rules",
         items: [
           "The project budget is the total financial ceiling for the project.",
-          "The combined stage budget total cannot exceed the project budget.",
-          "Budget conflicts should be blocked with clear inline feedback and toasts.",
+          "The combined stage budget total must equal the project budget before the project can be saved.",
+          "Budget conflicts include over-allocation and under-allocation, and should be blocked with clear inline feedback and toasts.",
           "Budget and currency must not be exposed to unauthorized users. By current business rule, the project owner controls budget visibility.",
+        ],
+      },
+      {
+        title: "Editing an existing project",
+        items: [
+          "Existing stages keep their stage IDs so chat, revision, invoice, and file history stays connected.",
+          "Adding new stages is allowed when the project is still editable.",
+          "A stage with chat, submissions, attachments, invoices, comparison comments, archive records, or activity history cannot be removed.",
+          "Changing executors or collaborators should preserve existing access records unless a participant is explicitly removed.",
         ],
       },
       {
@@ -823,6 +868,16 @@ export const helpSections: HelpSection[] = [
         ],
       },
       {
+        title: "Collaboration directory",
+        items: [
+          "The Collaboration page is used to invite collaborators, edit collaborator details, and review module gate settings.",
+          "A collaborator needs a name, a valid email address, and a collaborator type before the record can be saved.",
+          "Module gates for Projects, Calendar, Library, and Archives can be Full access, Limited access, or No access.",
+          "Module gates decide whether a user can enter an area; detailed actions still come from role and collaborator type permission profiles.",
+          "Deleting a collaborator is blocked when that user is already referenced by project history. Remove or reduce access instead.",
+        ],
+      },
+      {
         title: "Why access can differ by user",
         items: [
           "Project membership affects whether a user can see a project at all. Owners, Main Executors, Executors, and assigned collaborators can be project members.",
@@ -878,7 +933,7 @@ export const helpSections: HelpSection[] = [
           "Open Manage Permissions and choose the relevant role profile or collaborator type profile.",
           "Search for the permission key or select the permission group, then enable or disable the capability.",
           "Save the profile and let active sessions refresh. The app also refreshes permission-sensitive caches.",
-          "If a newly developed permission is missing, run Sync Definitions from the Manage Permissions modal or run pnpm permissions:sync from the project.",
+          "If a newly added permission is missing, use Sync Definitions from the Manage Permissions modal.",
         ],
       },
     ],
@@ -918,8 +973,21 @@ export const helpSections: HelpSection[] = [
         title: "Typical file actions",
         items: [
           "Preview common formats like images or PDFs when supported; otherwise download the file.",
-          "Use Library filters such as search, project, date, creator, type, tag, and favorites where available.",
+          "Use Library quick menus for Project Assets, Quotations/Invoices, From Users, and Favourites.",
+          "Use Library filters such as search, project, date, creator, file type, and favorites where available.",
           "Delete should require confirmation and remain limited to allowed users such as the project owner or super admin.",
+        ],
+      },
+      {
+        title: "Dashboard Upload Assets",
+        items: [
+          "Upload Assets adds general project files into Library, not formal stage submissions.",
+          "The upload flow requires a project, an asset category, and at least one selected file.",
+          "An optional note can describe why the asset is being uploaded.",
+          "Asset categories include Project Asset, Reference File, Artwork, Document, Quotation / Invoice, and Other.",
+          "Accepted file families include common images, PDFs, design files, archives, documents, spreadsheets, and presentations.",
+          "Upload progress is shown while files are being saved.",
+          "After a successful upload, users can open the project-filtered Library view to confirm the files were saved.",
         ],
       },
       {
@@ -933,12 +1001,26 @@ export const helpSections: HelpSection[] = [
           "Archived files preserve the final handover record after completion.",
         ],
       },
+      {
+        title: "Archive browsing",
+        items: [
+          "Archives are grouped by archive category and show completed project files plus completion documents.",
+          "Archive category pages are read-only and provide secure preview or download links for allowed users.",
+          "Archive filters can narrow files by search text, project, archived-by user, or project tag.",
+          "If an archive category is empty, it means no completed project has archived files in that category yet.",
+        ],
+      },
     ],
     questions: [
       {
         question: "Why is a file missing from Archives?",
         answer:
           "Only final completed and archived files should appear in Archives. Working files remain in Library until the project reaches final completion and archive.",
+      },
+      {
+        question: "Why is preview unavailable for a file?",
+        answer:
+          "Preview is available for supported images and PDFs. Other file types should be downloaded instead.",
       },
     ],
   },
@@ -956,14 +1038,25 @@ export const helpSections: HelpSection[] = [
           "Month is the default view when the page opens fresh.",
           "Week and Day views remain available for narrower scheduling detail.",
           "My Calendar filters let users include or exclude Projects, Events, Reminders, and Payments from the visible list.",
+          "Users with create permission can create events from the Create button or by choosing an open date or time slot.",
         ],
       },
       {
         title: "Collaborator visibility",
         items: [
           "Calendar collaborators can be added or removed from the schedule access list.",
+          "Calendar collaborators with access can see the shared schedule; users without shared access only see their own created events when allowed.",
           "A removed collaborator should no longer see shared schedule items they no longer have access to.",
           "Calendar visibility is filtered by the current user’s allowed access, not only by what the UI happens to show.",
+        ],
+      },
+      {
+        title: "Create, delete, and read-only states",
+        items: [
+          "If the calendar is read-only for a user, event creation controls are hidden or disabled.",
+          "Users can delete events they created when their permissions allow it.",
+          "Admins or users with calendar collaborator management access can delete allowed shared calendar events.",
+          "Calendar event types are Projects, Events, Reminders, and Payments, with color tones used for scanning.",
         ],
       },
       {
@@ -1011,6 +1104,51 @@ export const helpSections: HelpSection[] = [
     ],
   },
   {
+    id: "account-access",
+    eyebrow: "Account Access",
+    title: "Sign-in, passwords, and access states",
+    summary:
+      "Account access is controlled by signed-in sessions, permission profiles, invitation links, password reset links, and module-level access checks.",
+    keywords: ["account access", "sign in", "sign out", "logout", "forgot password", "reset password", "no access", "remember me", "invitation"],
+    blocks: [
+      {
+        title: "Sign in and sign out",
+        items: [
+          "Users sign in with email and password.",
+          "Remember Me can be used when the user wants a longer signed-in session on that device.",
+          "Sign out clears the current session and returns the user to the sign-in page.",
+          "Users without a valid session are redirected to sign in before dashboard pages load.",
+        ],
+      },
+      {
+        title: "Forgot and reset password",
+        items: [
+          "Forgot Password asks for an email address and shows the same success message whether or not the email exists.",
+          "Reset links are time-limited and currently expire after 60 minutes.",
+          "A reset password must match the confirmation field and follow the current password rules.",
+          "After a successful password reset, the user is sent back to sign in.",
+        ],
+      },
+      {
+        title: "Invited collaborators",
+        items: [
+          "Invited collaborators complete registration from an invitation link.",
+          "Invitation links can be invalid or expired, so the registration page validates the token before accepting a password.",
+          "Once registration succeeds, the collaborator signs in with the registered email and password.",
+        ],
+      },
+      {
+        title: "Restricted areas and No Access",
+        items: [
+          "The sidebar and routes are permission-aware, so users may not see modules they cannot access.",
+          "Opening a restricted area may redirect the user to Settings, Notifications, another allowed page, or the No Access page.",
+          "No Access means the signed-in account does not currently have permission for any suitable destination in that flow.",
+          "Permission profiles, project membership, executor assignment, collaborator access, and hard workflow rules can all affect what a user can see.",
+        ],
+      },
+    ],
+  },
+  {
     id: "settings-users-master-data",
     eyebrow: "Administration",
     title: "Settings, Users & master data",
@@ -1022,8 +1160,20 @@ export const helpSections: HelpSection[] = [
         title: "What Settings manages",
         items: [
           "Profile details such as your name, department, phone number, job title, bio, and avatar.",
-          "Password changes with simple validation and current-password verification.",
+          "Short bio is limited to 300 characters.",
+          "Profile photo changes use the avatar upload flow and replace the previous saved photo.",
+          "Password changes require the current password and confirmation of the new password.",
           "Project Master Data such as categories, tags, and currencies used across project forms.",
+        ],
+      },
+      {
+        title: "Password rules",
+        items: [
+          "Passwords must be at least 6 characters.",
+          "Passwords must include at least one uppercase letter.",
+          "Passwords must include at least one number.",
+          "No special character is required by the current password rules.",
+          "A new password must be different from the current password.",
         ],
       },
       {
@@ -1032,6 +1182,16 @@ export const helpSections: HelpSection[] = [
           "The Users page is for user directory management and is intended for super-admin oversight.",
           "Manage Permissions defines global capabilities by role and collaborator type rather than by editing every user one by one.",
           "Use permission profiles to scale safely when many collaborators need consistent access patterns.",
+        ],
+      },
+      {
+        title: "Project Master Data",
+        items: [
+          "Project Master Data manages reusable project categories, tags, and currencies.",
+          "Categories, tags, and currencies can be Active or Inactive; inactive values should not be used for new setup choices.",
+          "Currency codes use three uppercase letters, such as AED or USD.",
+          "Duplicate category names, tag names, currency names, and currency codes are blocked.",
+          "A master-data value already used by existing projects cannot be deleted; deactivate it instead.",
         ],
       },
       {
@@ -1141,6 +1301,7 @@ export const helpManagementHighlights = [
   "Projects and work organized in one place",
   "Stages, budgets, and key milestones",
   "Team collaboration and permission profiles",
+  "Account access, password reset, and no-access states",
   "Working files in Library and final files in Archives",
   "Stage invoices tracked under Quotations/Invoices",
   "Final invoice handled in project completion",
@@ -1211,6 +1372,14 @@ export const helpKeyTerms = [
     term: "Archives",
     description: "Final completed files and completion documents after project closeout.",
   },
+  {
+    term: "No Access",
+    description: "A restricted state shown when the signed-in account does not have permission for the requested area.",
+  },
+  {
+    term: "Upload Assets",
+    description: "A Dashboard flow for adding general project files into Library.",
+  },
 ];
 
 export const helpSearchKeywords = [
@@ -1232,5 +1401,13 @@ export const helpSearchKeywords = [
   "mentions",
   "calendar filters",
   "manage permissions",
+  "reset password",
+  "password rules",
+  "no access",
+  "upload assets",
+  "project master data",
+  "profile avatar",
+  "compare submissions",
+  "hidden collaborator",
   "troubleshooting access denied",
 ];
