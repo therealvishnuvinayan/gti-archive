@@ -114,18 +114,18 @@ export default async function Home() {
         </MotionSection>
 
         <MotionStaggerGroup
-          className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5"
+          className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-5"
           stagger={0.05}
         >
           {statCards.map((card) => (
-            <MotionItem key={card.title} y={10}>
+            <MotionItem key={card.title} className="h-full" y={10}>
               <StatCard {...card} />
             </MotionItem>
           ))}
         </MotionStaggerGroup>
 
         <MotionStaggerGroup
-          className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.65fr)_minmax(260px,1fr)_minmax(260px,1fr)]"
+          className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.95fr)_minmax(280px,1fr)]"
           stagger={0.045}
         >
           <MotionItem className="grid content-start gap-4" y={12}>

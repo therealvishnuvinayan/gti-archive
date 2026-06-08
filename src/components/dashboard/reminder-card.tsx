@@ -22,7 +22,7 @@ export function ReminderCard({
 }: ReminderCardProps) {
   return (
     <article className="rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">
-      <div className="mb-7 flex items-start justify-between gap-3">
+      <div className="mb-5 flex items-start justify-between gap-3">
         <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">{title}</h2>
         {detailHref ? (
           <Link
@@ -37,20 +37,20 @@ export function ReminderCard({
       </div>
 
       {headline ? (
-        <div className="space-y-6">
-          <div>
-            <p className="text-[21px] font-bold leading-[1.05] tracking-[-0.03em] text-[#236e4c]">
+        <div className="space-y-5">
+          <div className="min-w-0">
+            <p className="text-[20px] font-bold leading-[1.12] tracking-[-0.03em] text-[#236e4c]">
               {headline}
             </p>
             {project ? (
-              <p className="mt-2 text-[14px] text-[#464d47]">{project}</p>
+              <p className="mt-2 text-[14px] leading-5 text-[#464d47]">{project}</p>
             ) : null}
           </div>
 
           {actionHref && actionLabel ? (
             <Link
               href={actionHref}
-              className="inline-flex min-h-[54px] w-full items-center justify-center rounded-full bg-[linear-gradient(90deg,#3b9b69,#13422f)] px-6 text-[17px] font-medium text-white transition-transform hover:-translate-y-0.5"
+              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[linear-gradient(90deg,#3b9b69,#13422f)] px-6 text-[16px] font-medium text-white transition-transform hover:-translate-y-0.5"
               title={actionLabel}
             >
               {actionLabel}

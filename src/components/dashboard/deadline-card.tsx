@@ -30,17 +30,17 @@ export function DeadlineCard({
       <div className="absolute inset-x-4 bottom-14 h-24 rounded-full bg-[radial-gradient(circle,rgba(59,138,94,0.65),transparent_60%)] blur-2xl" />
 
       <div className="relative">
-        <div className="mb-10 flex items-start justify-between gap-3">
-          <div>
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em]">{title}</h2>
             {project ? (
-              <p className="mt-2 text-[14px] text-white/85">{project}</p>
+              <p className="mt-2 truncate text-[14px] text-white/85">{project}</p>
             ) : null}
           </div>
           {actionHref ? (
             <Link
               href={actionHref}
-              className="grid h-10 w-10 place-items-center rounded-full border border-white/40 bg-white/5 text-white backdrop-blur-sm transition-colors hover:bg-white/15"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/40 bg-white/5 text-white backdrop-blur-sm transition-colors hover:bg-white/15"
               aria-label={`${title} details`}
               title={`${title} details`}
             >
@@ -52,19 +52,19 @@ export function DeadlineCard({
         {timeLabel ? (
           <div className="space-y-4">
             <p
-              className={`text-center text-[34px] font-bold tracking-[-0.04em] ${
+              className={`text-center text-[32px] font-bold leading-tight tracking-[-0.04em] ${
                 overdue ? "text-[#ffb9a8]" : ""
               }`}
             >
               {timeLabel}
             </p>
             {detail ? (
-              <p className="text-center text-[14px] text-white/80">{detail}</p>
+              <p className="text-center text-[14px] leading-5 text-white/80">{detail}</p>
             ) : null}
             {actionHref ? (
               <Link
                 href={actionHref}
-                className="inline-flex min-h-[52px] w-full items-center justify-center rounded-full bg-white text-[16px] font-semibold text-[#101612] transition-transform hover:-translate-y-0.5"
+                className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-white text-[16px] font-semibold text-[#101612] transition-transform hover:-translate-y-0.5"
                 title={actionLabel}
               >
                 {actionLabel}

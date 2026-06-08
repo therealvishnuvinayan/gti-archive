@@ -26,7 +26,7 @@ function getInitials(name: string) {
 export function CollaborationCard({ title, items, href }: CollaborationCardProps) {
   return (
     <article className="rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
-      <div className="mb-5 flex items-start justify-between gap-3">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">{title}</h2>
         {href ? (
           <Link
@@ -41,7 +41,7 @@ export function CollaborationCard({ title, items, href }: CollaborationCardProps
       </div>
 
       {items.length > 0 ? (
-        <ul className="dashboard-scroll-thin -mr-2 max-h-[300px] space-y-3 overflow-y-auto pr-2">
+        <ul className="dashboard-scroll-thin -mr-2 max-h-[280px] space-y-2 overflow-y-auto pr-2">
           {items.map((item) => {
             const content = (
               <div className="flex min-w-0 items-center gap-3">
@@ -65,13 +65,13 @@ export function CollaborationCard({ title, items, href }: CollaborationCardProps
                 {item.href ? (
                   <Link
                     href={item.href}
-                    className="flex items-center gap-3 rounded-[18px] px-1 py-1.5 transition-colors hover:bg-[#f5faf5]"
+                    className="flex min-h-[54px] min-w-0 items-center gap-3 rounded-[16px] px-2 py-2 transition-colors hover:bg-[#f5faf5]"
                     title={`${item.name} on ${item.project}`}
                   >
                     {content}
                   </Link>
                 ) : (
-                  <div className="flex items-center gap-3">{content}</div>
+                  <div className="flex min-h-[54px] min-w-0 items-center gap-3 px-2 py-2">{content}</div>
                 )}
               </li>
             );
