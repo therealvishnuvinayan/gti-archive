@@ -2501,6 +2501,7 @@ export function ProjectChatWorkspace({
           kind: "system",
           title: "Brief accepted",
           author: currentUserDisplayName,
+          authorId: currentUserId,
           authorAvatarSrc: currentUserAvatarSrc,
           role: currentUserRoleLabel,
           body: result.result.activityComment.body,
@@ -2712,6 +2713,7 @@ export function ProjectChatWorkspace({
       kind: "comment",
       revisionId: commentRevisionId ?? undefined,
       author: currentUserDisplayName,
+      authorId: currentUserId,
       authorAvatarSrc: currentUserAvatarSrc,
       role: currentUserRoleLabel,
       body: body || "Attachment uploaded.",
@@ -2980,6 +2982,7 @@ export function ProjectChatWorkspace({
                 revisionId: preparePayload.revisionId ?? undefined,
                 kind: "comment",
                 author: currentUserDisplayName,
+                authorId: currentUserId,
                 authorAvatarSrc: currentUserAvatarSrc,
                 role: currentUserRoleLabel,
                 body: body || "Attachment uploaded.",
@@ -3074,6 +3077,7 @@ export function ProjectChatWorkspace({
           revisionId: commentResult.revisionId ?? undefined,
           kind: "comment",
           author: currentUserDisplayName,
+          authorId: currentUserId,
           authorAvatarSrc: currentUserAvatarSrc,
           role: currentUserRoleLabel,
           body: body || "Attachment uploaded.",
@@ -3155,6 +3159,7 @@ export function ProjectChatWorkspace({
         revisionStatus: "PENDING_REVIEW",
         rejectionReason: null,
         author: currentUserDisplayName,
+        authorId: currentUserId,
         authorAvatarSrc: currentUserAvatarSrc,
         role: currentUserRoleLabel,
         body: summary,
@@ -3288,6 +3293,7 @@ export function ProjectChatWorkspace({
           revisionStatus: "PENDING_REVIEW",
           rejectionReason: null,
           author: currentUserDisplayName,
+          authorId: currentUserId,
           authorAvatarSrc: currentUserAvatarSrc,
           role: currentUserRoleLabel,
           body: summary,
@@ -3408,6 +3414,7 @@ export function ProjectChatWorkspace({
           kind: "system",
           title: "Invoice uploaded",
           author: currentUserDisplayName,
+          authorId: currentUserId,
           authorAvatarSrc: currentUserAvatarSrc,
           role: currentUserRoleLabel,
           body: `${currentUserDisplayName} uploaded invoice for ${stageName}.`,
@@ -3505,6 +3512,7 @@ export function ProjectChatWorkspace({
               kind: "system",
               title: "Revision requested",
               author: currentUserDisplayName,
+              authorId: currentUserId,
               authorAvatarSrc: currentUserAvatarSrc,
               role: currentUserRoleLabel,
               body: `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.`,
@@ -3529,6 +3537,7 @@ export function ProjectChatWorkspace({
               kind: "system",
               title: systemTitle,
               author: currentUserDisplayName,
+              authorId: currentUserId,
               authorAvatarSrc: currentUserAvatarSrc,
               role: currentUserRoleLabel,
               body: systemBody,
@@ -3929,44 +3938,94 @@ export function ProjectChatWorkspace({
                 const linkedRevisionLabel = message.revisionId
                   ? revisionLabelById.get(message.revisionId) ?? "Revision"
                   : null;
+                const isCurrentUserMessage = message.authorId
+                  ? message.authorId === currentUserId
+                  : message.author === currentUserDisplayName;
+                const bubbleClassName = linkedRevisionLabel
+                  ? isCurrentUserMessage
+                    ? "rounded-[18px] rounded-br-[6px] border border-[#b9dcc2] bg-[#eaf7ed] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
+                    : "rounded-[18px] rounded-bl-[6px] border border-[#cfe3d2] bg-[#f7fbf6] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.05)]"
+                  : isCurrentUserMessage
+                    ? "rounded-[18px] rounded-br-[6px] border border-[#c7e5cf] bg-[#edf8ef] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
+                    : "rounded-[18px] rounded-bl-[6px] border border-[#e2e9e2] bg-white p-3 shadow-[0_10px_24px_rgba(19,28,22,0.05)]";
 
                 return (
-                  <Card
+                  <div
                     key={message.id}
-                    className={
-                      linkedRevisionLabel
-                        ? "rounded-[12px] border border-[#cfe3d2] bg-[#f7fbf6] p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
-                        : "rounded-[8px] border border-[#4b4d4b] bg-white p-3 shadow-[0_8px_20px_rgba(19,28,22,0.04)]"
-                    }
+                    className={`flex w-full ${isCurrentUserMessage ? "justify-end" : "justify-start"}`}
                   >
-                    {linkedRevisionLabel ? (
-                      <div className="mb-2 inline-flex items-center rounded-full bg-[#e8f4ea] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
-                        Comment on {linkedRevisionLabel}
-                      </div>
-                    ) : null}
-                    <div className="flex items-center gap-2">
-                      <ChatAvatar
-                        name={message.author}
-                        src={message.authorAvatarSrc}
-                        size="sm"
-                      />
-                      <div>
-                        <p className="text-[12px] font-[700] text-[#111712]">{message.author}</p>
-                        <p className="text-[10px] text-[#8acb74]">{message.role}</p>
-                      </div>
-                      <span className="ml-auto text-[10px] text-[#7d847e]">{message.createdAt}</span>
+                    <div
+                      className={`flex min-w-0 max-w-[94%] items-end gap-2 sm:max-w-[78%] lg:max-w-[68%] ${
+                        isCurrentUserMessage ? "flex-row-reverse" : "flex-row"
+                      }`}
+                    >
+                      {!isCurrentUserMessage ? (
+                        <div className="mb-1 shrink-0">
+                          <ChatAvatar
+                            name={message.author}
+                            src={message.authorAvatarSrc}
+                            size="sm"
+                          />
+                        </div>
+                      ) : null}
+                      <Card className={`min-w-0 flex-1 ${bubbleClassName}`}>
+                        {linkedRevisionLabel ? (
+                          <div
+                            className={`mb-2 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+                              isCurrentUserMessage
+                                ? "bg-white/75 text-[#2f8d5d]"
+                                : "bg-[#e8f4ea] text-brand"
+                            }`}
+                          >
+                            Comment on {linkedRevisionLabel}
+                          </div>
+                        ) : null}
+                        <div
+                          className={`flex min-w-0 items-center gap-2 ${
+                            isCurrentUserMessage ? "justify-end" : ""
+                          }`}
+                        >
+                          {isCurrentUserMessage ? (
+                            <span className="text-[10px] font-semibold text-[#5d7463]">
+                              You
+                            </span>
+                          ) : (
+                            <div className="min-w-0">
+                              <p className="truncate text-[12px] font-[700] text-[#111712]">
+                                {message.author}
+                              </p>
+                              <p className="truncate text-[10px] text-[#8acb74]">
+                                {message.role}
+                              </p>
+                            </div>
+                          )}
+                          <span
+                            className={`shrink-0 text-[10px] ${
+                              isCurrentUserMessage
+                                ? "text-[#6f806f]"
+                                : "ml-auto text-[#7d847e]"
+                            }`}
+                          >
+                            {message.createdAt}
+                          </span>
+                        </div>
+                        <p
+                          className={`mt-2 flex flex-wrap items-center gap-1.5 whitespace-pre-wrap text-[12px] leading-[1.45] ${
+                            isCurrentUserMessage ? "text-[#173120]" : "text-[#111712]"
+                          }`}
+                        >
+                          {renderCommentBodyWithMentions(message.body, message.mentions)}
+                        </p>
+                        {message.attachments?.length ? (
+                          <AttachmentHistoryList
+                            attachments={message.attachments}
+                            compact
+                            actionsDisabled={isProjectCompleted}
+                          />
+                        ) : null}
+                      </Card>
                     </div>
-                    <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[12px] leading-[1.35] text-[#111712]">
-                      {renderCommentBodyWithMentions(message.body, message.mentions)}
-                    </p>
-                    {message.attachments?.length ? (
-                      <AttachmentHistoryList
-                        attachments={message.attachments}
-                        compact
-                        actionsDisabled={isProjectCompleted}
-                      />
-                    ) : null}
-                  </Card>
+                  </div>
                 );
               })()
             ),

@@ -239,6 +239,7 @@ export type ProjectChatEntry = {
   rejectionReason?: string | null;
   reviewedBy?: string | null;
   reviewedAt?: string | null;
+  authorId?: string;
   author: string;
   authorAvatarSrc?: string | null;
   role: string;
