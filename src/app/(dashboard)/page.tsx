@@ -153,7 +153,7 @@ export default async function Home() {
               detailHref="/calendar"
             />
             <ProjectProgressCard
-              title="Project Progress"
+              title="Active Projects"
               percentage={dashboard.progress.percentage}
               subtitle={dashboard.progress.subtitle}
               segments={dashboard.progress.segments}

@@ -1,7 +1,8 @@
 type ProgressSegment = {
   label: string;
   value: number;
-  tone: "completed" | "progress" | "pending";
+  count: number;
+  tone: "ongoing" | "pending" | "onHold" | "completed";
 };
 
 type ProjectProgressCardProps = {
@@ -12,15 +13,17 @@ type ProjectProgressCardProps = {
 };
 
 const segmentStroke: Record<ProgressSegment["tone"], string> = {
-  completed: "#2b8055",
-  progress: "#154d35",
+  ongoing: "#2b8055",
   pending: "#d2d3d2",
+  onHold: "#f2b84b",
+  completed: "#154d35",
 };
 
 const segmentDotClass: Record<ProgressSegment["tone"], string> = {
-  completed: "bg-brand",
-  progress: "bg-brand-dark",
+  ongoing: "bg-brand",
   pending: "bg-[#d2d3d2]",
+  onHold: "bg-[#f2b84b]",
+  completed: "bg-brand-dark",
 };
 
 export function ProjectProgressCard({
@@ -29,14 +32,13 @@ export function ProjectProgressCard({
   subtitle,
   segments,
 }: ProjectProgressCardProps) {
-  const completed =
-    segments.find((segment) => segment.tone === "completed") ?? segments[0];
-  const progress =
-    segments.find((segment) => segment.tone === "progress") ?? segments[1];
+  const activeSegmentValue = Math.min(Math.max(percentage, 0), 100);
 
   return (
-    <article className="rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
-      <h2 className="mb-4 text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">{title}</h2>
+    <article className="min-w-0 rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
+      <h2 className="mb-4 text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">
+        {title}
+      </h2>
 
       <div className="flex flex-col items-center">
         <div className="relative w-full max-w-[280px]">
@@ -49,25 +51,17 @@ export function ProjectProgressCard({
               strokeLinecap="round"
               pathLength={100}
             />
-            <path
-              d="M 30 110 A 80 80 0 0 1 210 110"
-              fill="none"
-              stroke={segmentStroke.completed}
-              strokeWidth="28"
-              strokeLinecap="round"
-              pathLength={100}
-              strokeDasharray={`${completed.value} ${100 - completed.value}`}
-            />
-            <path
-              d="M 30 110 A 80 80 0 0 1 210 110"
-              fill="none"
-              stroke={segmentStroke.progress}
-              strokeWidth="28"
-              strokeLinecap="round"
-              pathLength={100}
-              strokeDasharray={`${progress.value} ${100 - progress.value}`}
-              strokeDashoffset={-completed.value}
-            />
+            {activeSegmentValue > 0 ? (
+              <path
+                d="M 30 110 A 80 80 0 0 1 210 110"
+                fill="none"
+                stroke={segmentStroke.ongoing}
+                strokeWidth="28"
+                strokeLinecap="round"
+                pathLength={100}
+                strokeDasharray={`${activeSegmentValue} ${100 - activeSegmentValue}`}
+              />
+            ) : null}
           </svg>
 
           <div className="absolute inset-x-0 bottom-2 text-center">
@@ -78,11 +72,13 @@ export function ProjectProgressCard({
           </div>
         </div>
 
-        <ul className="mt-5 grid w-full gap-2 text-[11px] text-[#3b413d] sm:grid-cols-3">
+        <ul className="mt-5 grid w-full grid-cols-2 gap-x-4 gap-y-2 text-[11px] text-[#3b413d]">
           {segments.map((segment) => (
             <li key={segment.label} className="flex min-w-0 items-center gap-2">
               <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${segmentDotClass[segment.tone]}`} />
-              <span className="min-w-0 truncate">{segment.label}</span>
+              <span className="min-w-0 leading-4">
+                {segment.label} ({segment.count})
+              </span>
             </li>
           ))}
         </ul>

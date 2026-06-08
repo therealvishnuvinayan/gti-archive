@@ -2,7 +2,12 @@ import { ProjectExecutorRole, ProjectStatus, type User } from "@prisma/client";
 
 import { getCalendarEvents, type CalendarEventRecord } from "@/lib/calendar";
 import { getRecentNotificationsForUser } from "@/lib/notification-center/service";
-import { buildAccessibleProjectsWhere, getDashboardProjectCounts, getRecentProjects } from "@/lib/projects";
+import {
+  buildAccessibleProjectsWhere,
+  getDashboardProjectCounts,
+  getRecentProjects,
+  type DashboardProjectCounts,
+} from "@/lib/projects";
 import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
@@ -92,7 +97,8 @@ export type DashboardProgressRecord = {
   segments: ReadonlyArray<{
     label: string;
     value: number;
-    tone: "completed" | "progress" | "pending";
+    count: number;
+    tone: "ongoing" | "pending" | "onHold" | "completed";
   }>;
 };
 
@@ -326,36 +332,19 @@ function buildCollaborationItems(
   return items;
 }
 
-function buildProgressRecord(projects: DashboardProjectRecord[]): DashboardProgressRecord {
-  const counts = {
-    completed: 0,
-    progress: 0,
-    pending: 0,
-  };
-
-  for (const project of projects) {
-    for (const stage of getProjectStages(project)) {
-      if (stage.status === ProjectStatus.COMPLETED) {
-        counts.completed += 1;
-      } else if (stage.status === ProjectStatus.PENDING) {
-        counts.pending += 1;
-      } else {
-        counts.progress += 1;
-      }
-    }
-  }
-
-  const total = counts.completed + counts.progress + counts.pending;
-  const percentage = total > 0 ? Math.round((counts.completed / total) * 100) : 0;
+function buildProgressRecord(counts: DashboardProjectCounts): DashboardProgressRecord {
+  const activeTotal = counts.ongoing + counts.pending + counts.onHold;
+  const total = counts.total;
   const toPercent = (value: number) => (total > 0 ? Math.round((value / total) * 100) : 0);
 
   return {
-    percentage,
-    subtitle: total > 0 ? "Stages Completed" : "No stage progress yet",
+    percentage: toPercent(activeTotal),
+    subtitle: total > 0 ? "Projects currently active" : "No projects yet.",
     segments: [
-      { label: `Completed (${counts.completed})`, value: toPercent(counts.completed), tone: "completed" },
-      { label: `In Progress (${counts.progress})`, value: toPercent(counts.progress), tone: "progress" },
-      { label: `Pending (${counts.pending})`, value: toPercent(counts.pending), tone: "pending" },
+      { label: "Ongoing", value: toPercent(counts.ongoing), count: counts.ongoing, tone: "ongoing" },
+      { label: "Pending", value: toPercent(counts.pending), count: counts.pending, tone: "pending" },
+      { label: "On Hold", value: toPercent(counts.onHold), count: counts.onHold, tone: "onHold" },
+      { label: "Completed", value: toPercent(counts.completed), count: counts.completed, tone: "completed" },
     ],
   };
 }
@@ -505,7 +494,7 @@ export async function getDashboardSnapshot(
     updates,
     reminders,
     collaborators: buildCollaborationItems(projects, currentUser),
-    progress: buildProgressRecord(projects),
+    progress: buildProgressRecord(counts),
     deadline: buildDeadlineRecord(projects),
   };
 }
