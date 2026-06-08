@@ -74,7 +74,7 @@ export type LibraryUploadCategory =
   (typeof libraryUploadCategoryOptions)[number]["value"];
 
 export type LibraryUploadMetadata = {
-  source?: "dashboard-library-upload";
+  source?: "dashboard-library-upload" | "dashboard-archive-upload";
   category?: LibraryUploadCategory;
   note?: string;
 };

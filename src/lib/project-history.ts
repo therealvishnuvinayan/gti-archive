@@ -2471,7 +2471,10 @@ export async function requestAttachmentUpload(
       return { error: "You do not have permission to upload assets to the library." };
     }
 
-    if (project.status === "COMPLETED") {
+    if (
+      input.assetType !== AttachmentAssetType.FINAL_ARCHIVE &&
+      project.status === "COMPLETED"
+    ) {
       return { error: "This project is already completed." };
     }
   }

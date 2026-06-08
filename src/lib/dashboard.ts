@@ -117,7 +117,7 @@ export type DashboardSnapshot = {
   reminders: DashboardReminderRecord[];
   collaborators: DashboardCollaboratorRecord[];
   progress: DashboardProgressRecord;
-  deadline: DashboardDeadlineRecord | null;
+  deadlines: DashboardDeadlineRecord[];
 };
 
 function getDisplayName(person: { name: string | null; email: string }) {
@@ -349,7 +349,7 @@ function buildProgressRecord(counts: DashboardProjectCounts): DashboardProgressR
   };
 }
 
-function buildDeadlineRecord(projects: DashboardProjectRecord[]): DashboardDeadlineRecord | null {
+function buildDeadlineRecords(projects: DashboardProjectRecord[]): DashboardDeadlineRecord[] {
   const candidates = projects.flatMap((project) => {
     const stages = getProjectStages(project)
       .filter(
@@ -357,10 +357,10 @@ function buildDeadlineRecord(projects: DashboardProjectRecord[]): DashboardDeadl
           stage.status !== ProjectStatus.COMPLETED && stage.plannedDueAt,
       )
       .map((stage) => ({
-        projectId: project.id,
         projectName: project.name,
         detail: `${stage.name} • ${formatDateTime(stage.plannedDueAt)}`,
         dueAt: stage.plannedDueAt as Date,
+        actionHref: `/projects/${project.id}/chat?stage=${stage.id}`,
       }));
 
     if (stages.length > 0) {
@@ -373,29 +373,36 @@ function buildDeadlineRecord(projects: DashboardProjectRecord[]): DashboardDeadl
 
     return [
       {
-        projectId: project.id,
         projectName: project.name,
         detail: `Project deadline • ${formatDateTime(project.endDate)}`,
         dueAt: project.endDate,
+        actionHref: `/projects/${project.id}`,
       },
     ];
   });
 
-  const nearest = candidates.sort((left, right) => left.dueAt.getTime() - right.dueAt.getTime())[0];
+  return candidates
+    .sort((left, right) => {
+      const leftOverdue = left.dueAt.getTime() < Date.now();
+      const rightOverdue = right.dueAt.getTime() < Date.now();
 
-  if (!nearest) {
-    return null;
-  }
+      if (leftOverdue !== rightOverdue) {
+        return leftOverdue ? -1 : 1;
+      }
 
-  const { overdue, label } = formatTimeDistance(nearest.dueAt);
+      return left.dueAt.getTime() - right.dueAt.getTime();
+    })
+    .map((deadline) => {
+      const { overdue, label } = formatTimeDistance(deadline.dueAt);
 
-  return {
-    project: nearest.projectName,
-    detail: nearest.detail,
-    timeLabel: label,
-    actionHref: `/projects/${nearest.projectId}`,
-    overdue,
-  };
+      return {
+        project: deadline.projectName,
+        detail: deadline.detail,
+        timeLabel: label,
+        actionHref: deadline.actionHref,
+        overdue,
+      };
+    });
 }
 
 export async function getDashboardSnapshot(
@@ -495,6 +502,6 @@ export async function getDashboardSnapshot(
     reminders,
     collaborators: buildCollaborationItems(projects, currentUser),
     progress: buildProgressRecord(counts),
-    deadline: buildDeadlineRecord(projects),
+    deadlines: buildDeadlineRecords(projects),
   };
 }

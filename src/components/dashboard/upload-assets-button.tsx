@@ -83,13 +83,8 @@ function getStatusLabel(status: UploadStatus) {
   }
 }
 
-function buildLibraryViewHref(projectId: string) {
-  const searchParams = new URLSearchParams({
-    projectId,
-    quickMenu: "assets",
-  });
-
-  return `/library?${searchParams.toString()}`;
+function buildArchiveViewHref() {
+  return "/archives";
 }
 
 export function UploadAssetsButton({
@@ -196,27 +191,23 @@ export function UploadAssetsButton({
       error: undefined,
     }));
 
-    const uploadRequest = await fetch("/api/project-assets/upload-url", {
+    const uploadRequest = await fetch("/api/archives/upload-url", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         projectId: selectedProjectId,
-        stageId: null,
-        commentId: null,
-        revisionId: null,
         originalFileName: pendingFile.file.name,
         mimeType: pendingFile.file.type || "application/octet-stream",
         fileSize: pendingFile.file.size,
-        assetType: "GENERAL_PROJECT_ASSET",
       }),
     });
 
     const uploadPayload = (await uploadRequest.json()) as UploadAssetResponse;
 
     if (!uploadRequest.ok || !uploadPayload.attachmentId || !uploadPayload.uploadUrl) {
-      throw new Error(uploadPayload.error || "Unable to prepare the asset upload.");
+      throw new Error(uploadPayload.error || "Unable to prepare the archive upload.");
     }
 
     try {
@@ -242,7 +233,7 @@ export function UploadAssetsButton({
         status: "finalizing",
       }));
 
-      const completeResponse = await fetch("/api/project-assets/complete", {
+      const completeResponse = await fetch("/api/archives/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -257,7 +248,7 @@ export function UploadAssetsButton({
       const completePayload = (await completeResponse.json()) as { error?: string };
 
       if (!completeResponse.ok) {
-        throw new Error(completePayload.error || "Unable to complete the asset upload.");
+        throw new Error(completePayload.error || "Unable to complete the archive upload.");
       }
 
       updatePendingFile(pendingFile.id, (current) => ({
@@ -265,7 +256,7 @@ export function UploadAssetsButton({
         status: "uploaded",
       }));
     } catch (error) {
-      await fetch("/api/project-assets/complete", {
+      await fetch("/api/archives/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -288,7 +279,7 @@ export function UploadAssetsButton({
     }
 
     if (!selectedCategory) {
-      setFormError("Asset type is required.");
+      setFormError("File category is required.");
       return;
     }
 
@@ -300,12 +291,12 @@ export function UploadAssetsButton({
     setFormError(undefined);
     setIsUploading(true);
 
-    const loadingToastId = toast.loading("Uploading assets...", {
+    const loadingToastId = toast.loading("Uploading to Archive...", {
       description: `Preparing ${queuedFiles.length} file${queuedFiles.length === 1 ? "" : "s"}.`,
     });
 
     const metadata: LibraryUploadMetadata = {
-      source: "dashboard-library-upload",
+      source: "dashboard-archive-upload",
       category: selectedCategory,
       note: note.trim() || undefined,
     };
@@ -336,14 +327,14 @@ export function UploadAssetsButton({
     if (uploadedCount > 0 && failedCount === 0) {
       closeModal();
       toast.success(
-        `${uploadedCount} asset${uploadedCount === 1 ? "" : "s"} uploaded successfully.`,
+        `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded to Archive.`,
         {
           description: selectedProject
-            ? `Files were added to ${selectedProject.label} and are ready in Library.`
-            : "Files were added to Library successfully.",
+            ? `Files were added to ${selectedProject.label} in Archives.`
+            : "Files were added to Archives successfully.",
           action: {
-            label: "View in Library",
-            onClick: () => router.push(buildLibraryViewHref(selectedProjectId)),
+            label: "View Archives",
+            onClick: () => router.push(buildArchiveViewHref()),
           },
         },
       );
@@ -368,7 +359,7 @@ export function UploadAssetsButton({
 
   return (
     <>
-      <div title={!canUploadAssets ? disabledReason : "Upload assets"}>
+      <div title={!canUploadAssets ? disabledReason : "Upload to Archive"}>
         <Button
           type="button"
           size="lg"
@@ -383,7 +374,7 @@ export function UploadAssetsButton({
           variant="secondary"
           className="min-h-[54px] rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
         >
-          + Upload Assets
+          + Upload to Archive
         </Button>
       </div>
 
@@ -394,10 +385,10 @@ export function UploadAssetsButton({
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
-                    Upload Assets
+                    Upload to Archive
                   </h2>
                   <p className="mt-1 text-[14px] text-[#6a706b]">
-                    Add working files to Library and connect them to the right active project.
+                    Add files directly to an existing project archive.
                   </p>
                 </div>
                 <Button
@@ -407,7 +398,7 @@ export function UploadAssetsButton({
                   onClick={closeModal}
                   disabled={isUploading}
                   className="shrink-0 border border-line"
-                  aria-label="Close upload assets dialog"
+                  aria-label="Close upload to archive dialog"
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -478,7 +469,7 @@ export function UploadAssetsButton({
                                       {project.label}
                                     </p>
                                     <p className="mt-1 text-[12px] text-[#7f877f]">
-                                      {project.tag ? project.tag : "Active project"}
+                                      {project.tag ? project.tag : "Archived project"}
                                     </p>
                                   </button>
                                 ))
@@ -493,14 +484,14 @@ export function UploadAssetsButton({
                       </div>
                     ) : (
                       <div className="rounded-[20px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-5 py-6 text-[14px] text-[#657068]">
-                        No projects available. Create or join a project before uploading assets.
+                        No archived projects available. Complete and archive a project before uploading files.
                       </div>
                     )}
                   </div>
 
                   <div>
                     <label className="mb-2 block text-[16px] font-[600] text-brand">
-                      Asset Type / Category <span className="text-[#d3554d]">*</span>
+                      File Category <span className="text-[#d3554d]">*</span>
                     </label>
                     <Select
                       value={selectedCategory}
@@ -511,7 +502,7 @@ export function UploadAssetsButton({
                       disabled={isUploading}
                     >
                       <SelectTrigger className="rounded-2xl border border-line">
-                        <SelectValue placeholder="Select asset type" />
+                        <SelectValue placeholder="Select file category" />
                       </SelectTrigger>
                       <SelectContent className="z-[120]">
                         {libraryUploadCategoryOptions.map((option) => (
@@ -580,7 +571,7 @@ export function UploadAssetsButton({
                         Drag and drop files here
                       </p>
                       <p className="mt-2 text-[13px] leading-6 text-[#748078]">
-                        Or click to select multiple files for Library upload.
+                        Or click to select multiple files for Archive upload.
                       </p>
                       <p className="mt-3 text-[12px] text-[#8b948d]">
                         Supported: PNG, JPG, GIF, WEBP, PDF, AI, PSD, ZIP, DOC, XLS, PPT
@@ -689,7 +680,7 @@ export function UploadAssetsButton({
                   onClick={handleUpload}
                   disabled={isUploading || !hasProjects}
                 >
-                  {isUploading ? "Uploading..." : "Upload Assets"}
+                  {isUploading ? "Uploading..." : "Upload to Archive"}
                 </Button>
               </div>
             </CardContent>

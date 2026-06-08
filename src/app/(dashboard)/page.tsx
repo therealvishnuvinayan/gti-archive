@@ -19,9 +19,9 @@ import { getDashboardSnapshot } from "@/lib/dashboard";
 import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
 import { hasPermission } from "@/lib/permissions/resolver";
 import {
-  getDashboardLibraryUploadAccessState,
-  getLibraryUploadProjectsForUser,
-} from "@/lib/library";
+  getArchiveUploadProjectsForUser,
+  getDashboardArchiveUploadAccessState,
+} from "@/lib/archives";
 import {
   MotionItem,
   MotionSection,
@@ -37,9 +37,9 @@ export default async function Home() {
 
   const [dashboard, uploadProjects] = await Promise.all([
     getDashboardSnapshot(user),
-    getLibraryUploadProjectsForUser(user),
+    getArchiveUploadProjectsForUser(user),
   ]);
-  const uploadAccess = getDashboardLibraryUploadAccessState(user);
+  const uploadAccess = getDashboardArchiveUploadAccessState(user);
   const canCreateProject = hasPermission(user, "project.create");
   const statCards = [
     {
@@ -105,7 +105,7 @@ export default async function Home() {
                 disabledReason={
                   uploadAccess.canUploadAssets
                     ? undefined
-                    : "You do not have permission to upload assets."
+                    : "You do not have permission to upload to Archive."
                 }
                 projects={uploadProjects}
               />
@@ -167,12 +167,8 @@ export default async function Home() {
               href="/projects"
             />
             <DeadlineCard
-              title="Project Deadline"
-              project={dashboard.deadline?.project}
-              detail={dashboard.deadline?.detail}
-              timeLabel={dashboard.deadline?.timeLabel}
-              actionHref={dashboard.deadline?.actionHref}
-              overdue={dashboard.deadline?.overdue}
+              title="Project Deadlines"
+              deadlines={dashboard.deadlines}
             />
           </MotionItem>
         </MotionStaggerGroup>
