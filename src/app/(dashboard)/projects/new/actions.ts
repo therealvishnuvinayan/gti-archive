@@ -1296,6 +1296,14 @@ export async function updateProjectAction(
       actorId: user.id,
       previousExecutorUserId: existingProject.executorUserId,
       nextExecutorUserId: resolvedExecutors.executorUserId,
+      previousExecutorUserIds: [
+        existingProject.executorUserId,
+        ...existingProject.executors.map((executor) => executor.userId),
+      ].filter(Boolean) as string[],
+      nextExecutorUserIds: [
+        resolvedExecutors.executorUserId,
+        ...resolvedExecutors.executors.map((executor) => executor.userId),
+      ].filter(Boolean) as string[],
       addedCollaboratorIds,
       removedCollaboratorIds,
     }),

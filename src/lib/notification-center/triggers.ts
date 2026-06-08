@@ -9,6 +9,7 @@ import {
   getCompletionWorkflowRecipientUserIds,
   dedupeRecipients,
   filterRecipientsVisibleForStageEvent,
+  getProjectExecutorRecipientUserIds,
   getProjectNotificationContext,
   getProjectParticipantUserIds,
   getVisibleStageEventRecipientUserIds,
@@ -31,6 +32,12 @@ async function getProjectStageContext(projectId: string, stageId?: string | null
         name: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         stages: stageId
           ? {
               where: {
@@ -122,6 +129,8 @@ export async function notifyProjectAssignmentChanges(input: {
   actorId: string;
   previousExecutorUserId?: string | null;
   nextExecutorUserId?: string | null;
+  previousExecutorUserIds?: string[];
+  nextExecutorUserIds?: string[];
   addedCollaboratorIds?: string[];
   removedCollaboratorIds?: string[];
 }) {
@@ -131,13 +140,23 @@ export async function notifyProjectAssignmentChanges(input: {
     return;
   }
 
-  if (
-    input.nextExecutorUserId &&
-    input.nextExecutorUserId !== input.previousExecutorUserId &&
-    input.nextExecutorUserId !== input.actorId
-  ) {
+  const previousExecutorIds = new Set(
+    dedupeRecipients([
+      input.previousExecutorUserId,
+      ...(input.previousExecutorUserIds ?? []),
+    ]),
+  );
+  const nextExecutorIds = dedupeRecipients([
+    input.nextExecutorUserId,
+    ...(input.nextExecutorUserIds ?? []),
+  ]);
+  const addedExecutorIds = nextExecutorIds.filter(
+    (executorId) => executorId !== input.actorId && !previousExecutorIds.has(executorId),
+  );
+
+  if (addedExecutorIds.length > 0) {
     await createNotificationsForUsers({
-      recipientUserIds: [input.nextExecutorUserId],
+      recipientUserIds: addedExecutorIds,
       type: "PROJECT_ASSIGNED",
       title: "Project assigned to you",
       message: `You have been assigned as executor for ${project.name}.`,
@@ -152,7 +171,7 @@ export async function notifyProjectAssignmentChanges(input: {
   }
 
   const addedCollaboratorIds = (input.addedCollaboratorIds ?? []).filter(
-    (userId) => userId !== input.actorId && userId !== input.nextExecutorUserId,
+    (userId) => userId !== input.actorId && !nextExecutorIds.includes(userId),
   );
 
   if (addedCollaboratorIds.length > 0) {
@@ -292,6 +311,12 @@ export async function notifyStageSubmissionReviewDecision(
           select: {
             id: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
           },
         },
         stage: {
@@ -303,13 +328,16 @@ export async function notifyStageSubmissionReviewDecision(
     }),
   );
 
-  if (!attachment?.project.executorUserId || !attachment.stageId) {
+  if (!attachment?.stageId) {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(attachment.project, {
+    role: "main",
+  });
   const recipients = await filterRecipientsVisibleForStageEvent(
     attachment.project.id,
-    [attachment.project.executorUserId],
+    executorRecipients,
     new Date(),
   );
 
@@ -345,13 +373,17 @@ export async function notifySubmissionWorkflowDecision(input: {
   const project = await getProjectStageContext(input.projectId, input.stageId);
   const stage = project?.stages?.[0];
 
-  if (!project || !stage || !project.executorUserId || project.executorUserId === input.actorId) {
+  if (!project || !stage) {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
+    role: "main",
+    excludeUserId: input.actorId,
+  });
   const recipients = await filterRecipientsVisibleForStageEvent(
     project.id,
-    [project.executorUserId],
+    executorRecipients,
     new Date(),
   );
 
@@ -395,6 +427,12 @@ export async function notifyStageTransition(input: {
       select: {
         id: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         stages: {
           where: {
             id: {
@@ -445,7 +483,7 @@ export async function notifyStageTransition(input: {
     }),
   });
 
-  if (!input.nextStageId || !project.executorUserId || project.executorUserId === input.actorId) {
+  if (!input.nextStageId) {
     return;
   }
 
@@ -455,9 +493,13 @@ export async function notifyStageTransition(input: {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
+    role: "main",
+    excludeUserId: input.actorId,
+  });
   const nextStageRecipients = await filterRecipientsVisibleForStageEvent(
     project.id,
-    [project.executorUserId],
+    executorRecipients,
     new Date(),
   );
 
@@ -724,13 +766,17 @@ export async function notifyApprovalRequired(input: {
 }) {
   const project = await getProjectNotificationContext(input.projectId);
 
-  if (!project || !project.executorUserId || project.executorUserId === input.actorId) {
+  if (!project) {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
+    role: "main",
+    excludeUserId: input.actorId,
+  });
   const recipients = await filterRecipientsVisibleForStageEvent(
     project.id,
-    [project.executorUserId],
+    executorRecipients,
     new Date(),
   );
 
@@ -787,13 +833,17 @@ export async function notifyCopyrightTransferRequired(input: {
 }) {
   const project = await getProjectNotificationContext(input.projectId);
 
-  if (!project || !project.executorUserId || project.executorUserId === input.actorId) {
+  if (!project) {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
+    role: "main",
+    excludeUserId: input.actorId,
+  });
   const recipients = await filterRecipientsVisibleForStageEvent(
     project.id,
-    [project.executorUserId],
+    executorRecipients,
     new Date(),
   );
 

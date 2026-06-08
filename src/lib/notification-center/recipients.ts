@@ -1,3 +1,5 @@
+import { ProjectExecutorRole } from "@prisma/client";
+
 import { withPrismaRetry, prisma } from "@/lib/prisma";
 import { isTimestampHiddenByPauseWindows } from "@/lib/project-collaborator-visibility";
 
@@ -8,6 +10,7 @@ type ProjectNotificationContext = {
   executorUserId: string | null;
   executors: Array<{
     userId: string;
+    role: ProjectExecutorRole;
   }>;
   collaborators: Array<{
     userId: string;
@@ -33,6 +36,7 @@ export async function getProjectNotificationContext(projectId: string) {
         executors: {
           select: {
             userId: true,
+            role: true,
           },
         },
         collaborators: {
@@ -63,6 +67,36 @@ export function dedupeRecipients(recipientUserIds: Array<string | null | undefin
   return Array.from(
     new Set(recipientUserIds.map((value) => value?.trim()).filter(Boolean) as string[]),
   );
+}
+
+type ProjectExecutorRecipientProject = {
+  executorUserId?: string | null;
+  executors?: Array<{
+    userId: string;
+    role?: ProjectExecutorRole | null;
+  }>;
+};
+
+export function getProjectExecutorRecipientUserIds(
+  project: ProjectExecutorRecipientProject,
+  options: {
+    role?: "all" | "main";
+    excludeUserId?: string | null;
+  } = {},
+) {
+  const executorRecords = project.executors ?? [];
+  const role = options.role ?? "all";
+  const currentExecutorIds =
+    role === "main"
+      ? executorRecords
+          .filter((executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR)
+          .map((executor) => executor.userId)
+      : executorRecords.map((executor) => executor.userId);
+  const fallbackExecutorIds =
+    executorRecords.length === 0 ? [project.executorUserId ?? null] : [];
+  const recipients = dedupeRecipients([...currentExecutorIds, ...fallbackExecutorIds]);
+
+  return excludeActor(recipients, options.excludeUserId);
 }
 
 export async function getProjectOwnerId(projectId: string) {
