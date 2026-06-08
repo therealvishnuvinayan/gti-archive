@@ -4,7 +4,6 @@ import {
   ProjectCompletionDocumentType,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
-  UserRole,
   type User,
 } from "@prisma/client";
 
@@ -594,16 +593,8 @@ function getCompletionDocumentArchiveTypeLabel(type: ProjectCompletionDocumentTy
   }
 }
 
-function buildCompletionDocumentAccessibleProjectWhere(
-  user: Pick<User, "id" | "role">,
-) {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return {};
-  }
-
-  return {
-    OR: [{ createdById: user.id }, { executorUserId: user.id }],
-  };
+function buildCompletionDocumentAccessibleProjectWhere(user: ArchiveAccessUser) {
+  return buildAccessibleProjectWhere(user);
 }
 
 function isArchiveTimestampVisibleToUser(

@@ -4,6 +4,7 @@ import {
   Prisma,
   ProjectCompletionDocumentType,
   ProjectCompletionStepStatus,
+  ProjectExecutorRole,
   SubmissionReviewStatus,
   type User,
 } from "@prisma/client";
@@ -212,10 +213,14 @@ function isProjectOwner(
   return project.createdById === userId;
 }
 
-type ProjectCompletionPermissionProject = Pick<
-  ProjectCompletionProjectRecord,
-  "createdById" | "executorUserId" | "executors"
->;
+type ProjectCompletionPermissionProject = {
+  createdById: string;
+  executorUserId: string | null;
+  executors: Array<{
+    userId: string;
+    role: ProjectExecutorRole;
+  }>;
+};
 
 function canViewCompletionWorkflow(
   project: ProjectCompletionPermissionProject,
@@ -329,6 +334,25 @@ function ensureRequirementChangeAllowed(
     : ProjectCompletionStepStatus.NOT_REQUIRED;
 }
 
+function getProjectCompletionExecutorRoleLabel(role: ProjectExecutorRole) {
+  return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
+}
+
+function compareProjectCompletionExecutors(
+  left: ProjectCompletionProjectRecord["executors"][number],
+  right: ProjectCompletionProjectRecord["executors"][number],
+) {
+  if (left.role !== right.role) {
+    return left.role === ProjectExecutorRole.MAIN_EXECUTOR ? -1 : 1;
+  }
+
+  return getUserDisplayName(left.user).localeCompare(
+    getUserDisplayName(right.user),
+    undefined,
+    { sensitivity: "base" },
+  );
+}
+
 function mapContactOptions(project: ProjectCompletionProjectRecord) {
   const contactMap = new Map<string, ProjectCompletionContactOption>();
 
@@ -348,17 +372,27 @@ function mapContactOptions(project: ProjectCompletionProjectRecord) {
 
   addContact(project.createdBy, "Project Owner");
 
+  for (const executor of [...project.executors].sort(compareProjectCompletionExecutors)) {
+    addContact(executor.user, getProjectCompletionExecutorRoleLabel(executor.role));
+  }
+
   if (project.executorUser) {
     addContact(project.executorUser, "Main Executor");
   }
 
-  for (const collaborator of project.collaborators) {
+  const sortedCollaborators = [...project.collaborators].sort((left, right) =>
+    getUserDisplayName(left.user).localeCompare(
+      getUserDisplayName(right.user),
+      undefined,
+      { sensitivity: "base" },
+    ),
+  );
+
+  for (const collaborator of sortedCollaborators) {
     addContact(collaborator.user, "Collaborator");
   }
 
-  return Array.from(contactMap.values()).sort((left, right) =>
-    left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
-  );
+  return Array.from(contactMap.values());
 }
 
 function mapArchivedFileOption(
@@ -414,6 +448,13 @@ async function getProjectCompletionProject(projectId: string) {
           select: {
             userId: true,
             role: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
           },
         },
         archivedAt: true,
