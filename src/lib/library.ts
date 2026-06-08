@@ -292,6 +292,12 @@ function applyLibraryFilters(
   const search = input.search.trim().toLowerCase();
   let filteredItems = [...items];
 
+  if (input.quickMenu === "assets") {
+    filteredItems = filteredItems.filter(
+      (item) => item.quickCategory === "Project Assets",
+    );
+  }
+
   if (input.quickMenu === "finance") {
     filteredItems = filteredItems.filter(
       (item) => item.quickCategory === "Quotations/Invoices",
@@ -465,7 +471,9 @@ export async function getLibraryPageDataForUser(
   );
 
   const counts: LibraryQuickMenuCounts = {
-    projectAssets: visibleItems.length,
+    projectAssets: visibleItems.filter(
+      (item) => item.quickCategory === "Project Assets",
+    ).length,
     quotationsAndInvoices: visibleItems.filter(
       (item) => item.quickCategory === "Quotations/Invoices",
     ).length,
