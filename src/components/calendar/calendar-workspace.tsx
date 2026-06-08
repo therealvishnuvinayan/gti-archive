@@ -53,6 +53,8 @@ import { showErrorToast, showSuccessToast } from "@/lib/toast";
 type CalendarWorkspaceProps = {
   initialEvents: CalendarEventRecord[];
   initialView: CalendarView;
+  initialDate?: string;
+  focusedEventId?: string;
   availableCollaborators: CollaboratorRecord[];
   assignedCollaborators: CollaboratorRecord[];
   canCreateEvents: boolean;
@@ -64,6 +66,13 @@ const hourHeight = 74;
 const calendarTypes: CalendarType[] = ["Projects", "Events", "Reminders", "Payments"];
 const today = new Date();
 
+function resolveInitialDate(value?: string) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return today;
+  }
+
+  return parseCalendarDateValue(value);
+}
 
 const toneClasses: Record<
   EventTone,
@@ -197,12 +206,14 @@ function getInitials(name: string) {
 export function CalendarWorkspace({
   initialEvents,
   initialView,
+  initialDate,
+  focusedEventId,
   availableCollaborators,
   assignedCollaborators,
   canCreateEvents,
   canManageCollaborators,
 }: CalendarWorkspaceProps) {
-  const [selectedDate, setSelectedDate] = useState<Date>(today);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => resolveInitialDate(initialDate));
   const [view, setView] = useState<CalendarView>(initialView);
   const [events, setEvents] = useState<CalendarEventRecord[]>([...initialEvents].sort(compareEvents));
   const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
@@ -740,9 +751,15 @@ export function CalendarWorkspace({
           <ul className="space-y-3">
             {upcomingEvents.map((event) => {
               const tone = toneClasses[event.tone];
+              const isFocused = focusedEventId === event.id;
 
               return (
-                <li key={event.id} className="flex items-start gap-2.5">
+                <li
+                  key={event.id}
+                  className={`flex items-start gap-2.5 rounded-[14px] p-2 transition-colors ${
+                    isFocused ? "bg-brand-soft ring-2 ring-brand/25" : ""
+                  }`}
+                >
                   <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${tone.dot}`} />
                   <div className="min-w-0 flex-1">
                     <p className={`text-[11px] leading-[1.25] ${tone.text}`}>
@@ -957,6 +974,7 @@ export function CalendarWorkspace({
 
                   {dayEvents.map((event) => {
                     const tone = toneClasses[event.tone];
+                    const isFocused = focusedEventId === event.id;
                     const top = ((getEventMinutes(event.start) - hours[0] * 60) / 60) * hourHeight;
                     const height =
                       ((getEventMinutes(event.end) - getEventMinutes(event.start)) / 60) * hourHeight;
@@ -964,7 +982,9 @@ export function CalendarWorkspace({
                     return (
                       <div
                         key={event.id}
-                        className={`absolute left-1.5 right-1.5 overflow-hidden rounded-[14px] ${tone.card}`}
+                        className={`absolute left-1.5 right-1.5 overflow-hidden rounded-[14px] ${tone.card} ${
+                          isFocused ? "ring-2 ring-brand/45 ring-offset-2 ring-offset-[#eef2ef]" : ""
+                        }`}
                         style={{ top: `${top}px`, height: `${height}px` }}
                       >
                         <div className={`absolute inset-y-0 left-0 w-1.5 ${tone.edge}`} />
@@ -1060,11 +1080,14 @@ export function CalendarWorkspace({
                     <div className="mt-3 space-y-1.5">
                       {dayEvents.slice(0, 2).map((event) => {
                         const tone = toneClasses[event.tone];
+                        const isFocused = focusedEventId === event.id;
 
                         return (
                           <div
                             key={event.id}
-                            className={`flex items-center justify-between gap-1 rounded-full px-2.5 py-1 text-[10px] font-[600] ${tone.card} ${tone.text}`}
+                            className={`flex items-center justify-between gap-1 rounded-full px-2.5 py-1 text-[10px] font-[600] ${tone.card} ${tone.text} ${
+                              isFocused ? "ring-2 ring-brand/45 ring-offset-1 ring-offset-white" : ""
+                            }`}
                           >
                             <span className="truncate">
                               {event.start} {event.title}

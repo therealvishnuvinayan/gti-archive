@@ -14,6 +14,8 @@ import { hasPermission } from "@/lib/permissions/resolver";
 type CalendarPageProps = {
   searchParams?: Promise<{
     view?: string;
+    date?: string;
+    event?: string;
   }>;
 };
 
@@ -45,6 +47,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
       <CalendarWorkspace
         initialEvents={events}
         initialView={resolveInitialView(resolvedSearchParams?.view)}
+        initialDate={resolvedSearchParams?.date}
+        focusedEventId={resolvedSearchParams?.event}
         availableCollaborators={availableCollaborators}
         assignedCollaborators={assignedCollaborators}
         canCreateEvents={hasPermission(user, "calendar.create")}

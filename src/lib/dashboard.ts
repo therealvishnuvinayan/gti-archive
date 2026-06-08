@@ -229,7 +229,7 @@ function mapDashboardReminder(event: CalendarEventRecord): DashboardReminderReco
     context: "Calendar",
     dateTimeLabel: formatCalendarReminderDate(event),
     statusLabel: isOverdue ? "Overdue" : undefined,
-    actionHref: `/calendar`,
+    actionHref: `/calendar?view=day&date=${event.date}&event=${event.id}`,
     actionLabel: "View Reminder",
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -19,6 +20,7 @@ export function ReminderCard({
   detailHref,
   emptyMessage = "No reminders right now.",
 }: ReminderCardProps) {
+  const router = useRouter();
   const [requestedIndex, setRequestedIndex] = useState(0);
   const activeIndex = Math.min(requestedIndex, Math.max(reminders.length - 1, 0));
   const activeReminder = reminders[activeIndex];
@@ -51,18 +53,24 @@ export function ReminderCard({
       </div>
 
       {activeReminder ? (
-        <div className="space-y-4 rounded-[18px] border border-transparent p-1 transition-colors hover:border-[#d8e6d8] hover:bg-[#f5faf5]">
+        <div
+          role="link"
+          tabIndex={0}
+          className="cursor-pointer space-y-4 rounded-[18px] border border-[#d8e6d8] bg-[#f8fcf8] p-4 transition-colors hover:border-brand/40 hover:bg-[#f3faf4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+          onClick={() => router.push(activeReminder.actionHref)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              router.push(activeReminder.actionHref);
+            }
+          }}
+        >
           <div className="min-w-0">
-            <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#eaf4ec] px-2.5 py-1 text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2b8055]">
-                Reminder
+            {activeReminder.statusLabel ? (
+              <span className="mb-3 inline-flex rounded-full bg-[#fff2dc] px-2.5 py-1 text-[11px] font-[800] uppercase tracking-[0.08em] text-[#9a5b00]">
+                {activeReminder.statusLabel}
               </span>
-              {activeReminder.statusLabel ? (
-                <span className="rounded-full bg-[#fff2dc] px-2.5 py-1 text-[11px] font-[800] uppercase tracking-[0.08em] text-[#9a5b00]">
-                  {activeReminder.statusLabel}
-                </span>
-              ) : null}
-            </div>
+            ) : null}
 
             <p className="line-clamp-2 text-[20px] font-bold leading-[1.12] tracking-[-0.03em] text-[#236e4c]">
               {activeReminder.headline}
@@ -86,19 +94,27 @@ export function ReminderCard({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={showPreviousReminder}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  showPreviousReminder();
+                }}
                 disabled={!hasMultipleReminders || activeIndex === 0}
-                className="grid h-9 w-9 place-items-center rounded-full border border-[#d6e2d6] bg-white text-[#23472f] transition-colors hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
+                className="grid h-9 w-9 place-items-center rounded-full border border-[#d6e2d6] bg-white text-[#23472f] transition hover:-translate-y-0.5 hover:border-brand/40 hover:bg-brand-soft hover:text-brand-dark disabled:translate-y-0 disabled:cursor-not-allowed disabled:border-[#d6e2d6] disabled:bg-white disabled:text-[#23472f] disabled:opacity-40"
                 aria-label="Previous reminder"
+                title="Previous reminder"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
                 type="button"
-                onClick={showNextReminder}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  showNextReminder();
+                }}
                 disabled={!hasMultipleReminders || activeIndex === reminders.length - 1}
-                className="grid h-9 w-9 place-items-center rounded-full border border-[#d6e2d6] bg-white text-[#23472f] transition-colors hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
+                className="grid h-9 w-9 place-items-center rounded-full border border-[#d6e2d6] bg-white text-[#23472f] transition hover:-translate-y-0.5 hover:border-brand/40 hover:bg-brand-soft hover:text-brand-dark disabled:translate-y-0 disabled:cursor-not-allowed disabled:border-[#d6e2d6] disabled:bg-white disabled:text-[#23472f] disabled:opacity-40"
                 aria-label="Next reminder"
+                title="Next reminder"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -111,6 +127,7 @@ export function ReminderCard({
 
             <Link
               href={activeReminder.actionHref}
+              onClick={(event) => event.stopPropagation()}
               className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-full bg-[linear-gradient(90deg,#3b9b69,#13422f)] px-4 text-[13px] font-semibold text-white shadow-[0_10px_22px_rgba(35,110,76,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_28px_rgba(35,110,76,0.24)]"
               title={activeReminder.actionLabel}
             >
