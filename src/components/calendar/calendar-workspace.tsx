@@ -1,7 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { type KeyboardEvent, useMemo, useState } from "react";
+import {
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Plus,
+  Tag,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
@@ -112,6 +123,13 @@ const monthLabel = new Intl.DateTimeFormat("en-US", {
 const monthGridLabel = new Intl.DateTimeFormat("en-US", {
   month: "long",
   day: "numeric",
+});
+
+const eventDetailDateLabel = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
 });
 
 function addDays(date: Date, days: number) {
@@ -240,6 +258,7 @@ export function CalendarWorkspace({
     () => assignedCollaborators.map((collaborator) => collaborator.id),
   );
   const [eventPendingDelete, setEventPendingDelete] = useState<CalendarEventRecord | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEventRecord | null>(null);
   const [eventDeletePending, setEventDeletePending] = useState(false);
   const [eventDeleteError, setEventDeleteError] = useState<string>();
   const [collaboratorPendingRemoval, setCollaboratorPendingRemoval] =
@@ -557,6 +576,23 @@ export function CalendarWorkspace({
     setEventPendingDelete(event);
   }
 
+  function openEventDetails(event: CalendarEventRecord) {
+    setSelectedEvent(event);
+  }
+
+  function handleEventKeyDown(
+    keyEvent: KeyboardEvent<HTMLElement>,
+    event: CalendarEventRecord,
+  ) {
+    if (keyEvent.key !== "Enter" && keyEvent.key !== " ") {
+      return;
+    }
+
+    keyEvent.preventDefault();
+    keyEvent.stopPropagation();
+    openEventDetails(event);
+  }
+
   async function confirmDeleteEvent() {
     if (!eventPendingDelete) {
       return;
@@ -576,6 +612,9 @@ export function CalendarWorkspace({
 
       setEvents((current) =>
         current.filter((event) => event.id !== result.deletedEventId),
+      );
+      setSelectedEvent((current) =>
+        current?.id === result.deletedEventId ? null : current,
       );
       setEventPendingDelete(null);
       showSuccessToast("Calendar event deleted.");
@@ -641,6 +680,149 @@ export function CalendarWorkspace({
       >
         <Trash2 className={options?.iconClassName ?? "h-3.5 w-3.5"} />
       </Button>
+    );
+  }
+
+  function renderEventDetailsDialog() {
+    if (!selectedEvent) {
+      return null;
+    }
+
+    const tone = toneClasses[selectedEvent.tone];
+    const eventDate = parseCalendarDateValue(selectedEvent.date);
+
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8"
+        onClick={() => setSelectedEvent(null)}
+      >
+        <Card
+          className="w-full max-w-[520px] rounded-[28px] p-0 shadow-[0_35px_90px_rgba(11,26,18,0.22)]"
+          onClick={(clickEvent) => clickEvent.stopPropagation()}
+        >
+          <CardHeader className="flex-row items-start justify-between gap-4 pb-0">
+            <div className="min-w-0">
+              <div className="mb-3 flex items-center gap-2">
+                <span className={`h-2.5 w-2.5 rounded-full ${tone.dot}`} />
+                <Badge
+                  variant="secondary"
+                  className={`rounded-full px-3 py-1 text-[11px] font-[700] ${tone.card} ${tone.text}`}
+                >
+                  {selectedEvent.calendar}
+                </Badge>
+              </div>
+              <CardTitle className="truncate text-[24px]">
+                {selectedEvent.title}
+              </CardTitle>
+              <p className="mt-1 text-[14px] text-[#6a706b]">
+                Event details
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => setSelectedEvent(null)}
+              variant="secondary"
+              size="icon"
+              className="shrink-0 border border-line text-[#253029]"
+              aria-label="Close event details"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+
+          <CardContent className="p-6 pt-5">
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 rounded-[18px] border border-line bg-[#f8faf7] px-4 py-3">
+                <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                <div>
+                  <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#7a837b]">
+                    Date
+                  </p>
+                  <p className="mt-1 text-[14px] font-[600] text-[#1b241e]">
+                    {eventDetailDateLabel.format(eventDate)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-[18px] border border-line bg-[#f8faf7] px-4 py-3">
+                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                <div>
+                  <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#7a837b]">
+                    Time
+                  </p>
+                  <p className="mt-1 text-[14px] font-[600] text-[#1b241e]">
+                    {selectedEvent.start} - {selectedEvent.end}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-[18px] border border-line bg-[#f8faf7] px-4 py-3">
+                <Tag className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                <div>
+                  <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#7a837b]">
+                    Calendar
+                  </p>
+                  <p className="mt-1 text-[14px] font-[600] text-[#1b241e]">
+                    {selectedEvent.calendar}
+                  </p>
+                </div>
+              </div>
+
+              {selectedEvent.createdByName || selectedEvent.createdByEmail ? (
+                <div className="flex items-start gap-3 rounded-[18px] border border-line bg-[#f8faf7] px-4 py-3">
+                  <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#7a837b]">
+                      Created by
+                    </p>
+                    <p className="mt-1 truncate text-[14px] font-[600] text-[#1b241e]">
+                      {selectedEvent.createdByName ?? selectedEvent.createdByEmail}
+                    </p>
+                    {selectedEvent.createdByEmail ? (
+                      <p className="mt-0.5 truncate text-[12px] text-[#6a706b]">
+                        {selectedEvent.createdByEmail}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {selectedEvent.details ? (
+              <div className="mt-4 rounded-[18px] border border-line bg-white px-4 py-3">
+                <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#7a837b]">
+                  Description
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-[14px] leading-relaxed text-[#2f3a32]">
+                  {selectedEvent.details}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              {selectedEvent.canDelete ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="lg"
+                  className="border border-[#f1c7c1] px-6 text-[15px] text-[#bb4d49] hover:bg-[#fff3f1]"
+                  onClick={() => requestDeleteEvent(selectedEvent)}
+                >
+                  Delete Event
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                onClick={() => setSelectedEvent(null)}
+                size="lg"
+                className="px-7 text-[15px]"
+              >
+                Close
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -759,9 +941,13 @@ export function CalendarWorkspace({
               return (
                 <li
                   key={event.id}
+                  role="button"
+                  tabIndex={0}
                   className={`flex items-start gap-2.5 rounded-[14px] p-2 transition-colors ${
                     isFocused ? "bg-brand-soft ring-2 ring-brand/25" : ""
-                  }`}
+                  } cursor-pointer hover:bg-[#f7fbf7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30`}
+                  onClick={() => openEventDetails(event)}
+                  onKeyDown={(keyEvent) => handleEventKeyDown(keyEvent, event)}
                 >
                   <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${tone.dot}`} />
                   <div className="min-w-0 flex-1">
@@ -993,16 +1179,20 @@ export function CalendarWorkspace({
                     return (
                       <div
                         key={event.id}
+                        role="button"
+                        tabIndex={0}
                         className={`absolute left-1.5 right-1.5 overflow-hidden rounded-[14px] ${tone.card} ${
                           isFocused ? "ring-2 ring-brand/45 ring-offset-2 ring-offset-[#eef2ef]" : ""
-                        }`}
+                        } cursor-pointer transition-shadow hover:shadow-[0_10px_22px_rgba(22,45,28,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/45`}
                         style={{ top: `${top}px`, height: `${height}px` }}
                         onClick={(clickEvent) => {
                           clickEvent.stopPropagation();
+                          openEventDetails(event);
                         }}
                         onDoubleClick={(clickEvent) => {
                           clickEvent.stopPropagation();
                         }}
+                        onKeyDown={(keyEvent) => handleEventKeyDown(keyEvent, event)}
                       >
                         <div className={`absolute inset-y-0 left-0 w-1.5 ${tone.edge}`} />
                         <div className="px-3 py-3">
@@ -1106,15 +1296,19 @@ export function CalendarWorkspace({
                         return (
                           <div
                             key={event.id}
+                            role="button"
+                            tabIndex={0}
                             className={`flex items-center justify-between gap-1 rounded-full px-2.5 py-1 text-[10px] font-[600] ${tone.card} ${tone.text} ${
                               isFocused ? "ring-2 ring-brand/45 ring-offset-1 ring-offset-white" : ""
-                            }`}
+                            } cursor-pointer hover:shadow-[0_8px_16px_rgba(22,45,28,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40`}
                             onClick={(clickEvent) => {
                               clickEvent.stopPropagation();
+                              openEventDetails(event);
                             }}
                             onDoubleClick={(clickEvent) => {
                               clickEvent.stopPropagation();
                             }}
+                            onKeyDown={(keyEvent) => handleEventKeyDown(keyEvent, event)}
                           >
                             <span className="truncate">
                               {event.start} {event.title}
@@ -1196,6 +1390,7 @@ export function CalendarWorkspace({
         }}
         onSubmit={saveEvent}
       />
+      {renderEventDetailsDialog()}
       <CollaboratorDialog
         isOpen={collaboratorDialogOpen}
         mode="invite"

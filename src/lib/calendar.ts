@@ -32,6 +32,8 @@ export type CalendarEventRecord = {
   calendar: CalendarTypeLabel;
   tone: EventToneLabel;
   canDelete: boolean;
+  createdByName?: string;
+  createdByEmail?: string;
 };
 
 export type SaveCalendarEventInput = {
@@ -71,6 +73,10 @@ export type CalendarAccessState = {
 };
 export type CalendarAccessUser = Pick<User, "id" | "role" | "calendarAccess"> &
   PermissionUser;
+
+type CalendarEventWithCreator = CalendarEvent & {
+  createdBy?: Pick<User, "name" | "email"> | null;
+};
 
 const calendarTypeMap: Record<CalendarTypeLabel, CalendarEventType> = {
   Projects: "PROJECTS",
@@ -140,7 +146,7 @@ function canDeleteCalendarEvent(
 }
 
 function mapCalendarEvent(
-  event: CalendarEvent,
+  event: CalendarEventWithCreator,
   user: CalendarAccessUser,
   access: CalendarAccessState,
 ): CalendarEventRecord {
@@ -154,6 +160,8 @@ function mapCalendarEvent(
     calendar: reverseCalendarTypeMap[event.type],
     tone: reverseEventToneMap[event.tone],
     canDelete: canDeleteCalendarEvent(event, user, access),
+    createdByName: event.createdBy?.name ?? undefined,
+    createdByEmail: event.createdBy?.email ?? undefined,
   };
 }
 
@@ -276,6 +284,14 @@ export async function getCalendarEvents(user: CalendarAccessUser) {
             : {
                 createdById: user.id,
               },
+          include: {
+            createdBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
           orderBy: {
             startAt: "asc",
           },
@@ -306,6 +322,14 @@ export async function createCalendarEvent(
     data: {
       ...parsed.data,
       createdById: user.id,
+    },
+    include: {
+      createdBy: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
     },
   });
 
