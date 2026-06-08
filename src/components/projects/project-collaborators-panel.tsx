@@ -1,7 +1,18 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { Eye, EyeOff, Plus, Search, Trash2, X } from "lucide-react";
+import {
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Plus,
+  Search,
+  ShieldCheck,
+  Trash2,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,16 +71,6 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-function getCollaboratorGroupLabel(collaborator: ProjectCollaboratorRecord) {
-  return collaborator.group === "external" ? "External" : "Internal";
-}
-
-function getCollaboratorGroupBadgeClassName(collaborator: ProjectCollaboratorRecord) {
-  return collaborator.group === "external"
-    ? "border border-[#f1dfcf] bg-[#fff4ea] text-[#ca7b3b]"
-    : "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]";
-}
-
 function getExecutorRoleBadgeClassName(executor: ProjectExecutorRecord) {
   return executor.role === "MAIN_EXECUTOR"
     ? "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]"
@@ -84,14 +85,16 @@ function getExecutorGroupBadgeClassName(executor: ProjectExecutorRecord) {
 
 function CollaboratorTypeBadge({
   collaborator,
+  className = "",
 }: {
   collaborator: ProjectCollaboratorRecord;
+  className?: string;
 }) {
   const typeMeta = getProjectCollaboratorTypeMeta(collaborator.participantType);
 
   return (
     <span
-      className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 tracking-[0.06em] ${typeMeta.badgeClassName}`}
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-[700] uppercase leading-4 tracking-[0.06em] ${typeMeta.badgeClassName} ${className}`}
     >
       <span
         className={`h-1.5 w-1.5 shrink-0 rounded-full ${typeMeta.dotClassName}`}
@@ -106,48 +109,50 @@ function CollaboratorCompactRow({
   collaborator,
   actions,
   showChatVisibilityState = false,
+  variant = "panel",
 }: {
   collaborator: ProjectCollaboratorRecord;
   actions?: ReactNode;
   showChatVisibilityState?: boolean;
+  variant?: "panel" | "modal";
 }) {
   const showPausedState = showChatVisibilityState && collaborator.chatVisibilityPaused;
+  const isModal = variant === "modal";
 
   return (
     <li
-      className={`flex min-h-[54px] items-center gap-3 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-2 ${
+      className={`grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[16px] border border-[#e3e9e2] bg-white/90 shadow-[0_8px_22px_rgba(17,31,23,0.035)] transition hover:border-brand/20 hover:bg-[#fbfdfb] ${
+        isModal ? "px-4 py-3" : "px-3 py-2.5"
+      } ${
         showPausedState ? "opacity-70" : ""
       }`}
     >
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[10px] font-[800] text-white">
+      <div
+        className={`grid shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] font-[700] text-white shadow-[0_8px_18px_rgba(181,130,87,0.18)] ${
+          isModal ? "h-10 w-10 text-[12px]" : "h-9 w-9 text-[11px]"
+        }`}
+      >
         {getInitials(collaborator.name)}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-[13px] font-[700] leading-5 text-[#111712]">
+          <p className={`truncate font-semibold leading-5 text-[#111712] ${isModal ? "text-[14px]" : "text-[13px]"}`}>
             {collaborator.name}
           </p>
           {showPausedState ? (
-            <span className="shrink-0 rounded-full bg-[#f1f4f1] px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 tracking-[0.06em] text-[#68726a]">
+            <span className="shrink-0 rounded-full bg-[#f1f4f1] px-2 py-0.5 text-[9px] font-[700] uppercase leading-4 tracking-[0.06em] text-[#68726a]">
               Chat paused
             </span>
           ) : null}
         </div>
-        <p className="truncate text-[11px] leading-4 text-[#7a837b]">
+        <p className={`${isModal ? "text-[12px]" : "text-[11px]"} truncate leading-4 text-[#707b73]`}>
           {collaborator.email ?? collaborator.role}
         </p>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-          <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 tracking-[0.06em] ${getCollaboratorGroupBadgeClassName(
-              collaborator,
-            )}`}
-          >
-            {getCollaboratorGroupLabel(collaborator)}
-          </span>
+        <div className="mt-1.5 flex min-w-0">
           <CollaboratorTypeBadge collaborator={collaborator} />
         </div>
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 items-center justify-end gap-0.5">{actions}</div> : <span />}
     </li>
   );
 }
@@ -574,6 +579,7 @@ function ProjectCollaboratorsModal({
       return (
         collaborator.name.toLowerCase().includes(normalizedQuery) ||
         (collaborator.email ?? "").toLowerCase().includes(normalizedQuery) ||
+        collaborator.group.toLowerCase().includes(normalizedQuery) ||
         typeLabel.includes(normalizedQuery)
       );
     });
@@ -585,23 +591,28 @@ function ProjectCollaboratorsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/50 px-4 py-8 backdrop-blur-[2px]"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
         }
       }}
     >
-      <Card className="w-full max-w-[720px] rounded-[24px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
-        <CardContent className="p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-[22px] font-semibold leading-tight tracking-tight text-[#111712]">
-                Project Collaborators
-              </h2>
-              <p className="mt-1 text-[12px] text-[#6f7a72]">
-                {collaborators.length} total
-              </p>
+      <Card className="w-full max-w-[760px] overflow-hidden rounded-[28px] border border-[#dfe7df] bg-white shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+        <CardContent className="p-0">
+          <div className="flex items-start justify-between gap-4 border-b border-[#eef2ee] px-5 py-5 sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#eef8f0] text-brand">
+                <UserRound className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="truncate text-[22px] font-semibold leading-tight tracking-tight text-[#111712]">
+                  Project Collaborators
+                </h2>
+                <p className="mt-1 text-[12px] text-[#6f7a72]">
+                  {collaborators.length} {collaborators.length === 1 ? "collaborator" : "collaborators"}
+                </p>
+              </div>
             </div>
             <Button
               type="button"
@@ -615,35 +626,43 @@ function ProjectCollaboratorsModal({
             </Button>
           </div>
 
-          <div className="relative mt-5">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8e978f]" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search collaborators..."
-              className="h-10 rounded-[14px] border border-line pl-10 text-[13px]"
-              autoFocus
-            />
+          <div className="px-5 pt-5 sm:px-6">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8e978f]" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search collaborators..."
+                className="h-11 rounded-[16px] border border-[#dce6de] bg-[#fbfdfb] pl-10 text-[13px] shadow-none focus-visible:ring-brand/20"
+                autoFocus
+              />
+            </div>
           </div>
 
-          <div className="mt-4 max-h-[430px] overflow-y-auto pr-1">
+          <div className="no-scrollbar mx-5 mt-4 max-h-[58vh] overflow-y-auto sm:mx-6 sm:max-h-[520px]">
             {filteredCollaborators.length > 0 ? (
-              <ul className="space-y-2">
+              <ul className="space-y-2 pb-1">
                 {filteredCollaborators.map((collaborator) => (
                   <CollaboratorCompactRow
                     key={collaborator.id}
                     collaborator={collaborator}
                     showChatVisibilityState={showChatVisibilityState}
+                    variant="modal"
                   />
                 ))}
               </ul>
             ) : (
-              <div className="rounded-[16px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-5 py-10 text-center">
-                <p className="text-[14px] font-[700] text-[#2a332d]">
+              <div className="rounded-[18px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-5 py-10 text-center">
+                <p className="text-[14px] font-semibold text-[#2a332d]">
                   No collaborators found.
                 </p>
               </div>
             )}
+          </div>
+
+          <div className="mt-5 flex items-center gap-2 border-t border-[#eef2ee] bg-[#fbfcfa] px-5 py-4 text-[12px] text-[#6f786f] sm:px-6">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-brand" />
+            <p className="min-w-0">Only project collaborators can access this project.</p>
           </div>
         </CardContent>
       </Card>
@@ -719,34 +738,33 @@ export function ProjectCollaboratorsSummary({
 
   return (
     <>
-      <Card className="rounded-[20px]">
-        <CardHeader className="flex-col items-start gap-2 pb-3">
-          <div className="flex w-full items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-[20px] font-semibold leading-[1.15] tracking-tight">
-                Project Collaborators
-              </CardTitle>
-              <p className="mt-1 text-[12px] font-[600] text-[#7a837b]">
-                {collaborators.length} {collaborators.length === 1 ? "member" : "members"}
-              </p>
+      <Card className="overflow-hidden rounded-[20px] border border-[#dfe8df] bg-white/95 shadow-[0_14px_32px_rgba(17,31,23,0.045)]">
+        <CardHeader className="px-4 pb-3 pt-4">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eef8f0] text-brand">
+                <Users className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="truncate text-[18px] font-semibold leading-[1.15] tracking-tight">
+                  Project Collaborators
+                </CardTitle>
+                <p className="mt-1 text-[12px] font-[500] text-[#7a837b]">
+                  {collaborators.length} {collaborators.length === 1 ? "member" : "members"}
+                </p>
+              </div>
             </div>
-            {hiddenCollaboratorCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => setViewAllOpen(true)}
-                className="rounded-full bg-[#f1f6f2] px-2.5 py-1 text-[11px] font-[800] text-brand"
-              >
-                +{hiddenCollaboratorCount} more
-              </button>
-            ) : null}
+            <span className="shrink-0 rounded-full border border-[#dbe9dd] bg-[#f4faf5] px-2.5 py-1 text-[11px] font-semibold text-brand">
+              {collaborators.length}
+            </span>
           </div>
           {onAdd ? (
             <Button
               type="button"
-              variant="ghost"
+              variant="secondary"
               size="sm"
               onClick={onAdd}
-              className="-ml-2 h-auto px-2 py-1 text-[13px] font-[600] text-brand"
+              className="mt-3 h-9 w-full justify-center rounded-[14px] border border-[#dbe7dc] bg-[#f7fbf7] text-[13px] font-semibold text-brand hover:bg-[#eef8ef]"
             >
               <Plus className="h-4 w-4" />
               {addLabel}
@@ -754,7 +772,7 @@ export function ProjectCollaboratorsSummary({
           ) : null}
         </CardHeader>
 
-        <CardContent className="pt-0">
+        <CardContent className="px-4 pb-4 pt-0">
           {visibleCollaborators.length > 0 ? (
             <ul className="space-y-2">
               {visibleCollaborators.map((collaborator) => (
@@ -821,29 +839,26 @@ export function ProjectCollaboratorsSummary({
               ))}
             </ul>
           ) : (
-            <p className="rounded-[14px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-4 py-5 text-[13px] text-[#7a837b]">
+            <p className="rounded-[16px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-4 py-5 text-center text-[13px] text-[#7a837b]">
               No collaborators added yet.
             </p>
           )}
 
           {hiddenCollaboratorCount > 0 ? (
-            <div className="mt-3 flex flex-col gap-2 rounded-[14px] border border-[#e4eae4] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-3 rounded-[16px] border border-[#dbe7dc] bg-[#f6fbf7] p-1">
               <button
                 type="button"
                 onClick={() => setViewAllOpen(true)}
-                className="text-left text-[12px] font-[800] text-brand"
+                className="flex w-full items-center justify-between gap-3 rounded-[13px] px-3 py-2.5 text-left text-[12px] font-semibold text-brand transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25"
               >
-                +{hiddenCollaboratorCount} more
+                <span className="min-w-0 truncate">View all collaborators</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[11px] text-[#2f8d5d] shadow-[0_6px_14px_rgba(17,31,23,0.05)]">
+                    +{hiddenCollaboratorCount}
+                  </span>
+                  <ChevronRight className="h-4 w-4" />
+                </span>
               </button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewAllOpen(true)}
-                className="h-8 justify-start px-0 text-[12px] font-[800] text-brand sm:justify-center sm:px-2"
-              >
-                View all collaborators
-              </Button>
             </div>
           ) : null}
         </CardContent>
