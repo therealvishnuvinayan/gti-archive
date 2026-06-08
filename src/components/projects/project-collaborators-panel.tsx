@@ -121,22 +121,24 @@ function CollaboratorCompactRow({
 
   return (
     <li
-      className={`grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[16px] border border-[#e3e9e2] bg-white/90 shadow-[0_8px_22px_rgba(17,31,23,0.035)] transition hover:border-brand/20 hover:bg-[#fbfdfb] ${
-        isModal ? "px-4 py-3" : "px-3 py-2.5"
+      className={`grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border transition hover:border-brand/20 hover:bg-[#fbfdfb] ${
+        isModal
+          ? "rounded-[16px] border-[#e3e9e2] bg-white/90 px-4 py-3 shadow-[0_8px_22px_rgba(17,31,23,0.035)]"
+          : "rounded-[14px] border-[#e5ebe5] bg-[#fbfcfa] px-2.5 py-2"
       } ${
         showPausedState ? "opacity-70" : ""
       }`}
     >
       <div
         className={`grid shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] font-[700] text-white shadow-[0_8px_18px_rgba(181,130,87,0.18)] ${
-          isModal ? "h-10 w-10 text-[12px]" : "h-9 w-9 text-[11px]"
+          isModal ? "h-10 w-10 text-[12px]" : "h-8 w-8 text-[10px]"
         }`}
       >
         {getInitials(collaborator.name)}
       </div>
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
-          <p className={`truncate font-semibold leading-5 text-[#111712] ${isModal ? "text-[14px]" : "text-[13px]"}`}>
+          <p className={`truncate font-semibold leading-5 text-[#111712] ${isModal ? "text-[14px]" : "text-[12px]"}`}>
             {collaborator.name}
           </p>
           {showPausedState ? (
@@ -145,11 +147,14 @@ function CollaboratorCompactRow({
             </span>
           ) : null}
         </div>
-        <p className={`${isModal ? "text-[12px]" : "text-[11px]"} truncate leading-4 text-[#707b73]`}>
+        <p className={`${isModal ? "text-[12px]" : "text-[10px]"} truncate leading-4 text-[#707b73]`}>
           {collaborator.email ?? collaborator.role}
         </p>
-        <div className="mt-1.5 flex min-w-0">
-          <CollaboratorTypeBadge collaborator={collaborator} />
+        <div className="mt-1 flex min-w-0">
+          <CollaboratorTypeBadge
+            collaborator={collaborator}
+            className={isModal ? "" : "max-w-[132px]"}
+          />
         </div>
       </div>
       {actions ? <div className="flex shrink-0 items-center justify-end gap-0.5">{actions}</div> : <span />}
@@ -170,16 +175,16 @@ function ExecutorCompactRow({
 
   return (
     <li
-      className={`flex min-h-[54px] items-center gap-3 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-2 ${
+      className={`flex min-h-[50px] items-center gap-2.5 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-2.5 py-2 ${
         showPausedState ? "opacity-70" : ""
       }`}
     >
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#d7efe0,#2f8d5d)] text-[10px] font-[800] text-white">
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#d7efe0,#2f8d5d)] text-[10px] font-[700] text-white">
         {getInitials(executor.name)}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-[13px] font-[700] leading-5 text-[#111712]">
+          <p className="truncate text-[12px] font-semibold leading-5 text-[#111712]">
             {executor.name}
           </p>
           {showPausedState ? (
@@ -188,7 +193,7 @@ function ExecutorCompactRow({
             </span>
           ) : null}
         </div>
-        <p className="truncate text-[11px] leading-4 text-[#7a837b]">
+        <p className="truncate text-[10px] leading-4 text-[#7a837b]">
           {executor.email ?? executor.roleLabel}
         </p>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -415,14 +420,14 @@ export function ProjectExecutorsPanel({
 
   return (
     <>
-      <Card className="rounded-[20px]">
-        <CardHeader className="flex-col items-start gap-2 pb-3">
+      <Card className="rounded-[18px] border border-[#dfe8df] bg-white/95 shadow-[0_12px_28px_rgba(17,31,23,0.04)]">
+        <CardHeader className="flex-col items-start gap-2 px-4 pb-3 pt-4">
           <div className="flex w-full items-start justify-between gap-3">
             <div>
-              <CardTitle className="text-[20px] font-semibold leading-[1.15] tracking-tight">
+              <CardTitle className="text-[17px] font-semibold leading-[1.15] tracking-tight">
                 Project Executors
               </CardTitle>
-              <p className="mt-1 text-[12px] font-[600] text-[#7a837b]">
+              <p className="mt-1 text-[12px] font-[500] text-[#7a837b]">
                 {sortedExecutors.length} {sortedExecutors.length === 1 ? "member" : "members"}
               </p>
             </div>
@@ -438,7 +443,7 @@ export function ProjectExecutorsPanel({
           </div>
         </CardHeader>
 
-        <CardContent className="pt-0">
+        <CardContent className="px-4 pb-4 pt-0">
           {visibleExecutors.length > 0 ? (
             <ul className="space-y-2">
               {visibleExecutors.map((executor) => {
@@ -738,15 +743,15 @@ export function ProjectCollaboratorsSummary({
 
   return (
     <>
-      <Card className="overflow-hidden rounded-[20px] border border-[#dfe8df] bg-white/95 shadow-[0_14px_32px_rgba(17,31,23,0.045)]">
-        <CardHeader className="px-4 pb-3 pt-4">
-          <div className="flex min-w-0 items-start justify-between gap-3">
+      <Card className="overflow-hidden rounded-[18px] border border-[#dfe8df] bg-white/95 shadow-[0_12px_28px_rgba(17,31,23,0.04)]">
+        <CardHeader className="px-3.5 pb-3 pt-3.5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eef8f0] text-brand">
-                <Users className="h-5 w-5" />
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#eef8f0] text-brand">
+                <Users className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="truncate text-[18px] font-semibold leading-[1.15] tracking-tight">
+                <CardTitle className="truncate text-[16px] font-semibold leading-[1.15] tracking-tight">
                   Project Collaborators
                 </CardTitle>
                 <p className="mt-1 text-[12px] font-[500] text-[#7a837b]">
@@ -754,9 +759,6 @@ export function ProjectCollaboratorsSummary({
                 </p>
               </div>
             </div>
-            <span className="shrink-0 rounded-full border border-[#dbe9dd] bg-[#f4faf5] px-2.5 py-1 text-[11px] font-semibold text-brand">
-              {collaborators.length}
-            </span>
           </div>
           {onAdd ? (
             <Button
@@ -764,7 +766,7 @@ export function ProjectCollaboratorsSummary({
               variant="secondary"
               size="sm"
               onClick={onAdd}
-              className="mt-3 h-9 w-full justify-center rounded-[14px] border border-[#dbe7dc] bg-[#f7fbf7] text-[13px] font-semibold text-brand hover:bg-[#eef8ef]"
+              className="mt-3 h-8 min-h-8 w-full justify-center rounded-[13px] border border-[#dbe7dc] bg-[#f7fbf7] px-3 py-1.5 text-[12px] font-semibold text-brand hover:bg-[#eef8ef]"
             >
               <Plus className="h-4 w-4" />
               {addLabel}
@@ -772,7 +774,7 @@ export function ProjectCollaboratorsSummary({
           ) : null}
         </CardHeader>
 
-        <CardContent className="px-4 pb-4 pt-0">
+        <CardContent className="px-3.5 pb-3.5 pt-0">
           {visibleCollaborators.length > 0 ? (
             <ul className="space-y-2">
               {visibleCollaborators.map((collaborator) => (
@@ -845,11 +847,11 @@ export function ProjectCollaboratorsSummary({
           )}
 
           {hiddenCollaboratorCount > 0 ? (
-            <div className="mt-3 rounded-[16px] border border-[#dbe7dc] bg-[#f6fbf7] p-1">
+            <div className="mt-2.5 rounded-[14px] border border-[#dbe7dc] bg-[#f6fbf7] p-1">
               <button
                 type="button"
                 onClick={() => setViewAllOpen(true)}
-                className="flex w-full items-center justify-between gap-3 rounded-[13px] px-3 py-2.5 text-left text-[12px] font-semibold text-brand transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25"
+                className="flex w-full items-center justify-between gap-2 rounded-[11px] px-2.5 py-2 text-left text-[12px] font-semibold text-brand transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25"
               >
                 <span className="min-w-0 truncate">View all collaborators</span>
                 <span className="flex shrink-0 items-center gap-2">
