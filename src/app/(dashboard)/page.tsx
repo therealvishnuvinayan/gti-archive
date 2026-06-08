@@ -46,7 +46,7 @@ export default async function Home() {
       title: "Total Projects",
       value: `${dashboard.counts.total}`.padStart(2, "0"),
       delta: `${dashboard.counts.total}`.padStart(2, "0"),
-      note: "Projects in database",
+      note: "Accessible projects",
       href: "/projects?status=ALL&sort=newest",
       emphasize: true,
     },

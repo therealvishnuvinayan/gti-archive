@@ -53,7 +53,8 @@ export function CollaborationCard({ title, items, href }: CollaborationCardProps
                     {item.name}
                   </p>
                   <p className="truncate text-[12px] text-[#363d38]">
-                    {item.task} <span className="font-semibold">{item.project}</span>
+                    {item.task} <span className="text-[#8a928c]">·</span>{" "}
+                    <span className="font-semibold">{item.project}</span>
                   </p>
                 </div>
               </div>

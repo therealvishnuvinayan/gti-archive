@@ -1,4 +1,4 @@
-import { ProjectStatus, type User } from "@prisma/client";
+import { ProjectExecutorRole, ProjectStatus, type User } from "@prisma/client";
 
 import { getRecentNotificationsForUser } from "@/lib/notification-center/service";
 import { workflowNotificationTypes } from "@/lib/notification-center/presenter";
@@ -28,6 +28,14 @@ type DashboardProjectRecord = {
     name: string | null;
     email: string;
   } | null;
+  executors: Array<{
+    role: ProjectExecutorRole;
+    user: {
+      id: string;
+      name: string | null;
+      email: string;
+    };
+  }>;
   collaborators: Array<{
     user: {
       id: string;
@@ -104,6 +112,10 @@ export type DashboardSnapshot = {
 
 function getDisplayName(person: { name: string | null; email: string }) {
   return person.name?.trim() || person.email;
+}
+
+function getExecutorRoleLabel(role: ProjectExecutorRole) {
+  return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
 }
 
 function buildSyntheticStages(project: DashboardProjectRecord): DashboardStageRecord[] {
@@ -235,22 +247,38 @@ function buildCollaborationItems(
 
   for (const project of activeProjects) {
     const people = [
+      {
+        id: project.createdBy.id,
+        name: getDisplayName(project.createdBy),
+        task: "Project Owner",
+      },
       ...(project.executorUser
         ? [
             {
               id: project.executorUser.id,
               name: getDisplayName(project.executorUser),
+              task: "Main Executor",
             },
           ]
         : []),
+      ...project.executors
+        .map((assignment) => ({
+          id: assignment.user.id,
+          name: getDisplayName(assignment.user),
+          task: getExecutorRoleLabel(assignment.role),
+        }))
+        .sort((left, right) => {
+          if (left.task !== right.task) {
+            return left.task === "Main Executor" ? -1 : 1;
+          }
+
+          return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+        }),
       ...project.collaborators.map((assignment) => ({
         id: assignment.user.id,
         name: getDisplayName(assignment.user),
+        task: "Collaborator",
       })),
-      {
-        id: project.createdBy.id,
-        name: getDisplayName(project.createdBy),
-      },
     ];
 
     for (const person of people) {
@@ -261,7 +289,7 @@ function buildCollaborationItems(
       seen.add(person.id);
       items.push({
         name: person.name,
-        task: "Working on",
+        task: person.task,
         project: project.name,
         href: `/projects/${project.id}`,
       });
@@ -399,6 +427,18 @@ export async function getDashboardSnapshot(
                 id: true,
                 name: true,
                 email: true,
+              },
+            },
+            executors: {
+              select: {
+                role: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
               },
             },
             collaborators: {
