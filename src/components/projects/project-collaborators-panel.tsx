@@ -262,7 +262,7 @@ function ProjectExecutorsModal({
         <CardContent className="p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-[22px] font-[800] leading-tight text-[#111712]">
+              <h2 className="text-[22px] font-semibold leading-tight tracking-tight text-[#111712]">
                 Project Executors
               </h2>
               <p className="mt-1 text-[12px] text-[#6f7a72]">
@@ -414,7 +414,7 @@ export function ProjectExecutorsPanel({
         <CardHeader className="flex-col items-start gap-2 pb-3">
           <div className="flex w-full items-start justify-between gap-3">
             <div>
-              <CardTitle className="text-[20px] leading-[1.15]">
+              <CardTitle className="text-[20px] font-semibold leading-[1.15] tracking-tight">
                 Project Executors
               </CardTitle>
               <p className="mt-1 text-[12px] font-[600] text-[#7a837b]">
@@ -596,7 +596,7 @@ function ProjectCollaboratorsModal({
         <CardContent className="p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-[22px] font-[800] leading-tight text-[#111712]">
+              <h2 className="text-[22px] font-semibold leading-tight tracking-tight text-[#111712]">
                 Project Collaborators
               </h2>
               <p className="mt-1 text-[12px] text-[#6f7a72]">
@@ -723,7 +723,7 @@ export function ProjectCollaboratorsSummary({
         <CardHeader className="flex-col items-start gap-2 pb-3">
           <div className="flex w-full items-start justify-between gap-3">
             <div>
-              <CardTitle className="text-[20px] leading-[1.15]">
+              <CardTitle className="text-[20px] font-semibold leading-[1.15] tracking-tight">
                 Project Collaborators
               </CardTitle>
               <p className="mt-1 text-[12px] font-[600] text-[#7a837b]">

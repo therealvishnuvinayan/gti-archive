@@ -634,7 +634,7 @@ function SystemActivityCard({ message }: { message: DisplayChatEntry }) {
             <CheckCircle2 className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-[800] text-[#173120]">
+            <p className="text-[13px] font-semibold text-[#173120]">
               {message.title ?? "Project activity"}
             </p>
             <p className="mt-1 text-[12px] leading-5 text-[#405044]">
@@ -842,11 +842,11 @@ function BriefDialog({
           <div>
             <CardTitle
               id={labelledById}
-              className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]"
+              className="text-[24px] font-semibold tracking-tight text-[#111712]"
             >
               {title}
             </CardTitle>
-            <p className="mt-2 text-[14px] font-[700] text-[#111712]">
+            <p className="mt-2 text-[14px] font-semibold text-[#111712]">
               {heading}
             </p>
             {context ? (
@@ -3707,7 +3707,7 @@ export function ProjectChatWorkspace({
 
           {displayedMessages.length === 0 ? (
             <Card className="border border-dashed border-[#d8e1d8] px-6 py-10 text-center">
-              <CardTitle className="text-[20px]">
+              <CardTitle className="text-[20px] font-semibold tracking-tight">
                 {activeStage?.label ?? "Stage"} History
               </CardTitle>
               <p className="mt-2 text-[14px] text-[#6e776f]">
@@ -3792,7 +3792,7 @@ export function ProjectChatWorkspace({
                       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,220px)_minmax(0,1fr)] xl:items-center">
                         <div className="min-w-0 max-w-[220px]">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h1 className="text-[18px] font-[700] text-[#95d867]">
+                            <h1 className="text-[18px] font-semibold text-[#95d867]">
                               {revisionLabel}
                             </h1>
                             <span
@@ -4029,7 +4029,7 @@ export function ProjectChatWorkspace({
 
           {isProjectCompleted ? (
             <Card className="sticky bottom-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
-              <p className="text-[14px] font-[700] text-[#173120]">Project chat is locked.</p>
+              <p className="text-[14px] font-semibold text-[#173120]">Project chat is locked.</p>
               <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
                 This project has been completed. Only final archived files and
                 completion documents remain available for viewing or download.
@@ -4317,36 +4317,36 @@ export function ProjectChatWorkspace({
         <div className="space-y-4">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
-              <CardTitle className="text-[20px] text-brand">
+              <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">
                 Stage Overview
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <dl className="space-y-1.5 text-[13px] text-[#242b26]">
                 <div>
-                  <dt className="inline font-[700]">Budget :</dt>{" "}
+                  <dt className="inline font-semibold">Budget :</dt>{" "}
                   <dd className="inline">{activeStage?.budget ?? project.budget}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Revisions :</dt>{" "}
+                  <dt className="inline font-semibold">Revisions :</dt>{" "}
                   <dd className="inline">
                     {messages.filter((message) => message.kind === "revision").length}
                   </dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Started At :</dt>{" "}
+                  <dt className="inline font-semibold">Started At :</dt>{" "}
                   <dd className="inline">{activeStage?.actualStartedAt ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Started By :</dt>{" "}
+                  <dt className="inline font-semibold">Started By :</dt>{" "}
                   <dd className="inline">{activeStage?.startedByName ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Stage Deadline :</dt>{" "}
+                  <dt className="inline font-semibold">Stage Deadline :</dt>{" "}
                   <dd className="inline">{activeStage?.plannedDueAt ?? project.endDate}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Status :</dt>{" "}
+                  <dt className="inline font-semibold">Status :</dt>{" "}
                   <dd className="inline">{stageExecutionStatus}</dd>
                 </div>
               </dl>
@@ -4400,7 +4400,7 @@ export function ProjectChatWorkspace({
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-[20px] text-[#111712]">
+              <CardTitle className="text-[20px] font-semibold tracking-tight text-[#111712]">
                 Stage Invoice
               </CardTitle>
             </CardHeader>
@@ -4452,7 +4452,7 @@ export function ProjectChatWorkspace({
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-[20px] text-[#111712]">
+              <CardTitle className="text-[20px] font-semibold tracking-tight text-[#111712]">
                 Project Reference Files
               </CardTitle>
             </CardHeader>
@@ -4644,7 +4644,7 @@ export function ProjectChatWorkspace({
           <Card className="flex h-full max-h-[88vh] w-full max-w-[920px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
               <div>
-                <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                <CardTitle className="text-[24px] font-semibold tracking-tight text-[#111712]">
                   Final Archive Files
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
@@ -4817,7 +4817,7 @@ export function ProjectChatWorkspace({
           <Card className="w-full max-w-[560px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
               <div>
-                <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                <CardTitle className="text-[24px] font-semibold tracking-tight text-[#111712]">
                   Upload file as
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
@@ -4848,7 +4848,7 @@ export function ProjectChatWorkspace({
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-[16px] font-[700] text-[#111712]">Attachment</p>
+                    <p className="text-[16px] font-semibold text-[#111712]">Attachment</p>
                     <p className="mt-1 text-[13px] leading-5 text-[#697169]">
                       Use for chat, references, supporting documents, or normal
                       discussion files.
@@ -4882,7 +4882,7 @@ export function ProjectChatWorkspace({
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-[16px] font-[700] text-[#111712]">Submission</p>
+                    <p className="text-[16px] font-semibold text-[#111712]">Submission</p>
                     <p className="mt-1 text-[13px] leading-5 text-[#697169]">
                       Use for design output that will be compared with other
                       submissions in this same stage. Images only.
@@ -4934,7 +4934,7 @@ export function ProjectChatWorkspace({
           <Card className="w-full max-w-[640px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
               <div>
-                <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                <CardTitle className="text-[24px] font-semibold tracking-tight text-[#111712]">
                   Submit Work for Review
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
@@ -5049,7 +5049,7 @@ export function ProjectChatWorkspace({
           <Card className="w-full max-w-[720px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
               <div>
-                <CardTitle className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                <CardTitle className="text-[24px] font-semibold tracking-tight text-[#111712]">
                   Review Submission
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">

@@ -682,7 +682,7 @@ export function ProjectCompareWorkspace({
           <Card className="overflow-hidden rounded-[24px] border-none bg-[linear-gradient(135deg,#2f8d5d,#46a470)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h1 className="text-[28px] font-[700] tracking-[-0.03em]">
+                <h1 className="text-[28px] font-semibold tracking-tight">
                   Compare Submissions
                 </h1>
                 <p className="mt-2 max-w-[620px] text-[14px] text-white/82">
@@ -719,7 +719,7 @@ export function ProjectCompareWorkspace({
 
           {!hasEnoughSubmissions ? (
             <Card className="rounded-[20px] border border-dashed border-[#d7e3d8] bg-white p-6 text-center shadow-[0_12px_28px_rgba(19,28,22,0.04)]">
-              <CardTitle className="text-[20px] text-[#111712]">
+              <CardTitle className="text-[20px] font-semibold tracking-tight text-[#111712]">
                 {insufficientSubmissionMessage}
               </CardTitle>
               <p className="mt-2 text-[13px] text-[#6f786f]">
@@ -783,7 +783,7 @@ export function ProjectCompareWorkspace({
               />
 
               <Card className="rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
-                <CardTitle className="text-[22px] text-brand">Comments</CardTitle>
+                <CardTitle className="text-[22px] font-semibold tracking-tight text-brand">Comments</CardTitle>
                 {comments.length > 0 ? (
                   <div className="mt-4 space-y-3">
                     {comments.map((comment, index) => {
@@ -834,7 +834,7 @@ export function ProjectCompareWorkspace({
 
           {submissions.length > 0 ? (
             <Card className="rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
-              <CardTitle className="text-[22px] text-brand">Available Submissions</CardTitle>
+              <CardTitle className="text-[22px] font-semibold tracking-tight text-brand">Available Submissions</CardTitle>
               <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 {submissions.map((submission) => (
                   <div
@@ -889,26 +889,26 @@ export function ProjectCompareWorkspace({
         <div className="space-y-4">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
-              <CardTitle className="text-[20px] text-brand">Stage Overview</CardTitle>
+              <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">Stage Overview</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <dl className="space-y-1.5 text-[13px] text-[#242b26]">
                 <div>
-                  <dt className="inline font-[700]">Budget :</dt>{" "}
+                  <dt className="inline font-semibold">Budget :</dt>{" "}
                   <dd className="inline">{activeStage?.budget ?? project.budget}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Revisions :</dt>{" "}
+                  <dt className="inline font-semibold">Revisions :</dt>{" "}
                   <dd className="inline">
                     {history.entries.filter((entry) => entry.kind === "revision").length}
                   </dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Stage Started :</dt>{" "}
+                  <dt className="inline font-semibold">Stage Started :</dt>{" "}
                   <dd className="inline">{activeStage?.plannedStartAt ?? project.startDate}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Stage Deadline :</dt>{" "}
+                  <dt className="inline font-semibold">Stage Deadline :</dt>{" "}
                   <dd className="inline">{activeStage?.plannedDueAt ?? project.endDate}</dd>
                 </div>
               </dl>
@@ -937,7 +937,7 @@ export function ProjectCompareWorkspace({
           <div className="mx-auto flex h-full max-w-[1600px] flex-col gap-4 overflow-hidden rounded-[30px] border border-[#dce6dd] bg-[#f7faf7] p-4 shadow-[0_36px_90px_rgba(12,26,18,0.34)] sm:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[24px] font-[700] text-[#111712]">Compare Submissions</p>
+                <p className="text-[24px] font-semibold tracking-tight text-[#111712]">Compare Submissions</p>
                 <p className="text-[13px] text-[#68726a]">
                   {formatSubmissionLabel(baseSubmission)} vs {formatSubmissionLabel(compareSubmission)}
                 </p>
@@ -984,7 +984,7 @@ export function ProjectCompareWorkspace({
                 />
 
                 <Card className="rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
-                  <CardTitle className="text-[22px] text-brand">Comments</CardTitle>
+                  <CardTitle className="text-[22px] font-semibold tracking-tight text-brand">Comments</CardTitle>
                   {comments.length > 0 ? (
                     <div className="mt-4 space-y-3">
                       {comments.map((comment, index) => {

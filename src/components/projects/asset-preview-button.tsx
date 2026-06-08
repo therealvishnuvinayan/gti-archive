@@ -97,7 +97,7 @@ export function AssetPreviewButton({
       <Card className="flex h-full max-h-[86vh] w-full max-w-[1080px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
           <div className="min-w-0">
-            <CardTitle className="truncate text-[22px] font-[700] tracking-[-0.03em] text-[#111712]">
+            <CardTitle className="truncate text-[22px] font-semibold tracking-tight text-[#111712]">
               {fileName}
             </CardTitle>
           </div>

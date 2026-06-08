@@ -830,7 +830,7 @@ function ProjectCompletionChecklistBody({
       <CardHeader className="space-y-3 pb-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle className="text-[22px] text-[#173120]">Project Completion</CardTitle>
+            <CardTitle className="text-[22px] font-semibold tracking-tight text-[#173120]">Project Completion</CardTitle>
             <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
               Before closing the project fully, confirm whether this project requires
               authority approval, copyright transfer, and final invoicing. Stage invoices
@@ -871,7 +871,7 @@ function ProjectCompletionChecklistBody({
 
         {workflowState.needsInitialConfiguration ? (
           <div className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] p-4">
-            <p className="text-[16px] font-[700] text-[#173120]">
+            <p className="text-[16px] font-semibold text-[#173120]">
               Project completion checklist
             </p>
             <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
@@ -953,7 +953,7 @@ function ProjectCompletionChecklistBody({
         <div className="rounded-[20px] border border-[#dce6dd] bg-[#fbfcfa] p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[16px] font-[700] text-[#173120]">Authority Approval</p>
+              <p className="text-[16px] font-semibold text-[#173120]">Authority Approval</p>
               <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
                 Approval request prepared. Email/notification sending will be connected
                 later.
@@ -1118,7 +1118,7 @@ function ProjectCompletionChecklistBody({
         <div className="rounded-[20px] border border-[#dce6dd] bg-[#fbfcfa] p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[16px] font-[700] text-[#173120]">Copyright Transfer</p>
+              <p className="text-[16px] font-semibold text-[#173120]">Copyright Transfer</p>
               <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
                 Signed copyright documents can be uploaded here once they are received
                 back.
@@ -1261,7 +1261,7 @@ function ProjectCompletionChecklistBody({
         <div className="rounded-[20px] border border-[#dce6dd] bg-[#fbfcfa] p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[16px] font-[700] text-[#173120]">Final Invoice</p>
+              <p className="text-[16px] font-semibold text-[#173120]">Final Invoice</p>
               <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
                 Stage invoices are handled per stage. This final invoice belongs to
                 the project completion package and unlocks after authority approval
@@ -1342,7 +1342,7 @@ function ProjectCompletionChecklistBody({
 
         {workflowState.documents.length > 0 ? (
           <div className="rounded-[20px] border border-[#dce6dd] bg-[#fbfcfa] p-4">
-            <p className="text-[16px] font-[700] text-[#173120]">Completion Documents</p>
+            <p className="text-[16px] font-semibold text-[#173120]">Completion Documents</p>
             <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
               These completion files are also available in the Documents archive category.
             </p>

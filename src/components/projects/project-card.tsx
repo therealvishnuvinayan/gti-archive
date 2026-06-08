@@ -174,7 +174,7 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
           </div>
 
           <h3
-            className={`min-h-[78px] text-[31px] font-extrabold leading-[1.05] tracking-[-0.04em] sm:text-[33px] ${
+            className={`min-h-[78px] text-[31px] font-semibold leading-[1.08] tracking-tight sm:text-[33px] ${
               project.isPinned ? "text-white" : "text-[#18211a]"
             }`}
           >

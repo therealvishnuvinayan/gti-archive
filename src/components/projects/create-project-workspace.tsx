@@ -553,7 +553,7 @@ function QuickAddMasterDataDialog({
         <CardContent className="p-6 sm:p-7">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+              <h2 className="text-[24px] font-semibold tracking-tight text-[#111712]">
                 Add New {label}
               </h2>
               <p className="mt-1 text-[14px] text-[#6a706b]">
@@ -636,7 +636,7 @@ function InviteExecutorDialog({
         <CardContent className="p-6 sm:p-7">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+              <h2 className="text-[24px] font-semibold tracking-tight text-[#111712]">
                 Invite Executor
               </h2>
               <p className="mt-1 text-[14px] text-[#6a706b]">
@@ -2369,7 +2369,7 @@ export function CreateProjectWorkspace({
       <Card className="w-full bg-surface">
         <CardHeader>
           <div className="rounded-[20px] bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-            <CardTitle className="text-[18px] font-[700] tracking-[-0.02em] text-white">
+            <CardTitle className="text-[18px] font-semibold tracking-tight text-white">
               {mode === "edit" ? "Edit project" : "Create a project"}
             </CardTitle>
           </div>
@@ -3242,22 +3242,22 @@ export function CreateProjectWorkspace({
         <MotionItem y={10}>
         <Card className="border border-brand/40">
           <CardHeader className="pb-3">
-          <CardTitle className="text-[21px] text-brand">
+          <CardTitle className="text-[21px] font-semibold tracking-tight text-brand">
             Project Overview
           </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pt-0">
           <dl className="mt-3 space-y-1.5 text-[13px] text-[#242b26]">
             <div>
-              <dt className="inline font-[700]">Budget :</dt>{" "}
+              <dt className="inline font-semibold">Budget :</dt>{" "}
               <dd className="inline">{overview.budget}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Allocated to Stages :</dt>{" "}
+              <dt className="inline font-semibold">Allocated to Stages :</dt>{" "}
               <dd className="inline">{overview.allocatedStageBudget}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Remaining :</dt>{" "}
+              <dt className="inline font-semibold">Remaining :</dt>{" "}
               <dd
                 className={`inline ${
                   hasBudgetConflict ? "font-[700] text-[#ba3f31]" : ""
@@ -3267,31 +3267,31 @@ export function CreateProjectWorkspace({
               </dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Stages :</dt>{" "}
+              <dt className="inline font-semibold">Stages :</dt>{" "}
               <dd className="inline">{overview.stages}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Project Started :</dt>{" "}
+              <dt className="inline font-semibold">Project Started :</dt>{" "}
               <dd className="inline">{overview.started}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Project Deadline :</dt>{" "}
+              <dt className="inline font-semibold">Project Deadline :</dt>{" "}
               <dd className="inline">{overview.deadline}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Executor :</dt>{" "}
+              <dt className="inline font-semibold">Executor :</dt>{" "}
               <dd className="inline">{overview.executor}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Tag :</dt>{" "}
+              <dt className="inline font-semibold">Tag :</dt>{" "}
               <dd className="inline">{overview.tag}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Status :</dt>{" "}
+              <dt className="inline font-semibold">Status :</dt>{" "}
               <dd className="inline">{overview.status}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Priority :</dt>{" "}
+              <dt className="inline font-semibold">Priority :</dt>{" "}
               <dd className="inline">{overview.priority}</dd>
             </div>
           </dl>
@@ -3303,7 +3303,7 @@ export function CreateProjectWorkspace({
           <CardHeader className="flex-col items-start gap-2 pb-3">
             <div className="flex w-full items-start justify-between gap-3">
               <div>
-                <CardTitle className="text-[20px] leading-[1.15]">
+                <CardTitle className="text-[20px] font-semibold leading-[1.15] tracking-tight">
                   Project Executors
                 </CardTitle>
                 <p className="mt-1 text-[12px] font-[600] text-[#7a837b]">

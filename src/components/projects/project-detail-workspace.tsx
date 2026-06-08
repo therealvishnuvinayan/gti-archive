@@ -83,16 +83,16 @@ export function ProjectDetailWorkspace({
           <Card className="rounded-[18px] border-none bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-4 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:px-5">
             <div className="flex min-h-[92px] flex-col justify-between gap-6">
               <div>
-                <h1 className="text-[25px] font-[800] leading-[1.08] tracking-[-0.03em]">
+                <h1 className="text-[25px] font-semibold leading-[1.1] tracking-tight">
                   {project.title}
                 </h1>
-                <p className="mt-1 text-[22px] font-[800] leading-[1.05] text-[#86d66f]">
+                <p className="mt-1 text-[22px] font-semibold leading-[1.08] text-[#86d66f]">
                   {project.category}
                 </p>
               </div>
               <div className="flex flex-col gap-2 text-[12px] font-[600] text-white/95 sm:flex-row sm:items-end sm:justify-between">
                 <p>Project Owner : {project.createdBy}</p>
-                <p className="text-[15px] font-[800] text-[#83db71]">
+                <p className="text-[15px] font-semibold text-[#83db71]">
                   {project.currentStageName} : {project.statusLabel}
                 </p>
               </div>
@@ -101,7 +101,7 @@ export function ProjectDetailWorkspace({
 
           <Card className="rounded-[18px] bg-white shadow-[0_18px_42px_rgba(23,39,28,0.05)]">
             <CardHeader className="pb-3">
-              <CardTitle className="text-[22px]">Project Stages</CardTitle>
+              <CardTitle className="text-[22px] font-semibold tracking-tight">Project Stages</CardTitle>
               <p className="mt-1 text-[13px] text-[#6b756d]">
                 Open a stage to continue discussion and revision work. Use compare from the stage flow.
               </p>
@@ -122,7 +122,7 @@ export function ProjectDetailWorkspace({
                         <Card className={`min-h-[250px] min-w-0 overflow-hidden rounded-[10px] p-4 ${styles.card}`}>
                           <Badge
                             variant="secondary"
-                            className={`max-w-full min-w-0 truncate border-none bg-white/12 text-[13px] font-[800] leading-tight ${styles.label}`}
+                            className={`max-w-full min-w-0 truncate border-none bg-white/12 text-[13px] font-semibold leading-tight ${styles.label}`}
                           >
                             {stage.label}
                           </Badge>
@@ -134,7 +134,7 @@ export function ProjectDetailWorkspace({
                               {stage.description}
                             </p>
                           ) : null}
-                          <h3 className="mt-3 line-clamp-2 min-h-[44px] text-[20px] font-[800] leading-[1.08] text-white">
+                          <h3 className="mt-3 line-clamp-2 min-h-[44px] text-[20px] font-semibold leading-[1.12] tracking-tight text-white">
                             {stage.title}
                           </h3>
                           <div className={`mt-3 space-y-0.5 text-[13px] ${styles.meta}`}>
@@ -189,7 +189,7 @@ export function ProjectDetailWorkspace({
 
           <Card className="rounded-[18px]">
             <CardHeader className="pb-2">
-              <CardTitle className="text-[20px]">Project Brief</CardTitle>
+              <CardTitle className="text-[20px] font-semibold tracking-tight">Project Brief</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#39433c]">
@@ -202,34 +202,34 @@ export function ProjectDetailWorkspace({
         <MotionItem y={10} className="min-w-0 space-y-4">
           <Card className="rounded-[18px] border border-brand/40 shadow-none">
             <CardContent className="p-4">
-              <h2 className="text-[18px] font-[800] text-brand">Project Overview</h2>
+              <h2 className="text-[18px] font-semibold tracking-tight text-brand">Project Overview</h2>
               <dl className="mt-3 space-y-1.5 text-[12px] leading-5 text-[#242b26]">
                 <div>
-                  <dt className="inline font-[800]">Budget:</dt>{" "}
+                  <dt className="inline font-semibold">Budget:</dt>{" "}
                   <dd className="inline">{project.budget}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[800]">Stages:</dt>{" "}
+                  <dt className="inline font-semibold">Stages:</dt>{" "}
                   <dd className="inline">{project.stageCount}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[800]">Project Started:</dt>{" "}
+                  <dt className="inline font-semibold">Project Started:</dt>{" "}
                   <dd className="inline">{project.startDate}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[800]">Project Deadline:</dt>{" "}
+                  <dt className="inline font-semibold">Project Deadline:</dt>{" "}
                   <dd className="inline">{project.endDate}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[800]">Executor:</dt>{" "}
+                  <dt className="inline font-semibold">Executor:</dt>{" "}
                   <dd className="inline">{project.executorName}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[800]">Tag:</dt>{" "}
+                  <dt className="inline font-semibold">Tag:</dt>{" "}
                   <dd className="inline">{project.tag}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[800]">Priority:</dt>{" "}
+                  <dt className="inline font-semibold">Priority:</dt>{" "}
                   <dd className="inline">{project.priority}</dd>
                 </div>
               </dl>
@@ -242,7 +242,7 @@ export function ProjectDetailWorkspace({
 
           <Card className="rounded-[18px]">
             <CardHeader className="pb-2">
-              <CardTitle className="text-[20px]">Project Assets</CardTitle>
+              <CardTitle className="text-[20px] font-semibold tracking-tight">Project Assets</CardTitle>
             </CardHeader>
             <CardContent>
               {project.attachments.length > 0 ? (

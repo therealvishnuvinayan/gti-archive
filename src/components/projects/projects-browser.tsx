@@ -214,7 +214,7 @@ export function ProjectsBrowser({
       <MotionSection>
         <header className="space-y-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <h1 className="text-[42px] font-extrabold tracking-[-0.05em] text-[#0f1411] sm:text-[52px]">
+            <h1 className="text-[42px] font-semibold tracking-tight text-[#0f1411] sm:text-[52px]">
               Projects
             </h1>
 
