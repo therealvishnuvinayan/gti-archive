@@ -1845,10 +1845,22 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
   )();
 
   return projects.map((project, index) => ({
+    id: project.id,
     name: project.name,
+    statusLabel: projectStatusMeta[project.status].dashboardLabel,
+    meta: [
+      project.category,
+      project.tag?.trim() || null,
+      `Created ${formatProjectDate(project.createdAt)}`,
+    ].filter(Boolean).join(" • "),
+    href: `/projects/${project.id}`,
     tone: index < 2 ? "brand" : index < 4 ? "deep" : "muted",
   })) as {
+    id: string;
     name: string;
+    statusLabel: string;
+    meta: string;
+    href: string;
     tone: "brand" | "deep" | "muted";
   }[];
 }

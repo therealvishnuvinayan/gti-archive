@@ -125,7 +125,7 @@ export default async function Home() {
         </MotionStaggerGroup>
 
         <MotionStaggerGroup
-          className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.95fr)_minmax(280px,1fr)]"
+          className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)_minmax(0,1fr)]"
           stagger={0.045}
         >
           <MotionItem className="grid content-start gap-4" y={12}>
