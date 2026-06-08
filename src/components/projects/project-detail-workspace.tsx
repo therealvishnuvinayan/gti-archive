@@ -66,6 +66,19 @@ function getStageCardClasses(stage: ProjectStageRecord) {
   }
 }
 
+function getStageStatusPillClassName(stage: ProjectStageRecord) {
+  switch (stage.status) {
+    case "completed":
+      return "border-[#c9e8d1] bg-[#eef8ef] text-[#2f8d5d]";
+    case "pending":
+      return "border-white/25 bg-white/12 text-white/78";
+    case "on-hold":
+      return "border-[#f2d8a7] bg-[#fff6dc] text-[#9b6a17]";
+    default:
+      return "border-[#bde8ff] bg-[#eaf7ff] text-[#2477a8]";
+  }
+}
+
 export function ProjectDetailWorkspace({
   project,
   completionSummary,
@@ -126,12 +139,21 @@ export function ProjectDetailWorkspace({
                     return (
                       <MotionItem key={stage.id} y={10} className="min-w-0">
                         <Card className={`flex min-h-[198px] min-w-0 flex-col overflow-hidden rounded-[10px] p-3.5 ${styles.card}`}>
-                          <Badge
-                            variant="secondary"
-                            className={`max-w-full min-w-0 truncate border-none bg-white/12 text-[11px] font-semibold leading-tight ${styles.label}`}
-                          >
-                            {stage.label}
-                          </Badge>
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <Badge
+                              variant="secondary"
+                              className={`max-w-full min-w-0 truncate border-none bg-white/12 text-[11px] font-semibold leading-tight ${styles.label}`}
+                            >
+                              {stage.name}
+                            </Badge>
+                            <span
+                              className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-tight ${getStageStatusPillClassName(
+                                stage,
+                              )}`}
+                            >
+                              {stage.statusLabel}
+                            </span>
+                          </div>
                           <p className="mt-1 truncate text-[11px] font-medium leading-tight text-white/90">
                             {stage.subtitle}
                           </p>

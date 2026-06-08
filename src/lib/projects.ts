@@ -152,6 +152,8 @@ export type ProjectStageVisualStatus =
 export type ProjectStageRecord = {
   id: string;
   label: string;
+  name: string;
+  statusLabel: "Pending" | "Ongoing" | "Completed";
   subtitle: string;
   description: string;
   title: string;
@@ -725,6 +727,19 @@ function mapStageStatusToVisual(status: ProjectStatus): ProjectStageVisualStatus
   }
 }
 
+function mapStageStatusToDisplayLabel(
+  status: ProjectStatus,
+): ProjectStageRecord["statusLabel"] {
+  switch (status) {
+    case "COMPLETED":
+      return "Completed";
+    case "PENDING":
+      return "Pending";
+    default:
+      return "Ongoing";
+  }
+}
+
 function buildSyntheticStages(project: Project): ProjectStageWithStarter[] {
   return Array.from({ length: Math.max(project.stageCount, 1) }, (_, index) => ({
     id: `${project.id}-stage-${index + 1}`,
@@ -821,6 +836,8 @@ function mapStageToCard(
   return {
     id: stage.id,
     label: `${stage.name} : ${projectStatusMeta[stage.status].label}`,
+    name: stage.name,
+    statusLabel: mapStageStatusToDisplayLabel(stage.status),
     subtitle: project.category,
     description: canViewBrief ? stage.description?.trim() || "" : "",
     title: project.name,
