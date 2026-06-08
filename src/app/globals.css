@@ -110,3 +110,12 @@ input {
 .dashboard-scroll-thin::-webkit-scrollbar-thumb:hover {
   background: rgba(43, 128, 85, 0.5);
 }
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

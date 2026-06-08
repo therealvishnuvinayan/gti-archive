@@ -74,12 +74,12 @@ export function ProjectDetailWorkspace({
   const stageGridClasses = "grid-cols-[repeat(auto-fit,minmax(210px,240px))]";
 
   return (
-    <section className="mx-auto w-full max-w-[1180px]">
-      <MotionStaggerGroup
-        className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_260px]"
-        stagger={0.05}
-      >
-        <MotionItem y={10} className="min-w-0 space-y-4">
+    <section className="mx-auto w-full max-w-[1180px] lg:h-[calc(100dvh-12rem)] lg:overflow-hidden">
+      <div className="grid items-start gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_260px]">
+        <MotionItem
+          y={10}
+          className="no-scrollbar min-w-0 space-y-4 lg:h-full lg:overflow-x-hidden lg:overflow-y-auto lg:pr-2"
+        >
           <Card className="rounded-[18px] border-none bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-4 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:px-5">
             <div className="flex min-h-[92px] flex-col justify-between gap-6">
               <div>
@@ -199,7 +199,7 @@ export function ProjectDetailWorkspace({
           </Card>
         </MotionItem>
 
-        <MotionItem y={10} className="min-w-0 space-y-4">
+        <aside className="no-scrollbar min-w-0 space-y-4 lg:sticky lg:top-0 lg:max-h-full lg:self-start lg:overflow-x-hidden lg:overflow-y-hidden lg:pr-1 lg:hover:overflow-y-auto lg:focus-within:overflow-y-auto">
           <Card className="rounded-[18px] border border-brand/40 shadow-none">
             <CardContent className="p-4">
               <h2 className="text-[18px] font-semibold tracking-tight text-brand">Project Overview</h2>
@@ -304,8 +304,8 @@ export function ProjectDetailWorkspace({
               )}
             </CardContent>
           </Card>
-        </MotionItem>
-      </MotionStaggerGroup>
+        </aside>
+      </div>
     </section>
   );
 }
