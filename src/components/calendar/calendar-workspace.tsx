@@ -635,6 +635,9 @@ export function CalendarWorkspace({
           clickEvent.stopPropagation();
           requestDeleteEvent(event);
         }}
+        onDoubleClick={(clickEvent) => {
+          clickEvent.stopPropagation();
+        }}
       >
         <Trash2 className={options?.iconClassName ?? "h-3.5 w-3.5"} />
       </Button>
@@ -961,6 +964,14 @@ export function CalendarWorkspace({
                             `${String(hour + 1).padStart(2, "0")}:00`,
                           )
                         }
+                        onDoubleClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                          openDialog(
+                            day,
+                            `${String(hour).padStart(2, "0")}:00`,
+                            `${String(hour + 1).padStart(2, "0")}:00`,
+                          );
+                        }}
                         className="block h-[74px] w-full cursor-pointer border-t border-[#dbe2dc] text-left transition-colors first:border-t-0 hover:bg-white/35"
                         aria-label={`Add event on ${dayKey} at ${formatHour(hour)}`}
                       />
@@ -986,6 +997,12 @@ export function CalendarWorkspace({
                           isFocused ? "ring-2 ring-brand/45 ring-offset-2 ring-offset-[#eef2ef]" : ""
                         }`}
                         style={{ top: `${top}px`, height: `${height}px` }}
+                        onClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                        }}
+                        onDoubleClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                        }}
                       >
                         <div className={`absolute inset-y-0 left-0 w-1.5 ${tone.edge}`} />
                         <div className="px-3 py-3">
@@ -1048,6 +1065,10 @@ export function CalendarWorkspace({
                         ? "border-brand bg-[#edf7ef]"
                         : "border-[#e2e7e1] bg-white hover:border-brand/30"
                     }`}
+                    onDoubleClick={() => {
+                      setSelectedDate(date);
+                      openDialog(date);
+                    }}
                   >
                     <button
                       type="button"
@@ -1088,6 +1109,12 @@ export function CalendarWorkspace({
                             className={`flex items-center justify-between gap-1 rounded-full px-2.5 py-1 text-[10px] font-[600] ${tone.card} ${tone.text} ${
                               isFocused ? "ring-2 ring-brand/45 ring-offset-1 ring-offset-white" : ""
                             }`}
+                            onClick={(clickEvent) => {
+                              clickEvent.stopPropagation();
+                            }}
+                            onDoubleClick={(clickEvent) => {
+                              clickEvent.stopPropagation();
+                            }}
                           >
                             <span className="truncate">
                               {event.start} {event.title}
