@@ -172,7 +172,7 @@ export const helpTopics: HelpTopic[] = [
     description: "Follow the review cycle from Submit Work to revision requests and stage completion.",
     sectionId: "submissions-revisions",
     icon: ClipboardCheck,
-    keywords: ["submission", "revision", "mark as complete", "request revision", "review"],
+    keywords: ["submission", "revision", "mark as complete", "request revision", "review", "compare"],
   },
   {
     id: "topic-stage-invoices",
@@ -360,6 +360,13 @@ export const recommendedGuides: HelpGuide[] = [
     description: "Use Add Comments from a revision card to keep the reply connected to that revision.",
     sectionId: "submissions-revisions",
     keywords: ["revision comment", "comment on revision", "reply to revision"],
+  },
+  {
+    id: "guide-compare-submissions",
+    title: "How to compare submissions",
+    description: "Compare image revisions from the same stage with opacity controls and comparison comments.",
+    sectionId: "submissions-revisions",
+    keywords: ["compare submissions", "comparison", "opacity", "image revision", "png", "jpg", "jpeg", "webp"],
   },
   {
     id: "guide-final-archive",
@@ -720,7 +727,7 @@ export const helpSections: HelpSection[] = [
     title: "Submissions & revisions",
     summary:
       "Submissions are formal work outputs from a Main Executor. They move through owner review, revision requests, and completion while preserving revision history.",
-    keywords: ["submissions", "revisions", "submit work", "main executor", "mark as complete", "request revision"],
+    keywords: ["submissions", "revisions", "submit work", "main executor", "mark as complete", "request revision", "compare submissions"],
     blocks: [
       {
         title: "Submit work",
@@ -749,6 +756,20 @@ export const helpSections: HelpSection[] = [
           "Use Add Comments on a revision card to create a comment linked to that revision.",
           "Revision-linked comments display as comments on that revision instead of unrelated stage chat.",
           "Normal composer comments remain normal stage comments when no revision context is selected.",
+        ],
+      },
+      {
+        title: "Compare Submissions",
+        items: [
+          "Compare Submissions is used to compare stage submission images within the selected stage only.",
+          "Supported image submissions are PNG, JPG, JPEG, and WebP. PDF and document comparison is not supported yet.",
+          "At least two image submissions are needed for comparison.",
+          "If there are no image submissions, the compare page shows an empty state.",
+          "If there is only one image submission, upload another image revision before comparing changes.",
+          "When two or more image submissions exist, the system compares the previous or older image with the latest or newer image by default.",
+          "If the page provides file selectors, users can change which submission images are compared.",
+          "The opacity slider helps users visually compare differences between the two images.",
+          "Compare comments or annotations, when available, keep discussion focused on specific differences between the images.",
         ],
       },
       {
