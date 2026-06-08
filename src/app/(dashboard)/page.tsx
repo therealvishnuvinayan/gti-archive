@@ -149,11 +149,8 @@ export default async function Home() {
           <MotionItem className="grid content-start gap-4" y={12}>
             <ReminderCard
               title="Reminder"
-              headline={dashboard.reminder?.headline}
-              project={dashboard.reminder?.project}
-              actionLabel={dashboard.reminder?.actionLabel}
-              actionHref={dashboard.reminder?.actionHref}
-              detailHref={dashboard.reminder?.actionHref}
+              reminders={dashboard.reminders}
+              detailHref="/calendar"
             />
             <ProjectProgressCard
               title="Project Progress"

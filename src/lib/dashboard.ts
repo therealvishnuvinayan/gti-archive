@@ -1,12 +1,12 @@
 import { ProjectExecutorRole, ProjectStatus, type User } from "@prisma/client";
 
+import { getCalendarEvents, type CalendarEventRecord } from "@/lib/calendar";
 import { getRecentNotificationsForUser } from "@/lib/notification-center/service";
-import { workflowNotificationTypes } from "@/lib/notification-center/presenter";
 import { buildAccessibleProjectsWhere, getDashboardProjectCounts, getRecentProjects } from "@/lib/projects";
 import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
-type DashboardUser = Pick<User, "id" | "role"> & PermissionUser;
+type DashboardUser = Pick<User, "id" | "role" | "calendarAccess"> & PermissionUser;
 
 type DashboardProjectRecord = {
   id: string;
@@ -69,8 +69,12 @@ export type DashboardUpdateRecord = {
 };
 
 export type DashboardReminderRecord = {
+  id: string;
   headline: string;
-  project: string;
+  detail: string;
+  context?: string;
+  dateTimeLabel: string;
+  statusLabel?: string;
   actionHref: string;
   actionLabel: string;
 };
@@ -104,7 +108,7 @@ export type DashboardSnapshot = {
   counts: Awaited<ReturnType<typeof getDashboardProjectCounts>>;
   recentProjects: Awaited<ReturnType<typeof getRecentProjects>>;
   updates: DashboardUpdateRecord[];
-  reminder: DashboardReminderRecord | null;
+  reminders: DashboardReminderRecord[];
   collaborators: DashboardCollaboratorRecord[];
   progress: DashboardProgressRecord;
   deadline: DashboardDeadlineRecord | null;
@@ -200,41 +204,60 @@ function mapNotificationTone(visualKind: string): DashboardUpdateRecord["tone"] 
   }
 }
 
-function buildReminderFromProjects(projects: DashboardProjectRecord[]): DashboardReminderRecord | null {
-  const now = Date.now();
+function getCalendarEventStart(event: CalendarEventRecord) {
+  return new Date(`${event.date}T${event.start}:00`);
+}
 
-  const candidate = projects
-    .flatMap((project) =>
-      getProjectStages(project)
-        .filter(
-          (stage) =>
-            stage.status !== ProjectStatus.COMPLETED &&
-            stage.plannedDueAt,
-        )
-        .map((stage) => ({
-          projectId: project.id,
-          projectName: project.name,
-          stageName: stage.name,
-          dueAt: stage.plannedDueAt as Date,
-        })),
-    )
-    .sort((left, right) => left.dueAt.getTime() - right.dueAt.getTime())
-    .find((item) => item.dueAt.getTime() - now <= 3 * 24 * 60 * 60 * 1000);
+function formatCalendarReminderDate(event: CalendarEventRecord) {
+  const startsAt = getCalendarEventStart(event);
 
-  if (!candidate) {
-    return null;
+  if (Number.isNaN(startsAt.getTime())) {
+    return `${event.date} ${event.start}`;
   }
 
-  const { overdue, label } = formatTimeDistance(candidate.dueAt);
+  return formatDateTime(startsAt);
+}
+
+function mapDashboardReminder(event: CalendarEventRecord): DashboardReminderRecord {
+  const startsAt = getCalendarEventStart(event);
+  const isOverdue = !Number.isNaN(startsAt.getTime()) && startsAt.getTime() < Date.now();
 
   return {
-    headline: overdue
-      ? `${candidate.stageName} is overdue`
-      : `${candidate.stageName} needs attention`,
-    project: `${candidate.projectName} • ${label}`,
-    actionHref: `/projects/${candidate.projectId}`,
-    actionLabel: "Take Action",
+    id: event.id,
+    headline: event.title,
+    detail: event.details || "Calendar reminder",
+    context: "Calendar",
+    dateTimeLabel: formatCalendarReminderDate(event),
+    statusLabel: isOverdue ? "Overdue" : undefined,
+    actionHref: `/calendar`,
+    actionLabel: "View Reminder",
   };
+}
+
+async function getDashboardCalendarReminders(
+  currentUser: DashboardUser,
+  limit = 8,
+): Promise<DashboardReminderRecord[]> {
+  if (!hasPermission(currentUser, "calendar.view")) {
+    return [];
+  }
+
+  const now = Date.now();
+  const reminders = (await getCalendarEvents(currentUser))
+    .filter((event) => event.calendar === "Reminders")
+    .map((event) => ({
+      event,
+      startsAt: getCalendarEventStart(event),
+    }));
+
+  const future = reminders
+    .filter(({ startsAt }) => !Number.isNaN(startsAt.getTime()) && startsAt.getTime() >= now)
+    .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
+  const overdue = reminders
+    .filter(({ startsAt }) => Number.isNaN(startsAt.getTime()) || startsAt.getTime() < now)
+    .sort((left, right) => right.startsAt.getTime() - left.startsAt.getTime());
+
+  return [...future, ...overdue].slice(0, limit).map(({ event }) => mapDashboardReminder(event));
 }
 
 function buildCollaborationItems(
@@ -393,7 +416,7 @@ export async function getDashboardSnapshot(
 
   const canViewProjectCounts = hasPermission(currentUser, "dashboard.viewProjectCounts");
   const canViewRecentProjects = hasPermission(currentUser, "dashboard.viewRecentProjects");
-  const [counts, recentProjects, projects, recentNotifications, unreadWorkflowNotification] =
+  const [counts, recentProjects, projects, recentNotifications, reminders] =
     await Promise.all([
       canViewProjectCounts
         ? getDashboardProjectCounts(currentUser)
@@ -465,27 +488,7 @@ export async function getDashboardSnapshot(
         }),
       ),
       getRecentNotificationsForUser(currentUser.id, 4),
-      withPrismaRetry(() =>
-        prisma.notification.findFirst({
-          where: {
-            userId: currentUser.id,
-            isRead: false,
-            type: {
-              in: [...workflowNotificationTypes],
-            },
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-          select: {
-            title: true,
-            message: true,
-            url: true,
-            projectId: true,
-            stageId: true,
-          },
-        }),
-      ),
+      getDashboardCalendarReminders(currentUser),
     ]);
 
   const updates = recentNotifications.notifications.map((notification) => ({
@@ -496,28 +499,11 @@ export async function getDashboardSnapshot(
     href: notification.targetHref,
   }));
 
-  const fallbackReminder = buildReminderFromProjects(projects);
-  const reminder =
-    unreadWorkflowNotification
-      ? {
-          headline: unreadWorkflowNotification.title,
-          project: unreadWorkflowNotification.message,
-          actionHref:
-            unreadWorkflowNotification.url ||
-            (unreadWorkflowNotification.projectId
-              ? unreadWorkflowNotification.stageId
-                ? `/projects/${unreadWorkflowNotification.projectId}/chat?stage=${unreadWorkflowNotification.stageId}`
-                : `/projects/${unreadWorkflowNotification.projectId}`
-              : "/notifications"),
-          actionLabel: "Take Action",
-        }
-      : fallbackReminder;
-
   return {
     counts,
     recentProjects,
     updates,
-    reminder,
+    reminders,
     collaborators: buildCollaborationItems(projects, currentUser),
     progress: buildProgressRecord(projects),
     deadline: buildDeadlineRecord(projects),
