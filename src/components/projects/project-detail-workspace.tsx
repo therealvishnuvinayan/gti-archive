@@ -90,7 +90,7 @@ export function ProjectDetailWorkspace({
                   {project.category}
                 </p>
               </div>
-              <div className="flex flex-col gap-1.5 text-[12px] font-[600] text-white/95 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-1.5 text-[12px] font-semibold text-white/95 sm:flex-row sm:items-end sm:justify-between">
                 <p>Project Owner : {project.createdBy}</p>
                 <p className="text-[14px] font-semibold text-[#83db71]">
                   {project.currentStageName} : {project.statusLabel}
@@ -132,7 +132,7 @@ export function ProjectDetailWorkspace({
                           >
                             {stage.label}
                           </Badge>
-                          <p className="mt-1 truncate text-[11px] font-[600] leading-tight text-white/90">
+                          <p className="mt-1 truncate text-[11px] font-medium leading-tight text-white/90">
                             {stage.subtitle}
                           </p>
                           {stage.description ? (
@@ -143,7 +143,7 @@ export function ProjectDetailWorkspace({
                           <h3 className="mt-2.5 line-clamp-2 min-h-[36px] text-[17px] font-semibold leading-[1.08] tracking-tight text-white">
                             {stage.title}
                           </h3>
-                          <div className={`mt-2.5 space-y-0.5 text-[11px] leading-4 ${styles.meta}`}>
+                          <div className={`mt-2.5 space-y-0.5 text-[11px] font-medium leading-4 ${styles.meta}`}>
                             <p>Created on {stage.createdOn}</p>
                             <p>Stage Budget: {stage.budget}</p>
                           </div>
@@ -153,7 +153,7 @@ export function ProjectDetailWorkspace({
                           {stageOpenable || stageCompleted ? (
                             <Button
                               asChild
-                              className="min-h-9 w-full rounded-full bg-[#0c4c34] px-4 py-2 text-[12px] text-white hover:bg-[#0a402c]"
+                              className="min-h-9 w-full rounded-full bg-[#0c4c34] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#0a402c]"
                             >
                               <Link href={`/projects/${project.id}/chat?stage=${stage.id}`}>
                                 {stageButtonLabel}
@@ -164,7 +164,7 @@ export function ProjectDetailWorkspace({
                               type="button"
                               disabled
                               title={stageDisabledTitle}
-                              className="min-h-9 w-full cursor-not-allowed rounded-full bg-[#e8ece8] px-4 py-2 text-[12px] text-[#98a09a] shadow-none hover:bg-[#e8ece8] disabled:opacity-100"
+                              className="min-h-9 w-full cursor-not-allowed rounded-full bg-[#e8ece8] px-4 py-2 text-[12px] font-semibold text-[#98a09a] shadow-none hover:bg-[#e8ece8] disabled:opacity-100"
                             >
                               Open Stage
                             </Button>

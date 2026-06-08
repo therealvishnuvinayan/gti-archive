@@ -2888,7 +2888,7 @@ export function CreateProjectWorkspace({
           <MotionSection y={8}>
           <div>
             <div className="flex items-center justify-between gap-4">
-              <h3 className="text-[16px] font-[600] text-brand">
+              <h3 className="text-[16px] font-semibold text-brand">
                 Project Stages <span className="text-[#d3554d]">*</span>
               </h3>
               <Button
@@ -2896,7 +2896,7 @@ export function CreateProjectWorkspace({
                 onClick={addStage}
                 variant="outline"
                 size="sm"
-                className="text-[12px]"
+                className="text-[12px] font-semibold"
               >
                 <Plus className="h-4 w-4" />
                 Add Stage
@@ -2912,29 +2912,29 @@ export function CreateProjectWorkspace({
                 }`}
               >
                 <div>
-                  <p className="text-[10px] font-[800] uppercase tracking-[0.12em] text-[#7a837b]">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#7a837b]">
                     Project Budget
                   </p>
-                  <p className="mt-1 font-[700] text-[#173120]">
+                  <p className="mt-1 font-semibold text-[#173120]">
                     {Number.isFinite(parsedProjectBudget)
                       ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
                       : "—"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-[800] uppercase tracking-[0.12em] text-[#7a837b]">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#7a837b]">
                     Stage Total
                   </p>
-                  <p className="mt-1 font-[700] text-[#173120]">
+                  <p className="mt-1 font-semibold text-[#173120]">
                     {formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-[800] uppercase tracking-[0.12em] text-[#7a837b]">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#7a837b]">
                     Difference
                   </p>
                   <p
-                    className={`mt-1 font-[700] ${
+                    className={`mt-1 font-semibold ${
                       hasBudgetConflict ? "text-[#ba3f31]" : "text-brand"
                     }`}
                   >
@@ -2948,13 +2948,13 @@ export function CreateProjectWorkspace({
 
             {canViewBudget && hasBudgetConflict && remainingStageBudget !== null ? (
               <div className="mt-3 rounded-[18px] border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[12px] text-[#ba3f31]">
-                <p className="font-[700]">Budget conflict</p>
+                <p className="font-semibold">Budget conflict</p>
                 <p className="mt-1">
                   Project budget must equal the total stage budgets before saving.
                 </p>
                 <dl className="mt-2 space-y-1">
                   <div>
-                    <dt className="inline font-[700]">Project Budget:</dt>{" "}
+                    <dt className="inline font-semibold">Project Budget:</dt>{" "}
                     <dd className="inline">
                       {Number.isFinite(parsedProjectBudget)
                         ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
@@ -2962,13 +2962,13 @@ export function CreateProjectWorkspace({
                     </dd>
                   </div>
                   <div>
-                    <dt className="inline font-[700]">Total Stage Budgets:</dt>{" "}
+                    <dt className="inline font-semibold">Total Stage Budgets:</dt>{" "}
                     <dd className="inline">
                       {formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
                     </dd>
                   </div>
                   <div>
-                    <dt className="inline font-[700]">Difference:</dt>{" "}
+                    <dt className="inline font-semibold">Difference:</dt>{" "}
                     <dd className="inline">
                       {formatBudgetDifference(remainingStageBudget, projectCurrency || "")}
                     </dd>
@@ -2985,7 +2985,7 @@ export function CreateProjectWorkspace({
                 <MotionItem key={stage.id} y={8} layout className="min-w-0">
                 <Card className="min-w-0 overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
                   <CardContent className="min-w-0 p-4">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                       Stage Name <span className="text-[#d3554d]">*</span>
                     </p>
                     <input type="hidden" name="stageIds" value={stage.persistedId ?? ""} />
@@ -3005,12 +3005,12 @@ export function CreateProjectWorkspace({
                       }}
                       name="stageNames"
                       required
-                      className="min-h-[38px] min-w-0 border-brand text-center text-[14px] font-[500] text-brand"
+                      className="min-h-[38px] min-w-0 border-brand text-center text-[14px] font-medium text-brand"
                     />
                     <FieldError
                       message={getStageFieldError("stageNames", index, fieldErrors.stageNames?.[index])}
                     />
-                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                       Stage Budget <span className="text-[#d3554d]">*</span>
                     </p>
                     {canViewBudget ? (
@@ -3041,7 +3041,7 @@ export function CreateProjectWorkspace({
                         }
                       />
                     ) : null}
-                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                       Stage Start <span className="text-[#d3554d]">*</span>
                     </p>
                     <DateTimePicker
@@ -3063,7 +3063,7 @@ export function CreateProjectWorkspace({
                         ) || clientStageDateErrors.stageStartDateErrors[index]
                       }
                     />
-                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                       Stage Due <span className="text-[#d3554d]">*</span>
                     </p>
                     <DateTimePicker
@@ -3085,7 +3085,7 @@ export function CreateProjectWorkspace({
                         ) || clientStageDateErrors.stageDueDateErrors[index]
                       }
                     />
-                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                       Stage Brief <span className="text-[#d3554d]">*</span>
                     </p>
                     <Textarea
@@ -3110,7 +3110,7 @@ export function CreateProjectWorkspace({
                       />
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6f7d72]">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                             Invoice Required
                           </p>
                           <p className="mt-1 text-[11px] leading-4 text-[#7a837b]">
@@ -3121,7 +3121,7 @@ export function CreateProjectWorkspace({
                           <button
                             type="button"
                             onClick={() => updateStage(stage.id, { invoiceRequired: true })}
-                            className={`rounded-full px-3 py-1.5 text-[11px] font-[700] transition ${
+                            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
                               stage.invoiceRequired
                                 ? "bg-brand text-white"
                                 : "text-[#627068] hover:bg-[#f4f8f4]"
@@ -3132,7 +3132,7 @@ export function CreateProjectWorkspace({
                           <button
                             type="button"
                             onClick={() => updateStage(stage.id, { invoiceRequired: false })}
-                            className={`rounded-full px-3 py-1.5 text-[11px] font-[700] transition ${
+                            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
                               !stage.invoiceRequired
                                 ? "bg-brand text-white"
                                 : "text-[#627068] hover:bg-[#f4f8f4]"
@@ -3156,7 +3156,7 @@ export function CreateProjectWorkspace({
                         }}
                       />
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6f7d72]">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                           Stage Brief Attachments
                         </p>
                         <Badge variant="secondary">
@@ -3260,7 +3260,7 @@ export function CreateProjectWorkspace({
                         size="sm"
                         onClick={() => stageAttachmentInputRefs.current[stage.id]?.click()}
                         disabled={isUploadingAttachments}
-                        className="mt-2 w-full justify-center text-[12px]"
+                        className="mt-2 w-full justify-center text-[12px] font-semibold"
                       >
                         <Paperclip className="h-4 w-4" />
                         Add files
@@ -3306,7 +3306,7 @@ export function CreateProjectWorkspace({
               <dt className="inline font-semibold">Remaining :</dt>{" "}
               <dd
                 className={`inline ${
-                  hasBudgetConflict ? "font-[700] text-[#ba3f31]" : ""
+                  hasBudgetConflict ? "font-semibold text-[#ba3f31]" : ""
                 }`}
               >
                 {overview.remainingStageBudget}

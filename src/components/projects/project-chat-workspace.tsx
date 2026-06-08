@@ -249,7 +249,7 @@ function UploadIntentDropzone({
 
       <Upload className="mx-auto h-5 w-5 text-brand" />
 
-      <p className="mt-3 text-[14px] font-[700] text-brand">
+      <p className="mt-3 text-[14px] font-semibold text-brand">
         {isDragActive ? "Drop files here" : "Drag files here"}
       </p>
 
@@ -300,7 +300,7 @@ function ChatAvatar({
   if (src && !imageFailed) {
     return (
       <div
-        className={`grid ${sizeClassName} shrink-0 place-items-center overflow-hidden rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] font-[700] text-white`}
+        className={`grid ${sizeClassName} shrink-0 place-items-center overflow-hidden rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] font-semibold text-white`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -315,7 +315,7 @@ function ChatAvatar({
 
   return (
     <div
-      className={`grid ${sizeClassName} shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] font-[700] text-white`}
+      className={`grid ${sizeClassName} shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] font-semibold text-white`}
     >
       {getInitials(name)}
     </div>
@@ -407,7 +407,7 @@ function renderCommentBodyWithMentions(
     segments.push(
       <span
         key={`${matchedText}-${matchIndex}`}
-        className="inline-flex rounded-full bg-[#edf7ef] px-2 py-0.5 font-[700] text-[#2b8b56]"
+        className="inline-flex rounded-full bg-[#edf7ef] px-2 py-0.5 font-semibold text-[#2b8b56]"
       >
         {matchedText}
       </span>,
@@ -640,7 +640,7 @@ function SystemActivityCard({ message }: { message: DisplayChatEntry }) {
             <p className="mt-1 text-[12px] leading-5 text-[#405044]">
               {message.body}
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-[700] uppercase tracking-[0.08em] text-[#6c776e]">
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-wide text-[#6c776e]">
               <span>{message.author}</span>
               <span aria-hidden="true">·</span>
               <span>{message.createdAt}</span>
@@ -682,7 +682,7 @@ function AttachmentHistoryList({
             >
               <div className="flex min-w-0 items-start gap-3">
                 <div
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-[10px] font-semibold ${getFileBadgeClass(
                     attachment.fileTypeLabel,
                   )}`}
                 >
@@ -690,12 +690,12 @@ function AttachmentHistoryList({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <p className="min-w-0 max-w-full flex-1 truncate text-[12px] font-[700] text-[#111712]">
+                    <p className="min-w-0 max-w-full flex-1 truncate text-[12px] font-semibold text-[#111712]">
                       {attachment.originalFileName}
                     </p>
                     {attachment.uploadState ? (
                       <span
-                        className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none ${
+                        className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide leading-none ${
                           attachment.uploadState === "error"
                             ? "bg-[#fff0ef] text-[#c14f46]"
                             : attachment.uploadState === "uploaded"
@@ -711,7 +711,7 @@ function AttachmentHistoryList({
                       </span>
                     ) : null}
                     {attachment.isSubmission ? (
-                      <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none text-[#2b8b56]">
+                      <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide leading-none text-[#2b8b56]">
                         {attachment.submissionNumber
                           ? `Submission ${attachment.submissionNumber}`
                           : "Submission"}
@@ -719,7 +719,7 @@ function AttachmentHistoryList({
                     ) : null}
                     {attachment.isSubmission && !attachment.uploadState ? (
                       <span
-                        className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] leading-none ${
+                        className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide leading-none ${
                           effectiveSubmissionStatus === "APPROVED"
                             ? "bg-[#edf7ef] text-[#2b8b56]"
                             : effectiveSubmissionStatus === "REJECTED"
@@ -880,7 +880,7 @@ function BriefDialog({
           )}
 
           <section className="mt-5 rounded-[20px] border border-line bg-white p-4">
-            <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
               {attachmentsTitle}
             </p>
             {attachments.length > 0 ? (
@@ -3601,7 +3601,7 @@ export function ProjectChatWorkspace({
             <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
               <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-[16px] font-[700] text-[#173120]">
+                  <p className="text-[16px] font-semibold text-[#173120]">
                     Project completion checklist is not available yet.
                   </p>
                   <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
@@ -3626,7 +3626,7 @@ export function ProjectChatWorkspace({
             <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
               <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-[14px] font-[700] text-[#173120]">
+                  <p className="text-[14px] font-semibold text-[#173120]">
                     All stages completed. Complete the project to archive the final files.
                   </p>
                   <p className="mt-1 text-[12px] text-[#5f6b62]">
@@ -3652,7 +3652,7 @@ export function ProjectChatWorkspace({
           !completionState.allStagesCompleted ? (
             <Card className="rounded-[20px] border border-[#f0c9c7] bg-[#fff7f6] shadow-none">
               <CardContent className="px-5 py-4">
-                <p className="text-[14px] font-[800] text-[#9f3f39]">
+                <p className="text-[14px] font-semibold text-[#9f3f39]">
                   Project cannot be completed yet.
                 </p>
                 <p className="mt-1 text-[12px] leading-5 text-[#7c514d]">
@@ -3675,7 +3675,7 @@ export function ProjectChatWorkspace({
             <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
               <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-[14px] font-[700] text-[#173120]">
+                  <p className="text-[14px] font-semibold text-[#173120]">
                     {completionPrompt.allStagesCompleted
                       ? "All stages completed. Final project completion is now available."
                       : "Stage completed. You can now move to the next stage."}
@@ -3742,7 +3742,7 @@ export function ProjectChatWorkspace({
                 </div>
               ) : showPendingRevisionReviewStatus ? (
                 <div className="mt-5 flex justify-center">
-                  <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-[700] text-[#9d651b]">
+                  <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-semibold text-[#9d651b]">
                     {pendingRevisionReviewMessage}
                   </div>
                 </div>
@@ -3805,7 +3805,7 @@ export function ProjectChatWorkspace({
                               {revisionLabel}
                             </h1>
                             <span
-                              className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${revisionStatusMeta.badgeClassName}`}
+                              className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${revisionStatusMeta.badgeClassName}`}
                             >
                               {revisionStatusMeta.label}
                             </span>
@@ -3816,11 +3816,11 @@ export function ProjectChatWorkspace({
                               src={message.authorAvatarSrc}
                             />
                             <div>
-                              <p className="text-[12px] font-[600]">{message.author}</p>
+                              <p className="text-[12px] font-semibold">{message.author}</p>
                               <p className="text-[10px] text-[#93d68a]">{message.role}</p>
                             </div>
                           </div>
-                          <p className="mt-2 text-[10px] font-[800] uppercase tracking-[0.08em] text-white/65">
+                          <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-white/65">
                             Submitted {message.createdAt}
                           </p>
                           <p className="mt-3 text-[12px] leading-[1.45] text-white/90">
@@ -3828,17 +3828,17 @@ export function ProjectChatWorkspace({
                           </p>
                           {effectiveRejectionReason ? (
                             <div className="mt-4 rounded-[18px] border border-[#ffd3ce] bg-[#fff7f6] px-4 py-3 text-[#6f2721] shadow-[0_12px_28px_rgba(63,22,17,0.16)]">
-                              <p className="text-[12px] font-[800] text-[#a73831]">
+                              <p className="text-[12px] font-semibold text-[#a73831]">
                                 Revision Request for {revisionLabel}
                               </p>
-                              <p className="mt-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#b7655d]">
+                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#b7655d]">
                                 {effectiveReviewedBy
                                   ? `Requested by ${effectiveReviewedBy}${
                                       effectiveReviewedAt ? ` · ${effectiveReviewedAt}` : ""
                                     }`
                                   : "Requested by Project Owner"}
                               </p>
-                              <p className="mt-2 text-[12px] font-[700] leading-5">
+                              <p className="mt-2 text-[12px] font-semibold leading-5">
                                 {effectiveRejectionReason}
                               </p>
                             </div>
@@ -3848,7 +3848,7 @@ export function ProjectChatWorkspace({
                         {message.attachments?.length ? (
                           <div className="w-full min-w-0 max-w-full justify-self-stretch xl:max-w-[380px]">
                             <Card className="w-full min-w-0 overflow-hidden rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
-                              <p className="text-center text-[11px] font-[700] text-white">
+                              <p className="text-center text-[11px] font-semibold text-white">
                                 Attachments
                               </p>
                               <AttachmentHistoryList
@@ -3898,7 +3898,7 @@ export function ProjectChatWorkspace({
                           </Button>
                         ) : null}
                         {isLatestRevision && showPendingRevisionReviewStatus ? (
-                          <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-[700] text-[#9d651b]">
+                          <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-semibold text-[#9d651b]">
                             {pendingRevisionReviewMessage}
                           </div>
                         ) : null}
@@ -3971,7 +3971,7 @@ export function ProjectChatWorkspace({
                       <Card className={`min-w-0 flex-1 ${bubbleClassName}`}>
                         {linkedRevisionLabel ? (
                           <div
-                            className={`mb-2 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+                            className={`mb-2 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${
                               isCurrentUserMessage
                                 ? "bg-white/75 text-[#2f8d5d]"
                                 : "bg-[#e8f4ea] text-brand"
@@ -3991,7 +3991,7 @@ export function ProjectChatWorkspace({
                             </span>
                           ) : (
                             <div className="min-w-0">
-                              <p className="truncate text-[12px] font-[700] text-[#111712]">
+                              <p className="truncate text-[12px] font-semibold text-[#111712]">
                                 {message.author}
                               </p>
                               <p className="truncate text-[10px] text-[#8acb74]">
@@ -4071,7 +4071,7 @@ export function ProjectChatWorkspace({
                   Submit Work
                 </Button>
               ) : showPendingRevisionReviewStatus ? (
-                <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-[700] text-[#9d651b]">
+                <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-semibold text-[#9d651b]">
                   {pendingRevisionReviewMessage}
                 </div>
               ) : null}
@@ -4129,7 +4129,7 @@ export function ProjectChatWorkspace({
 
               {replyingToRevision ? (
                 <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#cfe3d2] bg-[#f7fbf6] px-3 py-2.5 text-[12px] text-[#304138]">
-                  <span className="font-[800] text-brand">
+                  <span className="font-semibold text-brand">
                     Reply to {replyingToRevision.label}
                   </span>
                   <span className="text-[#66736a]">
@@ -4154,11 +4154,11 @@ export function ProjectChatWorkspace({
                       className="inline-flex items-center gap-2 rounded-full border border-[#d6dfd7] bg-white px-3 py-1.5 text-[11px] text-[#324138]"
                     >
                       {pendingFile.assetType === "STAGE_SUBMISSION" ? (
-                        <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
+                        <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#2b8b56]">
                           Submission
                         </span>
                       ) : (
-                        <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#566259]">
+                        <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#566259]">
                           Attachment
                         </span>
                       )}
@@ -4177,7 +4177,7 @@ export function ProjectChatWorkspace({
               ) : null}
 
               {aiStatus ? (
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#dbe6da] bg-[#f7fbf6] px-3 py-1.5 text-[12px] font-[600] text-[#31523f]">
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#dbe6da] bg-[#f7fbf6] px-3 py-1.5 text-[12px] font-semibold text-[#31523f]">
                   {isListening ? (
                     <span className="relative flex size-2.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#d9645b] opacity-70" />
@@ -4259,7 +4259,7 @@ export function ProjectChatWorkspace({
                 />
                 {mentionDropdownOpen ? (
                   <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-20 overflow-hidden rounded-[22px] border border-[#dbe7dd] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.12)]">
-                    <div className="border-b border-[#eef2ee] px-4 py-2.5 text-[11px] font-[700] uppercase tracking-[0.08em] text-[#6a756d]">
+                    <div className="border-b border-[#eef2ee] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-[#6a756d]">
                       Mention collaborators
                     </div>
                     <div className="max-h-[260px] overflow-y-auto py-1.5">
@@ -4278,18 +4278,18 @@ export function ProjectChatWorkspace({
                               isActive ? "bg-[#f4fbf5]" : "hover:bg-[#f8fbf8]"
                             }`}
                           >
-                            <div className="grid h-10 w-10 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[12px] font-[700] text-white">
+                            <div className="grid h-10 w-10 place-items-center rounded-full bg-[linear-gradient(145deg,#f0dcc4,#b58257)] text-[12px] font-semibold text-white">
                               {getInitials(participant.name)}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-[14px] font-[700] text-[#173120]">
+                              <p className="truncate text-[14px] font-semibold text-[#173120]">
                                 {participant.name}
                               </p>
                               <p className="truncate text-[12px] text-[#68736a]">
                                 {participant.email || participant.role}
                               </p>
                             </div>
-                            <span className="rounded-full bg-[#edf7ef] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
+                            <span className="rounded-full bg-[#edf7ef] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#2b8b56]">
                               {participant.role}
                             </span>
                           </button>
@@ -4733,10 +4733,10 @@ export function ProjectChatWorkspace({
 
               <div className="grid gap-4 rounded-[20px] border border-line bg-[#fbfcfa] p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
                 <div>
-                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
                     Project
                   </p>
-                  <p className="mt-1 text-[16px] font-[700] text-[#111712]">
+                  <p className="mt-1 text-[16px] font-semibold text-[#111712]">
                     {archivePreparation.projectName}
                   </p>
                   <p className="mt-1 text-[13px] text-[#687269]">
@@ -4744,7 +4744,7 @@ export function ProjectChatWorkspace({
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
                     Archive Category
                   </p>
                   <Select value={archiveCategorySlug} onValueChange={setArchiveCategorySlug}>
@@ -4777,13 +4777,13 @@ export function ProjectChatWorkspace({
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <span
-                              className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[10px] font-[800] ${getFileBadgeClass(
+                              className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[10px] font-semibold ${getFileBadgeClass(
                                 file.fileTypeLabel,
                               )}`}
                             >
                               {file.fileTypeLabel}
                             </span>
-                            <p className="truncate text-[14px] font-[700] text-[#111712]">
+                            <p className="truncate text-[14px] font-semibold text-[#111712]">
                               {file.originalFileName}
                             </p>
                           </div>
@@ -4816,7 +4816,7 @@ export function ProjectChatWorkspace({
                         </div>
 
                         <div className="space-y-2">
-                          <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                          <p className="text-[12px] font-semibold uppercase tracking-wide text-[#70806f]">
                             Final Archive File Name
                           </p>
                           <Input
@@ -4969,7 +4969,7 @@ export function ProjectChatWorkspace({
 
               <div className="flex flex-col gap-3">
                 <div className="space-y-2">
-                  <p className="text-[13px] font-[600] text-[#2d372f]">Choose Files</p>
+                  <p className="text-[13px] font-semibold text-[#2d372f]">Choose Files</p>
                   <UploadIntentDropzone
                     intent={commentUploadIntent}
                     onFilesSelected={handleCommentFilesSelected}
@@ -5023,7 +5023,7 @@ export function ProjectChatWorkspace({
               ) : null}
               <div className="space-y-5">
                 <div className="space-y-2">
-                  <p className="text-[13px] font-[600] text-[#2d372f]">Revision Notes</p>
+                  <p className="text-[13px] font-semibold text-[#2d372f]">Revision Notes</p>
                   <Textarea
                     value={revisionSummary}
                     onChange={(event) => setRevisionSummary(event.target.value)}
@@ -5034,7 +5034,7 @@ export function ProjectChatWorkspace({
                 </div>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-[13px] font-[600] text-[#2d372f]">Attachments</p>
+                    <p className="text-[13px] font-semibold text-[#2d372f]">Attachments</p>
                     <Button
                       type="button"
                       variant="secondary"
@@ -5137,20 +5137,20 @@ export function ProjectChatWorkspace({
               ) : null}
               <div className="grid gap-3 rounded-[20px] border border-line bg-[#fbfcfa] p-4 sm:grid-cols-2">
                 <div>
-                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
                     Revision
                   </p>
-                  <p className="mt-1 text-[15px] font-[700] text-[#111712]">
+                  <p className="mt-1 text-[15px] font-semibold text-[#111712]">
                     {reviewRevisionMessage.title}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
                     Current Status
                   </p>
                   <div className="mt-1">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+                          className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
                         getRevisionStatusMeta(
                           revisionReviewOverrides[reviewRevisionId ?? ""]?.status ??
                             reviewRevisionMessage.revisionStatus ??
@@ -5169,7 +5169,7 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
                 <div>
-                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
                     Submitted By
                   </p>
                   <p className="mt-1 text-[14px] text-[#27322b]">
@@ -5177,7 +5177,7 @@ export function ProjectChatWorkspace({
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#70806f]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
                     Submitted At
                   </p>
                   <p className="mt-1 text-[14px] text-[#27322b]">
@@ -5187,7 +5187,7 @@ export function ProjectChatWorkspace({
               </div>
               {reviewRevisionMessage.attachments?.length ? (
                 <div className="space-y-2">
-                  <p className="text-[13px] font-[600] text-[#2d372f]">Submitted Files</p>
+                  <p className="text-[13px] font-semibold text-[#2d372f]">Submitted Files</p>
                   <AttachmentHistoryList
                     attachments={reviewRevisionMessage.attachments}
                     actionsDisabled={isProjectCompleted}
@@ -5196,7 +5196,7 @@ export function ProjectChatWorkspace({
               ) : null}
               {reviewRejectMode ? (
                 <div className="space-y-2">
-                  <p className="text-[13px] font-[600] text-[#2d372f]">
+                  <p className="text-[13px] font-semibold text-[#2d372f]">
                     Revision Brief / Reason *
                   </p>
                   <Textarea
