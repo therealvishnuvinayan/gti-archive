@@ -1646,6 +1646,60 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
                 },
               },
             },
+            {
+              executorName: {
+                contains: query,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              executorUser: {
+                is: {
+                  name: {
+                    contains: query,
+                    mode: "insensitive" as const,
+                  },
+                },
+              },
+            },
+            {
+              executorUser: {
+                is: {
+                  email: {
+                    contains: query,
+                    mode: "insensitive" as const,
+                  },
+                },
+              },
+            },
+            {
+              executors: {
+                some: {
+                  user: {
+                    is: {
+                      name: {
+                        contains: query,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              executors: {
+                some: {
+                  user: {
+                    is: {
+                      email: {
+                        contains: query,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                  },
+                },
+              },
+            },
           ],
         }
       : {}),

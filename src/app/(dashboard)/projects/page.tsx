@@ -3,9 +3,9 @@ import { redirect } from "next/navigation";
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
-import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
 import {
   getDashboardProjectCounts,
+  getProjectListFilterOptions,
   getProjectsList,
 } from "@/lib/projects";
 import { hasPermission } from "@/lib/permissions/resolver";
@@ -66,7 +66,7 @@ export default async function ProjectsPage({
       sort: activeSort,
     }, user),
     getDashboardProjectCounts(user),
-    getActiveProjectMasterDataOptions(),
+    getProjectListFilterOptions(user),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
   const canCreateProject = hasPermission(user, "project.create");
