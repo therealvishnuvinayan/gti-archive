@@ -23,6 +23,11 @@ import type {
   ProjectCompletionWorkflowRecord,
 } from "@/lib/project-completion";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import {
+  COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
 const COMPLETION_DOCUMENT_TYPES = {
   approval: "AUTHORITY_APPROVAL_PROOF",
@@ -30,7 +35,9 @@ const COMPLETION_DOCUMENT_TYPES = {
   invoice: "INVOICE",
 } as const;
 
-const completionDocumentAccept = ".pdf,.png,.jpg,.jpeg,.webp";
+const completionDocumentAccept = COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS.map(
+  (extension) => `.${extension}`,
+).join(",");
 
 type CompletionDocumentTypeValue =
   (typeof COMPLETION_DOCUMENT_TYPES)[keyof typeof COMPLETION_DOCUMENT_TYPES];
@@ -137,10 +144,15 @@ async function uploadCompletionDocument(input: {
     error?: string;
     uploadUrl?: string;
     storageKey?: string;
-  };
+  } & Partial<UploadFileTypeErrorPayload>;
 
   if (!uploadRequest.ok || !uploadPayload.uploadUrl || !uploadPayload.storageKey) {
-    throw new Error(uploadPayload.error || "Unable to prepare the completion document upload.");
+    throw new Error(
+      getUploadErrorMessage(
+        uploadPayload,
+        "Unable to prepare the completion document upload.",
+      ),
+    );
   }
 
   try {
@@ -171,10 +183,14 @@ async function uploadCompletionDocument(input: {
       }),
     });
 
-    const completionPayload = (await completionResponse.json()) as { error?: string };
+    const completionPayload = (await completionResponse.json()) as {
+      error?: string;
+    } & Partial<UploadFileTypeErrorPayload>;
 
     if (!completionResponse.ok) {
-      throw new Error(completionPayload.error || "Unable to finalise the uploaded file.");
+      throw new Error(
+        getUploadErrorMessage(completionPayload, "Unable to finalise the uploaded file."),
+      );
     }
   } catch (error) {
     await fetch("/api/project-completion-documents/complete", {

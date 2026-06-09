@@ -52,6 +52,12 @@ import {
   isAllowedSubmissionImage,
   sanitizeFileName,
 } from "@/lib/storage/s3";
+import {
+  PROJECT_ASSET_ALLOWED_EXTENSIONS,
+  SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
+  buildFileTypeNotAllowedPayload,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
 type AccessUser = Pick<
   User,
@@ -175,8 +181,10 @@ export type RequestUploadInput = {
   assetType: AttachmentAssetType;
 };
 
+type UploadRequestErrorResult = { error: string } | UploadFileTypeErrorPayload;
+
 export type RequestUploadResult =
-  | { error: string }
+  | UploadRequestErrorResult
   | {
       attachmentId: string;
       fileName: string;
@@ -203,7 +211,7 @@ export type PrepareStageCommentUploadsInput = {
 };
 
 export type PrepareStageCommentUploadsResult =
-  | { error: string }
+  | UploadRequestErrorResult
   | {
       commentId: string;
       revisionId: string | null;
@@ -1296,7 +1304,11 @@ export async function prepareStageCommentUploads(
     }
 
     if (!isAllowedAssetFile(file.originalFileName)) {
-      return { error: "This file type is not allowed." };
+      return buildFileTypeNotAllowedPayload({
+        fileName: file.originalFileName,
+        mimeType: file.mimeType,
+        allowedExtensions: PROJECT_ASSET_ALLOWED_EXTENSIONS,
+      });
     }
 
     if (!Number.isFinite(file.fileSize) || file.fileSize <= 0) {
@@ -1318,9 +1330,12 @@ export async function prepareStageCommentUploads(
       file.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
       !isAllowedSubmissionImage(file.originalFileName, file.mimeType)
     ) {
-      return {
-        error: "Submissions must be image files because they are used for comparison.",
-      };
+      return buildFileTypeNotAllowedPayload({
+        fileName: file.originalFileName,
+        mimeType: file.mimeType,
+        allowedExtensions: SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
+        error: "Submission file type is not allowed.",
+      });
     }
   }
 
@@ -2337,7 +2352,11 @@ export async function requestAttachmentUpload(
   }
 
   if (!isAllowedAssetFile(input.originalFileName)) {
-    return { error: "This file type is not allowed." };
+    return buildFileTypeNotAllowedPayload({
+      fileName: input.originalFileName,
+      mimeType: input.mimeType,
+      allowedExtensions: PROJECT_ASSET_ALLOWED_EXTENSIONS,
+    });
   }
 
   if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
@@ -2648,9 +2667,12 @@ export async function requestAttachmentUpload(
     input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
     !isAllowedSubmissionImage(input.originalFileName, input.mimeType)
   ) {
-    return {
-      error: "Submissions must be image files because they are used for comparison.",
-    };
+    return buildFileTypeNotAllowedPayload({
+      fileName: input.originalFileName,
+      mimeType: input.mimeType,
+      allowedExtensions: SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
+      error: "Submission file type is not allowed.",
+    });
   }
 
   const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${sanitizeFileName(

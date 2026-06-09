@@ -95,6 +95,14 @@ import type {
   ProjectStageRecord,
 } from "@/lib/projects";
 import type { CollaboratorRecord } from "@/lib/collaboration";
+import {
+  SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
+  SUBMISSION_IMAGE_ALLOWED_MIME_TYPES,
+  buildFileTypeNotAllowedPayload,
+  formatUploadFileTypeError,
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
 type ProjectChatWorkspaceProps = {
   project: ProjectFlowRecord;
@@ -128,6 +136,8 @@ type DisplayChatEntry = ProjectChatEntry & {
   isOptimistic?: boolean;
   serverEntryId?: string;
 };
+
+const PROJECT_ASSET_INLINE_LIMIT = 4;
 
 type MentionToken = {
   userId: string;
@@ -174,8 +184,8 @@ type UploadAssetType =
   | "STAGE_INVOICE";
 type CommentUploadIntent = "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
 const MAX_RECORDING_DURATION_MS = 60_000;
-const submissionExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
-const submissionMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const submissionExtensions = new Set<string>(SUBMISSION_IMAGE_ALLOWED_EXTENSIONS);
+const submissionMimeTypes = new Set<string>(SUBMISSION_IMAGE_ALLOWED_MIME_TYPES);
 const submissionDropzoneAccept = {
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],
@@ -226,9 +236,20 @@ function UploadIntentDropzone({
         onFilesSelected(acceptedFiles);
       }
     },
-    onDropRejected: () => {
+    onDropRejected: (fileRejections) => {
       if (intent === "STAGE_SUBMISSION") {
-        onError("Submissions must be image files because they are used for comparison.");
+        const rejectedFile = fileRejections[0]?.file;
+
+        onError(
+          formatUploadFileTypeError(
+            buildFileTypeNotAllowedPayload({
+              fileName: rejectedFile?.name ?? "Selected file",
+              mimeType: rejectedFile?.type || "application/octet-stream",
+              allowedExtensions: SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
+              error: "Submission file type is not allowed.",
+            }),
+          ),
+        );
         return;
       }
 
@@ -915,6 +936,235 @@ function BriefDialog({
   );
 }
 
+function getFileNameDisplayParts(fileName: string) {
+  const safeFileName = fileName.trim() || "Untitled file";
+  const dotIndex = safeFileName.lastIndexOf(".");
+
+  if (dotIndex <= 0 || dotIndex === safeFileName.length - 1) {
+    return {
+      stem: safeFileName,
+      extension: "",
+    };
+  }
+
+  return {
+    stem: safeFileName.slice(0, dotIndex),
+    extension: safeFileName.slice(dotIndex),
+  };
+}
+
+function ProjectAssetCard({
+  attachment,
+  actionsDisabled = false,
+  favoriteOverrides,
+  onFavoriteChange,
+}: {
+  attachment: DisplayAttachmentRecord;
+  actionsDisabled?: boolean;
+  favoriteOverrides?: Record<string, boolean>;
+  onFavoriteChange?: (attachmentId: string, isFavorited: boolean) => void;
+}) {
+  const { stem, extension } = getFileNameDisplayParts(attachment.originalFileName);
+  const uploadedBy = attachment.uploadedBy.trim() || "Unknown user";
+  const canShowActions =
+    !actionsDisabled && Boolean(attachment.previewPath && attachment.downloadPath);
+  const isFavorited =
+    favoriteOverrides?.[attachment.id] ?? attachment.isFavoritedByCurrentUser;
+
+  return (
+    <article className="group flex aspect-square min-h-[150px] min-w-0 flex-col overflow-hidden rounded-[18px] border border-[#dce6dd] bg-[#fbfcfa] p-3 shadow-[0_8px_20px_rgba(18,35,23,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-brand/35 hover:bg-white hover:shadow-[0_16px_34px_rgba(18,35,23,0.09)]">
+      <div className="min-w-0">
+        <div
+          className="flex min-w-0 items-baseline text-[12px] font-[800] leading-4 text-[#111712]"
+          title={attachment.originalFileName}
+        >
+          <span className="min-w-0 truncate">{stem}</span>
+          {extension ? <span className="shrink-0">{extension}</span> : null}
+        </div>
+        <p className="mt-1 truncate text-[11px] font-[600] leading-4 text-[#667168]">
+          Uploaded by {uploadedBy}
+        </p>
+      </div>
+
+      <div className="mt-3 min-w-0 space-y-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span
+            className={`inline-flex h-6 max-w-full shrink-0 items-center justify-center rounded-md px-2 text-[9px] font-[800] uppercase leading-none ${getFileBadgeClass(
+              attachment.fileTypeLabel,
+            )}`}
+          >
+            {attachment.fileTypeLabel}
+          </span>
+          <span className="truncate text-[10px] font-[600] leading-4 text-[#7a837b]">
+            {attachment.fileSizeLabel}
+          </span>
+        </div>
+        <p className="truncate text-[10px] leading-4 text-[#89928b]">
+          {attachment.uploadedAt}
+        </p>
+      </div>
+
+      {canShowActions ? (
+        <div className="mt-auto flex items-center justify-end gap-1 border-t border-[#e4ebe5] pt-2.5">
+          <AssetPreviewButton
+            fileName={attachment.originalFileName}
+            mimeType={attachment.mimeType}
+            previewPath={attachment.previewPath}
+            downloadPath={attachment.downloadPath}
+            triggerClassName="size-8 rounded-full text-brand hover:bg-[#eef7ef]"
+          />
+          <AttachmentFavoriteButton
+            key={`${attachment.id}-${isFavorited ? "favorited" : "not-favorited"}`}
+            attachmentId={attachment.id}
+            initialIsFavorited={isFavorited}
+            className="size-8 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
+            onChange={(nextState) => onFavoriteChange?.(attachment.id, nextState)}
+          />
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full text-brand hover:bg-[#eef7ef]"
+          >
+            <a
+              href={attachment.downloadPath}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Download ${attachment.originalFileName}`}
+            >
+              <Download className="h-4 w-4" />
+            </a>
+          </Button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function ProjectAssetGrid({
+  attachments,
+  actionsDisabled = false,
+  variant = "inline",
+  favoriteOverrides,
+  onFavoriteChange,
+}: {
+  attachments: DisplayAttachmentRecord[];
+  actionsDisabled?: boolean;
+  variant?: "inline" | "modal";
+  favoriteOverrides?: Record<string, boolean>;
+  onFavoriteChange?: (attachmentId: string, isFavorited: boolean) => void;
+}) {
+  const gridClassName =
+    variant === "modal"
+      ? "grid grid-cols-[repeat(auto-fill,minmax(156px,1fr))] gap-3"
+      : "grid grid-cols-2 gap-2.5";
+
+  return (
+    <div className={gridClassName}>
+      {attachments.map((attachment) => (
+        <ProjectAssetCard
+          key={attachment.id}
+          attachment={attachment}
+          actionsDisabled={actionsDisabled}
+          favoriteOverrides={favoriteOverrides}
+          onFavoriteChange={onFavoriteChange}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ProjectAssetsModal({
+  isOpen,
+  attachments,
+  actionsDisabled = false,
+  favoriteOverrides,
+  onFavoriteChange,
+  onClose,
+}: {
+  isOpen: boolean;
+  attachments: DisplayAttachmentRecord[];
+  actionsDisabled?: boolean;
+  favoriteOverrides?: Record<string, boolean>;
+  onFavoriteChange?: (attachmentId: string, isFavorited: boolean) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const assetCountLabel = `${attachments.length} ${
+    attachments.length === 1 ? "asset" : "assets"
+  }`;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="project-assets-modal-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <Card className="flex h-full max-h-[88vh] w-full max-w-[860px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+        <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+          <div className="min-w-0">
+            <CardTitle
+              id="project-assets-modal-title"
+              className="text-[24px] font-semibold tracking-tight text-[#111712]"
+            >
+              Project Assets
+            </CardTitle>
+            <p className="mt-2 text-[13px] font-[600] text-[#6a706b]">
+              {assetCountLabel}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            onClick={onClose}
+            className="shrink-0 border border-line"
+            aria-label="Close project assets"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+          <ProjectAssetGrid
+            attachments={attachments}
+            actionsDisabled={actionsDisabled}
+            variant="modal"
+            favoriteOverrides={favoriteOverrides}
+            onFavoriteChange={onFavoriteChange}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 async function uploadAssetFile(input: {
   file: File;
   projectId: string;
@@ -960,10 +1210,10 @@ async function uploadAssetFile(input: {
     error?: string;
     attachmentId?: string;
     uploadUrl?: string;
-  };
+  } & Partial<UploadFileTypeErrorPayload>;
 
   if (!requestUploadResponse.ok || !uploadPayload.attachmentId || !uploadPayload.uploadUrl) {
-    throw new Error(uploadPayload.error || "Unable to prepare the upload.");
+    throw new Error(getUploadErrorMessage(uploadPayload, "Unable to prepare the upload."));
   }
 
   logUploadHost(uploadPayload.uploadUrl);
@@ -997,10 +1247,14 @@ async function uploadAssetFile(input: {
       assetType: input.assetType,
     });
 
-    const completionPayload = (await completionResponse.json()) as { error?: string };
+    const completionPayload = (await completionResponse.json()) as {
+      error?: string;
+    } & Partial<UploadFileTypeErrorPayload>;
 
     if (!completionResponse.ok) {
-      throw new Error(completionPayload.error || "Unable to finalise the upload.");
+      throw new Error(
+        getUploadErrorMessage(completionPayload, "Unable to finalise the upload."),
+      );
     }
 
     return {
@@ -1052,10 +1306,14 @@ async function completePreparedAttachmentUpload(input: {
     assetType: input.assetType,
   });
 
-  const completionPayload = (await completionResponse.json()) as { error?: string };
+  const completionPayload = (await completionResponse.json()) as {
+    error?: string;
+  } & Partial<UploadFileTypeErrorPayload>;
 
   if (!completionResponse.ok) {
-    throw new Error(completionPayload.error || "Unable to finalise the upload.");
+    throw new Error(
+      getUploadErrorMessage(completionPayload, "Unable to finalise the upload."),
+    );
   }
 }
 
@@ -1101,7 +1359,7 @@ type PreparedPendingUpload = {
 };
 
 type ChatCommentUploadPrepareResponse =
-  | { error?: string }
+  | ({ error?: string } & Partial<UploadFileTypeErrorPayload>)
   | {
       commentId: string;
       revisionId: string | null;
@@ -1184,6 +1442,10 @@ export function ProjectChatWorkspace({
   const [acceptBriefDialogOpen, setAcceptBriefDialogOpen] = useState(false);
   const [projectBriefDialogOpen, setProjectBriefDialogOpen] = useState(false);
   const [stageBriefDialogOpen, setStageBriefDialogOpen] = useState(false);
+  const [projectAssetsModalOpen, setProjectAssetsModalOpen] = useState(false);
+  const [projectAssetFavoriteOverrides, setProjectAssetFavoriteOverrides] = useState<
+    Record<string, boolean>
+  >({});
   const [acceptBriefError, setAcceptBriefError] = useState<string | null>(null);
   const [isAcceptingBrief, setIsAcceptingBrief] = useState(false);
   const [stageCardOverrides, setStageCardOverrides] = useState<
@@ -1242,10 +1504,24 @@ export function ProjectChatWorkspace({
       archive: "none",
     },
   });
+
+  function handleProjectAssetFavoriteChange(
+    attachmentId: string,
+    isFavorited: boolean,
+  ) {
+    setProjectAssetFavoriteOverrides((current) => ({
+      ...current,
+      [attachmentId]: isFavorited,
+    }));
+  }
+
   const messages = history.entries;
   const completionState = completionOverrides
     ? { ...completionSummary, ...completionOverrides }
     : completionSummary;
+  const inlineProjectAssets = project.attachments.slice(0, PROJECT_ASSET_INLINE_LIMIT);
+  const hasMoreProjectAssets =
+    project.attachments.length > PROJECT_ASSET_INLINE_LIMIT;
   const stageCards = useMemo(
     () =>
       project.stageCards.map((stage) => {
@@ -2823,9 +3099,7 @@ export function ProjectChatWorkspace({
               !("commentId" in preparePayload)
             ) {
               throw new Error(
-                "error" in preparePayload && preparePayload.error
-                  ? preparePayload.error
-                  : "Unable to prepare the upload.",
+                getUploadErrorMessage(preparePayload, "Unable to prepare the upload."),
               );
             }
 
@@ -4622,20 +4896,37 @@ export function ProjectChatWorkspace({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-[#111712]">
-                Project Reference Files
+                Project Assets
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               {project.attachments.length > 0 ? (
-                <AttachmentHistoryList
-                  attachments={project.attachments}
-                  compact
-                  actionsDisabled={isProjectCompleted}
-                />
+                <div className="space-y-3">
+                  <ProjectAssetGrid
+                    attachments={inlineProjectAssets}
+                    actionsDisabled={isProjectCompleted}
+                    favoriteOverrides={projectAssetFavoriteOverrides}
+                    onFavoriteChange={handleProjectAssetFavoriteChange}
+                  />
+                  {hasMoreProjectAssets ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="w-full rounded-full border border-line text-[12px]"
+                      onClick={() => setProjectAssetsModalOpen(true)}
+                    >
+                      View More
+                      <span className="text-[11px] text-[#6d776f]">
+                        {project.attachments.length} assets
+                      </span>
+                    </Button>
+                  ) : null}
+                </div>
               ) : (
-                <p className="text-[13px] text-[#7a837b]">
-                  No project reference files uploaded yet.
-                </p>
+                <div className="rounded-[16px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-5 text-center text-[13px] text-[#6e776f]">
+                  No project assets uploaded yet.
+                </div>
               )}
             </CardContent>
           </Card>
@@ -4675,6 +4966,14 @@ export function ProjectChatWorkspace({
           />
         </div>
       </div>
+      <ProjectAssetsModal
+        isOpen={projectAssetsModalOpen}
+        attachments={project.attachments}
+        actionsDisabled={isProjectCompleted}
+        favoriteOverrides={projectAssetFavoriteOverrides}
+        onFavoriteChange={handleProjectAssetFavoriteChange}
+        onClose={() => setProjectAssetsModalOpen(false)}
+      />
       <CollaboratorPickerDialog
         isOpen={collaboratorPickerOpen}
         collaborators={availableCollaboratorRecords}

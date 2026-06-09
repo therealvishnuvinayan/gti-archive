@@ -23,9 +23,15 @@ import {
   type LibraryUploadProjectOption,
 } from "@/lib/library-shared";
 import { dismissToast, showErrorToast, showWarningToast } from "@/lib/toast";
+import {
+  PROJECT_ASSET_ALLOWED_EXTENSIONS,
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
-const ACCEPTED_FILE_TYPES =
-  ".png,.jpg,.jpeg,.webp,.gif,.pdf,.ai,.psd,.zip,.rar,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
+const ACCEPTED_FILE_TYPES = PROJECT_ASSET_ALLOWED_EXTENSIONS.map(
+  (extension) => `.${extension}`,
+).join(",");
 
 type UploadStatus =
   | "queued"
@@ -52,7 +58,7 @@ type UploadAssetResponse = {
   attachmentId?: string;
   uploadUrl?: string;
   error?: string;
-};
+} & Partial<UploadFileTypeErrorPayload>;
 
 function formatFileSize(size: number) {
   if (size >= 1024 * 1024) {
@@ -207,7 +213,9 @@ export function UploadAssetsButton({
     const uploadPayload = (await uploadRequest.json()) as UploadAssetResponse;
 
     if (!uploadRequest.ok || !uploadPayload.attachmentId || !uploadPayload.uploadUrl) {
-      throw new Error(uploadPayload.error || "Unable to prepare the archive upload.");
+      throw new Error(
+        getUploadErrorMessage(uploadPayload, "Unable to prepare the archive upload."),
+      );
     }
 
     try {

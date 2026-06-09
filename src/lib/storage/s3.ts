@@ -13,28 +13,16 @@ import {
   ProjectCompletionDocumentType,
 } from "@prisma/client";
 
+export {
+  getFileExtension,
+  isAllowedAssetFile,
+  isAllowedProfileImage,
+  isAllowedProjectCompletionDocument,
+  isAllowedSubmissionImage,
+} from "@/lib/upload-validation";
+
 const DEFAULT_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const PROFILE_AVATAR_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
-
-const allowedExtensions = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "gif",
-  "pdf",
-  "ai",
-  "psd",
-  "zip",
-  "rar",
-  "doc",
-  "docx",
-  "csv",
-  "xls",
-  "xlsx",
-  "ppt",
-  "pptx",
-]);
 
 let cachedClient: S3Client | null = null;
 
@@ -118,73 +106,8 @@ export function sanitizeFileName(input: string) {
   return normalized;
 }
 
-export function getFileExtension(fileName: string) {
-  const parts = fileName.split(".");
-
-  if (parts.length < 2) {
-    return "";
-  }
-
-  return parts.at(-1)?.toLowerCase() ?? "";
-}
-
-export function isAllowedAssetFile(fileName: string) {
-  const extension = getFileExtension(fileName);
-  return extension ? allowedExtensions.has(extension) : false;
-}
-
-const submissionImageExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
-const submissionImageMimeTypes = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
-
-const profileImageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
-const profileImageMimeTypes = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-]);
-
-const completionDocumentExtensions = new Set(["pdf", "png", "jpg", "jpeg", "webp"]);
-const completionDocumentMimeTypes = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
-
-export function isAllowedSubmissionImage(fileName: string, mimeType: string) {
-  const extension = getFileExtension(fileName);
-
-  return (
-    (!!extension && submissionImageExtensions.has(extension)) ||
-    submissionImageMimeTypes.has(mimeType.toLowerCase())
-  );
-}
-
 export function getMaxProfileAvatarBytes() {
   return PROFILE_AVATAR_MAX_FILE_SIZE_BYTES;
-}
-
-export function isAllowedProfileImage(fileName: string, mimeType: string) {
-  const extension = getFileExtension(fileName);
-
-  return (
-    (!!extension && profileImageExtensions.has(extension)) ||
-    profileImageMimeTypes.has(mimeType.toLowerCase())
-  );
-}
-
-export function isAllowedProjectCompletionDocument(fileName: string, mimeType: string) {
-  const extension = getFileExtension(fileName);
-
-  return (
-    (!!extension && completionDocumentExtensions.has(extension)) ||
-    completionDocumentMimeTypes.has(mimeType.toLowerCase())
-  );
 }
 
 export function buildUserAvatarPrefix(userId: string) {

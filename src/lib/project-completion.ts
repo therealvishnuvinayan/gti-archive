@@ -40,6 +40,11 @@ import {
   isAllowedProjectCompletionDocument,
   sanitizeFileName,
 } from "@/lib/storage/s3";
+import {
+  COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
+  UploadFileTypeError,
+  buildFileTypeNotAllowedPayload,
+} from "@/lib/upload-validation";
 
 export type ProjectCompletionWorkflowUser = Pick<
   User,
@@ -1247,7 +1252,14 @@ export async function requestProjectCompletionDocumentUpload(
   }
 
   if (!isAllowedProjectCompletionDocument(input.originalFileName, input.mimeType)) {
-    throw new Error("Completion documents must be PDF, PNG, JPG, JPEG, or WebP files.");
+    throw new UploadFileTypeError(
+      buildFileTypeNotAllowedPayload({
+        fileName: input.originalFileName,
+        mimeType: input.mimeType,
+        allowedExtensions: COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
+        error: "Completion document file type is not allowed.",
+      }),
+    );
   }
 
   const project = await ensureProjectCompletionViewAccess(user, input.projectId);
@@ -1347,7 +1359,14 @@ export async function finalizeProjectCompletionDocumentUpload(
   }
 
   if (!isAllowedProjectCompletionDocument(input.originalFileName, input.mimeType)) {
-    throw new Error("Completion documents must be PDF, PNG, JPG, JPEG, or WebP files.");
+    throw new UploadFileTypeError(
+      buildFileTypeNotAllowedPayload({
+        fileName: input.originalFileName,
+        mimeType: input.mimeType,
+        allowedExtensions: COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
+        error: "Completion document file type is not allowed.",
+      }),
+    );
   }
 
   const expectedPrefix = buildCompletionDocumentStoragePrefix(

@@ -84,6 +84,10 @@ import {
   showSuccessToast,
   showWarningToast,
 } from "@/lib/toast";
+import {
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
 const projectStatusOptions = [
   { value: "ONGOING", label: "Ongoing" },
@@ -146,7 +150,7 @@ type UploadAssetResponse = {
   attachmentId?: string;
   uploadUrl?: string;
   error?: string;
-};
+} & Partial<UploadFileTypeErrorPayload>;
 
 type QuickAddMasterDataKind = "category" | "tag";
 
@@ -1784,7 +1788,9 @@ export function CreateProjectWorkspace({
     const uploadPayload = (await uploadRequest.json()) as UploadAssetResponse;
 
     if (!uploadRequest.ok || !uploadPayload.attachmentId || !uploadPayload.uploadUrl) {
-      throw new Error(uploadPayload.error || "Unable to prepare the attachment upload.");
+      throw new Error(
+        getUploadErrorMessage(uploadPayload, "Unable to prepare the attachment upload."),
+      );
     }
 
     try {

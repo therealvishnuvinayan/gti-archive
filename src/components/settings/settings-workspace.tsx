@@ -32,6 +32,14 @@ import {
   PASSWORD_REQUIREMENTS,
 } from "@/lib/password-rules";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import {
+  PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+  PROFILE_IMAGE_ALLOWED_MIME_TYPES,
+  buildFileTypeNotAllowedPayload,
+  formatUploadFileTypeError,
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
 type SettingsWorkspaceProps = {
   user: {
@@ -67,12 +75,8 @@ type PasswordDraft = {
 };
 
 const maxProfilePhotoBytes = 2 * 1024 * 1024;
-const allowedProfilePhotoTypes = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-]);
+const allowedProfilePhotoTypes = new Set<string>(PROFILE_IMAGE_ALLOWED_MIME_TYPES);
+const profilePhotoAccept = PROFILE_IMAGE_ALLOWED_MIME_TYPES.join(",");
 
 const departmentOptions = [
   "System Administration",
@@ -159,7 +163,14 @@ function buildProfileDraft(user: SettingsWorkspaceProps["user"]): ProfileDraft {
 
 function validateProfilePhoto(file: File) {
   if (!allowedProfilePhotoTypes.has(file.type.toLowerCase())) {
-    return "Profile photo must be JPG, PNG, GIF, or WebP.";
+    return formatUploadFileTypeError(
+      buildFileTypeNotAllowedPayload({
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        allowedExtensions: PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+        error: "Profile photo file type is not allowed.",
+      }),
+    );
   }
 
   if (file.size > maxProfilePhotoBytes) {
@@ -186,10 +197,12 @@ async function uploadProfilePhoto(file: File) {
     uploadUrl?: string;
     storageKey?: string;
     error?: string;
-  };
+  } & Partial<UploadFileTypeErrorPayload>;
 
   if (!uploadRequest.ok || !uploadPayload.uploadUrl || !uploadPayload.storageKey) {
-    throw new Error(uploadPayload.error || "Unable to prepare the profile photo upload.");
+    throw new Error(
+      getUploadErrorMessage(uploadPayload, "Unable to prepare the profile photo upload."),
+    );
   }
 
   const putResponse = await fetch(uploadPayload.uploadUrl, {
@@ -438,7 +451,7 @@ function EditProfileDrawer({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  accept={profilePhotoAccept}
                   className="hidden"
                   onChange={(event) => {
                     onSelectAvatar(event.target.files?.[0] ?? null);
