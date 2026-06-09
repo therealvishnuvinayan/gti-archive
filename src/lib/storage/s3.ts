@@ -224,6 +224,19 @@ export function buildProjectCompletionDocumentKey({
   }
 }
 
+function buildManualUploadFileName(originalFileName: string) {
+  const safeFileName = sanitizeFileName(originalFileName);
+  return `${Date.now()}-${randomUUID().slice(0, 8)}-${safeFileName}`;
+}
+
+export function buildManualArchiveFileKey(userId: string, originalFileName: string) {
+  return `archives/manual/${userId}/${buildManualUploadFileName(originalFileName)}`;
+}
+
+export function buildManualLibraryAssetKey(userId: string, originalFileName: string) {
+  return `library/manual/${userId}/${buildManualUploadFileName(originalFileName)}`;
+}
+
 type PresignedUploadInput = {
   bucket?: string;
   storageKey: string;

@@ -43,6 +43,7 @@ export default async function LibraryPage({
     pageSize: Number(resolvedSearchParams?.pageSize ?? "10"),
   };
   const initialData = await getLibraryPageDataForUser(user, initialQuery);
+  const canUploadAssets = hasPermission(user, "library.uploadAsset");
 
   return (
     <DashboardLayout
@@ -50,7 +51,11 @@ export default async function LibraryPage({
         searchPlaceholder: "Search library...",
       }}
     >
-      <LibraryWorkspace initialData={initialData} initialQuery={initialQuery} />
+      <LibraryWorkspace
+        initialData={initialData}
+        canUploadAssets={canUploadAssets}
+        initialQuery={initialQuery}
+      />
     </DashboardLayout>
   );
 }

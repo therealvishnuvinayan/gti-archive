@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { requestArchiveFileUpload } from "@/lib/archives";
+import { requestManualLibraryAssetUpload } from "@/lib/library";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -11,15 +11,14 @@ export async function POST(request: Request) {
   }
 
   let payload: {
-    fileName?: string;
+    assetName?: string;
     originalFileName?: string;
     mimeType?: string;
     fileSize?: number;
-    projectName?: string;
-    projectCreatedBy?: string;
-    archiveCategorySlug?: string;
+    createdByName?: string;
+    description?: string;
+    category?: string;
     tag?: string;
-    projectDate?: string;
   } = {};
 
   try {
@@ -29,7 +28,7 @@ export async function POST(request: Request) {
   }
 
   if (
-    !payload.fileName ||
+    !payload.assetName ||
     !payload.originalFileName ||
     !payload.mimeType ||
     typeof payload.fileSize !== "number"
@@ -37,16 +36,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing required upload fields." }, { status: 400 });
   }
 
-  const result = await requestArchiveFileUpload(user, {
-    fileName: payload.fileName,
+  const result = await requestManualLibraryAssetUpload(user, {
+    assetName: payload.assetName,
     originalFileName: payload.originalFileName,
     mimeType: payload.mimeType,
     fileSize: payload.fileSize,
-    projectName: payload.projectName,
-    projectCreatedBy: payload.projectCreatedBy,
-    archiveCategorySlug: payload.archiveCategorySlug,
+    createdByName: payload.createdByName,
+    description: payload.description,
+    category: payload.category,
     tag: payload.tag,
-    projectDate: payload.projectDate,
   });
 
   if ("error" in result) {

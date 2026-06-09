@@ -1,8 +1,8 @@
 import { revalidatePath } from "next/cache";
 import { after, NextResponse } from "next/server";
 
-import { completeArchiveFileUpload } from "@/lib/archives";
 import { getCurrentUser } from "@/lib/auth";
+import { completeManualLibraryAssetUpload } from "@/lib/library";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   }
 
   let payload: {
-    archiveFileId?: string;
+    assetId?: string;
     failed?: boolean;
   } = {};
 
@@ -22,34 +22,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid completion request." }, { status: 400 });
   }
 
-  if (!payload.archiveFileId) {
-    return NextResponse.json({ error: "Archive file id is required." }, { status: 400 });
+  if (!payload.assetId) {
+    return NextResponse.json({ error: "Library asset id is required." }, { status: 400 });
   }
 
   try {
-    const result = await completeArchiveFileUpload(
-      user,
-      payload.archiveFileId,
-      Boolean(payload.failed),
-    );
+    await completeManualLibraryAssetUpload(user, payload.assetId, Boolean(payload.failed));
     after(() => {
-      revalidatePath("/archives");
-      if (result?.archiveCategorySlug) {
-        revalidatePath(`/archives/${result.archiveCategorySlug}`);
-      }
+      revalidatePath("/library");
     });
 
-    return NextResponse.json({
-      success: true,
-      archiveCategorySlug: result?.archiveCategorySlug,
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : "Unable to complete the archive upload right now.",
+            : "Unable to complete the library upload right now.",
       },
       { status: 400 },
     );

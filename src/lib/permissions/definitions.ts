@@ -76,6 +76,7 @@ export const permissionCatalog = {
   ],
   archive: [
     "archive.view",
+    "archive.uploadFile",
     "archive.download",
     "archive.delete",
   ],
@@ -480,6 +481,12 @@ const permissionMetadata: Record<
     moduleGated: true,
     hardRule: false,
   },
+  "archive.uploadFile": {
+    label: "Upload archive files",
+    description: "Upload manual archive files that are not tied to a completed PMS project.",
+    moduleGated: true,
+    hardRule: true,
+  },
   "archive.download": {
     label: "Download archive files",
     description: "Download archive files the user can access.",
@@ -791,6 +798,7 @@ export const permissionModuleMap: Record<PermissionKey, ModuleName> = {
   "library.deleteFile": "library",
   "library.uploadAsset": "library",
   "archive.view": "archive",
+  "archive.uploadFile": "archive",
   "archive.download": "archive",
   "archive.delete": "archive",
   "completion.viewChecklist": "project",
@@ -875,6 +883,7 @@ export const defaultRolePermissions: Record<PermissionRole, readonly PermissionK
     "library.deleteFile",
     "library.uploadAsset",
     "archive.view",
+    "archive.uploadFile",
     "archive.download",
     "completion.viewChecklist",
     "completion.setApprovalRequired",

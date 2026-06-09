@@ -32,6 +32,7 @@ export type LibraryTypeFilter = (typeof libraryTypeFilterOptions)[number];
 
 export type LibraryItemRecord = {
   id: string;
+  source: "PROJECT_ATTACHMENT" | "MANUAL_LIBRARY_ASSET";
   fileName: string;
   projectId: string;
   projectName: string;
@@ -53,12 +54,6 @@ export type LibraryItemRecord = {
 export type LibraryFilterOption = {
   id: string;
   label: string;
-};
-
-export type LibraryUploadProjectOption = {
-  id: string;
-  label: string;
-  tag: string | null;
 };
 
 export const libraryUploadCategoryOptions = [

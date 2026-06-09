@@ -1,15 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, FileUp, Tag, Upload, X } from "lucide-react";
+import { FileUp, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  CalendarMonthGrid,
-  formatCalendarDateValue,
-  parseCalendarDateValue,
-} from "@/components/calendar/calendar-month-grid";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,10 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  archiveCategoryDefinitions,
-  type ArchiveCategorySlug,
-} from "@/lib/archive-categories";
+  libraryUploadCategoryOptions,
+  type LibraryUploadCategory,
+} from "@/lib/library-shared";
 import { dismissToast, showErrorToast, showSuccessToast } from "@/lib/toast";
 import {
   PROJECT_ASSET_ALLOWED_EXTENSIONS,
@@ -34,19 +30,16 @@ import {
 const ACCEPTED_FILE_TYPES = PROJECT_ASSET_ALLOWED_EXTENSIONS.map(
   (extension) => `.${extension}`,
 ).join(",");
-const AUTO_CATEGORY = "__auto_category__";
 
-type ArchiveUploadButtonProps = {
+type LibraryUploadButtonProps = {
   canUploadAssets: boolean;
   disabledReason?: string;
-  defaultCategorySlug?: ArchiveCategorySlug;
-  buttonLabel?: string;
+  onUploaded?: () => void | Promise<void>;
 };
 
-type ArchiveUploadResponse = {
-  archiveFileId?: string;
+type LibraryUploadResponse = {
+  assetId?: string;
   uploadUrl?: string;
-  archiveCategorySlug?: ArchiveCategorySlug;
   error?: string;
 } & Partial<UploadFileTypeErrorPayload>;
 
@@ -67,162 +60,23 @@ function getNameWithoutExtension(fileName: string) {
   return extensionStart > 0 ? fileName.slice(0, extensionStart) : fileName;
 }
 
-function getDatePickerMonth(value: string) {
-  if (!value) {
-    return new Date();
-  }
-
-  const date = parseCalendarDateValue(value);
-  return Number.isNaN(date.getTime()) ? new Date() : date;
-}
-
-function formatDateDisplay(value: string) {
-  if (!value) {
-    return "Select date";
-  }
-
-  const date = parseCalendarDateValue(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Select date";
-  }
-
-  const day = `${date.getDate()}`.padStart(2, "0");
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-
-  return `${day}/${month}/${date.getFullYear()}`;
-}
-
-function ArchiveProjectDateField({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(() => getDatePickerMonth(value));
-  const containerRef = useRef<HTMLDivElement>(null);
-  const selectedDate = getDatePickerMonth(value);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as HTMLElement | null;
-
-      if (target?.closest('[data-slot^="select-"]')) {
-        return;
-      }
-
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className="relative">
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={() => {
-          const nextMonth = getDatePickerMonth(value);
-          setMonth(nextMonth);
-          setOpen((current) => !current);
-        }}
-        disabled={disabled}
-        className="h-11 w-full justify-between rounded-2xl border border-line bg-white px-4 text-left text-[14px] font-normal text-[#18211a] shadow-none hover:bg-white"
-      >
-        <span className={value ? "text-[#18211a]" : "text-[#9aa39b]"}>
-          {formatDateDisplay(value)}
-        </span>
-        <CalendarDays className="h-4 w-4 text-brand" />
-      </Button>
-
-      {open ? (
-        <Card className="absolute left-0 top-[calc(100%+8px)] z-[140] w-[320px] max-w-[calc(100vw-64px)] rounded-[22px] border border-line p-4 shadow-[0_20px_50px_rgba(23,39,28,0.16)]">
-          <CalendarMonthGrid
-            month={month}
-            selectedDate={selectedDate}
-            onMonthChange={setMonth}
-            onSelect={(date) => {
-              onChange(formatCalendarDateValue(date));
-              setMonth(date);
-              setOpen(false);
-            }}
-            compact
-          />
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="px-0 text-[12px] text-[#6a706b]"
-              onClick={() => {
-                onChange("");
-                setOpen(false);
-              }}
-            >
-              Clear
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              className="text-[12px]"
-              onClick={() => {
-                const today = new Date();
-                onChange(formatCalendarDateValue(today));
-                setMonth(today);
-                setOpen(false);
-              }}
-            >
-              Today
-            </Button>
-          </div>
-        </Card>
-      ) : null}
-    </div>
-  );
-}
-
-export function ArchiveUploadButton({
+export function LibraryUploadButton({
   canUploadAssets,
   disabledReason,
-  defaultCategorySlug,
-  buttonLabel = "Upload to Archive",
-}: ArchiveUploadButtonProps) {
+  onUploaded,
+}: LibraryUploadButtonProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
-  const [fileName, setFileName] = useState("");
-  const [projectName, setProjectName] = useState("");
-  const [projectCreatedBy, setProjectCreatedBy] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>(
-    defaultCategorySlug ?? AUTO_CATEGORY,
-  );
+  const [assetName, setAssetName] = useState("");
+  const [createdByName, setCreatedByName] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState<LibraryUploadCategory>("PROJECT_ASSET");
   const [tag, setTag] = useState("");
-  const [projectDate, setProjectDate] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [formError, setFormError] = useState<string>();
-
-  function openModal() {
-    if (!canUploadAssets) {
-      return;
-    }
-
-    setSelectedCategory(defaultCategorySlug ?? AUTO_CATEGORY);
-    setIsOpen(true);
-  }
 
   function closeModal(force = false) {
     if (isUploading && !force) {
@@ -230,12 +84,11 @@ export function ArchiveUploadButton({
     }
 
     setIsOpen(false);
-    setFileName("");
-    setProjectName("");
-    setProjectCreatedBy("");
-    setSelectedCategory(defaultCategorySlug ?? AUTO_CATEGORY);
+    setAssetName("");
+    setCreatedByName("");
+    setDescription("");
+    setCategory("PROJECT_ASSET");
     setTag("");
-    setProjectDate("");
     setSelectedFile(null);
     setIsDragging(false);
     setFormError(undefined);
@@ -245,14 +98,14 @@ export function ArchiveUploadButton({
     setSelectedFile(file);
     setFormError(undefined);
 
-    if (file && !fileName.trim()) {
-      setFileName(getNameWithoutExtension(file.name));
+    if (file && !assetName.trim()) {
+      setAssetName(getNameWithoutExtension(file.name));
     }
   }
 
   async function handleUpload() {
-    if (!fileName.trim()) {
-      setFormError("File name is required.");
+    if (!assetName.trim()) {
+      setFormError("Asset name is required.");
       return;
     }
 
@@ -264,41 +117,38 @@ export function ArchiveUploadButton({
     setFormError(undefined);
     setIsUploading(true);
 
-    const loadingToastId = toast.loading("Uploading to Archive...", {
+    const loadingToastId = toast.loading("Uploading to Library...", {
       description: selectedFile.name,
     });
-    let archiveFileId: string | undefined;
-    let archiveCategorySlug: ArchiveCategorySlug | undefined;
+    let assetId: string | undefined;
 
     try {
-      const uploadRequest = await fetch("/api/archives/upload-url", {
+      const uploadRequest = await fetch("/api/library/upload-url", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          fileName,
+          assetName,
           originalFileName: selectedFile.name,
           mimeType: selectedFile.type || "application/octet-stream",
           fileSize: selectedFile.size,
-          projectName,
-          projectCreatedBy,
-          archiveCategorySlug:
-            selectedCategory === AUTO_CATEGORY ? undefined : selectedCategory,
+          createdByName,
+          description,
+          category,
           tag,
-          projectDate,
         }),
       });
 
-      const uploadPayload = (await uploadRequest.json()) as ArchiveUploadResponse;
+      const uploadPayload = (await uploadRequest.json()) as LibraryUploadResponse;
 
-      if (!uploadRequest.ok || !uploadPayload.archiveFileId || !uploadPayload.uploadUrl) {
+      if (!uploadRequest.ok || !uploadPayload.assetId || !uploadPayload.uploadUrl) {
         throw new Error(
-          getUploadErrorMessage(uploadPayload, "Unable to prepare the archive upload."),
+          getUploadErrorMessage(uploadPayload, "Unable to prepare the library upload."),
         );
       }
 
-      archiveFileId = uploadPayload.archiveFileId;
+      assetId = uploadPayload.assetId;
 
       const putResponse = await fetch(uploadPayload.uploadUrl, {
         method: "PUT",
@@ -312,39 +162,36 @@ export function ArchiveUploadButton({
         throw new Error(`Upload failed for ${selectedFile.name}.`);
       }
 
-      const completeResponse = await fetch("/api/archives/complete", {
+      const completeResponse = await fetch("/api/library/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          archiveFileId,
+          assetId,
         }),
       });
 
-      const completePayload = (await completeResponse.json()) as ArchiveUploadResponse;
+      const completePayload = (await completeResponse.json()) as LibraryUploadResponse;
 
       if (!completeResponse.ok) {
-        throw new Error(completePayload.error || "Unable to complete the archive upload.");
+        throw new Error(completePayload.error || "Unable to complete the library upload.");
       }
 
-      archiveCategorySlug = completePayload.archiveCategorySlug;
       dismissToast(loadingToastId);
       closeModal(true);
       router.refresh();
-      showSuccessToast(
-        "Uploaded to Archive.",
-        `${fileName.trim()} is now available in Archives.`,
-      );
+      await onUploaded?.();
+      showSuccessToast("Uploaded to Library.", `${assetName.trim()} is now available in Library.`);
     } catch (error) {
-      if (archiveFileId) {
-        await fetch("/api/archives/complete", {
+      if (assetId) {
+        await fetch("/api/library/complete", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            archiveFileId,
+            assetId,
             failed: true,
           }),
         }).catch(() => undefined);
@@ -357,29 +204,27 @@ export function ArchiveUploadButton({
           : "Unable to upload this file right now.";
       setFormError(message);
       showErrorToast("Upload failed.", message);
-      return;
     } finally {
       setIsUploading(false);
-    }
-
-    if (archiveCategorySlug) {
-      router.push(`/archives/${archiveCategorySlug}`);
     }
   }
 
   return (
     <>
-      <div title={!canUploadAssets ? disabledReason : buttonLabel}>
+      <div title={!canUploadAssets ? disabledReason : "Upload to Library"}>
         <Button
           type="button"
           size="lg"
-          onClick={openModal}
+          onClick={() => {
+            if (canUploadAssets) {
+              setIsOpen(true);
+            }
+          }}
           disabled={!canUploadAssets}
-          variant="secondary"
-          className="min-h-[54px] rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
+          className="min-h-[48px] px-6 text-[15px]"
         >
           <Upload className="h-4.5 w-4.5" />
-          {buttonLabel}
+          Upload Asset
         </Button>
       </div>
 
@@ -390,10 +235,10 @@ export function ArchiveUploadButton({
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
-                    Upload to Archive
+                    Upload Asset
                   </h2>
                   <p className="mt-1 text-[14px] text-[#6a706b]">
-                    Add a final or historical file directly to Archives.
+                    Add a working asset directly to Library.
                   </p>
                 </div>
                 <Button
@@ -403,7 +248,7 @@ export function ArchiveUploadButton({
                   onClick={() => closeModal()}
                   disabled={isUploading}
                   className="shrink-0 border border-line"
-                  aria-label="Close upload to archive dialog"
+                  aria-label="Close upload asset dialog"
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -418,34 +263,33 @@ export function ArchiveUploadButton({
               <div className="grid gap-4 sm:grid-cols-2">
                 <label>
                   <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
-                    File name <span className="text-[#d3554d]">*</span>
+                    Asset name <span className="text-[#d3554d]">*</span>
                   </span>
                   <Input
-                    value={fileName}
-                    onChange={(event) => setFileName(event.target.value)}
+                    value={assetName}
+                    onChange={(event) => setAssetName(event.target.value)}
                     disabled={isUploading}
                     className="h-11 rounded-2xl border border-line"
-                    placeholder="Final artwork"
+                    placeholder="Working asset"
                   />
                 </label>
 
                 <label>
                   <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
-                    Archive category
+                    Category
                   </span>
                   <Select
-                    value={selectedCategory}
-                    onValueChange={setSelectedCategory}
+                    value={category}
+                    onValueChange={(value) => setCategory(value as LibraryUploadCategory)}
                     disabled={isUploading}
                   >
                     <SelectTrigger className="h-11 rounded-2xl border border-line">
-                      <SelectValue placeholder="Auto-detect category" />
+                      <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent className="z-[120]">
-                      <SelectItem value={AUTO_CATEGORY}>Auto-detect category</SelectItem>
-                      {archiveCategoryDefinitions.map((category) => (
-                        <SelectItem key={category.slug} value={category.slug}>
-                          {category.title}
+                      {libraryUploadCategoryOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -454,11 +298,11 @@ export function ArchiveUploadButton({
 
                 <label>
                   <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
-                    Project name
+                    Created by / Who done
                   </span>
                   <Input
-                    value={projectName}
-                    onChange={(event) => setProjectName(event.target.value)}
+                    value={createdByName}
+                    onChange={(event) => setCreatedByName(event.target.value)}
                     disabled={isUploading}
                     className="h-11 rounded-2xl border border-line"
                     placeholder="Optional"
@@ -467,20 +311,6 @@ export function ArchiveUploadButton({
 
                 <label>
                   <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
-                    Project created by
-                  </span>
-                  <Input
-                    value={projectCreatedBy}
-                    onChange={(event) => setProjectCreatedBy(event.target.value)}
-                    disabled={isUploading}
-                    className="h-11 rounded-2xl border border-line"
-                    placeholder="Optional"
-                  />
-                </label>
-
-                <label>
-                  <span className="mb-2 flex items-center gap-1.5 text-[13px] font-[700] text-[#2d372f]">
-                    <Tag className="h-3.5 w-3.5 text-brand" />
                     Tag
                   </span>
                   <Input
@@ -492,17 +322,18 @@ export function ArchiveUploadButton({
                   />
                 </label>
 
-                <div>
-                  <span className="mb-2 flex items-center gap-1.5 text-[13px] font-[700] text-[#2d372f]">
-                    <CalendarDays className="h-3.5 w-3.5 text-brand" />
-                    Date of project
+                <label className="sm:col-span-2">
+                  <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
+                    Description
                   </span>
-                  <ArchiveProjectDateField
-                    value={projectDate}
-                    onChange={setProjectDate}
+                  <Textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
                     disabled={isUploading}
+                    className="min-h-[88px] rounded-2xl border border-line"
+                    placeholder="Optional"
                   />
-                </div>
+                </label>
               </div>
 
               <div className="mt-5">
@@ -531,7 +362,7 @@ export function ArchiveUploadButton({
                     }
                   }}
                   disabled={isUploading}
-                  className={`flex min-h-[150px] w-full flex-col items-center justify-center rounded-[24px] border-2 border-dashed px-5 py-6 text-center transition-colors ${
+                  className={`flex min-h-[140px] w-full flex-col items-center justify-center rounded-[24px] border-2 border-dashed px-5 py-6 text-center transition-colors ${
                     isDragging
                       ? "border-brand bg-[#f3faf5]"
                       : "border-[#d8e3d8] bg-[#fbfcfa] hover:bg-[#f7faf7]"
@@ -571,7 +402,7 @@ export function ArchiveUploadButton({
                   Cancel
                 </Button>
                 <Button type="button" onClick={handleUpload} disabled={isUploading}>
-                  {isUploading ? "Uploading..." : "Upload to Archive"}
+                  {isUploading ? "Uploading..." : "Upload Asset"}
                 </Button>
               </div>
             </CardContent>
@@ -581,5 +412,3 @@ export function ArchiveUploadButton({
     </>
   );
 }
-
-export { ArchiveUploadButton as UploadAssetsButton };

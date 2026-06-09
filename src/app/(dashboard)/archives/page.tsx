@@ -14,6 +14,7 @@ export default async function ArchivesPage() {
   }
 
   const summaries = await listArchiveCategorySummaries(user);
+  const canUploadArchives = hasPermission(user, "archive.uploadFile");
 
   return (
     <DashboardLayout
@@ -21,7 +22,7 @@ export default async function ArchivesPage() {
         searchPlaceholder: "Search archives...",
       }}
     >
-      <ArchiveOverview summaries={summaries} />
+      <ArchiveOverview summaries={summaries} canUploadArchives={canUploadArchives} />
     </DashboardLayout>
   );
 }

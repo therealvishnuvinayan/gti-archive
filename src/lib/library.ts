@@ -9,23 +9,37 @@ import {
   canBypassCollaboratorVisibility,
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
-import { buildAccessibleProjectsWhere, type ProjectAccessUser } from "@/lib/projects";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
   hasPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { deleteObjectIfNeeded, getFileExtension } from "@/lib/storage/s3";
+import {
+  buildManualLibraryAssetKey,
+  createPresignedDownloadUrl,
+  createPresignedPreviewUrl,
+  createPresignedUploadUrl,
+  deleteObjectIfNeeded,
+  getFileExtension,
+  getMaxAssetUploadBytes,
+  getS3BucketName,
+} from "@/lib/storage/s3";
 import { canUploadLibraryAssets, canViewLibrary } from "@/lib/library-access";
 import {
   type LibraryDateFilter,
   type LibraryItemRecord,
   type LibraryPageData,
-  type LibraryUploadProjectOption,
+  type LibraryUploadCategory,
   type LibraryQueryInput,
   type LibraryQuickMenuCounts,
+  libraryUploadCategoryOptions,
 } from "@/lib/library-shared";
+import {
+  PROJECT_ASSET_ALLOWED_EXTENSIONS,
+  buildFileTypeNotAllowedPayload,
+  isAllowedAssetFile,
+} from "@/lib/upload-validation";
 
 const libraryAssetTypes = [
   AttachmentAssetType.GENERAL_PROJECT_ASSET,
@@ -63,10 +77,6 @@ type LibraryUser = Pick<
   "id" | "role" | "name" | "email" | "libraryAccess" | "projectAccess"
 > &
   PermissionUser;
-type LibraryUploadUser = Pick<
-  User,
-  "id" | "role" | "name" | "email" | "libraryAccess" | "projectAccess"
->;
 
 type RawLibraryAttachment = {
   id: string;
@@ -101,6 +111,34 @@ type RawLibraryAttachment = {
   };
 };
 
+type RawManualLibraryAsset = {
+  id: string;
+  assetName: string;
+  originalFileName: string;
+  createdByName: string | null;
+  category: string | null;
+  tag: string | null;
+  mimeType: string;
+  uploadedAt: Date;
+  uploadedById: string;
+  uploadedBy: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
+};
+
+type RequestManualLibraryAssetUploadInput = {
+  assetName: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  createdByName?: string | null;
+  description?: string | null;
+  category?: string | null;
+  tag?: string | null;
+};
+
 function getLibraryUserDisplayName(user: { name: string | null; email: string }) {
   return user.name?.trim() || user.email;
 }
@@ -127,6 +165,46 @@ function formatLibraryDate(date: Date) {
     month: "2-digit",
     year: "numeric",
   }).format(date);
+}
+
+function normalizeOptionalLibraryText(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function resolveManualLibraryAssetName(assetName: string, originalFileName: string) {
+  const trimmedAssetName = assetName.trim();
+
+  if (!trimmedAssetName) {
+    throw new Error("Asset name is required.");
+  }
+
+  const assetExtension = getFileExtension(trimmedAssetName);
+  const originalExtension = getFileExtension(originalFileName);
+
+  if (!assetExtension && originalExtension) {
+    return `${trimmedAssetName}.${originalExtension}`;
+  }
+
+  return trimmedAssetName;
+}
+
+function parseManualLibraryCategory(value: string | null | undefined): LibraryUploadCategory | null {
+  if (
+    value &&
+    libraryUploadCategoryOptions.some((option) => option.value === value)
+  ) {
+    return value as LibraryUploadCategory;
+  }
+
+  return null;
+}
+
+function getManualLibraryCategoryLabel(value: string | null | undefined) {
+  return (
+    libraryUploadCategoryOptions.find((option) => option.value === value)?.label ??
+    "Manual Upload"
+  );
 }
 
 function getLibraryTypeLabel(fileName: string, mimeType: string) {
@@ -193,6 +271,15 @@ function canDeleteLibraryAttachment(user: LibraryUser, ownerId: string) {
   );
 }
 
+function canDeleteManualLibraryAsset(user: LibraryUser, uploadedById: string) {
+  return (
+    hasPermission(user, "library.deleteFile") &&
+    (user.role === UserRole.SUPER_ADMIN ||
+      user.role === UserRole.ADMIN ||
+      uploadedById === user.id)
+  );
+}
+
 function isAttachmentVisibleToUser(
   user: LibraryUser,
   attachment: RawLibraryAttachment,
@@ -235,6 +322,7 @@ function mapAttachmentToLibraryItem(
 
   return {
     id: attachment.id,
+    source: "PROJECT_ATTACHMENT",
     fileName: attachment.originalFileName,
     projectId: attachment.projectId,
     projectName: attachment.project.name,
@@ -251,6 +339,37 @@ function mapAttachmentToLibraryItem(
     downloadPath: `/api/project-assets/${attachment.id}/download`,
     canDelete: canDeleteLibraryAttachment(user, attachment.project.createdById),
     isFavoritedByCurrentUser: favoritedAttachmentIds?.has(attachment.id) ?? false,
+  };
+}
+
+function mapManualAssetToLibraryItem(
+  user: LibraryUser,
+  asset: RawManualLibraryAsset,
+): LibraryItemRecord {
+  const categoryLabel = getManualLibraryCategoryLabel(asset.category);
+  const isFinance = asset.category === "QUOTATION_INVOICE" || isFinanceLibraryFile(asset.assetName);
+  const createdByName =
+    asset.createdByName?.trim() || getLibraryUserDisplayName(asset.uploadedBy);
+
+  return {
+    id: asset.id,
+    source: "MANUAL_LIBRARY_ASSET",
+    fileName: asset.assetName,
+    projectId: asset.category ? `manual-library-${asset.category}` : "manual-library",
+    projectName: categoryLabel,
+    projectTag: asset.tag?.trim() || null,
+    uploadedAt: formatLibraryDate(asset.uploadedAt),
+    uploadedAtValue: asset.uploadedAt.toISOString(),
+    createdBy: createdByName,
+    createdById: asset.uploadedById,
+    createdByEmail: asset.uploadedBy.email,
+    type: getLibraryTypeLabel(asset.assetName, asset.mimeType),
+    quickCategory: isFinance ? "Quotations/Invoices" : "Project Assets",
+    mimeType: asset.mimeType,
+    previewPath: `/api/library/manual-assets/${asset.id}/preview`,
+    downloadPath: `/api/library/manual-assets/${asset.id}/download`,
+    canDelete: canDeleteManualLibraryAsset(user, asset.uploadedById),
+    isFavoritedByCurrentUser: false,
   };
 }
 
@@ -440,6 +559,37 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
   return attachments.filter((attachment) => isAttachmentVisibleToUser(user, attachment));
 }
 
+async function getAccessibleManualLibraryAssets() {
+  return withPrismaRetry(() =>
+    prisma.manualLibraryAsset.findMany({
+      where: {
+        status: AttachmentStatus.READY,
+      },
+      orderBy: {
+        uploadedAt: "desc",
+      },
+      select: {
+        id: true,
+        assetName: true,
+        originalFileName: true,
+        createdByName: true,
+        category: true,
+        tag: true,
+        mimeType: true,
+        uploadedAt: true,
+        uploadedById: true,
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    }),
+  );
+}
+
 export async function getLibraryPageDataForUser(
   user: LibraryUser,
   input: LibraryQueryInput = {},
@@ -461,13 +611,23 @@ export async function getLibraryPageDataForUser(
   }
 
   const pageSize = clampPageSize(input.pageSize);
-  const rawAttachments = await getAccessibleLibraryAttachments(user);
+  const [rawAttachments, manualAssets] = await Promise.all([
+    getAccessibleLibraryAttachments(user),
+    getAccessibleManualLibraryAssets(),
+  ]);
   const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
     user.id,
     rawAttachments.map((attachment) => attachment.id),
   );
-  const visibleItems = rawAttachments.map((attachment) =>
-    mapAttachmentToLibraryItem(user, attachment, favoritedAttachmentIds),
+  const visibleItems = [
+    ...rawAttachments.map((attachment) =>
+      mapAttachmentToLibraryItem(user, attachment, favoritedAttachmentIds),
+    ),
+    ...manualAssets.map((asset) => mapManualAssetToLibraryItem(user, asset)),
+  ].sort(
+    (left, right) =>
+      new Date(right.uploadedAtValue).getTime() -
+      new Date(left.uploadedAtValue).getTime(),
   );
 
   const counts: LibraryQuickMenuCounts = {
@@ -531,44 +691,136 @@ export async function getLibraryPageDataForUser(
   };
 }
 
-export async function getLibraryUploadProjectsForUser(
-  user: ProjectAccessUser & LibraryUploadUser,
-): Promise<LibraryUploadProjectOption[]> {
+export async function requestManualLibraryAssetUpload(
+  user: LibraryUser,
+  input: RequestManualLibraryAssetUploadInput,
+) {
   if (!canUploadLibraryAssets(user)) {
-    return [];
+    return { error: "You do not have permission to upload library assets." } as const;
   }
 
-  const projects = await withPrismaRetry(() =>
-    prisma.project.findMany({
-      where: {
-        ...buildAccessibleProjectsWhere(user),
-        status: {
-          not: "COMPLETED",
-        },
-      },
-      orderBy: {
-        name: "asc",
+  if (!input.originalFileName.trim()) {
+    return { error: "Choose a file to upload." } as const;
+  }
+
+  if (!input.assetName.trim()) {
+    return { error: "Asset name is required." } as const;
+  }
+
+  if (!isAllowedAssetFile(input.originalFileName)) {
+    return buildFileTypeNotAllowedPayload({
+      fileName: input.originalFileName,
+      mimeType: input.mimeType,
+      allowedExtensions: PROJECT_ASSET_ALLOWED_EXTENSIONS,
+    });
+  }
+
+  if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
+    return { error: "File size is invalid." } as const;
+  }
+
+  if (input.fileSize > getMaxAssetUploadBytes()) {
+    return { error: "This file exceeds the allowed size limit." } as const;
+  }
+
+  let assetName: string;
+
+  try {
+    assetName = resolveManualLibraryAssetName(input.assetName, input.originalFileName);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Library asset metadata is invalid.",
+    } as const;
+  }
+
+  const category = parseManualLibraryCategory(input.category);
+  const bucket = getS3BucketName();
+  const storageKey = buildManualLibraryAssetKey(user.id, input.originalFileName);
+  const uploadUrl = await createPresignedUploadUrl({
+    bucket,
+    storageKey,
+    mimeType: input.mimeType,
+  });
+
+  const asset = await withPrismaRetry(() =>
+    prisma.manualLibraryAsset.create({
+      data: {
+        assetName,
+        originalFileName: input.originalFileName.trim(),
+        createdByName: normalizeOptionalLibraryText(input.createdByName),
+        description: normalizeOptionalLibraryText(input.description),
+        category,
+        tag: normalizeOptionalLibraryText(input.tag),
+        mimeType: input.mimeType,
+        fileSize: input.fileSize,
+        bucket,
+        storageKey,
+        uploadedById: user.id,
       },
       select: {
         id: true,
-        name: true,
-        tag: true,
       },
     }),
   );
 
-  return projects.map((project) => ({
-    id: project.id,
-    label: project.name,
-    tag: project.tag?.trim() || null,
-  }));
+  return {
+    assetId: asset.id,
+    uploadUrl,
+  };
 }
 
-export function getDashboardLibraryUploadAccessState(user: LibraryUploadUser) {
-  return {
-    canViewLibrary: canViewLibrary(user),
-    canUploadAssets: canUploadLibraryAssets(user),
-  };
+export async function completeManualLibraryAssetUpload(
+  user: LibraryUser,
+  assetId: string,
+  failed = false,
+) {
+  if (!canUploadLibraryAssets(user)) {
+    throw new Error("You do not have permission to upload library assets.");
+  }
+
+  return withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const asset = await tx.manualLibraryAsset.findUnique({
+        where: {
+          id: assetId,
+        },
+        select: {
+          id: true,
+          uploadedById: true,
+          status: true,
+        },
+      });
+
+      if (!asset) {
+        throw new Error("Library asset upload not found.");
+      }
+
+      if (asset.uploadedById !== user.id) {
+        throw new Error("Only the uploader can complete this library upload.");
+      }
+
+      if (asset.status === AttachmentStatus.READY) {
+        return;
+      }
+
+      if (asset.status !== AttachmentStatus.UPLOADING) {
+        throw new Error("Library asset upload is not active.");
+      }
+
+      await tx.manualLibraryAsset.update({
+        where: {
+          id: asset.id,
+        },
+        data: {
+          status: failed ? AttachmentStatus.FAILED : AttachmentStatus.READY,
+          uploadedAt: failed ? undefined : new Date(),
+        },
+      });
+    }),
+  );
 }
 
 export async function deleteLibraryAttachmentForUser(
@@ -629,4 +881,115 @@ export async function deleteLibraryAttachmentForUser(
   return {
     projectId: attachment.projectId,
   };
+}
+
+export async function getManualLibraryAssetDownloadUrlForUser(
+  user: LibraryUser,
+  assetId: string,
+) {
+  if (!canViewLibrary(user)) {
+    throw new Error("You do not have permission to download library files.");
+  }
+
+  const asset = await withPrismaRetry(() =>
+    prisma.manualLibraryAsset.findUnique({
+      where: {
+        id: assetId,
+      },
+      select: {
+        assetName: true,
+        mimeType: true,
+        bucket: true,
+        storageKey: true,
+        status: true,
+      },
+    }),
+  );
+
+  if (!asset || asset.status !== AttachmentStatus.READY) {
+    throw new Error("Library asset not found.");
+  }
+
+  return createPresignedDownloadUrl({
+    bucket: asset.bucket,
+    storageKey: asset.storageKey,
+    fileName: asset.assetName,
+    mimeType: asset.mimeType,
+  });
+}
+
+export async function getManualLibraryAssetPreviewUrlForUser(
+  user: LibraryUser,
+  assetId: string,
+) {
+  if (!canViewLibrary(user)) {
+    throw new Error("You do not have permission to preview library files.");
+  }
+
+  const asset = await withPrismaRetry(() =>
+    prisma.manualLibraryAsset.findUnique({
+      where: {
+        id: assetId,
+      },
+      select: {
+        assetName: true,
+        mimeType: true,
+        bucket: true,
+        storageKey: true,
+        status: true,
+      },
+    }),
+  );
+
+  if (!asset || asset.status !== AttachmentStatus.READY) {
+    throw new Error("Library asset not found.");
+  }
+
+  return createPresignedPreviewUrl({
+    bucket: asset.bucket,
+    storageKey: asset.storageKey,
+    fileName: asset.assetName,
+    mimeType: asset.mimeType,
+  });
+}
+
+export async function deleteManualLibraryAssetForUser(
+  user: LibraryUser,
+  assetId: string,
+) {
+  const asset = await withPrismaRetry(() =>
+    prisma.manualLibraryAsset.findUnique({
+      where: {
+        id: assetId,
+      },
+      select: {
+        id: true,
+        bucket: true,
+        storageKey: true,
+        status: true,
+        uploadedById: true,
+      },
+    }),
+  );
+
+  if (!asset || asset.status === AttachmentStatus.DELETED) {
+    throw new Error("Library asset not found.");
+  }
+
+  if (!canDeleteManualLibraryAsset(user, asset.uploadedById)) {
+    throw new Error("You do not have permission to delete this file.");
+  }
+
+  await deleteObjectIfNeeded(asset.storageKey, asset.bucket).catch(() => undefined);
+
+  await withPrismaRetry(() =>
+    prisma.manualLibraryAsset.update({
+      where: {
+        id: asset.id,
+      },
+      data: {
+        status: AttachmentStatus.DELETED,
+      },
+    }),
+  );
 }

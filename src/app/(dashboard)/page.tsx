@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { UploadAssetsButton } from "@/components/dashboard/upload-assets-button";
+import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
 import { UpdateList } from "@/components/dashboard/update-list";
 import { ReminderCard } from "@/components/dashboard/reminder-card";
 import {
@@ -19,7 +19,6 @@ import { getDashboardSnapshot } from "@/lib/dashboard";
 import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
 import { hasPermission } from "@/lib/permissions/resolver";
 import {
-  getArchiveUploadProjectsForUser,
   getDashboardArchiveUploadAccessState,
 } from "@/lib/archives";
 import {
@@ -35,10 +34,7 @@ export default async function Home() {
     redirect(getAuthenticatedDefaultRoute(user));
   }
 
-  const [dashboard, uploadProjects] = await Promise.all([
-    getDashboardSnapshot(user),
-    getArchiveUploadProjectsForUser(user),
-  ]);
+  const dashboard = await getDashboardSnapshot(user);
   const uploadAccess = getDashboardArchiveUploadAccessState(user);
   const canCreateProject = hasPermission(user, "project.create");
   const statCards = [
@@ -100,14 +96,13 @@ export default async function Home() {
                   + New Project
                 </Link>
               ) : null}
-              <UploadAssetsButton
+              <ArchiveUploadButton
                 canUploadAssets={uploadAccess.canUploadAssets}
                 disabledReason={
                   uploadAccess.canUploadAssets
                     ? undefined
                     : "You do not have permission to upload to Archive."
                 }
-                projects={uploadProjects}
               />
             </div>
           </header>

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Download, X } from "lucide-react";
 
 import { getFileTypeIcon } from "@/components/archives/archive-data";
+import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
 import {
   MotionItem,
   MotionSection,
@@ -21,10 +22,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ArchivedProjectFileRecord } from "@/lib/archives";
+import type { ArchiveCategorySlug } from "@/lib/archive-categories";
 
 type ArchiveCategoryWorkspaceProps = {
+  categorySlug: ArchiveCategorySlug;
   categoryTitle: string;
   items: ArchivedProjectFileRecord[];
+  canUploadArchives: boolean;
 };
 
 type ArchiveFilters = {
@@ -52,8 +56,10 @@ function uniqueValues(items: ArchivedProjectFileRecord[], key: keyof ArchivedPro
 }
 
 export function ArchiveCategoryWorkspace({
+  categorySlug,
   categoryTitle,
   items,
+  canUploadArchives,
 }: ArchiveCategoryWorkspaceProps) {
   const [filters, setFilters] = useState<ArchiveFilters>(defaultFilters);
 
@@ -117,15 +123,22 @@ export function ArchiveCategoryWorkspace({
   return (
     <section className="space-y-6">
       <MotionSection>
-        <header className="flex flex-col gap-3">
-          <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-            {categoryTitle}
-          </h1>
-          <p className="max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
-            Final archived files and completion documents are read-only. Allowed users
-            can view or download the approved files and completion records that were
-            saved when a project was completed.
-          </p>
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex-1">
+            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+              {categoryTitle}
+            </h1>
+            <p className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
+              Final archived files, completion documents, and manual archive uploads are
+              read-only. Allowed users can view or download files in this category.
+            </p>
+          </div>
+          <ArchiveUploadButton
+            canUploadAssets={canUploadArchives}
+            disabledReason="You do not have permission to upload to Archive."
+            defaultCategorySlug={categorySlug}
+            buttonLabel="Add Archive File"
+          />
         </header>
       </MotionSection>
 

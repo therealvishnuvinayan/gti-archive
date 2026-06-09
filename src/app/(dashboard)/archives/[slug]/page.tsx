@@ -38,6 +38,7 @@ export default async function ArchiveCategoryPage({
   }
 
   const items = await listArchivedFilesByCategory(user, category.slug);
+  const canUploadArchives = hasPermission(user, "archive.uploadFile");
 
   return (
     <DashboardLayout
@@ -47,8 +48,10 @@ export default async function ArchiveCategoryPage({
       }}
     >
       <ArchiveCategoryWorkspace
+        categorySlug={category.slug}
         categoryTitle={category.title}
         items={items}
+        canUploadArchives={canUploadArchives}
       />
     </DashboardLayout>
   );
