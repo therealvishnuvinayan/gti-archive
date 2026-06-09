@@ -605,6 +605,24 @@ function getRevisionLabel(entry: Pick<DisplayChatEntry, "title" | "revisionNumbe
   return entry.title?.trim() || "Revision";
 }
 
+function buildComparisonHref(
+  projectId: string,
+  stageId: string | null | undefined,
+  baseAttachmentId: string,
+  compareAttachmentId: string,
+) {
+  const searchParams = new URLSearchParams();
+
+  if (stageId) {
+    searchParams.set("stage", stageId);
+  }
+
+  searchParams.set("base", baseAttachmentId);
+  searchParams.set("compare", compareAttachmentId);
+
+  return `/projects/${projectId}/compare?${searchParams.toString()}`;
+}
+
 function getRevisionStatusMeta(status: RevisionReviewState) {
   switch (status) {
     case "APPROVED":
@@ -3931,6 +3949,98 @@ export function ProjectChatWorkspace({
                       </div>
                     ) : null}
                   </div>
+                );
+              })()
+            ) : message.kind === "comparison" ? (
+              (() => {
+                const comparison = message.comparison;
+
+                if (!comparison) {
+                  return null;
+                }
+
+                const comparisonHref = buildComparisonHref(
+                  project.id,
+                  activeStage?.id,
+                  comparison.baseAttachmentId,
+                  comparison.compareAttachmentId,
+                );
+
+                return (
+                  <Card
+                    key={message.id}
+                    className="overflow-hidden rounded-[20px] border border-[#d9e6dc] bg-[linear-gradient(135deg,#f7fbf7,#ffffff)] p-4 shadow-[0_12px_30px_rgba(18,35,23,0.06)]"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#edf7ef] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
+                            <FileText className="h-3.5 w-3.5" />
+                            Comparison submitted
+                          </span>
+                          <span className="text-[11px] font-[600] text-[#7a837b]">
+                            {message.createdAt}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <ChatAvatar
+                            name={message.author}
+                            src={message.authorAvatarSrc}
+                            size="sm"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] font-[700] text-[#111712]">
+                              {message.author}
+                            </p>
+                            <p className="truncate text-[10px] text-[#7a837b]">
+                              {message.role}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap text-[13px] leading-[1.55] text-[#253029]">
+                          {message.body}
+                        </p>
+                        <div className="mt-4 grid gap-2 lg:grid-cols-2">
+                          {[
+                            {
+                              label: "Base",
+                              submission: comparison.baseSubmissionLabel,
+                              fileName: comparison.baseFileName,
+                            },
+                            {
+                              label: "Compare",
+                              submission: comparison.compareSubmissionLabel,
+                              fileName: comparison.compareFileName,
+                            },
+                          ].map((item) => (
+                            <div
+                              key={item.label}
+                              className="min-w-0 rounded-[16px] border border-[#e1e9e2] bg-white px-3 py-2.5"
+                            >
+                              <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#7a837b]">
+                                {item.label} · {item.submission}
+                              </p>
+                              <p className="mt-1 truncate text-[12px] font-[700] text-[#1b241e]">
+                                {item.fileName}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-[10px] font-[600] uppercase tracking-[0.08em] text-[#7a837b]">
+                          Pinned at {comparison.xPercent.toFixed(1)}%,{" "}
+                          {comparison.yPercent.toFixed(1)}%
+                        </p>
+                      </div>
+                      <Button
+                        asChild
+                        type="button"
+                        size="sm"
+                        className="shrink-0 rounded-full text-[12px]"
+                      >
+                        <Link href={comparisonHref}>View Comparison</Link>
+                      </Button>
+                    </div>
+                  </Card>
                 );
               })()
             ) : (

@@ -301,7 +301,7 @@ export async function createComparisonCommentAction(input: ComparisonCommentInpu
       error:
         error instanceof Error
           ? error.message
-          : "Unable to save the comparison comment right now.",
+          : "Unable to send the comparison message right now.",
     };
   }
 }

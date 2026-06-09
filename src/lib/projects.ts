@@ -233,7 +233,7 @@ export type ProjectAttachmentRecord = {
 
 export type ProjectChatEntry = {
   id: string;
-  kind: "revision" | "comment" | "system";
+  kind: "revision" | "comment" | "system" | "comparison";
   revisionId?: string;
   revisionNumber?: number;
   title?: string;
@@ -252,6 +252,16 @@ export type ProjectChatEntry = {
     name: string;
   }>;
   attachments?: ProjectAttachmentRecord[];
+  comparison?: {
+    baseAttachmentId: string;
+    compareAttachmentId: string;
+    baseFileName: string;
+    compareFileName: string;
+    baseSubmissionLabel: string;
+    compareSubmissionLabel: string;
+    xPercent: number;
+    yPercent: number;
+  };
 };
 
 export type ProjectCompareNote = {

@@ -272,7 +272,7 @@ export async function createComparisonComment(
   const body = input.body.trim();
 
   if (!body) {
-    throw new Error("Enter a comment before saving.");
+    throw new Error("Enter a message before sending.");
   }
 
   if (!Number.isFinite(input.xPercent) || !Number.isFinite(input.yPercent)) {

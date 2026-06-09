@@ -120,6 +120,44 @@ type StageCommentQueryRecord = {
   }>;
 };
 
+type StageComparisonQueryRecord = {
+  id: string;
+  projectId: string;
+  stageId: string;
+  baseAttachmentId: string;
+  compareAttachmentId: string;
+  xPercent: number;
+  yPercent: number;
+  body: string;
+  createdAt: Date;
+  createdBy: Pick<
+    User,
+    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+  >;
+  baseAttachment: {
+    id: string;
+    assetType: AttachmentAssetType;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    submissionReviewStatus: SubmissionReviewStatus | null;
+    createdAt: Date;
+    status: AttachmentStatus;
+    uploadedBy: Pick<User, "name" | "email">;
+  };
+  compareAttachment: {
+    id: string;
+    assetType: AttachmentAssetType;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    submissionReviewStatus: SubmissionReviewStatus | null;
+    createdAt: Date;
+    status: AttachmentStatus;
+    uploadedBy: Pick<User, "name" | "email">;
+  };
+};
+
 export type StageHistoryRecord = {
   activeStageId: string | null;
   latestRevisionId: string | null;
@@ -451,7 +489,61 @@ function mapCommentEntry(
           submissionNumbers.get(attachment.id),
           favoritedAttachmentIds,
         ),
+    ),
+  };
+}
+
+function getComparisonSubmissionLabel(
+  attachment: Pick<StageComparisonQueryRecord["baseAttachment"], "id" | "status">,
+  submissionNumbers: ReadonlyMap<string, number>,
+) {
+  if (attachment.status !== AttachmentStatus.READY) {
+    return "File unavailable";
+  }
+
+  const submissionNumber = submissionNumbers.get(attachment.id);
+  return submissionNumber ? `Submission ${submissionNumber}` : "Submission";
+}
+
+function getComparisonFileName(
+  attachment: Pick<StageComparisonQueryRecord["baseAttachment"], "originalFileName" | "status">,
+) {
+  return attachment.status === AttachmentStatus.READY
+    ? attachment.originalFileName
+    : "File unavailable";
+}
+
+function mapComparisonEntry(
+  comparison: StageComparisonQueryRecord,
+  submissionNumbers: ReadonlyMap<string, number>,
+): ProjectChatEntry {
+  return {
+    id: `comparison-${comparison.id}`,
+    kind: "comparison",
+    title: "Comparison submitted",
+    authorId: comparison.createdBy.id,
+    author: getDisplayName(comparison.createdBy),
+    authorAvatarSrc: getProfileAvatarSrc(comparison.createdBy),
+    role: getActorRole(comparison.createdBy),
+    body: comparison.body,
+    createdAt: formatHistoryTimestamp(comparison.createdAt),
+    attachments: [],
+    comparison: {
+      baseAttachmentId: comparison.baseAttachmentId,
+      compareAttachmentId: comparison.compareAttachmentId,
+      baseFileName: getComparisonFileName(comparison.baseAttachment),
+      compareFileName: getComparisonFileName(comparison.compareAttachment),
+      baseSubmissionLabel: getComparisonSubmissionLabel(
+        comparison.baseAttachment,
+        submissionNumbers,
       ),
+      compareSubmissionLabel: getComparisonSubmissionLabel(
+        comparison.compareAttachment,
+        submissionNumbers,
+      ),
+      xPercent: comparison.xPercent,
+      yPercent: comparison.yPercent,
+    },
   };
 }
 
@@ -802,17 +894,81 @@ export async function getProjectStageHistory(
               },
             },
           }),
+          prisma.comparisonComment.findMany({
+            where: {
+              projectId,
+              stageId: activeStageId,
+            },
+            orderBy: {
+              createdAt: "asc",
+            },
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                  collaboratorType: true,
+                  avatarUrl: true,
+                },
+              },
+              baseAttachment: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+              compareAttachment: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
         ]),
       ),
     ["project-stage-history", projectId, activeStageId],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
-  const [allRevisions, allComments] = await getCachedHistory();
+  const [allRevisions, allComments, allComparisons] = await getCachedHistory();
   const submissionNumbers = buildStageSubmissionNumberMap(allRevisions, allComments);
   const pauseWindows = await getProjectVisibilityPauseWindows(user, project);
   const revisions = filterHistoryEntriesOutsidePauseWindows(allRevisions, pauseWindows);
   const comments = filterHistoryEntriesOutsidePauseWindows(allComments, pauseWindows);
+  const comparisons =
+    pauseWindows.length > 0
+      ? allComparisons.filter(
+          (comparison) =>
+            !isTimestampHiddenByPauseWindows(comparison.createdAt, pauseWindows),
+        )
+      : allComparisons;
   const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
     user.id,
     [...revisions, ...comments]
@@ -828,6 +984,10 @@ export async function getProjectStageHistory(
     ...comments.map((comment) => ({
       createdAt: toHistoryDate(comment.createdAt).getTime(),
       entry: mapCommentEntry(comment, submissionNumbers, favoritedAttachmentIds),
+    })),
+    ...comparisons.map((comparison) => ({
+      createdAt: toHistoryDate(comparison.createdAt).getTime(),
+      entry: mapComparisonEntry(comparison, submissionNumbers),
     })),
   ]
     .sort((left, right) => right.createdAt - left.createdAt)

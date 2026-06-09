@@ -398,12 +398,12 @@ function ComparisonViewerSurface({
             onClick={(event) => event.stopPropagation()}
           >
             <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58]">
-              New Comment
+              New Message
             </p>
             <Textarea
               value={commentDraft}
               onChange={(event) => onCommentDraftChange(event.target.value)}
-              placeholder="Type your comment"
+              placeholder="Type your comparison message"
               className="mt-3 min-h-[90px] rounded-[16px] border border-[#dce6de] bg-[#f8fbf8] text-[13px]"
             />
             {commentError ? (
@@ -432,7 +432,7 @@ function ComparisonViewerSurface({
                 ) : (
                   <Send className="h-4 w-4" />
                 )}
-                Save Comment
+                Send Message
               </Button>
             </div>
           </div>
@@ -625,7 +625,7 @@ export function ProjectCompareWorkspace({
     const body = commentDraft.trim();
 
     if (!body) {
-      setCommentError("Enter a comment before saving.");
+      setCommentError("Enter a message before sending.");
       return;
     }
 
@@ -656,11 +656,12 @@ export function ProjectCompareWorkspace({
       setActiveCommentId(result.comment.id);
       setPendingComment(null);
       setCommentDraft("");
+      router.refresh();
     } catch (error) {
       setCommentError(
         error instanceof Error
           ? error.message
-          : "Unable to save the comparison comment right now.",
+          : "Unable to send the comparison message right now.",
       );
     } finally {
       setIsSavingComment(false);
