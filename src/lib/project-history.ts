@@ -998,7 +998,13 @@ export async function getProjectStageHistory(
       entry: mapComparisonEntry(comparison, submissionNumbers),
     })),
   ]
-    .sort((left, right) => right.createdAt - left.createdAt)
+    .sort((left, right) => {
+      const timeDifference = left.createdAt - right.createdAt;
+
+      return timeDifference !== 0
+        ? timeDifference
+        : left.entry.id.localeCompare(right.entry.id);
+    })
     .map((item) => item.entry);
 
   return {

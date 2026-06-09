@@ -134,6 +134,7 @@ type DisplayAttachmentRecord = ProjectAttachmentRecord & {
 type DisplayChatEntry = ProjectChatEntry & {
   attachments?: DisplayAttachmentRecord[];
   isOptimistic?: boolean;
+  localCreatedAtMs?: number;
   serverEntryId?: string;
 };
 
@@ -1488,6 +1489,7 @@ export function ProjectChatWorkspace({
   const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const stageInvoiceInputRef = useRef<HTMLInputElement | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const mentionDropdownRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -1581,11 +1583,22 @@ export function ProjectChatWorkspace({
     [visibleConfirmedComments, visibleOptimisticComments],
   );
   const displayedMessages = useMemo(
-    () => [
-      ...visibleOptimisticComments,
-      ...visibleConfirmedComments,
-      ...messages.filter((message) => !serverEntryIdsWithLocalOverrides.has(message.id)),
-    ],
+    () => {
+      const localMessages = [
+        ...visibleOptimisticComments,
+        ...visibleConfirmedComments,
+      ].sort(
+        (left, right) =>
+          (left.localCreatedAtMs ?? 0) - (right.localCreatedAtMs ?? 0),
+      );
+
+      return [
+        ...messages.filter(
+          (message) => !serverEntryIdsWithLocalOverrides.has(message.id),
+        ),
+        ...localMessages,
+      ];
+    },
     [
       messages,
       serverEntryIdsWithLocalOverrides,
@@ -1607,7 +1620,7 @@ export function ProjectChatWorkspace({
     () => displayedMessages.filter((entry) => entry.kind === "revision"),
     [displayedMessages],
   );
-  const latestRevisionMessage = revisionMessages[0] ?? null;
+  const latestRevisionMessage = revisionMessages.at(-1) ?? null;
   const latestRevisionEntryId = latestRevisionMessage
     ? getRevisionEntryId(latestRevisionMessage)
     : null;
@@ -1817,6 +1830,22 @@ export function ProjectChatWorkspace({
   );
   const reviewCompletionIsFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      chatBottomRef.current?.scrollIntoView({ block: "end" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    activeStage?.id,
+    displayedMessages,
+    stageStartSystemMessage,
+    pendingCommentFiles.length,
+    replyingToRevision?.revisionId,
+    composerError,
+    aiStatus,
+  ]);
 
   useEffect(() => {
     if (!mentionDropdownOpen) {
@@ -2789,6 +2818,7 @@ export function ProjectChatWorkspace({
         },
       }));
       setConfirmedComments((current) => [
+        ...current,
         {
           id: `confirmed-comment-${result.result.activityComment.id}`,
           serverEntryId: result.result.activityComment.id,
@@ -2800,8 +2830,8 @@ export function ProjectChatWorkspace({
           role: currentUserRoleLabel,
           body: result.result.activityComment.body,
           createdAt: "Just now",
+          localCreatedAtMs: Date.now(),
         },
-        ...current,
       ]);
       setAcceptBriefDialogOpen(false);
       showSuccessToast("Brief accepted. Stage timer started.");
@@ -2995,6 +3025,7 @@ export function ProjectChatWorkspace({
     setComposerError(null);
     setIsSendingComment(true);
     const optimisticCommentId = `optimistic-comment-${crypto.randomUUID()}`;
+    const localCreatedAtMs = Date.now();
     const filesToUpload = [...pendingCommentFiles];
     const startingSubmissionNumber =
       getStageSubmissionAttachments(displayedMessages).filter(
@@ -3016,6 +3047,7 @@ export function ProjectChatWorkspace({
       ),
       createdAt: "Uploading…",
       isOptimistic: true,
+      localCreatedAtMs,
       attachments: filesToUpload.map((pendingFile) => ({
         id: pendingFile.id,
         isSubmission: pendingFile.assetType === "STAGE_SUBMISSION",
@@ -3035,7 +3067,7 @@ export function ProjectChatWorkspace({
 
     if (filesToUpload.length > 0) {
       flushSync(() => {
-        setOptimisticComments((current) => [optimisticComment, ...current]);
+        setOptimisticComments((current) => [...current, optimisticComment]);
         setDraft("");
         setReplyingToRevision(null);
         setSelectedMentionTokens([]);
@@ -3044,7 +3076,7 @@ export function ProjectChatWorkspace({
         setIsSendingComment(false);
       });
     } else {
-      setOptimisticComments((current) => [optimisticComment, ...current]);
+      setOptimisticComments((current) => [...current, optimisticComment]);
     }
 
     try {
@@ -3268,6 +3300,7 @@ export function ProjectChatWorkspace({
             }
 
             setConfirmedComments((current) => [
+              ...current,
               {
                 id: `confirmed-comment-${preparePayload.commentId}`,
                 serverEntryId: preparePayload.commentId,
@@ -3280,6 +3313,7 @@ export function ProjectChatWorkspace({
                 body: body || "Attachment uploaded.",
                 mentions: uploadMentionTokens,
                 createdAt: "Just now",
+                localCreatedAtMs,
                 attachments: successfulUploads.map((result) => ({
                   id: result.attachmentId,
                   isSubmission: result.pendingFile.assetType === "STAGE_SUBMISSION",
@@ -3299,7 +3333,6 @@ export function ProjectChatWorkspace({
                       : null,
                 })),
               },
-              ...current,
             ]);
             setOptimisticComments((current) =>
               current.filter((entry) => entry.id !== optimisticCommentId),
@@ -3363,6 +3396,7 @@ export function ProjectChatWorkspace({
       setPendingCommentFiles([]);
 
       setConfirmedComments((current) => [
+        ...current,
         {
           id: `confirmed-comment-${commentResult.commentId}`,
           serverEntryId: commentResult.commentId,
@@ -3377,9 +3411,9 @@ export function ProjectChatWorkspace({
             mentionedUserIds.includes(mention.userId),
           ),
           createdAt: "Just now",
+          localCreatedAtMs,
           attachments: [],
         },
-        ...current,
       ]);
       setOptimisticComments((current) =>
         current.filter((entry) => entry.id !== optimisticCommentId),
@@ -3441,9 +3475,11 @@ export function ProjectChatWorkspace({
     setComposerError(null);
     setIsUploadingRevision(true);
     const optimisticRevisionId = `optimistic-revision-${crypto.randomUUID()}`;
+    const localCreatedAtMs = Date.now();
     const filesToUpload = [...pendingRevisionFiles];
 
     setOptimisticComments((current) => [
+      ...current,
       {
         id: optimisticRevisionId,
         kind: "revision",
@@ -3457,6 +3493,7 @@ export function ProjectChatWorkspace({
         body: summary,
         createdAt: "Uploading…",
         isOptimistic: true,
+        localCreatedAtMs,
         attachments: filesToUpload.map((pendingFile) => ({
           id: pendingFile.id,
           isSubmission: false,
@@ -3473,7 +3510,6 @@ export function ProjectChatWorkspace({
           progress: 0,
         })),
       },
-      ...current,
     ]);
 
     try {
@@ -3575,6 +3611,7 @@ export function ProjectChatWorkspace({
       }
 
       setConfirmedComments((current) => [
+        ...current,
         {
           id: `confirmed-revision-${revisionResult.revisionId}`,
           serverEntryId: revisionResult.revisionId,
@@ -3590,6 +3627,7 @@ export function ProjectChatWorkspace({
           role: currentUserRoleLabel,
           body: summary,
           createdAt: "Just now",
+          localCreatedAtMs,
           attachments: successfulUploads.map((result) => ({
             id: result.attachmentId,
             isSubmission: false,
@@ -3604,7 +3642,6 @@ export function ProjectChatWorkspace({
             isFavoritedByCurrentUser: false,
           })),
         },
-        ...current,
       ]);
 
       setOptimisticComments((current) =>
@@ -3701,6 +3738,7 @@ export function ProjectChatWorkspace({
         },
       }));
       setConfirmedComments((current) => [
+        ...current,
         {
           id: `confirmed-invoice-${result.attachmentId}`,
           kind: "system",
@@ -3711,8 +3749,8 @@ export function ProjectChatWorkspace({
           role: currentUserRoleLabel,
           body: `${currentUserDisplayName} uploaded invoice for ${stageName}.`,
           createdAt: "Just now",
+          localCreatedAtMs: Date.now(),
         },
-        ...current,
       ]);
       showSuccessToast("Invoice uploaded.");
       refreshHistory();
@@ -3771,6 +3809,7 @@ export function ProjectChatWorkspace({
       const nextReason = result.revision.rejectionReason ?? null;
       const reviewedBy = result.revision.reviewedBy ?? currentUserDisplayName;
       const reviewedAt = "Just now";
+      const localCreatedAtMs = Date.now();
 
       setRevisionReviewOverrides((current) => ({
         ...current,
@@ -3797,6 +3836,7 @@ export function ProjectChatWorkspace({
 
         if (result.revision.rejectionComment) {
           return [
+            ...nextEntries,
             {
               id: `confirmed-comment-${result.revision.rejectionComment.id}`,
               serverEntryId: result.revision.rejectionComment.id,
@@ -3809,8 +3849,8 @@ export function ProjectChatWorkspace({
               role: currentUserRoleLabel,
               body: `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.`,
               createdAt: "Just now",
+              localCreatedAtMs,
             },
-            ...nextEntries,
           ];
         }
 
@@ -3823,6 +3863,7 @@ export function ProjectChatWorkspace({
             : `${currentUserDisplayName} marked ${reviewRevisionLabel} as completed.`;
 
           return [
+            ...nextEntries,
             {
               id: `confirmed-system-${revisionEntryId}-${nextStatus}`,
               revisionId: reviewRevisionMessage.revisionId,
@@ -3834,8 +3875,8 @@ export function ProjectChatWorkspace({
               role: currentUserRoleLabel,
               body: systemBody,
               createdAt: "Just now",
+              localCreatedAtMs,
             },
-            ...nextEntries,
           ];
         }
 
@@ -3873,9 +3914,11 @@ export function ProjectChatWorkspace({
   }
 
   return (
-    <section className="space-y-6">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="space-y-4">
+    <section className="min-h-0 xl:h-[calc(100dvh-12rem)] xl:min-h-[620px] xl:overflow-hidden">
+      <div className="grid min-h-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex h-[calc(100dvh-12rem)] min-h-[520px] min-w-0 flex-col overflow-hidden xl:h-full xl:min-h-0">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+            <div className="space-y-4 pb-4">
           {isProjectCompleted ? (
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
@@ -4469,9 +4512,12 @@ export function ProjectChatWorkspace({
               ) : null}
             </div>
           ) : null}
+              <div ref={chatBottomRef} />
+            </div>
+          </div>
 
           {isProjectCompleted ? (
-            <Card className="sticky bottom-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
+            <Card className="mt-3 shrink-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
               <p className="text-[14px] font-semibold text-[#173120]">Project chat is locked.</p>
               <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
                 This project has been completed. Only final archived files and
@@ -4479,7 +4525,7 @@ export function ProjectChatWorkspace({
               </p>
             </Card>
           ) : (
-            <Card className="sticky bottom-0 rounded-[22px] bg-white/95 p-3 backdrop-blur">
+            <Card className="mt-3 shrink-0 rounded-[22px] bg-white/95 p-3 backdrop-blur">
               <input
                 ref={revisionFileInputRef}
                 type="file"
@@ -4642,7 +4688,7 @@ export function ProjectChatWorkspace({
                   className="h-auto w-full border-none bg-transparent p-0 text-[14px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
                 />
                 {mentionDropdownOpen ? (
-                  <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-20 overflow-hidden rounded-[22px] border border-[#dbe7dd] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.12)]">
+                  <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 z-20 overflow-hidden rounded-[22px] border border-[#dbe7dd] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.12)]">
                     <div className="border-b border-[#eef2ee] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-[#6a756d]">
                       Mention collaborators
                     </div>
@@ -4757,7 +4803,7 @@ export function ProjectChatWorkspace({
           )}
         </div>
 
-        <div className="space-y-4">
+        <aside className="no-scrollbar max-h-[calc(100dvh-12rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 xl:h-full xl:max-h-none xl:min-h-0">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">
@@ -4964,7 +5010,7 @@ export function ProjectChatWorkspace({
             }
             saving={collaboratorSaving}
           />
-        </div>
+        </aside>
       </div>
       <ProjectAssetsModal
         isOpen={projectAssetsModalOpen}
