@@ -1,8 +1,10 @@
 import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectCompareWorkspace } from "@/components/projects/project-compare-workspace";
+import { ProjectCompareLoadingShell } from "@/components/projects/project-route-loading-shells";
 import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { getComparisonCommentsForPair } from "@/lib/comparison";
@@ -12,25 +14,12 @@ import {
 } from "@/lib/comparison-utils";
 import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { getProjectStageHistory } from "@/lib/project-history";
-import { getProjectById } from "@/lib/projects";
+import { getProjectById, getProjectShellById } from "@/lib/projects";
 
-export default async function ProjectComparePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ slug: string }>;
-  searchParams: Promise<{ stage?: string; base?: string; compare?: string }>;
-}) {
-  const { slug } = await params;
-  const { stage, base, compare } = await searchParams;
-  const user = await requireUser();
-  const project = await getProjectById(slug, user);
+type ProjectComparePageUser = Awaited<ReturnType<typeof requireUser>>;
 
-  if (!project) {
-    notFound();
-  }
-
-  const projectContext = {
+function getProjectPermissionContext(project: NonNullable<Awaited<ReturnType<typeof getProjectShellById>>>) {
+  return {
     createdById: project.ownerId,
     executorUserId: project.executorUserId ?? null,
     executors: project.executors.map((executor) => ({
@@ -41,6 +30,28 @@ export default async function ProjectComparePage({
       userId: collaborator.id,
     })),
   };
+}
+
+async function ProjectCompareDeferredContent({
+  slug,
+  stage,
+  base,
+  compare,
+  user,
+}: {
+  slug: string;
+  stage?: string;
+  base?: string;
+  compare?: string;
+  user: ProjectComparePageUser;
+}) {
+  const project = await getProjectById(slug, user);
+
+  if (!project) {
+    notFound();
+  }
+
+  const projectContext = getProjectPermissionContext(project);
 
   if (!hasProjectPermission(user, projectContext, "compare.view")) {
     notFound();
@@ -90,6 +101,72 @@ export default async function ProjectComparePage({
       : [];
 
   return (
+    <ProjectCompareWorkspace
+      key={`${history.activeStageId ?? stage ?? "no-stage"}:${baseSubmission?.id ?? "no-base"}:${compareSubmission?.id ?? "no-compare"}`}
+      project={project}
+      stageId={history.activeStageId ?? stage}
+      history={history}
+      initialBaseAttachmentId={baseSubmission?.id ?? null}
+      initialCompareAttachmentId={compareSubmission?.id ?? null}
+      initialComments={comparisonComments}
+      canManageCollaborators={canManageCollaborators}
+      canManageChatVisibility={canManageChatVisibility}
+      currentUserId={user.id}
+    />
+  );
+}
+
+async function ProjectCompareShellContent({
+  slug,
+  stage,
+  base,
+  compare,
+  userPromise,
+}: {
+  slug: string;
+  stage?: string;
+  base?: string;
+  compare?: string;
+  userPromise: Promise<ProjectComparePageUser>;
+}) {
+  const user = await userPromise;
+  const project = await getProjectShellById(slug, user);
+
+  if (!project) {
+    notFound();
+  }
+
+  const projectContext = getProjectPermissionContext(project);
+
+  if (!hasProjectPermission(user, projectContext, "compare.view")) {
+    notFound();
+  }
+
+  return (
+    <Suspense fallback={<ProjectCompareLoadingShell project={project} stageId={stage} />}>
+      <ProjectCompareDeferredContent
+        slug={slug}
+        stage={stage}
+        base={base}
+        compare={compare}
+        user={user}
+      />
+    </Suspense>
+  );
+}
+
+export default async function ProjectComparePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ stage?: string; base?: string; compare?: string }>;
+}) {
+  const { slug } = await params;
+  const { stage, base, compare } = await searchParams;
+  const userPromise = requireUser();
+
+  return (
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search for Projects...",
@@ -104,18 +181,15 @@ export default async function ProjectComparePage({
         ),
       }}
     >
-      <ProjectCompareWorkspace
-        key={`${history.activeStageId ?? stage ?? "no-stage"}:${baseSubmission?.id ?? "no-base"}:${compareSubmission?.id ?? "no-compare"}`}
-        project={project}
-        stageId={history.activeStageId ?? stage}
-        history={history}
-        initialBaseAttachmentId={baseSubmission?.id ?? null}
-        initialCompareAttachmentId={compareSubmission?.id ?? null}
-        initialComments={comparisonComments}
-        canManageCollaborators={canManageCollaborators}
-        canManageChatVisibility={canManageChatVisibility}
-        currentUserId={user.id}
-      />
+      <Suspense fallback={<ProjectCompareLoadingShell stageId={stage} />}>
+        <ProjectCompareShellContent
+          slug={slug}
+          stage={stage}
+          base={base}
+          compare={compare}
+          userPromise={userPromise}
+        />
+      </Suspense>
     </DashboardLayout>
   );
 }

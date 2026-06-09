@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   MotionItem,
   MotionStaggerGroup,
@@ -25,9 +26,48 @@ import type { ProjectCompletionWorkflowRecord } from "@/lib/project-completion";
 
 type ProjectDetailWorkspaceProps = {
   project: ProjectFlowRecord;
-  completionSummary: ProjectCompletionSummary;
+  completionSummary?: ProjectCompletionSummary | null;
   completionWorkflow: ProjectCompletionWorkflowRecord | null;
+  assetsLoading?: boolean;
+  completionLoading?: boolean;
 };
+
+function DetailAssetsSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div
+          key={index}
+          className="rounded-[14px] border border-[#dce6dd] bg-[#fbfcfa] px-3 py-2.5"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-3.5 w-10/12 rounded-full" />
+              <Skeleton className="h-2.5 w-8/12 rounded-full" />
+            </div>
+            <div className="flex shrink-0 gap-1">
+              <Skeleton className="size-7 rounded-full" />
+              <Skeleton className="size-7 rounded-full" />
+              <Skeleton className="size-7 rounded-full" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CompletionLoadingCard() {
+  return (
+    <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+      <CardContent className="space-y-3 px-5 py-5">
+        <Skeleton className="h-5 w-48 rounded-full" />
+        <Skeleton className="h-3.5 w-10/12 rounded-full" />
+        <Skeleton className="h-3.5 w-7/12 rounded-full" />
+      </CardContent>
+    </Card>
+  );
+}
 
 function getStageCardClasses(stage: ProjectStageRecord) {
   switch (stage.status) {
@@ -83,8 +123,12 @@ export function ProjectDetailWorkspace({
   project,
   completionSummary,
   completionWorkflow,
+  assetsLoading = false,
+  completionLoading = false,
 }: ProjectDetailWorkspaceProps) {
   const stageGridClasses = "grid-cols-[repeat(auto-fit,minmax(180px,210px))]";
+  const shouldShowCompletionLoading =
+    completionLoading && project.statusLabel.toLowerCase() === "completed";
 
   return (
     <section className="mx-auto w-full max-w-[1140px] lg:h-[calc(100dvh-12rem)] lg:overflow-hidden">
@@ -206,7 +250,9 @@ export function ProjectDetailWorkspace({
             )}
           </Card>
 
-          {completionSummary.isCompleted ? (
+          {shouldShowCompletionLoading ? (
+            <CompletionLoadingCard />
+          ) : completionSummary?.isCompleted ? (
             <MotionStaggerGroup className="space-y-4" stagger={0.04}>
               <MotionItem y={10}>
                 <CompletedProjectArchiveSummaryCard completionSummary={completionSummary} />
@@ -280,7 +326,9 @@ export function ProjectDetailWorkspace({
               <CardTitle className="text-[17px] font-semibold tracking-tight">Project Assets</CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4">
-              {project.attachments.length > 0 ? (
+              {assetsLoading ? (
+                <DetailAssetsSkeleton />
+              ) : project.attachments.length > 0 ? (
                 <div className="space-y-2">
                   {project.attachments.map((attachment) => (
                     <div

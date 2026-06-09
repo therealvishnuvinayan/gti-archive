@@ -2115,6 +2115,91 @@ export async function getProjectById(
   );
 }
 
+export async function getProjectShellById(
+  id: string,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
+) {
+  const project = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findUnique({
+          where: { id },
+          include: {
+            createdBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            executorUser: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                collaboratorType: true,
+              },
+            },
+            executors: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
+            stages: {
+              include: {
+                startedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+            collaborators: {
+              orderBy: {
+                createdAt: "asc",
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ),
+    ["project-shell-by-id", id, currentUser.id, currentUser.role],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
+
+  if (!project) {
+    return null;
+  }
+
+  if (!canAccessProjectRecord(project, currentUser)) {
+    return null;
+  }
+
+  return mapProjectToFlow(
+    {
+      ...project,
+      attachments: [],
+    },
+    currentUser,
+  );
+}
+
 export async function getProjectEditorById(
   id: string,
   currentUser: BudgetAccessUser & ProjectAccessUser,
