@@ -16,11 +16,13 @@ import {
   CheckCircle2,
   Download,
   FileText,
+  GitCompare,
+  Info,
   Languages,
   Loader2,
   Mic,
   Paperclip,
-  Plus,
+  Send,
   Square,
   Upload,
   X,
@@ -665,26 +667,122 @@ function getRevisionStatusMeta(status: RevisionReviewState) {
   }
 }
 
+function getSystemActivityMeta(message: DisplayChatEntry) {
+  const text = `${message.title ?? ""} ${message.body}`.toLowerCase();
+
+  if (
+    text.includes("reject") ||
+    text.includes("revision requested") ||
+    text.includes("failed") ||
+    text.includes("cannot")
+  ) {
+    return {
+      label: "Action required",
+      Icon: Info,
+      cardClassName: "border-[#f0d0cc] bg-[#fff8f6]",
+      iconClassName: "bg-[#fff0ef] text-[#c14f46]",
+      titleClassName: "text-[#8f3832]",
+      bodyClassName: "text-[#5f403c]",
+    };
+  }
+
+  if (
+    text.includes("waiting") ||
+    text.includes("pending") ||
+    text.includes("not available")
+  ) {
+    return {
+      label: "Waiting",
+      Icon: Info,
+      cardClassName: "border-[#efd9af] bg-[#fffaf0]",
+      iconClassName: "bg-[#fff3d6] text-[#b77420]",
+      titleClassName: "text-[#8a5718]",
+      bodyClassName: "text-[#5d4a2f]",
+    };
+  }
+
+  if (
+    text.includes("accepted") ||
+    text.includes("approved") ||
+    text.includes("completed") ||
+    text.includes("uploaded") ||
+    text.includes("started")
+  ) {
+    return {
+      label: "Workflow update",
+      Icon: CheckCircle2,
+      cardClassName: "border-[#c8e1ce] bg-[#f4fbf5]",
+      iconClassName: "bg-[#e2f4e6] text-brand",
+      titleClassName: "text-[#173120]",
+      bodyClassName: "text-[#405044]",
+    };
+  }
+
+  return {
+    label: "Project update",
+    Icon: Info,
+    cardClassName: "border-[#d3e1ea] bg-[#f6fbff]",
+    iconClassName: "bg-[#e7f3fb] text-[#3e78a6]",
+    titleClassName: "text-[#253d4f]",
+    bodyClassName: "text-[#435666]",
+  };
+}
+
 function SystemActivityCard({ message }: { message: DisplayChatEntry }) {
+  const meta = getSystemActivityMeta(message);
+  const Icon = meta.Icon;
+
   return (
     <div className="flex justify-center">
-      <div className="w-full max-w-[760px] rounded-[16px] border border-[#cfe3d2] bg-[#f7fbf1] px-4 py-3 shadow-[0_10px_24px_rgba(23,39,28,0.05)]">
+      <div
+        className={`w-full max-w-full rounded-[18px] border px-4 py-3 shadow-[0_12px_28px_rgba(23,39,28,0.05)] sm:w-[78%] sm:max-w-[820px] ${meta.cardClassName}`}
+      >
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#e4f3e7] text-brand">
-            <CheckCircle2 className="h-4 w-4" />
+          <div className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${meta.iconClassName}`}>
+            <Icon className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-[#173120]">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="rounded-full bg-white/65 px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
+                {meta.label}
+              </span>
+              <span className="text-[10px] font-semibold text-[#7a837b]">
+                {message.createdAt}
+              </span>
+            </div>
+            <p className={`mt-1 text-[13px] font-[800] ${meta.titleClassName}`}>
               {message.title ?? "Project activity"}
             </p>
-            <p className="mt-1 text-[12px] leading-5 text-[#405044]">
+            <p className={`mt-1 text-[12px] leading-5 ${meta.bodyClassName}`}>
               {message.body}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-wide text-[#6c776e]">
               <span>{message.author}</span>
-              <span aria-hidden="true">·</span>
-              <span>{message.createdAt}</span>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowNoticeCard({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="flex justify-center">
+      <div className="w-full max-w-full rounded-[18px] border border-[#efd9af] bg-[#fffaf0] px-4 py-3 shadow-[0_12px_28px_rgba(23,39,28,0.05)] sm:w-[78%] sm:max-w-[820px]">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fff3d6] text-[#b77420]">
+            <Info className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[13px] font-[800] text-[#8a5718]">{title}</p>
+            <p className="mt-1 text-[12px] leading-5 text-[#5d4a2f]">{body}</p>
           </div>
         </div>
       </div>
@@ -696,14 +794,23 @@ function AttachmentHistoryList({
   attachments,
   compact = false,
   actionsDisabled = false,
+  tone = "workflow",
 }: {
   attachments: DisplayAttachmentRecord[];
   compact?: boolean;
   actionsDisabled?: boolean;
+  tone?: "sent" | "received" | "workflow";
 }) {
   if (attachments.length === 0) {
     return null;
   }
+
+  const attachmentCardClassName =
+    tone === "sent"
+      ? "border-[#c7e3ce] bg-white/78"
+      : tone === "received"
+        ? "border-[#e1e9e2] bg-[#fbfcfa]"
+        : "border-[#e1e9e2] bg-white/92";
 
   return (
     <div className={compact ? "mt-3 min-w-0 max-w-full space-y-2" : "mt-3 min-w-0 max-w-full space-y-2.5"}>
@@ -716,7 +823,7 @@ function AttachmentHistoryList({
           return (
             <div
               key={attachment.id}
-              className={`w-full min-w-0 max-w-full overflow-hidden rounded-[14px] border border-white/15 bg-white/92 px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${
+              className={`w-full min-w-0 max-w-full overflow-hidden rounded-[14px] border px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${attachmentCardClassName} ${
                 compact ? "sm:max-w-[360px]" : ""
               }`}
             >
@@ -1719,17 +1826,20 @@ export function ProjectChatWorkspace({
   const projectBriefAttachments = project.attachments;
   const stageBriefAttachments = activeStage?.briefAttachments ?? [];
   const canReviewSubmissions = project.ownerId === currentUserId;
-  const stageExecutionStatus = isStageCompleted
-    ? "Completed"
-    : hasAcceptedBrief
-      ? "In progress"
-      : "Waiting for Main Executor to accept brief";
   const hasRevisionEntries = displayedMessages.some((message) => message.kind === "revision");
   const hasBriefAcceptedSystemMessage = displayedMessages.some(
     (message) =>
       message.kind === "system" &&
       (message.title ?? "").toLowerCase() === "brief accepted",
   );
+  const hasAcceptedBriefInTimeline =
+    hasAcceptedBrief || hasBriefAcceptedSystemMessage;
+  const showBriefAcceptancePrompt = !hasAcceptedBriefInTimeline;
+  const stageExecutionStatus = isStageCompleted
+    ? "Completed"
+    : hasAcceptedBriefInTimeline
+      ? "In progress"
+      : "Waiting for Main Executor to accept brief";
   const stageStartSystemMessage = useMemo<DisplayChatEntry | null>(() => {
     if (!activeStage?.actualStartedAtValue || hasBriefAcceptedSystemMessage) {
       return null;
@@ -3917,8 +4027,8 @@ export function ProjectChatWorkspace({
     <section className="min-h-0 xl:h-[calc(100dvh-12rem)] xl:min-h-[620px] xl:overflow-hidden">
       <div className="grid min-h-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex h-[calc(100dvh-12rem)] min-h-[520px] min-w-0 flex-col overflow-hidden xl:h-full xl:min-h-0">
-          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-            <div className="space-y-4 pb-4">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f8fbf8] px-3 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5">
+            <div className="mx-auto flex w-full max-w-[980px] flex-col gap-3 pb-3">
           {isProjectCompleted ? (
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
@@ -4076,12 +4186,16 @@ export function ProjectChatWorkspace({
                   </Button>
                 </div>
               ) : showPendingRevisionReviewStatus ? (
-                <div className="mt-5 flex justify-center">
-                  <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-semibold text-[#9d651b]">
-                    {pendingRevisionReviewMessage}
-                  </div>
+                <div className="mt-5">
+                  <WorkflowNoticeCard
+                    title="Pending review"
+                    body={pendingRevisionReviewMessage}
+                  />
                 </div>
-              ) : !isProjectCompleted && !isStageCompleted && isMainProjectExecutor ? (
+              ) : !isProjectCompleted &&
+                !isStageCompleted &&
+                isMainProjectExecutor &&
+                showBriefAcceptancePrompt ? (
                 <div className="mt-5 flex justify-center">
                   <Button
                     type="button"
@@ -4093,11 +4207,12 @@ export function ProjectChatWorkspace({
                     Accept Brief
                   </Button>
                 </div>
-              ) : !isProjectCompleted && !hasAcceptedBrief ? (
-                <div className="mt-5 flex justify-center">
-                  <div className="inline-flex items-center rounded-full bg-[#f4f7f4] px-3 py-2 text-[12px] font-medium text-[#5d675f]">
-                    Waiting for Main Executor to accept brief.
-                  </div>
+              ) : !isProjectCompleted && showBriefAcceptancePrompt ? (
+                <div className="mt-5">
+                  <WorkflowNoticeCard
+                    title="Waiting for Main Executor"
+                    body="Waiting for Main Executor to accept brief."
+                  />
                 </div>
               ) : null}
             </Card>
@@ -4131,40 +4246,47 @@ export function ProjectChatWorkspace({
                   effectiveRevisionStatus === "PENDING_REVIEW";
 
                 return (
-                  <div key={message.id} className="space-y-3">
-                    <Card className="min-w-0 flex-1 overflow-hidden rounded-[20px] border-none bg-[linear-gradient(135deg,#2f8d5d,#476f5a)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-                      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,220px)_minmax(0,1fr)] xl:items-center">
-                        <div className="min-w-0 max-w-[220px]">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h1 className="text-[18px] font-semibold text-[#95d867]">
-                              {revisionLabel}
-                            </h1>
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${revisionStatusMeta.badgeClassName}`}
-                            >
-                              {revisionStatusMeta.label}
-                            </span>
+                  <div key={message.id} className="mx-auto w-full max-w-full space-y-3 sm:max-w-[82%]">
+                    <Card className="min-w-0 overflow-hidden rounded-[22px] border border-[#cfe3d2] bg-white shadow-[0_16px_36px_rgba(18,35,23,0.07)]">
+                      <div className="border-b border-[#e4ece5] bg-[linear-gradient(135deg,#f7fbf6,#ffffff)] px-4 py-3.5 sm:px-5">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e4f3e7] text-brand">
+                            <Upload className="h-4 w-4" />
                           </div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <ChatAvatar
-                              name={message.author}
-                              src={message.authorAvatarSrc}
-                            />
-                            <div>
-                              <p className="text-[12px] font-semibold">{message.author}</p>
-                              <p className="text-[10px] text-[#93d68a]">{message.role}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-[#edf7ef] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
+                                Work submitted
+                              </span>
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${revisionStatusMeta.badgeClassName}`}
+                              >
+                                {revisionStatusMeta.label}
+                              </span>
+                            </div>
+                            <h2 className="mt-2 text-[16px] font-[800] tracking-tight text-[#173120]">
+                              {revisionLabel}
+                            </h2>
+                            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-[#6f786f]">
+                              <span>Submitted by {message.author}</span>
+                              <span aria-hidden="true">·</span>
+                              <span>{message.role}</span>
+                              <span aria-hidden="true">·</span>
+                              <span>{message.createdAt}</span>
                             </div>
                           </div>
-                          <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-white/65">
-                            Submitted {message.createdAt}
-                          </p>
-                          <p className="mt-3 text-[12px] leading-[1.45] text-white/90">
+                        </div>
+                      </div>
+
+                      <div className="grid min-w-0 gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
+                        <div className="min-w-0">
+                          <p className="whitespace-pre-wrap text-[13px] leading-6 text-[#253028]">
                             {message.body}
                           </p>
                           {effectiveRejectionReason ? (
-                            <div className="mt-4 rounded-[18px] border border-[#ffd3ce] bg-[#fff7f6] px-4 py-3 text-[#6f2721] shadow-[0_12px_28px_rgba(63,22,17,0.16)]">
-                              <p className="text-[12px] font-semibold text-[#a73831]">
-                                Revision Request for {revisionLabel}
+                            <div className="mt-4 rounded-[18px] border border-[#f0d0cc] bg-[#fff8f6] px-4 py-3 text-[#6f2721]">
+                              <p className="text-[12px] font-[800] text-[#a73831]">
+                                Revision requested
                               </p>
                               <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#b7655d]">
                                 {effectiveReviewedBy
@@ -4179,18 +4301,20 @@ export function ProjectChatWorkspace({
                             </div>
                           ) : null}
                         </div>
-
                         {message.attachments?.length ? (
-                          <div className="w-full min-w-0 max-w-full justify-self-stretch xl:max-w-[380px]">
-                            <Card className="w-full min-w-0 overflow-hidden rounded-[16px] border border-white/25 bg-[#1f5f40]/75 p-3 shadow-[0_10px_24px_rgba(13,39,27,0.28)]">
-                              <p className="text-center text-[11px] font-semibold text-white">
-                                Attachments
+                          <div className="min-w-0 rounded-[18px] border border-[#e1e9e2] bg-[#f8fbf8] p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
+                                Submitted files
                               </p>
-                              <AttachmentHistoryList
-                                attachments={message.attachments}
-                                actionsDisabled={isProjectCompleted}
-                              />
-                            </Card>
+                              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-[#6f786f]">
+                                {message.attachments.length}
+                              </span>
+                            </div>
+                            <AttachmentHistoryList
+                              attachments={message.attachments}
+                              actionsDisabled={isProjectCompleted}
+                            />
                           </div>
                         ) : null}
                       </div>
@@ -4233,8 +4357,11 @@ export function ProjectChatWorkspace({
                           </Button>
                         ) : null}
                         {isLatestRevision && showPendingRevisionReviewStatus ? (
-                          <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-semibold text-[#9d651b]">
-                            {pendingRevisionReviewMessage}
+                          <div className="w-full">
+                            <WorkflowNoticeCard
+                              title="Pending review"
+                              body={pendingRevisionReviewMessage}
+                            />
                           </div>
                         ) : null}
                         {isLatestRevision && isProjectOwner && !isFinalStage ? (
@@ -4286,13 +4413,13 @@ export function ProjectChatWorkspace({
                 return (
                   <Card
                     key={message.id}
-                    className="overflow-hidden rounded-[20px] border border-[#d9e6dc] bg-[linear-gradient(135deg,#f7fbf7,#ffffff)] p-4 shadow-[0_12px_30px_rgba(18,35,23,0.06)]"
+                    className="mx-auto w-full max-w-full overflow-hidden rounded-[22px] border border-[#d3e1ea] bg-[linear-gradient(135deg,#f7fbff,#ffffff)] p-4 shadow-[0_14px_34px_rgba(18,35,23,0.06)] sm:max-w-[82%]"
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#edf7ef] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
-                            <FileText className="h-3.5 w-3.5" />
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f3fb] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#3e78a6]">
+                            <GitCompare className="h-3.5 w-3.5" />
                             Comparison submitted
                           </span>
                           <span className="text-[11px] font-[600] text-[#7a837b]">
@@ -4332,9 +4459,9 @@ export function ProjectChatWorkspace({
                           ].map((item) => (
                             <div
                               key={item.label}
-                              className="min-w-0 rounded-[16px] border border-[#e1e9e2] bg-white px-3 py-2.5"
+                              className="min-w-0 rounded-[16px] border border-[#dbe8ef] bg-white px-3 py-2.5"
                             >
-                              <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#7a837b]">
+                              <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#668092]">
                                 {item.label} · {item.submission}
                               </p>
                               <p className="mt-1 truncate text-[12px] font-[700] text-[#1b241e]">
@@ -4368,12 +4495,18 @@ export function ProjectChatWorkspace({
                 const isCurrentUserMessage = message.authorId
                   ? message.authorId === currentUserId
                   : message.author === currentUserDisplayName;
+                const hasAttachments = Boolean(message.attachments?.length);
+                const hasSubmissionAttachment =
+                  message.attachments?.some((attachment) => attachment.isSubmission) ?? false;
+                const attachmentLabel = hasSubmissionAttachment
+                  ? "Submission uploaded"
+                  : "Attachment uploaded";
                 const bubbleClassName = linkedRevisionLabel
                   ? isCurrentUserMessage
-                    ? "rounded-[18px] rounded-br-[6px] border border-[#b9dcc2] bg-[#eaf7ed] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
-                    : "rounded-[18px] rounded-bl-[6px] border border-[#cfe3d2] bg-[#f7fbf6] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.05)]"
+                    ? "rounded-[18px] rounded-br-[6px] border border-[#abd7b6] bg-[#f1fbf3] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
+                    : "rounded-[18px] rounded-bl-[6px] border border-[#d7e5d9] bg-white p-3 shadow-[0_10px_24px_rgba(19,28,22,0.05)]"
                   : isCurrentUserMessage
-                    ? "rounded-[18px] rounded-br-[6px] border border-[#c7e5cf] bg-[#edf8ef] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
+                    ? "rounded-[18px] rounded-br-[6px] border border-[#c3e2cb] bg-[#edf8ef] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
                     : "rounded-[18px] rounded-bl-[6px] border border-[#e2e9e2] bg-white p-3 shadow-[0_10px_24px_rgba(19,28,22,0.05)]";
 
                 return (
@@ -4382,7 +4515,7 @@ export function ProjectChatWorkspace({
                     className={`flex w-full ${isCurrentUserMessage ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`flex min-w-0 max-w-[94%] items-end gap-2 sm:max-w-[78%] lg:max-w-[68%] ${
+                      className={`flex min-w-0 max-w-[94%] items-end gap-2 sm:max-w-[64%] ${
                         isCurrentUserMessage ? "flex-row-reverse" : "flex-row"
                       }`}
                     >
@@ -4397,14 +4530,27 @@ export function ProjectChatWorkspace({
                       ) : null}
                       <Card className={`min-w-0 flex-1 ${bubbleClassName}`}>
                         {linkedRevisionLabel ? (
-                          <div
-                            className={`mb-2 inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                              isCurrentUserMessage
-                                ? "bg-white/75 text-[#2f8d5d]"
-                                : "bg-[#e8f4ea] text-brand"
-                            }`}
-                          >
-                            Comment on {linkedRevisionLabel}
+                          <div className="mb-2 rounded-[14px] border border-[#d7e7da] bg-white/70 px-3 py-2">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] ${
+                                  isCurrentUserMessage
+                                    ? "bg-[#e4f3e7] text-brand"
+                                    : "bg-[#edf7ef] text-brand"
+                                }`}
+                              >
+                                {linkedRevisionLabel}
+                              </span>
+                              <span className="text-[11px] font-[800] text-[#253028]">
+                                Comment on revision
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+                        {hasAttachments && !linkedRevisionLabel ? (
+                          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/75 px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
+                            <Paperclip className="h-3.5 w-3.5" />
+                            {attachmentLabel}
                           </div>
                         ) : null}
                         <div
@@ -4448,6 +4594,7 @@ export function ProjectChatWorkspace({
                             attachments={message.attachments}
                             compact
                             actionsDisabled={isProjectCompleted}
+                            tone={isCurrentUserMessage ? "sent" : "received"}
                           />
                         ) : null}
                       </Card>
@@ -4463,7 +4610,7 @@ export function ProjectChatWorkspace({
               {!isProjectCompleted &&
               !isStageCompleted &&
               isMainProjectExecutor &&
-              !hasAcceptedBrief ? (
+              showBriefAcceptancePrompt ? (
                 <>
                   <Button
                     type="button"
@@ -4498,16 +4645,22 @@ export function ProjectChatWorkspace({
                   Submit Work
                 </Button>
               ) : showPendingRevisionReviewStatus ? (
-                <div className="inline-flex items-center rounded-full bg-[#fff8eb] px-3 py-2 text-[12px] font-semibold text-[#9d651b]">
-                  {pendingRevisionReviewMessage}
+                <div className="w-full">
+                  <WorkflowNoticeCard
+                    title="Pending review"
+                    body={pendingRevisionReviewMessage}
+                  />
                 </div>
               ) : null}
               {!isProjectCompleted &&
               !isStageCompleted &&
               !isMainProjectExecutor &&
-              !hasAcceptedBrief ? (
-                <div className="inline-flex items-center rounded-full bg-[#f4f7f4] px-3 py-2 text-[12px] font-medium text-[#5d675f]">
-                  Waiting for Main Executor to accept brief.
+              showBriefAcceptancePrompt ? (
+                <div className="w-full">
+                  <WorkflowNoticeCard
+                    title="Waiting for Main Executor"
+                    body="Waiting for Main Executor to accept brief."
+                  />
                 </div>
               ) : null}
             </div>
@@ -4517,7 +4670,7 @@ export function ProjectChatWorkspace({
           </div>
 
           {isProjectCompleted ? (
-            <Card className="mt-3 shrink-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
+            <Card className="mx-auto mt-2 w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
               <p className="text-[14px] font-semibold text-[#173120]">Project chat is locked.</p>
               <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
                 This project has been completed. Only final archived files and
@@ -4525,7 +4678,7 @@ export function ProjectChatWorkspace({
               </p>
             </Card>
           ) : (
-            <Card className="mt-3 shrink-0 rounded-[22px] bg-white/95 p-3 backdrop-blur">
+            <Card className="mx-auto mt-2 w-full max-w-[980px] shrink-0 rounded-[26px] border border-[#dfe8df] bg-white/95 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur">
               <input
                 ref={revisionFileInputRef}
                 type="file"
@@ -4628,7 +4781,7 @@ export function ProjectChatWorkspace({
 
               <div
                 ref={mentionDropdownRef}
-                className="relative flex items-center gap-3 rounded-full border border-[#e2e7e2] px-4 py-3"
+                className="relative flex items-center gap-3 rounded-full border border-[#dde6dd] bg-[#fbfcfa] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
               >
                 <input
                   ref={draftInputRef}
@@ -4787,13 +4940,13 @@ export function ProjectChatWorkspace({
                       void handleSendComment();
                     }}
                     size="sm"
-                    className="text-[12px]"
+                    className="rounded-full px-4 text-[12px]"
                     disabled={isSendingComment || !canSendComment}
                   >
                     {isSendingComment ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Plus className="h-3.5 w-3.5" />
+                      <Send className="h-3.5 w-3.5" />
                     )}
                     Send
                   </Button>
