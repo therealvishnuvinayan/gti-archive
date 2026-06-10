@@ -1219,7 +1219,7 @@ export function SettingsWorkspace({
                 >
                   <Link href="/users">
                     <UsersRound className="h-4 w-4" />
-                    Open Users
+                    Open Users & Permissions
                   </Link>
                 </Button>
               }

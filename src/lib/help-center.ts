@@ -241,7 +241,8 @@ export const helpTopics: HelpTopic[] = [
   {
     id: "topic-user-permissions",
     title: "User Permissions",
-    description: "Manage user role assignments and global permission profiles safely from the Users page.",
+    description:
+      "Manage user role assignments and global permission profiles safely from Users & Permissions.",
     sectionId: "user-permissions",
     icon: ShieldCheck,
     keywords: ["user permissions", "manage permissions", "roles", "collaborator type", "permission profiles"],
@@ -428,9 +429,17 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-user-permissions",
     title: "How to manage User Permissions",
-    description: "Use the Users page to assign roles and maintain global permission profiles without per-user overrides.",
+    description:
+      "Use Users & Permissions to assign roles and maintain global permission profiles without per-user overrides.",
     sectionId: "user-permissions",
-    keywords: ["user permissions", "manage permissions", "users page", "roles", "collaborator type"],
+    keywords: [
+      "user permissions",
+      "manage permissions",
+      "users page",
+      "users and permissions",
+      "roles",
+      "collaborator type",
+    ],
   },
   {
     id: "guide-account-access",
@@ -562,7 +571,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "How to use navigation",
         items: [
-          "Use the sidebar to move between Dashboard, Projects, Calendar, Collaboration, Notifications, Library, Archives, Settings, and Help.",
+          "Use the sidebar to move between Dashboard, Projects, Calendar, Collaboration, Users & Permissions, Notifications, Library, Archives, Settings, and Help.",
           "Use the top notification bell to review recent workflow alerts and open the full notifications page.",
           "Treat the Dashboard as an overview, then open the relevant module when you need to act.",
         ],
@@ -892,11 +901,20 @@ export const helpSections: HelpSection[] = [
     eyebrow: "Access Administration",
     title: "User Permissions",
     summary:
-      "User Permissions are managed from the Users page by assigning user roles, assigning collaborator types, and editing global permission profiles.",
-    keywords: ["user permissions", "manage permissions", "users page", "roles", "collaborator type", "permission profiles", "hard rules"],
+      "User Permissions are managed from Users & Permissions by assigning user roles, assigning collaborator types, and editing global permission profiles.",
+    keywords: [
+      "user permissions",
+      "manage permissions",
+      "users page",
+      "users and permissions",
+      "roles",
+      "collaborator type",
+      "permission profiles",
+      "hard rules",
+    ],
     blocks: [
       {
-        title: "What the Users page controls",
+        title: "What Users & Permissions controls",
         items: [
           "User role assignment: SUPER_ADMIN, ADMIN, or COLLABORATOR.",
           "Collaborator type assignment, such as GTI internal client, sister company internal client, freelancer, agency, vendor, or client of GTI.",
@@ -929,7 +947,7 @@ export const helpSections: HelpSection[] = [
         title: "Recommended admin workflow",
         ordered: true,
         items: [
-          "Open Users and confirm the person has the correct role and collaborator type.",
+          "Open Users & Permissions and confirm the person has the correct role and collaborator type.",
           "Open Manage Permissions and choose the relevant role profile or collaborator type profile.",
           "Search for the permission key or select the permission group, then enable or disable the capability.",
           "Save the profile and let active sessions refresh. The app also refreshes permission-sensitive caches.",
@@ -1153,7 +1171,7 @@ export const helpSections: HelpSection[] = [
     eyebrow: "Administration",
     title: "Settings, Users & master data",
     summary:
-      "Settings covers personal profile and password changes, while administrative setup lives in project master data, the Users page, and Manage Permissions.",
+      "Settings covers personal profile and password changes, while administrative setup lives in project master data, Users & Permissions, and Manage Permissions.",
     keywords: ["settings", "users", "master data", "categories", "tags", "currencies", "change password"],
     blocks: [
       {
@@ -1179,7 +1197,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "Users and permission profiles",
         items: [
-          "The Users page is for user directory management and is intended for super-admin oversight.",
+          "Users & Permissions is for user directory management and is intended for super-admin oversight.",
           "Manage Permissions defines global capabilities by role and collaborator type rather than by editing every user one by one.",
           "Use permission profiles to scale safely when many collaborators need consistent access patterns.",
         ],
