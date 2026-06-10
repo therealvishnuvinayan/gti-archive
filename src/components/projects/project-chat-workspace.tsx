@@ -677,9 +677,9 @@ type TimelineAlignment = "left" | "right";
 type TimelineWidth = "compact" | "medium" | "submission" | "wide";
 
 const timelineWidthClassNames: Record<TimelineWidth, string> = {
-  compact: "w-full max-w-[94%] sm:max-w-[64%]",
+  compact: "w-full max-w-[94%] sm:max-w-[66%]",
   medium: "w-full max-w-[96%] sm:max-w-[70%]",
-  submission: "w-full max-w-[96%] sm:max-w-[74%] xl:max-w-[720px]",
+  submission: "w-full max-w-[96%] sm:max-w-[72%] xl:max-w-[700px]",
   wide: "w-full max-w-[98%] sm:max-w-[82%] xl:max-w-[78%]",
 };
 
@@ -695,17 +695,88 @@ function getTimelineEntryAlignment(
   return entry.author.trim() === currentUserDisplayName.trim() ? "right" : "left";
 }
 
+function getTimelineActorKey(entry: Pick<DisplayChatEntry, "authorId" | "author">) {
+  return entry.authorId ?? entry.author.trim().toLowerCase();
+}
+
+function shouldGroupWithPreviousMessage(
+  previousMessage: DisplayChatEntry | undefined,
+  message: DisplayChatEntry,
+) {
+  if (
+    !previousMessage ||
+    previousMessage.kind === "system" ||
+    message.kind === "system"
+  ) {
+    return false;
+  }
+
+  return getTimelineActorKey(previousMessage) === getTimelineActorKey(message);
+}
+
+function TimelineGutter({
+  name,
+  src,
+  icon,
+  hidden = false,
+}: {
+  name?: string;
+  src?: string | null;
+  icon?: ReactNode;
+  hidden?: boolean;
+}) {
+  return (
+    <div className="flex w-8 shrink-0 justify-center sm:w-9">
+      {hidden ? null : icon ? (
+        <div className="grid h-8 w-8 place-items-center rounded-full bg-[#e6f2e8] text-brand shadow-[0_8px_18px_rgba(18,35,23,0.08)]">
+          {icon}
+        </div>
+      ) : (
+        <ChatAvatar name={name ?? "User"} src={src} size="sm" />
+      )}
+    </div>
+  );
+}
+
 function TimelineFrame({
   alignment = "left",
   width = "medium",
+  avatarName,
+  avatarSrc,
+  gutterIcon,
+  hideGutterContent = false,
+  grouped = false,
   children,
 }: {
   alignment?: TimelineAlignment;
   width?: TimelineWidth;
+  avatarName?: string;
+  avatarSrc?: string | null;
+  gutterIcon?: ReactNode;
+  hideGutterContent?: boolean;
+  grouped?: boolean;
   children: ReactNode;
 }) {
+  const verticalSpacing = grouped ? "mt-1" : "mt-2.5";
+
+  if (alignment === "left") {
+    return (
+      <div
+        className={`grid w-full grid-cols-[2rem_minmax(0,1fr)] items-end gap-2.5 sm:grid-cols-[2.25rem_minmax(0,1fr)] sm:gap-3 ${verticalSpacing}`}
+      >
+        <TimelineGutter
+          name={avatarName}
+          src={avatarSrc}
+          icon={gutterIcon}
+          hidden={hideGutterContent}
+        />
+        <div className={`min-w-0 ${timelineWidthClassNames[width]}`}>{children}</div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex w-full ${alignment === "right" ? "justify-end" : "justify-start"}`}>
+    <div className={`flex w-full justify-end ${verticalSpacing}`}>
       <div className={`min-w-0 ${timelineWidthClassNames[width]}`}>{children}</div>
     </div>
   );
@@ -783,16 +854,19 @@ function SystemActivityCard({
   const Icon = meta.Icon;
 
   return (
-    <TimelineFrame alignment={alignment} width="medium">
+    <TimelineFrame
+      alignment={alignment}
+      width="medium"
+      avatarName={message.author}
+      avatarSrc={message.authorAvatarSrc}
+      gutterIcon={<Icon className="h-4 w-4" />}
+    >
       <div
         className={`w-full rounded-[18px] border px-4 py-3 shadow-[0_10px_24px_rgba(23,39,28,0.05)] ${
           alignment === "right" ? "rounded-br-[7px]" : "rounded-bl-[7px]"
         } ${meta.cardClassName}`}
       >
-        <div className="flex items-start gap-3">
-          <div className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${meta.iconClassName}`}>
-            <Icon className="h-4 w-4" />
-          </div>
+        <div className="flex items-start">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="rounded-full bg-white/65 px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
@@ -833,16 +907,17 @@ function WorkflowNoticeCard({
   alignment?: TimelineAlignment;
 }) {
   return (
-    <TimelineFrame alignment={alignment} width="medium">
+    <TimelineFrame
+      alignment={alignment}
+      width="medium"
+      gutterIcon={<Info className="h-4 w-4" />}
+    >
       <div
         className={`w-full rounded-[18px] border border-[#efd9af] bg-[#fffaf0] px-4 py-3 shadow-[0_10px_24px_rgba(23,39,28,0.05)] ${
           alignment === "right" ? "rounded-br-[7px]" : "rounded-bl-[7px]"
         }`}
       >
-        <div className="flex items-start gap-3">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fff3d6] text-[#b77420]">
-            <Info className="h-4 w-4" />
-          </div>
+        <div className="flex items-start">
           <div className="min-w-0">
             <p className="text-[13px] font-[800] text-[#8a5718]">{title}</p>
             <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-[#5d4a2f]">
@@ -888,7 +963,11 @@ function StageBriefContextCard({
   const hasStageAttachments = stageBriefAttachments.length > 0;
 
   return (
-    <TimelineFrame alignment="left" width="medium">
+    <TimelineFrame
+      alignment="left"
+      width="medium"
+      gutterIcon={<FileText className="h-4 w-4" />}
+    >
       <Card className="w-full overflow-hidden rounded-[20px] rounded-bl-[7px] border border-[#cfe3d2] bg-white shadow-[0_12px_30px_rgba(18,35,23,0.07)]">
         <div className="border-b border-[#e4ece5] bg-[linear-gradient(135deg,#f4fbf5,#ffffff)] px-4 py-3 sm:px-5">
           <div className="flex min-w-0 items-start gap-3">
@@ -4669,7 +4748,13 @@ export function ProjectChatWorkspace({
                 const revisionLabel = getRevisionLabel(message);
 
                 return (
-                  <TimelineFrame key={message.id} alignment={revisionAlignment} width="submission">
+                  <TimelineFrame
+                    key={message.id}
+                    alignment={revisionAlignment}
+                    width="submission"
+                    avatarName={message.author}
+                    avatarSrc={message.authorAvatarSrc}
+                  >
                     <Card
                       className={`min-w-0 overflow-hidden rounded-[22px] border border-[#cfe3d2] bg-white shadow-[0_12px_30px_rgba(18,35,23,0.07)] ${
                         revisionAlignment === "right" ? "rounded-br-[8px]" : "rounded-bl-[8px]"
@@ -4777,7 +4862,13 @@ export function ProjectChatWorkspace({
                 );
 
                 return (
-                  <TimelineFrame key={message.id} alignment={comparisonAlignment} width="medium">
+                  <TimelineFrame
+                    key={message.id}
+                    alignment={comparisonAlignment}
+                    width="medium"
+                    avatarName={message.author}
+                    avatarSrc={message.authorAvatarSrc}
+                  >
                     <Card
                       className={`w-full overflow-hidden rounded-[22px] border border-[#d3e1ea] bg-[linear-gradient(135deg,#f7fbff,#ffffff)] p-4 shadow-[0_12px_30px_rgba(18,35,23,0.06)] ${
                         comparisonAlignment === "right" ? "rounded-br-[8px]" : "rounded-bl-[8px]"
@@ -4795,13 +4886,6 @@ export function ProjectChatWorkspace({
                             </span>
                           </div>
                           <div className="mt-3 flex items-center gap-2">
-                            {comparisonAlignment === "left" ? (
-                              <ChatAvatar
-                                name={message.author}
-                                src={message.authorAvatarSrc}
-                                size="sm"
-                              />
-                            ) : null}
                             <div className="min-w-0">
                               <p className="truncate text-[13px] font-[700] text-[#111712]">
                                 {comparisonAlignment === "right" ? "You" : message.author}
@@ -4869,6 +4953,15 @@ export function ProjectChatWorkspace({
                     currentUserId,
                     currentUserDisplayName,
                   ) === "right";
+                const previousMessageIndex = displayedMessages.findIndex(
+                  (entry) => entry.id === message.id,
+                ) - 1;
+                const isGroupedWithPrevious =
+                  !isCurrentUserMessage &&
+                  shouldGroupWithPreviousMessage(
+                    displayedMessages[previousMessageIndex],
+                    message,
+                  );
                 const hasAttachments = Boolean(message.attachments?.length);
                 const hasSubmissionAttachment =
                   message.attachments?.some((attachment) => attachment.isSubmission) ?? false;
@@ -4884,94 +4977,84 @@ export function ProjectChatWorkspace({
                     : "rounded-[18px] rounded-bl-[6px] border border-[#e2e9e2] bg-white p-3 shadow-[0_10px_24px_rgba(19,28,22,0.05)]";
 
                 return (
-                  <div
+                  <TimelineFrame
                     key={message.id}
-                    className={`flex w-full ${isCurrentUserMessage ? "justify-end" : "justify-start"}`}
+                    alignment={isCurrentUserMessage ? "right" : "left"}
+                    width="compact"
+                    avatarName={message.author}
+                    avatarSrc={message.authorAvatarSrc}
+                    hideGutterContent={isGroupedWithPrevious}
+                    grouped={isGroupedWithPrevious}
                   >
-                    <div
-                      className={`flex min-w-0 max-w-[94%] items-end gap-2 sm:max-w-[64%] ${
-                        isCurrentUserMessage ? "flex-row-reverse" : "flex-row"
-                      }`}
-                    >
-                      {!isCurrentUserMessage ? (
-                        <div className="mb-1 shrink-0">
-                          <ChatAvatar
-                            name={message.author}
-                            src={message.authorAvatarSrc}
-                            size="sm"
-                          />
-                        </div>
-                      ) : null}
-                      <Card className={`min-w-0 flex-1 ${bubbleClassName}`}>
-                        {linkedRevisionLabel ? (
-                          <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] ${
-                                isCurrentUserMessage
-                                  ? "bg-white/78 text-brand"
-                                  : "bg-[#edf7ef] text-brand"
-                              }`}
-                            >
-                              {linkedRevisionLabel}
-                            </span>
-                            <span className="text-[11px] font-[800] text-[#253028]">
-                              Comment on revision
-                            </span>
-                          </div>
-                        ) : null}
-                        {hasAttachments && !linkedRevisionLabel ? (
-                          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/75 px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
-                            <Paperclip className="h-3.5 w-3.5" />
-                            {attachmentLabel}
-                          </div>
-                        ) : null}
-                        <div
-                          className={`flex min-w-0 items-center gap-2 ${
-                            isCurrentUserMessage ? "justify-end" : ""
-                          }`}
-                        >
-                          {isCurrentUserMessage ? (
-                            <span className="text-[10px] font-semibold text-[#5d7463]">
-                              You
-                            </span>
-                          ) : (
-                            <div className="min-w-0">
-                              <p className="truncate text-[12px] font-semibold text-[#111712]">
-                                {message.author}
-                              </p>
-                              <p className="truncate text-[10px] text-[#8acb74]">
-                                {message.role}
-                              </p>
-                            </div>
-                          )}
+                    <Card className={`min-w-0 ${bubbleClassName}`}>
+                      {linkedRevisionLabel ? (
+                        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
                           <span
-                            className={`shrink-0 text-[10px] ${
+                            className={`rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] ${
                               isCurrentUserMessage
-                                ? "text-[#6f806f]"
-                                : "ml-auto text-[#7d847e]"
+                                ? "bg-white/78 text-brand"
+                                : "bg-[#edf7ef] text-brand"
                             }`}
                           >
-                            {message.createdAt}
+                            {linkedRevisionLabel}
+                          </span>
+                          <span className="text-[11px] font-[800] text-[#253028]">
+                            Comment on revision
                           </span>
                         </div>
-                        <p
-                          className={`mt-2 whitespace-pre-wrap break-words text-[13px] leading-5 ${
-                            isCurrentUserMessage ? "text-[#173120]" : "text-[#111712]"
+                      ) : null}
+                      {hasAttachments && !linkedRevisionLabel ? (
+                        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/75 px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
+                          <Paperclip className="h-3.5 w-3.5" />
+                          {attachmentLabel}
+                        </div>
+                      ) : null}
+                      <div
+                        className={`flex min-w-0 items-center gap-2 ${
+                          isCurrentUserMessage ? "justify-end" : ""
+                        }`}
+                      >
+                        {isCurrentUserMessage ? (
+                          <span className="text-[10px] font-semibold text-[#5d7463]">
+                            You
+                          </span>
+                        ) : (
+                          <div className="min-w-0">
+                            <p className="truncate text-[12px] font-semibold text-[#111712]">
+                              {message.author}
+                            </p>
+                            <p className="truncate text-[10px] text-[#8acb74]">
+                              {message.role}
+                            </p>
+                          </div>
+                        )}
+                        <span
+                          className={`shrink-0 text-[10px] ${
+                            isCurrentUserMessage
+                              ? "text-[#6f806f]"
+                              : "ml-auto text-[#7d847e]"
                           }`}
                         >
-                          {renderCommentBodyWithMentions(message.body, message.mentions)}
-                        </p>
-                        {message.attachments?.length ? (
-                          <AttachmentHistoryList
-                            attachments={message.attachments}
-                            compact
-                            actionsDisabled={isProjectCompleted}
-                            tone={isCurrentUserMessage ? "sent" : "received"}
-                          />
-                        ) : null}
-                      </Card>
-                    </div>
-                  </div>
+                          {message.createdAt}
+                        </span>
+                      </div>
+                      <p
+                        className={`mt-2 whitespace-pre-wrap break-words text-[13px] leading-5 ${
+                          isCurrentUserMessage ? "text-[#173120]" : "text-[#111712]"
+                        }`}
+                      >
+                        {renderCommentBodyWithMentions(message.body, message.mentions)}
+                      </p>
+                      {message.attachments?.length ? (
+                        <AttachmentHistoryList
+                          attachments={message.attachments}
+                          compact
+                          actionsDisabled={isProjectCompleted}
+                          tone={isCurrentUserMessage ? "sent" : "received"}
+                        />
+                      ) : null}
+                    </Card>
+                  </TimelineFrame>
                 );
               })()
             ),
