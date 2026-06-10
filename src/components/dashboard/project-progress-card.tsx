@@ -35,12 +35,12 @@ export function ProjectProgressCard({
   const activeSegmentValue = Math.min(Math.max(percentage, 0), 100);
 
   return (
-    <article className="min-w-0 rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
-      <h2 className="mb-4 text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">
+    <article className="flex h-full min-h-[300px] min-w-0 flex-col rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
+      <h2 className="mb-4 text-[17px] font-extrabold leading-none text-[#111712]">
         {title}
       </h2>
 
-      <div className="flex flex-col items-center">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
         <div className="relative w-full max-w-[260px]">
           <svg viewBox="0 0 240 140" className="w-full" aria-hidden="true">
             <path
@@ -65,7 +65,7 @@ export function ProjectProgressCard({
           </svg>
 
           <div className="absolute inset-x-0 bottom-2 text-center">
-            <p className="text-[40px] font-bold leading-none tracking-[-0.04em] text-[#111712]">
+            <p className="text-[40px] font-bold leading-none text-[#111712]">
               {percentage}%
             </p>
             <p className="mx-auto mt-1 max-w-[180px] text-[12px] leading-4 text-[#8bc685]">

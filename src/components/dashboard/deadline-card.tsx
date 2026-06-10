@@ -33,16 +33,16 @@ export function DeadlineCard({
   }
 
   return (
-    <article className="relative min-w-0 overflow-hidden rounded-[24px] bg-[#07130e] p-5 text-white shadow-[0_20px_55px_rgba(7,19,14,0.28)] sm:p-6">
+    <article className="relative flex h-full min-h-[300px] min-w-0 flex-col overflow-hidden rounded-[24px] bg-[#07130e] p-5 text-white shadow-[0_20px_55px_rgba(7,19,14,0.28)] sm:p-6">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(92,165,123,0.32),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(44,124,82,0.46),transparent_30%),linear-gradient(145deg,#0a1610,#08110d_55%,#040807)]" />
       <div className="absolute -left-10 top-8 h-40 w-40 rounded-full border border-white/10" />
       <div className="absolute -right-12 bottom-10 h-44 w-44 rounded-full border border-brand/30" />
       <div className="absolute inset-x-4 bottom-14 h-24 rounded-full bg-[radial-gradient(circle,rgba(59,138,94,0.65),transparent_60%)] blur-2xl" />
 
-      <div className="relative">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="mb-6 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em]">{title}</h2>
+            <h2 className="text-[17px] font-extrabold leading-none">{title}</h2>
             {activeDeadline ? (
               <p className="mt-2 truncate text-[14px] text-white/85">{activeDeadline.project}</p>
             ) : null}
@@ -60,9 +60,9 @@ export function DeadlineCard({
         </div>
 
         {activeDeadline ? (
-          <div className="space-y-4">
+          <div className="flex min-h-0 flex-1 flex-col justify-between gap-4">
             <p
-              className={`text-center text-[32px] font-bold leading-tight tracking-[-0.04em] ${
+              className={`text-center text-[32px] font-bold leading-tight ${
                 activeDeadline.overdue ? "text-[#ffb9a8]" : ""
               }`}
             >
@@ -113,7 +113,9 @@ export function DeadlineCard({
             </div>
           </div>
         ) : (
-          <p className="text-[14px] leading-6 text-white/78">{emptyMessage}</p>
+          <div className="grid min-h-0 flex-1 place-items-center rounded-[18px] border border-dashed border-white/18 bg-white/[0.04] px-4 py-6 text-center">
+            <p className="text-[14px] leading-6 text-white/78">{emptyMessage}</p>
+          </div>
         )}
       </div>
     </article>

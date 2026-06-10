@@ -35,9 +35,9 @@ export function ReminderCard({
   }
 
   return (
-    <article className="min-w-0 rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.08)] transition-shadow hover:shadow-[0_22px_52px_rgba(23,39,28,0.12)] sm:p-6">
+    <article className="flex h-full min-h-[300px] min-w-0 flex-col rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.08)] transition-shadow hover:shadow-[0_22px_52px_rgba(23,39,28,0.12)] sm:p-6">
       <div className="mb-5 flex min-w-0 items-start justify-between gap-3">
-        <h2 className="min-w-0 truncate text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">
+        <h2 className="min-w-0 truncate text-[17px] font-extrabold leading-none text-[#111712]">
           {title}
         </h2>
         {detailHref ? (
@@ -56,7 +56,7 @@ export function ReminderCard({
         <div
           role="link"
           tabIndex={0}
-          className="cursor-pointer space-y-4 rounded-[18px] border border-[#d8e6d8] bg-[#f8fcf8] p-4 transition-colors hover:border-brand/40 hover:bg-[#f3faf4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+          className="flex min-h-0 flex-1 cursor-pointer flex-col justify-between gap-4 rounded-[18px] border border-[#d8e6d8] bg-[#f8fcf8] p-4 transition-colors hover:border-brand/40 hover:bg-[#f3faf4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
           onClick={() => router.push(activeReminder.actionHref)}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -67,12 +67,12 @@ export function ReminderCard({
         >
           <div className="min-w-0">
             {activeReminder.statusLabel ? (
-              <span className="mb-3 inline-flex rounded-full bg-[#fff2dc] px-2.5 py-1 text-[11px] font-[800] uppercase tracking-[0.08em] text-[#9a5b00]">
+              <span className="mb-3 inline-flex rounded-full bg-[#fff2dc] px-2.5 py-1 text-[11px] font-[800] uppercase text-[#9a5b00]">
                 {activeReminder.statusLabel}
               </span>
             ) : null}
 
-            <p className="line-clamp-2 text-[20px] font-bold leading-[1.12] tracking-[-0.03em] text-[#236e4c]">
+            <p className="line-clamp-2 text-[20px] font-bold leading-[1.12] text-[#236e4c]">
               {activeReminder.headline}
             </p>
             <p className="mt-2 text-[13px] font-semibold leading-5 text-[#46534a]">
@@ -136,7 +136,7 @@ export function ReminderCard({
           </div>
         </div>
       ) : (
-        <div className="rounded-[18px] border border-[#e1e9e1] bg-white/55 px-4 py-5">
+        <div className="grid min-h-0 flex-1 place-items-center rounded-[18px] border border-dashed border-[#e1e9e1] bg-white/55 px-4 py-6 text-center">
           <p className="text-[14px] leading-6 text-[#758077]">{emptyMessage}</p>
         </div>
       )}

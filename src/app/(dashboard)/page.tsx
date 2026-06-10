@@ -115,12 +115,12 @@ function DashboardWidgetSkeleton({
   rows?: number;
 }) {
   return (
-    <article className="min-w-0 rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
+    <article className="flex h-full min-h-[300px] min-w-0 flex-col rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <Skeleton className="h-5 w-40 rounded-full" aria-label={`${title} loading`} />
         <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
       </div>
-      <div className="space-y-2.5">
+      <div className="min-h-0 flex-1 space-y-2.5 overflow-hidden">
         {Array.from({ length: rows }).map((_, index) => (
           <div key={index} className="flex items-center gap-3 rounded-[16px] px-2 py-2">
             <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
@@ -137,13 +137,15 @@ function DashboardWidgetSkeleton({
 
 function DashboardWidgetError({ title }: { title: string }) {
   return (
-    <article className="min-w-0 rounded-[24px] border border-[#f0d6ca] bg-[#fff8f3] p-5 shadow-[0_18px_45px_rgba(120,54,20,0.05)] sm:p-6">
-      <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#7b321f]">
+    <article className="flex h-full min-h-[300px] min-w-0 flex-col rounded-[24px] border border-[#f0d6ca] bg-[#fff8f3] p-5 shadow-[0_18px_45px_rgba(120,54,20,0.05)] sm:p-6">
+      <h2 className="text-[17px] font-extrabold leading-none text-[#7b321f]">
         {title}
       </h2>
-      <p className="mt-3 text-[14px] leading-6 text-[#8a5a45]">
-        Unable to load this dashboard card right now.
-      </p>
+      <div className="grid min-h-0 flex-1 place-items-center text-center">
+        <p className="max-w-[240px] text-[14px] leading-6 text-[#8a5a45]">
+          Unable to load this dashboard card right now.
+        </p>
+      </div>
     </article>
   );
 }
@@ -312,7 +314,7 @@ export default async function Home() {
         <MotionSection>
           <header className="flex min-w-0 flex-col gap-4 min-[1100px]:flex-row min-[1100px]:items-center min-[1100px]:justify-between">
             <div className="min-w-0">
-              <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+              <h1 className="text-[42px] font-[600] leading-none text-[#0f1411] sm:text-[56px]">
                 Dashboard
               </h1>
             </div>
@@ -342,41 +344,38 @@ export default async function Home() {
           <DashboardStatCards countsPromise={countsPromise} />
         </Suspense>
 
-        <MotionStaggerGroup
-          className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] items-start gap-4"
-          stagger={0.045}
-        >
-          <MotionItem className="min-w-0" y={12}>
+        <MotionStaggerGroup className="grid items-stretch gap-4 lg:grid-cols-2 xl:grid-cols-3" stagger={0.045}>
+          <MotionItem className="h-full min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Important Updates" rows={4} />}>
               <ImportantUpdatesWidget updatesPromise={updatesPromise} />
             </Suspense>
           </MotionItem>
 
-          <MotionItem className="min-w-0" y={12}>
+          <MotionItem className="h-full min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Reminder" rows={2} />}>
               <ReminderWidget remindersPromise={remindersPromise} />
             </Suspense>
           </MotionItem>
 
-          <MotionItem className="min-w-0" y={12}>
+          <MotionItem className="h-full min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Recent Projects" rows={4} />}>
               <RecentProjectsWidget recentProjectsPromise={recentProjectsPromise} />
             </Suspense>
           </MotionItem>
 
-          <MotionItem className="min-w-0" y={12}>
+          <MotionItem className="h-full min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Collaboration" rows={4} />}>
               <CollaborationWidget collaborationPromise={collaborationPromise} />
             </Suspense>
           </MotionItem>
 
-          <MotionItem className="min-w-0" y={12}>
+          <MotionItem className="h-full min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Active Projects" rows={3} />}>
               <ProjectProgressWidget progressPromise={progressPromise} />
             </Suspense>
           </MotionItem>
 
-          <MotionItem className="min-w-0" y={12}>
+          <MotionItem className="h-full min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Project Deadlines" rows={2} />}>
               <DeadlinesWidget deadlinesPromise={deadlinesPromise} />
             </Suspense>

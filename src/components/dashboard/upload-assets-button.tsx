@@ -389,7 +389,7 @@ export function ArchiveUploadButton({
             <CardContent className="p-6 sm:p-7">
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+                  <h2 className="text-[24px] font-[700] text-[#111712]">
                     Upload to Archive
                   </h2>
                   <p className="mt-1 text-[14px] text-[#6a706b]">

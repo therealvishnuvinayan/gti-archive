@@ -46,7 +46,7 @@ export function StatCard({
       </div>
 
       <p
-        className={`text-[45px] font-[600] leading-none tracking-[-0.04em] ${
+        className={`text-[45px] font-[600] leading-none ${
           emphasize ? "text-[#E3F9DE]" : "text-[#0d1210]"
         }`}
       >
