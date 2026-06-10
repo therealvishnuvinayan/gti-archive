@@ -74,7 +74,7 @@ function getInitials(name: string) {
 function getExecutorRoleBadgeClassName(executor: ProjectExecutorRecord) {
   return executor.role === "MAIN_EXECUTOR"
     ? "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]"
-    : "border border-[#dce3ec] bg-[#f3f7fb] text-[#4b6f91]";
+    : "border border-[#dde7df] bg-[#f6f8f6] text-[#34614a]";
 }
 
 function getExecutorGroupBadgeClassName(executor: ProjectExecutorRecord) {
@@ -194,38 +194,42 @@ function ExecutorCompactRow({
 }) {
   return (
     <li
-      className="flex min-h-[50px] items-center gap-2.5 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-2.5 py-2"
+      className="grid min-h-[62px] min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[16px] border border-[#e1e8e1] bg-[#fbfcfa] px-3 py-3 shadow-[0_8px_20px_rgba(17,31,23,0.025)]"
     >
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#d7efe0,#2f8d5d)] text-[10px] font-[700] text-white">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#d7efe0,#2f8d5d)] text-[11px] font-[800] text-white shadow-[0_10px_20px_rgba(47,141,93,0.16)]">
         {getInitials(executor.name)}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-[12px] font-semibold leading-5 text-[#111712]">
+          <p className="truncate text-[13px] font-[800] leading-5 text-[#111712]">
             {executor.name}
           </p>
         </div>
-        <p className="truncate text-[10px] leading-4 text-[#7a837b]">
+        <p className="truncate text-[11px] font-[500] leading-4 text-[#747f78]">
           {executor.email ?? executor.roleLabel}
         </p>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex max-w-[126px] flex-col items-end gap-1.5">
           <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 tracking-[0.06em] ${getExecutorRoleBadgeClassName(
+            className={`inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 ${getExecutorRoleBadgeClassName(
               executor,
             )}`}
           >
-            {executor.roleLabel}
+            <span className="truncate">{executor.roleLabel}</span>
           </span>
           <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 tracking-[0.06em] ${getExecutorGroupBadgeClassName(
+            className={`inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 ${getExecutorGroupBadgeClassName(
               executor,
             )}`}
           >
-            {executor.group === "external" ? "External" : "Internal"}
+            <span className="truncate">
+              {executor.group === "external" ? "External" : "Internal"}
+            </span>
           </span>
         </div>
+        {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </li>
   );
 }
@@ -409,7 +413,7 @@ export function ProjectExecutorsPanel({
       }),
     [executors],
   );
-  const visibleExecutors = sortedExecutors.slice(0, 5);
+  const visibleExecutors = sortedExecutors.slice(0, 4);
   const hiddenExecutorCount = Math.max(sortedExecutors.length - visibleExecutors.length, 0);
 
   async function handleConfirmAction() {
@@ -449,22 +453,27 @@ export function ProjectExecutorsPanel({
 
   return (
     <>
-      <Card className="rounded-[18px] border border-[#dfe8df] bg-white/95 shadow-[0_12px_28px_rgba(17,31,23,0.04)]">
-        <CardHeader className="flex-col items-start gap-2 px-4 pb-3 pt-4">
+      <Card className="rounded-[24px] border border-[#e0e7df] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.055)]">
+        <CardHeader className="flex-col items-start gap-2 px-5 pb-3 pt-5">
           <div className="flex w-full items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-[17px] font-semibold leading-[1.15] tracking-tight">
-                Project Executors
-              </CardTitle>
-              <p className="mt-1 text-[12px] font-[500] text-[#7a837b]">
-                {sortedExecutors.length} {sortedExecutors.length === 1 ? "member" : "members"}
-              </p>
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#eef8ef] text-brand">
+                <Users className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-[20px] font-[800] leading-tight">
+                  Project Executors
+                </CardTitle>
+                <p className="mt-1 text-[13px] font-[500] leading-5 text-[#7a837b]">
+                  {sortedExecutors.length} {sortedExecutors.length === 1 ? "member" : "members"}
+                </p>
+              </div>
             </div>
             {hiddenExecutorCount > 0 ? (
               <button
                 type="button"
                 onClick={() => setViewAllOpen(true)}
-                className="rounded-full bg-[#f1f6f2] px-2.5 py-1 text-[11px] font-[800] text-brand"
+                className="shrink-0 rounded-full bg-[#eef8ef] px-2.5 py-1 text-[11px] font-[800] text-brand"
               >
                 +{hiddenExecutorCount} more
               </button>
@@ -472,7 +481,7 @@ export function ProjectExecutorsPanel({
           </div>
         </CardHeader>
 
-        <CardContent className="px-4 pb-4 pt-0">
+        <CardContent className="px-5 pb-5 pt-0">
           {visibleExecutors.length > 0 ? (
             <ul className="space-y-2">
               {visibleExecutors.map((executor) => {
@@ -509,22 +518,29 @@ export function ProjectExecutorsPanel({
           )}
 
           {hiddenExecutorCount > 0 ? (
-            <div className="mt-3 flex flex-col gap-2 rounded-[14px] border border-[#e4eae4] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                onClick={() => setViewAllOpen(true)}
-                className="text-left text-[12px] font-[800] text-brand"
-              >
-                +{hiddenExecutorCount} more
-              </button>
+            <div className="mt-3">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => setViewAllOpen(true)}
-                className="h-8 justify-start px-0 text-[12px] font-[800] text-brand sm:justify-center sm:px-2"
+                className="h-9 w-full justify-between px-1 text-[12px] font-[800] text-brand hover:bg-transparent"
               >
                 View all executors
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : sortedExecutors.length > 0 ? (
+            <div className="mt-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewAllOpen(true)}
+                className="h-9 w-full justify-between px-1 text-[12px] font-[800] text-brand hover:bg-transparent"
+              >
+                View all executors
+                <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           ) : null}

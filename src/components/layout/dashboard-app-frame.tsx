@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 
 import { NotificationCenterProvider } from "@/components/notifications/notification-center";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -19,8 +20,11 @@ type DashboardAppFrameProps = {
 
 function BackPill({ href }: { href: string }) {
   return (
-    <Button asChild size="lg" className="min-w-[146px]">
-      <Link href={href}>Back</Link>
+    <Button asChild size="lg" variant="secondary" className="min-w-[132px]">
+      <Link href={href}>
+        <ChevronLeft className="h-4 w-4" />
+        Back
+      </Link>
     </Button>
   );
 }

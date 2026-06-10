@@ -1,5 +1,17 @@
 import Link from "next/link";
-import { Download } from "lucide-react";
+import type { ReactNode } from "react";
+import {
+  BadgeDollarSign,
+  CalendarDays,
+  ChevronRight,
+  ClipboardList,
+  Download,
+  FileText,
+  FolderKanban,
+  Leaf,
+  UserRound,
+  WalletCards,
+} from "lucide-react";
 
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
@@ -11,11 +23,10 @@ import {
   CompletedProjectArchiveSummaryCard,
   ProjectCompletionChecklist,
 } from "@/components/projects/project-completion-checklist";
+import { StageActivitySummary } from "@/components/projects/stage-activity-summary";
 import type { ProjectFlowRecord, ProjectStageRecord } from "@/lib/projects";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   MotionItem,
@@ -23,6 +34,7 @@ import {
 } from "@/components/motion/motion-primitives";
 import type { ProjectCompletionSummary } from "@/lib/archives";
 import type { ProjectCompletionWorkflowRecord } from "@/lib/project-completion";
+import { getStageActivityFallback } from "@/lib/project-stage-summary";
 
 type ProjectDetailWorkspaceProps = {
   project: ProjectFlowRecord;
@@ -34,11 +46,11 @@ type ProjectDetailWorkspaceProps = {
 
 function DetailAssetsSkeleton() {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {Array.from({ length: 3 }).map((_, index) => (
         <div
           key={index}
-          className="rounded-[14px] border border-[#dce6dd] bg-[#fbfcfa] px-3 py-2.5"
+          className="rounded-[18px] border border-[#e2e8e1] bg-[#fbfcfa] px-3.5 py-3"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-2">
@@ -59,8 +71,8 @@ function DetailAssetsSkeleton() {
 
 function CompletionLoadingCard() {
   return (
-    <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-      <CardContent className="space-y-3 px-5 py-5">
+    <Card className="rounded-[24px] border border-[#dfe9df] bg-[#f7fbf6] shadow-none">
+      <CardContent className="space-y-3 px-6 py-6">
         <Skeleton className="h-5 w-48 rounded-full" />
         <Skeleton className="h-3.5 w-10/12 rounded-full" />
         <Skeleton className="h-3.5 w-7/12 rounded-full" />
@@ -69,54 +81,109 @@ function CompletionLoadingCard() {
   );
 }
 
-function getStageCardClasses(stage: ProjectStageRecord) {
+function formatStageNumber(order: number) {
+  return String(order).padStart(2, "0");
+}
+
+function getStageStatusMeta(stage: ProjectStageRecord) {
   switch (stage.status) {
     case "completed":
       return {
-        card: "bg-[linear-gradient(135deg,#315b45,#47725a)] text-white",
-        label: "bg-white/14 text-[#dff5e3]",
-        meta: "text-[#bdecc6]",
-        actionButton:
-          "bg-white text-[#0c4c34] shadow-none hover:bg-[#f3faf4]",
-      };
-    case "on-hold":
-      return {
-        card: "bg-[linear-gradient(135deg,#58675e,#73857b)] text-white",
-        label: "bg-white/14 text-[#eef6ef]",
-        meta: "text-[#d8eee0]",
-        actionButton:
-          "bg-[#e6ebe7] text-[#8b958e] shadow-none hover:bg-[#e6ebe7]",
+        label: "Completed",
+        accent: "border-l-[#2f8d5d]",
+        statusPill: "border-[#cdebd5] bg-[#edf9f0] text-[#25764b]",
+        number: "bg-[#e5f4e9] text-[#176d42]",
+        dot: "bg-[#2f8d5d]",
+        button:
+          "bg-[linear-gradient(90deg,#2f8d5d,#145232)] text-white shadow-[0_14px_28px_rgba(24,92,56,0.18)] hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(24,92,56,0.24)]",
       };
     case "pending":
       return {
-        card: "bg-[linear-gradient(135deg,#6f8679,#91a69a)] text-white",
-        label: "bg-white/14 text-[#f1f8f2]",
-        meta: "text-[#dcf0df]",
-        actionButton:
-          "bg-[#e6ebe7] text-[#8b958e] shadow-none hover:bg-[#e6ebe7]",
+        label: "Pending",
+        accent: "border-l-[#9aa49d]",
+        statusPill: "border-[#dfe5de] bg-[#f3f5f2] text-[#5b655f]",
+        number: "bg-[#eef2ef] text-[#3d4841]",
+        dot: "bg-[#8e9992]",
+        button:
+          "bg-[linear-gradient(90deg,#9fa8a3,#87918b)] text-white shadow-none",
+      };
+    case "on-hold":
+      return {
+        label: "On Hold",
+        accent: "border-l-[#b38c37]",
+        statusPill: "border-[#eadfbd] bg-[#fbf6e8] text-[#7d6124]",
+        number: "bg-[#f7f1df] text-[#76591f]",
+        dot: "bg-[#b38c37]",
+        button:
+          "bg-[linear-gradient(90deg,#aeb6b0,#8e9891)] text-white shadow-none",
       };
     default:
       return {
-        card: "bg-[linear-gradient(135deg,#2f7a52,#52946d)] text-white",
-        label: "bg-white/14 text-[#dff5e3]",
-        meta: "text-[#bdecc6]",
-        actionButton:
-          "bg-[#0c4c34] text-white shadow-none hover:bg-[#0a402c]",
+        label: "Ongoing",
+        accent: "border-l-[#168456]",
+        statusPill: "border-[#c9ead5] bg-[#edf9f0] text-[#1f7549]",
+        number: "bg-[#e5f4e9] text-[#176d42]",
+        dot: "bg-[#2f8d5d]",
+        button:
+          "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_14px_28px_rgba(24,92,56,0.18)] hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(24,92,56,0.24)]",
       };
   }
 }
 
-function getStageStatusPillClassName(stage: ProjectStageRecord) {
-  switch (stage.status) {
-    case "completed":
-      return "border-white/25 bg-white/16 text-[#e5f7e8]";
-    case "pending":
-      return "border-white/22 bg-white/12 text-white/82";
-    case "on-hold":
-      return "border-white/24 bg-white/14 text-white/88";
-    default:
-      return "border-white/25 bg-white/16 text-[#e5f7e8]";
-  }
+function OverviewRow({
+  label,
+  value,
+  priority,
+}: {
+  label: string;
+  value: string | number;
+  priority?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(112px,0.78fr)_minmax(0,1fr)] items-center gap-3 border-b border-[#e4e9e3] py-2.5 last:border-b-0">
+      <dt className="text-[12px] font-[800] leading-5 text-[#4f5a53]">
+        {label}
+      </dt>
+      <dd className="min-w-0 text-[12px] font-[500] leading-5 text-[#303a33]">
+        {priority ? (
+          <span className="inline-flex max-w-full items-center gap-2">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#2f8d5d]" />
+            <span className="truncate">{value}</span>
+          </span>
+        ) : (
+          <span className="block truncate">{value}</span>
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function SectionHeading({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#eef8ef] text-brand">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <h2 className="text-[20px] font-[800] leading-tight text-[#111712]">
+          {title}
+        </h2>
+        {subtitle ? (
+          <p className="mt-1 text-[13px] font-[500] leading-5 text-[#5d6860]">
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export function ProjectDetailWorkspace({
@@ -126,112 +193,151 @@ export function ProjectDetailWorkspace({
   assetsLoading = false,
   completionLoading = false,
 }: ProjectDetailWorkspaceProps) {
-  const stageGridClasses = "grid-cols-[repeat(auto-fit,minmax(215px,235px))]";
   const shouldShowCompletionLoading =
     completionLoading && project.statusLabel.toLowerCase() === "completed";
 
   return (
-    <section className="mx-auto w-full max-w-[1140px] lg:h-[calc(100dvh-12rem)] lg:overflow-hidden">
-      <div className="grid items-start gap-3 lg:h-full lg:grid-cols-[minmax(0,1fr)_252px]">
-        <MotionItem
-          y={10}
-          className="no-scrollbar min-w-0 space-y-3 lg:h-full lg:overflow-x-hidden lg:overflow-y-auto lg:pr-1.5"
-        >
-          <Card className="rounded-[18px] border-none bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-4 py-3.5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:px-5">
-            <div className="flex min-h-[76px] flex-col justify-between gap-4">
-              <div>
-                <h1 className="text-[23px] font-semibold leading-[1.08] tracking-tight">
-                  {project.title}
-                </h1>
-                <p className="mt-0.5 text-[20px] font-semibold leading-[1.08] text-[#86d66f]">
-                  {project.category}
-                </p>
+    <section className="mx-auto w-full max-w-[1420px]">
+      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_410px]">
+        <MotionItem y={10} className="min-w-0 space-y-5">
+          <div className="relative isolate overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#123f2d_0%,#19553a_56%,#1a6845_100%)] px-5 py-5 text-white shadow-[0_22px_52px_rgba(16,49,31,0.18)] sm:px-7 sm:py-6">
+            <div className="pointer-events-none absolute -right-10 -top-12 h-56 w-56 rounded-full border border-white/10" />
+            <div className="pointer-events-none absolute -right-4 bottom-[-76px] text-white/8">
+              <Leaf className="h-72 w-72 rotate-[-22deg]" strokeWidth={1.1} />
+            </div>
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(123,214,105,0.18),transparent_30%),radial-gradient(circle_at_100%_100%,rgba(255,255,255,0.09),transparent_34%)]" />
+
+            <div className="relative flex min-w-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="grid size-[86px] shrink-0 place-items-center rounded-[22px] bg-white text-brand shadow-[0_18px_42px_rgba(0,0,0,0.16)]">
+                  <FolderKanban className="h-11 w-11" strokeWidth={1.8} />
+                </div>
+
+                <div className="min-w-0">
+                  <h1 className="line-clamp-2 text-[26px] font-[800] leading-[1.08] sm:text-[30px]">
+                    {project.title}
+                  </h1>
+                  <p className="mt-2 text-[18px] font-[800] leading-tight text-[#83db71]">
+                    {project.category}
+                  </p>
+
+                  <div className="mt-6 flex min-w-0 items-center gap-3">
+                    <div className="grid size-9 shrink-0 place-items-center rounded-[10px] border border-white/20 bg-white/10">
+                      <UserRound className="h-4 w-4 text-white/90" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[600] leading-4 text-white/62">
+                        Project Owner
+                      </p>
+                      <p className="truncate text-[13px] font-[800] leading-5 text-white">
+                        {project.createdBy}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5 text-[12px] font-semibold text-white/95 sm:flex-row sm:items-end sm:justify-between">
-                <p>Project Owner : {project.createdBy}</p>
-                <p className="text-[14px] font-semibold text-[#83db71]">
-                  {project.currentStageName} : {project.statusLabel}
-                </p>
+
+              <div className="flex shrink-0 justify-start lg:justify-end">
+                <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#78d47d]/55 bg-white/12 px-4 py-2 text-[13px] font-[800] leading-5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] backdrop-blur">
+                  <span className="truncate">{project.currentStageName}</span>
+                  <span className="text-[#83db71]">· {project.statusLabel}</span>
+                </span>
               </div>
             </div>
-          </Card>
+          </div>
 
-          <Card className="rounded-[18px] bg-white shadow-[0_18px_42px_rgba(23,39,28,0.05)]">
-            <CardHeader className="px-5 pt-5 pb-3">
-              <CardTitle className="text-[20px] font-semibold tracking-tight">Project Stages</CardTitle>
-              <p className="mt-0.5 text-[13px] text-[#6b756d]">
-                Open a stage to continue discussion and revision work. Use compare from the stage flow.
-              </p>
-            </CardHeader>
+          <div className="rounded-[24px] border border-[#dfe7de] bg-white px-5 py-5 shadow-[0_18px_45px_rgba(23,39,28,0.06)] sm:px-6 sm:py-6">
+            <SectionHeading
+              icon={<ClipboardList className="h-5 w-5" />}
+              title="Project Stages"
+              subtitle="Open a stage to continue discussion and revision work. Use compare from the stage flow."
+            />
 
             {project.stageCards.length > 0 ? (
-              <CardContent className="px-5 pb-5 pt-0">
-                <MotionStaggerGroup
-                  className={`grid justify-start gap-3 ${stageGridClasses}`}
-                  stagger={0.045}
-                >
-                  {project.stageCards.map((stage) => {
-                    const styles = getStageCardClasses(stage);
-                    const stageOpenable = stage.status === "in-progress";
-                    const stageCompleted = stage.status === "completed";
-                    const stageDisabledTitle =
-                      stage.status === "on-hold"
-                        ? "This stage is on hold."
-                        : "This stage is not active yet.";
-                    const stageButtonLabel = stageCompleted ? "View Stage" : "Open Stage";
-                    const disabledStageButtonLabel =
-                      stage.status === "on-hold" ? "On Hold" : "Pending";
-                    const stageStatusLabel =
-                      stage.status === "on-hold" ? "On Hold" : stage.statusLabel;
+              <MotionStaggerGroup
+                className="mt-6 grid min-w-0 gap-4 lg:grid-cols-2"
+                stagger={0.045}
+              >
+                {project.stageCards.map((stage) => {
+                  const statusMeta = getStageStatusMeta(stage);
+                  const stageOpenable = stage.status === "in-progress";
+                  const stageCompleted = stage.status === "completed";
+                  const stageDisabledTitle =
+                    stage.status === "on-hold"
+                      ? "This stage is on hold."
+                      : "This stage is not active yet.";
+                  const stageButtonLabel = stageCompleted ? "View Stage" : "Open Stage";
+                  const disabledStageButtonLabel =
+                    stage.status === "on-hold" ? "On Hold" : "Pending";
 
-                    return (
-                      <MotionItem key={stage.id} y={10} className="min-w-0">
-                        <Card className={`flex h-[260px] min-w-0 flex-col overflow-hidden rounded-[12px] p-3.5 pb-5 shadow-none ${styles.card}`}>
-                          <div className="min-h-[43px] space-y-1.5">
-                            <div className="flex min-w-0 items-center justify-between gap-1.5">
-                              <span className="inline-flex shrink-0 rounded-full border border-white/18 bg-white/16 px-2 py-0.5 text-[10px] font-semibold leading-tight text-white">
-                                Stage {stage.order}
-                              </span>
-                              <Badge
-                                variant="secondary"
-                                className={`min-w-0 max-w-[112px] truncate border-none px-2 py-0.5 text-[10px] font-semibold leading-tight ${styles.label}`}
-                              >
-                                {stage.name}
-                              </Badge>
-                            </div>
+                  return (
+                    <MotionItem key={stage.id} y={10} className="min-w-0">
+                      <div
+                        className={`flex min-h-[286px] min-w-0 flex-col rounded-[16px] border border-[#dfe6df] border-l-[4px] ${statusMeta.accent} bg-[linear-gradient(135deg,#ffffff,#fbfdfb)] px-5 py-5 shadow-[0_14px_34px_rgba(18,35,23,0.045)]`}
+                      >
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
                             <span
-                              className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-tight ${getStageStatusPillClassName(
-                                stage,
-                              )}`}
+                              className={`grid size-10 shrink-0 place-items-center rounded-[12px] text-[15px] font-[800] ${statusMeta.number}`}
                             >
-                              {stageStatusLabel}
+                              {formatStageNumber(stage.order)}
                             </span>
+                            <h3 className="truncate text-[16px] font-[800] leading-6 text-[#111712]">
+                              {stage.name}
+                            </h3>
                           </div>
-                          <p className="mt-2 truncate text-[11px] font-medium leading-tight text-white/90">
-                            {stage.subtitle}
-                          </p>
-                          <p className="mt-2 line-clamp-2 min-h-[30px] text-[11px] leading-[1.35] text-white/82">
-                            {stage.description || "No stage brief added yet."}
-                          </p>
-                          <h3 className="mt-3 line-clamp-2 min-h-[38px] text-[17px] font-semibold leading-[1.1] tracking-tight text-white">
-                            {stage.title}
-                          </h3>
-                          <div className={`mt-2.5 space-y-0.5 text-[11px] font-medium leading-4 ${styles.meta}`}>
-                            <p>Created on {stage.createdOn}</p>
-                            <p>Stage Budget: {stage.budget}</p>
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-[800] leading-4 ${statusMeta.statusPill}`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dot}`} />
+                            {statusMeta.label}
+                          </span>
+                        </div>
+
+                        <div className="mt-5">
+                          <StageActivitySummary
+                            projectId={project.id}
+                            stageId={stage.id}
+                            fallbackSummary={getStageActivityFallback(stage)}
+                          />
+                        </div>
+
+                        <div className="my-5 border-t border-dashed border-[#d5ddd4]" />
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="flex min-w-0 items-start gap-2.5">
+                            <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-[800] leading-4 text-[#6a746d]">
+                                Created on
+                              </p>
+                              <p className="truncate text-[12px] font-[800] leading-5 text-[#18211a]">
+                                {stage.createdOn}
+                              </p>
+                            </div>
                           </div>
+                          <div className="flex min-w-0 items-start gap-2.5">
+                            <WalletCards className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-[800] leading-4 text-[#6a746d]">
+                                Stage Budget
+                              </p>
+                              <p className="truncate text-[12px] font-[800] leading-5 text-[#18211a]">
+                                {stage.budget}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
 
-                          <Separator className="mb-3 mt-auto bg-white/14" />
-
+                        <div className="mt-auto pt-5">
                           {stageOpenable || stageCompleted ? (
                             <Button
                               asChild
-                              className={`min-h-9 w-full justify-center rounded-full px-4 py-2 ${styles.actionButton}`}
+                              className={`relative h-[48px] w-full justify-center rounded-full px-5 text-[13px] font-[800] ${statusMeta.button}`}
                             >
                               <Link href={`/projects/${project.id}/chat?stage=${stage.id}`}>
-                                <span className="text-[12px] font-semibold leading-none">
-                                  {stageButtonLabel}
-                                </span>
+                                {stageButtonLabel}
+                                <ChevronRight className="absolute right-4 h-4 w-4" />
                               </Link>
                             </Button>
                           ) : (
@@ -239,27 +345,24 @@ export function ProjectDetailWorkspace({
                               type="button"
                               disabled
                               title={stageDisabledTitle}
-                              className={`min-h-9 w-full cursor-not-allowed justify-center rounded-full px-4 py-2 disabled:opacity-100 ${styles.actionButton}`}
+                              className={`relative h-[48px] w-full cursor-not-allowed justify-center rounded-full px-5 text-[13px] font-[800] disabled:opacity-100 ${statusMeta.button}`}
                             >
-                              <span className="text-[12px] font-semibold leading-none">
-                                {disabledStageButtonLabel}
-                              </span>
+                              {disabledStageButtonLabel}
+                              <ChevronRight className="absolute right-4 h-4 w-4" />
                             </Button>
                           )}
-                        </Card>
-                      </MotionItem>
-                    );
-                  })}
-                </MotionStaggerGroup>
-              </CardContent>
+                        </div>
+                      </div>
+                    </MotionItem>
+                  );
+                })}
+              </MotionStaggerGroup>
             ) : (
-              <CardContent className="px-5 pb-5">
-                <div className="rounded-[16px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-5 py-8 text-center text-[14px] text-[#6e776f]">
-                  No stages are attached to this project yet.
-                </div>
-              </CardContent>
+              <div className="mt-6 rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-5 py-9 text-center text-[14px] font-[600] text-[#6e776f]">
+                No stages are attached to this project yet.
+              </div>
             )}
-          </Card>
+          </div>
 
           {shouldShowCompletionLoading ? (
             <CompletionLoadingCard />
@@ -279,55 +382,37 @@ export function ProjectDetailWorkspace({
             </MotionStaggerGroup>
           ) : null}
 
-          <Card className="rounded-[18px]">
-            <CardHeader className="px-5 pt-5 pb-2">
-              <CardTitle className="text-[19px] font-semibold tracking-tight">Project Brief</CardTitle>
-            </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <p className="whitespace-pre-wrap text-[13px] leading-5 text-[#39433c]">
-                {project.description}
+          <div className="grid gap-4 rounded-[24px] border border-[#dfe7de] bg-white px-5 py-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:grid-cols-[64px_minmax(0,1fr)] sm:px-6 sm:py-6">
+            <div className="grid size-16 place-items-center rounded-[18px] bg-[#eaf6ee] text-brand">
+              <FileText className="h-8 w-8" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-[20px] font-[800] leading-tight text-[#111712]">
+                Project Brief
+              </h2>
+              <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-[14px] font-[500] leading-6 text-[#303a33]">
+                {project.description.trim() || "Project brief is not available."}
               </p>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </MotionItem>
 
-        <aside className="no-scrollbar min-w-0 space-y-3 lg:sticky lg:top-0 lg:max-h-full lg:self-start lg:overflow-x-hidden lg:overflow-y-hidden lg:pr-1 lg:hover:overflow-y-auto lg:focus-within:overflow-y-auto">
-          <Card className="rounded-[18px] border border-brand/40 shadow-none">
-            <CardContent className="p-3.5">
-              <h2 className="text-[16px] font-semibold tracking-tight text-brand">Project Overview</h2>
-              <dl className="mt-2.5 space-y-1.5 text-[11px] leading-4 text-[#242b26]">
-                <div>
-                  <dt className="inline font-semibold">Execution Type:</dt>{" "}
-                  <dd className="inline">{project.executionTypeLabel}</dd>
-                </div>
-                <div>
-                  <dt className="inline font-semibold">Budget:</dt>{" "}
-                  <dd className="inline">{project.budget}</dd>
-                </div>
-                <div>
-                  <dt className="inline font-semibold">Stages:</dt>{" "}
-                  <dd className="inline">{project.stageCount}</dd>
-                </div>
-                <div>
-                  <dt className="inline font-semibold">Project Started:</dt>{" "}
-                  <dd className="inline">{project.startDate}</dd>
-                </div>
-                <div>
-                  <dt className="inline font-semibold">Project Deadline:</dt>{" "}
-                  <dd className="inline">{project.endDate}</dd>
-                </div>
-                <div>
-                  <dt className="inline font-semibold">Executor:</dt>{" "}
-                  <dd className="inline">{project.executorName}</dd>
-                </div>
-                <div>
-                  <dt className="inline font-semibold">Tag:</dt>{" "}
-                  <dd className="inline">{project.tag}</dd>
-                </div>
-                <div>
-                  <dt className="inline font-semibold">Priority:</dt>{" "}
-                  <dd className="inline">{project.priority}</dd>
-                </div>
+        <aside className="dashboard-scroll-thin min-w-0 space-y-5 xl:sticky xl:top-0 xl:max-h-[calc(100dvh-12rem)] xl:overflow-y-auto xl:pr-1">
+          <Card className="rounded-[24px] border border-[#e0e7df] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.055)]">
+            <CardContent className="px-5 py-5">
+              <SectionHeading
+                icon={<ClipboardList className="h-5 w-5" />}
+                title="Project Overview"
+              />
+              <dl className="mt-4">
+                <OverviewRow label="Execution Type" value={project.executionTypeLabel} />
+                <OverviewRow label="Budget" value={project.budget} />
+                <OverviewRow label="Stages" value={project.stageCount} />
+                <OverviewRow label="Project Started" value={project.startDate} />
+                <OverviewRow label="Project Deadline" value={project.endDate} />
+                <OverviewRow label="Executor" value={project.executorName} />
+                <OverviewRow label="Tag" value={project.tag} />
+                <OverviewRow label="Priority" value={project.priority} priority />
               </dl>
             </CardContent>
           </Card>
@@ -336,25 +421,28 @@ export function ProjectDetailWorkspace({
 
           <ProjectCollaboratorsPanel collaborators={project.collaborators} />
 
-          <Card className="rounded-[18px]">
-            <CardHeader className="px-4 pt-4 pb-2">
-              <CardTitle className="text-[17px] font-semibold tracking-tight">Project Assets</CardTitle>
+          <Card className="rounded-[24px] border border-[#e0e7df] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.055)]">
+            <CardHeader className="px-5 pb-3 pt-5">
+              <SectionHeading
+                icon={<BadgeDollarSign className="h-5 w-5" />}
+                title="Project Assets"
+              />
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-5 pb-5 pt-0">
               {assetsLoading ? (
                 <DetailAssetsSkeleton />
               ) : project.attachments.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {project.attachments.map((attachment) => (
                     <div
                       key={attachment.id}
-                      className="flex items-start justify-between gap-2 rounded-[14px] border border-[#dce6dd] bg-[#fbfcfa] px-3 py-2.5"
+                      className="flex items-start justify-between gap-3 rounded-[18px] border border-[#e2e8e1] bg-[#fbfcfa] px-3.5 py-3"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-[12px] font-semibold text-[#243028]">
+                        <p className="truncate text-[12px] font-[800] leading-5 text-[#243028]">
                           {attachment.originalFileName}
                         </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[10px] text-[#7a837b]">
+                        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[10px] font-[600] leading-4 text-[#7a837b]">
                           <span>{attachment.fileSizeLabel}</span>
                           <span>·</span>
                           <span>{attachment.uploadedBy}</span>
@@ -368,19 +456,19 @@ export function ProjectDetailWorkspace({
                           mimeType={attachment.mimeType}
                           previewPath={attachment.previewPath}
                           downloadPath={attachment.downloadPath}
-                          triggerClassName="size-7 text-brand"
+                          triggerClassName="size-8 text-brand"
                         />
                         <AttachmentFavoriteButton
                           attachmentId={attachment.id}
                           initialIsFavorited={attachment.isFavoritedByCurrentUser}
-                          className="size-7 text-[#7a847d] hover:bg-[#fff4f5]"
+                          className="size-8 text-[#7a847d] hover:bg-[#fff4f5]"
                         />
                         <Button
                           asChild
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="size-7 text-brand"
+                          className="size-8 text-brand"
                         >
                           <a
                             href={attachment.downloadPath}
@@ -396,7 +484,7 @@ export function ProjectDetailWorkspace({
                   ))}
                 </div>
               ) : (
-                <div className="rounded-[16px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-6 text-center text-[13px] text-[#6e776f]">
+                <div className="rounded-[18px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-7 text-center text-[13px] font-[600] text-[#6e776f]">
                   No project-level attachments uploaded yet.
                 </div>
               )}
