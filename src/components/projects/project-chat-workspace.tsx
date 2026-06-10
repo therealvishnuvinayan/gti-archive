@@ -160,8 +160,8 @@ type RevisionReplyTarget = {
   label: string;
 };
 
-const pendingRevisionReviewMessage =
-  "Revision submitted. Waiting for project owner review.";
+const defaultPendingRevisionReviewMessage =
+  "A revision is already pending review. Please wait for the project owner to review it.";
 
 type TranslateApiResponse = {
   sourceLanguageCode: string;
@@ -1737,6 +1737,10 @@ export function ProjectChatWorkspace({
       "PENDING_REVIEW"
     : null;
   const hasPendingRevisionReview = latestRevisionStatus === "PENDING_REVIEW";
+  const pendingRevisionReviewMessage =
+    hasPendingRevisionReview && latestRevisionMessage
+      ? `${getRevisionLabel(latestRevisionMessage)} is already pending review. Please wait for the project owner to review it.`
+      : defaultPendingRevisionReviewMessage;
   const revisionLabelById = useMemo(() => {
     const labels = new Map<string, string>();
 

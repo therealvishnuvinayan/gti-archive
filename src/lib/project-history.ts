@@ -170,6 +170,15 @@ export type StageHistoryRecord = {
   entries: ProjectChatEntry[];
 };
 
+type ActivePendingStageReview =
+  | {
+      kind: "revision";
+      revisionNumber: number;
+    }
+  | {
+      kind: "stageSubmission";
+    };
+
 export type RequestUploadInput = {
   projectId: string;
   stageId?: string | null;
@@ -230,6 +239,66 @@ export type FinalizePreparedStageCommentUploadsResult = {
   stageId: string;
   mentionedUserIds: string[];
 };
+
+async function getStageReviewState(projectId: string, stageId: string) {
+  const latestRevision = await prisma.projectRevision.findFirst({
+    where: {
+      projectId,
+      stageId,
+    },
+    orderBy: {
+      revisionNumber: "desc",
+    },
+    select: {
+      id: true,
+      revisionNumber: true,
+      status: true,
+    },
+  });
+
+  if (latestRevision?.status === ProjectRevisionStatus.PENDING_REVIEW) {
+    return {
+      latestRevisionNumber: latestRevision.revisionNumber,
+      pendingReview: {
+        kind: "revision",
+        revisionNumber: latestRevision.revisionNumber,
+      } satisfies ActivePendingStageReview,
+    };
+  }
+
+  const pendingStageSubmission = await prisma.projectAttachment.findFirst({
+    where: {
+      projectId,
+      stageId,
+      assetType: AttachmentAssetType.STAGE_SUBMISSION,
+      status: {
+        in: [AttachmentStatus.UPLOADING, AttachmentStatus.READY],
+      },
+      submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW,
+      revisionId: null,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return {
+    latestRevisionNumber: latestRevision?.revisionNumber ?? 0,
+    pendingReview: pendingStageSubmission
+      ? ({
+          kind: "stageSubmission",
+        } satisfies ActivePendingStageReview)
+      : null,
+  };
+}
+
+function getPendingStageReviewMessage(pendingReview: ActivePendingStageReview) {
+  if (pendingReview.kind === "revision") {
+    return `Revision ${pendingReview.revisionNumber} is already pending review. Please wait for the project owner to review it.`;
+  }
+
+  return "A stage submission is already pending review. Please wait for the project owner to review it.";
+}
 
 function getDisplayName(user: Pick<User, "name" | "email">) {
   return user.name?.trim() || user.email;
@@ -1057,36 +1126,13 @@ export async function createStageRevision(
   }
 
   const revision = await withPrismaRetry(async () => {
-    const pendingRevision = await prisma.projectRevision.findFirst({
-      where: {
-        projectId: input.projectId,
-        stageId: stage.id,
-        status: ProjectRevisionStatus.PENDING_REVIEW,
-      },
-      select: {
-        id: true,
-      },
-    });
+    const reviewState = await getStageReviewState(input.projectId, stage.id);
 
-    if (pendingRevision) {
-      throw new Error(
-        "A revision is already pending review. Please wait for the project owner to review it.",
-      );
+    if (reviewState.pendingReview) {
+      throw new Error(getPendingStageReviewMessage(reviewState.pendingReview));
     }
 
-    const latestRevision = await prisma.projectRevision.findFirst({
-      where: {
-        stageId: stage.id,
-      },
-      orderBy: {
-        revisionNumber: "desc",
-      },
-      select: {
-        revisionNumber: true,
-      },
-    });
-
-    const revisionNumber = (latestRevision?.revisionNumber ?? 0) + 1;
+    const revisionNumber = reviewState.latestRevisionNumber + 1;
 
     return prisma.projectRevision.create({
       data: {
@@ -1432,23 +1478,13 @@ export async function prepareStageCommentUploads(
       return { error: "This stage is already completed." };
     }
 
-    const pendingRevision = await withPrismaRetry(() =>
-      prisma.projectRevision.findFirst({
-        where: {
-          projectId: input.projectId,
-          stageId: stage.id,
-          status: ProjectRevisionStatus.PENDING_REVIEW,
-        },
-        select: {
-          id: true,
-        },
-      }),
+    const reviewState = await withPrismaRetry(() =>
+      getStageReviewState(input.projectId, stage.id),
     );
 
-    if (pendingRevision) {
+    if (reviewState.pendingReview) {
       return {
-        error:
-          "A revision is already pending review. Please wait for the project owner to review it.",
+        error: getPendingStageReviewMessage(reviewState.pendingReview),
       };
     }
   }
@@ -2185,6 +2221,12 @@ export async function reviewProjectRevision(
     throw new Error("Invoice is required before completing this stage.");
   }
 
+  const reviewedAt = new Date();
+  const attachmentReviewStatus =
+    input.status === "APPROVED"
+      ? SubmissionReviewStatus.APPROVED
+      : SubmissionReviewStatus.REJECTED;
+
   return withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const updatedRevision = await tx.projectRevision.update({
@@ -2194,7 +2236,7 @@ export async function reviewProjectRevision(
         data: {
           status: input.status,
           reviewedById: user.id,
-          reviewedAt: new Date(),
+          reviewedAt,
           rejectionReason: input.status === "REJECTED" ? rejectionReason : null,
         },
         select: {
@@ -2208,6 +2250,21 @@ export async function reviewProjectRevision(
               email: true,
             },
           },
+        },
+      });
+
+      await tx.projectAttachment.updateMany({
+        where: {
+          projectId: revision.projectId,
+          stageId: revision.stageId,
+          revisionId: revision.id,
+          submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW,
+        },
+        data: {
+          submissionReviewStatus: attachmentReviewStatus,
+          reviewedById: user.id,
+          reviewedAt,
+          reviewNote: input.status === "REJECTED" ? rejectionReason : null,
         },
       });
 
@@ -2621,6 +2678,16 @@ export async function requestAttachmentUpload(
       comment.stage.status === "COMPLETED"
     ) {
       return { error: "This stage is already completed." };
+    }
+
+    if (input.assetType === AttachmentAssetType.STAGE_SUBMISSION) {
+      const reviewState = await withPrismaRetry(() =>
+        getStageReviewState(input.projectId, stageId),
+      );
+
+      if (reviewState.pendingReview) {
+        return { error: getPendingStageReviewMessage(reviewState.pendingReview) };
+      }
     }
 
     if (comment.project.status === "COMPLETED") {
