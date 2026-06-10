@@ -1465,10 +1465,15 @@ export async function completeProjectArchive(
     throw new Error("Project not found.");
   }
 
+  const archiveProject = project;
+
   await assertProjectAccess(user, input.projectId);
 
-  const finalStage = ensureProjectCanBeCompleted(user, project, input.stageId);
-  const preparedFiles = await getFinalStageArchivableAttachments(project.id, finalStage.id);
+  const finalStage = ensureProjectCanBeCompleted(user, archiveProject, input.stageId);
+  const preparedFiles = await getFinalStageArchivableAttachments(
+    archiveProject.id,
+    finalStage.id,
+  );
 
   if (preparedFiles.length === 0) {
     throw new Error("No approved final files are available to archive.");
@@ -1503,8 +1508,8 @@ export async function completeProjectArchive(
     input.archiveCategorySlug && isArchiveCategorySlug(input.archiveCategorySlug)
       ? input.archiveCategorySlug
       : inferArchiveCategorySlug({
-          projectCategory: project.category,
-          projectTag: project.tag,
+          projectCategory: archiveProject.category,
+          projectTag: archiveProject.tag,
           fileName: archiveFiles[0]?.originalFileName,
           mimeType: archiveFiles[0]?.mimeType,
         });
@@ -1512,7 +1517,7 @@ export async function completeProjectArchive(
 
   const archivedAt = new Date();
 
-  return withPrismaRetry(() =>
+  const archive = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const latestProject = await tx.project.findUnique({
         where: {
@@ -1565,21 +1570,21 @@ export async function completeProjectArchive(
         throw new Error(allStagesCompletionError);
       }
 
-      const archive = await tx.projectArchive.create({
+      const createdArchive = await tx.projectArchive.create({
         data: {
-          projectId: project.id,
+          projectId: archiveProject.id,
           finalStageId: finalStage.id,
           archivedById: user.id,
-          projectName: project.name,
-          projectCategory: project.category,
-          projectTag: project.tag?.trim() || null,
+          projectName: archiveProject.name,
+          projectCategory: archiveProject.category,
+          projectTag: archiveProject.tag?.trim() || null,
           archiveCategorySlug,
           archiveCategoryLabel,
           status: "ARCHIVED",
           archivedAt,
           files: {
             create: archiveFiles.map((file) => ({
-              projectId: project.id,
+              projectId: archiveProject.id,
               sourceAttachmentId: file.sourceAttachmentId,
               sourceRevisionId: file.sourceRevisionId,
               finalArchiveFileName: file.finalArchiveFileName,
@@ -1600,7 +1605,7 @@ export async function completeProjectArchive(
 
       await tx.project.update({
         where: {
-          id: project.id,
+          id: archiveProject.id,
         },
         data: {
           status: "COMPLETED",
@@ -1610,41 +1615,45 @@ export async function completeProjectArchive(
         },
       });
 
-      // Initialize the post-completion workflow as part of archive completion so
-      // the checklist is immediately available on the next render.
-      await tx.projectCompletionWorkflow.upsert({
-        where: {
-          projectId: project.id,
-        },
-        update: {},
-        create: {
-          projectId: project.id,
-        },
-      });
-
-      await tx.projectActivityLog.create({
-        data: {
-          projectId: project.id,
-          stageId: finalStage.id,
-          actorId: user.id,
-          action: "FINAL_ARCHIVED",
-          metadata: {
-            archiveId: archive.id,
-            archiveCategorySlug,
-            archiveCategoryLabel,
-            archivedFileCount: archiveFiles.length,
-          },
-        },
-      });
-
       return {
-        archiveId: archive.id,
+        archiveId: createdArchive.id,
         archivedFileCount: archiveFiles.length,
         archiveCategorySlug,
         archiveCategoryLabel,
       };
     }),
   );
+
+  await withPrismaRetry(() =>
+    prisma.projectCompletionWorkflow.upsert({
+      where: {
+        projectId: archiveProject.id,
+      },
+      update: {},
+      create: {
+        projectId: archiveProject.id,
+      },
+    }),
+  );
+
+  await withPrismaRetry(() =>
+    prisma.projectActivityLog.create({
+      data: {
+        projectId: archiveProject.id,
+        stageId: finalStage.id,
+        actorId: user.id,
+        action: "FINAL_ARCHIVED",
+        metadata: {
+          archiveId: archive.archiveId,
+          archiveCategorySlug,
+          archiveCategoryLabel,
+          archivedFileCount: archiveFiles.length,
+        },
+      },
+    }),
+  );
+
+  return archive;
 }
 
 export async function getArchivedFileDownloadUrlForUser(
