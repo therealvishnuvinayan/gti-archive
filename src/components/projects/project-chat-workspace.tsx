@@ -38,6 +38,7 @@ import {
   markStageCompleteAction,
   prepareProjectCompletionAction,
   removeProjectCollaboratorAction,
+  requestStageInvoiceAction,
   requestSubmissionRevisionAction,
   saveProjectCollaboratorsAction,
   setProjectCollaboratorChatVisibilityAction,
@@ -1534,6 +1535,13 @@ export function ProjectChatWorkspace({
   const [isUploadingRevision, setIsUploadingRevision] = useState(false);
   const [isUploadingStageInvoice, setIsUploadingStageInvoice] = useState(false);
   const [stageInvoiceError, setStageInvoiceError] = useState<string | null>(null);
+  const [invoiceRequestDialogOpen, setInvoiceRequestDialogOpen] = useState(false);
+  const [invoiceRequestRecipientId, setInvoiceRequestRecipientId] = useState("");
+  const [invoiceRequestNote, setInvoiceRequestNote] = useState(
+    "Please upload the invoice for this completed stage.",
+  );
+  const [invoiceRequestError, setInvoiceRequestError] = useState<string | null>(null);
+  const [isRequestingStageInvoice, setIsRequestingStageInvoice] = useState(false);
   const [selectedOutputLanguageCode, setSelectedOutputLanguageCode] = useState(
     DEFAULT_CHAT_LANGUAGE.code,
   );
@@ -1565,6 +1573,7 @@ export function ProjectChatWorkspace({
         startedByName?: string | null;
         status?: ProjectStageRecord["status"];
         invoiceAttachment?: ProjectStageRecord["invoiceAttachment"];
+        invoiceRequest?: ProjectStageRecord["invoiceRequest"];
       }
     >
   >({});
@@ -1647,6 +1656,10 @@ export function ProjectChatWorkspace({
                 override.invoiceAttachment === undefined
                   ? stage.invoiceAttachment
                   : override.invoiceAttachment,
+              invoiceRequest:
+                override.invoiceRequest === undefined
+                  ? stage.invoiceRequest
+                  : override.invoiceRequest,
             }
           : stage;
       }),
@@ -1736,10 +1749,13 @@ export function ProjectChatWorkspace({
       latestRevisionMessage.revisionStatus ??
       "PENDING_REVIEW"
     : null;
+  const latestRevisionLabel = latestRevisionMessage
+    ? getRevisionLabel(latestRevisionMessage)
+    : null;
   const hasPendingRevisionReview = latestRevisionStatus === "PENDING_REVIEW";
   const pendingRevisionReviewMessage =
     hasPendingRevisionReview && latestRevisionMessage
-      ? `${getRevisionLabel(latestRevisionMessage)} is already pending review. Please wait for the project owner to review it.`
+      ? `${latestRevisionLabel} is already pending review. Please wait for the project owner to review it.`
       : defaultPendingRevisionReviewMessage;
   const revisionLabelById = useMemo(() => {
     const labels = new Map<string, string>();
@@ -1805,28 +1821,71 @@ export function ProjectChatWorkspace({
   );
   const canSubmitWorkAsMainExecutor = isMainProjectExecutor && !isProjectOwner;
   const stageInvoiceRequired = Boolean(activeStage?.invoiceRequired);
+  const stageInvoiceRequest = activeStage?.invoiceRequest ?? null;
   const stageInvoiceMissing =
     stageInvoiceRequired && !stageInvoiceAttachment && !isStageCompleted && !isProjectCompleted;
+  const isRequestedStageInvoiceUploader =
+    Boolean(stageInvoiceRequest) && stageInvoiceRequest?.requestedFromId === currentUserId;
   const canUploadStageInvoice =
     Boolean(activeStage?.id) &&
     stageInvoiceRequired &&
     !stageInvoiceAttachment &&
-    (isProjectOwner || isProjectExecutor) &&
+    isRequestedStageInvoiceUploader &&
     !isStageCompleted &&
     !isProjectCompleted;
+  const canRequestStageInvoice = isProjectOwner && stageInvoiceMissing;
+  const invoiceRequestCandidates = useMemo(() => {
+    const candidates = [
+      ...project.executors.map((executor) => ({
+        id: executor.id,
+        name: executor.name,
+        email: executor.email,
+        role: executor.role === "MAIN_EXECUTOR" ? "Main Executor" : "Executor",
+        rank: executor.role === "MAIN_EXECUTOR" ? 0 : 1,
+      })),
+      ...project.collaborators
+        .filter((collaborator) => collaborator.group === "external")
+        .map((collaborator) => ({
+          id: collaborator.id,
+          name: collaborator.name,
+          email: collaborator.email,
+          role: collaborator.role || "External Collaborator",
+          rank: 2,
+        })),
+    ].filter((candidate) => candidate.id !== project.ownerId);
+
+    return candidates
+      .filter(
+        (candidate, index, current) =>
+          current.findIndex((item) => item.id === candidate.id) === index,
+      )
+      .sort((left, right) => left.rank - right.rank || left.name.localeCompare(right.name));
+  }, [project.collaborators, project.executors, project.ownerId]);
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
   const canSubmitNewRevision =
     canSubmitWorkAsMainExecutor &&
     hasAcceptedBrief &&
+    activeStage?.status !== "pending" &&
     !isStageCompleted &&
     !isProjectCompleted &&
     !hasPendingRevisionReview;
-  const showPendingRevisionReviewStatus =
-    canSubmitWorkAsMainExecutor &&
-    hasAcceptedBrief &&
-    !isStageCompleted &&
-    !isProjectCompleted &&
-    hasPendingRevisionReview;
+  const submitWorkDisabledReason = !canSubmitWorkAsMainExecutor
+    ? null
+    : !activeStage
+      ? "No active stage selected."
+      : isStageCompleted
+        ? "Stage is completed."
+        : isProjectCompleted
+          ? "Project is completed."
+          : activeStage.status === "pending"
+            ? "Stage is pending."
+            : !hasAcceptedBrief
+              ? "Waiting for main executor to accept brief."
+              : hasPendingRevisionReview
+                ? pendingRevisionReviewMessage
+                : null;
+  const showSubmitWorkAction =
+    canSubmitWorkAsMainExecutor && Boolean(activeStage) && !isProjectCompleted;
   const projectBriefText = project.description.trim();
   const stageBriefText = activeStage?.description.trim() ?? "";
   const projectBriefAttachments = project.attachments;
@@ -1946,6 +2005,18 @@ export function ProjectChatWorkspace({
   );
   const reviewCompletionIsFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
+  const canReviewLatestRevision =
+    Boolean(latestRevisionMessage) &&
+    !isProjectCompleted &&
+    canReviewSubmissions &&
+    latestRevisionStatus === "PENDING_REVIEW";
+  const canMarkLatestRevisionComplete =
+    Boolean(latestRevisionMessage) &&
+    isProjectOwner &&
+    !isFinalStage &&
+    !isProjectCompleted;
+  const showLatestRevisionActionBar =
+    Boolean(latestRevisionMessage) && !isProjectCompleted;
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -3785,6 +3856,112 @@ export function ProjectChatWorkspace({
     }
   }
 
+  function openInvoiceRequestDialog() {
+    setInvoiceRequestError(null);
+    setStageInvoiceError(null);
+    setInvoiceRequestRecipientId(
+      stageInvoiceRequest?.requestedFromId ?? invoiceRequestCandidates[0]?.id ?? "",
+    );
+    setInvoiceRequestNote(
+      stageInvoiceRequest?.note ?? "Please upload the invoice for this completed stage.",
+    );
+    setInvoiceRequestDialogOpen(true);
+  }
+
+  async function handleRequestStageInvoice() {
+    const activeStageId = activeStage?.id;
+
+    if (!activeStageId) {
+      setInvoiceRequestError("This project does not have an active stage.");
+      return;
+    }
+
+    if (!canRequestStageInvoice) {
+      setInvoiceRequestError("Invoice request is not available for this stage.");
+      return;
+    }
+
+    if (!invoiceRequestRecipientId) {
+      setInvoiceRequestError("Choose who should upload the invoice.");
+      return;
+    }
+
+    setInvoiceRequestError(null);
+    setIsRequestingStageInvoice(true);
+
+    try {
+      const result = await requestStageInvoiceAction({
+        projectId: project.id,
+        stageId: activeStageId,
+        requestedFromId: invoiceRequestRecipientId,
+        note: invoiceRequestNote,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      const request = result.request;
+      const nextInvoiceRequest: ProjectStageRecord["invoiceRequest"] = {
+        id: request.id,
+        requestedById: currentUserId,
+        requestedByName: request.requestedByName,
+        requestedFromId: request.requestedFromId,
+        requestedFromName: request.requestedFromName,
+        note: request.note,
+        requestedAt: "Just now",
+        fulfilledAt: null,
+      };
+      const stageName = activeStage?.label ?? "this stage";
+
+      setStageCardOverrides((current) => ({
+        ...current,
+        [activeStageId]: {
+          actualStartedAt:
+            current[activeStageId]?.actualStartedAt ??
+            activeStage?.actualStartedAt ??
+            "—",
+          actualStartedAtValue:
+            current[activeStageId]?.actualStartedAtValue ??
+            activeStage?.actualStartedAtValue ??
+            null,
+          startedByName:
+            current[activeStageId]?.startedByName ?? activeStage?.startedByName,
+          status: current[activeStageId]?.status ?? activeStage?.status,
+          invoiceAttachment:
+            current[activeStageId]?.invoiceAttachment ?? activeStage?.invoiceAttachment ?? null,
+          invoiceRequest: nextInvoiceRequest,
+        },
+      }));
+      setConfirmedComments((current) => [
+        ...current,
+        {
+          id: `confirmed-invoice-request-${request.id}`,
+          serverEntryId: request.commentId,
+          kind: "system",
+          title: "Invoice requested",
+          author: currentUserDisplayName,
+          authorId: currentUserId,
+          authorAvatarSrc: currentUserAvatarSrc,
+          role: currentUserRoleLabel,
+          body: `${currentUserDisplayName} requested invoice from ${request.requestedFromName} for ${stageName}.`,
+          createdAt: "Just now",
+          localCreatedAtMs: Date.now(),
+        },
+      ]);
+      setInvoiceRequestDialogOpen(false);
+      showSuccessToast("Invoice request sent in-app.");
+      refreshHistory();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to request the invoice right now.";
+      setInvoiceRequestError(message);
+      showErrorToast("Unable to request invoice.", message);
+    } finally {
+      setIsRequestingStageInvoice(false);
+    }
+  }
+
   function openStageInvoiceUpload() {
     setStageInvoiceError(null);
     setReviewDialogError(null);
@@ -3792,7 +3969,7 @@ export function ProjectChatWorkspace({
 
     if (!canUploadStageInvoice) {
       const message = stageInvoiceRequired
-        ? "Only the project owner or an executor can upload the invoice for this stage."
+        ? "Only the requested invoice recipient can upload the invoice for this stage."
         : "Invoice is not required for this stage.";
       setStageInvoiceError(message);
       showErrorToast("Unable to upload invoice.", message);
@@ -3823,7 +4000,7 @@ export function ProjectChatWorkspace({
 
     if (!canUploadStageInvoice) {
       const message = stageInvoiceRequired
-        ? "Only the project owner or an executor can upload the invoice for this stage."
+        ? "Only the requested invoice recipient can upload the invoice for this stage."
         : "Invoice is not required for this stage.";
       setStageInvoiceError(message);
       showErrorToast("Unable to upload invoice.", message);
@@ -3855,23 +4032,34 @@ export function ProjectChatWorkspace({
       };
       const stageName = activeStage?.label ?? "this stage";
 
-      setStageCardOverrides((current) => ({
-        ...current,
-        [activeStageId]: {
-          actualStartedAt:
-            current[activeStageId]?.actualStartedAt ??
-            activeStage?.actualStartedAt ??
-            "—",
-          actualStartedAtValue:
-            current[activeStageId]?.actualStartedAtValue ??
-            activeStage?.actualStartedAtValue ??
-            null,
-          startedByName:
-            current[activeStageId]?.startedByName ?? activeStage?.startedByName,
-          status: current[activeStageId]?.status ?? activeStage?.status,
-          invoiceAttachment,
-        },
-      }));
+      setStageCardOverrides((current) => {
+        const existingInvoiceRequest =
+          current[activeStageId]?.invoiceRequest ?? activeStage?.invoiceRequest ?? null;
+
+        return {
+          ...current,
+          [activeStageId]: {
+            actualStartedAt:
+              current[activeStageId]?.actualStartedAt ??
+              activeStage?.actualStartedAt ??
+              "—",
+            actualStartedAtValue:
+              current[activeStageId]?.actualStartedAtValue ??
+              activeStage?.actualStartedAtValue ??
+              null,
+            startedByName:
+              current[activeStageId]?.startedByName ?? activeStage?.startedByName,
+            status: current[activeStageId]?.status ?? activeStage?.status,
+            invoiceAttachment,
+            invoiceRequest: existingInvoiceRequest
+              ? {
+                  ...existingInvoiceRequest,
+                  fulfilledAt: "Just now",
+                }
+              : null,
+          },
+        };
+      });
       setConfirmedComments((current) => [
         ...current,
         {
@@ -4195,29 +4383,7 @@ export function ProjectChatWorkspace({
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 Upload the first revision to start the proof and archive trail.
               </p>
-              {canSubmitNewRevision ? (
-                <div className="mt-5 flex justify-center">
-                  <Button
-                    type="button"
-                    onClick={openRevisionDialog}
-                    disabled={isUploadingRevision}
-                  >
-                    {isUploadingRevision ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4" />
-                    )}
-                    Submit First Work
-                  </Button>
-                </div>
-              ) : showPendingRevisionReviewStatus ? (
-                <div className="mt-5">
-                  <WorkflowNoticeCard
-                    title="Pending review"
-                    body={pendingRevisionReviewMessage}
-                  />
-                </div>
-              ) : !isProjectCompleted &&
+              {!isProjectCompleted &&
                 !isStageCompleted &&
                 isMainProjectExecutor &&
                 showBriefAcceptancePrompt ? (
@@ -4264,11 +4430,6 @@ export function ProjectChatWorkspace({
                   reviewOverride?.reviewedAt ?? message.reviewedAt ?? null;
                 const revisionStatusMeta = getRevisionStatusMeta(effectiveRevisionStatus);
                 const revisionLabel = getRevisionLabel(message);
-                const isLatestRevision = revisionEntryId === latestRevisionEntryId;
-                const canReviewRevision =
-                  !isProjectCompleted &&
-                  canReviewSubmissions &&
-                  effectiveRevisionStatus === "PENDING_REVIEW";
 
                 return (
                   <div key={message.id} className="mx-auto w-full max-w-full space-y-3 sm:max-w-[82%]">
@@ -4344,79 +4505,6 @@ export function ProjectChatWorkspace({
                         ) : null}
                       </div>
                     </Card>
-
-                    {canReviewRevision || isLatestRevision || !isProjectCompleted ? (
-                      <div className="flex flex-wrap gap-2">
-                        {canReviewRevision ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="rounded-full text-[12px]"
-                            disabled={pendingRevisionReviewId === revisionEntryId}
-                            onClick={() => {
-                              setReviewDialogError(null);
-                              setReviewRejectMode(false);
-                              setReviewCompleteDialogOpen(false);
-                              setReviewRejectReason("");
-                              setReviewRevisionId(revisionEntryId);
-                            }}
-                          >
-                            Review Submission
-                          </Button>
-                        ) : null}
-                        {isLatestRevision && canSubmitNewRevision ? (
-                          <Button
-                            type="button"
-                            onClick={openRevisionDialog}
-                            size="sm"
-                            className="rounded-full text-[12px]"
-                            disabled={isUploadingRevision}
-                          >
-                            {isUploadingRevision ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Upload className="h-3.5 w-3.5" />
-                            )}
-                            Submit Work
-                          </Button>
-                        ) : null}
-                        {isLatestRevision && showPendingRevisionReviewStatus ? (
-                          <div className="w-full">
-                            <WorkflowNoticeCard
-                              title="Pending review"
-                              body={pendingRevisionReviewMessage}
-                            />
-                          </div>
-                        ) : null}
-                        {isLatestRevision && isProjectOwner && !isFinalStage ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="rounded-full text-[12px]"
-                            disabled={isStageCompleted || isMarkingStageComplete}
-                            onClick={() => {
-                              setStageCompleteError(null);
-                              setStageCompleteDialogOpen(true);
-                            }}
-                          >
-                            {isStageCompleted ? "Stage completed" : "Mark as complete"}
-                          </Button>
-                        ) : null}
-                        {!isProjectCompleted ? (
-                          <Button
-                            type="button"
-                            onClick={() => startRevisionReply(message)}
-                            size="sm"
-                            variant="secondary"
-                            className="rounded-full text-[12px]"
-                          >
-                            Add Comments
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
                   </div>
                 );
               })()
@@ -4630,12 +4718,13 @@ export function ProjectChatWorkspace({
             ),
           )}
 
-          {!hasRevisionEntries && displayedMessages.length > 0 ? (
+          {!hasRevisionEntries &&
+          displayedMessages.length > 0 &&
+          !isProjectCompleted &&
+          !isStageCompleted &&
+          showBriefAcceptancePrompt ? (
             <div className="flex flex-wrap gap-2">
-              {!isProjectCompleted &&
-              !isStageCompleted &&
-              isMainProjectExecutor &&
-              showBriefAcceptancePrompt ? (
+              {isMainProjectExecutor ? (
                 <>
                   <Button
                     type="button"
@@ -4654,33 +4743,7 @@ export function ProjectChatWorkspace({
                   </Button>
                 </>
               ) : null}
-              {canSubmitNewRevision ? (
-                <Button
-                  type="button"
-                  onClick={openRevisionDialog}
-                  size="sm"
-                  className="rounded-full text-[12px]"
-                  disabled={isUploadingRevision || isStageCompleted}
-                >
-                  {isUploadingRevision ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Upload className="h-3.5 w-3.5" />
-                  )}
-                  Submit Work
-                </Button>
-              ) : showPendingRevisionReviewStatus ? (
-                <div className="w-full">
-                  <WorkflowNoticeCard
-                    title="Pending review"
-                    body={pendingRevisionReviewMessage}
-                  />
-                </div>
-              ) : null}
-              {!isProjectCompleted &&
-              !isStageCompleted &&
-              !isMainProjectExecutor &&
-              showBriefAcceptancePrompt ? (
+              {!isMainProjectExecutor ? (
                 <div className="w-full">
                   <WorkflowNoticeCard
                     title="Waiting for Main Executor"
@@ -4693,6 +4756,66 @@ export function ProjectChatWorkspace({
               <div ref={chatBottomRef} />
             </div>
           </div>
+
+          {showLatestRevisionActionBar && latestRevisionMessage ? (
+            <Card className="mx-auto mt-2 w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dfe8df] bg-white/95 px-4 py-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
+                    Latest revision actions
+                  </p>
+                  <p className="mt-1 truncate text-[13px] font-semibold text-[#173120]">
+                    {latestRevisionLabel} ·{" "}
+                    {getRevisionStatusMeta(latestRevisionStatus ?? "PENDING_REVIEW").label}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canReviewLatestRevision && latestRevisionEntryId ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-full text-[12px]"
+                      disabled={pendingRevisionReviewId === latestRevisionEntryId}
+                      onClick={() => {
+                        setReviewDialogError(null);
+                        setReviewRejectMode(false);
+                        setReviewCompleteDialogOpen(false);
+                        setReviewRejectReason("");
+                        setReviewRevisionId(latestRevisionEntryId);
+                      }}
+                    >
+                      Review Submission
+                    </Button>
+                  ) : null}
+                  {canMarkLatestRevisionComplete ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-full text-[12px]"
+                      disabled={isStageCompleted || isMarkingStageComplete}
+                      onClick={() => {
+                        setStageCompleteError(null);
+                        setStageCompleteDialogOpen(true);
+                      }}
+                    >
+                      {isStageCompleted ? "Stage completed" : "Mark as complete"}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    onClick={() => startRevisionReply(latestRevisionMessage)}
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-full text-[12px]"
+                  >
+                    Add Comments
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ) : null}
 
           {isProjectCompleted ? (
             <Card className="mx-auto mt-2 w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
@@ -5022,6 +5145,50 @@ export function ProjectChatWorkspace({
                 </div>
               </dl>
               <div className="mt-5 space-y-2.5">
+                {canUploadStageInvoice ? (
+                  <div className="space-y-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={openStageInvoiceUpload}
+                      disabled={isUploadingStageInvoice}
+                      className="min-w-[170px] text-[13px]"
+                    >
+                      {isUploadingStageInvoice ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      Upload Invoice
+                    </Button>
+                    <p className="text-[11px] leading-4 text-[#6f786f]">
+                      Invoice requested by {stageInvoiceRequest?.requestedByName ?? "Project Owner"}.
+                    </p>
+                  </div>
+                ) : null}
+                {showSubmitWorkAction ? (
+                  <div className="space-y-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={openRevisionDialog}
+                      disabled={!canSubmitNewRevision || isUploadingRevision}
+                      className="min-w-[170px] text-[13px]"
+                    >
+                      {isUploadingRevision ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      Submit Work
+                    </Button>
+                    {submitWorkDisabledReason ? (
+                      <p className="text-[11px] leading-4 text-[#6f786f]">
+                        {submitWorkDisabledReason}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {!isProjectCompleted && canCompareSubmissions ? (
                   <Button asChild size="sm" className="min-w-[170px] text-[13px]">
                     <Link href={`/projects/${project.id}/compare?stage=${activeStage?.id ?? ""}`}>
@@ -5064,11 +5231,6 @@ export function ProjectChatWorkspace({
             </CardContent>
           </Card>
 
-          <StageTimeRemainingCard
-            actualStartedAt={activeStage?.actualStartedAtValue ?? null}
-            stageDueAt={activeStage?.plannedDueAtValue ?? null}
-          />
-
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-[#111712]">
@@ -5087,30 +5249,46 @@ export function ProjectChatWorkspace({
                   attachments={[stageInvoiceAttachment]}
                   compact
                 />
-              ) : canUploadStageInvoice ? (
+              ) : stageInvoiceRequest ? (
                 <div className="space-y-3">
                   <p className="text-[13px] leading-5 text-[#6f786f]">
-                    Invoice required for this stage.
+                    {canUploadStageInvoice ? "Invoice requested by " : "Invoice requested from "}
+                    <span className="font-semibold text-[#26342c]">
+                      {canUploadStageInvoice
+                        ? stageInvoiceRequest.requestedByName
+                        : stageInvoiceRequest.requestedFromName}
+                    </span>
+                    .
+                  </p>
+                  {stageInvoiceRequest.note ? (
+                    <p className="rounded-[14px] border border-[#dfe8df] bg-[#fbfcfa] px-3 py-2 text-[12px] leading-5 text-[#5f6b62]">
+                      {stageInvoiceRequest.note}
+                    </p>
+                  ) : null}
+                  {!canUploadStageInvoice ? (
+                    <p className="text-[12px] leading-5 text-[#7b837d]">
+                      Waiting for invoice upload.
+                    </p>
+                  ) : null}
+                </div>
+              ) : canRequestStageInvoice ? (
+                <div className="space-y-3">
+                  <p className="text-[13px] leading-5 text-[#6f786f]">
+                    This external stage requires an invoice before completion. Request
+                    the invoice from the executor/vendor who performed the work.
                   </p>
                   <Button
                     type="button"
                     size="sm"
-                    className="min-w-[150px] text-[13px]"
-                    disabled={isUploadingStageInvoice}
-                    onClick={openStageInvoiceUpload}
+                    className="text-[13px]"
+                    onClick={openInvoiceRequestDialog}
                   >
-                    {isUploadingStageInvoice ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4" />
-                    )}
-                    Upload Invoice
+                    Request Invoice
                   </Button>
                 </div>
               ) : (
                 <p className="text-[13px] leading-5 text-[#6f786f]">
-                  Stage invoice is required before completion. Project owner or executor
-                  access is required to upload it.
+                  Stage invoice is required before completion. Waiting for invoice request.
                 </p>
               )}
               {stageInvoiceError ? (
@@ -5120,6 +5298,11 @@ export function ProjectChatWorkspace({
               ) : null}
             </CardContent>
           </Card>
+
+          <StageTimeRemainingCard
+            actualStartedAt={activeStage?.actualStartedAtValue ?? null}
+            stageDueAt={activeStage?.plannedDueAtValue ?? null}
+          />
 
           <Card>
             <CardHeader className="pb-3">
@@ -5261,20 +5444,24 @@ export function ProjectChatWorkspace({
         }
         description={
           stageInvoiceMissing
-            ? "Upload the stage invoice before completing this stage."
+            ? stageInvoiceRequest
+              ? "Invoice is required before completing this stage. Waiting for the requested executor/vendor to upload it."
+              : "Invoice is required before completing this stage. Request invoice from the executor."
             : reviewCompletionIsFinalStage
             ? "This will approve the submitted revision and complete the final stage. Project completion and final archive happen after all stages are complete."
             : "This will mark the submitted revision as completed, complete the current stage, and make the next stage available."
         }
         confirmLabel={
           stageInvoiceMissing
-            ? "Upload Invoice"
+            ? canRequestStageInvoice && !stageInvoiceRequest
+              ? "Request Invoice"
+              : "Waiting for Invoice"
             : reviewCompletionIsFinalStage
             ? "Approve Submission"
             : "Mark as Complete"
         }
-        pending={stageInvoiceMissing ? isUploadingStageInvoice : Boolean(pendingRevisionReviewId)}
-        confirmDisabled={stageInvoiceMissing && !canUploadStageInvoice}
+        pending={stageInvoiceMissing ? false : Boolean(pendingRevisionReviewId)}
+        confirmDisabled={stageInvoiceMissing && (!canRequestStageInvoice || Boolean(stageInvoiceRequest))}
         error={(stageInvoiceMissing ? stageInvoiceError : reviewDialogError) ?? undefined}
         onClose={() => {
           if (pendingRevisionReviewId) {
@@ -5286,7 +5473,9 @@ export function ProjectChatWorkspace({
         }}
         onConfirm={() => {
           if (stageInvoiceMissing) {
-            openStageInvoiceUpload();
+            if (canRequestStageInvoice && !stageInvoiceRequest) {
+              openInvoiceRequestDialog();
+            }
             return;
           }
 
@@ -5298,12 +5487,20 @@ export function ProjectChatWorkspace({
         title={stageInvoiceMissing ? "Invoice required" : "Mark Stage Complete"}
         description={
           stageInvoiceMissing
-            ? "Upload the stage invoice before completing this stage."
+            ? stageInvoiceRequest
+              ? "Invoice is required before completing this stage. Waiting for the requested executor/vendor to upload it."
+              : "Invoice is required before completing this stage. Request invoice from the executor."
             : "This will mark the current stage as completed. Only the project owner can do this."
         }
-        confirmLabel={stageInvoiceMissing ? "Upload Invoice" : "Mark as Complete"}
-        pending={stageInvoiceMissing ? isUploadingStageInvoice : isMarkingStageComplete}
-        confirmDisabled={stageInvoiceMissing && !canUploadStageInvoice}
+        confirmLabel={
+          stageInvoiceMissing
+            ? canRequestStageInvoice && !stageInvoiceRequest
+              ? "Request Invoice"
+              : "Waiting for Invoice"
+            : "Mark as Complete"
+        }
+        pending={stageInvoiceMissing ? false : isMarkingStageComplete}
+        confirmDisabled={stageInvoiceMissing && (!canRequestStageInvoice || Boolean(stageInvoiceRequest))}
         error={(stageInvoiceMissing ? stageInvoiceError : stageCompleteError) ?? undefined}
         onClose={() => {
           setStageCompleteError(null);
@@ -5311,7 +5508,9 @@ export function ProjectChatWorkspace({
         }}
         onConfirm={() => {
           if (stageInvoiceMissing) {
-            openStageInvoiceUpload();
+            if (canRequestStageInvoice && !stageInvoiceRequest) {
+              openInvoiceRequestDialog();
+            }
             return;
           }
 
@@ -5651,6 +5850,106 @@ export function ProjectChatWorkspace({
           </Card>
         </div>
       ) : null}
+      {invoiceRequestDialogOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+          <Card className="w-full max-w-[600px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+              <div>
+                <CardTitle className="text-[24px] font-semibold tracking-tight text-[#111712]">
+                  Request Invoice
+                </CardTitle>
+                <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
+                  Send an in-app request to the executor or vendor responsible for this stage.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => {
+                  setInvoiceRequestError(null);
+                  setInvoiceRequestDialogOpen(false);
+                }}
+                disabled={isRequestingStageInvoice}
+                className="shrink-0 border border-line"
+                aria-label="Close invoice request dialog"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-5 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              {invoiceRequestError ? (
+                <div className="rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+                  {invoiceRequestError}
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <p className="text-[13px] font-semibold text-[#2d372f]">
+                  Invoice requested from *
+                </p>
+                <Select
+                  value={invoiceRequestRecipientId}
+                  onValueChange={setInvoiceRequestRecipientId}
+                  disabled={isRequestingStageInvoice}
+                >
+                  <SelectTrigger className="h-12 rounded-[16px] border border-line">
+                    <SelectValue placeholder="Choose executor or vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {invoiceRequestCandidates.map((candidate) => (
+                      <SelectItem key={candidate.id} value={candidate.id}>
+                        {candidate.name} · {candidate.role}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {invoiceRequestCandidates.length === 0 ? (
+                  <p className="text-[12px] leading-5 text-[#a64038]">
+                    Add an executor or external collaborator before requesting an invoice.
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <p className="text-[13px] font-semibold text-[#2d372f]">
+                  Optional message
+                </p>
+                <Textarea
+                  value={invoiceRequestNote}
+                  onChange={(event) => setInvoiceRequestNote(event.target.value)}
+                  placeholder="Please upload the invoice for this completed stage."
+                  className="min-h-[110px] rounded-[18px] border border-line"
+                  disabled={isRequestingStageInvoice}
+                />
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setInvoiceRequestError(null);
+                    setInvoiceRequestDialogOpen(false);
+                  }}
+                  disabled={isRequestingStageInvoice}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void handleRequestStageInvoice();
+                  }}
+                  disabled={isRequestingStageInvoice || invoiceRequestCandidates.length === 0}
+                >
+                  {isRequestingStageInvoice ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Send Invoice Request
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
       {revisionDialogOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="w-full max-w-[640px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
@@ -5869,19 +6168,47 @@ export function ProjectChatWorkspace({
                           className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
                             stageInvoiceAttachment
                               ? "bg-[#edf7ef] text-[#2b8b56]"
+                              : stageInvoiceRequest
+                                ? "bg-[#eef6ff] text-[#2f6f9f]"
                               : "bg-[#fff8eb] text-[#b77420]"
                           }`}
                         >
-                          Required · {stageInvoiceAttachment ? "Uploaded" : "Missing"}
+                          Required ·{" "}
+                          {stageInvoiceAttachment
+                            ? "Uploaded"
+                            : stageInvoiceRequest
+                              ? "Requested"
+                              : "Missing"}
                         </span>
                       </div>
                       <p className="mt-2 text-[13px] leading-5 text-[#5f6b62]">
                         {stageInvoiceAttachment
                           ? "The stage invoice is uploaded. This submission can be completed."
-                          : "Stage invoice required before completion."}
+                          : stageInvoiceRequest
+                            ? `Waiting for invoice from ${stageInvoiceRequest.requestedFromName}.`
+                            : "This external stage requires an invoice before completion. Request the invoice from the executor/vendor who performed the work."}
                       </p>
                     </div>
-                    {!stageInvoiceAttachment && canUploadStageInvoice ? (
+                    {!stageInvoiceAttachment && !stageInvoiceRequest && canRequestStageInvoice ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={openInvoiceRequestDialog}
+                        className="shrink-0"
+                      >
+                        Request Invoice
+                      </Button>
+                    ) : !stageInvoiceAttachment && stageInvoiceRequest && isProjectOwner ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={openInvoiceRequestDialog}
+                        className="shrink-0"
+                      >
+                        Request Invoice
+                      </Button>
+                    ) : !stageInvoiceAttachment && canUploadStageInvoice ? (
                       <Button
                         type="button"
                         size="sm"
@@ -5898,6 +6225,17 @@ export function ProjectChatWorkspace({
                       </Button>
                     ) : null}
                   </div>
+                  {stageInvoiceRequest && !stageInvoiceAttachment ? (
+                    <div className="mt-3 rounded-[14px] border border-[#d9e6ef] bg-[#f6fbff] px-3 py-2 text-[12px] leading-5 text-[#3e5e73]">
+                      <p>
+                        Requested by {stageInvoiceRequest.requestedByName} on{" "}
+                        {stageInvoiceRequest.requestedAt}.
+                      </p>
+                      {stageInvoiceRequest.note ? (
+                        <p className="mt-1 font-semibold">{stageInvoiceRequest.note}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {stageInvoiceAttachment ? (
                     <div className="mt-3">
                       <AttachmentHistoryList
@@ -5908,7 +6246,9 @@ export function ProjectChatWorkspace({
                     </div>
                   ) : !canUploadStageInvoice ? (
                     <p className="mt-3 rounded-[14px] border border-[#efd9af] bg-[#fffaf0] px-3 py-2 text-[12px] leading-5 text-[#775a2e]">
-                      Project owner or executor access is required to upload the invoice.
+                      {isProjectOwner
+                        ? "Request the invoice from an executor/vendor. The invoice must be uploaded by the selected recipient."
+                        : "Only the requested invoice recipient can upload the invoice."}
                     </p>
                   ) : null}
                   {stageInvoiceError ? (

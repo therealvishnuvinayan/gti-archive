@@ -59,6 +59,17 @@ type BudgetAccessUser = Pick<User, "id">;
 export type ProjectAccessUser = PermissionUser;
 type ProjectStageWithStarter = ProjectStage & {
   startedBy?: Pick<User, "name" | "email"> | null;
+  invoiceRequests?: Array<{
+    id: string;
+    requestedById: string;
+    requestedFromId: string;
+    note: string | null;
+    fulfilledAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    requestedBy: Pick<User, "name" | "email">;
+    requestedFrom: Pick<User, "name" | "email">;
+  }>;
 };
 
 type ProjectWithCreator = Project & {
@@ -174,6 +185,16 @@ export type ProjectStageRecord = {
   status: ProjectStageVisualStatus;
   invoiceRequired: boolean;
   invoiceAttachment: ProjectAttachmentRecord | null;
+  invoiceRequest: {
+    id: string;
+    requestedById: string;
+    requestedByName: string;
+    requestedFromId: string;
+    requestedFromName: string;
+    note: string | null;
+    requestedAt: string;
+    fulfilledAt: string | null;
+  } | null;
   briefAttachments: ProjectAttachmentRecord[];
 };
 
@@ -873,6 +894,8 @@ function mapStageToCard(
   canViewBrief: boolean,
   briefAttachments: ProjectAttachmentRecord[] = [],
 ): ProjectStageRecord {
+  const invoiceRequest = stage.invoiceRequests?.[0] ?? null;
+
   return {
     id: stage.id,
     order: stage.order,
@@ -896,6 +919,20 @@ function mapStageToCard(
     status: mapStageStatusToVisual(stage.status),
     invoiceRequired: stage.invoiceRequired,
     invoiceAttachment: null,
+    invoiceRequest: invoiceRequest
+      ? {
+          id: invoiceRequest.id,
+          requestedById: invoiceRequest.requestedById,
+          requestedByName: getCreatorName(invoiceRequest.requestedBy),
+          requestedFromId: invoiceRequest.requestedFromId,
+          requestedFromName: getCreatorName(invoiceRequest.requestedFrom),
+          note: invoiceRequest.note,
+          requestedAt: formatProjectDateTime(invoiceRequest.updatedAt),
+          fulfilledAt: invoiceRequest.fulfilledAt
+            ? formatProjectDateTime(invoiceRequest.fulfilledAt)
+            : null,
+        }
+      : null,
     briefAttachments: canViewBrief ? briefAttachments : [],
   };
 }
@@ -2076,6 +2113,22 @@ export async function getProjectById(
                     email: true,
                   },
                 },
+                invoiceRequests: {
+                  include: {
+                    requestedBy: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                    requestedFrom: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
               },
             },
             collaborators: {
@@ -2202,6 +2255,22 @@ export async function getProjectShellById(
                     email: true,
                   },
                 },
+                invoiceRequests: {
+                  include: {
+                    requestedBy: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                    requestedFrom: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
               },
             },
             collaborators: {
@@ -2285,6 +2354,22 @@ export async function getProjectEditorById(
                   select: {
                     name: true,
                     email: true,
+                  },
+                },
+                invoiceRequests: {
+                  include: {
+                    requestedBy: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                    requestedFrom: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
                   },
                 },
               },

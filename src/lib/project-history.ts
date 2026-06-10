@@ -14,7 +14,10 @@ import {
 } from "@prisma/client";
 
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
-import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
+import {
+  getCollaboratorRoleLabel,
+  getCollaboratorTypeGroup,
+} from "@/lib/project-collaborator-participant-types";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
   hasPermission,
@@ -484,6 +487,10 @@ function isInvoiceUploadedSystemBody(body: string) {
   return body.trim().toLowerCase().includes("uploaded invoice for");
 }
 
+function isInvoiceRequestedSystemBody(body: string) {
+  return body.trim().toLowerCase().startsWith("invoice requested from ");
+}
+
 function mapCommentEntry(
   comment: StageCommentQueryRecord,
   submissionNumbers: ReadonlyMap<string, number>,
@@ -535,6 +542,24 @@ function mapCommentEntry(
       revisionId: comment.revisionId ?? undefined,
       kind: "system",
       title: "Invoice uploaded",
+      authorId: comment.author.id,
+      author: actorName,
+      role: getActorRole(comment.author),
+      body: comment.body,
+      createdAt: formatHistoryTimestamp(comment.createdAt),
+      mentions: [],
+      attachments: [],
+    };
+  }
+
+  if (isInvoiceRequestedSystemBody(comment.body)) {
+    const actorName = getDisplayName(comment.author);
+
+    return {
+      id: comment.id,
+      revisionId: comment.revisionId ?? undefined,
+      kind: "system",
+      title: "Invoice requested",
       authorId: comment.author.id,
       author: actorName,
       role: getActorRole(comment.author),
@@ -2415,6 +2440,209 @@ export async function reviewProjectRevision(
   );
 }
 
+export async function requestStageInvoice(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    requestedFromId: string;
+    note?: string;
+  },
+) {
+  const requestedFromId = input.requestedFromId.trim();
+
+  if (!requestedFromId) {
+    throw new Error("Choose who should upload the invoice.");
+  }
+
+  const stage = await withPrismaRetry(() =>
+    prisma.projectStage.findFirst({
+      where: {
+        id: input.stageId,
+        projectId: input.projectId,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        invoiceRequired: true,
+        attachments: {
+          where: {
+            assetType: AttachmentAssetType.STAGE_INVOICE,
+            status: AttachmentStatus.READY,
+          },
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            createdById: true,
+            executorUserId: true,
+            executionType: true,
+            status: true,
+            archivedAt: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+            collaborators: {
+              select: {
+                userId: true,
+                participantType: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  if (!stage) {
+    throw new Error("Stage not found.");
+  }
+
+  assertProjectWorkflowPermission(
+    user,
+    stage.project,
+    "stage.markSubmissionComplete",
+    "Only the project owner can request an invoice.",
+  );
+
+  if (stage.project.createdById !== user.id) {
+    throw new Error("Only the project owner can request an invoice.");
+  }
+
+  if (stage.project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
+  }
+
+  if (stage.project.archivedAt) {
+    throw new Error("This project has already been archived.");
+  }
+
+  if (stage.status === "COMPLETED") {
+    throw new Error("This stage is already completed.");
+  }
+
+  if (!isStageInvoiceRequired(stage.project, stage)) {
+    throw new Error("Invoice is not required for this stage.");
+  }
+
+  if (stage.attachments.length > 0) {
+    throw new Error("An invoice has already been uploaded for this stage.");
+  }
+
+  if (requestedFromId === stage.project.createdById) {
+    throw new Error("Invoice must be requested from an executor or vendor, not the project owner.");
+  }
+
+  const executorCandidate = stage.project.executors.find(
+    (executor) => executor.userId === requestedFromId,
+  );
+  const externalCollaboratorCandidate = stage.project.collaborators.find(
+    (collaborator) =>
+      collaborator.userId === requestedFromId &&
+      getCollaboratorTypeGroup(collaborator.participantType) === "external",
+  );
+  const candidate = executorCandidate?.user ?? externalCollaboratorCandidate?.user ?? null;
+
+  if (!candidate) {
+    throw new Error("Invoice can only be requested from a project executor or external collaborator.");
+  }
+
+  const note = input.note?.trim() || null;
+  const now = new Date();
+  const requestedFromName = getDisplayName(candidate);
+  const invoiceRequestBody = note
+    ? `Invoice requested from ${requestedFromName} for ${stage.name}.\n${note}`
+    : `Invoice requested from ${requestedFromName} for ${stage.name}.`;
+
+  const { request, comment } = await withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const request = await tx.stageInvoiceRequest.upsert({
+        where: {
+          stageId: stage.id,
+        },
+        create: {
+          projectId: stage.project.id,
+          stageId: stage.id,
+          requestedById: user.id,
+          requestedFromId,
+          note,
+          fulfilledAt: null,
+        },
+        update: {
+          requestedById: user.id,
+          requestedFromId,
+          note,
+          fulfilledAt: null,
+          updatedAt: now,
+        },
+        select: {
+          id: true,
+          requestedFromId: true,
+          note: true,
+          createdAt: true,
+          updatedAt: true,
+          requestedBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+          requestedFrom: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+      const comment = await tx.projectComment.create({
+        data: {
+          projectId: stage.project.id,
+          stageId: stage.id,
+          authorId: user.id,
+          body: invoiceRequestBody,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      return { request, comment };
+    }),
+  );
+
+  return {
+    id: request.id,
+    requestedFromId: request.requestedFromId,
+    requestedFromName: getDisplayName(request.requestedFrom),
+    requestedByName: getDisplayName(request.requestedBy),
+    note: request.note,
+    requestedAt: request.updatedAt,
+    commentId: comment.id,
+  };
+}
+
 function getUploadAction(assetType: AttachmentAssetType) {
   return assetType === AttachmentAssetType.COMMENT_ATTACHMENT
     ? ActivityLogAction.COMMENT_ATTACHMENT_UPLOADED
@@ -2545,6 +2773,13 @@ export async function requestAttachmentUpload(
             },
             take: 1,
           },
+          invoiceRequests: {
+            select: {
+              requestedFromId: true,
+              fulfilledAt: true,
+            },
+            take: 1,
+          },
           project: {
             select: {
               createdById: true,
@@ -2576,11 +2811,17 @@ export async function requestAttachmentUpload(
       return { error: "Stage not found." };
     }
 
-    const project = assertProjectAccessFromContext(user, stage.project);
+    assertProjectAccessFromContext(user, stage.project);
+    const activeInvoiceRequest = stage.invoiceRequests[0] ?? null;
+    const canUploadStageInvoice =
+      stage.project.createdById !== user.id &&
+      activeInvoiceRequest?.fulfilledAt === null &&
+      activeInvoiceRequest.requestedFromId === user.id;
 
-    if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
+    if (!canUploadStageInvoice) {
       return {
-        error: "Only the project owner or an executor can upload the invoice for this stage.",
+        error:
+          "Only the requested invoice recipient can upload the invoice for this stage.",
       };
     }
 
@@ -2882,7 +3123,10 @@ export async function completeAttachmentUpload(
 
   const project = assertProjectAccessFromContext(user, attachment.project);
 
-  if (!hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))) {
+  if (
+    attachment.assetType !== AttachmentAssetType.STAGE_INVOICE &&
+    !hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))
+  ) {
     throw new Error("You do not have permission to complete this upload.");
   }
 
@@ -2909,6 +3153,29 @@ export async function completeAttachmentUpload(
 
     if (!isStageInvoiceRequired(attachment.project, attachment.stage)) {
       throw new Error("Invoice is not required for this stage.");
+    }
+
+    const activeInvoiceRequest = await withPrismaRetry(() =>
+      prisma.stageInvoiceRequest.findUnique({
+        where: {
+          stageId: attachment.stageId ?? attachment.stage?.id ?? "",
+        },
+        select: {
+          requestedFromId: true,
+          fulfilledAt: true,
+        },
+      }),
+    );
+
+    if (
+      !activeInvoiceRequest ||
+      activeInvoiceRequest.fulfilledAt ||
+      activeInvoiceRequest.requestedFromId !== user.id ||
+      attachment.project.createdById === user.id
+    ) {
+      throw new Error(
+        "Only the requested invoice recipient can upload the invoice for this stage.",
+      );
     }
 
     const existingReadyInvoice = await withPrismaRetry(() =>
@@ -3003,6 +3270,16 @@ export async function completeAttachmentUpload(
       }),
       ...(attachment.assetType === AttachmentAssetType.STAGE_INVOICE && attachment.stage
         ? [
+            prisma.stageInvoiceRequest.updateMany({
+              where: {
+                projectId: attachment.projectId,
+                stageId: attachment.stageId ?? attachment.stage.id,
+                fulfilledAt: null,
+              },
+              data: {
+                fulfilledAt: new Date(),
+              },
+            }),
             prisma.projectComment.create({
               data: {
                 projectId: attachment.projectId,

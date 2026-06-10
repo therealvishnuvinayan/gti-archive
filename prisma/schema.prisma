@@ -155,6 +155,7 @@ enum NotificationType {
   APPROVAL_PROOF_UPLOADED
   COPYRIGHT_TRANSFER_REQUIRED
   COPYRIGHT_DOCUMENT_UPLOADED
+  INVOICE_REQUESTED
   INVOICE_UPLOADED
 }
 
@@ -214,6 +215,8 @@ model User {
   addedProjectExecutorAssignments ProjectExecutor[] @relation("ProjectExecutorAddedBy")
   startedProjectStages ProjectStage[]   @relation("ProjectStageStarter")
   reviewedStageSubmissions ProjectAttachment[] @relation("SubmissionReviewer")
+  stageInvoiceRequestsMade StageInvoiceRequest[] @relation("StageInvoiceRequestRequester")
+  stageInvoiceRequestsReceived StageInvoiceRequest[] @relation("StageInvoiceRequestRecipient")
   calendarEvents    CalendarEvent[]
   projectCollaborations       ProjectCollaborator[] @relation("ProjectCollaboratorUser")
   addedProjectCollaborations  ProjectCollaborator[] @relation("ProjectCollaboratorAdder")
@@ -318,6 +321,7 @@ model Project {
   comments         ProjectComment[]
   comparisonComments ComparisonComment[]
   attachments      ProjectAttachment[]
+  invoiceRequests  StageInvoiceRequest[]
   activityLogs     ProjectActivityLog[]
   collaborators    ProjectCollaborator[]
   executors        ProjectExecutor[]
@@ -450,6 +454,7 @@ model ProjectStage {
   comments  ProjectComment[]
   comparisonComments ComparisonComment[]
   attachments ProjectAttachment[]
+  invoiceRequests StageInvoiceRequest[]
   archives  ProjectArchive[] @relation("ProjectArchiveFinalStage")
   activityLogs ProjectActivityLog[]
   completedAt DateTime?
@@ -564,6 +569,28 @@ model ProjectAttachment {
   @@index([reviewedById])
   @@index([status])
   @@index([submissionReviewStatus])
+}
+
+model StageInvoiceRequest {
+  id              String       @id @default(cuid())
+  projectId       String
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId         String
+  stage           ProjectStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  requestedById   String
+  requestedBy     User         @relation("StageInvoiceRequestRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  requestedFromId String
+  requestedFrom   User         @relation("StageInvoiceRequestRecipient", fields: [requestedFromId], references: [id], onDelete: Restrict)
+  note            String?
+  fulfilledAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([stageId])
+  @@index([projectId, createdAt])
+  @@index([requestedById])
+  @@index([requestedFromId])
+  @@index([fulfilledAt])
 }
 
 model FileFavorite {
