@@ -452,6 +452,19 @@ function renderCommentBodyWithMentions(
   return segments;
 }
 
+function isLegacyBriefContextMessage(entry: Pick<DisplayChatEntry, "kind" | "body">) {
+  if (entry.kind !== "comment") {
+    return false;
+  }
+
+  const normalizedBody = entry.body.trim().toLowerCase();
+
+  return (
+    normalizedBody.startsWith("project brief:") &&
+    normalizedBody.includes("stage brief:")
+  );
+}
+
 function getLocalFileTypeLabel(fileName: string) {
   const extension = fileName.split(".").pop()?.toUpperCase();
   return extension && extension.length <= 5 ? extension : "FILE";
@@ -787,6 +800,156 @@ function WorkflowNoticeCard({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StageBriefContextCard({
+  projectBriefText,
+  stageBriefText,
+  projectBriefAttachments,
+  stageBriefAttachments,
+  createdBy,
+  createdAt,
+  stageLabel,
+  canAcceptBrief,
+  isAcceptingBrief,
+  onAcceptBrief,
+  onOpenProjectBrief,
+  onOpenStageBrief,
+}: {
+  projectBriefText: string;
+  stageBriefText: string;
+  projectBriefAttachments: DisplayAttachmentRecord[];
+  stageBriefAttachments: DisplayAttachmentRecord[];
+  createdBy: string;
+  createdAt: string;
+  stageLabel: string;
+  canAcceptBrief: boolean;
+  isAcceptingBrief: boolean;
+  onAcceptBrief: () => void;
+  onOpenProjectBrief: () => void;
+  onOpenStageBrief: () => void;
+}) {
+  const hasProjectBrief = projectBriefText.length > 0;
+  const hasStageBrief = stageBriefText.length > 0;
+  const hasProjectAttachments = projectBriefAttachments.length > 0;
+  const hasStageAttachments = stageBriefAttachments.length > 0;
+
+  return (
+    <div className="flex justify-center">
+      <Card className="w-full max-w-full overflow-hidden rounded-[22px] border border-[#cfe3d2] bg-white shadow-[0_18px_42px_rgba(18,35,23,0.08)] sm:w-[86%] sm:max-w-[920px]">
+        <div className="border-b border-[#e4ece5] bg-[linear-gradient(135deg,#f4fbf5,#ffffff)] px-4 py-4 sm:px-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e4f3e7] text-brand">
+              <FileText className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="rounded-full bg-[#edf7ef] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
+                  Brief
+                </span>
+                <span className="text-[10px] font-semibold text-[#7a837b]">
+                  {createdAt}
+                </span>
+              </div>
+              <p className="mt-1 text-[15px] font-[800] text-[#111712]">
+                Review {stageLabel} brief before starting work
+              </p>
+              <p className="mt-1 text-[12px] leading-5 text-[#526057]">
+                Created by {createdBy}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <CardContent className="space-y-4 px-4 py-4 sm:px-5">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section className="min-w-0 rounded-[18px] border border-[#dfe9e0] bg-[#fbfcfa] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#607064]">
+                  Project Brief
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 rounded-full px-3 text-[11px]"
+                  onClick={onOpenProjectBrief}
+                >
+                  View
+                </Button>
+              </div>
+              <div className="mt-3 max-h-36 overflow-y-auto pr-1">
+                <p className="whitespace-pre-wrap text-[13px] leading-5 text-[#26312a]">
+                  {hasProjectBrief ? projectBriefText : "No project brief has been added."}
+                </p>
+              </div>
+              {hasProjectAttachments ? (
+                <div className="mt-3">
+                  <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#718076]">
+                    Attachments
+                  </p>
+                  <AttachmentHistoryList attachments={projectBriefAttachments} compact />
+                </div>
+              ) : null}
+            </section>
+
+            <section className="min-w-0 rounded-[18px] border border-[#dfe9e0] bg-[#fbfcfa] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#607064]">
+                  Stage Brief
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 rounded-full px-3 text-[11px]"
+                  onClick={onOpenStageBrief}
+                >
+                  View
+                </Button>
+              </div>
+              <div className="mt-3 max-h-36 overflow-y-auto pr-1">
+                <p className="whitespace-pre-wrap text-[13px] leading-5 text-[#26312a]">
+                  {hasStageBrief ? stageBriefText : "No stage brief has been added for this stage."}
+                </p>
+              </div>
+              {hasStageAttachments ? (
+                <div className="mt-3">
+                  <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#718076]">
+                    Attachments
+                  </p>
+                  <AttachmentHistoryList attachments={stageBriefAttachments} compact />
+                </div>
+              ) : null}
+            </section>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-[18px] border border-[#d8e5d9] bg-[#f7fbf6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[12px] leading-5 text-[#516058]">
+              Main Executor must accept the brief before submitting work for this stage.
+            </p>
+            {canAcceptBrief ? (
+              <Button
+                type="button"
+                className="shrink-0 rounded-full text-[12px]"
+                onClick={onAcceptBrief}
+                disabled={isAcceptingBrief}
+              >
+                {isAcceptingBrief ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Accept Brief
+              </Button>
+            ) : (
+              <span className="shrink-0 rounded-full bg-[#fff3d6] px-3 py-2 text-[11px] font-[700] text-[#8a5718]">
+                Waiting for Main Executor
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -1717,7 +1880,7 @@ export function ProjectChatWorkspace({
           (message) => !serverEntryIdsWithLocalOverrides.has(message.id),
         ),
         ...localMessages,
-      ];
+      ].filter((message) => !isLegacyBriefContextMessage(message));
     },
     [
       messages,
@@ -1900,6 +2063,25 @@ export function ProjectChatWorkspace({
   const hasAcceptedBriefInTimeline =
     hasAcceptedBrief || hasBriefAcceptedSystemMessage;
   const showBriefAcceptancePrompt = !hasAcceptedBriefInTimeline;
+  const hasBriefContext =
+    projectBriefText.length > 0 ||
+    stageBriefText.length > 0 ||
+    projectBriefAttachments.length > 0 ||
+    stageBriefAttachments.length > 0;
+  const canAcceptCurrentStageBrief =
+    Boolean(activeStage) &&
+    isMainProjectExecutor &&
+    !isProjectCompleted &&
+    !isStageCompleted &&
+    activeStage?.status !== "pending" &&
+    showBriefAcceptancePrompt;
+  const showBriefContextCard =
+    Boolean(activeStage) &&
+    showBriefAcceptancePrompt &&
+    hasBriefContext &&
+    !isProjectCompleted &&
+    !isStageCompleted &&
+    activeStage?.status !== "pending";
   const stageExecutionStatus = isStageCompleted
     ? "Completed"
     : hasAcceptedBriefInTimeline
@@ -4372,6 +4554,26 @@ export function ProjectChatWorkspace({
             <SystemActivityCard message={stageStartSystemMessage} />
           ) : null}
 
+          {showBriefContextCard && activeStage ? (
+            <StageBriefContextCard
+              projectBriefText={projectBriefText}
+              stageBriefText={stageBriefText}
+              projectBriefAttachments={projectBriefAttachments}
+              stageBriefAttachments={stageBriefAttachments}
+              createdBy={project.createdBy}
+              createdAt={project.createdOn}
+              stageLabel={activeStage.label}
+              canAcceptBrief={canAcceptCurrentStageBrief}
+              isAcceptingBrief={isAcceptingBrief}
+              onAcceptBrief={() => {
+                setAcceptBriefError(null);
+                setAcceptBriefDialogOpen(true);
+              }}
+              onOpenProjectBrief={() => setProjectBriefDialogOpen(true)}
+              onOpenStageBrief={() => setStageBriefDialogOpen(true)}
+            />
+          ) : null}
+
           {displayedMessages.length === 0 ? (
             <Card className="border border-dashed border-[#d8e1d8] px-6 py-10 text-center">
               <CardTitle className="text-[20px] font-semibold tracking-tight">
@@ -4381,9 +4583,12 @@ export function ProjectChatWorkspace({
                 No revisions or comments have been added to this stage yet.
               </p>
               <p className="mt-1 text-[13px] text-[#8a938c]">
-                Upload the first revision to start the proof and archive trail.
+                {showBriefContextCard
+                  ? "Accept the brief above before submitting the first revision."
+                  : "Upload the first revision to start the proof and archive trail."}
               </p>
-              {!isProjectCompleted &&
+              {!showBriefContextCard &&
+                !isProjectCompleted &&
                 !isStageCompleted &&
                 isMainProjectExecutor &&
                 showBriefAcceptancePrompt ? (
@@ -4722,7 +4927,8 @@ export function ProjectChatWorkspace({
           displayedMessages.length > 0 &&
           !isProjectCompleted &&
           !isStageCompleted &&
-          showBriefAcceptancePrompt ? (
+          showBriefAcceptancePrompt &&
+          !showBriefContextCard ? (
             <div className="flex flex-wrap gap-2">
               {isMainProjectExecutor ? (
                 <>
