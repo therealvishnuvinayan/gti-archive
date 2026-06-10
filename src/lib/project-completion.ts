@@ -4,6 +4,7 @@ import {
   Prisma,
   ProjectCompletionDocumentType,
   ProjectCompletionStepStatus,
+  ProjectExecutionType,
   ProjectExecutorRole,
   SubmissionReviewStatus,
   type User,
@@ -89,6 +90,9 @@ export type ProjectCompletionDocumentRecord = {
 export type ProjectCompletionWorkflowRecord = {
   workflowId: string;
   projectId: string;
+  executionType: ProjectExecutionType;
+  executionTypeLabel: string;
+  isInternalExecution: boolean;
   canManage: boolean;
   canUploadInvoice: boolean;
   needsInitialConfiguration: boolean;
@@ -139,6 +143,39 @@ export type RequestProjectCompletionDocumentUploadResult = {
 type ProjectCompletionProjectRecord = NonNullable<
   Awaited<ReturnType<typeof getProjectCompletionProject>>
 >;
+
+function formatCompletionExecutionTypeLabel(executionType: ProjectExecutionType) {
+  return executionType === ProjectExecutionType.INTERNAL
+    ? "Internal Execution"
+    : "External Execution";
+}
+
+function isInternalCompletionProject(
+  project: Pick<ProjectCompletionProjectRecord, "executionType">,
+) {
+  return project.executionType === ProjectExecutionType.INTERNAL;
+}
+
+function getInternalCompletionWorkflowData(completedAt = new Date()) {
+  return {
+    approvalRequired: false,
+    approvalStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+    approvalContactUserId: null,
+    approvalNote: null,
+    approvalSelectedArchivedFileIds: [],
+    approvalRequestedAt: null,
+    approvalCompletedAt: null,
+    copyrightRequired: false,
+    copyrightStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+    copyrightContactUserId: null,
+    copyrightNote: null,
+    copyrightRequestedAt: null,
+    copyrightCompletedAt: null,
+    invoiceStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+    invoiceCompletedAt: null,
+    completedAt,
+  };
+}
 
 function formatCompletionTimestamp(value: Date | string | number | null | undefined) {
   if (!value) {
@@ -446,6 +483,7 @@ async function getProjectCompletionProject(projectId: string) {
         name: true,
         category: true,
         tag: true,
+        executionType: true,
         status: true,
         createdById: true,
         executorUserId: true,
@@ -742,17 +780,42 @@ function mapWorkflowRecord(
   );
   const documents = project.completionWorkflow.documents.map(mapDocumentRecord);
   const documentByType = new Map(documents.map((document) => [document.type, document] as const));
+  const isInternalExecution = isInternalCompletionProject(project);
+  const approvalRequired = isInternalExecution
+    ? false
+    : project.completionWorkflow.approvalRequired;
+  const approvalStatus = isInternalExecution
+    ? ProjectCompletionStepStatus.NOT_REQUIRED
+    : project.completionWorkflow.approvalStatus;
+  const approvalSelectedArchivedFileIds = isInternalExecution
+    ? []
+    : project.completionWorkflow.approvalSelectedArchivedFileIds;
+  const copyrightRequired = isInternalExecution
+    ? false
+    : project.completionWorkflow.copyrightRequired;
+  const copyrightStatus = isInternalExecution
+    ? ProjectCompletionStepStatus.NOT_REQUIRED
+    : project.completionWorkflow.copyrightStatus;
+  const invoiceStatus = isInternalExecution
+    ? ProjectCompletionStepStatus.NOT_REQUIRED
+    : project.completionWorkflow.invoiceStatus;
 
   return {
     workflowId: project.completionWorkflow.id,
     projectId: project.id,
+    executionType: project.executionType,
+    executionTypeLabel: formatCompletionExecutionTypeLabel(project.executionType),
+    isInternalExecution,
     canManage: canManageCompletionWorkflow(project, user),
-    canUploadInvoice: canUploadInvoiceForProject(project, user),
+    canUploadInvoice: isInternalExecution
+      ? false
+      : canUploadInvoiceForProject(project, user),
     needsInitialConfiguration:
-      project.completionWorkflow.approvalRequired === null ||
-      project.completionWorkflow.copyrightRequired === null,
-    approvalRequired: project.completionWorkflow.approvalRequired,
-    approvalStatus: project.completionWorkflow.approvalStatus,
+      !isInternalExecution &&
+      (project.completionWorkflow.approvalRequired === null ||
+        project.completionWorkflow.copyrightRequired === null),
+    approvalRequired,
+    approvalStatus,
     approvalContactUserId: project.completionWorkflow.approvalContactUserId ?? null,
     approvalContactName: project.completionWorkflow.approvalContactUser
       ? getUserDisplayName(project.completionWorkflow.approvalContactUser)
@@ -764,10 +827,9 @@ function mapWorkflowRecord(
     approvalCompletedAt: formatCompletionTimestamp(
       project.completionWorkflow.approvalCompletedAt,
     ),
-    approvalSelectedArchivedFileIds:
-      project.completionWorkflow.approvalSelectedArchivedFileIds,
-    copyrightRequired: project.completionWorkflow.copyrightRequired,
-    copyrightStatus: project.completionWorkflow.copyrightStatus,
+    approvalSelectedArchivedFileIds,
+    copyrightRequired,
+    copyrightStatus,
     copyrightContactUserId: project.completionWorkflow.copyrightContactUserId ?? null,
     copyrightContactName: project.completionWorkflow.copyrightContactUser
       ? getUserDisplayName(project.completionWorkflow.copyrightContactUser)
@@ -779,18 +841,19 @@ function mapWorkflowRecord(
     copyrightCompletedAt: formatCompletionTimestamp(
       project.completionWorkflow.copyrightCompletedAt,
     ),
-    invoiceStatus: project.completionWorkflow.invoiceStatus,
+    invoiceStatus,
     invoiceCompletedAt: formatCompletionTimestamp(project.completionWorkflow.invoiceCompletedAt),
     completedAt: formatCompletionTimestamp(project.completionWorkflow.completedAt),
-    isApprovalResolved: isStepResolved(project.completionWorkflow.approvalStatus),
-    isCopyrightUnlocked: isStepResolved(project.completionWorkflow.approvalStatus),
-    isCopyrightResolved: isStepResolved(project.completionWorkflow.copyrightStatus),
+    isApprovalResolved: isStepResolved(approvalStatus),
+    isCopyrightUnlocked: isStepResolved(approvalStatus),
+    isCopyrightResolved: isStepResolved(copyrightStatus),
     isInvoiceUnlocked:
-      isStepResolved(project.completionWorkflow.approvalStatus) &&
-      isStepResolved(project.completionWorkflow.copyrightStatus),
+      isInternalExecution ||
+      (isStepResolved(approvalStatus) &&
+        isStepResolved(copyrightStatus)),
     availableContacts: mapContactOptions(project),
     finalArchivedFiles,
-    approvalSelectedFiles,
+    approvalSelectedFiles: isInternalExecution ? [] : approvalSelectedFiles,
     documents,
     approvalProofDocument:
       documentByType.get(ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF) ?? null,
@@ -946,6 +1009,28 @@ export async function configureProjectCompletionWorkflow(
     "You do not have permission to configure copyright transfer requirements.",
   );
 
+  if (isInternalCompletionProject(project)) {
+    await withPrismaRetry(() =>
+      prisma.$transaction(async (tx) => {
+        await ensureWorkflowExistsTx(tx, project.id);
+        await tx.projectCompletionWorkflow.update({
+          where: {
+            projectId: project.id,
+          },
+          data: getInternalCompletionWorkflowData(),
+        });
+      }),
+    );
+
+    const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
+
+    if (!workflow) {
+      throw new Error("Unable to load the updated project completion workflow.");
+    }
+
+    return workflow;
+  }
+
   await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const workflow = await ensureWorkflowExistsTx(tx, project.id);
@@ -1025,6 +1110,10 @@ export async function prepareAuthorityApprovalRequest(
     "completion.prepareApproval",
     "You do not have permission to prepare authority approval requests.",
   );
+
+  if (isInternalCompletionProject(project)) {
+    throw new Error("Authority approval is not required for internal execution.");
+  }
 
   if (!project.archive || project.archive.files.length === 0) {
     throw new Error("No final archived files are available for authority approval.");
@@ -1108,6 +1197,11 @@ export async function prepareCopyrightTransferRequest(
     "completion.prepareCopyrightTransfer",
     "You do not have permission to prepare copyright transfer requests.",
   );
+
+  if (isInternalCompletionProject(project)) {
+    throw new Error("Copyright transfer is not required for internal execution.");
+  }
+
   const contactOptions = mapContactOptions(project);
   validateContactSelection(contactOptions, input.contactUserId, "copyright");
 
@@ -1169,6 +1263,28 @@ export async function markProjectInvoiceNotRequired(
   },
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+
+  if (isInternalCompletionProject(project)) {
+    await withPrismaRetry(() =>
+      prisma.$transaction(async (tx) => {
+        await ensureWorkflowExistsTx(tx, project.id);
+        await tx.projectCompletionWorkflow.update({
+          where: {
+            projectId: project.id,
+          },
+          data: getInternalCompletionWorkflowData(),
+        });
+      }),
+    );
+
+    const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
+
+    if (!workflow) {
+      throw new Error("Unable to load the updated project completion workflow.");
+    }
+
+    return workflow;
+  }
 
   await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
@@ -1266,6 +1382,10 @@ export async function requestProjectCompletionDocumentUpload(
 
   if (!project) {
     throw new Error("You do not have access to this completion workflow.");
+  }
+
+  if (isInternalCompletionProject(project)) {
+    throw new Error("Completion documents are not required for internal execution.");
   }
 
   requireCompletionProjectPermission(
@@ -1394,6 +1514,7 @@ export async function finalizeProjectCompletionDocumentUpload(
               role: true,
             },
           },
+          executionType: true,
           status: true,
           archivedAt: true,
           completedAt: true,
@@ -1421,6 +1542,10 @@ export async function finalizeProjectCompletionDocumentUpload(
         throw new Error(
           "Complete and archive the project before uploading completion documents.",
         );
+      }
+
+      if (project.executionType === ProjectExecutionType.INTERNAL) {
+        throw new Error("Completion documents are not required for internal execution.");
       }
 
       const canManage = canManageCompletionWorkflow(project, user);

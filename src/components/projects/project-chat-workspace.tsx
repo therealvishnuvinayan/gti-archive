@@ -4966,6 +4966,10 @@ export function ProjectChatWorkspace({
             <CardContent className="pt-0">
               <dl className="space-y-1.5 text-[13px] text-[#242b26]">
                 <div>
+                  <dt className="inline font-semibold">Execution Type :</dt>{" "}
+                  <dd className="inline">{project.executionTypeLabel}</dd>
+                </div>
+                <div>
                   <dt className="inline font-semibold">Budget :</dt>{" "}
                   <dd className="inline">{activeStage?.budget ?? project.budget}</dd>
                 </div>
@@ -5049,7 +5053,9 @@ export function ProjectChatWorkspace({
             <CardContent className="pt-0">
               {activeStage?.invoiceRequired === false ? (
                 <p className="text-[13px] leading-5 text-[#6f786f]">
-                  Invoice not required for this stage.
+                  {project.executionType === "INTERNAL"
+                    ? "Not required for internal execution."
+                    : "Invoice not required for this stage."}
                 </p>
               ) : stageInvoiceAttachment ? (
                 <AttachmentHistoryList

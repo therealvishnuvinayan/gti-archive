@@ -4,6 +4,8 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import {
   AttachmentAssetType,
   AttachmentStatus,
+  ProjectCompletionStepStatus,
+  ProjectExecutionType,
   ProjectExecutorRole,
   ProjectStatus,
   type CollaboratorType,
@@ -118,6 +120,10 @@ function isProjectStatus(value: string): value is ProjectStatus {
   return Object.values(ProjectStatus).includes(value as ProjectStatus);
 }
 
+function isProjectExecutionType(value: string): value is ProjectExecutionType {
+  return Object.values(ProjectExecutionType).includes(value as ProjectExecutionType);
+}
+
 function isProjectExecutorRole(value: string): value is ProjectExecutorRole {
   return Object.values(ProjectExecutorRole).includes(value as ProjectExecutorRole);
 }
@@ -159,6 +165,7 @@ function parseProjectFormData(formData: FormData) {
   const tag = String(formData.get("tag") ?? "").trim();
   const priorityInput = String(formData.get("priority") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
+  const executionTypeInput = String(formData.get("executionType") ?? "").trim();
   const budgetInput = String(formData.get("budget") ?? "").trim();
   const currencyInput = String(formData.get("currency") ?? "").trim().toUpperCase();
   const statusInput = String(formData.get("status") ?? "").trim();
@@ -221,6 +228,7 @@ function parseProjectFormData(formData: FormData) {
     tag,
     priorityInput,
     description,
+    executionTypeInput,
     budgetInput,
     currencyInput,
     statusInput,
@@ -375,6 +383,7 @@ function validateStageTimeline(
   parsed: ReturnType<typeof parseProjectFormData>,
   projectStartDate: Date,
   projectEndDate: Date,
+  options: { requireStageTimeline: boolean },
 ) {
   const stageStartDateErrors: Array<string | undefined> = Array.from(
     { length: parsed.stageNames.length },
@@ -394,15 +403,15 @@ function validateStageTimeline(
     const stageStart = stageStartInput ? new Date(stageStartInput) : null;
     const stageDue = stageDueInput ? new Date(stageDueInput) : null;
 
-    if (!stageStartInput) {
+    if (!stageStartInput && options.requireStageTimeline) {
       stageStartDateErrors[index] = "Stage start is required.";
-    } else if (!stageStart || Number.isNaN(stageStart.getTime())) {
+    } else if (stageStartInput && (!stageStart || Number.isNaN(stageStart.getTime()))) {
       stageStartDateErrors[index] = "Choose a valid stage start.";
     }
 
-    if (!stageDueInput) {
+    if (!stageDueInput && options.requireStageTimeline) {
       stageDueDateErrors[index] = "Stage due is required.";
-    } else if (!stageDue || Number.isNaN(stageDue.getTime())) {
+    } else if (stageDueInput && (!stageDue || Number.isNaN(stageDue.getTime()))) {
       stageDueDateErrors[index] = "Choose a valid stage due time.";
     }
 
@@ -460,7 +469,12 @@ function validateProjectFormData(
   parsed: ReturnType<typeof parseProjectFormData>,
   options: { requireBudget?: boolean } = {},
 ) {
-  const requireBudget = options.requireBudget ?? true;
+  const executionType = isProjectExecutionType(parsed.executionTypeInput)
+    ? parsed.executionTypeInput
+    : null;
+  const requireBudget =
+    executionType === ProjectExecutionType.EXTERNAL && (options.requireBudget ?? true);
+  const requireStageDetails = executionType === ProjectExecutionType.EXTERNAL;
   const fieldErrors: ProjectFormFieldErrors = {};
   const executorValidation = normalizeProjectExecutorAssignments(parsed);
 
@@ -470,6 +484,9 @@ function validateProjectFormData(
     fieldErrors.executorUserId = executorValidation.error;
   }
   if (!parsed.description) fieldErrors.description = "Project brief is required.";
+  if (!parsed.executionTypeInput) {
+    fieldErrors.executionType = "Project execution type is required.";
+  }
   if (requireBudget && !parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
   if (requireBudget && !parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
   if (!parsed.statusInput) fieldErrors.status = "Project status is required.";
@@ -482,7 +499,11 @@ function validateProjectFormData(
 
   const executorAssignments =
     "assignments" in executorValidation ? executorValidation.assignments : [];
-  const budget = parseBudget(parsed.budgetInput);
+  const parsedBudget = parseBudget(parsed.budgetInput);
+  const budget =
+    requireBudget || (Number.isFinite(parsedBudget) && parsedBudget > 0)
+      ? parsedBudget
+      : 0;
   const status = isProjectStatus(parsed.statusInput) ? parsed.statusInput : null;
   const priority = parsed.priorityInput
     ? isProjectPriority(parsed.priorityInput)
@@ -491,6 +512,13 @@ function validateProjectFormData(
     : DEFAULT_PROJECT_PRIORITY;
   const startDate = new Date(parsed.startDateInput);
   const endDate = new Date(parsed.endDateInput);
+
+  if (!executionType) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: { executionType: "Choose a valid project execution type." },
+    };
+  }
 
   if (requireBudget && (!Number.isFinite(budget) || budget <= 0)) {
     return {
@@ -535,15 +563,22 @@ function validateProjectFormData(
       error: "Please add at least one stage.",
       fieldErrors: {
         stageNames: [...["Stage name is required."]],
-        stageBudgets: [...["Stage budget is required."]],
-        stageDescriptions: [...["Stage brief is required."]],
-        stageStartDates: [...["Stage start is required."]],
-        stageDueDates: [...["Stage due is required."]],
+        ...(requireBudget ? { stageBudgets: [...["Stage budget is required."]] } : {}),
+        ...(requireStageDetails
+          ? {
+              stageDescriptions: [...["Stage brief is required."]],
+              stageStartDates: [...["Stage start is required."]],
+              stageDueDates: [...["Stage due is required."]],
+            }
+          : {}),
       },
     };
   }
 
-  const stageNameErrors: Array<string | undefined> = parsed.stageNames.map((value) =>
+  const normalizedStageNames = parsed.stageNames.map((value, index) =>
+    value || (!requireStageDetails ? `Stage ${index + 1}` : ""),
+  );
+  const stageNameErrors: Array<string | undefined> = normalizedStageNames.map((value) =>
     value ? undefined : "Stage name is required.",
   );
   const stageBudgetErrors: Array<string | undefined> = parsed.stageBudgets.map((value) => {
@@ -555,9 +590,11 @@ function validateProjectFormData(
     return Number.isFinite(budget) && budget > 0 ? undefined : "Enter a valid stage budget.";
   });
   const stageDescriptionErrors: Array<string | undefined> = parsed.stageDescriptions.map((value) =>
-    value ? undefined : "Stage brief is required.",
+    !requireStageDetails || value ? undefined : "Stage brief is required.",
   );
-  const stageTimelineValidation = validateStageTimeline(parsed, startDate, endDate);
+  const stageTimelineValidation = validateStageTimeline(parsed, startDate, endDate, {
+    requireStageTimeline: requireStageDetails,
+  });
   const stageStartDateErrors = stageTimelineValidation.stageStartDateErrors;
   const stageDueDateErrors = stageTimelineValidation.stageDueDateErrors;
 
@@ -597,16 +634,22 @@ function validateProjectFormData(
     data: {
       ...parsed,
       executorAssignments,
+      stageNames: normalizedStageNames,
+      executionType,
       budget,
-      currency: parsed.currencyInput,
+      currency: parsed.currencyInput || "USD",
       status,
       priority,
       startDate,
       endDate,
-      stageStartDates: parsed.stageStartDates.map((value) => new Date(value)),
-      stageDueDates: parsed.stageDueDates.map((value) => new Date(value)),
+      stageStartDates: parsed.stageStartDates.map((value) =>
+        value ? new Date(value) : null,
+      ),
+      stageDueDates: parsed.stageDueDates.map((value) =>
+        value ? new Date(value) : null,
+      ),
       stageStatuses: getInitialStageStatuses(status, parsed.stageNames.length),
-      currentStageName: parsed.stageNames[0] || "Stage 1",
+      currentStageName: normalizedStageNames[0] || "Stage 1",
     },
   };
 }
@@ -761,6 +804,7 @@ export async function createProjectAction(
     executorAssignments,
     tag,
     description,
+    executionType,
     budget,
     currency,
     status,
@@ -778,8 +822,11 @@ export async function createProjectAction(
     collaboratorIds,
     collaboratorParticipantTypes,
   } = validated.data;
+  const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
 
-  const currencyCode = await resolveProjectCurrencyCode(currency);
+  const currencyCode =
+    (await resolveProjectCurrencyCode(currency)) ??
+    (isExternalExecution ? null : "USD");
 
   if (!currencyCode) {
     return {
@@ -857,6 +904,7 @@ export async function createProjectAction(
           executorUserId: resolvedExecutors.executorUserId,
           tag: tag || null,
           description,
+          executionType,
           budget,
           currency: currencyCode,
           status,
@@ -898,14 +946,16 @@ export async function createProjectAction(
                 name: stageName,
                 description: stageDescriptions[index] || null,
                 budget:
-                  Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
+                  isExternalExecution && Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
                     ? parsedStageBudget
-                    : index === 0
+                    : isExternalExecution && index === 0
                       ? budget
                       : null,
                 plannedStartAt: stageStartDates[index],
                 plannedDueAt: stageDueDates[index],
-                invoiceRequired: stageInvoiceRequired[index] ?? true,
+                invoiceRequired: isExternalExecution
+                  ? stageInvoiceRequired[index] ?? true
+                  : false,
                 status: stageStatuses[index],
                 order: index + 1,
               };
@@ -996,6 +1046,7 @@ export async function updateProjectAction(
     where: { id: projectId },
     select: {
       currency: true,
+      executionType: true,
       budget: true,
       status: true,
       createdById: true,
@@ -1070,6 +1121,7 @@ export async function updateProjectAction(
     executorAssignments,
     tag,
     description,
+    executionType,
     budget,
     currency,
     status,
@@ -1090,6 +1142,20 @@ export async function updateProjectAction(
     projectAttachmentIds,
     stageAttachmentIds,
   } = validated.data;
+  const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
+
+  if (
+    isExternalExecution &&
+    !canUpdateBudget &&
+    (!Number.isFinite(existingProject.budget) || existingProject.budget <= 0)
+  ) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        budget: "External execution requires a valid project budget.",
+      },
+    };
+  }
 
   const submittedAttachmentValidation = await validateSubmittedProjectAttachments({
     projectId,
@@ -1102,9 +1168,9 @@ export async function updateProjectAction(
   }
 
   const currencyCode = canUpdateBudget
-    ? await resolveProjectCurrencyCode(currency, {
+    ? (await resolveProjectCurrencyCode(currency, {
         allowInactiveCode: existingProject.currency,
-      })
+      })) ?? (isExternalExecution ? null : existingProject.currency || "USD")
     : existingProject.currency;
 
   if (!currencyCode) {
@@ -1189,6 +1255,7 @@ export async function updateProjectAction(
   const submittedExistingStageIds = stageIds.filter(Boolean);
   const submittedExistingStageIdSet = new Set(submittedExistingStageIds);
   const projectStatusChanged = existingProject.status !== status;
+  const executionTypeChanged = existingProject.executionType !== executionType;
 
   if (submittedExistingStageIdSet.size !== submittedExistingStageIds.length) {
     return { error: "Unable to update project stages. Please refresh and try again." };
@@ -1220,6 +1287,7 @@ export async function updateProjectAction(
           executorUserId: resolvedExecutors.executorUserId,
           tag: tag || null,
           description,
+          executionType,
           budget: canUpdateBudget ? budget : existingProject.budget,
           currency: currencyCode,
           status,
@@ -1230,6 +1298,51 @@ export async function updateProjectAction(
           stageCount: stageNames.length,
         },
       });
+
+      if (executionTypeChanged) {
+        await tx.projectCompletionWorkflow.updateMany({
+          where: {
+            projectId,
+          },
+          data: isExternalExecution
+            ? {
+                approvalRequired: null,
+                approvalStatus: ProjectCompletionStepStatus.NOT_STARTED,
+                approvalContactUserId: null,
+                approvalNote: null,
+                approvalSelectedArchivedFileIds: [],
+                approvalRequestedAt: null,
+                approvalCompletedAt: null,
+                copyrightRequired: null,
+                copyrightStatus: ProjectCompletionStepStatus.NOT_STARTED,
+                copyrightContactUserId: null,
+                copyrightNote: null,
+                copyrightRequestedAt: null,
+                copyrightCompletedAt: null,
+                invoiceStatus: ProjectCompletionStepStatus.NOT_STARTED,
+                invoiceCompletedAt: null,
+                completedAt: null,
+              }
+            : {
+                approvalRequired: false,
+                approvalStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+                approvalContactUserId: null,
+                approvalNote: null,
+                approvalSelectedArchivedFileIds: [],
+                approvalRequestedAt: null,
+                approvalCompletedAt: null,
+                copyrightRequired: false,
+                copyrightStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+                copyrightContactUserId: null,
+                copyrightNote: null,
+                copyrightRequestedAt: null,
+                copyrightCompletedAt: null,
+                invoiceStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+                invoiceCompletedAt: null,
+                completedAt: null,
+              },
+        });
+      }
 
       if (removedCollaboratorIds.length > 0) {
         await tx.projectCollaborator.deleteMany({
@@ -1336,9 +1449,9 @@ export async function updateProjectAction(
         const existingStage = stageId ? existingStageById.get(stageId) : null;
         const parsedStageBudget = parseBudget(stageBudgets[index] ?? "");
         const nextBudget = canUpdateBudget
-          ? Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
+          ? isExternalExecution && Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
             ? parsedStageBudget
-            : index === 0
+            : isExternalExecution && index === 0
               ? budget
               : null
           : existingStage?.budget ?? null;
@@ -1348,7 +1461,9 @@ export async function updateProjectAction(
           budget: nextBudget,
           plannedStartAt: stageStartDates[index],
           plannedDueAt: stageDueDates[index],
-          invoiceRequired: stageInvoiceRequired[index] ?? existingStage?.invoiceRequired ?? true,
+          invoiceRequired: isExternalExecution
+            ? stageInvoiceRequired[index] ?? existingStage?.invoiceRequired ?? true
+            : false,
           order: index + 1,
           ...(projectStatusChanged
             ? { status: stageStatuses[index] ?? ProjectStatus.PENDING }

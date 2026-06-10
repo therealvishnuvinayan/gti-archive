@@ -286,6 +286,10 @@ export function ProjectDetailWorkspace({
               <h2 className="text-[16px] font-semibold tracking-tight text-brand">Project Overview</h2>
               <dl className="mt-2.5 space-y-1.5 text-[11px] leading-4 text-[#242b26]">
                 <div>
+                  <dt className="inline font-semibold">Execution Type:</dt>{" "}
+                  <dd className="inline">{project.executionTypeLabel}</dd>
+                </div>
+                <div>
                   <dt className="inline font-semibold">Budget:</dt>{" "}
                   <dd className="inline">{project.budget}</dd>
                 </div>

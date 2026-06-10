@@ -46,6 +46,11 @@ enum ProjectStatus {
   COMPLETED
 }
 
+enum ProjectExecutionType {
+  INTERNAL
+  EXTERNAL
+}
+
 enum ProjectPriority {
   LOW
   MEDIUM
@@ -296,6 +301,7 @@ model Project {
   executorUserId   String?
   executorUser     User?         @relation("ProjectExecutor", fields: [executorUserId], references: [id], onDelete: SetNull)
   description      String
+  executionType    ProjectExecutionType @default(EXTERNAL)
   budget           Int
   currency         String        @default("USD")
   status           ProjectStatus @default(ONGOING)

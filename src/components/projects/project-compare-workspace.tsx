@@ -895,6 +895,10 @@ export function ProjectCompareWorkspace({
             <CardContent className="pt-0">
               <dl className="space-y-1.5 text-[13px] text-[#242b26]">
                 <div>
+                  <dt className="inline font-semibold">Execution Type :</dt>{" "}
+                  <dd className="inline">{project.executionTypeLabel}</dd>
+                </div>
+                <div>
                   <dt className="inline font-semibold">Budget :</dt>{" "}
                   <dd className="inline">{activeStage?.budget ?? project.budget}</dd>
                 </div>

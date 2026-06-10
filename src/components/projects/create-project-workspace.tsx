@@ -98,6 +98,24 @@ const projectStatusOptions = [
 
 type ProjectStatusValue = (typeof projectStatusOptions)[number]["value"];
 
+const projectExecutionTypeOptions = [
+  {
+    value: "INTERNAL",
+    label: "Internal Execution",
+    shortLabel: "Internal",
+    description: "Handled inside the company. Budget, invoices, and external documents are not required.",
+  },
+  {
+    value: "EXTERNAL",
+    label: "External Execution",
+    shortLabel: "External",
+    description: "Handled by an outside party. Budget, invoices, copyright, and official documents apply.",
+  },
+] as const;
+
+type ProjectExecutionTypeValue =
+  (typeof projectExecutionTypeOptions)[number]["value"];
+
 type StageForm = {
   id: string;
   persistedId?: string;
@@ -254,6 +272,7 @@ function validateClientStageTimeline(input: {
   projectStartDate: Date | null;
   projectEndDate: Date | null;
   includeRequired: boolean;
+  includeStageRequired?: boolean;
 }) {
   const stageStartDateErrors: Array<string | undefined> = Array.from(
     { length: input.stages.length },
@@ -271,6 +290,7 @@ function validateClientStageTimeline(input: {
     input.includeRequired && !input.projectEndDate
       ? "Project end date is required."
       : undefined;
+  const includeStageRequired = input.includeStageRequired ?? input.includeRequired;
 
   if (input.projectStartDate && input.projectEndDate) {
     const projectStartBoundary = getStartOfDay(input.projectStartDate);
@@ -286,13 +306,13 @@ function validateClientStageTimeline(input: {
       const stageStart = parseStageDateTimeValue(stage.plannedStartAt);
       const stageDue = parseStageDateTimeValue(stage.plannedDueAt);
 
-      if (!stage.plannedStartAt && input.includeRequired) {
+      if (!stage.plannedStartAt && includeStageRequired) {
         stageStartDateErrors[index] = "Stage start is required.";
       } else if (stage.plannedStartAt && !stageStart) {
         stageStartDateErrors[index] = "Choose a valid stage start.";
       }
 
-      if (!stage.plannedDueAt && input.includeRequired) {
+      if (!stage.plannedDueAt && includeStageRequired) {
         stageDueDateErrors[index] = "Stage due is required.";
       } else if (stage.plannedDueAt && !stageDue) {
         stageDueDateErrors[index] = "Choose a valid stage due time.";
@@ -335,7 +355,7 @@ function validateClientStageTimeline(input: {
         validRanges.delete(index);
       }
     }
-  } else if (input.includeRequired) {
+  } else if (includeStageRequired) {
     input.stages.forEach((stage, index) => {
       if (!stage.plannedStartAt) {
         stageStartDateErrors[index] = "Stage start is required.";
@@ -803,7 +823,11 @@ export function CreateProjectWorkspace({
     action,
     initialProjectFormState,
   );
+  const initialExecutionType: ProjectExecutionTypeValue =
+    initialValues?.executionType === "INTERNAL" ? "INTERNAL" : "EXTERNAL";
   const [projectName, setProjectName] = useState(initialValues?.name ?? "");
+  const [projectExecutionType, setProjectExecutionType] =
+    useState<ProjectExecutionTypeValue>(initialExecutionType);
   const [availableCategoryOptions, setAvailableCategoryOptions] =
     useState<string[]>(categoryOptions);
   const [availableTagOptions, setAvailableTagOptions] = useState<string[]>(tagOptions);
@@ -842,7 +866,8 @@ export function CreateProjectWorkspace({
           name: stage.name,
           budget: stage.budget,
           description: stage.description,
-          invoiceRequired: stage.invoiceRequired ?? true,
+          invoiceRequired:
+            initialExecutionType === "INTERNAL" ? false : stage.invoiceRequired ?? true,
           plannedStartAt: stage.plannedStartAt,
           plannedDueAt: stage.plannedDueAt,
           attachments: stage.attachments,
@@ -854,7 +879,7 @@ export function CreateProjectWorkspace({
             name: "Stage 1",
             budget: "",
             description: "",
-            invoiceRequired: true,
+            invoiceRequired: initialExecutionType === "EXTERNAL",
             plannedStartAt: "",
             plannedDueAt: "",
             attachments: [],
@@ -958,6 +983,9 @@ export function CreateProjectWorkspace({
   const [, startRefresh] = useTransition();
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
+  const isInternalExecution = projectExecutionType === "INTERNAL";
+  const isExternalExecution = projectExecutionType === "EXTERNAL";
+  const isBudgetRequired = canViewBudget && isExternalExecution;
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
   const displayedAttachmentError =
     attachmentError ?? getFieldError("attachments", fieldErrors.attachments);
@@ -977,14 +1005,16 @@ export function CreateProjectWorkspace({
   const hasInvalidBudgetInputs = useMemo(
     () =>
       canViewBudget &&
+      isExternalExecution &&
       (projectBudget.trim().length > 0
         ? !Number.isFinite(parsedProjectBudget) || parsedProjectBudget <= 0
         : false),
-    [canViewBudget, parsedProjectBudget, projectBudget],
+    [canViewBudget, isExternalExecution, parsedProjectBudget, projectBudget],
   );
   const hasInvalidStageBudgetInputs = useMemo(
     () =>
       canViewBudget &&
+      isExternalExecution &&
       stages.some((stage, index) => {
         if (!stage.budget.trim()) {
           return false;
@@ -993,22 +1023,23 @@ export function CreateProjectWorkspace({
         const budget = parsedStageBudgets[index];
         return !Number.isFinite(budget) || budget <= 0;
       }),
-    [canViewBudget, parsedStageBudgets, stages],
+    [canViewBudget, isExternalExecution, parsedStageBudgets, stages],
   );
   const hasMissingStageBudgetInputs = useMemo(
-    () => canViewBudget && stages.some((stage) => !stage.budget.trim()),
-    [canViewBudget, stages],
+    () => isBudgetRequired && stages.some((stage) => !stage.budget.trim()),
+    [isBudgetRequired, stages],
   );
   const remainingStageBudget = useMemo(() => {
-    if (!canViewBudget || !Number.isFinite(parsedProjectBudget)) {
+    if (!canViewBudget || !isExternalExecution || !Number.isFinite(parsedProjectBudget)) {
       return null;
     }
 
     return parsedProjectBudget - totalStageBudget;
-  }, [canViewBudget, parsedProjectBudget, totalStageBudget]);
+  }, [canViewBudget, isExternalExecution, parsedProjectBudget, totalStageBudget]);
   const hasBudgetConflict = useMemo(
     () =>
       canViewBudget &&
+      isExternalExecution &&
       Number.isFinite(parsedProjectBudget) &&
       !hasMissingStageBudgetInputs &&
       !hasInvalidStageBudgetInputs &&
@@ -1017,6 +1048,7 @@ export function CreateProjectWorkspace({
       canViewBudget,
       hasInvalidStageBudgetInputs,
       hasMissingStageBudgetInputs,
+      isExternalExecution,
       parsedProjectBudget,
       totalStageBudget,
     ],
@@ -1112,19 +1144,28 @@ export function CreateProjectWorkspace({
   }, [primaryProjectExecutor, projectExecutors.length]);
   const overview = useMemo(
     () => ({
-      budget: canViewBudget
-        ? Number.isFinite(parsedProjectBudget)
-          ? formatBudgetDisplay(parsedProjectBudget, projectCurrency ?? "")
-          : projectBudget
-            ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
-            : "—"
-        : "Restricted",
+      executionType:
+        projectExecutionTypeOptions.find((option) => option.value === projectExecutionType)
+          ?.label ?? "External Execution",
+      budget: isInternalExecution
+        ? "Not required for internal execution"
+        : canViewBudget
+          ? Number.isFinite(parsedProjectBudget)
+            ? formatBudgetDisplay(parsedProjectBudget, projectCurrency ?? "")
+            : projectBudget
+              ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
+              : "—"
+          : "Restricted",
       allocatedStageBudget:
-        canViewBudget && Number.isFinite(totalStageBudget)
+        isInternalExecution
+          ? "Not required"
+          : canViewBudget && Number.isFinite(totalStageBudget)
           ? formatBudgetDisplay(totalStageBudget, projectCurrency ?? "")
           : "—",
       remainingStageBudget:
-        canViewBudget && remainingStageBudget !== null
+        isInternalExecution
+          ? "Not required"
+          : canViewBudget && remainingStageBudget !== null
           ? formatBudgetDifference(remainingStageBudget, projectCurrency ?? "")
           : "—",
       stages: stages.length,
@@ -1138,8 +1179,10 @@ export function CreateProjectWorkspace({
     }),
     [
       canViewBudget,
+      isInternalExecution,
       projectBudget,
       projectCurrency,
+      projectExecutionType,
       executorOverviewLabel,
       projectTag,
       projectPriority,
@@ -1158,8 +1201,9 @@ export function CreateProjectWorkspace({
       projectStartDate: startDate,
       projectEndDate: endDate,
       includeRequired: timelineSubmitAttempted,
+      includeStageRequired: timelineSubmitAttempted && isExternalExecution,
     });
-  }, [endDate, startDate, stages, timelineSubmitAttempted]);
+  }, [endDate, isExternalExecution, startDate, stages, timelineSubmitAttempted]);
 
   function updateStage(id: string, patch: Partial<StageForm>) {
     setStages((current) =>
@@ -1217,7 +1261,7 @@ export function CreateProjectWorkspace({
         name: `Stage ${current.length + 1}`,
         budget: "",
         description: "",
-        invoiceRequired: true,
+        invoiceRequired: isExternalExecution,
         plannedStartAt: formatDateTimeInputValue(startDate),
         plannedDueAt: formatDateTimeInputValue(endDate),
         attachments: [],
@@ -1670,6 +1714,22 @@ export function CreateProjectWorkspace({
     clearFieldError("budgetSummary");
   }
 
+  function handleExecutionTypeChange(nextExecutionType: ProjectExecutionTypeValue) {
+    setProjectExecutionType(nextExecutionType);
+    clearFieldError("executionType");
+    clearFieldError("budget");
+    clearFieldError("currency");
+    clearFieldError("budgetSummary");
+
+    if (nextExecutionType === "INTERNAL") {
+      setStages((current) =>
+        current.map((stage) =>
+          stage.invoiceRequired ? { ...stage, invoiceRequired: false } : stage,
+        ),
+      );
+    }
+  }
+
   function handleStageBudgetChange(stageId: string, value: string) {
     const stageIndex = stages.findIndex((stage) => stage.id === stageId);
     updateStage(stageId, {
@@ -1726,6 +1786,7 @@ export function CreateProjectWorkspace({
       projectStartDate: startDate,
       projectEndDate: endDate,
       includeRequired: true,
+      includeStageRequired: isExternalExecution,
     });
 
     if (timelineValidation.hasConflict) {
@@ -1737,7 +1798,7 @@ export function CreateProjectWorkspace({
       return;
     }
 
-    if (!canViewBudget) {
+    if (!isBudgetRequired) {
       return;
     }
 
@@ -2376,6 +2437,7 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="category" value={projectCategory} />
       <input type="hidden" name="executorName" value={projectExecutor} />
       <input type="hidden" name="executorUserId" value={projectExecutorUserId} />
+      <input type="hidden" name="executionType" value={projectExecutionType} />
       {projectExecutors.map((executor) => (
         <div key={executor.id}>
           <input type="hidden" name="executorIds" value={executor.id} />
@@ -2448,6 +2510,47 @@ export function CreateProjectWorkspace({
                 <FieldError message={getFieldError("name", fieldErrors.name)} />
               </label>
 
+              <div>
+                <RequiredLabel>Project Execution Type</RequiredLabel>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {projectExecutionTypeOptions.map((option) => {
+                    const isSelected = projectExecutionType === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleExecutionTypeChange(option.value)}
+                        className={`rounded-[18px] border px-4 py-3 text-left transition ${
+                          isSelected
+                            ? "border-brand bg-[#eef8f0] shadow-[0_12px_24px_rgba(38,128,79,0.12)]"
+                            : "border-[#dce6dd] bg-white hover:border-brand/60"
+                        }`}
+                      >
+                        <span className="flex items-center justify-between gap-3">
+                          <span className="text-[13px] font-semibold text-[#173120]">
+                            {option.label}
+                          </span>
+                          <span
+                            className={`flex size-5 items-center justify-center rounded-full border ${
+                              isSelected
+                                ? "border-brand bg-brand text-white"
+                                : "border-[#c8d6ca] text-transparent"
+                            }`}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                        </span>
+                        <span className="mt-2 block text-[11px] leading-4 text-[#6f786f]">
+                          {option.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <FieldError message={getFieldError("executionType", fieldErrors.executionType)} />
+              </div>
+
               <label className="block">
                 <RequiredLabel>Project Category</RequiredLabel>
                 <Select
@@ -2493,17 +2596,25 @@ export function CreateProjectWorkspace({
               </label>
 
               <label className="block">
-                <RequiredLabel>Project Budget</RequiredLabel>
+                {isExternalExecution ? (
+                  <RequiredLabel>Project Budget</RequiredLabel>
+                ) : (
+                  <FieldLabel>Project Budget</FieldLabel>
+                )}
                 {canViewBudget ? (
                   <div className="flex gap-2">
                     <Input
                       value={projectBudget}
                       onChange={(event) => handleBudgetChange(event.target.value)}
                       name="budget"
-                      required
+                      required={isBudgetRequired}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      placeholder="Enter Project Budget...."
+                      placeholder={
+                        isInternalExecution
+                          ? "Optional budget"
+                          : "Enter Project Budget...."
+                      }
                       className="h-[42px] min-w-0 flex-1 text-[12px]"
                     />
                     <Select
@@ -2540,6 +2651,11 @@ export function CreateProjectWorkspace({
                 )}
                 {canViewBudget ? (
                   <>
+                    {isInternalExecution ? (
+                      <p className="mt-2 text-[12px] font-medium text-[#6f786f]">
+                        Budget is not required for internal execution.
+                      </p>
+                    ) : null}
                     <FieldError
                       message={
                         getFieldError("budget", fieldErrors.budget) ||
@@ -2895,7 +3011,8 @@ export function CreateProjectWorkspace({
           <div>
             <div className="flex items-center justify-between gap-4">
               <h3 className="text-[16px] font-semibold text-brand">
-                Project Stages <span className="text-[#d3554d]">*</span>
+                Project Stages{" "}
+                {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
               </h3>
               <Button
                 type="button"
@@ -2922,9 +3039,11 @@ export function CreateProjectWorkspace({
                     Project Budget
                   </p>
                   <p className="mt-1 font-semibold text-[#173120]">
-                    {Number.isFinite(parsedProjectBudget)
-                      ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
-                      : "—"}
+                    {isInternalExecution
+                      ? "Not required"
+                      : Number.isFinite(parsedProjectBudget)
+                        ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
+                        : "—"}
                   </p>
                 </div>
                 <div>
@@ -2932,7 +3051,9 @@ export function CreateProjectWorkspace({
                     Stage Total
                   </p>
                   <p className="mt-1 font-semibold text-[#173120]">
-                    {formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
+                    {isInternalExecution
+                      ? "Not required"
+                      : formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
                   </p>
                 </div>
                 <div>
@@ -2944,7 +3065,9 @@ export function CreateProjectWorkspace({
                       hasBudgetConflict ? "text-[#ba3f31]" : "text-brand"
                     }`}
                   >
-                    {remainingStageBudget !== null
+                    {isInternalExecution
+                      ? "Not required"
+                      : remainingStageBudget !== null
                       ? formatBudgetDifference(remainingStageBudget, projectCurrency || "")
                       : "—"}
                   </p>
@@ -2992,7 +3115,8 @@ export function CreateProjectWorkspace({
                 <Card className="min-w-0 overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
                   <CardContent className="min-w-0 p-4">
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
-                      Stage Name <span className="text-[#d3554d]">*</span>
+                      Stage Name{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     <input type="hidden" name="stageIds" value={stage.persistedId ?? ""} />
                     {stage.attachments.map((attachment) => (
@@ -3010,24 +3134,29 @@ export function CreateProjectWorkspace({
                         clearStageFieldError("stageNames", index);
                       }}
                       name="stageNames"
-                      required
+                      required={isExternalExecution}
                       className="min-h-[38px] min-w-0 border-brand text-center text-[14px] font-medium text-brand"
                     />
                     <FieldError
                       message={getStageFieldError("stageNames", index, fieldErrors.stageNames?.[index])}
                     />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
-                      Stage Budget <span className="text-[#d3554d]">*</span>
+                      Stage Budget{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     {canViewBudget ? (
                       <Input
                         value={stage.budget}
                         onChange={(event) => handleStageBudgetChange(stage.id, event.target.value)}
                         name="stageBudgets"
-                        required
+                        required={isBudgetRequired}
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        placeholder={`Stage ${index + 1} Budget...`}
+                        placeholder={
+                          isInternalExecution
+                            ? "Optional stage budget"
+                            : `Stage ${index + 1} Budget...`
+                        }
                         className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
                       />
                     ) : (
@@ -3036,19 +3165,28 @@ export function CreateProjectWorkspace({
                       </div>
                     )}
                     {canViewBudget ? (
-                      <FieldError
-                        message={
-                          getStageFieldError("stageBudgets", index, fieldErrors.stageBudgets?.[index]) ||
-                          (stage.budget.trim().length > 0 &&
-                          (!Number.isFinite(parsedStageBudgets[index]) ||
-                            parsedStageBudgets[index] <= 0)
-                            ? "Enter a valid stage budget greater than zero."
-                            : undefined)
-                        }
-                      />
+                      <>
+                        {isInternalExecution ? (
+                          <p className="mt-2 text-[11px] font-medium text-[#6f786f]">
+                            Not required for internal execution.
+                          </p>
+                        ) : null}
+                        <FieldError
+                          message={
+                            getStageFieldError("stageBudgets", index, fieldErrors.stageBudgets?.[index]) ||
+                            (isExternalExecution &&
+                            stage.budget.trim().length > 0 &&
+                            (!Number.isFinite(parsedStageBudgets[index]) ||
+                              parsedStageBudgets[index] <= 0)
+                              ? "Enter a valid stage budget greater than zero."
+                              : undefined)
+                          }
+                        />
+                      </>
                     ) : null}
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
-                      Stage Start <span className="text-[#d3554d]">*</span>
+                      Stage Start{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     <DateTimePicker
                       name="stageStartDates"
@@ -3069,8 +3207,14 @@ export function CreateProjectWorkspace({
                         ) || clientStageDateErrors.stageStartDateErrors[index]
                       }
                     />
+                    {isInternalExecution ? (
+                      <p className="mt-2 text-[11px] font-medium text-[#6f786f]">
+                        Optional for internal execution.
+                      </p>
+                    ) : null}
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
-                      Stage Due <span className="text-[#d3554d]">*</span>
+                      Stage Due{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     <DateTimePicker
                       name="stageDueDates"
@@ -3091,8 +3235,14 @@ export function CreateProjectWorkspace({
                         ) || clientStageDateErrors.stageDueDateErrors[index]
                       }
                     />
+                    {isInternalExecution ? (
+                      <p className="mt-2 text-[11px] font-medium text-[#6f786f]">
+                        Optional for internal execution.
+                      </p>
+                    ) : null}
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
-                      Stage Brief <span className="text-[#d3554d]">*</span>
+                      Stage Brief{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     <Textarea
                       value={stage.description}
@@ -3101,18 +3251,27 @@ export function CreateProjectWorkspace({
                         clearStageFieldError("stageDescriptions", index);
                       }}
                       name="stageDescriptions"
-                      required
-                      placeholder="Describe what should be done in this stage."
+                      required={isExternalExecution}
+                      placeholder={
+                        isInternalExecution
+                          ? "Optional stage brief."
+                          : "Describe what should be done in this stage."
+                      }
                       className="mt-3 min-h-[84px] bg-[#f7faf7] text-[12px]"
                     />
                     <FieldError
                       message={getStageFieldError("stageDescriptions", index, fieldErrors.stageDescriptions?.[index])}
                     />
+                    {isInternalExecution ? (
+                      <p className="mt-2 text-[11px] font-medium text-[#6f786f]">
+                        Optional for internal execution.
+                      </p>
+                    ) : null}
                     <div className="mt-3 rounded-[14px] border border-[#dce6dd] bg-[#fbfdfb] px-3 py-2.5">
                       <input
                         type="hidden"
                         name="stageInvoiceRequired"
-                        value={stage.invoiceRequired ? "true" : "false"}
+                        value={isInternalExecution ? "false" : stage.invoiceRequired ? "true" : "false"}
                       />
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -3120,33 +3279,41 @@ export function CreateProjectWorkspace({
                             Invoice Required
                           </p>
                           <p className="mt-1 text-[11px] leading-4 text-[#7a837b]">
-                            Main Executor uploads the invoice before stage completion.
+                            {isInternalExecution
+                              ? "Not required for internal execution."
+                              : "Main Executor uploads the invoice before stage completion."}
                           </p>
                         </div>
-                        <div className="inline-flex rounded-full border border-[#dce6dd] bg-white p-1">
-                          <button
-                            type="button"
-                            onClick={() => updateStage(stage.id, { invoiceRequired: true })}
-                            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
-                              stage.invoiceRequired
-                                ? "bg-brand text-white"
-                                : "text-[#627068] hover:bg-[#f4f8f4]"
-                            }`}
-                          >
-                            Yes
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateStage(stage.id, { invoiceRequired: false })}
-                            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
-                              !stage.invoiceRequired
-                                ? "bg-brand text-white"
-                                : "text-[#627068] hover:bg-[#f4f8f4]"
-                            }`}
-                          >
-                            No
-                          </button>
-                        </div>
+                        {isInternalExecution ? (
+                          <span className="rounded-full bg-[#f1f6f1] px-3 py-1.5 text-[11px] font-semibold text-[#5f6b62]">
+                            Not required
+                          </span>
+                        ) : (
+                          <div className="inline-flex rounded-full border border-[#dce6dd] bg-white p-1">
+                            <button
+                              type="button"
+                              onClick={() => updateStage(stage.id, { invoiceRequired: true })}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                                stage.invoiceRequired
+                                  ? "bg-brand text-white"
+                                  : "text-[#627068] hover:bg-[#f4f8f4]"
+                              }`}
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateStage(stage.id, { invoiceRequired: false })}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                                !stage.invoiceRequired
+                                  ? "bg-brand text-white"
+                                  : "text-[#627068] hover:bg-[#f4f8f4]"
+                              }`}
+                            >
+                              No
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="mt-3 rounded-[14px] border border-[#dce6dd] bg-[#fbfdfb] px-3 py-2.5">
@@ -3300,6 +3467,10 @@ export function CreateProjectWorkspace({
           </CardHeader>
           <CardContent className="space-y-3 pt-0">
           <dl className="mt-3 space-y-1.5 text-[13px] text-[#242b26]">
+            <div>
+              <dt className="inline font-semibold">Execution Type :</dt>{" "}
+              <dd className="inline">{overview.executionType}</dd>
+            </div>
             <div>
               <dt className="inline font-semibold">Budget :</dt>{" "}
               <dd className="inline">{overview.budget}</dd>

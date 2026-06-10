@@ -519,6 +519,7 @@ export function ProjectCompletionChecklist({
     workflow.copyrightStatus,
     workflow.copyrightContactUserId,
     workflow.invoiceStatus,
+    workflow.isInternalExecution,
     workflow.documents.map((document) => document.id),
   ]);
 
@@ -848,13 +849,13 @@ function ProjectCompletionChecklistBody({
           <div>
             <CardTitle className="text-[22px] font-semibold tracking-tight text-[#173120]">Project Completion</CardTitle>
             <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-              Before closing the project fully, confirm whether this project requires
-              authority approval, copyright transfer, and final invoicing. Stage invoices
-              are handled on each stage.
+              {workflowState.isInternalExecution
+                ? "Internal execution does not require authority approval, copyright transfer, or final invoicing."
+                : "Before closing the project fully, confirm whether this project requires authority approval, copyright transfer, and final invoicing. Stage invoices are handled on each stage."}
             </p>
           </div>
           <div className="rounded-full bg-[#f7fbf6] px-3 py-1.5 text-[11px] font-[700] uppercase tracking-[0.08em] text-[#5f6b62]">
-            Owner-Controlled
+            {workflowState.executionTypeLabel}
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
@@ -984,7 +985,9 @@ function ProjectCompletionChecklistBody({
 
           {workflowState.approvalRequired === false ? (
             <p className="mt-4 text-[13px] text-[#5f6b62]">
-              Authority approval is marked as not required for this project.
+              {workflowState.isInternalExecution
+                ? "Not required for internal execution."
+                : "Authority approval is marked as not required for this project."}
             </p>
           ) : workflowState.approvalRequired === true &&
             workflowState.approvalStatus === "NOT_STARTED" ? (
@@ -1154,7 +1157,9 @@ function ProjectCompletionChecklistBody({
             </div>
           ) : workflowState.copyrightRequired === false ? (
             <p className="mt-4 text-[13px] text-[#5f6b62]">
-              Copyright transfer is marked as not required for this project.
+              {workflowState.isInternalExecution
+                ? "Not required for internal execution."
+                : "Copyright transfer is marked as not required for this project."}
             </p>
           ) : workflowState.copyrightRequired === true &&
             workflowState.copyrightStatus === "NOT_STARTED" ? (
@@ -1298,7 +1303,9 @@ function ProjectCompletionChecklistBody({
             </div>
           ) : workflowState.invoiceStatus === "NOT_REQUIRED" ? (
             <p className="mt-4 text-[13px] text-[#5f6b62]">
-              Final invoice is marked as not required for this project.
+              {workflowState.isInternalExecution
+                ? "Not required for internal execution."
+                : "Final invoice is marked as not required for this project."}
             </p>
           ) : workflowState.invoiceDocument ? (
             <div className="mt-4 space-y-3">

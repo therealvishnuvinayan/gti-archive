@@ -3,6 +3,7 @@ import {
   AttachmentStatus,
   AttachmentAssetType,
   Prisma,
+  ProjectExecutionType,
   ProjectExecutorRole,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
@@ -51,6 +52,8 @@ import type { PermissionKey } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const PROJECTS_CACHE_TAG = "projects";
+export const INTERNAL_EXECUTION_NOT_REQUIRED_LABEL =
+  "Not required for internal execution";
 
 type BudgetAccessUser = Pick<User, "id">;
 export type ProjectAccessUser = PermissionUser;
@@ -123,6 +126,7 @@ export type ProjectEditorRecord = {
   tag: string;
   priority: ProjectPriorityValue;
   description: string;
+  executionType: ProjectExecutionType;
   budget: string;
   currency: string | null;
   canViewBudget: boolean;
@@ -285,6 +289,8 @@ export type ProjectFlowRecord = {
   category: string;
   executorName: string;
   description: string;
+  executionType: ProjectExecutionType;
+  executionTypeLabel: string;
   budget: string;
   currency: string | null;
   statusLabel: string;
@@ -378,6 +384,27 @@ export function formatProjectBudget(
   }
 
   return `${budget.toLocaleString("en-US")} ${currency}`;
+}
+
+export function formatProjectExecutionTypeLabel(
+  executionType: ProjectExecutionType,
+) {
+  return executionType === ProjectExecutionType.INTERNAL
+    ? "Internal Execution"
+    : "External Execution";
+}
+
+function isInternalExecutionProject(project: Pick<Project, "executionType">) {
+  return project.executionType === ProjectExecutionType.INTERNAL;
+}
+
+function formatProjectBudgetForExecution(
+  project: Pick<Project, "executionType" | "currency">,
+  budget: number | null | undefined,
+) {
+  return isInternalExecutionProject(project)
+    ? INTERNAL_EXECUTION_NOT_REQUIRED_LABEL
+    : formatProjectBudget(budget, project.currency);
 }
 
 export function canViewProjectBudget(
@@ -751,6 +778,8 @@ function mapStageStatusToDisplayLabel(
 }
 
 function buildSyntheticStages(project: Project): ProjectStageWithStarter[] {
+  const isInternalExecution = isInternalExecutionProject(project);
+
   return Array.from({ length: Math.max(project.stageCount, 1) }, (_, index) => ({
     id: `${project.id}-stage-${index + 1}`,
     projectId: project.id,
@@ -759,11 +788,11 @@ function buildSyntheticStages(project: Project): ProjectStageWithStarter[] {
         ? project.currentStageName?.trim() || `Stage ${index + 1}`
         : `Stage ${index + 1}`,
     description: null,
-    budget: index === 0 ? project.budget : null,
+    budget: isInternalExecution ? null : index === 0 ? project.budget : null,
     actualStartedAt: null,
     startedById: null,
     completedAt: null,
-    invoiceRequired: true,
+    invoiceRequired: !isInternalExecution,
     plannedStartAt: project.startDate,
     plannedDueAt: project.endDate,
     status: index === 0 ? project.status : "PENDING",
@@ -853,7 +882,7 @@ function mapStageToCard(
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
     budget: allowBudgetView
-      ? formatProjectBudget(stage.budget, project.currency)
+      ? formatProjectBudgetForExecution(project, stage.budget)
       : "Restricted",
     actualStartedAt: formatProjectDateTime(stage.actualStartedAt),
     actualStartedAtValue: toProjectIsoString(stage.actualStartedAt),
@@ -971,7 +1000,11 @@ function mapProjectToFlow(
     category: project.category,
     executorName: executorDisplayName,
     description: allowBriefView ? project.description : "",
-    budget: allowBudgetView ? formatProjectBudget(project.budget, project.currency) : "Restricted",
+    executionType: project.executionType,
+    executionTypeLabel: formatProjectExecutionTypeLabel(project.executionType),
+    budget: allowBudgetView
+      ? formatProjectBudgetForExecution(project, project.budget)
+      : "Restricted",
     currency: allowBudgetView ? project.currency : null,
     statusLabel: projectStatusMeta[project.status].label,
     currentStageName: currentStage?.name ?? project.currentStageName?.trim() ?? "Stage 1",
@@ -1087,7 +1120,11 @@ function mapProjectToEditor(
     tag: project.tag?.trim() || "",
     priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
     description: allowBriefView ? project.description : "",
-    budget: allowBudgetView ? String(project.budget) : "",
+    executionType: project.executionType,
+    budget:
+      allowBudgetView && (!isInternalExecutionProject(project) || project.budget > 0)
+        ? String(project.budget)
+        : "",
     currency: allowBudgetView ? project.currency : null,
     canViewBudget: allowBudgetView,
     status: project.status,
@@ -1096,9 +1133,9 @@ function mapProjectToEditor(
     stages: stages.map((stage, index) => ({
       id: stage.id,
       name: stage.name,
-      invoiceRequired: stage.invoiceRequired,
+      invoiceRequired: isInternalExecutionProject(project) ? false : stage.invoiceRequired,
       budget:
-        allowBudgetView
+        allowBudgetView && (!isInternalExecutionProject(project) || (stage.budget ?? 0) > 0)
           ? stage.budget && stage.budget > 0
             ? String(stage.budget)
             : index === 0
