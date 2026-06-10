@@ -763,6 +763,7 @@ export async function notifyProjectArchived(input: {
 export async function notifyApprovalRequired(input: {
   projectId: string;
   actorId: string;
+  contactUserId: string;
 }) {
   const project = await getProjectNotificationContext(input.projectId);
 
@@ -770,13 +771,9 @@ export async function notifyApprovalRequired(input: {
     return;
   }
 
-  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
-    role: "main",
-    excludeUserId: input.actorId,
-  });
   const recipients = await filterRecipientsVisibleForStageEvent(
     project.id,
-    executorRecipients,
+    input.contactUserId === input.actorId ? [] : [input.contactUserId],
     new Date(),
   );
 
@@ -830,6 +827,7 @@ export async function notifyApprovalProofUploaded(input: {
 export async function notifyCopyrightTransferRequired(input: {
   projectId: string;
   actorId: string;
+  contactUserId: string;
 }) {
   const project = await getProjectNotificationContext(input.projectId);
 
@@ -837,13 +835,9 @@ export async function notifyCopyrightTransferRequired(input: {
     return;
   }
 
-  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
-    role: "main",
-    excludeUserId: input.actorId,
-  });
   const recipients = await filterRecipientsVisibleForStageEvent(
     project.id,
-    executorRecipients,
+    input.contactUserId === input.actorId ? [] : [input.contactUserId],
     new Date(),
   );
 
@@ -852,6 +846,37 @@ export async function notifyCopyrightTransferRequired(input: {
     type: "COPYRIGHT_TRANSFER_REQUIRED",
     title: "Copyright transfer required",
     message: `Copyright transfer is required for ${project.name}.`,
+    entityType: "COMPLETION_WORKFLOW",
+    projectId: project.id,
+    url: buildNotificationUrl({
+      kind: "project",
+      projectId: project.id,
+    }),
+  });
+}
+
+export async function notifyInvoiceRequested(input: {
+  projectId: string;
+  actorId: string;
+  contactUserId: string;
+}) {
+  const project = await getProjectNotificationContext(input.projectId);
+
+  if (!project) {
+    return;
+  }
+
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    input.contactUserId === input.actorId ? [] : [input.contactUserId],
+    new Date(),
+  );
+
+  await createNotificationsForUsers({
+    recipientUserIds: recipients,
+    type: "INVOICE_REQUESTED",
+    title: "Final invoice requested",
+    message: `Final invoice is requested for ${project.name}.`,
     entityType: "COMPLETION_WORKFLOW",
     projectId: project.id,
     url: buildNotificationUrl({

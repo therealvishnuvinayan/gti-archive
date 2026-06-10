@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type ReactNode } from "react";
-import { Download, Loader2, Lock, Upload } from "lucide-react";
+import { Download, Loader2, Upload } from "lucide-react";
 
 import {
   configureProjectCompletionWorkflowAction,
   markProjectInvoiceNotRequiredAction,
   prepareAuthorityApprovalRequestAction,
   prepareCopyrightTransferRequestAction,
+  prepareFinalInvoiceRequestAction,
 } from "@/app/(dashboard)/projects/actions";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ProjectCompletionSummary } from "@/lib/archives";
 import type {
   ProjectCompletionArchivedFileOption,
+  ProjectCompletionContactOption,
   ProjectCompletionDocumentRecord,
   ProjectCompletionWorkflowRecord,
 } from "@/lib/project-completion";
@@ -100,18 +102,18 @@ function getStepStatusMeta(
     return {
       label:
         step === "approval"
-          ? "Pending Approval"
+          ? "Pending approval"
           : step === "copyright"
-            ? "Pending Signature"
-            : "Pending",
+            ? "Waiting for document"
+            : "Waiting for invoice",
       className: "bg-[#fff7ea] text-[#b77420]",
     };
   }
 
   if (required === true) {
     return {
-      label: "Required",
-      className: "bg-[#edf2ff] text-[#4760c7]",
+      label: "Not started",
+      className: "bg-[#f4f7f4] text-[#5f6b62]",
     };
   }
 
@@ -385,6 +387,45 @@ function ChoiceButton({
   );
 }
 
+function CompletionContactSelect({
+  label,
+  value,
+  contacts,
+  onValueChange,
+}: {
+  label: string;
+  value: string;
+  contacts: ProjectCompletionContactOption[];
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
+        {label}
+      </p>
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger className="mt-2 h-[46px] rounded-[14px] border-[#d6e1d7]">
+          <SelectValue placeholder="Choose contact" />
+        </SelectTrigger>
+        <SelectContent>
+          {contacts.map((contact) => (
+            <SelectItem key={contact.id} value={contact.id}>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-[13px] font-semibold">
+                  {contact.name} · {contact.roleLabel}
+                </span>
+                <span className="truncate text-[11px] text-[#6d776f]">
+                  {contact.email} · {contact.detailLabel}
+                </span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function FileSelectionList({
   files,
   selectedIds,
@@ -556,6 +597,10 @@ function getInitialCopyrightContactUserId(workflow: ProjectCompletionWorkflowRec
   return workflow.copyrightContactUserId ?? workflow.availableContacts[0]?.id ?? "";
 }
 
+function getInitialInvoiceContactUserId(workflow: ProjectCompletionWorkflowRecord) {
+  return workflow.invoiceContactUserId ?? workflow.availableContacts[0]?.id ?? "";
+}
+
 function ProjectCompletionChecklistBody({
   projectId,
   workflow,
@@ -582,6 +627,10 @@ function ProjectCompletionChecklistBody({
     getInitialCopyrightContactUserId(workflow),
   );
   const [copyrightNote, setCopyrightNote] = useState(workflow.copyrightNote ?? "");
+  const [invoiceContactUserId, setInvoiceContactUserId] = useState<string>(
+    getInitialInvoiceContactUserId(workflow),
+  );
+  const [invoiceNote, setInvoiceNote] = useState(workflow.invoiceNote ?? "");
   const [pendingAction, setPendingAction] = useState<
     "requirements" | "approval" | "copyright" | "invoice" | null
   >(null);
@@ -613,6 +662,8 @@ function ProjectCompletionChecklistBody({
     setApprovalNote(nextWorkflow.approvalNote ?? "");
     setCopyrightContactUserId(getInitialCopyrightContactUserId(nextWorkflow));
     setCopyrightNote(nextWorkflow.copyrightNote ?? "");
+    setInvoiceContactUserId(getInitialInvoiceContactUserId(nextWorkflow));
+    setInvoiceNote(nextWorkflow.invoiceNote ?? "");
     refreshPage();
   }
 
@@ -684,7 +735,7 @@ function ProjectCompletionChecklistBody({
       }
 
       applyWorkflowUpdate(result.workflow);
-      showSuccessToast("Approval request prepared.");
+      showSuccessToast("Approval request sent.");
     } catch (error) {
       const message =
         error instanceof Error
@@ -720,7 +771,7 @@ function ProjectCompletionChecklistBody({
       }
 
       applyWorkflowUpdate(result.workflow);
-      showSuccessToast("Copyright transfer request prepared.");
+      showSuccessToast("Copyright request sent.");
     } catch (error) {
       const message =
         error instanceof Error
@@ -728,6 +779,42 @@ function ProjectCompletionChecklistBody({
           : "Unable to prepare the copyright transfer request right now.";
       setWorkflowError(message);
       showErrorToast("Unable to prepare copyright transfer.", message);
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handlePrepareInvoiceRequest() {
+    if (!invoiceContactUserId) {
+      const message = "Select an invoice contact before sending the request.";
+      setWorkflowError(message);
+      showErrorToast("Invoice contact required.", message);
+      return;
+    }
+
+    setWorkflowError(null);
+    setPendingAction("invoice");
+
+    try {
+      const result = await prepareFinalInvoiceRequestAction({
+        projectId,
+        contactUserId: invoiceContactUserId,
+        note: invoiceNote,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      applyWorkflowUpdate(result.workflow);
+      showSuccessToast("Invoice request sent.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to send the final invoice request right now.";
+      setWorkflowError(message);
+      showErrorToast("Unable to send invoice request.", message);
     } finally {
       setPendingAction(null);
     }
@@ -972,8 +1059,8 @@ function ProjectCompletionChecklistBody({
             <div>
               <p className="text-[16px] font-semibold text-[#173120]">Authority Approval</p>
               <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-                Approval request prepared. Email/notification sending will be connected
-                later.
+                Send an in-app approval request to the selected project contact, or
+                upload approval proof if the approval is already available.
               </p>
             </div>
             <span
@@ -994,24 +1081,12 @@ function ProjectCompletionChecklistBody({
             workflowState.canManage ? (
               <div className="mt-4 space-y-4">
                 <div>
-                  <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
-                    Approval Contact
-                  </p>
-                  <Select
+                  <CompletionContactSelect
+                    label="Approval Contact"
                     value={approvalContactUserId}
+                    contacts={workflowState.availableContacts}
                     onValueChange={setApprovalContactUserId}
-                  >
-                    <SelectTrigger className="mt-2 h-[42px] rounded-[14px] border-[#d6e1d7]">
-                      <SelectValue placeholder="Choose contact" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workflowState.availableContacts.map((contact) => (
-                        <SelectItem key={contact.id} value={contact.id}>
-                          {contact.name} · {contact.roleLabel}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                   <p className="mt-2 text-[11px] text-[#728074]">
                     Need another approval contact? Add them to the project collaborators
                     first, then return here.
@@ -1044,11 +1119,33 @@ function ProjectCompletionChecklistBody({
                   />
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  {workflowState.canUploadApprovalProof ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="rounded-full text-[12px]"
+                      disabled={
+                        pendingAction === "approval" ||
+                        uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.approval
+                      }
+                      onClick={() => approvalProofInputRef.current?.click()}
+                    >
+                      {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.approval ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5" />
+                      )}
+                      Upload Approval Proof
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     className="rounded-full text-[12px]"
-                    disabled={pendingAction === "approval"}
+                    disabled={
+                      pendingAction === "approval" ||
+                      uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.approval
+                    }
                     onClick={() => {
                       void handlePrepareApprovalRequest();
                     }}
@@ -1056,7 +1153,7 @@ function ProjectCompletionChecklistBody({
                     {pendingAction === "approval" ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : null}
-                    Mark Approval Request Prepared
+                    Send Approval Request
                   </Button>
                 </div>
               </div>
@@ -1072,7 +1169,7 @@ function ProjectCompletionChecklistBody({
                   Pending Approval
                 </p>
                 <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
-                  Approval request prepared
+                  Approval request sent as an in-app notification
                   {workflowState.approvalRequestedAt
                     ? ` on ${workflowState.approvalRequestedAt}.`
                     : "."}
@@ -1098,7 +1195,7 @@ function ProjectCompletionChecklistBody({
                 </div>
               ) : null}
 
-              {workflowState.canManage ? (
+              {workflowState.canUploadApprovalProof ? (
                 <div className="flex justify-end">
                   <Button
                     type="button"
@@ -1139,8 +1236,8 @@ function ProjectCompletionChecklistBody({
             <div>
               <p className="text-[16px] font-semibold text-[#173120]">Copyright Transfer</p>
               <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-                Signed copyright documents can be uploaded here once they are received
-                back.
+                Send an in-app copyright request to the selected contact, or upload
+                the copyright document directly if it has already been prepared.
               </p>
             </div>
             <span
@@ -1150,12 +1247,7 @@ function ProjectCompletionChecklistBody({
             </span>
           </div>
 
-          {!workflowState.isCopyrightUnlocked ? (
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-[12px] text-[#5f6b62]">
-              <Lock className="h-3.5 w-3.5" />
-              Complete or skip authority approval before continuing.
-            </div>
-          ) : workflowState.copyrightRequired === false ? (
+          {workflowState.copyrightRequired === false ? (
             <p className="mt-4 text-[13px] text-[#5f6b62]">
               {workflowState.isInternalExecution
                 ? "Not required for internal execution."
@@ -1165,26 +1257,12 @@ function ProjectCompletionChecklistBody({
             workflowState.copyrightStatus === "NOT_STARTED" ? (
             workflowState.canManage ? (
               <div className="mt-4 space-y-4">
-                <div>
-                  <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
-                    Copyright Contact
-                  </p>
-                  <Select
-                    value={copyrightContactUserId}
-                    onValueChange={setCopyrightContactUserId}
-                  >
-                    <SelectTrigger className="mt-2 h-[42px] rounded-[14px] border-[#d6e1d7]">
-                      <SelectValue placeholder="Choose contact" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workflowState.availableContacts.map((contact) => (
-                        <SelectItem key={contact.id} value={contact.id}>
-                          {contact.name} · {contact.roleLabel}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <CompletionContactSelect
+                  label="Copyright Contact"
+                  value={copyrightContactUserId}
+                  contacts={workflowState.availableContacts}
+                  onValueChange={setCopyrightContactUserId}
+                />
 
                 <div>
                   <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
@@ -1198,11 +1276,33 @@ function ProjectCompletionChecklistBody({
                   />
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  {workflowState.canUploadCopyrightDocument ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="rounded-full text-[12px]"
+                      disabled={
+                        pendingAction === "copyright" ||
+                        uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.copyright
+                      }
+                      onClick={() => copyrightInputRef.current?.click()}
+                    >
+                      {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.copyright ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5" />
+                      )}
+                      Upload Copyright Document
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     className="rounded-full text-[12px]"
-                    disabled={pendingAction === "copyright"}
+                    disabled={
+                      pendingAction === "copyright" ||
+                      uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.copyright
+                    }
                     onClick={() => {
                       void handlePrepareCopyrightTransfer();
                     }}
@@ -1210,7 +1310,7 @@ function ProjectCompletionChecklistBody({
                     {pendingAction === "copyright" ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : null}
-                    Mark Copyright Request Prepared
+                    Send Copyright Request
                   </Button>
                 </div>
               </div>
@@ -1223,10 +1323,10 @@ function ProjectCompletionChecklistBody({
             <div className="mt-4 space-y-4">
               <div className="rounded-[16px] border border-[#dce6dd] bg-white px-4 py-4">
                 <p className="text-[13px] font-[700] text-[#173120]">
-                  Pending Signature
+                  Waiting For Copyright Document
                 </p>
                 <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
-                  Copyright transfer request prepared
+                  Copyright request sent as an in-app notification
                   {workflowState.copyrightRequestedAt
                     ? ` on ${workflowState.copyrightRequestedAt}.`
                     : "."}
@@ -1243,7 +1343,7 @@ function ProjectCompletionChecklistBody({
                 ) : null}
               </div>
 
-              {workflowState.canManage ? (
+              {workflowState.canUploadCopyrightDocument ? (
                 <div className="flex justify-end">
                   <Button
                     type="button"
@@ -1256,7 +1356,7 @@ function ProjectCompletionChecklistBody({
                     ) : (
                       <Upload className="h-3.5 w-3.5" />
                     )}
-                    Upload Signed Copyright Document
+                    Upload Copyright Document
                   </Button>
                 </div>
               ) : null}
@@ -1285,8 +1385,8 @@ function ProjectCompletionChecklistBody({
               <p className="text-[16px] font-semibold text-[#173120]">Final Invoice</p>
               <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
                 Stage invoices are handled per stage. This final invoice belongs to
-                the project completion package and unlocks after authority approval
-                and copyright transfer are completed or marked not required.
+                the project completion package. Request it from the selected contact,
+                or upload it directly if it has already been received.
               </p>
             </div>
             <span
@@ -1296,12 +1396,7 @@ function ProjectCompletionChecklistBody({
             </span>
           </div>
 
-          {!workflowState.isInvoiceUnlocked ? (
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-[12px] text-[#5f6b62]">
-              <Lock className="h-3.5 w-3.5" />
-              Final invoice is locked until the previous steps are completed or skipped.
-            </div>
-          ) : workflowState.invoiceStatus === "NOT_REQUIRED" ? (
+          {workflowState.invoiceStatus === "NOT_REQUIRED" ? (
             <p className="mt-4 text-[13px] text-[#5f6b62]">
               {workflowState.isInternalExecution
                 ? "Not required for internal execution."
@@ -1317,9 +1412,70 @@ function ProjectCompletionChecklistBody({
               </p>
               <CompletionDocumentList documents={[workflowState.invoiceDocument]} />
             </div>
-          ) : workflowState.canUploadInvoice || workflowState.canManage ? (
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
-              {workflowState.canManage ? (
+          ) : workflowState.invoiceStatus === "PENDING" ? (
+            <div className="mt-4 space-y-4">
+              <div className="rounded-[16px] border border-[#dce6dd] bg-white px-4 py-4">
+                <p className="text-[13px] font-[700] text-[#173120]">
+                  Waiting For Final Invoice
+                </p>
+                <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
+                  Final invoice request sent as an in-app notification
+                  {workflowState.invoiceRequestedAt
+                    ? ` on ${workflowState.invoiceRequestedAt}.`
+                    : "."}
+                </p>
+                {workflowState.invoiceContactName ? (
+                  <p className="mt-1 text-[12px] text-[#5f6b62]">
+                    Contact: {workflowState.invoiceContactName}
+                  </p>
+                ) : null}
+                {workflowState.invoiceNote ? (
+                  <p className="mt-2 text-[12px] text-[#5f6b62]">
+                    Note: {workflowState.invoiceNote}
+                  </p>
+                ) : null}
+              </div>
+
+              {workflowState.canUploadInvoice ? (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    className="rounded-full text-[12px]"
+                    disabled={uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice}
+                    onClick={() => invoiceInputRef.current?.click()}
+                  >
+                    {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    Upload Final Invoice
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : workflowState.canManage ? (
+            <div className="mt-4 space-y-4">
+              <CompletionContactSelect
+                label="Invoice Contact"
+                value={invoiceContactUserId}
+                contacts={workflowState.availableContacts}
+                onValueChange={setInvoiceContactUserId}
+              />
+
+              <div>
+                <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
+                  Optional Note
+                </p>
+                <Textarea
+                  value={invoiceNote}
+                  onChange={(event) => setInvoiceNote(event.target.value)}
+                  placeholder="Add any invoice request note."
+                  className="mt-2 min-h-[110px] rounded-[16px] border-[#d6e1d7]"
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <Button
                   type="button"
                   variant="secondary"
@@ -1335,8 +1491,25 @@ function ProjectCompletionChecklistBody({
                   ) : null}
                   Mark Final Invoice Not Required
                 </Button>
-              ) : null}
-              {workflowState.canUploadInvoice ? (
+                {workflowState.canUploadInvoice ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="rounded-full text-[12px]"
+                    disabled={
+                      pendingAction === "invoice" ||
+                      uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice
+                    }
+                    onClick={() => invoiceInputRef.current?.click()}
+                  >
+                    {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    Upload Final Invoice
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   className="rounded-full text-[12px]"
@@ -1344,21 +1517,37 @@ function ProjectCompletionChecklistBody({
                     pendingAction === "invoice" ||
                     uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice
                   }
-                  onClick={() => invoiceInputRef.current?.click()}
+                  onClick={() => {
+                    void handlePrepareInvoiceRequest();
+                  }}
                 >
-                  {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice ? (
+                  {pendingAction === "invoice" ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Upload className="h-3.5 w-3.5" />
-                  )}
-                  Upload Final Invoice
+                  ) : null}
+                  Send Invoice Request
                 </Button>
-              ) : null}
+              </div>
+            </div>
+          ) : workflowState.canUploadInvoice ? (
+            <div className="mt-4 flex justify-end">
+              <Button
+                type="button"
+                className="rounded-full text-[12px]"
+                disabled={uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice}
+                onClick={() => invoiceInputRef.current?.click()}
+              >
+                {uploadingDocumentType === COMPLETION_DOCUMENT_TYPES.invoice ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                Upload Final Invoice
+              </Button>
             </div>
           ) : (
             <p className="mt-4 text-[13px] text-[#5f6b62]">
-              The project owner or executor can upload the final invoice once this step is
-              unlocked.
+              The project owner, admin, executor, or selected invoice contact can upload
+              the final invoice.
             </p>
           )}
         </div>

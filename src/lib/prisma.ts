@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
+  prismaConnectPromise?: Promise<void>;
 };
 
 function createPrismaClient() {
@@ -45,6 +46,14 @@ function sleep(milliseconds: number) {
   });
 }
 
+function getPrismaErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "";
+}
+
+function isPrismaEngineNotConnectedError(error: unknown) {
+  return getPrismaErrorMessage(error).includes("Engine is not yet connected");
+}
+
 export function isPrismaConnectionError(error: unknown) {
   if (
     error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -53,20 +62,41 @@ export function isPrismaConnectionError(error: unknown) {
     return true;
   }
 
-  if (error instanceof Error) {
+  const message = getPrismaErrorMessage(error);
+
+  if (message) {
     return (
-      error.message.includes("Error in PostgreSQL connection") ||
-      error.message.includes("Can't reach database server") ||
-      error.message.includes("Engine is not yet connected")
+      message.includes("Error in PostgreSQL connection") ||
+      message.includes("Can't reach database server") ||
+      message.includes("Engine is not yet connected")
     );
   }
 
   return false;
 }
 
+async function connectPrismaClient() {
+  const existingConnectPromise = globalForPrisma.prismaConnectPromise;
+
+  if (existingConnectPromise) {
+    return existingConnectPromise;
+  }
+
+  const connectPromise = prisma.$connect();
+  globalForPrisma.prismaConnectPromise = connectPromise;
+
+  try {
+    await connectPromise;
+  } finally {
+    if (globalForPrisma.prismaConnectPromise === connectPromise) {
+      globalForPrisma.prismaConnectPromise = undefined;
+    }
+  }
+}
+
 export async function withPrismaRetry<T>(
   operation: () => Promise<T>,
-  attempts = 2,
+  attempts = 4,
 ): Promise<T> {
   try {
     return await operation();
@@ -75,9 +105,15 @@ export async function withPrismaRetry<T>(
       throw error;
     }
 
-    await prisma.$disconnect().catch(() => undefined);
-    await sleep(500);
-    await prisma.$connect();
+    if (!isPrismaEngineNotConnectedError(error)) {
+      globalForPrisma.prismaConnectPromise = undefined;
+      await prisma.$disconnect().catch(() => undefined);
+    }
+
+    const retryDelayMs = attempts > 3 ? 250 : attempts === 3 ? 500 : 1000;
+
+    await sleep(retryDelayMs);
+    await connectPrismaClient();
 
     return withPrismaRetry(operation, attempts - 1);
   }

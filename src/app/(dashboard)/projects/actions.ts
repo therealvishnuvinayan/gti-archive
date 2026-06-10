@@ -16,6 +16,7 @@ import {
   notifyCommentAdded,
   notifyCommentMentioned,
   notifyCopyrightTransferRequired,
+  notifyInvoiceRequested,
   notifyProjectArchived,
   notifyProjectAssignmentChanges,
   notifyRevisionSubmitted,
@@ -30,6 +31,7 @@ import {
   markProjectInvoiceNotRequired,
   prepareAuthorityApprovalRequest,
   prepareCopyrightTransferRequest,
+  prepareFinalInvoiceRequest,
 } from "@/lib/project-completion";
 import {
   cancelStageRevisionSubmission,
@@ -500,6 +502,7 @@ export async function prepareAuthorityApprovalRequestAction(input: {
       notifyApprovalRequired({
         projectId: input.projectId,
         actorId: user.id,
+        contactUserId: input.contactUserId,
       }),
     );
 
@@ -530,6 +533,7 @@ export async function prepareCopyrightTransferRequestAction(input: {
       notifyCopyrightTransferRequired({
         projectId: input.projectId,
         actorId: user.id,
+        contactUserId: input.contactUserId,
       }),
     );
 
@@ -540,6 +544,37 @@ export async function prepareCopyrightTransferRequestAction(input: {
         error instanceof Error
           ? error.message
           : "Unable to prepare the copyright transfer request right now.",
+    };
+  }
+}
+
+export async function prepareFinalInvoiceRequestAction(input: {
+  projectId: string;
+  contactUserId: string;
+  note?: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const workflow = await prepareFinalInvoiceRequest(user, input);
+    revalidateProjectFlow();
+    revalidateArchiveFlow(input.projectId);
+
+    await runNotificationTask("invoice-requested", () =>
+      notifyInvoiceRequested({
+        projectId: input.projectId,
+        actorId: user.id,
+        contactUserId: input.contactUserId,
+      }),
+    );
+
+    return { workflow };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the final invoice request right now.",
     };
   }
 }

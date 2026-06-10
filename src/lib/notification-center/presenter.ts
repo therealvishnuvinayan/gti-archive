@@ -29,6 +29,7 @@ export const workflowNotificationTypes = [
   "APPROVAL_PROOF_UPLOADED",
   "COPYRIGHT_TRANSFER_REQUIRED",
   "COPYRIGHT_DOCUMENT_UPLOADED",
+  "INVOICE_REQUESTED",
   "INVOICE_UPLOADED",
 ] as const satisfies readonly PrismaNotificationType[];
 
@@ -74,7 +75,7 @@ export function mapTypeFilterToNotificationTypes(
     case "Copyright":
       return ["COPYRIGHT_TRANSFER_REQUIRED", "COPYRIGHT_DOCUMENT_UPLOADED"];
     case "Invoice":
-      return ["INVOICE_UPLOADED"];
+      return ["INVOICE_REQUESTED", "INVOICE_UPLOADED"];
     case "All Types":
     default:
       return null;
@@ -108,6 +109,7 @@ function mapNotificationType(type: PrismaNotificationType): NotificationType {
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
       return "Copyright";
+    case "INVOICE_REQUESTED":
     case "INVOICE_UPLOADED":
       return "Invoice";
     case "PROJECT_ASSIGNED":
@@ -186,6 +188,7 @@ function mapNotificationContextTone(type: PrismaNotificationType): NotificationC
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
       return "approval";
+    case "INVOICE_REQUESTED":
     case "INVOICE_UPLOADED":
       return "invoice";
     case "PROJECT_ASSIGNED":
@@ -229,6 +232,7 @@ function mapNotificationVisualKind(type: PrismaNotificationType): NotificationVi
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
       return "copyright-transfer";
+    case "INVOICE_REQUESTED":
     case "INVOICE_UPLOADED":
       return "invoice-uploaded";
     case "PROJECT_UPDATED":

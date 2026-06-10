@@ -1808,6 +1808,14 @@ export function ProjectChatWorkspace({
     !isProjectOwner &&
     !isStageCompleted &&
     !isProjectCompleted;
+  const stageInvoiceBlocksCompletion =
+    Boolean(activeStage?.invoiceRequired) &&
+    !stageInvoiceAttachment &&
+    !isStageCompleted &&
+    !isProjectCompleted;
+  const stageInvoiceBlockerMessage = canUploadStageInvoice
+    ? "Upload the stage invoice before marking this stage complete."
+    : "The upload button is available to the Main Executor in the Stage Invoice card below Time Remaining.";
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
   const canSubmitNewRevision =
     canSubmitWorkAsMainExecutor &&
@@ -2836,6 +2844,14 @@ export function ProjectChatWorkspace({
     });
   }
 
+  function getStageInvoiceErrorMessage(message: string) {
+    if (!message.toLowerCase().includes("invoice is required")) {
+      return message;
+    }
+
+    return `${message} ${stageInvoiceBlockerMessage}`;
+  }
+
   async function handleMarkStageComplete() {
     const activeStageId = activeStage?.id;
 
@@ -2859,13 +2875,12 @@ export function ProjectChatWorkspace({
       });
 
       if ("error" in result) {
-        setStageCompleteError(
+        const message = getStageInvoiceErrorMessage(
           result.error ?? "Unable to mark this stage as complete right now.",
         );
-        showErrorToast(
-          "Unable to mark stage complete.",
-          result.error ?? "Unable to mark this stage as complete right now.",
-        );
+
+        setStageCompleteError(message);
+        showErrorToast("Unable to mark stage complete.", message);
         return;
       }
 
@@ -2878,8 +2893,9 @@ export function ProjectChatWorkspace({
         error instanceof Error
           ? error.message
           : "Unable to mark this stage as complete right now.";
-      setStageCompleteError(message);
-      showErrorToast("Unable to mark stage complete.", message);
+      const resolvedMessage = getStageInvoiceErrorMessage(message);
+      setStageCompleteError(resolvedMessage);
+      showErrorToast("Unable to mark stage complete.", resolvedMessage);
     } finally {
       setIsMarkingStageComplete(false);
     }
@@ -4012,12 +4028,13 @@ export function ProjectChatWorkspace({
         error instanceof Error
           ? error.message
           : "Unable to review the submission right now.";
-      setReviewDialogError(message);
+      const resolvedMessage = getStageInvoiceErrorMessage(message);
+      setReviewDialogError(resolvedMessage);
       showErrorToast(
         status === "APPROVED"
           ? "Unable to mark stage as complete."
           : "Unable to request revision.",
-        message,
+        resolvedMessage,
       );
       setPendingRevisionReviewId(null);
     }
@@ -4370,7 +4387,16 @@ export function ProjectChatWorkspace({
                             size="sm"
                             variant="secondary"
                             className="rounded-full text-[12px]"
-                            disabled={isStageCompleted || isMarkingStageComplete}
+                            disabled={
+                              isStageCompleted ||
+                              isMarkingStageComplete ||
+                              stageInvoiceBlocksCompletion
+                            }
+                            title={
+                              stageInvoiceBlocksCompletion
+                                ? stageInvoiceBlockerMessage
+                                : undefined
+                            }
                             onClick={() => {
                               setStageCompleteError(null);
                               setStageCompleteDialogOpen(true);
@@ -5808,6 +5834,41 @@ export function ProjectChatWorkspace({
                   />
                 </div>
               ) : null}
+              {stageInvoiceBlocksCompletion ? (
+                <div className="rounded-[18px] border border-[#f1d0aa] bg-[#fff8ed] px-4 py-3 text-[#71480f]">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#8a560f]">
+                        Stage invoice required
+                      </p>
+                      <p className="mt-1 text-[12px] leading-5">
+                        {canUploadStageInvoice
+                          ? "Upload the stage invoice before marking this submission complete."
+                          : "Only the Main Executor can upload this stage invoice. The upload button appears in the Stage Invoice card below Time Remaining."}
+                      </p>
+                    </div>
+                    {canUploadStageInvoice ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="shrink-0 rounded-full text-[12px]"
+                        disabled={isUploadingStageInvoice}
+                        onClick={() => {
+                          setStageInvoiceError(null);
+                          stageInvoiceInputRef.current?.click();
+                        }}
+                      >
+                        {isUploadingStageInvoice ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="h-3.5 w-3.5" />
+                        )}
+                        Upload Invoice
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {reviewRejectMode ? (
                 <div className="space-y-2">
                   <p className="text-[13px] font-semibold text-[#2d372f]">
@@ -5850,7 +5911,7 @@ export function ProjectChatWorkspace({
                         setReviewDialogError(null);
                         setReviewCompleteDialogOpen(true);
                       }}
-                      disabled={Boolean(pendingRevisionReviewId)}
+                      disabled={Boolean(pendingRevisionReviewId) || stageInvoiceBlocksCompletion}
                     >
                       {reviewCompletionIsFinalStage ? "Approve Submission" : "Mark as Complete"}
                     </Button>

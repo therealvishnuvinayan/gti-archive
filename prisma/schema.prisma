@@ -155,6 +155,7 @@ enum NotificationType {
   APPROVAL_PROOF_UPLOADED
   COPYRIGHT_TRANSFER_REQUIRED
   COPYRIGHT_DOCUMENT_UPLOADED
+  INVOICE_REQUESTED
   INVOICE_UPLOADED
 }
 
@@ -202,6 +203,7 @@ model User {
   archivedProjectFiles ArchivedProjectFile[] @relation("ArchivedProjectFileArchivedBy")
   approvalContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionApprovalContact")
   copyrightContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionCopyrightContact")
+  invoiceContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionInvoiceContact")
   uploadedCompletionDocuments ProjectCompletionDocument[] @relation("ProjectCompletionDocumentUploadedBy")
   manualArchiveFiles ManualArchiveFile[] @relation("ManualArchiveFileUploadedBy")
   manualLibraryAssets ManualLibraryAsset[] @relation("ManualLibraryAssetUploadedBy")
@@ -696,6 +698,10 @@ model ProjectCompletionWorkflow {
   copyrightRequestedAt         DateTime?
   copyrightCompletedAt         DateTime?
   invoiceStatus                ProjectCompletionStepStatus @default(NOT_STARTED)
+  invoiceContactUserId         String?
+  invoiceContactUser           User?                       @relation("ProjectCompletionInvoiceContact", fields: [invoiceContactUserId], references: [id], onDelete: SetNull)
+  invoiceNote                  String?
+  invoiceRequestedAt           DateTime?
   invoiceCompletedAt           DateTime?
   completedAt                  DateTime?
   documents                    ProjectCompletionDocument[]
@@ -707,6 +713,7 @@ model ProjectCompletionWorkflow {
   @@index([invoiceStatus])
   @@index([approvalContactUserId])
   @@index([copyrightContactUserId])
+  @@index([invoiceContactUserId])
 }
 
 model ProjectCompletionDocument {

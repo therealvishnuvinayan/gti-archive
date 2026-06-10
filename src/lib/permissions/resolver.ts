@@ -215,10 +215,12 @@ export function hasProjectPermission(
     case "completion.setCopyrightRequired":
     case "completion.prepareCopyrightTransfer":
     case "completion.uploadCopyrightDocument":
-      return isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwner(user, project);
     case "completion.viewChecklist":
     case "completion.uploadInvoice":
-      return isProjectOwner(user, project) || isProjectExecutor(user, project);
+      return (
+        isProjectAdmin(user) || isProjectOwner(user, project) || isProjectExecutor(user, project)
+      );
     case "chat.createComment":
     case "chat.uploadAttachment":
     case "chat.mentionUser":
