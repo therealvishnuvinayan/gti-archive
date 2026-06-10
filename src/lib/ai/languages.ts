@@ -17,6 +17,7 @@ export const SUPPORTED_CHAT_LANGUAGES: SupportedLanguage[] = [
   { code: "es", shortCode: "ES", name: "Spanish", nativeName: "Español" },
   { code: "de", shortCode: "DE", name: "German", nativeName: "Deutsch" },
   { code: "it", shortCode: "IT", name: "Italian", nativeName: "Italiano" },
+  { code: "pl", shortCode: "PL", name: "Polish", nativeName: "Polski" },
   { code: "pt", shortCode: "PT", name: "Portuguese", nativeName: "Português" },
   { code: "tr", shortCode: "TR", name: "Turkish", nativeName: "Türkçe" },
   { code: "zh", shortCode: "ZH", name: "Chinese", nativeName: "中文" },
