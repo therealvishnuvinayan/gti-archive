@@ -87,13 +87,13 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
             <div className="min-w-0 flex-1 space-y-3">
               <Badge
                 variant={project.isPinned ? "secondary" : "outline"}
-                className={`max-w-full truncate whitespace-nowrap ${
+                className={`max-w-full whitespace-normal px-3 py-1.5 text-left leading-5 ${
                   project.isPinned
                     ? "border-white/15 bg-white/14 text-[#ecfff0]"
                     : "border-[#d5e3d6] bg-[#fbfdfb] text-brand"
                 }`}
               >
-                {project.stage}
+                <span className="line-clamp-2 min-w-0">{project.stage}</span>
               </Badge>
               <p
                 className={`truncate text-[13px] font-[600] ${
