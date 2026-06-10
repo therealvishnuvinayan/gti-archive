@@ -424,7 +424,7 @@ function renderCommentBodyWithMentions(
     segments.push(
       <span
         key={`${matchedText}-${matchIndex}`}
-        className="inline-flex rounded-full bg-[#edf7ef] px-2 py-0.5 font-semibold text-[#2b8b56]"
+        className="inline-block rounded-full bg-[#edf7ef] px-2 py-0.5 font-semibold leading-[1.55] text-[#2b8b56]"
       >
         {matchedText}
       </span>,
@@ -673,6 +673,44 @@ function getRevisionStatusMeta(status: RevisionReviewState) {
   }
 }
 
+type TimelineAlignment = "left" | "right";
+type TimelineWidth = "compact" | "medium" | "submission" | "wide";
+
+const timelineWidthClassNames: Record<TimelineWidth, string> = {
+  compact: "w-full max-w-[94%] sm:max-w-[64%]",
+  medium: "w-full max-w-[96%] sm:max-w-[70%]",
+  submission: "w-full max-w-[96%] sm:max-w-[74%] xl:max-w-[720px]",
+  wide: "w-full max-w-[98%] sm:max-w-[82%] xl:max-w-[78%]",
+};
+
+function getTimelineEntryAlignment(
+  entry: Pick<DisplayChatEntry, "authorId" | "author">,
+  currentUserId: string,
+  currentUserDisplayName: string,
+): TimelineAlignment {
+  if (entry.authorId) {
+    return entry.authorId === currentUserId ? "right" : "left";
+  }
+
+  return entry.author.trim() === currentUserDisplayName.trim() ? "right" : "left";
+}
+
+function TimelineFrame({
+  alignment = "left",
+  width = "medium",
+  children,
+}: {
+  alignment?: TimelineAlignment;
+  width?: TimelineWidth;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`flex w-full ${alignment === "right" ? "justify-end" : "justify-start"}`}>
+      <div className={`min-w-0 ${timelineWidthClassNames[width]}`}>{children}</div>
+    </div>
+  );
+}
+
 function getSystemActivityMeta(message: DisplayChatEntry) {
   const text = `${message.title ?? ""} ${message.body}`.toLowerCase();
 
@@ -734,14 +772,22 @@ function getSystemActivityMeta(message: DisplayChatEntry) {
   };
 }
 
-function SystemActivityCard({ message }: { message: DisplayChatEntry }) {
+function SystemActivityCard({
+  message,
+  alignment = "left",
+}: {
+  message: DisplayChatEntry;
+  alignment?: TimelineAlignment;
+}) {
   const meta = getSystemActivityMeta(message);
   const Icon = meta.Icon;
 
   return (
-    <div className="flex justify-center">
+    <TimelineFrame alignment={alignment} width="medium">
       <div
-        className={`w-full max-w-full rounded-[18px] border px-4 py-3 shadow-[0_12px_28px_rgba(23,39,28,0.05)] sm:w-[78%] sm:max-w-[820px] ${meta.cardClassName}`}
+        className={`w-full rounded-[18px] border px-4 py-3 shadow-[0_10px_24px_rgba(23,39,28,0.05)] ${
+          alignment === "right" ? "rounded-br-[7px]" : "rounded-bl-[7px]"
+        } ${meta.cardClassName}`}
       >
         <div className="flex items-start gap-3">
           <div className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${meta.iconClassName}`}>
@@ -759,40 +805,53 @@ function SystemActivityCard({ message }: { message: DisplayChatEntry }) {
             <p className={`mt-1 text-[13px] font-[800] ${meta.titleClassName}`}>
               {message.title ?? "Project activity"}
             </p>
-            <p className={`mt-1 text-[12px] leading-5 ${meta.bodyClassName}`}>
+            <p className={`mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 ${meta.bodyClassName}`}>
               {message.body}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-wide text-[#6c776e]">
-              <span>{message.author}</span>
+              <span>{alignment === "right" ? "You" : message.author}</span>
+              {alignment === "right" && message.author !== "You" ? (
+                <span className="normal-case tracking-normal text-[#7a837b]">
+                  {message.author}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </TimelineFrame>
   );
 }
 
 function WorkflowNoticeCard({
   title,
   body,
+  alignment = "left",
 }: {
   title: string;
   body: string;
+  alignment?: TimelineAlignment;
 }) {
   return (
-    <div className="flex justify-center">
-      <div className="w-full max-w-full rounded-[18px] border border-[#efd9af] bg-[#fffaf0] px-4 py-3 shadow-[0_12px_28px_rgba(23,39,28,0.05)] sm:w-[78%] sm:max-w-[820px]">
+    <TimelineFrame alignment={alignment} width="medium">
+      <div
+        className={`w-full rounded-[18px] border border-[#efd9af] bg-[#fffaf0] px-4 py-3 shadow-[0_10px_24px_rgba(23,39,28,0.05)] ${
+          alignment === "right" ? "rounded-br-[7px]" : "rounded-bl-[7px]"
+        }`}
+      >
         <div className="flex items-start gap-3">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fff3d6] text-[#b77420]">
             <Info className="h-4 w-4" />
           </div>
           <div className="min-w-0">
             <p className="text-[13px] font-[800] text-[#8a5718]">{title}</p>
-            <p className="mt-1 text-[12px] leading-5 text-[#5d4a2f]">{body}</p>
+            <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-[#5d4a2f]">
+              {body}
+            </p>
           </div>
         </div>
       </div>
-    </div>
+    </TimelineFrame>
   );
 }
 
@@ -829,9 +888,9 @@ function StageBriefContextCard({
   const hasStageAttachments = stageBriefAttachments.length > 0;
 
   return (
-    <div className="flex justify-center">
-      <Card className="w-full max-w-full overflow-hidden rounded-[22px] border border-[#cfe3d2] bg-white shadow-[0_18px_42px_rgba(18,35,23,0.08)] sm:w-[86%] sm:max-w-[920px]">
-        <div className="border-b border-[#e4ece5] bg-[linear-gradient(135deg,#f4fbf5,#ffffff)] px-4 py-4 sm:px-5">
+    <TimelineFrame alignment="left" width="medium">
+      <Card className="w-full overflow-hidden rounded-[20px] rounded-bl-[7px] border border-[#cfe3d2] bg-white shadow-[0_12px_30px_rgba(18,35,23,0.07)]">
+        <div className="border-b border-[#e4ece5] bg-[linear-gradient(135deg,#f4fbf5,#ffffff)] px-4 py-3 sm:px-5">
           <div className="flex min-w-0 items-start gap-3">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e4f3e7] text-brand">
               <FileText className="h-4 w-4" />
@@ -855,9 +914,9 @@ function StageBriefContextCard({
           </div>
         </div>
 
-        <CardContent className="space-y-4 px-4 py-4 sm:px-5">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <section className="min-w-0 rounded-[18px] border border-[#dfe9e0] bg-[#fbfcfa] p-4">
+        <CardContent className="space-y-3 px-4 py-4 sm:px-5">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <section className="min-w-0 rounded-[16px] border border-[#dfe9e0] bg-[#fbfcfa] p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#607064]">
                   Project Brief
@@ -872,8 +931,8 @@ function StageBriefContextCard({
                   View
                 </Button>
               </div>
-              <div className="mt-3 max-h-36 overflow-y-auto pr-1">
-                <p className="whitespace-pre-wrap text-[13px] leading-5 text-[#26312a]">
+              <div className="mt-3 max-h-32 overflow-y-auto pr-1">
+                <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-[#26312a]">
                   {hasProjectBrief ? projectBriefText : "No project brief has been added."}
                 </p>
               </div>
@@ -887,7 +946,7 @@ function StageBriefContextCard({
               ) : null}
             </section>
 
-            <section className="min-w-0 rounded-[18px] border border-[#dfe9e0] bg-[#fbfcfa] p-4">
+            <section className="min-w-0 rounded-[16px] border border-[#dfe9e0] bg-[#fbfcfa] p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#607064]">
                   Stage Brief
@@ -902,8 +961,8 @@ function StageBriefContextCard({
                   View
                 </Button>
               </div>
-              <div className="mt-3 max-h-36 overflow-y-auto pr-1">
-                <p className="whitespace-pre-wrap text-[13px] leading-5 text-[#26312a]">
+              <div className="mt-3 max-h-32 overflow-y-auto pr-1">
+                <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-[#26312a]">
                   {hasStageBrief ? stageBriefText : "No stage brief has been added for this stage."}
                 </p>
               </div>
@@ -918,7 +977,7 @@ function StageBriefContextCard({
             </section>
           </div>
 
-          <div className="flex flex-col gap-3 rounded-[18px] border border-[#d8e5d9] bg-[#f7fbf6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-[16px] border border-[#d8e5d9] bg-[#f7fbf6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[12px] leading-5 text-[#516058]">
               Main Executor must accept the brief before submitting work for this stage.
             </p>
@@ -942,7 +1001,7 @@ function StageBriefContextCard({
           </div>
         </CardContent>
       </Card>
-    </div>
+    </TimelineFrame>
   );
 }
 
@@ -4375,8 +4434,8 @@ export function ProjectChatWorkspace({
     <section className="min-h-0 xl:h-[calc(100dvh-12rem)] xl:min-h-[620px] xl:overflow-hidden">
       <div className="grid min-h-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex h-[calc(100dvh-12rem)] min-h-[520px] min-w-0 flex-col overflow-hidden xl:h-full xl:min-h-0">
-          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f8fbf8] px-3 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5">
-            <div className="mx-auto flex w-full max-w-[980px] flex-col gap-3 pb-3">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f4f8f3] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5">
+            <div className="mx-auto flex w-full max-w-[980px] flex-col gap-2.5 pb-2">
           {isProjectCompleted ? (
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
@@ -4504,7 +4563,14 @@ export function ProjectChatWorkspace({
           ) : null}
 
           {stageStartSystemMessage ? (
-            <SystemActivityCard message={stageStartSystemMessage} />
+            <SystemActivityCard
+              message={stageStartSystemMessage}
+              alignment={getTimelineEntryAlignment(
+                stageStartSystemMessage,
+                currentUserId,
+                currentUserDisplayName,
+              )}
+            />
           ) : null}
 
           {showBriefContextCard && activeStage ? (
@@ -4569,9 +4635,22 @@ export function ProjectChatWorkspace({
 
           {displayedMessages.map((message) =>
             message.kind === "system" ? (
-              <SystemActivityCard key={message.id} message={message} />
+              <SystemActivityCard
+                key={message.id}
+                message={message}
+                alignment={getTimelineEntryAlignment(
+                  message,
+                  currentUserId,
+                  currentUserDisplayName,
+                )}
+              />
             ) : message.kind === "revision" ? (
               (() => {
+                const revisionAlignment = getTimelineEntryAlignment(
+                  message,
+                  currentUserId,
+                  currentUserDisplayName,
+                );
                 const revisionEntryId = getRevisionEntryId(message);
                 const reviewOverride = revisionReviewOverrides[revisionEntryId];
                 const effectiveRevisionStatus =
@@ -4590,63 +4669,73 @@ export function ProjectChatWorkspace({
                 const revisionLabel = getRevisionLabel(message);
 
                 return (
-                  <div key={message.id} className="mx-auto w-full max-w-full space-y-3 sm:max-w-[82%]">
-                    <Card className="min-w-0 overflow-hidden rounded-[22px] border border-[#cfe3d2] bg-white shadow-[0_16px_36px_rgba(18,35,23,0.07)]">
-                      <div className="border-b border-[#e4ece5] bg-[linear-gradient(135deg,#f7fbf6,#ffffff)] px-4 py-3.5 sm:px-5">
+                  <TimelineFrame key={message.id} alignment={revisionAlignment} width="submission">
+                    <Card
+                      className={`min-w-0 overflow-hidden rounded-[22px] border border-[#cfe3d2] bg-white shadow-[0_12px_30px_rgba(18,35,23,0.07)] ${
+                        revisionAlignment === "right" ? "rounded-br-[8px]" : "rounded-bl-[8px]"
+                      }`}
+                    >
+                      <div className="space-y-3.5 bg-[linear-gradient(135deg,#f8fbf7,#ffffff)] px-4 py-4 sm:px-5">
                         <div className="flex min-w-0 items-start gap-3">
-                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e4f3e7] text-brand">
+                          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#e4f3e7] text-brand">
                             <Upload className="h-4 w-4" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <span className="rounded-full bg-[#edf7ef] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
+                              <span className="rounded-full bg-[#edf7ef] px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] text-brand">
                                 Work submitted
                               </span>
                               <span
-                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${revisionStatusMeta.badgeClassName}`}
+                                className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide ${revisionStatusMeta.badgeClassName}`}
                               >
                                 {revisionStatusMeta.label}
+                              </span>
+                              <span className="ml-auto min-w-fit text-[11px] font-semibold text-[#7a837b]">
+                                {message.createdAt}
                               </span>
                             </div>
                             <h2 className="mt-2 text-[16px] font-[800] tracking-tight text-[#173120]">
                               {revisionLabel}
                             </h2>
-                            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-[#6f786f]">
-                              <span>Submitted by {message.author}</span>
+                            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-[#6f786f]">
+                              <span>
+                                Submitted by {revisionAlignment === "right" ? "You" : message.author}
+                              </span>
                               <span aria-hidden="true">·</span>
                               <span>{message.role}</span>
-                              <span aria-hidden="true">·</span>
-                              <span>{message.createdAt}</span>
                             </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="grid min-w-0 gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
-                        <div className="min-w-0">
-                          <p className="whitespace-pre-wrap text-[13px] leading-6 text-[#253028]">
+                        <div className="min-w-0 rounded-[16px] border border-[#e3ece4] bg-white/78 px-3.5 py-3">
+                          <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
+                            Revision note
+                          </p>
+                          <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-5 text-[#253028]">
                             {message.body}
                           </p>
-                          {effectiveRejectionReason ? (
-                            <div className="mt-4 rounded-[18px] border border-[#f0d0cc] bg-[#fff8f6] px-4 py-3 text-[#6f2721]">
-                              <p className="text-[12px] font-[800] text-[#a73831]">
-                                Revision requested
-                              </p>
-                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#b7655d]">
-                                {effectiveReviewedBy
-                                  ? `Requested by ${effectiveReviewedBy}${
-                                      effectiveReviewedAt ? ` · ${effectiveReviewedAt}` : ""
-                                    }`
-                                  : "Requested by Project Owner"}
-                              </p>
-                              <p className="mt-2 text-[12px] font-semibold leading-5">
-                                {effectiveRejectionReason}
-                              </p>
-                            </div>
-                          ) : null}
                         </div>
+
+                        {effectiveRejectionReason ? (
+                          <div className="rounded-[16px] border border-[#f0d0cc] bg-[#fff8f6] px-3.5 py-3 text-[#6f2721]">
+                            <p className="text-[12px] font-[800] text-[#a73831]">
+                              Revision requested
+                            </p>
+                            <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#b7655d]">
+                              {effectiveReviewedBy
+                                ? `Requested by ${effectiveReviewedBy}${
+                                    effectiveReviewedAt ? ` · ${effectiveReviewedAt}` : ""
+                                  }`
+                                : "Requested by Project Owner"}
+                            </p>
+                            <p className="mt-2 whitespace-pre-wrap break-words text-[12px] font-semibold leading-5">
+                              {effectiveRejectionReason}
+                            </p>
+                          </div>
+                        ) : null}
+
                         {message.attachments?.length ? (
-                          <div className="min-w-0 rounded-[18px] border border-[#e1e9e2] bg-[#f8fbf8] p-3">
+                          <div className="min-w-0 rounded-[16px] border border-[#e1e9e2] bg-[#f8fbf8] p-3">
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
                                 Submitted files
@@ -4658,12 +4747,13 @@ export function ProjectChatWorkspace({
                             <AttachmentHistoryList
                               attachments={message.attachments}
                               actionsDisabled={isProjectCompleted}
+                              tone={revisionAlignment === "right" ? "sent" : "received"}
                             />
                           </div>
                         ) : null}
                       </div>
                     </Card>
-                  </div>
+                  </TimelineFrame>
                 );
               })()
             ) : message.kind === "comparison" ? (
@@ -4674,6 +4764,11 @@ export function ProjectChatWorkspace({
                   return null;
                 }
 
+                const comparisonAlignment = getTimelineEntryAlignment(
+                  message,
+                  currentUserId,
+                  currentUserDisplayName,
+                );
                 const comparisonHref = buildComparisonHref(
                   project.id,
                   activeStage?.id,
@@ -4682,80 +4777,85 @@ export function ProjectChatWorkspace({
                 );
 
                 return (
-                  <Card
-                    key={message.id}
-                    className="mx-auto w-full max-w-full overflow-hidden rounded-[22px] border border-[#d3e1ea] bg-[linear-gradient(135deg,#f7fbff,#ffffff)] p-4 shadow-[0_14px_34px_rgba(18,35,23,0.06)] sm:max-w-[82%]"
-                  >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f3fb] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#3e78a6]">
-                            <GitCompare className="h-3.5 w-3.5" />
-                            Comparison submitted
-                          </span>
-                          <span className="text-[11px] font-[600] text-[#7a837b]">
-                            {message.createdAt}
-                          </span>
-                        </div>
-                        <div className="mt-3 flex items-center gap-2">
-                          <ChatAvatar
-                            name={message.author}
-                            src={message.authorAvatarSrc}
-                            size="sm"
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-[700] text-[#111712]">
-                              {message.author}
-                            </p>
-                            <p className="truncate text-[10px] text-[#7a837b]">
-                              {message.role}
-                            </p>
+                  <TimelineFrame key={message.id} alignment={comparisonAlignment} width="medium">
+                    <Card
+                      className={`w-full overflow-hidden rounded-[22px] border border-[#d3e1ea] bg-[linear-gradient(135deg,#f7fbff,#ffffff)] p-4 shadow-[0_12px_30px_rgba(18,35,23,0.06)] ${
+                        comparisonAlignment === "right" ? "rounded-br-[8px]" : "rounded-bl-[8px]"
+                      }`}
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f3fb] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#3e78a6]">
+                              <GitCompare className="h-3.5 w-3.5" />
+                              Comparison submitted
+                            </span>
+                            <span className="text-[11px] font-[600] text-[#7a837b]">
+                              {message.createdAt}
+                            </span>
                           </div>
-                        </div>
-                        <p className="mt-3 whitespace-pre-wrap text-[13px] leading-[1.55] text-[#253029]">
-                          {message.body}
-                        </p>
-                        <div className="mt-4 grid gap-2 lg:grid-cols-2">
-                          {[
-                            {
-                              label: "Base",
-                              submission: comparison.baseSubmissionLabel,
-                              fileName: comparison.baseFileName,
-                            },
-                            {
-                              label: "Compare",
-                              submission: comparison.compareSubmissionLabel,
-                              fileName: comparison.compareFileName,
-                            },
-                          ].map((item) => (
-                            <div
-                              key={item.label}
-                              className="min-w-0 rounded-[16px] border border-[#dbe8ef] bg-white px-3 py-2.5"
-                            >
-                              <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#668092]">
-                                {item.label} · {item.submission}
+                          <div className="mt-3 flex items-center gap-2">
+                            {comparisonAlignment === "left" ? (
+                              <ChatAvatar
+                                name={message.author}
+                                src={message.authorAvatarSrc}
+                                size="sm"
+                              />
+                            ) : null}
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-[700] text-[#111712]">
+                                {comparisonAlignment === "right" ? "You" : message.author}
                               </p>
-                              <p className="mt-1 truncate text-[12px] font-[700] text-[#1b241e]">
-                                {item.fileName}
+                              <p className="truncate text-[10px] text-[#7a837b]">
+                                {message.role}
                               </p>
                             </div>
-                          ))}
+                          </div>
+                          <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-[#253029]">
+                            {message.body}
+                          </p>
+                          <div className="mt-4 grid gap-2 lg:grid-cols-2">
+                            {[
+                              {
+                                label: "Base",
+                                submission: comparison.baseSubmissionLabel,
+                                fileName: comparison.baseFileName,
+                              },
+                              {
+                                label: "Compare",
+                                submission: comparison.compareSubmissionLabel,
+                                fileName: comparison.compareFileName,
+                              },
+                            ].map((item) => (
+                              <div
+                                key={item.label}
+                                className="min-w-0 rounded-[16px] border border-[#dbe8ef] bg-white px-3 py-2.5"
+                              >
+                                <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#668092]">
+                                  {item.label} · {item.submission}
+                                </p>
+                                <p className="mt-1 truncate text-[12px] font-[700] text-[#1b241e]">
+                                  {item.fileName}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-3 text-[10px] font-[600] uppercase tracking-[0.08em] text-[#7a837b]">
+                            Pinned at {comparison.xPercent.toFixed(1)}%,{" "}
+                            {comparison.yPercent.toFixed(1)}%
+                          </p>
                         </div>
-                        <p className="mt-3 text-[10px] font-[600] uppercase tracking-[0.08em] text-[#7a837b]">
-                          Pinned at {comparison.xPercent.toFixed(1)}%,{" "}
-                          {comparison.yPercent.toFixed(1)}%
-                        </p>
+                        <Button
+                          asChild
+                          type="button"
+                          size="sm"
+                          className="shrink-0 rounded-full text-[12px]"
+                        >
+                          <Link href={comparisonHref}>View Comparison</Link>
+                        </Button>
                       </div>
-                      <Button
-                        asChild
-                        type="button"
-                        size="sm"
-                        className="shrink-0 rounded-full text-[12px]"
-                      >
-                        <Link href={comparisonHref}>View Comparison</Link>
-                      </Button>
-                    </div>
-                  </Card>
+                    </Card>
+                  </TimelineFrame>
                 );
               })()
             ) : (
@@ -4763,9 +4863,12 @@ export function ProjectChatWorkspace({
                 const linkedRevisionLabel = message.revisionId
                   ? revisionLabelById.get(message.revisionId) ?? "Revision"
                   : null;
-                const isCurrentUserMessage = message.authorId
-                  ? message.authorId === currentUserId
-                  : message.author === currentUserDisplayName;
+                const isCurrentUserMessage =
+                  getTimelineEntryAlignment(
+                    message,
+                    currentUserId,
+                    currentUserDisplayName,
+                  ) === "right";
                 const hasAttachments = Boolean(message.attachments?.length);
                 const hasSubmissionAttachment =
                   message.attachments?.some((attachment) => attachment.isSubmission) ?? false;
@@ -4774,8 +4877,8 @@ export function ProjectChatWorkspace({
                   : "Attachment uploaded";
                 const bubbleClassName = linkedRevisionLabel
                   ? isCurrentUserMessage
-                    ? "rounded-[18px] rounded-br-[6px] border border-[#abd7b6] bg-[#f1fbf3] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
-                    : "rounded-[18px] rounded-bl-[6px] border border-[#d7e5d9] bg-white p-3 shadow-[0_10px_24px_rgba(19,28,22,0.05)]"
+                    ? "rounded-[18px] rounded-br-[6px] border border-[#abd7b6] bg-[#f1fbf3] p-2.5 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
+                    : "rounded-[18px] rounded-bl-[6px] border border-[#d7e5d9] bg-white p-2.5 shadow-[0_10px_24px_rgba(19,28,22,0.05)]"
                   : isCurrentUserMessage
                     ? "rounded-[18px] rounded-br-[6px] border border-[#c3e2cb] bg-[#edf8ef] p-3 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
                     : "rounded-[18px] rounded-bl-[6px] border border-[#e2e9e2] bg-white p-3 shadow-[0_10px_24px_rgba(19,28,22,0.05)]";
@@ -4801,21 +4904,19 @@ export function ProjectChatWorkspace({
                       ) : null}
                       <Card className={`min-w-0 flex-1 ${bubbleClassName}`}>
                         {linkedRevisionLabel ? (
-                          <div className="mb-2 rounded-[14px] border border-[#d7e7da] bg-white/70 px-3 py-2">
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <span
-                                className={`rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] ${
-                                  isCurrentUserMessage
-                                    ? "bg-[#e4f3e7] text-brand"
-                                    : "bg-[#edf7ef] text-brand"
-                                }`}
-                              >
-                                {linkedRevisionLabel}
-                              </span>
-                              <span className="text-[11px] font-[800] text-[#253028]">
-                                Comment on revision
-                              </span>
-                            </div>
+                          <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] ${
+                                isCurrentUserMessage
+                                  ? "bg-white/78 text-brand"
+                                  : "bg-[#edf7ef] text-brand"
+                              }`}
+                            >
+                              {linkedRevisionLabel}
+                            </span>
+                            <span className="text-[11px] font-[800] text-[#253028]">
+                              Comment on revision
+                            </span>
                           </div>
                         ) : null}
                         {hasAttachments && !linkedRevisionLabel ? (
@@ -4854,7 +4955,7 @@ export function ProjectChatWorkspace({
                           </span>
                         </div>
                         <p
-                          className={`mt-2 flex flex-wrap items-center gap-1.5 whitespace-pre-wrap text-[12px] leading-[1.45] ${
+                          className={`mt-2 whitespace-pre-wrap break-words text-[13px] leading-5 ${
                             isCurrentUserMessage ? "text-[#173120]" : "text-[#111712]"
                           }`}
                         >
