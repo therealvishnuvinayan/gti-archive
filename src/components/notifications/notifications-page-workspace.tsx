@@ -41,14 +41,6 @@ import {
 } from "@/lib/notifications";
 import { showErrorToast } from "@/lib/toast";
 
-const emptyCounts: NotificationCountSummary = {
-  All: 0,
-  Unread: 0,
-  Read: 0,
-  Mentions: 0,
-  Workflow: 0,
-};
-
 type NotificationPageItem = number | "start-ellipsis" | "end-ellipsis";
 
 function getVisibleNotificationPageItems(
@@ -194,10 +186,11 @@ export function NotificationsPageWorkspace() {
   const [rowsPerPage, setRowsPerPage] =
     useState<(typeof notificationPageSizeOptions)[number]>(8);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
-  const [counts, setCounts] = useState<NotificationCountSummary>(emptyCounts);
+  const [counts, setCounts] = useState<NotificationCountSummary | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [markAllPending, setMarkAllPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -297,8 +290,10 @@ export function NotificationsPageWorkspace() {
     setCurrentPage(1);
   }
 
-  async function refetchPage() {
-    setLoading(true);
+  async function refetchPage(options: { showLoading?: boolean } = {}) {
+    if (options.showLoading !== false) {
+      setLoading(true);
+    }
 
     try {
       const response = await fetch(
@@ -348,6 +343,58 @@ export function NotificationsPageWorkspace() {
       showErrorToast("Unable to load notifications.", message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function applyAllReadState() {
+    setNotifications((current) =>
+      current.map((notification) =>
+        notification.read ? notification : { ...notification, read: true },
+      ),
+    );
+    setCounts((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const unread = current.Unread;
+
+      return {
+        ...current,
+        Unread: 0,
+        Read: current.Read + unread,
+      };
+    });
+
+    if (tab === "Unread") {
+      setNotifications([]);
+      setTotal(0);
+      setTotalPages(1);
+      setCurrentPage(1);
+    }
+  }
+
+  async function handleMarkAllAsRead() {
+    setMarkAllPending(true);
+
+    try {
+      await markAllAsRead({ showToast: true });
+      applyAllReadState();
+      await Promise.all([
+        refreshRecent(),
+        refetchPage({
+          showLoading: false,
+        }),
+      ]);
+    } catch (nextError) {
+      const message =
+        nextError instanceof Error
+          ? nextError.message
+          : "Unable to mark notifications as read right now.";
+      showErrorToast("Unable to mark notifications as read.", message);
+      await refetchPage({ showLoading: false }).catch(() => undefined);
+    } finally {
+      setMarkAllPending(false);
     }
   }
 
@@ -402,20 +449,13 @@ export function NotificationsPageWorkspace() {
             type="button"
             size="lg"
             className="min-w-[170px] rounded-full text-[17px]"
-            onClick={() =>
-              markAllAsRead({ showToast: true })
-                .then(() => Promise.all([refreshRecent(), refetchPage()]))
-                .catch((nextError) => {
-                  const message =
-                    nextError instanceof Error
-                      ? nextError.message
-                      : "Unable to mark notifications as read right now.";
-                  showErrorToast("Unable to mark notifications as read.", message);
-                })
-            }
+            onClick={() => {
+              void handleMarkAllAsRead();
+            }}
+            disabled={markAllPending || loading}
           >
             <CheckCheck className="h-5 w-5" />
-            Mark all as read
+            {markAllPending ? "Marking..." : "Mark all as read"}
           </Button>
         </div>
       </header>
@@ -437,7 +477,7 @@ export function NotificationsPageWorkspace() {
               />
             </div>
 
-            <div className="flex flex-wrap gap-2 rounded-[20px] border border-[#e4ebe4] bg-[#fafcf9] p-1.5">
+            <div className="inline-flex w-fit max-w-full flex-wrap gap-1.5 rounded-[20px] border border-[#e4ebe4] bg-[#fafcf9] p-1.5">
               {notificationTabs.map((tabOption) => {
                 const isActive = tab === tabOption;
 
@@ -446,7 +486,7 @@ export function NotificationsPageWorkspace() {
                     key={tabOption}
                     type="button"
                     onClick={() => updateTab(tabOption)}
-                    className={`inline-flex cursor-pointer items-center gap-2 rounded-[16px] px-4 py-2.5 text-[14px] font-[700] transition ${
+                    className={`inline-flex cursor-pointer items-center gap-2 rounded-[16px] px-3.5 py-2.5 text-[14px] font-[700] transition ${
                       isActive
                         ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_12px_28px_rgba(34,102,70,0.2)]"
                         : "text-[#2c352f] hover:bg-white"
@@ -460,7 +500,7 @@ export function NotificationsPageWorkspace() {
                           : "bg-[#edf1ed] text-[#667268]"
                       }`}
                     >
-                      {counts[tabOption]}
+                      {counts ? counts[tabOption] : "—"}
                     </span>
                   </button>
                 );
