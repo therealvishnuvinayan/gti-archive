@@ -1,6 +1,13 @@
-import { ProjectExecutorRole, ProjectStatus, type User } from "@prisma/client";
+import {
+  CalendarEventType,
+  ProjectExecutorRole,
+  ProjectStatus,
+  UserRole,
+  type Prisma,
+  type User,
+} from "@prisma/client";
 
-import { getCalendarEvents, type CalendarEventRecord } from "@/lib/calendar";
+import { getCalendarAccessState } from "@/lib/calendar";
 import { getRecentNotificationsForUser } from "@/lib/notification-center/service";
 import {
   buildAccessibleProjectsWhere,
@@ -13,21 +20,15 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type DashboardUser = Pick<User, "id" | "role" | "calendarAccess"> & PermissionUser;
 
-type DashboardProjectRecord = {
+type DashboardCollaborationProjectRecord = {
   id: string;
   name: string;
   status: ProjectStatus;
-  stageCount: number;
-  currentStageName: string | null;
-  endDate: Date;
-  updatedAt: Date;
-  createdById: string;
   createdBy: {
     id: string;
     name: string | null;
     email: string;
   };
-  executorUserId: string | null;
   executorUser: {
     id: string;
     name: string | null;
@@ -48,21 +49,20 @@ type DashboardProjectRecord = {
       email: string;
     };
   }>;
-  stages: Array<{
-    id: string;
-    name: string;
-    status: ProjectStatus;
-    plannedDueAt: Date | null;
-    order: number;
-  }>;
 };
 
-type DashboardStageRecord = {
+type DashboardCalendarReminderRecord = {
   id: string;
-  name: string;
-  status: ProjectStatus;
-  plannedDueAt: Date | null;
-  order: number;
+  title: string;
+  details: string | null;
+  startAt: Date;
+};
+
+type DashboardDeadlineCandidate = {
+  projectName: string;
+  detail: string;
+  dueAt: Date;
+  actionHref: string;
 };
 
 export type DashboardUpdateRecord = {
@@ -128,27 +128,6 @@ function getExecutorRoleLabel(role: ProjectExecutorRole) {
   return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
 }
 
-function buildSyntheticStages(project: DashboardProjectRecord): DashboardStageRecord[] {
-  return Array.from({ length: Math.max(project.stageCount, 1) }, (_, index) => ({
-    id: `${project.id}-stage-${index + 1}`,
-    name:
-      index === 0
-        ? project.currentStageName?.trim() || `Stage ${index + 1}`
-        : `Stage ${index + 1}`,
-    status: index === 0 ? project.status : ProjectStatus.PENDING,
-    plannedDueAt: project.endDate,
-    order: index + 1,
-  }));
-}
-
-function getProjectStages(project: DashboardProjectRecord) {
-  if (project.stages.length > 0) {
-    return [...project.stages].sort((left, right) => left.order - right.order);
-  }
-
-  return buildSyntheticStages(project);
-}
-
 function formatTimeDistance(target: Date) {
   const diffMs = target.getTime() - Date.now();
   const overdue = diffMs < 0;
@@ -210,37 +189,70 @@ function mapNotificationTone(visualKind: string): DashboardUpdateRecord["tone"] 
   }
 }
 
-function getCalendarEventStart(event: CalendarEventRecord) {
-  return new Date(`${event.date}T${event.start}:00`);
+function toDashboardDateKey(value: Date) {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
-function formatCalendarReminderDate(event: CalendarEventRecord) {
-  const startsAt = getCalendarEventStart(event);
-
-  if (Number.isNaN(startsAt.getTime())) {
-    return `${event.date} ${event.start}`;
-  }
-
-  return formatDateTime(startsAt);
-}
-
-function mapDashboardReminder(event: CalendarEventRecord): DashboardReminderRecord {
-  const startsAt = getCalendarEventStart(event);
-  const isOverdue = !Number.isNaN(startsAt.getTime()) && startsAt.getTime() < Date.now();
+function mapDashboardReminder(
+  event: DashboardCalendarReminderRecord,
+): DashboardReminderRecord {
+  const isOverdue = event.startAt.getTime() < Date.now();
+  const dateKey = toDashboardDateKey(event.startAt);
 
   return {
     id: event.id,
     headline: event.title,
     detail: event.details || "Calendar reminder",
     context: "Calendar",
-    dateTimeLabel: formatCalendarReminderDate(event),
+    dateTimeLabel: formatDateTime(event.startAt),
     statusLabel: isOverdue ? "Overdue" : undefined,
-    actionHref: `/calendar?view=day&date=${event.date}&event=${event.id}`,
+    actionHref: `/calendar?view=day&date=${dateKey}&event=${event.id}`,
     actionLabel: "View Reminder",
   };
 }
 
-async function getDashboardCalendarReminders(
+const emptyDashboardCounts: DashboardProjectCounts = {
+  total: 0,
+  ongoing: 0,
+  onHold: 0,
+  pending: 0,
+  completed: 0,
+};
+
+export async function getDashboardCounts(
+  currentUser: DashboardUser,
+): Promise<DashboardProjectCounts> {
+  if (!hasPermission(currentUser, "dashboard.viewProjectCounts")) {
+    return emptyDashboardCounts;
+  }
+
+  return getDashboardProjectCounts(currentUser);
+}
+
+export async function getDashboardUpdates(
+  currentUser: DashboardUser,
+  limit = 4,
+): Promise<DashboardUpdateRecord[]> {
+  if (!hasPermission(currentUser, "notification.view")) {
+    return [];
+  }
+
+  const recentNotifications = await getRecentNotificationsForUser(currentUser.id, limit);
+
+  return recentNotifications.notifications.map((notification) => ({
+    id: notification.id,
+    title: notification.title,
+    detail: notification.description,
+    tone: mapNotificationTone(notification.visualKind),
+    href: notification.targetHref,
+  }));
+}
+
+export async function getDashboardReminders(
   currentUser: DashboardUser,
   limit = 8,
 ): Promise<DashboardReminderRecord[]> {
@@ -248,26 +260,62 @@ async function getDashboardCalendarReminders(
     return [];
   }
 
-  const now = Date.now();
-  const reminders = (await getCalendarEvents(currentUser))
-    .filter((event) => event.calendar === "Reminders")
-    .map((event) => ({
-      event,
-      startsAt: getCalendarEventStart(event),
-    }));
+  const access =
+    currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.ADMIN
+      ? { canViewSharedSchedule: true }
+      : await getCalendarAccessState(currentUser);
+  const now = new Date();
+  const baseWhere: Prisma.CalendarEventWhereInput = {
+    type: CalendarEventType.REMINDERS,
+    ...(access.canViewSharedSchedule ? {} : { createdById: currentUser.id }),
+  };
 
-  const future = reminders
-    .filter(({ startsAt }) => !Number.isNaN(startsAt.getTime()) && startsAt.getTime() >= now)
-    .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
-  const overdue = reminders
-    .filter(({ startsAt }) => Number.isNaN(startsAt.getTime()) || startsAt.getTime() < now)
-    .sort((left, right) => right.startsAt.getTime() - left.startsAt.getTime());
+  const [future, overdue] = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.calendarEvent.findMany({
+        where: {
+          ...baseWhere,
+          startAt: {
+            gte: now,
+          },
+        },
+        orderBy: {
+          startAt: "asc",
+        },
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          details: true,
+          startAt: true,
+        },
+      }),
+      prisma.calendarEvent.findMany({
+        where: {
+          ...baseWhere,
+          startAt: {
+            lt: now,
+          },
+        },
+        orderBy: {
+          startAt: "desc",
+        },
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          details: true,
+          startAt: true,
+        },
+      }),
+    ]),
+  );
 
-  return [...future, ...overdue].slice(0, limit).map(({ event }) => mapDashboardReminder(event));
+  return [...future, ...overdue].slice(0, limit).map(mapDashboardReminder);
 }
 
 function buildCollaborationItems(
-  projects: DashboardProjectRecord[],
+  projects: DashboardCollaborationProjectRecord[],
   currentUser: DashboardUser,
 ): DashboardCollaboratorRecord[] {
   const activeProjects = projects.filter((project) => project.status !== ProjectStatus.COMPLETED);
@@ -332,7 +380,7 @@ function buildCollaborationItems(
   return items;
 }
 
-function buildProgressRecord(counts: DashboardProjectCounts): DashboardProgressRecord {
+export function buildProgressRecord(counts: DashboardProjectCounts): DashboardProgressRecord {
   const activeTotal = counts.ongoing + counts.pending + counts.onHold;
   const total = counts.total;
   const toPercent = (value: number) => (total > 0 ? Math.round((value / total) * 100) : 0);
@@ -349,42 +397,15 @@ function buildProgressRecord(counts: DashboardProjectCounts): DashboardProgressR
   };
 }
 
-function buildDeadlineRecords(projects: DashboardProjectRecord[]): DashboardDeadlineRecord[] {
-  const candidates = projects.flatMap((project) => {
-    const stages = getProjectStages(project)
-      .filter(
-        (stage) =>
-          stage.status !== ProjectStatus.COMPLETED && stage.plannedDueAt,
-      )
-      .map((stage) => ({
-        projectName: project.name,
-        detail: `${stage.name} • ${formatDateTime(stage.plannedDueAt)}`,
-        dueAt: stage.plannedDueAt as Date,
-        actionHref: `/projects/${project.id}/chat?stage=${stage.id}`,
-      }));
-
-    if (stages.length > 0) {
-      return stages;
-    }
-
-    if (project.status === ProjectStatus.COMPLETED) {
-      return [];
-    }
-
-    return [
-      {
-        projectName: project.name,
-        detail: `Project deadline • ${formatDateTime(project.endDate)}`,
-        dueAt: project.endDate,
-        actionHref: `/projects/${project.id}`,
-      },
-    ];
-  });
-
+function buildDeadlineRecords(
+  candidates: DashboardDeadlineCandidate[],
+  limit = 8,
+): DashboardDeadlineRecord[] {
+  const now = Date.now();
   return candidates
     .sort((left, right) => {
-      const leftOverdue = left.dueAt.getTime() < Date.now();
-      const rightOverdue = right.dueAt.getTime() < Date.now();
+      const leftOverdue = left.dueAt.getTime() < now;
+      const rightOverdue = right.dueAt.getTime() < now;
 
       if (leftOverdue !== rightOverdue) {
         return leftOverdue ? -1 : 1;
@@ -392,6 +413,7 @@ function buildDeadlineRecords(projects: DashboardProjectRecord[]): DashboardDead
 
       return left.dueAt.getTime() - right.dueAt.getTime();
     })
+    .slice(0, limit)
     .map((deadline) => {
       const { overdue, label } = formatTimeDistance(deadline.dueAt);
 
@@ -405,103 +427,185 @@ function buildDeadlineRecords(projects: DashboardProjectRecord[]): DashboardDead
     });
 }
 
+function withAccessibleProjectScope(
+  accessibleWhere: Prisma.ProjectWhereInput,
+  ...clauses: Prisma.ProjectWhereInput[]
+): Prisma.ProjectWhereInput {
+  return {
+    AND: [accessibleWhere, ...clauses],
+  };
+}
+
+export async function getDashboardCollaboration(
+  currentUser: DashboardUser,
+): Promise<DashboardCollaboratorRecord[]> {
+  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
+  const projects = await withPrismaRetry(() =>
+    prisma.project.findMany({
+      where: withAccessibleProjectScope(accessibleWhere, {
+        status: {
+          not: ProjectStatus.COMPLETED,
+        },
+      }),
+      orderBy: {
+        updatedAt: "desc",
+      },
+      take: 12,
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        executorUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        executors: {
+          select: {
+            role: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        collaborators: {
+          select: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  return buildCollaborationItems(projects, currentUser);
+}
+
+export async function getDashboardDeadlines(
+  currentUser: DashboardUser,
+  limit = 8,
+): Promise<DashboardDeadlineRecord[]> {
+  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
+  const activeProjectWhere = withAccessibleProjectScope(accessibleWhere, {
+    status: {
+      not: ProjectStatus.COMPLETED,
+    },
+  });
+  const stageDeadlines = await withPrismaRetry(() =>
+    prisma.projectStage.findMany({
+      where: {
+        status: {
+          not: ProjectStatus.COMPLETED,
+        },
+        plannedDueAt: {
+          not: null,
+        },
+        project: {
+          is: activeProjectWhere,
+        },
+      },
+      orderBy: {
+        plannedDueAt: "asc",
+      },
+      take: Math.max(limit * 2, limit),
+      select: {
+        id: true,
+        name: true,
+        plannedDueAt: true,
+        project: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+  );
+  const projectIdsWithStageDeadlines = [
+    ...new Set(stageDeadlines.map((stage) => stage.project.id)),
+  ];
+  const projectFallbackWhere = withAccessibleProjectScope(
+    accessibleWhere,
+    {
+      status: {
+        not: ProjectStatus.COMPLETED,
+      },
+    },
+    ...(projectIdsWithStageDeadlines.length > 0
+      ? [{ id: { notIn: projectIdsWithStageDeadlines } }]
+      : []),
+  );
+  const fallbackProjects = await withPrismaRetry(() =>
+    prisma.project.findMany({
+      where: projectFallbackWhere,
+      orderBy: {
+        endDate: "asc",
+      },
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        endDate: true,
+      },
+    }),
+  );
+  const candidates: DashboardDeadlineCandidate[] = [
+    ...stageDeadlines.map((stage) => ({
+      projectName: stage.project.name,
+      detail: `${stage.name} • ${formatDateTime(stage.plannedDueAt)}`,
+      dueAt: stage.plannedDueAt as Date,
+      actionHref: `/projects/${stage.project.id}/chat?stage=${stage.id}`,
+    })),
+    ...fallbackProjects.map((project) => ({
+      projectName: project.name,
+      detail: `Project deadline • ${formatDateTime(project.endDate)}`,
+      dueAt: project.endDate,
+      actionHref: `/projects/${project.id}`,
+    })),
+  ];
+
+  return buildDeadlineRecords(candidates, limit);
+}
+
 export async function getDashboardSnapshot(
   currentUser: DashboardUser,
 ): Promise<DashboardSnapshot> {
-  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
-
-  const canViewProjectCounts = hasPermission(currentUser, "dashboard.viewProjectCounts");
   const canViewRecentProjects = hasPermission(currentUser, "dashboard.viewRecentProjects");
-  const [counts, recentProjects, projects, recentNotifications, reminders] =
+  const [counts, recentProjects, updates, reminders, collaborators, deadlines] =
     await Promise.all([
-      canViewProjectCounts
-        ? getDashboardProjectCounts(currentUser)
-        : Promise.resolve({
-            total: 0,
-            ongoing: 0,
-            onHold: 0,
-            pending: 0,
-            completed: 0,
-          }),
-      canViewRecentProjects
-        ? getRecentProjects(5, currentUser)
-        : Promise.resolve([]),
-      withPrismaRetry(() =>
-        prisma.project.findMany({
-          where: accessibleWhere,
-          orderBy: {
-            updatedAt: "desc",
-          },
-          take: 24,
-          include: {
-            createdBy: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-            executors: {
-              select: {
-                role: true,
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                  },
-                },
-              },
-            },
-            collaborators: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                  },
-                },
-              },
-            },
-            stages: {
-              select: {
-                id: true,
-                name: true,
-                status: true,
-                plannedDueAt: true,
-                order: true,
-              },
-            },
-          },
-        }),
-      ),
-      getRecentNotificationsForUser(currentUser.id, 4),
-      getDashboardCalendarReminders(currentUser),
+      getDashboardCounts(currentUser),
+      canViewRecentProjects ? getRecentProjects(5, currentUser) : Promise.resolve([]),
+      getDashboardUpdates(currentUser),
+      getDashboardReminders(currentUser),
+      getDashboardCollaboration(currentUser),
+      getDashboardDeadlines(currentUser),
     ]);
-
-  const updates = recentNotifications.notifications.map((notification) => ({
-    id: notification.id,
-    title: notification.title,
-    detail: notification.description,
-    tone: mapNotificationTone(notification.visualKind),
-    href: notification.targetHref,
-  }));
 
   return {
     counts,
     recentProjects,
     updates,
     reminders,
-    collaborators: buildCollaborationItems(projects, currentUser),
+    collaborators,
     progress: buildProgressRecord(counts),
-    deadlines: buildDeadlineRecords(projects),
+    deadlines,
   };
 }

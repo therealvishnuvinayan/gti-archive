@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BookCopy,
@@ -85,6 +86,44 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const { unreadCount } = useNotificationCenter();
+  const [fetchedProjectBadgeCount, setFetchedProjectBadgeCount] = useState<number>();
+  const resolvedProjectBadgeCount =
+    typeof projectBadgeCount === "number"
+      ? projectBadgeCount
+      : fetchedProjectBadgeCount;
+
+  useEffect(() => {
+    if (typeof projectBadgeCount === "number" || !visibility.projects) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    fetch("/api/projects/dashboard-count", {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return null;
+        }
+
+        return (await response.json()) as { ongoing?: unknown };
+      })
+      .then((payload) => {
+        if (typeof payload?.ongoing === "number") {
+          setFetchedProjectBadgeCount(payload.ongoing);
+        }
+      })
+      .catch((error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setFetchedProjectBadgeCount(undefined);
+        }
+      });
+
+    return () => controller.abort();
+  }, [projectBadgeCount, visibility.projects]);
 
   return (
     <>
@@ -131,8 +170,8 @@ export function Sidebar({
                 {section.items.filter((item) => visibility[item.visibilityKey]).map((item) => {
                   const Icon = item.icon;
                   const badge =
-                    item.href === "/projects" && typeof projectBadgeCount === "number"
-                      ? String(projectBadgeCount)
+                    item.href === "/projects" && typeof resolvedProjectBadgeCount === "number"
+                      ? String(resolvedProjectBadgeCount)
                       : item.href === "/notifications"
                         ? unreadCount > 0
                           ? String(unreadCount)

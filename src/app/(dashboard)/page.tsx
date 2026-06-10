@@ -1,31 +1,291 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { StatCard } from "@/components/dashboard/stat-card";
-import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
-import { UpdateList } from "@/components/dashboard/update-list";
-import { ReminderCard } from "@/components/dashboard/reminder-card";
-import {
-  RecentProjects,
-} from "@/components/dashboard/recent-projects";
-import {
-  CollaborationCard,
-} from "@/components/dashboard/collaboration-card";
-import { ProjectProgressCard } from "@/components/dashboard/project-progress-card";
+import { CollaborationCard } from "@/components/dashboard/collaboration-card";
 import { DeadlineCard } from "@/components/dashboard/deadline-card";
-import { requireUser } from "@/lib/auth";
-import { getDashboardSnapshot } from "@/lib/dashboard";
-import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
-import { hasPermission } from "@/lib/permissions/resolver";
-import {
-  getDashboardArchiveUploadAccessState,
-} from "@/lib/archives";
+import { ProjectProgressCard } from "@/components/dashboard/project-progress-card";
+import { RecentProjects } from "@/components/dashboard/recent-projects";
+import { ReminderCard } from "@/components/dashboard/reminder-card";
+import { StatCard } from "@/components/dashboard/stat-card";
+import { UpdateList } from "@/components/dashboard/update-list";
+import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
+import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
   MotionItem,
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  buildProgressRecord,
+  getDashboardCollaboration,
+  getDashboardCounts,
+  getDashboardDeadlines,
+  getDashboardReminders,
+  getDashboardUpdates,
+  type DashboardCollaboratorRecord,
+  type DashboardDeadlineRecord,
+  type DashboardProgressRecord,
+  type DashboardReminderRecord,
+  type DashboardUpdateRecord,
+} from "@/lib/dashboard";
+import {
+  getRecentProjects,
+  type DashboardProjectCounts,
+} from "@/lib/projects";
+import { getDashboardArchiveUploadAccessState } from "@/lib/archives";
+import { requireUser } from "@/lib/auth";
+import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
+import { hasPermission } from "@/lib/permissions/resolver";
+
+type RecentProjectsPromise = Promise<Awaited<ReturnType<typeof getRecentProjects>>>;
+
+function getStatCards(counts: DashboardProjectCounts) {
+  return [
+    {
+      title: "Total Projects",
+      value: `${counts.total}`.padStart(2, "0"),
+      delta: `${counts.total}`.padStart(2, "0"),
+      note: "Accessible projects",
+      href: "/projects?status=ALL&sort=newest",
+      emphasize: true,
+    },
+    {
+      title: "Ongoing Projects",
+      value: `${counts.ongoing}`.padStart(2, "0"),
+      delta: `${counts.ongoing}`.padStart(2, "0"),
+      note: "Currently active",
+      href: "/projects?status=ONGOING&sort=newest",
+    },
+    {
+      title: "Pending Projects",
+      value: `${counts.pending}`.padStart(2, "0"),
+      delta: `${counts.pending}`.padStart(2, "0"),
+      note: "Waiting to start",
+      href: "/projects?status=PENDING&sort=newest",
+    },
+    {
+      title: "On Hold Projects",
+      value: `${counts.onHold}`.padStart(2, "0"),
+      delta: `${counts.onHold}`.padStart(2, "0"),
+      note: "Paused projects",
+      href: "/projects?status=ON_HOLD&sort=newest",
+    },
+    {
+      title: "Completed Projects",
+      value: `${counts.completed}`.padStart(2, "0"),
+      delta: `${counts.completed}`.padStart(2, "0"),
+      note: "Delivered projects",
+      href: "/projects?status=COMPLETED&sort=newest",
+    },
+  ] as const;
+}
+
+function StatCardsGrid({ counts }: { counts: DashboardProjectCounts }) {
+  return (
+    <MotionStaggerGroup
+      className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-5"
+      stagger={0.05}
+    >
+      {getStatCards(counts).map((card) => (
+        <MotionItem key={card.title} className="h-full" y={10}>
+          <StatCard {...card} />
+        </MotionItem>
+      ))}
+    </MotionStaggerGroup>
+  );
+}
+
+function StatCardsSkeleton() {
+  return (
+    <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-5">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <Skeleton key={index} className="h-[184px] rounded-[24px]" />
+      ))}
+    </div>
+  );
+}
+
+function DashboardWidgetSkeleton({
+  title,
+  rows = 3,
+}: {
+  title: string;
+  rows?: number;
+}) {
+  return (
+    <article className="min-w-0 rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <Skeleton className="h-5 w-40 rounded-full" aria-label={`${title} loading`} />
+        <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+      </div>
+      <div className="space-y-2.5">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div key={index} className="flex items-center gap-3 rounded-[16px] px-2 py-2">
+            <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-3.5 w-3/4 rounded-full" />
+              <Skeleton className="h-3 w-1/2 rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function DashboardWidgetError({ title }: { title: string }) {
+  return (
+    <article className="min-w-0 rounded-[24px] border border-[#f0d6ca] bg-[#fff8f3] p-5 shadow-[0_18px_45px_rgba(120,54,20,0.05)] sm:p-6">
+      <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#7b321f]">
+        {title}
+      </h2>
+      <p className="mt-3 text-[14px] leading-6 text-[#8a5a45]">
+        Unable to load this dashboard card right now.
+      </p>
+    </article>
+  );
+}
+
+async function DashboardStatCards({
+  countsPromise,
+}: {
+  countsPromise: Promise<DashboardProjectCounts>;
+}) {
+  const counts = await countsPromise.catch(() => null);
+
+  if (!counts) {
+    return <DashboardWidgetError title="Project Stats" />;
+  }
+
+  return <StatCardsGrid counts={counts} />;
+}
+
+async function ImportantUpdatesWidget({
+  updatesPromise,
+}: {
+  updatesPromise: Promise<DashboardUpdateRecord[]>;
+}) {
+  const updates = await updatesPromise.catch(() => null);
+
+  if (!updates) {
+    return <DashboardWidgetError title="Important Updates" />;
+  }
+
+  return (
+    <UpdateList
+      title="Important Updates"
+      items={updates.map((item) => ({
+        id: item.id,
+        title: item.title,
+        project: item.detail,
+        tone: item.tone,
+        href: item.href,
+      }))}
+    />
+  );
+}
+
+async function CollaborationWidget({
+  collaborationPromise,
+}: {
+  collaborationPromise: Promise<DashboardCollaboratorRecord[]>;
+}) {
+  const collaborators = await collaborationPromise.catch(() => null);
+
+  if (!collaborators) {
+    return <DashboardWidgetError title="Collaboration" />;
+  }
+
+  return (
+    <CollaborationCard
+      title="Collaboration"
+      items={collaborators}
+      href="/collaboration"
+    />
+  );
+}
+
+async function ReminderWidget({
+  remindersPromise,
+}: {
+  remindersPromise: Promise<DashboardReminderRecord[]>;
+}) {
+  const reminders = await remindersPromise.catch(() => null);
+
+  if (!reminders) {
+    return <DashboardWidgetError title="Reminder" />;
+  }
+
+  return (
+    <ReminderCard
+      title="Reminder"
+      reminders={reminders}
+      detailHref="/calendar"
+    />
+  );
+}
+
+async function ProjectProgressWidget({
+  progressPromise,
+}: {
+  progressPromise: Promise<DashboardProgressRecord>;
+}) {
+  const progress = await progressPromise.catch(() => null);
+
+  if (!progress) {
+    return <DashboardWidgetError title="Active Projects" />;
+  }
+
+  return (
+    <ProjectProgressCard
+      title="Active Projects"
+      percentage={progress.percentage}
+      subtitle={progress.subtitle}
+      segments={progress.segments}
+    />
+  );
+}
+
+async function RecentProjectsWidget({
+  recentProjectsPromise,
+}: {
+  recentProjectsPromise: RecentProjectsPromise;
+}) {
+  const recentProjects = await recentProjectsPromise.catch(() => null);
+
+  if (!recentProjects) {
+    return <DashboardWidgetError title="Recent Projects" />;
+  }
+
+  return (
+    <RecentProjects
+      title="Recent Projects"
+      items={recentProjects}
+      href="/projects"
+    />
+  );
+}
+
+async function DeadlinesWidget({
+  deadlinesPromise,
+}: {
+  deadlinesPromise: Promise<DashboardDeadlineRecord[]>;
+}) {
+  const deadlines = await deadlinesPromise.catch(() => null);
+
+  if (!deadlines) {
+    return <DashboardWidgetError title="Project Deadlines" />;
+  }
+
+  return (
+    <DeadlineCard
+      title="Project Deadlines"
+      deadlines={deadlines}
+    />
+  );
+}
 
 export default async function Home() {
   const user = await requireUser();
@@ -34,47 +294,17 @@ export default async function Home() {
     redirect(getAuthenticatedDefaultRoute(user));
   }
 
-  const dashboard = await getDashboardSnapshot(user);
   const uploadAccess = getDashboardArchiveUploadAccessState(user);
   const canCreateProject = hasPermission(user, "project.create");
-  const statCards = [
-    {
-      title: "Total Projects",
-      value: `${dashboard.counts.total}`.padStart(2, "0"),
-      delta: `${dashboard.counts.total}`.padStart(2, "0"),
-      note: "Accessible projects",
-      href: "/projects?status=ALL&sort=newest",
-      emphasize: true,
-    },
-    {
-      title: "Ongoing Projects",
-      value: `${dashboard.counts.ongoing}`.padStart(2, "0"),
-      delta: `${dashboard.counts.ongoing}`.padStart(2, "0"),
-      note: "Currently active",
-      href: "/projects?status=ONGOING&sort=newest",
-    },
-    {
-      title: "Pending Projects",
-      value: `${dashboard.counts.pending}`.padStart(2, "0"),
-      delta: `${dashboard.counts.pending}`.padStart(2, "0"),
-      note: "Waiting to start",
-      href: "/projects?status=PENDING&sort=newest",
-    },
-    {
-      title: "On Hold Projects",
-      value: `${dashboard.counts.onHold}`.padStart(2, "0"),
-      delta: `${dashboard.counts.onHold}`.padStart(2, "0"),
-      note: "Paused projects",
-      href: "/projects?status=ON_HOLD&sort=newest",
-    },
-    {
-      title: "Completed Projects",
-      value: `${dashboard.counts.completed}`.padStart(2, "0"),
-      delta: `${dashboard.counts.completed}`.padStart(2, "0"),
-      note: "Delivered projects",
-      href: "/projects?status=COMPLETED&sort=newest",
-    },
-  ] as const;
+  const countsPromise = getDashboardCounts(user);
+  const recentProjectsPromise = hasPermission(user, "dashboard.viewRecentProjects")
+    ? getRecentProjects(5, user)
+    : Promise.resolve([]);
+  const updatesPromise = getDashboardUpdates(user);
+  const remindersPromise = getDashboardReminders(user);
+  const collaborationPromise = getDashboardCollaboration(user);
+  const progressPromise = countsPromise.then(buildProgressRecord);
+  const deadlinesPromise = getDashboardDeadlines(user);
 
   return (
     <DashboardLayout>
@@ -108,63 +338,39 @@ export default async function Home() {
           </header>
         </MotionSection>
 
-        <MotionStaggerGroup
-          className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-5"
-          stagger={0.05}
-        >
-          {statCards.map((card) => (
-            <MotionItem key={card.title} className="h-full" y={10}>
-              <StatCard {...card} />
-            </MotionItem>
-          ))}
-        </MotionStaggerGroup>
+        <Suspense fallback={<StatCardsSkeleton />}>
+          <DashboardStatCards countsPromise={countsPromise} />
+        </Suspense>
 
         <MotionStaggerGroup
           className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)_minmax(0,1fr)]"
           stagger={0.045}
         >
           <MotionItem className="grid content-start gap-4" y={12}>
-            <UpdateList
-              title="Important Updates"
-              items={dashboard.updates.map((item) => ({
-                id: item.id,
-                title: item.title,
-                project: item.detail,
-                tone: item.tone,
-                href: item.href,
-              }))}
-            />
-            <CollaborationCard
-              title="Collaboration"
-              items={dashboard.collaborators}
-              href="/collaboration"
-            />
+            <Suspense fallback={<DashboardWidgetSkeleton title="Important Updates" rows={4} />}>
+              <ImportantUpdatesWidget updatesPromise={updatesPromise} />
+            </Suspense>
+            <Suspense fallback={<DashboardWidgetSkeleton title="Collaboration" rows={4} />}>
+              <CollaborationWidget collaborationPromise={collaborationPromise} />
+            </Suspense>
           </MotionItem>
 
           <MotionItem className="grid content-start gap-4" y={12}>
-            <ReminderCard
-              title="Reminder"
-              reminders={dashboard.reminders}
-              detailHref="/calendar"
-            />
-            <ProjectProgressCard
-              title="Active Projects"
-              percentage={dashboard.progress.percentage}
-              subtitle={dashboard.progress.subtitle}
-              segments={dashboard.progress.segments}
-            />
+            <Suspense fallback={<DashboardWidgetSkeleton title="Reminder" rows={2} />}>
+              <ReminderWidget remindersPromise={remindersPromise} />
+            </Suspense>
+            <Suspense fallback={<DashboardWidgetSkeleton title="Active Projects" rows={3} />}>
+              <ProjectProgressWidget progressPromise={progressPromise} />
+            </Suspense>
           </MotionItem>
 
           <MotionItem className="grid content-start gap-4 lg:col-span-2 xl:col-span-1" y={12}>
-            <RecentProjects
-              title="Recent Projects"
-              items={dashboard.recentProjects}
-              href="/projects"
-            />
-            <DeadlineCard
-              title="Project Deadlines"
-              deadlines={dashboard.deadlines}
-            />
+            <Suspense fallback={<DashboardWidgetSkeleton title="Recent Projects" rows={4} />}>
+              <RecentProjectsWidget recentProjectsPromise={recentProjectsPromise} />
+            </Suspense>
+            <Suspense fallback={<DashboardWidgetSkeleton title="Project Deadlines" rows={2} />}>
+              <DeadlinesWidget deadlinesPromise={deadlinesPromise} />
+            </Suspense>
           </MotionItem>
         </MotionStaggerGroup>
       </section>

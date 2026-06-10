@@ -1805,18 +1805,13 @@ export async function getDashboardProjectCounts(
   const getCachedCounts = unstable_cache(
     async () =>
       withPrismaRetry(() =>
-        Promise.all([
-          prisma.project.count({
-            where: accessibleWhere,
-          }),
-          prisma.project.groupBy({
-            by: ["status"],
-            where: accessibleWhere,
-            _count: {
-              _all: true,
-            },
-          }),
-        ]),
+        prisma.project.groupBy({
+          by: ["status"],
+          where: accessibleWhere,
+          _count: {
+            _all: true,
+          },
+        }),
       ),
     [
       "dashboard-project-counts",
@@ -1826,7 +1821,7 @@ export async function getDashboardProjectCounts(
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
-  const [total, grouped] = await getCachedCounts();
+  const grouped = await getCachedCounts();
 
   const counts = grouped.reduce<Record<ProjectStatus, number>>(
     (accumulator, item) => {
@@ -1840,6 +1835,7 @@ export async function getDashboardProjectCounts(
       COMPLETED: 0,
     },
   );
+  const total = grouped.reduce((sum, item) => sum + item._count._all, 0);
 
   return {
     total,
@@ -1861,6 +1857,14 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
             createdAt: "desc",
           },
           take: limit,
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            category: true,
+            tag: true,
+            createdAt: true,
+          },
         }),
       ),
     [

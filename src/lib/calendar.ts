@@ -244,6 +244,10 @@ function buildCalendarAccessState(
 export async function getCalendarAccessState(
   user: CalendarAccessUser,
 ): Promise<CalendarAccessState> {
+  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
+    return buildCalendarAccessState(user, false);
+  }
+
   const cachedAccessState = unstable_cache(
     async () => {
       const assignment = await withPrismaRetry(() =>

@@ -205,6 +205,15 @@ export async function getRecentNotificationsForUser(
           createdAt: "desc",
         },
         take: Math.max(1, Math.min(limit, 20)),
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          message: true,
+          url: true,
+          isRead: true,
+          createdAt: true,
+        },
       }),
       prisma.notification.count({
         where: {
