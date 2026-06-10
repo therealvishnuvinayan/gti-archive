@@ -62,7 +62,7 @@ export function DeadlineCard({
         {activeDeadline ? (
           <div className="flex min-h-0 flex-1 flex-col justify-between gap-4">
             <p
-              className={`text-center text-[32px] font-bold leading-tight ${
+              className={`text-center text-[28px] font-bold leading-tight sm:text-[30px] ${
                 activeDeadline.overdue ? "text-[#ffb9a8]" : ""
               }`}
             >

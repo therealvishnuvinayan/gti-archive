@@ -145,32 +145,72 @@ function getExecutorRoleLabel(role: ProjectExecutorRole) {
   return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
 }
 
+function pluralizeDurationUnit(value: number, unit: string) {
+  return `${value} ${unit}${value === 1 ? "" : "s"}`;
+}
+
+function formatReadableDuration(milliseconds: number) {
+  const totalMinutes = Math.max(1, Math.floor(milliseconds / 60_000));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const totalDays = Math.floor(totalHours / 24);
+
+  if (totalDays >= 365) {
+    const years = Math.floor(totalDays / 365);
+    const months = Math.floor((totalDays % 365) / 30);
+    const segments = [pluralizeDurationUnit(years, "year")];
+
+    if (months > 0) {
+      segments.push(pluralizeDurationUnit(months, "month"));
+    }
+
+    return segments.join(", ");
+  }
+
+  if (totalDays >= 60) {
+    const months = Math.floor(totalDays / 30);
+    const days = totalDays % 30;
+    const segments = [pluralizeDurationUnit(months, "month")];
+
+    if (days > 0) {
+      segments.push(pluralizeDurationUnit(days, "day"));
+    }
+
+    return segments.join(", ");
+  }
+
+  if (totalDays > 0) {
+    const hours = totalHours % 24;
+    const segments = [pluralizeDurationUnit(totalDays, "day")];
+
+    if (hours > 0) {
+      segments.push(pluralizeDurationUnit(hours, "hour"));
+    }
+
+    return segments.join(", ");
+  }
+
+  if (totalHours > 0) {
+    const minutes = totalMinutes % 60;
+    const segments = [pluralizeDurationUnit(totalHours, "hour")];
+
+    if (minutes > 0) {
+      segments.push(pluralizeDurationUnit(minutes, "minute"));
+    }
+
+    return segments.join(", ");
+  }
+
+  return pluralizeDurationUnit(totalMinutes, "minute");
+}
+
 function formatTimeDistance(target: Date) {
   const diffMs = target.getTime() - Date.now();
   const overdue = diffMs < 0;
-  const absoluteMs = Math.abs(diffMs);
-  const totalHours = Math.floor(absoluteMs / 3_600_000);
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-  const minutes = Math.floor((absoluteMs % 3_600_000) / 60_000);
-
-  const segments: string[] = [];
-
-  if (days > 0) {
-    segments.push(`${days}d`);
-  }
-  if (hours > 0 || segments.length === 0) {
-    segments.push(`${hours}h`);
-  }
-  if (days === 0 && minutes > 0) {
-    segments.push(`${minutes}m`);
-  }
+  const duration = formatReadableDuration(Math.abs(diffMs));
 
   return {
     overdue,
-    label: overdue
-      ? `Overdue by ${segments.join(" ")}`
-      : `Due in ${segments.join(" ")}`,
+    label: overdue ? `Overdue by ${duration}` : `Due in ${duration}`,
   };
 }
 
