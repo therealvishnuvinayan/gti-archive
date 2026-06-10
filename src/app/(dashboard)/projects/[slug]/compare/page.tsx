@@ -1,9 +1,14 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectCompareWorkspace } from "@/components/projects/project-compare-workspace";
+import {
+  ProjectAccessUnavailableState,
+  ProjectNotFoundState,
+  StageNotFoundState,
+} from "@/components/projects/project-route-state";
 import { ProjectCompareLoadingShell } from "@/components/projects/project-route-loading-shells";
 import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
@@ -14,7 +19,11 @@ import {
 } from "@/lib/comparison-utils";
 import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { getProjectStageHistory } from "@/lib/project-history";
-import { getProjectById, getProjectShellById } from "@/lib/projects";
+import {
+  getProjectById,
+  getProjectRouteAvailability,
+  getProjectShellById,
+} from "@/lib/projects";
 
 type ProjectComparePageUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -30,6 +39,22 @@ function getProjectPermissionContext(project: NonNullable<Awaited<ReturnType<typ
       userId: collaborator.id,
     })),
   };
+}
+
+async function ProjectUnavailableContent({
+  slug,
+  user,
+}: {
+  slug: string;
+  user: ProjectComparePageUser;
+}) {
+  const availability = await getProjectRouteAvailability(slug, user);
+
+  if (availability === "access-unavailable") {
+    return <ProjectAccessUnavailableState />;
+  }
+
+  return <ProjectNotFoundState />;
 }
 
 async function ProjectCompareDeferredContent({
@@ -48,13 +73,17 @@ async function ProjectCompareDeferredContent({
   const project = await getProjectById(slug, user);
 
   if (!project) {
-    notFound();
+    return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
   const projectContext = getProjectPermissionContext(project);
 
   if (!hasProjectPermission(user, projectContext, "compare.view")) {
-    notFound();
+    return <ProjectAccessUnavailableState />;
+  }
+
+  if (stage && !project.stageCards.some((stageCard) => stageCard.id === stage)) {
+    return <StageNotFoundState projectHref={`/projects/${slug}`} />;
   }
 
   const history = await getProjectStageHistory(user, slug, stage, "compare.view");
@@ -133,13 +162,17 @@ async function ProjectCompareShellContent({
   const project = await getProjectShellById(slug, user);
 
   if (!project) {
-    notFound();
+    return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
   const projectContext = getProjectPermissionContext(project);
 
   if (!hasProjectPermission(user, projectContext, "compare.view")) {
-    notFound();
+    return <ProjectAccessUnavailableState />;
+  }
+
+  if (stage && !project.stageCards.some((stageCard) => stageCard.id === stage)) {
+    return <StageNotFoundState projectHref={`/projects/${slug}`} />;
   }
 
   return (

@@ -8,7 +8,7 @@ import {
 } from "@prisma/client";
 
 import { getCalendarAccessState } from "@/lib/calendar";
-import { getRecentNotificationsForUser } from "@/lib/notification-center/service";
+import { mapNotificationToView } from "@/lib/notification-center/presenter";
 import {
   buildAccessibleProjectsWhere,
   getDashboardProjectCounts,
@@ -63,6 +63,23 @@ type DashboardDeadlineCandidate = {
   detail: string;
   dueAt: Date;
   actionHref: string;
+};
+
+type DashboardNotificationCandidate = {
+  id: string;
+  type: Parameters<typeof mapNotificationToView>[0]["type"];
+  title: string;
+  message: string;
+  url: string | null;
+  isRead: boolean;
+  createdAt: Date;
+  projectId: string | null;
+  stageId: string | null;
+};
+
+type ProjectUrlTarget = {
+  projectId: string;
+  stageId: string | null;
 };
 
 export type DashboardUpdateRecord = {
@@ -189,6 +206,45 @@ function mapNotificationTone(visualKind: string): DashboardUpdateRecord["tone"] 
   }
 }
 
+function parseProjectUrlTarget(url: string | null): ProjectUrlTarget | null {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(url, "http://gti.local");
+    const segments = parsedUrl.pathname.split("/").filter(Boolean);
+
+    if (segments[0] !== "projects" || !segments[1]) {
+      return null;
+    }
+
+    return {
+      projectId: decodeURIComponent(segments[1]),
+      stageId: parsedUrl.searchParams.get("stage"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getNotificationProjectTarget(
+  notification: DashboardNotificationCandidate,
+): ProjectUrlTarget | null {
+  const urlTarget = parseProjectUrlTarget(notification.url);
+  const projectId = notification.projectId ?? urlTarget?.projectId ?? null;
+  const stageId = notification.stageId ?? urlTarget?.stageId ?? null;
+
+  if (!projectId) {
+    return null;
+  }
+
+  return {
+    projectId,
+    stageId,
+  };
+}
+
 function toDashboardDateKey(value: Date) {
   const year = value.getFullYear();
   const month = `${value.getMonth() + 1}`.padStart(2, "0");
@@ -241,15 +297,105 @@ export async function getDashboardUpdates(
     return [];
   }
 
-  const recentNotifications = await getRecentNotificationsForUser(currentUser.id, limit);
+  const candidates = await withPrismaRetry(() =>
+    prisma.notification.findMany({
+      where: {
+        userId: currentUser.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: Math.max(limit * 10, 20),
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        message: true,
+        url: true,
+        isRead: true,
+        createdAt: true,
+        projectId: true,
+        stageId: true,
+      },
+    }),
+  );
+  const targets = candidates.map(getNotificationProjectTarget);
+  const projectIds = [
+    ...new Set(targets.map((target) => target?.projectId).filter(Boolean)),
+  ] as string[];
+  const stageIds = [
+    ...new Set(targets.map((target) => target?.stageId).filter(Boolean)),
+  ] as string[];
+  const accessibleProjects =
+    projectIds.length > 0
+      ? await withPrismaRetry(() =>
+          prisma.project.findMany({
+            where: {
+              AND: [
+                buildAccessibleProjectsWhere(currentUser),
+                {
+                  id: {
+                    in: projectIds,
+                  },
+                },
+              ],
+            },
+            select: {
+              id: true,
+            },
+          }),
+        )
+      : [];
+  const accessibleProjectIds = new Set(accessibleProjects.map((project) => project.id));
+  const validStageIds =
+    stageIds.length > 0
+      ? new Set(
+          (
+            await withPrismaRetry(() =>
+              prisma.projectStage.findMany({
+                where: {
+                  id: {
+                    in: stageIds,
+                  },
+                  projectId: {
+                    in: [...accessibleProjectIds],
+                  },
+                },
+                select: {
+                  id: true,
+                },
+              }),
+            )
+          ).map((stage) => stage.id),
+        )
+      : new Set<string>();
 
-  return recentNotifications.notifications.map((notification) => ({
-    id: notification.id,
-    title: notification.title,
-    detail: notification.description,
-    tone: mapNotificationTone(notification.visualKind),
-    href: notification.targetHref,
-  }));
+  return candidates
+    .filter((notification) => {
+      const target = getNotificationProjectTarget(notification);
+
+      if (!target) {
+        return true;
+      }
+
+      if (!accessibleProjectIds.has(target.projectId)) {
+        return false;
+      }
+
+      return !target.stageId || validStageIds.has(target.stageId);
+    })
+    .slice(0, limit)
+    .map((notification) => {
+      const view = mapNotificationToView(notification);
+
+      return {
+        id: view.id,
+        title: view.title,
+        detail: view.description,
+        tone: mapNotificationTone(view.visualKind),
+        href: view.targetHref,
+      };
+    });
 }
 
 export async function getDashboardReminders(

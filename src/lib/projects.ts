@@ -2355,3 +2355,37 @@ export async function getProjectEditAccessById(
       hasProjectPermission(currentUser, project, "project.update"),
   };
 }
+
+export async function getProjectRouteAvailability(
+  id: string,
+  currentUser: ProjectAccessUser,
+): Promise<"available" | "not-found" | "access-unavailable"> {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id },
+      select: {
+        createdById: true,
+        executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
+        collaborators: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!project) {
+    return "not-found";
+  }
+
+  return canAccessProjectRecord(project, currentUser)
+    ? "available"
+    : "access-unavailable";
+}

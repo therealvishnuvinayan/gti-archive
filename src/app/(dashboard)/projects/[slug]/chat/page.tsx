@@ -1,16 +1,24 @@
-import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectChatWorkspace } from "@/components/projects/project-chat-workspace";
+import {
+  ProjectAccessUnavailableState,
+  ProjectNotFoundState,
+  StageNotFoundState,
+} from "@/components/projects/project-route-state";
 import { ProjectChatLoadingShell } from "@/components/projects/project-route-loading-shells";
 import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
 import { getProjectCompletionWorkflowForUser } from "@/lib/project-completion";
 import { getProjectStageHistory } from "@/lib/project-history";
-import { getProjectById, getProjectShellById } from "@/lib/projects";
+import {
+  getProjectById,
+  getProjectRouteAvailability,
+  getProjectShellById,
+} from "@/lib/projects";
 import { hasProjectPermission } from "@/lib/permissions/resolver";
 
 type ProjectChatPageUser = Awaited<ReturnType<typeof requireUser>>;
@@ -29,6 +37,22 @@ function getProjectPermissionContext(project: NonNullable<Awaited<ReturnType<typ
   };
 }
 
+async function ProjectUnavailableContent({
+  slug,
+  user,
+}: {
+  slug: string;
+  user: ProjectChatPageUser;
+}) {
+  const availability = await getProjectRouteAvailability(slug, user);
+
+  if (availability === "access-unavailable") {
+    return <ProjectAccessUnavailableState />;
+  }
+
+  return <ProjectNotFoundState />;
+}
+
 async function ProjectChatDeferredContent({
   slug,
   stage,
@@ -41,13 +65,17 @@ async function ProjectChatDeferredContent({
   const project = await getProjectById(slug, user);
 
   if (!project) {
-    notFound();
+    return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
   const projectContext = getProjectPermissionContext(project);
 
   if (!hasProjectPermission(user, projectContext, "chat.view")) {
-    notFound();
+    return <ProjectAccessUnavailableState />;
+  }
+
+  if (stage && !project.stageCards.some((stageCard) => stageCard.id === stage)) {
+    return <StageNotFoundState projectHref={`/projects/${slug}`} />;
   }
 
   const [history, availableCollaborators] = await Promise.all([
@@ -102,13 +130,17 @@ async function ProjectChatShellContent({
   const project = await getProjectShellById(slug, user);
 
   if (!project) {
-    notFound();
+    return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
   const projectContext = getProjectPermissionContext(project);
 
   if (!hasProjectPermission(user, projectContext, "chat.view")) {
-    notFound();
+    return <ProjectAccessUnavailableState />;
+  }
+
+  if (stage && !project.stageCards.some((stageCard) => stageCard.id === stage)) {
+    return <StageNotFoundState projectHref={`/projects/${slug}`} />;
   }
 
   return (

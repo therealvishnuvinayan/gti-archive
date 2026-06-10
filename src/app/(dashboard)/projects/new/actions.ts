@@ -1429,6 +1429,11 @@ export async function deleteProjectAction(projectId: string) {
           userId: true,
         },
       },
+      stages: {
+        select: {
+          id: true,
+        },
+      },
     },
   });
 
@@ -1444,11 +1449,32 @@ export async function deleteProjectAction(projectId: string) {
     throw new Error("Completed projects cannot be deleted.");
   }
 
-  await prisma.project.delete({
-    where: { id: projectId },
-  });
+  const stageIds = project.stages.map((stage) => stage.id);
+
+  await prisma.$transaction([
+    prisma.notification.deleteMany({
+      where: {
+        OR: [
+          { projectId },
+          ...(stageIds.length > 0
+            ? [
+                {
+                  stageId: {
+                    in: stageIds,
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+    }),
+    prisma.project.delete({
+      where: { id: projectId },
+    }),
+  ]);
 
   revalidatePath("/");
+  revalidatePath("/notifications");
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   revalidateTag(PROJECTS_CACHE_TAG, "max");

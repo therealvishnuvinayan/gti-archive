@@ -1,16 +1,39 @@
-import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectDetailWorkspace } from "@/components/projects/project-detail-workspace";
+import {
+  ProjectAccessUnavailableState,
+  ProjectNotFoundState,
+} from "@/components/projects/project-route-state";
 import { ProjectDetailRouteLoadingShell } from "@/components/projects/project-route-loading-shells";
 import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { getProjectCompletionWorkflowForUser } from "@/lib/project-completion";
-import { getProjectById, getProjectShellById } from "@/lib/projects";
+import {
+  getProjectById,
+  getProjectRouteAvailability,
+  getProjectShellById,
+} from "@/lib/projects";
 
 type ProjectPageUser = Awaited<ReturnType<typeof requireUser>>;
+
+async function ProjectUnavailableContent({
+  slug,
+  user,
+}: {
+  slug: string;
+  user: ProjectPageUser;
+}) {
+  const availability = await getProjectRouteAvailability(slug, user);
+
+  if (availability === "access-unavailable") {
+    return <ProjectAccessUnavailableState />;
+  }
+
+  return <ProjectNotFoundState />;
+}
 
 async function ProjectDetailDeferredContent({
   slug,
@@ -22,7 +45,7 @@ async function ProjectDetailDeferredContent({
   const project = await getProjectById(slug, user);
 
   if (!project) {
-    notFound();
+    return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
   const [completionSummary, completionWorkflow] = await Promise.all([
@@ -50,7 +73,7 @@ async function ProjectDetailShellContent({
   const project = await getProjectShellById(slug, user);
 
   if (!project) {
-    notFound();
+    return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
   return (
