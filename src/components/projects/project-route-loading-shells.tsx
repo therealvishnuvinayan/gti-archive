@@ -4,6 +4,10 @@ import {
   ClipboardList,
   FileText,
   FolderKanban,
+  MessageSquareText,
+  MoreHorizontal,
+  Paperclip,
+  Send,
   UserRound,
   Users,
   WalletCards,
@@ -51,22 +55,329 @@ function InlineSkeletonRows({ rows = 4 }: { rows?: number }) {
   );
 }
 
-function AssetGridSkeleton() {
+function LoadingDots() {
   return (
-    <div className="grid grid-cols-2 gap-2.5">
-      {Array.from({ length: 4 }).map((_, index) => (
-        <div
-          key={index}
-          className="aspect-square rounded-[18px] border border-[#dce6dd] bg-[#fbfcfa] p-3"
-        >
-          <Skeleton className="h-3.5 w-10/12 rounded-full" />
-          <Skeleton className="mt-2 h-2.5 w-8/12 rounded-full" />
-          <div className="mt-auto pt-12">
-            <Skeleton className="h-8 w-full rounded-full" />
+    <span className="inline-flex h-5 items-center gap-1" aria-hidden="true">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand/75" />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand/45 [animation-delay:120ms]" />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand/25 [animation-delay:240ms]" />
+    </span>
+  );
+}
+
+function LoaderValue({
+  value,
+  className = "text-[12px] font-semibold text-[#445248]",
+  skeletonClassName = "h-3 w-full rounded-full bg-[#dde6de]",
+}: {
+  value?: string | null;
+  className?: string;
+  skeletonClassName?: string;
+}) {
+  if (value?.trim()) {
+    return <span className={`min-w-0 truncate ${className}`}>{value}</span>;
+  }
+
+  return <Skeleton className={skeletonClassName} />;
+}
+
+function ChatOpeningStageCard({
+  project,
+  activeStage,
+}: {
+  project?: ProjectFlowRecord | null;
+  activeStage: ProjectStageRecord | null;
+}) {
+  const title = activeStage?.name ?? project?.currentStageName ?? project?.title ?? null;
+  const subtitle = project?.title && title !== project.title ? project.title : null;
+
+  return (
+    <Card className="overflow-hidden rounded-[24px] border border-[#dbe7dd] bg-white shadow-[0_18px_46px_rgba(18,35,23,0.07)]">
+      <CardContent className="px-5 py-5 sm:px-6">
+        <div className="flex items-center gap-3">
+          <LoadingDots />
+          <p className="text-[12px] font-[900] uppercase tracking-[0.12em] text-brand">
+            Opening Stage
+          </p>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {title ? (
+            <h1 className="truncate text-[22px] font-[900] tracking-tight text-[#111712]">
+              {title}
+            </h1>
+          ) : (
+            <Skeleton className="h-5 w-full max-w-[360px] rounded-full bg-[#dde6de]" />
+          )}
+          {subtitle ? (
+            <p className="truncate text-[13px] font-semibold text-[#6b756d]">
+              {subtitle}
+            </p>
+          ) : project ? null : (
+            <Skeleton className="h-4 w-full max-w-[300px] rounded-full bg-[#e8eee8]" />
+          )}
+        </div>
+
+        <div className="mt-6 grid gap-3 text-[12px] text-[#445248] sm:grid-cols-3">
+          <div className="inline-flex min-h-11 items-center gap-2 rounded-[14px] border border-[#dbe7dd] bg-[#fbfcfa] px-3">
+            <span className="h-2.5 w-2.5 rounded-full bg-brand/80" />
+            <span className="truncate font-[800] text-brand">
+              {activeStage?.statusLabel ?? project?.statusLabel ?? "Opening Stage"}
+            </span>
+          </div>
+          <div className="inline-flex min-h-11 items-center gap-2 rounded-[14px] border border-[#dbe7dd] bg-white px-3">
+            <CalendarDays className="h-4 w-4 shrink-0 text-[#70806f]" />
+            <span className="shrink-0 font-semibold">Start:</span>
+            <LoaderValue
+              value={activeStage?.plannedStartAt ?? project?.startDate}
+              skeletonClassName="h-3 w-full rounded-full bg-[#dde6de]"
+            />
+          </div>
+          <div className="inline-flex min-h-11 items-center gap-2 rounded-[14px] border border-[#dbe7dd] bg-white px-3">
+            <CalendarDays className="h-4 w-4 shrink-0 text-[#70806f]" />
+            <span className="shrink-0 font-semibold">Due:</span>
+            <LoaderValue
+              value={activeStage?.plannedDueAt ?? project?.endDate}
+              skeletonClassName="h-3 w-full rounded-full bg-[#dde6de]"
+            />
           </div>
         </div>
-      ))}
+
+        <div className="mt-6">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[13px] font-[800] text-[#1f2b23]">
+              Preparing stage data...
+            </p>
+            <p className="hidden text-[11px] font-[800] uppercase tracking-[0.08em] text-brand sm:block">
+              Loading
+            </p>
+          </div>
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#e8eee8]">
+            <div className="h-full w-7/12 animate-pulse rounded-full bg-[linear-gradient(90deg,#cfe4d3,#2f8d5d,#cfe4d3)]" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DiscussionMessageSkeleton({
+  side = "left",
+  compact = false,
+}: {
+  side?: "left" | "right";
+  compact?: boolean;
+}) {
+  const isRight = side === "right";
+
+  return (
+    <div className={`flex w-full ${isRight ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`grid max-w-[76%] items-end gap-2 ${
+          isRight
+            ? "grid-cols-[minmax(0,1fr)_2rem]"
+            : "grid-cols-[2rem_minmax(0,1fr)]"
+        }`}
+      >
+        {!isRight ? <Skeleton className="size-8 rounded-full bg-[#e2e9e2]" /> : null}
+        <div
+          className={`rounded-[16px] border px-3 py-2.5 ${
+            isRight
+              ? "rounded-br-[6px] border-[#c7dfce] bg-[#edf8ef]"
+              : "rounded-bl-[6px] border-[#e1e9e2] bg-white"
+          }`}
+        >
+          <Skeleton className="h-3 w-28 rounded-full bg-[#dde6de]" />
+          <Skeleton
+            className={`mt-2 h-2.5 rounded-full bg-[#e5ebe5] ${
+              compact ? "w-36" : "w-64 max-w-full"
+            }`}
+          />
+          <Skeleton className="mt-1.5 h-2.5 w-8/12 rounded-full bg-[#e8eee8]" />
+        </div>
+        {isRight ? <Skeleton className="size-8 rounded-full bg-[#dce7dd]" /> : null}
+      </div>
     </div>
+  );
+}
+
+function RevisionPreviewSkeleton() {
+  return (
+    <div className="grid grid-cols-[2rem_minmax(0,1fr)] items-end gap-2">
+      <Skeleton className="size-8 rounded-full bg-[#e2e9e2]" />
+      <div className="rounded-[18px] border border-[#dbe7dd] bg-white p-3 shadow-[0_10px_24px_rgba(18,35,23,0.04)]">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid size-16 shrink-0 place-items-center rounded-[14px] bg-[#eef6ef] text-brand">
+            <FileText className="h-8 w-8" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-[800] text-[#1f2b23]">Revision Preview</p>
+            <p className="mt-1 text-[11px] font-semibold text-[#7a837b]">
+              Updating file preview...
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[9px] font-[800] text-brand">
+                PDF
+              </span>
+              <Skeleton className="h-2.5 w-full max-w-[220px] rounded-full bg-[#dde6de]" />
+            </div>
+          </div>
+          <LoadingDots />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatComposerSkeleton() {
+  return (
+    <div className="border-t border-[#e3eae4] pt-4">
+      <div className="flex items-center gap-3 rounded-[22px] border border-[#dfe8df] bg-white p-3 shadow-[0_12px_30px_rgba(18,35,23,0.05)]">
+        <div className="grid size-10 shrink-0 place-items-center rounded-full border border-[#dbe7dd] bg-[#fbfcfa] text-[#7a857c]">
+          <Paperclip className="h-5 w-5" />
+        </div>
+        <div className="flex min-h-10 flex-1 items-center rounded-full border border-[#e4ebe5] bg-[#fbfcfa] px-4 text-[13px] font-semibold text-[#a2aca4]">
+          Loading input...
+        </div>
+        <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#edf6ef] text-brand/45">
+          <Send className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiscussionLoadingCard() {
+  return (
+    <Card className="rounded-[24px] border border-[#dbe7dd] bg-white shadow-[0_18px_46px_rgba(18,35,23,0.06)]">
+      <CardContent className="px-5 py-5 sm:px-6">
+        <div className="flex items-start gap-3 border-b border-[#e4ece5] pb-4">
+          <div className="grid size-11 shrink-0 place-items-center rounded-[16px] bg-[#eaf6ee] text-brand">
+            <MessageSquareText className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-[16px] font-[900] text-[#111712]">Loading Discussion</p>
+            <p className="mt-1 text-[13px] font-semibold text-[#7a837b]">
+              Fetching conversations and updates...
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3 py-5">
+          <DiscussionMessageSkeleton side="left" compact />
+          <DiscussionMessageSkeleton side="right" compact />
+          <DiscussionMessageSkeleton side="left" />
+          <DiscussionMessageSkeleton side="right" compact />
+          <RevisionPreviewSkeleton />
+        </div>
+
+        <ChatComposerSkeleton />
+      </CardContent>
+    </Card>
+  );
+}
+
+function StageOverviewLoadingCard({
+  project,
+  activeStage,
+}: {
+  project?: ProjectFlowRecord | null;
+  activeStage: ProjectStageRecord | null;
+}) {
+  const rows = [
+    {
+      label: "Budget",
+      value: activeStage?.budget ?? project?.budget,
+      skeletonClassName: "h-3.5 w-10/12 rounded-full bg-[#dde6de]",
+    },
+    {
+      label: "Status",
+      value: activeStage?.statusLabel ?? project?.statusLabel,
+      skeletonClassName: "h-3.5 w-5/12 rounded-full bg-[#dde6de]",
+    },
+    {
+      label: "Start Date",
+      value: activeStage?.plannedStartAt ?? project?.startDate,
+      skeletonClassName: "h-3.5 w-8/12 rounded-full bg-[#dde6de]",
+    },
+    {
+      label: "Due Date",
+      value: activeStage?.plannedDueAt ?? project?.endDate,
+      skeletonClassName: "h-3.5 w-8/12 rounded-full bg-[#dde6de]",
+    },
+    {
+      label: "Progress",
+      value: activeStage?.statusLabel,
+      skeletonClassName: "h-3.5 w-8/12 rounded-full bg-[#dde6de]",
+    },
+  ];
+
+  return (
+    <Card className="rounded-[24px] border border-[#dbe7dd] bg-white shadow-[0_18px_42px_rgba(18,35,23,0.06)]">
+      <CardHeader className="flex-row items-center justify-between gap-3 pb-3">
+        <CardTitle className="text-[20px] font-[900] tracking-tight text-brand">
+          Stage Overview
+        </CardTitle>
+        <LoadingDots />
+      </CardHeader>
+      <CardContent className="space-y-4 pt-0">
+        {rows.map((row) => (
+          <div key={row.label} className="grid grid-cols-[86px_minmax(0,1fr)] items-center gap-3">
+            <p className="text-[12px] font-semibold text-[#1f2b23]">{row.label}</p>
+            <LoaderValue
+              value={row.value}
+              className="text-[12px] font-semibold text-[#6b756d]"
+              skeletonClassName={row.skeletonClassName}
+            />
+          </div>
+        ))}
+        <div className="flex items-center gap-2 pt-3 text-[12px] font-[900] text-brand">
+          <LoadingDots />
+          <span>Preparing stage data...</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProjectAssetsLoadingCard() {
+  return (
+    <Card className="rounded-[24px] border border-[#dbe7dd] bg-white shadow-[0_18px_42px_rgba(18,35,23,0.06)]">
+      <CardHeader className="flex-row items-center justify-between gap-3 pb-3">
+        <CardTitle className="text-[20px] font-[900] tracking-tight text-brand">
+          Project Assets
+        </CardTitle>
+        <LoadingDots />
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-2 gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="min-h-[128px] rounded-[16px] border border-[#dce6dd] bg-[#fbfcfa] p-3"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#edf6ef] text-brand/70">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Skeleton className="h-3 w-10/12 rounded-full bg-[#dde6de]" />
+                  <Skeleton className="h-2.5 w-7/12 rounded-full bg-[#e8eee8]" />
+                </div>
+              </div>
+              <div className="mt-6 flex items-center justify-between rounded-[10px] bg-[#f0f4f0] px-2 py-2">
+                <Skeleton className="h-2.5 w-16 rounded-full bg-[#dde6de]" />
+                <MoreHorizontal className="h-4 w-4 text-[#7d887f]" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex items-center gap-2 text-[12px] font-[900] text-brand">
+          <LoadingDots />
+          <span>Loading project assets...</span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -190,67 +501,16 @@ export function ProjectChatLoadingShell({
   const activeStage = resolveShellStage(project, stageId);
 
   return (
-    <section className="space-y-6">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="space-y-4">
-          <Card className="rounded-[20px] border border-[#dbe7dd] bg-white shadow-[0_14px_34px_rgba(18,35,23,0.05)]">
-            <CardContent className="px-5 py-5">
-              <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-brand">
-                {project?.title ?? "Project"}
-              </p>
-              <h1 className="mt-2 text-[24px] font-semibold tracking-tight text-[#111712]">
-                {activeStage?.name ?? project?.currentStageName ?? "Stage"}
-              </h1>
-              <div className="mt-3 grid gap-2 text-[12px] text-[#5f6b62] sm:grid-cols-3">
-                <span>{activeStage?.statusLabel ?? project?.statusLabel ?? "Loading"}</span>
-                <span>{activeStage?.plannedStartAt ?? project?.startDate ?? "—"}</span>
-                <span>{activeStage?.plannedDueAt ?? project?.endDate ?? "—"}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#fbfcfa]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[20px] font-semibold tracking-tight">
-                Discussion
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <InlineSkeletonRows rows={5} />
-            </CardContent>
-          </Card>
+    <section className="min-h-0 xl:h-[calc(100dvh-12rem)] xl:min-h-[620px] xl:overflow-hidden">
+      <div className="grid min-h-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4 xl:h-full xl:overflow-hidden">
+          <ChatOpeningStageCard project={project} activeStage={activeStage} />
+          <DiscussionLoadingCard />
         </div>
 
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">
-                Stage Overview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-0">
-              <p className="text-[13px] text-[#242b26]">
-                Budget: {activeStage?.budget ?? project?.budget ?? "—"}
-              </p>
-              <p className="text-[13px] text-[#242b26]">
-                Status: {activeStage?.statusLabel ?? project?.statusLabel ?? "Loading"}
-              </p>
-              <p className="text-[13px] text-[#242b26]">
-                Stage Deadline: {activeStage?.plannedDueAt ?? project?.endDate ?? "—"}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[20px] font-semibold tracking-tight">
-                Project Assets
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <AssetGridSkeleton />
-            </CardContent>
-          </Card>
+        <div className="space-y-4 xl:h-full xl:overflow-y-auto xl:pr-1">
+          <StageOverviewLoadingCard project={project} activeStage={activeStage} />
+          <ProjectAssetsLoadingCard />
         </div>
       </div>
     </section>
