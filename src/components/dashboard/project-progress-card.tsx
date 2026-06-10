@@ -41,7 +41,7 @@ export function ProjectProgressCard({
       </h2>
 
       <div className="flex flex-col items-center">
-        <div className="relative w-full max-w-[280px]">
+        <div className="relative w-full max-w-[260px]">
           <svg viewBox="0 0 240 140" className="w-full" aria-hidden="true">
             <path
               d="M 30 110 A 80 80 0 0 1 210 110"
@@ -65,14 +65,16 @@ export function ProjectProgressCard({
           </svg>
 
           <div className="absolute inset-x-0 bottom-2 text-center">
-            <p className="text-[44px] font-bold leading-none tracking-[-0.04em] text-[#111712]">
+            <p className="text-[40px] font-bold leading-none tracking-[-0.04em] text-[#111712]">
               {percentage}%
             </p>
-            <p className="mt-1 text-[12px] text-[#8bc685]">{subtitle}</p>
+            <p className="mx-auto mt-1 max-w-[180px] text-[12px] leading-4 text-[#8bc685]">
+              {subtitle}
+            </p>
           </div>
         </div>
 
-        <ul className="mt-5 grid w-full grid-cols-2 gap-x-4 gap-y-2 text-[11px] text-[#3b413d]">
+        <ul className="mt-5 grid w-full grid-cols-[repeat(auto-fit,minmax(116px,1fr))] gap-x-4 gap-y-2 text-[11px] text-[#3b413d]">
           {segments.map((segment) => (
             <li key={segment.label} className="flex min-w-0 items-center gap-2">
               <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${segmentDotClass[segment.tone]}`} />

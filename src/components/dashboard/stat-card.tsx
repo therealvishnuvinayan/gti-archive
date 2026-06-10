@@ -20,15 +20,15 @@ export function StatCard({
 }: StatCardProps) {
   const content = (
     <article
-      className={`flex h-full min-h-[184px] flex-col rounded-[24px] p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-transform sm:p-6 ${
+      className={`flex h-full min-h-[184px] min-w-0 flex-col rounded-[24px] p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-transform sm:p-6 ${
         emphasize
           ? "bg-[linear-gradient(135deg,#3d6f59,#5da27a)] text-white"
           : "bg-card text-[#151b16]"
       }`}
     >
-      <div className="mb-7 flex items-start justify-between gap-4">
+      <div className="mb-7 flex min-w-0 items-start justify-between gap-3">
         <h3
-          className={`min-w-0 text-[17px] font-[600] leading-tight ${
+          className={`min-w-0 text-[17px] font-[600] leading-tight text-balance ${
             emphasize ? "text-[#f6fff3]" : "text-[#161d18]"
           }`}
         >
@@ -53,7 +53,7 @@ export function StatCard({
         {value}
       </p>
 
-      <div className="mt-auto flex items-center gap-1.5 pt-6 text-[14px]">
+      <div className="mt-auto flex min-w-0 items-center gap-1.5 pt-6 text-[14px]">
         <span
           className={`rounded-md border px-1.5 py-0.5 text-[11px] font-[600] leading-none ${
             emphasize
@@ -63,7 +63,7 @@ export function StatCard({
         >
           {delta}
         </span>
-        <span className={`min-w-0 truncate ${emphasize ? "text-[#afe1aa]" : "text-[#95d285]"}`}>
+        <span className={`min-w-0 truncate text-[13px] ${emphasize ? "text-[#afe1aa]" : "text-[#95d285]"}`}>
           {note}
         </span>
       </div>

@@ -85,7 +85,7 @@ function getStatCards(counts: DashboardProjectCounts) {
 function StatCardsGrid({ counts }: { counts: DashboardProjectCounts }) {
   return (
     <MotionStaggerGroup
-      className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-5"
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] items-stretch gap-4"
       stagger={0.05}
     >
       {getStatCards(counts).map((card) => (
@@ -99,7 +99,7 @@ function StatCardsGrid({ counts }: { counts: DashboardProjectCounts }) {
 
 function StatCardsSkeleton() {
   return (
-    <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] items-stretch gap-4">
       {Array.from({ length: 5 }).map((_, index) => (
         <Skeleton key={index} className="h-[184px] rounded-[24px]" />
       ))}
@@ -310,18 +310,18 @@ export default async function Home() {
     <DashboardLayout>
       <section className="space-y-6">
         <MotionSection>
-          <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
+          <header className="flex min-w-0 flex-col gap-4 min-[1100px]:flex-row min-[1100px]:items-center min-[1100px]:justify-between">
+            <div className="min-w-0">
               <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
                 Dashboard
               </h1>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap">
               {canCreateProject ? (
                 <Link
                   href="/projects/new"
-                  className="inline-flex min-h-[54px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
+                  className="inline-flex min-h-[54px] min-w-0 items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[17px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.24)] transition-transform hover:-translate-y-0.5"
                 >
                   + New Project
                 </Link>
@@ -343,31 +343,40 @@ export default async function Home() {
         </Suspense>
 
         <MotionStaggerGroup
-          className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)_minmax(0,1fr)]"
+          className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] items-start gap-4"
           stagger={0.045}
         >
-          <MotionItem className="grid content-start gap-4" y={12}>
+          <MotionItem className="min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Important Updates" rows={4} />}>
               <ImportantUpdatesWidget updatesPromise={updatesPromise} />
             </Suspense>
+          </MotionItem>
+
+          <MotionItem className="min-w-0" y={12}>
+            <Suspense fallback={<DashboardWidgetSkeleton title="Reminder" rows={2} />}>
+              <ReminderWidget remindersPromise={remindersPromise} />
+            </Suspense>
+          </MotionItem>
+
+          <MotionItem className="min-w-0" y={12}>
+            <Suspense fallback={<DashboardWidgetSkeleton title="Recent Projects" rows={4} />}>
+              <RecentProjectsWidget recentProjectsPromise={recentProjectsPromise} />
+            </Suspense>
+          </MotionItem>
+
+          <MotionItem className="min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Collaboration" rows={4} />}>
               <CollaborationWidget collaborationPromise={collaborationPromise} />
             </Suspense>
           </MotionItem>
 
-          <MotionItem className="grid content-start gap-4" y={12}>
-            <Suspense fallback={<DashboardWidgetSkeleton title="Reminder" rows={2} />}>
-              <ReminderWidget remindersPromise={remindersPromise} />
-            </Suspense>
+          <MotionItem className="min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Active Projects" rows={3} />}>
               <ProjectProgressWidget progressPromise={progressPromise} />
             </Suspense>
           </MotionItem>
 
-          <MotionItem className="grid content-start gap-4 lg:col-span-2 xl:col-span-1" y={12}>
-            <Suspense fallback={<DashboardWidgetSkeleton title="Recent Projects" rows={4} />}>
-              <RecentProjectsWidget recentProjectsPromise={recentProjectsPromise} />
-            </Suspense>
+          <MotionItem className="min-w-0" y={12}>
             <Suspense fallback={<DashboardWidgetSkeleton title="Project Deadlines" rows={2} />}>
               <DeadlinesWidget deadlinesPromise={deadlinesPromise} />
             </Suspense>

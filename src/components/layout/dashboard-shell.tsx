@@ -52,8 +52,8 @@ export function DashboardShell({
             {...topbarProps}
             showNotifications={sidebarVisibility.notifications}
           />
-          <main className="dashboard-scroll min-h-0 flex-1 overflow-y-auto rounded-[32px] bg-surface p-5 shadow-[0_24px_80px_rgba(23,39,28,0.06)] sm:p-6 lg:p-8">
-            <MotionPage key={pathname} y={12}>
+          <main className="dashboard-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-[32px] bg-surface p-5 shadow-[0_24px_80px_rgba(23,39,28,0.06)] sm:p-6 lg:p-8">
+            <MotionPage key={pathname} y={12} className="min-w-0">
               {children}
             </MotionPage>
           </main>

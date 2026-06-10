@@ -25,9 +25,9 @@ function getInitials(name: string) {
 
 export function CollaborationCard({ title, items, href }: CollaborationCardProps) {
   return (
-    <article className="rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <h2 className="text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">{title}</h2>
+    <article className="min-w-0 rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
+      <div className="mb-4 flex min-w-0 items-start justify-between gap-3">
+        <h2 className="min-w-0 text-[17px] font-extrabold leading-none tracking-[-0.02em] text-[#111712]">{title}</h2>
         {href ? (
           <Link
             href={href}

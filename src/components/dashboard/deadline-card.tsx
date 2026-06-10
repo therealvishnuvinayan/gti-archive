@@ -33,7 +33,7 @@ export function DeadlineCard({
   }
 
   return (
-    <article className="relative overflow-hidden rounded-[24px] bg-[#07130e] p-6 text-white shadow-[0_20px_55px_rgba(7,19,14,0.28)]">
+    <article className="relative min-w-0 overflow-hidden rounded-[24px] bg-[#07130e] p-5 text-white shadow-[0_20px_55px_rgba(7,19,14,0.28)] sm:p-6">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(92,165,123,0.32),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(44,124,82,0.46),transparent_30%),linear-gradient(145deg,#0a1610,#08110d_55%,#040807)]" />
       <div className="absolute -left-10 top-8 h-40 w-40 rounded-full border border-white/10" />
       <div className="absolute -right-12 bottom-10 h-44 w-44 rounded-full border border-brand/30" />
@@ -74,8 +74,8 @@ export function DeadlineCard({
               </p>
             ) : null}
 
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={showPreviousDeadline}
@@ -105,7 +105,7 @@ export function DeadlineCard({
 
               <Link
                 href={activeDeadline.actionHref}
-                className="inline-flex min-h-[42px] shrink-0 items-center justify-center rounded-full bg-white px-5 text-[14px] font-semibold text-[#101612] transition-transform hover:-translate-y-0.5"
+                className="inline-flex min-h-[42px] min-w-[132px] flex-1 items-center justify-center rounded-full bg-white px-5 text-[14px] font-semibold text-[#101612] transition-transform hover:-translate-y-0.5 sm:flex-none"
                 title={actionLabel}
               >
                 {actionLabel}

@@ -90,8 +90,8 @@ export function ReminderCard({
             ) : null}
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
               <button
                 type="button"
                 onClick={(event) => {
@@ -128,7 +128,7 @@ export function ReminderCard({
             <Link
               href={activeReminder.actionHref}
               onClick={(event) => event.stopPropagation()}
-              className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-full bg-[linear-gradient(90deg,#3b9b69,#13422f)] px-4 text-[13px] font-semibold text-white shadow-[0_10px_22px_rgba(35,110,76,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_28px_rgba(35,110,76,0.24)]"
+              className="inline-flex min-h-[40px] min-w-[132px] flex-1 items-center justify-center rounded-full bg-[linear-gradient(90deg,#3b9b69,#13422f)] px-4 text-[13px] font-semibold text-white shadow-[0_10px_22px_rgba(35,110,76,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_28px_rgba(35,110,76,0.24)] sm:flex-none"
               title={activeReminder.actionLabel}
             >
               {activeReminder.actionLabel}

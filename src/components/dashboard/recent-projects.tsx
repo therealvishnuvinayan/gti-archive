@@ -55,7 +55,7 @@ export function RecentProjects({ title, items, href }: RecentProjectsProps) {
                   <span className="block truncate text-[14px] font-[700] leading-[1.25] text-[#1f6c49]">
                     {item.name}
                   </span>
-                  <span className="mt-1 flex min-w-0 items-center gap-2 text-[11px] leading-4 text-[#667168]">
+                  <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] leading-4 text-[#667168]">
                     <span className="shrink-0 rounded-full bg-[#eaf4ec] px-2 py-0.5 font-[700] text-[#2b8055]">
                       {item.statusLabel}
                     </span>
