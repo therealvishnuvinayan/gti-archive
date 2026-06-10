@@ -73,35 +73,35 @@ function getStageCardClasses(stage: ProjectStageRecord) {
   switch (stage.status) {
     case "completed":
       return {
-        card: "bg-[linear-gradient(135deg,#466d58,#5d876f)] text-white",
-        label: "text-[#ffaf00]",
-        meta: "text-[#8dde76]",
-        secondaryButton:
-          "cursor-pointer border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
+        card: "bg-[linear-gradient(135deg,#315b45,#47725a)] text-white",
+        label: "bg-white/14 text-[#dff5e3]",
+        meta: "text-[#bdecc6]",
+        actionButton:
+          "bg-white text-[#0c4c34] shadow-none hover:bg-[#f3faf4]",
       };
     case "on-hold":
       return {
-        card: "bg-[linear-gradient(135deg,#5a6d64,#7a8e83)] text-white",
-        label: "text-[#ffd16f]",
+        card: "bg-[linear-gradient(135deg,#58675e,#73857b)] text-white",
+        label: "bg-white/14 text-[#eef6ef]",
         meta: "text-[#d8eee0]",
-        secondaryButton:
-          "cursor-pointer border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
+        actionButton:
+          "bg-[#e6ebe7] text-[#8b958e] shadow-none hover:bg-[#e6ebe7]",
       };
     case "pending":
       return {
-        card: "bg-[linear-gradient(135deg,#6f9482,#8eafa0)] text-white",
-        label: "text-[#59b4ff]",
-        meta: "text-[#b7f08f]",
-        secondaryButton:
-          "border border-[#cbd6ce] bg-[#f1f1f1] text-[#d7d7d7] cursor-not-allowed",
+        card: "bg-[linear-gradient(135deg,#6f8679,#91a69a)] text-white",
+        label: "bg-white/14 text-[#f1f8f2]",
+        meta: "text-[#dcf0df]",
+        actionButton:
+          "bg-[#e6ebe7] text-[#8b958e] shadow-none hover:bg-[#e6ebe7]",
       };
     default:
       return {
-        card: "bg-[linear-gradient(135deg,#4f7f63,#5e9f79)] text-white",
-        label: "text-[#92db6f]",
-        meta: "text-[#8dde76]",
-        secondaryButton:
-          "cursor-pointer border border-transparent bg-white text-brand hover:bg-[#f3faf4]",
+        card: "bg-[linear-gradient(135deg,#2f7a52,#52946d)] text-white",
+        label: "bg-white/14 text-[#dff5e3]",
+        meta: "text-[#bdecc6]",
+        actionButton:
+          "bg-[#0c4c34] text-white shadow-none hover:bg-[#0a402c]",
       };
   }
 }
@@ -109,13 +109,13 @@ function getStageCardClasses(stage: ProjectStageRecord) {
 function getStageStatusPillClassName(stage: ProjectStageRecord) {
   switch (stage.status) {
     case "completed":
-      return "border-[#c9e8d1] bg-[#eef8ef] text-[#2f8d5d]";
+      return "border-white/25 bg-white/16 text-[#e5f7e8]";
     case "pending":
-      return "border-white/25 bg-white/12 text-white/78";
+      return "border-white/22 bg-white/12 text-white/82";
     case "on-hold":
-      return "border-[#f2d8a7] bg-[#fff6dc] text-[#9b6a17]";
+      return "border-white/24 bg-white/14 text-white/88";
     default:
-      return "border-[#bde8ff] bg-[#eaf7ff] text-[#2477a8]";
+      return "border-white/25 bg-white/16 text-[#e5f7e8]";
   }
 }
 
@@ -126,7 +126,7 @@ export function ProjectDetailWorkspace({
   assetsLoading = false,
   completionLoading = false,
 }: ProjectDetailWorkspaceProps) {
-  const stageGridClasses = "grid-cols-[repeat(auto-fit,minmax(180px,210px))]";
+  const stageGridClasses = "grid-cols-[repeat(auto-fit,minmax(215px,235px))]";
   const shouldShowCompletionLoading =
     completionLoading && project.statusLabel.toLowerCase() === "completed";
 
@@ -179,34 +179,41 @@ export function ProjectDetailWorkspace({
                         ? "This stage is on hold."
                         : "This stage is not active yet.";
                     const stageButtonLabel = stageCompleted ? "View Stage" : "Open Stage";
+                    const disabledStageButtonLabel =
+                      stage.status === "on-hold" ? "On Hold" : "Pending";
+                    const stageStatusLabel =
+                      stage.status === "on-hold" ? "On Hold" : stage.statusLabel;
 
                     return (
                       <MotionItem key={stage.id} y={10} className="min-w-0">
-                        <Card className={`flex min-h-[198px] min-w-0 flex-col overflow-hidden rounded-[10px] p-3.5 ${styles.card}`}>
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            <Badge
-                              variant="secondary"
-                              className={`max-w-full min-w-0 truncate border-none bg-white/12 text-[11px] font-semibold leading-tight ${styles.label}`}
-                            >
-                              {stage.name}
-                            </Badge>
+                        <Card className={`flex h-[260px] min-w-0 flex-col overflow-hidden rounded-[12px] p-3.5 pb-5 shadow-none ${styles.card}`}>
+                          <div className="min-h-[43px] space-y-1.5">
+                            <div className="flex min-w-0 items-center justify-between gap-1.5">
+                              <span className="inline-flex shrink-0 rounded-full border border-white/18 bg-white/16 px-2 py-0.5 text-[10px] font-semibold leading-tight text-white">
+                                Stage {stage.order}
+                              </span>
+                              <Badge
+                                variant="secondary"
+                                className={`min-w-0 max-w-[112px] truncate border-none px-2 py-0.5 text-[10px] font-semibold leading-tight ${styles.label}`}
+                              >
+                                {stage.name}
+                              </Badge>
+                            </div>
                             <span
                               className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-tight ${getStageStatusPillClassName(
                                 stage,
                               )}`}
                             >
-                              {stage.statusLabel}
+                              {stageStatusLabel}
                             </span>
                           </div>
-                          <p className="mt-1 truncate text-[11px] font-medium leading-tight text-white/90">
+                          <p className="mt-2 truncate text-[11px] font-medium leading-tight text-white/90">
                             {stage.subtitle}
                           </p>
-                          {stage.description ? (
-                            <p className="mt-1.5 line-clamp-2 text-[11px] leading-[1.35] text-white/82">
-                              {stage.description}
-                            </p>
-                          ) : null}
-                          <h3 className="mt-2.5 line-clamp-2 min-h-[36px] text-[17px] font-semibold leading-[1.08] tracking-tight text-white">
+                          <p className="mt-2 line-clamp-2 min-h-[30px] text-[11px] leading-[1.35] text-white/82">
+                            {stage.description || "No stage brief added yet."}
+                          </p>
+                          <h3 className="mt-3 line-clamp-2 min-h-[38px] text-[17px] font-semibold leading-[1.1] tracking-tight text-white">
                             {stage.title}
                           </h3>
                           <div className={`mt-2.5 space-y-0.5 text-[11px] font-medium leading-4 ${styles.meta}`}>
@@ -214,15 +221,17 @@ export function ProjectDetailWorkspace({
                             <p>Stage Budget: {stage.budget}</p>
                           </div>
 
-                          <Separator className="mb-3 mt-auto bg-white/12" />
+                          <Separator className="mb-3 mt-auto bg-white/14" />
 
                           {stageOpenable || stageCompleted ? (
                             <Button
                               asChild
-                              className="min-h-9 w-full rounded-full bg-[#0c4c34] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#0a402c]"
+                              className={`min-h-9 w-full justify-center rounded-full px-4 py-2 ${styles.actionButton}`}
                             >
                               <Link href={`/projects/${project.id}/chat?stage=${stage.id}`}>
-                                {stageButtonLabel}
+                                <span className="text-[12px] font-semibold leading-none">
+                                  {stageButtonLabel}
+                                </span>
                               </Link>
                             </Button>
                           ) : (
@@ -230,9 +239,11 @@ export function ProjectDetailWorkspace({
                               type="button"
                               disabled
                               title={stageDisabledTitle}
-                              className="min-h-9 w-full cursor-not-allowed rounded-full bg-[#e8ece8] px-4 py-2 text-[12px] font-semibold text-[#98a09a] shadow-none hover:bg-[#e8ece8] disabled:opacity-100"
+                              className={`min-h-9 w-full cursor-not-allowed justify-center rounded-full px-4 py-2 disabled:opacity-100 ${styles.actionButton}`}
                             >
-                              Open Stage
+                              <span className="text-[12px] font-semibold leading-none">
+                                {disabledStageButtonLabel}
+                              </span>
                             </Button>
                           )}
                         </Card>

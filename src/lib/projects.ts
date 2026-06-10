@@ -155,6 +155,7 @@ export type ProjectStageVisualStatus =
 
 export type ProjectStageRecord = {
   id: string;
+  order: number;
   label: string;
   name: string;
   statusLabel: "Pending" | "Ongoing" | "Completed";
@@ -874,6 +875,7 @@ function mapStageToCard(
 ): ProjectStageRecord {
   return {
     id: stage.id,
+    order: stage.order,
     label: `${stage.name} : ${projectStatusMeta[stage.status].label}`,
     name: stage.name,
     statusLabel: mapStageStatusToDisplayLabel(stage.status),
