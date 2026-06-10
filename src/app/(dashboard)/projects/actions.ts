@@ -19,6 +19,7 @@ import {
   notifyProjectArchived,
   notifyProjectAssignmentChanges,
   notifyRevisionSubmitted,
+  notifyStageInvoiceRequested,
   notifyStageSubmissionReviewDecision,
   notifyStageTransition,
   notifySubmissionWorkflowDecision,
@@ -38,6 +39,7 @@ import {
   completeProjectStage,
   reviewProjectRevision,
   reviewStageSubmission,
+  requestStageInvoice,
   startProjectStageWork,
 } from "@/lib/project-history";
 import {
@@ -64,6 +66,13 @@ type StageCommentInput = {
   body: string;
   allowEmptyBody?: boolean;
   mentionedUserIds?: string[];
+};
+
+type StageInvoiceRequestInput = {
+  projectId: string;
+  stageId: string;
+  requestedFromId: string;
+  note?: string;
 };
 
 type ComparisonCommentInput = {
@@ -284,6 +293,32 @@ export async function acceptStageBriefAction(input: {
         error instanceof Error
           ? error.message
           : "Unable to accept the brief right now.",
+    };
+  }
+}
+
+export async function requestStageInvoiceAction(input: StageInvoiceRequestInput) {
+  const user = await requireUser();
+
+  try {
+    const request = await requestStageInvoice(user, input);
+    revalidateProjectFlow();
+
+    await runNotificationTask("stage-invoice-requested", () =>
+      notifyStageInvoiceRequested({
+        projectId: input.projectId,
+        stageId: input.stageId,
+        recipientUserId: request.requestedFromId,
+      }),
+    );
+
+    return { request };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to request the invoice right now.",
     };
   }
 }

@@ -894,6 +894,35 @@ export async function notifyCopyrightDocumentUploaded(input: {
   });
 }
 
+export async function notifyStageInvoiceRequested(input: {
+  projectId: string;
+  stageId: string;
+  recipientUserId: string;
+}) {
+  const project = await getProjectStageContext(input.projectId, input.stageId);
+  const stage = project?.stages?.[0];
+
+  if (!project || !stage) {
+    return;
+  }
+
+  await createNotificationsForUsers({
+    recipientUserIds: [input.recipientUserId],
+    type: "INVOICE_REQUESTED",
+    title: "Invoice requested",
+    message: `Invoice has been requested for ${project.name} / ${stage.name}.`,
+    entityType: "STAGE",
+    entityId: stage.id,
+    projectId: project.id,
+    stageId: stage.id,
+    url: buildNotificationUrl({
+      kind: "project-stage",
+      projectId: project.id,
+      stageId: stage.id,
+    }),
+  });
+}
+
 export async function notifyInvoiceUploaded(input: {
   projectId: string;
   actorId: string;
