@@ -175,13 +175,10 @@ export type StageHistoryRecord = {
 };
 
 type ActivePendingStageReview =
-  | {
-      kind: "revision";
-      revisionNumber: number;
-    }
-  | {
-      kind: "stageSubmission";
-    };
+  {
+    kind: "revision";
+    revisionNumber: number;
+  };
 
 export type RequestUploadInput = {
   projectId: string;
@@ -270,38 +267,14 @@ async function getStageReviewState(projectId: string, stageId: string) {
     };
   }
 
-  const pendingStageSubmission = await prisma.projectAttachment.findFirst({
-    where: {
-      projectId,
-      stageId,
-      assetType: AttachmentAssetType.STAGE_SUBMISSION,
-      status: {
-        in: [AttachmentStatus.UPLOADING, AttachmentStatus.READY],
-      },
-      submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW,
-      revisionId: null,
-    },
-    select: {
-      id: true,
-    },
-  });
-
   return {
     latestRevisionNumber: latestRevision?.revisionNumber ?? 0,
-    pendingReview: pendingStageSubmission
-      ? ({
-          kind: "stageSubmission",
-        } satisfies ActivePendingStageReview)
-      : null,
+    pendingReview: null,
   };
 }
 
 function getPendingStageReviewMessage(pendingReview: ActivePendingStageReview) {
-  if (pendingReview.kind === "revision") {
-    return `Revision ${pendingReview.revisionNumber} is already pending review. Please wait for the project owner to review it.`;
-  }
-
-  return "A stage submission is already pending review. Please wait for the project owner to review it.";
+  return `Revision ${pendingReview.revisionNumber} is already pending review. Please wait for the project owner to review it.`;
 }
 
 function getDisplayName(user: Pick<User, "name" | "email">) {
@@ -383,7 +356,7 @@ function mapAttachmentRecord(
 
   return {
     id: attachment.id,
-    isSubmission: attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION,
+    isSubmission: submissionNumber !== undefined,
     submissionNumber,
     submissionReviewStatus: attachment.submissionReviewStatus ?? null,
     originalFileName: attachment.originalFileName,
@@ -404,8 +377,11 @@ function buildStageSubmissionNumberMap(
   revisions: StageHistoryQueryRecord[],
   comments: StageCommentQueryRecord[],
 ) {
-  const submissions = [...revisions, ...comments]
-    .flatMap((entry) => entry.attachments)
+  const revisionAttachments = revisions.flatMap((entry) => entry.attachments);
+  const revisionCommentAttachments = comments
+    .filter((entry) => Boolean(entry.revisionId))
+    .flatMap((entry) => entry.attachments);
+  const submissions = [...revisionAttachments, ...revisionCommentAttachments]
     .filter(
       (attachment) =>
         (attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION ||
@@ -1413,16 +1389,8 @@ export async function prepareStageCommentUploads(
       return { error: "Unsupported chat upload type." };
     }
 
-    if (
-      file.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-      !isAllowedSubmissionImage(file.originalFileName, file.mimeType)
-    ) {
-      return buildFileTypeNotAllowedPayload({
-        fileName: file.originalFileName,
-        mimeType: file.mimeType,
-        allowedExtensions: SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
-        error: "Submission file type is not allowed.",
-      });
+    if (file.assetType === AttachmentAssetType.STAGE_SUBMISSION) {
+      return { error: "Use Submit Work to send files for review." };
     }
   }
 
@@ -1490,38 +1458,6 @@ export async function prepareStageCommentUploads(
 
   if (stage.project.archivedAt) {
     return { error: "This project has already been archived." };
-  }
-
-  const hasSubmissionUpload = uploadFiles.some(
-    (file) => file.assetType === AttachmentAssetType.STAGE_SUBMISSION,
-  );
-
-  if (hasSubmissionUpload) {
-    if (!hasProjectPermission(user, project, "file.uploadSubmission")) {
-      return { error: "Only a Main Executor can upload submissions for review." };
-    }
-
-    if (!isMainProjectExecutorUser(stage.project, user.id)) {
-      return { error: "Only a Main Executor can upload submissions for review." };
-    }
-
-    if (!stage.actualStartedAt) {
-      return { error: "Please accept the brief before submitting work." };
-    }
-
-    if (stage.status === "COMPLETED") {
-      return { error: "This stage is already completed." };
-    }
-
-    const reviewState = await withPrismaRetry(() =>
-      getStageReviewState(input.projectId, stage.id),
-    );
-
-    if (reviewState.pendingReview) {
-      return {
-        error: getPendingStageReviewMessage(reviewState.pendingReview),
-      };
-    }
   }
 
   if (
@@ -2844,10 +2780,84 @@ export async function requestAttachmentUpload(
     if (stage.attachments.length > 0) {
       return { error: "An invoice has already been uploaded for this stage." };
     }
-  } else if (
-    input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT ||
-    input.assetType === AttachmentAssetType.STAGE_SUBMISSION
-  ) {
+  } else if (input.assetType === AttachmentAssetType.STAGE_SUBMISSION) {
+    if (input.commentId) {
+      return { error: "Use Submit Work to send files for review." };
+    }
+
+    if (!input.revisionId || !input.stageId) {
+      return { error: "Use Submit Work to send files for review." };
+    }
+
+    const revisionId = input.revisionId;
+    const stageId = input.stageId;
+
+    const revision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          id: revisionId,
+          projectId: input.projectId,
+          stageId,
+        },
+        select: {
+          id: true,
+          stage: {
+            select: {
+              actualStartedAt: true,
+              status: true,
+            },
+          },
+          project: {
+            select: {
+              createdById: true,
+              executorUserId: true,
+              executors: {
+                select: {
+                  userId: true,
+                  role: true,
+                },
+              },
+              status: true,
+              collaborators: {
+                where: {
+                  userId: user.id,
+                },
+                select: {
+                  userId: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    if (!revision) {
+      return { error: "Revision not found." };
+    }
+
+    const project = assertProjectAccessFromContext(user, revision.project);
+
+    if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
+      return { error: "Only a Main Executor can upload submissions for review." };
+    }
+
+    if (!isMainProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only a Main Executor can upload submissions for review." };
+    }
+
+    if (revision.project.status === "COMPLETED") {
+      return { error: "This project is already completed." };
+    }
+
+    if (!revision.stage.actualStartedAt) {
+      return { error: "Please accept the brief before submitting work." };
+    }
+
+    if (revision.stage.status === "COMPLETED") {
+      return { error: "This stage is already completed." };
+    }
+  } else if (input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT) {
     if (!input.commentId || !input.stageId) {
       return { error: "Chat uploads require a valid comment and stage." };
     }
@@ -2901,44 +2911,9 @@ export async function requestAttachmentUpload(
     }
 
     const project = assertProjectAccessFromContext(user, comment.project);
-    const uploadPermissionError =
-      input.assetType === AttachmentAssetType.STAGE_SUBMISSION
-        ? "Only a Main Executor can upload submissions for review."
-        : "You do not have permission to upload chat attachments.";
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
-      return { error: uploadPermissionError };
-    }
-
-    if (
-      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-      !isMainProjectExecutorUser(comment.project, user.id)
-    ) {
-      return { error: "Only a Main Executor can upload submissions for review." };
-    }
-
-    if (
-      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-      !comment.stage.actualStartedAt
-    ) {
-      return { error: "Please accept the brief before submitting work." };
-    }
-
-    if (
-      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-      comment.stage.status === "COMPLETED"
-    ) {
-      return { error: "This stage is already completed." };
-    }
-
-    if (input.assetType === AttachmentAssetType.STAGE_SUBMISSION) {
-      const reviewState = await withPrismaRetry(() =>
-        getStageReviewState(input.projectId, stageId),
-      );
-
-      if (reviewState.pendingReview) {
-        return { error: getPendingStageReviewMessage(reviewState.pendingReview) };
-      }
+      return { error: "You do not have permission to upload chat attachments." };
     }
 
     if (comment.project.status === "COMPLETED") {

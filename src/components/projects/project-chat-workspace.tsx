@@ -100,7 +100,6 @@ import type {
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import {
   SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
-  SUBMISSION_IMAGE_ALLOWED_MIME_TYPES,
   buildFileTypeNotAllowedPayload,
   formatUploadFileTypeError,
   getUploadErrorMessage,
@@ -188,8 +187,6 @@ type UploadAssetType =
   | "STAGE_INVOICE";
 type CommentUploadIntent = "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
 const MAX_RECORDING_DURATION_MS = 60_000;
-const submissionExtensions = new Set<string>(SUBMISSION_IMAGE_ALLOWED_EXTENSIONS);
-const submissionMimeTypes = new Set<string>(SUBMISSION_IMAGE_ALLOWED_MIME_TYPES);
 const submissionDropzoneAccept = {
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],
@@ -206,11 +203,6 @@ const fileTypeStyles: Record<string, string> = {
 
 function getFileBadgeClass(label: string) {
   return fileTypeStyles[label] ?? "bg-[#f8fbf8] text-brand border border-[#dde6de]";
-}
-
-function isSubmissionFile(file: File) {
-  const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
-  return submissionMimeTypes.has(file.type) || submissionExtensions.has(extension);
 }
 
 type UploadIntentDropzoneProps = {
@@ -3227,13 +3219,7 @@ export function ProjectChatWorkspace({
 
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
-
-    if (!canSubmitWorkAsMainExecutor) {
-      commentAttachmentInputRef.current?.click();
-      return;
-    }
-
-    setCommentUploadDialogOpen(true);
+    commentAttachmentInputRef.current?.click();
   }
 
   function handleCommentFilesSelected(files: File[] | FileList | null) {
@@ -3250,40 +3236,7 @@ export function ProjectChatWorkspace({
       return;
     }
 
-    const selectedAssetType: CommentUploadIntent = canSubmitWorkAsMainExecutor
-      ? commentUploadIntent
-      : "COMMENT_ATTACHMENT";
-
-    if (selectedAssetType === "STAGE_SUBMISSION" && !hasAcceptedBrief) {
-      const message = "Please accept the brief before submitting work.";
-      setComposerError(message);
-      showErrorToast("Unable to submit work.", message);
-      return;
-    }
-
-    if (selectedAssetType === "STAGE_SUBMISSION" && isStageCompleted) {
-      const message = "This stage is already completed.";
-      setComposerError(message);
-      showErrorToast("Unable to submit work.", message);
-      return;
-    }
-
-    if (selectedAssetType === "STAGE_SUBMISSION" && hasPendingRevisionReview) {
-      setComposerError(pendingRevisionReviewMessage);
-      showErrorToast("Unable to submit work.", pendingRevisionReviewMessage);
-      return;
-    }
-
-    if (selectedAssetType === "STAGE_SUBMISSION") {
-      const invalidFile = selectedFiles.find((file) => !isSubmissionFile(file));
-
-      if (invalidFile) {
-        setComposerError(
-          "Submissions must be image files because they are used for comparison.",
-        );
-        return;
-      }
-    }
+    const selectedAssetType: CommentUploadIntent = "COMMENT_ATTACHMENT";
 
     setComposerError(null);
     setPendingCommentFiles((current) => [
@@ -5945,11 +5898,10 @@ export function ProjectChatWorkspace({
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
               <div>
                 <CardTitle className="text-[24px] font-semibold tracking-tight text-[#111712]">
-                  Upload file as
+                  Upload attachment
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  Choose whether this file is part of the discussion or a design
-                  submission for this stage.
+                  Attach discussion files here. Use Submit Work to send files for review.
                 </p>
               </div>
               <Button
@@ -5964,15 +5916,7 @@ export function ProjectChatWorkspace({
               </Button>
             </CardHeader>
             <CardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
-              <button
-                type="button"
-                onClick={() => setCommentUploadIntent("COMMENT_ATTACHMENT")}
-                className={`w-full rounded-[22px] border px-5 py-4 text-left transition ${
-                  commentUploadIntent === "COMMENT_ATTACHMENT"
-                    ? "border-brand bg-[#f4fbf5] shadow-[0_10px_24px_rgba(18,35,23,0.06)]"
-                    : "border-line bg-white hover:border-brand/40"
-                }`}
-              >
+              <div className="w-full rounded-[22px] border border-brand bg-[#f4fbf5] px-5 py-4 text-left shadow-[0_10px_24px_rgba(18,35,23,0.06)]">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-[16px] font-semibold text-[#111712]">Attachment</p>
@@ -5981,58 +5925,12 @@ export function ProjectChatWorkspace({
                       discussion files.
                     </p>
                   </div>
-                  <div
-                    className={`mt-1 h-5 w-5 rounded-full border ${
-                      commentUploadIntent === "COMMENT_ATTACHMENT"
-                        ? "border-brand bg-brand"
-                        : "border-[#cfd8cf] bg-white"
-                    }`}
-                  />
+                  <div className="mt-1 h-5 w-5 rounded-full border border-brand bg-brand" />
                 </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!hasAcceptedBrief || isStageCompleted || hasPendingRevisionReview) {
-                    return;
-                  }
-
-                  setCommentUploadIntent("STAGE_SUBMISSION");
-                }}
-                disabled={!hasAcceptedBrief || isStageCompleted || hasPendingRevisionReview}
-                className={`w-full rounded-[22px] border px-5 py-4 text-left transition ${
-                  commentUploadIntent === "STAGE_SUBMISSION"
-                    ? "border-brand bg-[#f4fbf5] shadow-[0_10px_24px_rgba(18,35,23,0.06)]"
-                    : "border-line bg-white hover:border-brand/40"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[16px] font-semibold text-[#111712]">Submission</p>
-                    <p className="mt-1 text-[13px] leading-5 text-[#697169]">
-                      Use for design output that will be compared with other
-                      submissions in this same stage. Images only.
-                    </p>
-                  </div>
-                  <div
-                    className={`mt-1 h-5 w-5 rounded-full border ${
-                      commentUploadIntent === "STAGE_SUBMISSION"
-                        ? "border-brand bg-brand"
-                        : "border-[#cfd8cf] bg-white"
-                    }`}
-                  />
-                </div>
-              </button>
+              </div>
 
               <div className="rounded-[18px] border border-[#e4e8e3] bg-[#fafcf9] px-4 py-3 text-[12px] text-[#657067]">
-                {isStageCompleted
-                  ? "This stage is completed. New submissions are locked."
-                  : hasPendingRevisionReview
-                  ? pendingRevisionReviewMessage
-                  : hasAcceptedBrief
-                  ? "Submissions must be PNG, JPG, JPEG, or WebP images."
-                  : "Accept the brief before submitting work files for review."}
+                Use Submit Work to send files for review.
               </div>
 
               <div className="flex flex-col gap-3">

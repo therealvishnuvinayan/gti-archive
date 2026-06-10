@@ -9,9 +9,7 @@ import {
 } from "@/lib/project-history";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
-function isChatUploadAssetType(
-  value: unknown,
-): value is "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION" {
+function isRecognizedChatUploadRequestAssetType(value: unknown) {
   return (
     value === AttachmentAssetType.COMMENT_ATTACHMENT ||
     value === AttachmentAssetType.STAGE_SUBMISSION
@@ -45,10 +43,21 @@ export async function POST(request: Request) {
         !file.originalFileName ||
         !file.mimeType ||
         typeof file.fileSize !== "number" ||
-        !isChatUploadAssetType(file.assetType),
+        !isRecognizedChatUploadRequestAssetType(file.assetType),
     )
   ) {
     return NextResponse.json({ error: "Missing required upload fields." }, { status: 400 });
+  }
+
+  if (
+    payload.files.some(
+      (file) => file.assetType === AttachmentAssetType.STAGE_SUBMISSION,
+    )
+  ) {
+    return NextResponse.json(
+      { error: "Use Submit Work to send files for review." },
+      { status: 400 },
+    );
   }
 
   const result = await prepareStageCommentUploads(user, {
