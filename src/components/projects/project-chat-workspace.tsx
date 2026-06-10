@@ -1804,12 +1804,14 @@ export function ProjectChatWorkspace({
     [currentUserId, project.executorUserId, project.executors],
   );
   const canSubmitWorkAsMainExecutor = isMainProjectExecutor && !isProjectOwner;
+  const stageInvoiceRequired = Boolean(activeStage?.invoiceRequired);
+  const stageInvoiceMissing =
+    stageInvoiceRequired && !stageInvoiceAttachment && !isStageCompleted && !isProjectCompleted;
   const canUploadStageInvoice =
     Boolean(activeStage?.id) &&
-    Boolean(activeStage?.invoiceRequired) &&
+    stageInvoiceRequired &&
     !stageInvoiceAttachment &&
-    isMainProjectExecutor &&
-    !isProjectOwner &&
+    (isProjectOwner || isProjectExecutor) &&
     !isStageCompleted &&
     !isProjectCompleted;
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
@@ -3783,6 +3785,23 @@ export function ProjectChatWorkspace({
     }
   }
 
+  function openStageInvoiceUpload() {
+    setStageInvoiceError(null);
+    setReviewDialogError(null);
+    setStageCompleteError(null);
+
+    if (!canUploadStageInvoice) {
+      const message = stageInvoiceRequired
+        ? "Only the project owner or an executor can upload the invoice for this stage."
+        : "Invoice is not required for this stage.";
+      setStageInvoiceError(message);
+      showErrorToast("Unable to upload invoice.", message);
+      return;
+    }
+
+    stageInvoiceInputRef.current?.click();
+  }
+
   async function handleStageInvoiceSelected(files: FileList | null) {
     const invoiceFile = Array.from(files ?? [])[0] ?? null;
     const activeStageId = activeStage?.id;
@@ -3803,7 +3822,9 @@ export function ProjectChatWorkspace({
     }
 
     if (!canUploadStageInvoice) {
-      const message = "Only a Main Executor can upload the invoice for this stage.";
+      const message = stageInvoiceRequired
+        ? "Only the project owner or an executor can upload the invoice for this stage."
+        : "Invoice is not required for this stage.";
       setStageInvoiceError(message);
       showErrorToast("Unable to upload invoice.", message);
       return;
@@ -5076,10 +5097,7 @@ export function ProjectChatWorkspace({
                     size="sm"
                     className="min-w-[150px] text-[13px]"
                     disabled={isUploadingStageInvoice}
-                    onClick={() => {
-                      setStageInvoiceError(null);
-                      stageInvoiceInputRef.current?.click();
-                    }}
+                    onClick={openStageInvoiceUpload}
                   >
                     {isUploadingStageInvoice ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -5091,7 +5109,8 @@ export function ProjectChatWorkspace({
                 </div>
               ) : (
                 <p className="text-[13px] leading-5 text-[#6f786f]">
-                  Waiting for Main Executor to upload invoice.
+                  Stage invoice is required before completion. Project owner or executor
+                  access is required to upload it.
                 </p>
               )}
               {stageInvoiceError ? (
@@ -5234,18 +5253,29 @@ export function ProjectChatWorkspace({
       <ConfirmationDialog
         isOpen={reviewCompleteDialogOpen}
         title={
-          reviewCompletionIsFinalStage
+          stageInvoiceMissing
+            ? "Invoice required"
+            : reviewCompletionIsFinalStage
             ? "Approve final submission?"
             : "Mark stage as complete?"
         }
         description={
-          reviewCompletionIsFinalStage
+          stageInvoiceMissing
+            ? "Upload the stage invoice before completing this stage."
+            : reviewCompletionIsFinalStage
             ? "This will approve the submitted revision and complete the final stage. Project completion and final archive happen after all stages are complete."
             : "This will mark the submitted revision as completed, complete the current stage, and make the next stage available."
         }
-        confirmLabel={reviewCompletionIsFinalStage ? "Approve Submission" : "Mark as Complete"}
-        pending={Boolean(pendingRevisionReviewId)}
-        error={reviewDialogError ?? undefined}
+        confirmLabel={
+          stageInvoiceMissing
+            ? "Upload Invoice"
+            : reviewCompletionIsFinalStage
+            ? "Approve Submission"
+            : "Mark as Complete"
+        }
+        pending={stageInvoiceMissing ? isUploadingStageInvoice : Boolean(pendingRevisionReviewId)}
+        confirmDisabled={stageInvoiceMissing && !canUploadStageInvoice}
+        error={(stageInvoiceMissing ? stageInvoiceError : reviewDialogError) ?? undefined}
         onClose={() => {
           if (pendingRevisionReviewId) {
             return;
@@ -5255,21 +5285,36 @@ export function ProjectChatWorkspace({
           setReviewCompleteDialogOpen(false);
         }}
         onConfirm={() => {
+          if (stageInvoiceMissing) {
+            openStageInvoiceUpload();
+            return;
+          }
+
           void handleRevisionReview("APPROVED");
         }}
       />
       <ConfirmationDialog
         isOpen={stageCompleteDialogOpen}
-        title="Mark Stage Complete"
-        description="This will mark the current stage as completed. Only the project owner can do this."
-        confirmLabel="Mark as Complete"
-        pending={isMarkingStageComplete}
-        error={stageCompleteError ?? undefined}
+        title={stageInvoiceMissing ? "Invoice required" : "Mark Stage Complete"}
+        description={
+          stageInvoiceMissing
+            ? "Upload the stage invoice before completing this stage."
+            : "This will mark the current stage as completed. Only the project owner can do this."
+        }
+        confirmLabel={stageInvoiceMissing ? "Upload Invoice" : "Mark as Complete"}
+        pending={stageInvoiceMissing ? isUploadingStageInvoice : isMarkingStageComplete}
+        confirmDisabled={stageInvoiceMissing && !canUploadStageInvoice}
+        error={(stageInvoiceMissing ? stageInvoiceError : stageCompleteError) ?? undefined}
         onClose={() => {
           setStageCompleteError(null);
           setStageCompleteDialogOpen(false);
         }}
         onConfirm={() => {
+          if (stageInvoiceMissing) {
+            openStageInvoiceUpload();
+            return;
+          }
+
           void handleMarkStageComplete();
         }}
       />
@@ -5812,6 +5857,67 @@ export function ProjectChatWorkspace({
                   />
                 </div>
               ) : null}
+              {stageInvoiceRequired ? (
+                <div className="rounded-[20px] border border-[#dfe8df] bg-[#fbfcfa] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
+                        Stage Invoice
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                            stageInvoiceAttachment
+                              ? "bg-[#edf7ef] text-[#2b8b56]"
+                              : "bg-[#fff8eb] text-[#b77420]"
+                          }`}
+                        >
+                          Required · {stageInvoiceAttachment ? "Uploaded" : "Missing"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[13px] leading-5 text-[#5f6b62]">
+                        {stageInvoiceAttachment
+                          ? "The stage invoice is uploaded. This submission can be completed."
+                          : "Stage invoice required before completion."}
+                      </p>
+                    </div>
+                    {!stageInvoiceAttachment && canUploadStageInvoice ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={openStageInvoiceUpload}
+                        disabled={isUploadingStageInvoice}
+                        className="shrink-0"
+                      >
+                        {isUploadingStageInvoice ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        Upload Invoice
+                      </Button>
+                    ) : null}
+                  </div>
+                  {stageInvoiceAttachment ? (
+                    <div className="mt-3">
+                      <AttachmentHistoryList
+                        attachments={[stageInvoiceAttachment]}
+                        compact
+                        actionsDisabled={isProjectCompleted}
+                      />
+                    </div>
+                  ) : !canUploadStageInvoice ? (
+                    <p className="mt-3 rounded-[14px] border border-[#efd9af] bg-[#fffaf0] px-3 py-2 text-[12px] leading-5 text-[#775a2e]">
+                      Project owner or executor access is required to upload the invoice.
+                    </p>
+                  ) : null}
+                  {stageInvoiceError ? (
+                    <p className="mt-3 rounded-[14px] border border-[#f3c6c2] bg-[#fff5f3] px-3 py-2 text-[12px] leading-5 text-[#a64038]">
+                      {stageInvoiceError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {reviewRejectMode ? (
                 <div className="space-y-2">
                   <p className="text-[13px] font-semibold text-[#2d372f]">
@@ -5854,7 +5960,7 @@ export function ProjectChatWorkspace({
                         setReviewDialogError(null);
                         setReviewCompleteDialogOpen(true);
                       }}
-                      disabled={Boolean(pendingRevisionReviewId)}
+                      disabled={Boolean(pendingRevisionReviewId) || stageInvoiceMissing}
                     >
                       {reviewCompletionIsFinalStage ? "Approve Submission" : "Mark as Complete"}
                     </Button>

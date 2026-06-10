@@ -4,6 +4,7 @@ import {
   ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
+  ProjectExecutionType,
   ProjectStatus,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
@@ -640,6 +641,7 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
         },
         status: true,
         archivedAt: true,
+        executionType: true,
         currency: true,
         budget: true,
         endDate: true,
@@ -734,14 +736,22 @@ function getUploadPermissionKey(assetType: AttachmentAssetType): PermissionKey {
   switch (assetType) {
     case AttachmentAssetType.STAGE_SUBMISSION:
     case AttachmentAssetType.REVISION_ORIGINAL:
-    case AttachmentAssetType.STAGE_INVOICE:
       return "file.uploadSubmission";
+    case AttachmentAssetType.STAGE_INVOICE:
+      return "completion.uploadInvoice";
     case AttachmentAssetType.COMMENT_ATTACHMENT:
       return "chat.uploadAttachment";
     case AttachmentAssetType.GENERAL_PROJECT_ASSET:
     default:
       return "library.uploadAsset";
   }
+}
+
+function isStageInvoiceRequired(
+  project: { executionType: ProjectExecutionType },
+  stage: { invoiceRequired: boolean },
+) {
+  return project.executionType === ProjectExecutionType.EXTERNAL && stage.invoiceRequired;
 }
 
 function resolveStageId(
@@ -1975,7 +1985,10 @@ export async function completeProjectStage(
     };
   }
 
-  if (stage.invoiceRequired && !(await hasReadyStageInvoice(input.projectId, stage.id))) {
+  if (
+    isStageInvoiceRequired(project, stage) &&
+    !(await hasReadyStageInvoice(input.projectId, stage.id))
+  ) {
     throw new Error("Invoice is required before completing this stage.");
   }
 
@@ -2071,6 +2084,7 @@ export async function reviewStageSubmission(
         project: {
           select: {
             createdById: true,
+            executionType: true,
             status: true,
           },
         },
@@ -2169,6 +2183,7 @@ export async function reviewProjectRevision(
         project: {
           select: {
             createdById: true,
+            executionType: true,
             status: true,
           },
         },
@@ -2215,7 +2230,7 @@ export async function reviewProjectRevision(
   if (
     input.status === "APPROVED" &&
     revision.stage.status !== "COMPLETED" &&
-    revision.stage.invoiceRequired &&
+    isStageInvoiceRequired(revision.project, revision.stage) &&
     !(await hasReadyStageInvoice(input.projectId, revision.stageId))
   ) {
     throw new Error("Invoice is required before completing this stage.");
@@ -2542,6 +2557,7 @@ export async function requestAttachmentUpload(
               },
               status: true,
               archivedAt: true,
+              executionType: true,
               collaborators: {
                 where: {
                   userId: user.id,
@@ -2563,15 +2579,9 @@ export async function requestAttachmentUpload(
     const project = assertProjectAccessFromContext(user, stage.project);
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
-      return { error: "Only a Main Executor can upload the invoice for this stage." };
-    }
-
-    if (stage.project.createdById === user.id) {
-      return { error: "Only a Main Executor can upload the invoice for this stage." };
-    }
-
-    if (!isMainProjectExecutorUser(stage.project, user.id)) {
-      return { error: "Only a Main Executor can upload the invoice for this stage." };
+      return {
+        error: "Only the project owner or an executor can upload the invoice for this stage.",
+      };
     }
 
     if (stage.project.status === "COMPLETED") {
@@ -2586,7 +2596,7 @@ export async function requestAttachmentUpload(
       return { error: "This stage is already completed." };
     }
 
-    if (!stage.invoiceRequired) {
+    if (!isStageInvoiceRequired(stage.project, stage)) {
       return { error: "Invoice is not required for this stage." };
     }
 
@@ -2851,6 +2861,7 @@ export async function completeAttachmentUpload(
             },
             status: true,
             archivedAt: true,
+            executionType: true,
           },
         },
         stage: {
@@ -2876,18 +2887,6 @@ export async function completeAttachmentUpload(
   }
 
   if (attachment.assetType === AttachmentAssetType.STAGE_INVOICE) {
-    if (!hasProjectPermission(user, project, "file.uploadSubmission")) {
-      throw new Error("Only a Main Executor can upload the invoice for this stage.");
-    }
-
-    if (attachment.project.createdById === user.id) {
-      throw new Error("Only a Main Executor can upload the invoice for this stage.");
-    }
-
-    if (!isMainProjectExecutorUser(attachment.project, user.id)) {
-      throw new Error("Only a Main Executor can upload the invoice for this stage.");
-    }
-
     if (attachment.uploadedById !== user.id) {
       throw new Error("Only the invoice uploader can complete this upload.");
     }
@@ -2908,7 +2907,7 @@ export async function completeAttachmentUpload(
       throw new Error("This stage is already completed.");
     }
 
-    if (!attachment.stage.invoiceRequired) {
+    if (!isStageInvoiceRequired(attachment.project, attachment.stage)) {
       throw new Error("Invoice is not required for this stage.");
     }
 

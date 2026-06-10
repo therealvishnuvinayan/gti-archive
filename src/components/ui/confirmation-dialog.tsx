@@ -13,6 +13,7 @@ type ConfirmationDialogProps = {
   cancelLabel?: string;
   tone?: "default" | "destructive";
   pending?: boolean;
+  confirmDisabled?: boolean;
   error?: string;
   onConfirm: () => void;
   onClose: () => void;
@@ -26,6 +27,7 @@ export function ConfirmationDialog({
   cancelLabel = "Cancel",
   tone = "default",
   pending = false,
+  confirmDisabled = false,
   error,
   onConfirm,
   onClose,
@@ -80,7 +82,7 @@ export function ConfirmationDialog({
               type="button"
               variant={tone === "destructive" ? "destructive" : "default"}
               onClick={onConfirm}
-              disabled={pending}
+              disabled={pending || confirmDisabled}
               className="sm:min-w-[148px]"
             >
               {pending ? "Working..." : confirmLabel}
