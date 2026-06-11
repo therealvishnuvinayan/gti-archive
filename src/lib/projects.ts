@@ -14,6 +14,7 @@ import type {
   Project,
   ProjectCollaborator,
   ProjectExecutor,
+  ProjectTag,
   ProjectStage,
   ProjectStatus,
   User,
@@ -54,6 +55,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 export const PROJECTS_CACHE_TAG = "projects";
 export const INTERNAL_EXECUTION_NOT_REQUIRED_LABEL =
   "Not required for internal execution";
+export const MAX_PROJECT_TAGS = 5;
 
 type BudgetAccessUser = Pick<User, "id">;
 export type ProjectAccessUser = PermissionUser;
@@ -74,6 +76,9 @@ type ProjectStageWithStarter = ProjectStage & {
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
+  tags?: Array<{
+    tag: Pick<ProjectTag, "id" | "name" | "color">;
+  }>;
   executorUser?: Pick<User, "id" | "name" | "email" | "collaboratorType"> | null;
   executors?: Array<
     ProjectExecutor & {
@@ -117,6 +122,7 @@ export type ProjectCardRecord = {
   id: string;
   stage: string;
   category: string;
+  tags: string[];
   title: string;
   createdOn: string;
   createdBy: string;
@@ -134,7 +140,7 @@ export type ProjectEditorRecord = {
   executorName: string;
   executorUserId?: string | null;
   executors: ProjectExecutorRecord[];
-  tag: string;
+  tags: string[];
   priority: ProjectPriorityValue;
   description: string;
   executionType: ProjectExecutionType;
@@ -323,7 +329,7 @@ export type ProjectFlowRecord = {
   endDate: string;
   createdOn: string;
   createdBy: string;
-  tag: string;
+  tags: string[];
   priority: string;
   stageCards: ProjectStageRecord[];
   collaborators: ProjectCollaboratorRecord[];
@@ -443,6 +449,47 @@ function getCreatorName(creator: Pick<User, "name" | "email">) {
   }
 
   return creator.email;
+}
+
+function uniqueTrimmedValues(values: Array<string | null | undefined>) {
+  const normalized = new Map<string, string>();
+
+  values.forEach((value) => {
+    const trimmedValue = value?.trim();
+
+    if (!trimmedValue) {
+      return;
+    }
+
+    const key = trimmedValue.toLowerCase();
+    if (!normalized.has(key)) {
+      normalized.set(key, trimmedValue);
+    }
+  });
+
+  return [...normalized.values()];
+}
+
+function getProjectTagNames(
+  project: {
+    tags?: Array<{
+      tag: Pick<ProjectTag, "name">;
+    }>;
+  },
+) {
+  const relationTags =
+    project.tags
+      ?.map((assignment) => assignment.tag.name)
+      .filter((tagName) => tagName.trim())
+      .sort((left, right) =>
+        left.localeCompare(right, undefined, { sensitivity: "base" }),
+      ) ?? [];
+
+  return uniqueTrimmedValues(relationTags);
+}
+
+function formatProjectTagsLabel(tags: string[]) {
+  return tags.length > 0 ? tags.join(", ") : "—";
 }
 
 function formatAttachmentTimestamp(date: Date | string | number) {
@@ -843,10 +890,13 @@ function mapProjectToCard(
   project: ProjectWithCreator,
   currentUser: ProjectAccessUser,
 ): ProjectCardRecord {
+  const tags = getProjectTagNames(project);
+
   return {
     id: project.id,
     stage: formatProjectStageLabel(project),
     category: project.category,
+    tags,
     title: project.name,
     createdOn: formatProjectDate(project.createdAt),
     createdBy: getCreatorName(project.createdBy),
@@ -963,6 +1013,7 @@ function mapProjectToFlow(
     .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
   const stageBriefAttachmentMap = new Map<string, ProjectAttachmentRecord[]>();
   const stageInvoiceAttachmentMap = new Map<string, ProjectAttachmentRecord>();
+  const tags = getProjectTagNames(project);
 
   project.attachments
     .filter(isStageBriefAttachment)
@@ -1053,7 +1104,7 @@ function mapProjectToFlow(
     endDate: formatProjectDate(project.endDate),
     createdOn: formatProjectDate(project.createdAt),
     createdBy: creatorName,
-    tag: project.tag?.trim() || "—",
+    tags,
     priority: formatProjectPriority(project.priority ?? DEFAULT_PROJECT_PRIORITY),
     stageCards: stages.map((stage) => ({
       ...mapStageToCard(
@@ -1129,6 +1180,7 @@ function mapProjectToEditor(
   const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
+  const tags = getProjectTagNames(project);
   const projectBriefAttachments = project.attachments
     .filter(isProjectBriefAttachment)
     .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
@@ -1156,7 +1208,7 @@ function mapProjectToEditor(
     executorName: executorDisplayName,
     executorUserId: project.executorUserId ?? null,
     executors: executorRecords,
-    tag: project.tag?.trim() || "",
+    tags,
     priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
     description: allowBriefView ? project.description : "",
     executionType: project.executionType,
@@ -1702,128 +1754,146 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
     filter.status === "ALL" || !filter.status
       ? undefined
       : filter.status;
+  const clauses: Prisma.ProjectWhereInput[] = [];
 
-  return {
-    ...(statusWhere
-      ? {
-          status: statusWhere,
-        }
-      : {}),
-    ...(query
-      ? {
-          OR: [
-            {
+  if (statusWhere) {
+    clauses.push({ status: statusWhere });
+  }
+
+  if (query) {
+    clauses.push({
+      OR: [
+        {
+          name: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          category: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          tags: {
+            some: {
+              tag: {
+                is: {
+                  name: {
+                    contains: query,
+                    mode: "insensitive",
+                  },
+                },
+              },
+            },
+          },
+        },
+        {
+          createdBy: {
+            is: {
               name: {
                 contains: query,
-                mode: "insensitive" as const,
+                mode: "insensitive",
               },
             },
-            {
-              category: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              tag: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              createdBy: {
-                is: {
-                  name: {
-                    contains: query,
-                    mode: "insensitive" as const,
-                  },
-                },
-              },
-            },
-            {
-              createdBy: {
-                is: {
-                  email: {
-                    contains: query,
-                    mode: "insensitive" as const,
-                  },
-                },
-              },
-            },
-            {
-              executorName: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              executorUser: {
-                is: {
-                  name: {
-                    contains: query,
-                    mode: "insensitive" as const,
-                  },
-                },
-              },
-            },
-            {
-              executorUser: {
-                is: {
-                  email: {
-                    contains: query,
-                    mode: "insensitive" as const,
-                  },
-                },
-              },
-            },
-            {
-              executors: {
-                some: {
-                  user: {
-                    is: {
-                      name: {
-                        contains: query,
-                        mode: "insensitive" as const,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            {
-              executors: {
-                some: {
-                  user: {
-                    is: {
-                      email: {
-                        contains: query,
-                        mode: "insensitive" as const,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          ],
-        }
-      : {}),
-    ...(category
-      ? {
-          category: {
-            equals: category,
-            mode: "insensitive" as const,
           },
-        }
-      : {}),
-    ...(tag
-      ? {
+        },
+        {
+          createdBy: {
+            is: {
+              email: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        {
+          executorName: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          executorUser: {
+            is: {
+              name: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        {
+          executorUser: {
+            is: {
+              email: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        {
+          executors: {
+            some: {
+              user: {
+                is: {
+                  name: {
+                    contains: query,
+                    mode: "insensitive",
+                  },
+                },
+              },
+            },
+          },
+        },
+        {
+          executors: {
+            some: {
+              user: {
+                is: {
+                  email: {
+                    contains: query,
+                    mode: "insensitive",
+                  },
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  if (category) {
+    clauses.push({
+      category: {
+        equals: category,
+        mode: "insensitive",
+      },
+    });
+  }
+
+  if (tag) {
+    clauses.push({
+      tags: {
+        some: {
           tag: {
-            equals: tag,
-            mode: "insensitive" as const,
+            is: {
+              name: {
+                equals: tag,
+                mode: "insensitive",
+              },
+            },
           },
-        }
-      : {}),
-  };
+        },
+      },
+    });
+  }
+
+  return clauses.length > 0 ? { AND: clauses } : {};
 }
 
 export async function getProjectListFilterOptions(
@@ -1837,7 +1907,11 @@ export async function getProjectListFilterOptions(
           where: accessibleWhere,
           select: {
             category: true,
-            tag: true,
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
           },
         }),
       ),
@@ -1858,8 +1932,7 @@ export async function getProjectListFilterOptions(
       categories.set(normalizedCategory.toLowerCase(), normalizedCategory);
     }
 
-    const normalizedTag = project.tag?.trim();
-    if (normalizedTag) {
+    for (const normalizedTag of getProjectTagNames(project)) {
       tags.set(normalizedTag.toLowerCase(), normalizedTag);
     }
   }
@@ -1938,7 +2011,11 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
             name: true,
             status: true,
             category: true,
-            tag: true,
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdAt: true,
           },
         }),
@@ -1952,18 +2029,23 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
-  return projects.map((project, index) => ({
-    id: project.id,
-    name: project.name,
-    statusLabel: projectStatusMeta[project.status].dashboardLabel,
-    meta: [
-      project.category,
-      project.tag?.trim() || null,
-      `Created ${formatProjectDate(project.createdAt)}`,
-    ].filter(Boolean).join(" • "),
-    href: `/projects/${project.id}`,
-    tone: index < 2 ? "brand" : index < 4 ? "deep" : "muted",
-  })) as {
+  return projects.map((project, index) => {
+    const tags = getProjectTagNames(project);
+    const tagLabel = formatProjectTagsLabel(tags);
+
+    return {
+      id: project.id,
+      name: project.name,
+      statusLabel: projectStatusMeta[project.status].dashboardLabel,
+      meta: [
+        project.category,
+        tagLabel === "—" ? null : tagLabel,
+        `Created ${formatProjectDate(project.createdAt)}`,
+      ].filter(Boolean).join(" • "),
+      href: `/projects/${project.id}`,
+      tone: index < 2 ? "brand" : index < 4 ? "deep" : "muted",
+    };
+  }) as {
     id: string;
     name: string;
     statusLabel: string;
@@ -2000,6 +2082,11 @@ export async function getProjectsList(
             ],
           },
           include: {
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdBy: {
               select: {
                 name: true,
@@ -2079,6 +2166,11 @@ export async function getProjectById(
         prisma.project.findUnique({
           where: { id },
           include: {
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdBy: {
               select: {
                 name: true,
@@ -2221,6 +2313,11 @@ export async function getProjectShellById(
         prisma.project.findUnique({
           where: { id },
           include: {
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdBy: {
               select: {
                 name: true,
@@ -2322,6 +2419,11 @@ export async function getProjectEditorById(
         prisma.project.findUnique({
           where: { id },
           include: {
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdBy: {
               select: {
                 name: true,

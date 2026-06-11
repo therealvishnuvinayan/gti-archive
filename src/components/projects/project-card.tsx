@@ -24,6 +24,7 @@ export type ProjectCardItem = {
   id: string;
   stage: string;
   category: string;
+  tags: string[];
   title: string;
   createdOn: string;
   createdBy: string;
@@ -47,6 +48,8 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
   const projectHref = returnHref
     ? `/projects/${project.id}?returnTo=${encodeURIComponent(returnHref)}`
     : `/projects/${project.id}`;
+  const visibleTags = project.tags.slice(0, 3);
+  const hiddenTagCount = Math.max(project.tags.length - visibleTags.length, 0);
 
   function handleTogglePin() {
     setPinError(undefined);
@@ -102,6 +105,35 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
               >
                 {project.category}
               </p>
+              {project.tags.length > 0 ? (
+                <div className="flex min-w-0 flex-wrap gap-1.5">
+                  {visibleTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className={`max-w-[138px] truncate rounded-full px-2.5 py-1 text-[11px] font-[700] ${
+                        project.isPinned
+                          ? "bg-white/14 text-[#ecfff0]"
+                          : "bg-[#edf7ef] text-[#2d8055]"
+                      }`}
+                      title={tag}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                  {hiddenTagCount > 0 ? (
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-[800] ${
+                        project.isPinned
+                          ? "bg-white/14 text-[#ecfff0]"
+                          : "bg-[#f4f7f4] text-[#5d685f]"
+                      }`}
+                      title={project.tags.join(", ")}
+                    >
+                      +{hiddenTagCount}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {project.canPin || project.canEdit || project.canDelete ? (

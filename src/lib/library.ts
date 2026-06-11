@@ -89,7 +89,11 @@ type RawLibraryAttachment = {
   project: {
     id: string;
     name: string;
-    tag: string | null;
+    tags?: Array<{
+      tag: {
+        name: string;
+      };
+    }>;
     createdById: string;
     executorUserId: string | null;
     executors: Array<{
@@ -170,6 +174,45 @@ function formatLibraryDate(date: Date) {
 function normalizeOptionalLibraryText(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeLibraryProjectTags(values: Array<string | null | undefined>) {
+  const normalized = new Map<string, string>();
+
+  values.forEach((value) => {
+    const trimmedValue = value?.trim();
+
+    if (!trimmedValue) {
+      return;
+    }
+
+    const key = trimmedValue.toLowerCase();
+    if (!normalized.has(key)) {
+      normalized.set(key, trimmedValue);
+    }
+  });
+
+  return [...normalized.values()];
+}
+
+function splitLibraryProjectTagSnapshot(value: string | null | undefined) {
+  return normalizeLibraryProjectTags((value ?? "").split(","));
+}
+
+function getLibraryProjectTagNames(project: RawLibraryAttachment["project"]) {
+  const relationTags =
+    project.tags
+      ?.map((assignment) => assignment.tag.name)
+      .filter((tagName) => tagName.trim())
+      .sort((left, right) =>
+        left.localeCompare(right, undefined, { sensitivity: "base" }),
+      ) ?? [];
+
+  return normalizeLibraryProjectTags(relationTags);
+}
+
+function formatLibraryProjectTagsLabel(tags: string[]) {
+  return tags.length > 0 ? tags.join(", ") : null;
 }
 
 function resolveManualLibraryAssetName(assetName: string, originalFileName: string) {
@@ -319,6 +362,7 @@ function mapAttachmentToLibraryItem(
     ? "Invoice/Quotation"
     : getLibraryTypeLabel(attachment.originalFileName, attachment.mimeType);
   const isFinance = isStageInvoice || isFinanceLibraryFile(attachment.originalFileName);
+  const projectTags = getLibraryProjectTagNames(attachment.project);
 
   return {
     id: attachment.id,
@@ -326,7 +370,8 @@ function mapAttachmentToLibraryItem(
     fileName: attachment.originalFileName,
     projectId: attachment.projectId,
     projectName: attachment.project.name,
-    projectTag: attachment.project.tag?.trim() || null,
+    projectTag: formatLibraryProjectTagsLabel(projectTags),
+    projectTags,
     uploadedAt: formatLibraryDate(attachment.createdAt),
     uploadedAtValue: attachment.createdAt.toISOString(),
     createdBy: getLibraryUserDisplayName(attachment.uploadedBy),
@@ -350,6 +395,7 @@ function mapManualAssetToLibraryItem(
   const isFinance = asset.category === "QUOTATION_INVOICE" || isFinanceLibraryFile(asset.assetName);
   const createdByName =
     asset.createdByName?.trim() || getLibraryUserDisplayName(asset.uploadedBy);
+  const projectTags = splitLibraryProjectTagSnapshot(asset.tag);
 
   return {
     id: asset.id,
@@ -357,7 +403,8 @@ function mapManualAssetToLibraryItem(
     fileName: asset.assetName,
     projectId: asset.category ? `manual-library-${asset.category}` : "manual-library",
     projectName: categoryLabel,
-    projectTag: asset.tag?.trim() || null,
+    projectTag: formatLibraryProjectTagsLabel(projectTags),
+    projectTags,
     uploadedAt: formatLibraryDate(asset.uploadedAt),
     uploadedAtValue: asset.uploadedAt.toISOString(),
     createdBy: createdByName,
@@ -447,6 +494,7 @@ function applyLibraryFilters(
         item.fileName,
         item.projectName,
         item.projectTag ?? "",
+        ...item.projectTags,
         item.createdBy,
         item.createdByEmail,
         item.type,
@@ -523,7 +571,11 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
           select: {
             id: true,
             name: true,
-            tag: true,
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdById: true,
             executorUserId: true,
             executors: {

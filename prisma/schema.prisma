@@ -299,7 +299,6 @@ model Project {
   id               String        @id @default(cuid())
   name             String
   category         String
-  tag              String?
   executorName     String?
   executorUserId   String?
   executorUser     User?         @relation("ProjectExecutor", fields: [executorUserId], references: [id], onDelete: SetNull)
@@ -317,6 +316,7 @@ model Project {
   createdBy        User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   isPinned         Boolean       @default(false)
   stages           ProjectStage[]
+  tags             ProjectTagAssignment[]
   revisions        ProjectRevision[]
   comments         ProjectComment[]
   comparisonComments ComparisonComment[]
@@ -357,8 +357,20 @@ model ProjectTag {
   description String?
   color       String?
   isActive    Boolean  @default(true)
+  projects    ProjectTagAssignment[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model ProjectTagAssignment {
+  projectId String
+  tagId     String
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tag       ProjectTag @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  createdAt DateTime  @default(now())
+
+  @@id([projectId, tagId])
+  @@index([tagId])
 }
 
 model ProjectCurrency {

@@ -614,10 +614,26 @@ export function LibraryWorkspace({
                             <p className="font-[700] leading-[1.25] text-[#18211a]">
                               {item.fileName}
                             </p>
-                            {item.projectTag ? (
-                              <p className="mt-1 text-[11px] text-[#7a847d]">
-                                Tag: {item.projectTag}
-                              </p>
+                            {item.projectTags.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {item.projectTags.slice(0, 3).map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
+                                    title={tag}
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                                {item.projectTags.length > 3 ? (
+                                  <span
+                                    className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
+                                    title={item.projectTag ?? undefined}
+                                  >
+                                    +{item.projectTags.length - 3}
+                                  </span>
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
                         </td>

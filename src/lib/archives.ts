@@ -74,6 +74,7 @@ export type ArchivedProjectFileRecord = {
   projectName: string;
   projectCategory: string;
   projectTag: string;
+  projectTags: string[];
   archiveCategorySlug: ArchiveCategorySlug;
   archiveCategoryLabel: string;
   sourceLabel: string;
@@ -180,6 +181,51 @@ function formatArchiveTimestamp(value: Date | string | number | null | undefined
   }).format(date);
 }
 
+function normalizeArchiveProjectTags(values: Array<string | null | undefined>) {
+  const normalized = new Map<string, string>();
+
+  values.forEach((value) => {
+    const trimmedValue = value?.trim();
+
+    if (!trimmedValue || trimmedValue === "—") {
+      return;
+    }
+
+    const key = trimmedValue.toLowerCase();
+    if (!normalized.has(key)) {
+      normalized.set(key, trimmedValue);
+    }
+  });
+
+  return [...normalized.values()];
+}
+
+function splitProjectTagSnapshot(value: string | null | undefined) {
+  return normalizeArchiveProjectTags((value ?? "").split(","));
+}
+
+function formatArchiveProjectTagsLabel(tags: string[]) {
+  return tags.length > 0 ? tags.join(", ") : "—";
+}
+
+function getArchiveProjectTagNames(project: {
+  tags?: Array<{
+    tag: {
+      name: string;
+    };
+  }>;
+}) {
+  const relationTags =
+    project.tags
+      ?.map((assignment) => assignment.tag.name)
+      .filter((tagName) => tagName.trim())
+      .sort((left, right) =>
+        left.localeCompare(right, undefined, { sensitivity: "base" }),
+      ) ?? [];
+
+  return normalizeArchiveProjectTags(relationTags);
+}
+
 function formatArchiveFileSize(fileSize: number) {
   if (fileSize >= 1024 * 1024) {
     return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
@@ -255,7 +301,11 @@ async function getProjectArchiveBase(projectId: string) {
         id: true,
         name: true,
         category: true,
-        tag: true,
+        tags: {
+          include: {
+            tag: true,
+          },
+        },
         status: true,
         createdById: true,
         executorUserId: true,
@@ -604,6 +654,7 @@ function mapArchivedFileRecord(input: {
   projectName: string;
   projectCategory: string;
   projectTag: string | null;
+  projectTags?: string[];
   archiveCategorySlug: string;
   archiveCategoryLabel: string;
   sourceRevisionId: string | null;
@@ -623,6 +674,7 @@ function mapArchivedFileRecord(input: {
     : input.submissionReviewStatus === SubmissionReviewStatus.APPROVED
       ? "Approved submission"
       : "Final archive";
+  const projectTags = input.projectTags ?? splitProjectTagSnapshot(input.projectTag);
 
   return {
     id: input.id,
@@ -633,7 +685,8 @@ function mapArchivedFileRecord(input: {
     projectId: input.projectId,
     projectName: input.projectName,
     projectCategory: input.projectCategory,
-    projectTag: input.projectTag?.trim() || "—",
+    projectTag: formatArchiveProjectTagsLabel(projectTags),
+    projectTags,
     archiveCategorySlug: categorySlug,
     archiveCategoryLabel: input.archiveCategoryLabel,
     sourceLabel,
@@ -664,6 +717,7 @@ function mapManualArchiveFileRecord(input: {
   const categorySlug = isArchiveCategorySlug(input.archiveCategorySlug)
     ? input.archiveCategorySlug
     : "artworks";
+  const projectTags = splitProjectTagSnapshot(input.tag);
 
   return {
     id: input.id,
@@ -674,7 +728,8 @@ function mapManualArchiveFileRecord(input: {
     projectId: "",
     projectName: input.projectName?.trim() || "Manual Archive",
     projectCategory: input.archiveCategoryLabel,
-    projectTag: input.tag?.trim() || "—",
+    projectTag: formatArchiveProjectTagsLabel(projectTags),
+    projectTags,
     archiveCategorySlug: categorySlug,
     archiveCategoryLabel: input.archiveCategoryLabel,
     sourceLabel: input.projectCreatedBy?.trim()
@@ -750,7 +805,10 @@ function mapCompletionDocumentArchiveRecord(input: {
   projectName: string;
   projectCategory: string;
   projectTag: string | null;
+  projectTags?: string[];
 }) {
+  const projectTags = input.projectTags ?? splitProjectTagSnapshot(input.projectTag);
+
   return {
     id: input.id,
     recordType: input.type,
@@ -760,7 +818,8 @@ function mapCompletionDocumentArchiveRecord(input: {
     projectId: input.projectId,
     projectName: input.projectName,
     projectCategory: input.projectCategory,
-    projectTag: input.projectTag?.trim() || "—",
+    projectTag: formatArchiveProjectTagsLabel(projectTags),
+    projectTags,
     archiveCategorySlug: "documents",
     archiveCategoryLabel: "Documents",
     sourceLabel: "Completion document",
@@ -1185,7 +1244,11 @@ export async function listArchivedFilesByCategory(
                 select: {
                   name: true,
                   category: true,
-                  tag: true,
+                  tags: {
+                    include: {
+                      tag: true,
+                    },
+                  },
                   createdById: true,
                   collaborators: {
                     where: {
@@ -1287,7 +1350,8 @@ export async function listArchivedFilesByCategory(
         projectId: document.projectId,
         projectName: document.project.name,
         projectCategory: document.project.category,
-        projectTag: document.project.tag,
+        projectTag: null,
+        projectTags: getArchiveProjectTagNames(document.project),
       }),
     })),
     ...manualArchiveFiles.map((file) => ({
@@ -1340,9 +1404,11 @@ export async function getProjectArchivePreparation(
     throw new Error("No approved final files are available to archive.");
   }
 
+  const projectTags = getArchiveProjectTagNames(project);
+  const projectTagLabel = formatArchiveProjectTagsLabel(projectTags);
   const inferredCategory = inferArchiveCategorySlug({
     projectCategory: project.category,
-    projectTag: project.tag,
+    projectTag: projectTagLabel === "—" ? null : projectTagLabel,
     fileName: files[0]?.originalFileName,
     mimeType: files[0]?.mimeType,
   });
@@ -1399,6 +1465,7 @@ export async function getProjectCompletionSummary(
     finalStage && canCompleteArchive && !isCompleted
       ? await getFinalStageArchivableAttachments(project.id, finalStage.id)
       : [];
+  const projectTags = getArchiveProjectTagNames(project);
 
   return {
     isCompleted,
@@ -1431,7 +1498,8 @@ export async function getProjectCompletionSummary(
             projectId: project.id,
             projectName: project.name,
             projectCategory: project.category,
-            projectTag: project.tag,
+            projectTag: formatArchiveProjectTagsLabel(projectTags),
+            projectTags,
             archiveCategorySlug: project.archive?.archiveCategorySlug ?? "artworks",
             archiveCategoryLabel: project.archive?.archiveCategoryLabel ?? "Artworks",
             sourceRevisionId: file.sourceRevisionId,
@@ -1503,13 +1571,15 @@ export async function completeProjectArchive(
       ),
     };
   });
+  const projectTags = getArchiveProjectTagNames(archiveProject);
+  const projectTagLabel = formatArchiveProjectTagsLabel(projectTags);
 
   const archiveCategorySlug: ArchiveCategorySlug =
     input.archiveCategorySlug && isArchiveCategorySlug(input.archiveCategorySlug)
       ? input.archiveCategorySlug
       : inferArchiveCategorySlug({
           projectCategory: archiveProject.category,
-          projectTag: archiveProject.tag,
+          projectTag: projectTagLabel === "—" ? null : projectTagLabel,
           fileName: archiveFiles[0]?.originalFileName,
           mimeType: archiveFiles[0]?.mimeType,
         });
@@ -1577,7 +1647,7 @@ export async function completeProjectArchive(
           archivedById: user.id,
           projectName: archiveProject.name,
           projectCategory: archiveProject.category,
-          projectTag: archiveProject.tag?.trim() || null,
+          projectTag: projectTagLabel === "—" ? null : projectTagLabel,
           archiveCategorySlug,
           archiveCategoryLabel,
           status: "ARCHIVED",

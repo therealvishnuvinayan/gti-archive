@@ -87,7 +87,7 @@ export type ProjectEditorInitialValues = {
   executorName: string;
   executorUserId?: string | null;
   executors: ProjectEditorInitialExecutor[];
-  tag: string;
+  tags: string[];
   description: string;
   executionType: ProjectExecutionType;
   budget: string;

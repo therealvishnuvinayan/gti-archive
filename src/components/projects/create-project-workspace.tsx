@@ -96,6 +96,8 @@ const projectStatusOptions = [
   { value: "COMPLETED", label: "Completed" },
 ] as const;
 
+const MAX_PROJECT_TAGS = 5;
+
 type ProjectStatusValue = (typeof projectStatusOptions)[number]["value"];
 
 const projectExecutionTypeOptions = [
@@ -474,6 +476,25 @@ function mergeUniqueTextOptions(current: string[], incoming: string[]) {
   return merged.sort((left, right) => left.localeCompare(right));
 }
 
+function normalizeProjectTagValues(values: Array<string | null | undefined>) {
+  const normalized = new Map<string, string>();
+
+  values.forEach((value) => {
+    const trimmedValue = value?.trim();
+
+    if (!trimmedValue) {
+      return;
+    }
+
+    const key = trimmedValue.toLowerCase();
+    if (!normalized.has(key)) {
+      normalized.set(key, trimmedValue);
+    }
+  });
+
+  return [...normalized.values()].slice(0, MAX_PROJECT_TAGS);
+}
+
 function MonthPicker({
   label,
   value,
@@ -832,7 +853,10 @@ export function CreateProjectWorkspace({
     useState<string[]>(categoryOptions);
   const [availableTagOptions, setAvailableTagOptions] = useState<string[]>(tagOptions);
   const [projectCategory, setProjectCategory] = useState(initialValues?.category ?? "");
-  const [projectTag, setProjectTag] = useState(initialValues?.tag ?? "");
+  const [projectTags, setProjectTags] = useState<string[]>(() =>
+    normalizeProjectTagValues(initialValues?.tags ?? []),
+  );
+  const [projectTagError, setProjectTagError] = useState<string>();
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
   const [projectCurrency, setProjectCurrency] = useState<string>(
     initialValues?.currency ?? getDefaultProjectCurrencyCode(currencyOptions),
@@ -1080,11 +1104,8 @@ export function CreateProjectWorkspace({
     [availableCategoryOptions, projectCategory],
   );
   const tagSelectOptions = useMemo(
-    () =>
-      projectTag && !availableTagOptions.includes(projectTag)
-        ? [projectTag, ...availableTagOptions]
-        : availableTagOptions,
-    [availableTagOptions, projectTag],
+    () => mergeUniqueTextOptions(availableTagOptions, projectTags),
+    [availableTagOptions, projectTags],
   );
   const currencySelectOptions = useMemo(() => {
     if (
@@ -1172,7 +1193,7 @@ export function CreateProjectWorkspace({
       started: startDate ? formatDateValue(startDate) : "—",
       deadline: endDate ? formatDateValue(endDate) : "—",
       executor: executorOverviewLabel,
-      tag: projectTag || "—",
+      tag: projectTags.length > 0 ? projectTags.join(", ") : "—",
       status:
         projectStatusOptions.find((option) => option.value === projectStatus)?.label || "—",
       priority: formatProjectPriority(projectPriority),
@@ -1184,7 +1205,7 @@ export function CreateProjectWorkspace({
       projectCurrency,
       projectExecutionType,
       executorOverviewLabel,
-      projectTag,
+      projectTags,
       projectPriority,
       projectStatus,
       parsedProjectBudget,
@@ -1304,6 +1325,42 @@ export function CreateProjectWorkspace({
     setQuickAddMasterDataKind(null);
     setQuickAddMasterDataName("");
     setQuickAddMasterDataError(undefined);
+  }
+
+  function addProjectTag(tag: string) {
+    const normalizedTag = tag.trim();
+
+    if (!normalizedTag) {
+      return;
+    }
+
+    if (
+      projectTags.some(
+        (selectedTag) => selectedTag.toLowerCase() === normalizedTag.toLowerCase(),
+      )
+    ) {
+      setProjectTagError(undefined);
+      clearFieldError("tag");
+      return;
+    }
+
+    if (projectTags.length >= MAX_PROJECT_TAGS) {
+      setProjectTagError("You can add up to 5 tags only.");
+      showWarningToast("Tag limit reached.", "You can add up to 5 tags only.");
+      return;
+    }
+
+    setProjectTags((current) => [...current, normalizedTag]);
+    setProjectTagError(undefined);
+    clearFieldError("tag");
+  }
+
+  function removeProjectTag(tag: string) {
+    setProjectTags((current) =>
+      current.filter((selectedTag) => selectedTag.toLowerCase() !== tag.toLowerCase()),
+    );
+    setProjectTagError(undefined);
+    clearFieldError("tag");
   }
 
   function openExecutorInvite(prefillValue = "") {
@@ -1629,8 +1686,8 @@ export function CreateProjectWorkspace({
         clearFieldError("category");
         showSuccessToast("Category added.");
       } else {
-        setProjectTag(createdName);
         setAvailableTagOptions((current) => mergeUniqueTextOptions(current, [createdName]));
+        addProjectTag(createdName);
         clearFieldError("tag");
         showSuccessToast("Tag added.");
       }
@@ -2444,7 +2501,9 @@ export function CreateProjectWorkspace({
           <input type="hidden" name="executorRoles" value={executor.role} />
         </div>
       ))}
-      <input type="hidden" name="tag" value={projectTag} />
+      {projectTags.map((tag) => (
+        <input key={tag} type="hidden" name="tags" value={tag} />
+      ))}
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
       <input type="hidden" name="priority" value={projectPriority} />
@@ -2686,28 +2745,87 @@ export function CreateProjectWorkspace({
               </label>
 
               <label className="block">
-                <FieldLabel>Project Tag</FieldLabel>
+                <FieldLabel>Project Tags</FieldLabel>
+                <p className="mb-2 text-[12px] font-medium text-[#6f786f]">
+                  Select up to 5 tags.
+                </p>
+                {projectTags.length > 0 ? (
+                  <div className="mb-3 flex min-w-0 flex-wrap gap-2">
+                    {projectTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#cde6d3] bg-[#edf7ef] px-3 py-1.5 text-[12px] font-[700] text-[#2d8055]"
+                      >
+                        <span className="truncate">{tag}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeProjectTag(tag)}
+                          className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-[#3f7a59] transition-colors hover:bg-white"
+                          aria-label={`Remove ${tag}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <Select
-                  key={`project-tag-${projectTag || "empty"}-${tagSelectOptions.join("\u001f")}`}
-                  value={projectTag || "__no_tag__"}
+                  key={`project-tags-${projectTags.join("\u001f") || "empty"}-${tagSelectOptions.join("\u001f")}`}
+                  value=""
                   onValueChange={(nextValue) => {
                     if (nextValue === "__add_tag__") {
+                      if (projectTags.length >= MAX_PROJECT_TAGS) {
+                        setProjectTagError("You can add up to 5 tags only.");
+                        showWarningToast("Tag limit reached.", "You can add up to 5 tags only.");
+                        return;
+                      }
+
                       openQuickAddMasterData("tag");
                       return;
                     }
 
-                    setProjectTag(nextValue === "__no_tag__" ? "" : nextValue);
-                    clearFieldError("tag");
+                    if (!nextValue) {
+                      return;
+                    }
+
+                    if (
+                      projectTags.some(
+                        (selectedTag) =>
+                          selectedTag.toLowerCase() === nextValue.toLowerCase(),
+                      )
+                    ) {
+                      removeProjectTag(nextValue);
+                      return;
+                    }
+
+                    addProjectTag(nextValue);
                   }}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
-                    <SelectValue placeholder="Select project tag" />
+                    <SelectValue
+                      placeholder={
+                        projectTags.length >= MAX_PROJECT_TAGS
+                          ? "Maximum tags selected"
+                          : "Select project tags"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__no_tag__">No tag</SelectItem>
                     {tagSelectOptions.map((tag) => (
                       <SelectItem key={tag} value={tag}>
-                        {tag}
+                        <span className="flex items-center gap-2">
+                          <Check
+                            className={`h-3.5 w-3.5 ${
+                              projectTags.some(
+                                (selectedTag) =>
+                                  selectedTag.toLowerCase() === tag.toLowerCase(),
+                              )
+                                ? "opacity-100"
+                                : "opacity-0"
+                            }`}
+                          />
+                          <span>{tag}</span>
+                        </span>
                       </SelectItem>
                     ))}
                     {canManageProjectMasterData ? (
@@ -2718,7 +2836,9 @@ export function CreateProjectWorkspace({
                     ) : null}
                   </SelectContent>
                 </Select>
-                <FieldError message={getFieldError("tag", fieldErrors.tag)} />
+                <FieldError
+                  message={projectTagError ?? getFieldError("tag", fieldErrors.tag)}
+                />
               </label>
 
               <label className="block">

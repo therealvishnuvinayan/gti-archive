@@ -37,6 +37,7 @@ export type LibraryItemRecord = {
   projectId: string;
   projectName: string;
   projectTag: string | null;
+  projectTags: string[];
   uploadedAt: string;
   uploadedAtValue: string;
   createdBy: string;

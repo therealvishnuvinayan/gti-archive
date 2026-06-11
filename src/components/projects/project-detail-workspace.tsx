@@ -136,7 +136,7 @@ function OverviewRow({
   priority,
 }: {
   label: string;
-  value: string | number;
+  value: ReactNode;
   priority?: boolean;
 }) {
   return (
@@ -155,6 +155,26 @@ function OverviewRow({
         )}
       </dd>
     </div>
+  );
+}
+
+function ProjectTagChips({ tags }: { tags: string[] }) {
+  if (tags.length === 0) {
+    return <span className="block truncate">—</span>;
+  }
+
+  return (
+    <span className="flex min-w-0 flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="max-w-full truncate rounded-full bg-[#edf7ef] px-2.5 py-1 text-[11px] font-[800] leading-4 text-[#2d8055]"
+          title={tag}
+        >
+          {tag}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -411,7 +431,7 @@ export function ProjectDetailWorkspace({
                 <OverviewRow label="Project Started" value={project.startDate} />
                 <OverviewRow label="Project Deadline" value={project.endDate} />
                 <OverviewRow label="Executor" value={project.executorName} />
-                <OverviewRow label="Tag" value={project.tag} />
+                <OverviewRow label="Project Tags" value={<ProjectTagChips tags={project.tags} />} />
                 <OverviewRow label="Priority" value={project.priority} priority />
               </dl>
             </CardContent>

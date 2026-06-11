@@ -55,6 +55,14 @@ function uniqueValues(items: ArchivedProjectFileRecord[], key: keyof ArchivedPro
   );
 }
 
+function uniqueProjectTags(items: ArchivedProjectFileRecord[]) {
+  return Array.from(
+    new Set(items.flatMap((item) => item.projectTags).filter(Boolean)),
+  ).sort((left, right) =>
+    left.localeCompare(right, undefined, { sensitivity: "base" }),
+  );
+}
+
 export function ArchiveCategoryWorkspace({
   categorySlug,
   categoryTitle,
@@ -67,7 +75,7 @@ export function ArchiveCategoryWorkspace({
     () => ({
       projectName: uniqueValues(items, "projectName"),
       archivedBy: uniqueValues(items, "archivedBy"),
-      projectTag: uniqueValues(items, "projectTag"),
+      projectTag: uniqueProjectTags(items),
     }),
     [items],
   );
@@ -82,6 +90,7 @@ export function ArchiveCategoryWorkspace({
           item.projectName,
           item.projectCategory,
           item.projectTag,
+          ...item.projectTags,
           item.archivedBy,
           item.recordTypeLabel,
           item.sourceLabel,
@@ -101,7 +110,7 @@ export function ArchiveCategoryWorkspace({
         return false;
       }
 
-      if (filters.projectTag && item.projectTag !== filters.projectTag) {
+      if (filters.projectTag && !item.projectTags.includes(filters.projectTag)) {
         return false;
       }
 
@@ -265,7 +274,29 @@ export function ArchiveCategoryWorkspace({
                     <div className="space-y-1 text-[13px] xl:self-center">
                       <p className="font-[700] text-[#111712]">{item.projectName}</p>
                       <p className="text-[#687269]">{item.projectCategory}</p>
-                      <p className="text-[#687269]">Tag: {item.projectTag}</p>
+                      {item.projectTags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.projectTags.slice(0, 3).map((tag) => (
+                            <span
+                              key={tag}
+                              className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
+                              title={tag}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {item.projectTags.length > 3 ? (
+                            <span
+                              className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
+                              title={item.projectTag}
+                            >
+                              +{item.projectTags.length - 3}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-[#687269]">Tag: —</p>
+                      )}
                     </div>
 
                     <div className="space-y-1 text-[13px] xl:self-center">
