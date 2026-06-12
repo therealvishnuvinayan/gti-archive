@@ -20,6 +20,7 @@ import {
   Info,
   Languages,
   Loader2,
+  Maximize2,
   Mic,
   Paperclip,
   Send,
@@ -1802,6 +1803,7 @@ export function ProjectChatWorkspace({
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
+  const [expandedMessageEditorOpen, setExpandedMessageEditorOpen] = useState(false);
   const [optimisticComments, setOptimisticComments] = useState<DisplayChatEntry[]>([]);
   const [confirmedComments, setConfirmedComments] = useState<DisplayChatEntry[]>([]);
   const [pendingRevisionReviewId, setPendingRevisionReviewId] = useState<string | null>(null);
@@ -1897,7 +1899,8 @@ export function ProjectChatWorkspace({
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const stageInvoiceInputRef = useRef<HTMLInputElement | null>(null);
-  const draftInputRef = useRef<HTMLInputElement | null>(null);
+  const draftInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const expandedDraftInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const mentionDropdownRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1915,6 +1918,32 @@ export function ProjectChatWorkspace({
       archive: "none",
     },
   });
+
+  useEffect(() => {
+    const input = draftInputRef.current;
+
+    if (!input) {
+      return;
+    }
+
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 168)}px`;
+    input.style.overflowY = input.scrollHeight > 168 ? "auto" : "hidden";
+  }, [draft]);
+
+  useEffect(() => {
+    if (!expandedMessageEditorOpen) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const input = expandedDraftInputRef.current;
+      input?.focus();
+      input?.setSelectionRange(input.value.length, input.value.length);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [expandedMessageEditorOpen]);
 
   function handleProjectAssetFavoriteChange(
     attachmentId: string,
@@ -5272,9 +5301,9 @@ export function ProjectChatWorkspace({
 
               <div
                 ref={mentionDropdownRef}
-                className="relative flex items-center gap-3 rounded-full border border-[#dde6dd] bg-[#fbfcfa] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
+                className="relative flex flex-col gap-2.5 rounded-[26px] border border-[#dde6dd] bg-[#fbfcfa] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
               >
-                <input
+                <Textarea
                   ref={draftInputRef}
                   value={draft}
                   onChange={(event) => {
@@ -5329,7 +5358,8 @@ export function ProjectChatWorkspace({
                     }
                   }}
                   placeholder="Add a comment or upload files for this stage revision history."
-                  className="h-auto w-full border-none bg-transparent p-0 text-[14px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
+                  rows={1}
+                  className="box-border max-h-[168px] min-h-[64px] w-full resize-none overflow-y-hidden rounded-[18px] border border-transparent bg-white/70 px-3.5 py-3 text-[14px] leading-6 text-[#29322c] shadow-none outline-none placeholder:text-[#9aa39b] focus-visible:ring-0"
                 />
                 {mentionDropdownOpen ? (
                   <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 z-20 overflow-hidden rounded-[22px] border border-[#dbe7dd] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.12)]">
@@ -5372,7 +5402,18 @@ export function ProjectChatWorkspace({
                     </div>
                   </div>
                 ) : null}
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center justify-end gap-2 border-t border-[#e5ece5] pt-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-[#607064]"
+                    aria-label="Expand message editor"
+                    title="Expand message editor"
+                    onClick={() => setExpandedMessageEditorOpen(true)}
+                  >
+                    <Maximize2 className="h-4.5 w-4.5" />
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
@@ -5720,6 +5761,90 @@ export function ProjectChatWorkspace({
           />
         </aside>
       </div>
+      {expandedMessageEditorOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="expanded-message-editor-title"
+        >
+          <Card className="flex max-h-[calc(100dvh-4rem)] w-full max-w-[760px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+              <div className="min-w-0">
+                <CardTitle
+                  id="expanded-message-editor-title"
+                  className="text-[24px] font-semibold tracking-tight text-[#111712]"
+                >
+                  Write message
+                </CardTitle>
+                <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
+                  Compose a longer stage message before sending.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => setExpandedMessageEditorOpen(false)}
+                disabled={isSendingComment}
+                className="shrink-0 border border-line"
+                aria-label="Close expanded message editor"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              <Textarea
+                ref={expandedDraftInputRef}
+                value={draft}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setDraftSelectionStart(event.target.selectionStart ?? event.target.value.length);
+                }}
+                onClick={(event) => {
+                  setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
+                }}
+                onKeyUp={(event) => {
+                  setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
+                }}
+                placeholder="Add a comment or upload files for this stage revision history."
+                className="box-border min-h-[340px] flex-1 resize-none rounded-[22px] border border-[#dfe8df] bg-[#fbfcfa] px-4 py-4 text-[15px] leading-6 text-[#29322c] shadow-inner outline-none placeholder:text-[#9aa39b] focus-visible:ring-3 focus-visible:ring-brand/15"
+                disabled={isSendingComment}
+              />
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[12px] font-semibold text-[#7a847c]">
+                  {draft.length.toLocaleString()} characters
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setExpandedMessageEditorOpen(false)}
+                    disabled={isSendingComment}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      await handleSendComment();
+                      setExpandedMessageEditorOpen(false);
+                    }}
+                    disabled={isSendingComment || !canSendComment}
+                  >
+                    {isSendingComment ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Send
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
       <ProjectAssetsModal
         isOpen={projectAssetsModalOpen}
         attachments={project.attachments}
