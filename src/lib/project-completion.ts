@@ -482,7 +482,6 @@ async function getProjectCompletionProject(projectId: string) {
         id: true,
         name: true,
         category: true,
-        tag: true,
         executionType: true,
         status: true,
         createdById: true,

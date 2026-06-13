@@ -426,9 +426,10 @@ export async function deleteProjectTagAction(id: string) {
   const usageCount = await withPrismaRetry(() =>
     prisma.project.count({
       where: {
-        tag: {
-          equals: tag.name,
-          mode: "insensitive",
+        tags: {
+          some: {
+            tagId: tag.id,
+          },
         },
       },
     }),

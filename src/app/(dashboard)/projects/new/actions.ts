@@ -28,7 +28,7 @@ import {
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import { prisma } from "@/lib/prisma";
-import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import { MAX_PROJECT_TAGS, PROJECTS_CACHE_TAG } from "@/lib/projects";
 import {
   hasPermission,
   hasProjectPermission,
@@ -162,7 +162,10 @@ function parseProjectFormData(formData: FormData) {
   const category = String(formData.get("category") ?? "").trim();
   const executorName = String(formData.get("executorName") ?? "").trim();
   const executorUserId = String(formData.get("executorUserId") ?? "").trim();
-  const tag = String(formData.get("tag") ?? "").trim();
+  const tags = formData
+    .getAll("tags")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
   const priorityInput = String(formData.get("priority") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const executionTypeInput = String(formData.get("executionType") ?? "").trim();
@@ -225,7 +228,7 @@ function parseProjectFormData(formData: FormData) {
     category,
     executorName,
     executorUserId,
-    tag,
+    tags,
     priorityInput,
     description,
     executionTypeInput,
@@ -654,6 +657,78 @@ function validateProjectFormData(
   };
 }
 
+async function resolveSubmittedProjectTags(tagInputs: string[]) {
+  const normalizedTags = tagInputs.map((tag) => tag.trim()).filter(Boolean);
+  const duplicateCheck = new Set<string>();
+
+  if (normalizedTags.length > MAX_PROJECT_TAGS) {
+    return {
+      error: "You can add up to 5 tags only.",
+      fieldErrors: {
+        tag: "You can add up to 5 tags only.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  for (const tagName of normalizedTags) {
+    const key = tagName.toLowerCase();
+
+    if (duplicateCheck.has(key)) {
+      return {
+        error: "Please correct the highlighted fields.",
+        fieldErrors: {
+          tag: "Duplicate project tags are not allowed.",
+        } satisfies ProjectFormFieldErrors,
+      };
+    }
+
+    duplicateCheck.add(key);
+  }
+
+  if (normalizedTags.length === 0) {
+    return {
+      tags: [],
+    };
+  }
+
+  const masterTags = await prisma.projectTag.findMany({
+    where: {
+      OR: normalizedTags.map((tagName) => ({
+        name: {
+          equals: tagName,
+          mode: "insensitive" as const,
+        },
+      })),
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+  const masterTagByName = new Map(
+    masterTags.map((tag) => [tag.name.trim().toLowerCase(), tag] as const),
+  );
+  const resolvedTags = normalizedTags
+    .map((tagName) => masterTagByName.get(tagName.toLowerCase()) ?? null);
+
+  if (resolvedTags.some((tag) => tag === null)) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        tag: "Choose valid project tags.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  const tags = resolvedTags.filter(
+    (tag): tag is { id: string; name: string } => tag !== null,
+  );
+
+  return {
+    tags,
+  };
+}
+
 async function resolveProjectCurrencyCode(
   currencyCode: string,
   options: { allowInactiveCode?: string } = {},
@@ -798,11 +873,16 @@ export async function createProjectAction(
     return validated;
   }
 
+  const resolvedTags = await resolveSubmittedProjectTags(validated.data.tags);
+
+  if ("error" in resolvedTags) {
+    return resolvedTags;
+  }
+
   const {
     name,
     category,
     executorAssignments,
-    tag,
     description,
     executionType,
     budget,
@@ -902,7 +982,6 @@ export async function createProjectAction(
           category,
           executorName: resolvedExecutors.executorName,
           executorUserId: resolvedExecutors.executorUserId,
-          tag: tag || null,
           description,
           executionType,
           budget,
@@ -924,6 +1003,17 @@ export async function createProjectAction(
               skipDuplicates: true,
             },
           },
+          tags:
+            resolvedTags.tags.length > 0
+              ? {
+                  createMany: {
+                    data: resolvedTags.tags.map((tag) => ({
+                      tagId: tag.id,
+                    })),
+                    skipDuplicates: true,
+                  },
+                }
+              : undefined,
           collaborators: {
             createMany: {
                 data: validCollaboratorIds.map((collaboratorId) => ({
@@ -1115,11 +1205,16 @@ export async function updateProjectAction(
     return validated;
   }
 
+  const resolvedTags = await resolveSubmittedProjectTags(validated.data.tags);
+
+  if ("error" in resolvedTags) {
+    return resolvedTags;
+  }
+
   const {
     name,
     category,
     executorAssignments,
-    tag,
     description,
     executionType,
     budget,
@@ -1285,7 +1380,6 @@ export async function updateProjectAction(
           category,
           executorName: resolvedExecutors.executorName,
           executorUserId: resolvedExecutors.executorUserId,
-          tag: tag || null,
           description,
           executionType,
           budget: canUpdateBudget ? budget : existingProject.budget,
@@ -1298,6 +1392,22 @@ export async function updateProjectAction(
           stageCount: stageNames.length,
         },
       });
+
+      await tx.projectTagAssignment.deleteMany({
+        where: {
+          projectId,
+        },
+      });
+
+      if (resolvedTags.tags.length > 0) {
+        await tx.projectTagAssignment.createMany({
+          data: resolvedTags.tags.map((tag) => ({
+            projectId,
+            tagId: tag.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
 
       if (executionTypeChanged) {
         await tx.projectCompletionWorkflow.updateMany({
