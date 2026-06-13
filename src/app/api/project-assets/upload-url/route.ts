@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     mimeType: payload.mimeType,
     fileSize: payload.fileSize,
     assetType: payload.assetType,
+    assetTagIds: Array.isArray(payload.assetTagIds) ? payload.assetTagIds : [],
   });
 
   if ("error" in result) {

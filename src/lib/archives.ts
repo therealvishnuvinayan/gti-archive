@@ -44,6 +44,12 @@ import {
   buildFileTypeNotAllowedPayload,
   isAllowedAssetFile,
 } from "@/lib/upload-validation";
+import {
+  mapAssetTagAssignments,
+  validateActiveAssetTagIds,
+  type AssetTagAssignmentRecord,
+  type AssetTagRecord,
+} from "@/lib/asset-tags";
 
 export type ArchiveAccessUser = Pick<
   User,
@@ -75,6 +81,7 @@ export type ArchivedProjectFileRecord = {
   projectCategory: string;
   projectTag: string;
   projectTags: string[];
+  assetTags: AssetTagRecord[];
   archiveCategorySlug: ArchiveCategorySlug;
   archiveCategoryLabel: string;
   sourceLabel: string;
@@ -153,7 +160,7 @@ type RequestArchiveUploadInput = {
   projectName?: string | null;
   projectCreatedBy?: string | null;
   archiveCategorySlug?: string | null;
-  tag?: string | null;
+  assetTagIds?: string[];
   projectDate?: string | null;
 };
 
@@ -381,6 +388,17 @@ async function getProjectArchiveBase(projectId: string) {
                 sourceAttachment: {
                   select: {
                     submissionReviewStatus: true,
+                    assetTags: {
+                      include: {
+                        tag: {
+                          select: {
+                            id: true,
+                            name: true,
+                            color: true,
+                          },
+                        },
+                      },
+                    },
                   },
                 },
               },
@@ -655,6 +673,7 @@ function mapArchivedFileRecord(input: {
   projectCategory: string;
   projectTag: string | null;
   projectTags?: string[];
+  assetTags?: AssetTagAssignmentRecord[];
   archiveCategorySlug: string;
   archiveCategoryLabel: string;
   sourceRevisionId: string | null;
@@ -675,6 +694,9 @@ function mapArchivedFileRecord(input: {
       ? "Approved submission"
       : "Final archive";
   const projectTags = input.projectTags ?? splitProjectTagSnapshot(input.projectTag);
+  const assetTags = input.assetTags
+    ? mapAssetTagAssignments(input.assetTags)
+    : [];
 
   return {
     id: input.id,
@@ -687,6 +709,7 @@ function mapArchivedFileRecord(input: {
     projectCategory: input.projectCategory,
     projectTag: formatArchiveProjectTagsLabel(projectTags),
     projectTags,
+    assetTags,
     archiveCategorySlug: categorySlug,
     archiveCategoryLabel: input.archiveCategoryLabel,
     sourceLabel,
@@ -706,7 +729,7 @@ function mapManualArchiveFileRecord(input: {
   originalFileName: string;
   projectName: string | null;
   projectCreatedBy: string | null;
-  tag: string | null;
+  assetTags: AssetTagAssignmentRecord[];
   archiveCategorySlug: string;
   archiveCategoryLabel: string;
   mimeType: string;
@@ -717,7 +740,7 @@ function mapManualArchiveFileRecord(input: {
   const categorySlug = isArchiveCategorySlug(input.archiveCategorySlug)
     ? input.archiveCategorySlug
     : "artworks";
-  const projectTags = splitProjectTagSnapshot(input.tag);
+  const assetTags = mapAssetTagAssignments(input.assetTags);
 
   return {
     id: input.id,
@@ -728,8 +751,9 @@ function mapManualArchiveFileRecord(input: {
     projectId: "",
     projectName: input.projectName?.trim() || "Manual Archive",
     projectCategory: input.archiveCategoryLabel,
-    projectTag: formatArchiveProjectTagsLabel(projectTags),
-    projectTags,
+    projectTag: "—",
+    projectTags: [],
+    assetTags,
     archiveCategorySlug: categorySlug,
     archiveCategoryLabel: input.archiveCategoryLabel,
     sourceLabel: input.projectCreatedBy?.trim()
@@ -820,6 +844,7 @@ function mapCompletionDocumentArchiveRecord(input: {
     projectCategory: input.projectCategory,
     projectTag: formatArchiveProjectTagsLabel(projectTags),
     projectTags,
+    assetTags: [],
     archiveCategorySlug: "documents",
     archiveCategoryLabel: "Documents",
     sourceLabel: "Completion document",
@@ -1016,12 +1041,18 @@ export async function requestArchiveFileUpload(
     } as const;
   }
 
+  const tagSelection = await validateActiveAssetTagIds(input.assetTagIds ?? []);
+
+  if (tagSelection.error) {
+    return { error: tagSelection.error } as const;
+  }
+
   const archiveCategorySlug =
     input.archiveCategorySlug && isArchiveCategorySlug(input.archiveCategorySlug)
       ? input.archiveCategorySlug
       : inferArchiveCategorySlug({
           projectCategory: input.projectName,
-          projectTag: input.tag,
+          projectTag: null,
           fileName: input.originalFileName,
           mimeType: input.mimeType,
         });
@@ -1043,7 +1074,18 @@ export async function requestArchiveFileUpload(
         projectCreatedBy: normalizeOptionalArchiveText(input.projectCreatedBy),
         archiveCategorySlug,
         archiveCategoryLabel,
-        tag: normalizeOptionalArchiveText(input.tag),
+        assetTags:
+          tagSelection.tagIds.length > 0
+            ? {
+                create: tagSelection.tagIds.map((tagId) => ({
+                  tag: {
+                    connect: {
+                      id: tagId,
+                    },
+                  },
+                })),
+              }
+            : undefined,
         projectDate,
         mimeType: input.mimeType,
         fileSize: input.fileSize,
@@ -1169,6 +1211,17 @@ export async function listArchivedFilesByCategory(
           sourceAttachment: {
             select: {
               submissionReviewStatus: true,
+              assetTags: {
+                include: {
+                  tag: {
+                    select: {
+                      id: true,
+                      name: true,
+                      color: true,
+                    },
+                  },
+                },
+              },
             },
           },
           sourceRevision: {
@@ -1291,7 +1344,17 @@ export async function listArchivedFilesByCategory(
           originalFileName: true,
           projectName: true,
           projectCreatedBy: true,
-          tag: true,
+          assetTags: {
+            include: {
+              tag: {
+                select: {
+                  id: true,
+                  name: true,
+                  color: true,
+                },
+              },
+            },
+          },
           archiveCategorySlug: true,
           archiveCategoryLabel: true,
           mimeType: true,
@@ -1325,6 +1388,7 @@ export async function listArchivedFilesByCategory(
         projectName: file.archive.projectName,
         projectCategory: file.archive.projectCategory,
         projectTag: file.archive.projectTag,
+        assetTags: file.sourceAttachment.assetTags,
         archiveCategorySlug: file.archive.archiveCategorySlug,
         archiveCategoryLabel: file.archive.archiveCategoryLabel,
         sourceRevisionId: file.sourceRevisionId,
@@ -1362,7 +1426,7 @@ export async function listArchivedFilesByCategory(
         originalFileName: file.originalFileName,
         projectName: file.projectName,
         projectCreatedBy: file.projectCreatedBy,
-        tag: file.tag,
+        assetTags: file.assetTags,
         archiveCategorySlug: file.archiveCategorySlug,
         archiveCategoryLabel: file.archiveCategoryLabel,
         mimeType: file.mimeType,
@@ -1500,6 +1564,7 @@ export async function getProjectCompletionSummary(
             projectCategory: project.category,
             projectTag: formatArchiveProjectTagsLabel(projectTags),
             projectTags,
+            assetTags: file.sourceAttachment.assetTags,
             archiveCategorySlug: project.archive?.archiveCategorySlug ?? "artworks",
             archiveCategoryLabel: project.archive?.archiveCategoryLabel ?? "Artworks",
             sourceRevisionId: file.sourceRevisionId,

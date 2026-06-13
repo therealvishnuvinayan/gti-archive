@@ -29,6 +29,8 @@ export type ProjectMasterDataSummary = {
   activeCategories: number;
   totalTags: number;
   activeTags: number;
+  totalAssetTags: number;
+  activeAssetTags: number;
   totalCurrencies: number;
   activeCurrencies: number;
 };
@@ -36,6 +38,7 @@ export type ProjectMasterDataSummary = {
 export type ProjectMasterDataRecord = {
   categories: ProjectMasterDataItemRecord[];
   tags: ProjectMasterDataItemRecord[];
+  assetTags: ProjectMasterDataItemRecord[];
   currencies: ProjectMasterCurrencyRecord[];
   summary: ProjectMasterDataSummary;
 };
@@ -43,6 +46,11 @@ export type ProjectMasterDataRecord = {
 export type ActiveProjectMasterDataOptions = {
   categories: string[];
   tags: string[];
+  assetTags: Array<{
+    id: string;
+    name: string;
+    color: string;
+  }>;
   currencies: Array<{
     code: string;
     name: string;
@@ -118,6 +126,9 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
           prisma.projectTag.findMany({
             orderBy: [{ isActive: "desc" }, { name: "asc" }],
           }),
+          prisma.assetTag.findMany({
+            orderBy: [{ isActive: "desc" }, { name: "asc" }],
+          }),
           prisma.projectCurrency.findMany({
             orderBy: [{ isActive: "desc" }, { code: "asc" }],
           }),
@@ -127,17 +138,20 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     { revalidate: 20, tags: [PROJECT_MASTER_DATA_CACHE_TAG] },
   );
 
-  const [categories, tags, currencies] = await fetchMasterData();
+  const [categories, tags, assetTags, currencies] = await fetchMasterData();
 
   return {
     categories: categories.map(mapMasterDataItem),
     tags: tags.map(mapMasterDataItem),
+    assetTags: assetTags.map(mapMasterDataItem),
     currencies: currencies.map(mapCurrencyItem),
     summary: {
       totalCategories: categories.length,
       activeCategories: categories.filter((item) => item.isActive).length,
       totalTags: tags.length,
       activeTags: tags.filter((item) => item.isActive).length,
+      totalAssetTags: assetTags.length,
+      activeAssetTags: assetTags.filter((item) => item.isActive).length,
       totalCurrencies: currencies.length,
       activeCurrencies: currencies.filter((item) => item.isActive).length,
     },
@@ -154,6 +168,13 @@ export async function getActiveProjectMasterDataOptions(): Promise<ActiveProject
     tags: masterData.tags
       .filter((item) => item.isActive)
       .map((item) => item.name),
+    assetTags: masterData.assetTags
+      .filter((item) => item.isActive)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        color: item.color,
+      })),
     currencies: masterData.currencies
       .filter((item) => item.isActive)
       .map((item) => ({

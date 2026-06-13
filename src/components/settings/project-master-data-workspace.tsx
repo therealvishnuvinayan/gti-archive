@@ -15,9 +15,11 @@ import {
 } from "lucide-react";
 
 import {
+  deleteAssetTagAction,
   deleteProjectCategoryAction,
   deleteProjectCurrencyAction,
   deleteProjectTagAction,
+  saveAssetTagAction,
   saveProjectCategoryAction,
   saveProjectCurrencyAction,
   saveProjectTagAction,
@@ -36,7 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
-type MasterDataTab = "categories" | "tags" | "currencies";
+type MasterDataTab = "categories" | "tags" | "assetTags" | "currencies";
 
 type MasterDataFormState = {
   id?: string;
@@ -56,6 +58,7 @@ type MasterDataFieldErrors = {
 type ProjectMasterDataWorkspaceProps = {
   categories: ProjectMasterDataItemRecord[];
   tags: ProjectMasterDataItemRecord[];
+  assetTags: ProjectMasterDataItemRecord[];
   currencies: ProjectMasterCurrencyRecord[];
   summary: ProjectMasterDataSummary;
   canManageItems: boolean;
@@ -84,6 +87,34 @@ const defaultFormState: MasterDataFormState = {
   code: "",
   isActive: true,
 };
+
+function getMasterDataLabel(tab: MasterDataTab) {
+  switch (tab) {
+    case "categories":
+      return "Category";
+    case "tags":
+      return "Tag";
+    case "assetTags":
+      return "Asset Tag";
+    case "currencies":
+    default:
+      return "Currency";
+  }
+}
+
+function getMasterDataTitle(tab: MasterDataTab) {
+  switch (tab) {
+    case "categories":
+      return "Categories";
+    case "tags":
+      return "Project Tags";
+    case "assetTags":
+      return "Asset Tags";
+    case "currencies":
+    default:
+      return "Currencies";
+  }
+}
 
 function SummaryCard({
   title,
@@ -168,7 +199,11 @@ function MasterDataTable({
         ? "No categories added yet."
         : type === "tags"
           ? "No tags added yet."
-          : "No currencies added yet.";
+          : type === "assetTags"
+            ? "No asset tags added yet."
+            : "No currencies added yet.";
+  const label = getMasterDataLabel(type);
+  const title = getMasterDataTitle(type);
 
   return (
     <Card className="rounded-[28px] border border-[#ebefe8] bg-white shadow-[0_16px_40px_rgba(23,39,28,0.05)]">
@@ -176,28 +211,22 @@ function MasterDataTable({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-[28px] font-[700] tracking-[-0.03em] text-[#131914]">
-              {type === "categories"
-                ? "Categories"
-                : type === "tags"
-                  ? "Tags"
-                  : "Currencies"}
+              {title}
             </h2>
             <p className="mt-1 text-[14px] text-[#738072]">
               {type === "categories"
                 ? `${canManage ? "Manage" : "View"} project categories used across the system.`
                 : type === "tags"
                   ? `${canManage ? "Manage" : "View"} tags used to label and group projects.`
+                  : type === "assetTags"
+                    ? `${canManage ? "Manage" : "View"} asset tags used across library and archive assets.`
                   : `${canManage ? "Manage" : "View"} active currency codes used in project budgets.`}
             </p>
           </div>
           {canManage ? (
             <Button type="button" onClick={onAdd} className="gap-2 self-start">
               <Plus className="h-4 w-4" />
-              {type === "categories"
-                ? "Add Category"
-                : type === "tags"
-                  ? "Add Tag"
-                  : "Add Currency"}
+              Add {label}
             </Button>
           ) : null}
         </div>
@@ -339,8 +368,7 @@ function MasterDataDrawer({
     return null;
   }
 
-  const label =
-    tab === "categories" ? "Category" : tab === "tags" ? "Tag" : "Currency";
+  const label = getMasterDataLabel(tab);
   const isCurrency = tab === "currencies";
   const descriptionLength = form.description.trim().length;
 
@@ -355,8 +383,8 @@ function MasterDataDrawer({
               </h2>
               <p className="mt-3 text-[15px] text-[#6d776e]">
                 {mode === "add"
-                  ? `Create a reusable project ${label.toLowerCase()}.`
-                  : `Update this project ${label.toLowerCase()} value.`}
+                  ? `Create a reusable ${label.toLowerCase()}.`
+                  : `Update this ${label.toLowerCase()} value.`}
               </p>
             </div>
             <Button
@@ -549,6 +577,7 @@ function MasterDataDrawer({
 export function ProjectMasterDataWorkspace({
   categories,
   tags,
+  assetTags,
   currencies,
   summary,
   canManageItems,
@@ -621,7 +650,7 @@ export function ProjectMasterDataWorkspace({
     } else if (
       normalizedDescriptionLength > PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH
     ) {
-      const label = activeTab === "categories" ? "Category" : "Tag";
+      const label = getMasterDataLabel(activeTab);
       nextFieldErrors.description = `${label} description must be ${PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH} characters or fewer.`;
     }
 
@@ -647,6 +676,11 @@ export function ProjectMasterDataWorkspace({
                   ...form,
                   name: normalizedName,
                 })
+              : activeTab === "assetTags"
+                ? await saveAssetTagAction({
+                    ...form,
+                    name: normalizedName,
+                  })
               : await saveProjectCurrencyAction({
                   ...form,
                   name: normalizedName,
@@ -656,11 +690,13 @@ export function ProjectMasterDataWorkspace({
         if (result.error) {
           setError(result.error);
           showErrorToast(
-            activeTab === "currencies"
-              ? "Unable to save currency."
-              : activeTab === "tags"
-                ? "Unable to save tag."
-                : "Unable to save category.",
+          activeTab === "currencies"
+            ? "Unable to save currency."
+            : activeTab === "assetTags"
+              ? "Unable to save asset tag."
+            : activeTab === "tags"
+              ? "Unable to save tag."
+              : "Unable to save category.",
             result.error,
           );
           return;
@@ -672,6 +708,10 @@ export function ProjectMasterDataWorkspace({
             ? dialogMode === "add"
               ? "Currency added successfully."
               : "Currency updated successfully."
+            : activeTab === "assetTags"
+              ? dialogMode === "add"
+                ? "Asset tag added successfully."
+                : "Asset tag updated successfully."
             : activeTab === "tags"
               ? dialogMode === "add"
                 ? "Tag added successfully."
@@ -719,6 +759,8 @@ export function ProjectMasterDataWorkspace({
             ? await deleteProjectCategoryAction(deleteTarget.item.id)
             : deleteTarget.tab === "tags"
               ? await deleteProjectTagAction(deleteTarget.item.id)
+              : deleteTarget.tab === "assetTags"
+                ? await deleteAssetTagAction(deleteTarget.item.id)
               : await deleteProjectCurrencyAction(deleteTarget.item.id);
 
         if (result.error) {
@@ -730,6 +772,8 @@ export function ProjectMasterDataWorkspace({
         showSuccessToast(
           deleteTarget.tab === "currencies"
             ? "Currency deleted successfully."
+            : deleteTarget.tab === "assetTags"
+              ? "Asset tag deleted successfully."
             : deleteTarget.tab === "tags"
               ? "Tag deleted successfully."
               : "Category deleted successfully.",
@@ -757,7 +801,7 @@ export function ProjectMasterDataWorkspace({
             Project Master Data
           </h1>
           <p className="mt-3 max-w-[720px] text-[16px] leading-7 text-[#6f776f]">
-            Manage reusable project categories, tags, and currencies used across projects.
+            Manage reusable project categories, project tags, asset tags, and currencies.
           </p>
           <div className="mt-5">
             <Button asChild variant="outline">
@@ -766,7 +810,7 @@ export function ProjectMasterDataWorkspace({
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             title="Total Categories"
             value={summary.totalCategories}
@@ -789,6 +833,18 @@ export function ProjectMasterDataWorkspace({
             title="Active Tags"
             value={summary.activeTags}
             subtitle="Visible in project filters"
+            icon={Tags}
+          />
+          <SummaryCard
+            title="Total Asset Tags"
+            value={summary.totalAssetTags}
+            subtitle="Saved values"
+            icon={Tags}
+          />
+          <SummaryCard
+            title="Active Asset Tags"
+            value={summary.activeAssetTags}
+            subtitle="Visible in asset uploads"
             icon={Tags}
           />
           <SummaryCard
@@ -822,7 +878,10 @@ export function ProjectMasterDataWorkspace({
                 Categories
               </TabsTrigger>
               <TabsTrigger value="tags" className="min-w-[140px] py-3 text-[15px]">
-                Tags
+                Project Tags
+              </TabsTrigger>
+              <TabsTrigger value="assetTags" className="min-w-[140px] py-3 text-[15px]">
+                Asset Tags
               </TabsTrigger>
               <TabsTrigger value="currencies" className="min-w-[140px] py-3 text-[15px]">
                 Currencies
@@ -850,6 +909,19 @@ export function ProjectMasterDataWorkspace({
               onAdd={() => openAddDrawer("tags")}
               onEdit={(item) => openEditDrawer("tags", item)}
               onDelete={(item) => handleDelete("tags", item)}
+              canManage={canManageItems}
+              canDelete={canDeleteItems}
+              pending={isPending}
+            />
+          </TabsContent>
+
+          <TabsContent value="assetTags">
+            <MasterDataTable
+              type="assetTags"
+              items={assetTags}
+              onAdd={() => openAddDrawer("assetTags")}
+              onEdit={(item) => openEditDrawer("assetTags", item)}
+              onDelete={(item) => handleDelete("assetTags", item)}
               canManage={canManageItems}
               canDelete={canDeleteItems}
               pending={isPending}
@@ -902,6 +974,8 @@ export function ProjectMasterDataWorkspace({
             ? "Delete Category"
             : deleteTarget?.tab === "tags"
               ? "Delete Tag"
+              : deleteTarget?.tab === "assetTags"
+                ? "Delete Asset Tag"
               : "Delete Currency"
         }
         description={

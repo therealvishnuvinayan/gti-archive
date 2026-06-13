@@ -171,59 +171,59 @@ enum NotificationEntityType {
 }
 
 model User {
-  id                String             @id @default(cuid())
-  email             String             @unique
-  name              String?
-  avatarUrl         String?
-  department        String?
-  phoneNumber       String?
-  jobTitle          String?
-  bio               String?
-  passwordHash      String
-  passwordChangedAt DateTime?
-  role              UserRole           @default(COLLABORATOR)
-  collaboratorType  CollaboratorType   @default(GTI_INTERNAL_CLIENT)
-  projectAccess     CollaboratorAccess @default(NONE)
-  calendarAccess    CollaboratorAccess @default(NONE)
-  libraryAccess     CollaboratorAccess @default(NONE)
-  archiveAccess     CollaboratorAccess @default(NONE)
-  inviteToken       String?            @unique
-  inviteExpiresAt   DateTime?
-  inviteAcceptedAt  DateTime?
-  sessions          Session[]
-  passwordResetTokens PasswordResetToken[]
-  projects          Project[]
-  revisions         ProjectRevision[]
-  reviewedRevisions ProjectRevision[]   @relation("ProjectRevisionReviewer")
-  comments          ProjectComment[]
-  commentMentions   ProjectCommentMention[]
-  comparisonComments ComparisonComment[]
-  attachments       ProjectAttachment[]
-  projectArchives   ProjectArchive[]    @relation("ProjectArchiveArchivedBy")
-  archivedProjectFiles ArchivedProjectFile[] @relation("ArchivedProjectFileArchivedBy")
-  approvalContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionApprovalContact")
-  copyrightContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionCopyrightContact")
-  uploadedCompletionDocuments ProjectCompletionDocument[] @relation("ProjectCompletionDocumentUploadedBy")
-  manualArchiveFiles ManualArchiveFile[] @relation("ManualArchiveFileUploadedBy")
-  manualLibraryAssets ManualLibraryAsset[] @relation("ManualLibraryAssetUploadedBy")
-  notifications    Notification[]
-  fileFavorites    FileFavorite[]
-  activityLogs      ProjectActivityLog[]
+  id                                  String                               @id @default(cuid())
+  email                               String                               @unique
+  name                                String?
+  avatarUrl                           String?
+  department                          String?
+  phoneNumber                         String?
+  jobTitle                            String?
+  bio                                 String?
+  passwordHash                        String
+  passwordChangedAt                   DateTime?
+  role                                UserRole                             @default(COLLABORATOR)
+  collaboratorType                    CollaboratorType                     @default(GTI_INTERNAL_CLIENT)
+  projectAccess                       CollaboratorAccess                   @default(NONE)
+  calendarAccess                      CollaboratorAccess                   @default(NONE)
+  libraryAccess                       CollaboratorAccess                   @default(NONE)
+  archiveAccess                       CollaboratorAccess                   @default(NONE)
+  inviteToken                         String?                              @unique
+  inviteExpiresAt                     DateTime?
+  inviteAcceptedAt                    DateTime?
+  sessions                            Session[]
+  passwordResetTokens                 PasswordResetToken[]
+  projects                            Project[]
+  revisions                           ProjectRevision[]
+  reviewedRevisions                   ProjectRevision[]                    @relation("ProjectRevisionReviewer")
+  comments                            ProjectComment[]
+  commentMentions                     ProjectCommentMention[]
+  comparisonComments                  ComparisonComment[]
+  attachments                         ProjectAttachment[]
+  projectArchives                     ProjectArchive[]                     @relation("ProjectArchiveArchivedBy")
+  archivedProjectFiles                ArchivedProjectFile[]                @relation("ArchivedProjectFileArchivedBy")
+  approvalContactWorkflows            ProjectCompletionWorkflow[]          @relation("ProjectCompletionApprovalContact")
+  copyrightContactWorkflows           ProjectCompletionWorkflow[]          @relation("ProjectCompletionCopyrightContact")
+  uploadedCompletionDocuments         ProjectCompletionDocument[]          @relation("ProjectCompletionDocumentUploadedBy")
+  manualArchiveFiles                  ManualArchiveFile[]                  @relation("ManualArchiveFileUploadedBy")
+  manualLibraryAssets                 ManualLibraryAsset[]                 @relation("ManualLibraryAssetUploadedBy")
+  notifications                       Notification[]
+  fileFavorites                       FileFavorite[]
+  activityLogs                        ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
-  assignedProjects  Project[]           @relation("ProjectExecutor")
-  projectExecutorAssignments ProjectExecutor[] @relation("ProjectExecutorUser")
-  addedProjectExecutorAssignments ProjectExecutor[] @relation("ProjectExecutorAddedBy")
-  startedProjectStages ProjectStage[]   @relation("ProjectStageStarter")
-  reviewedStageSubmissions ProjectAttachment[] @relation("SubmissionReviewer")
-  stageInvoiceRequestsMade StageInvoiceRequest[] @relation("StageInvoiceRequestRequester")
-  stageInvoiceRequestsReceived StageInvoiceRequest[] @relation("StageInvoiceRequestRecipient")
-  calendarEvents    CalendarEvent[]
-  projectCollaborations       ProjectCollaborator[] @relation("ProjectCollaboratorUser")
-  addedProjectCollaborations  ProjectCollaborator[] @relation("ProjectCollaboratorAdder")
-  calendarCollaborations      CalendarCollaborator[] @relation("CalendarCollaboratorUser")
-  addedCalendarCollaborations CalendarCollaborator[] @relation("CalendarCollaboratorAdder")
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  assignedProjects                    Project[]                            @relation("ProjectExecutor")
+  projectExecutorAssignments          ProjectExecutor[]                    @relation("ProjectExecutorUser")
+  addedProjectExecutorAssignments     ProjectExecutor[]                    @relation("ProjectExecutorAddedBy")
+  startedProjectStages                ProjectStage[]                       @relation("ProjectStageStarter")
+  reviewedStageSubmissions            ProjectAttachment[]                  @relation("SubmissionReviewer")
+  stageInvoiceRequestsMade            StageInvoiceRequest[]                @relation("StageInvoiceRequestRequester")
+  stageInvoiceRequestsReceived        StageInvoiceRequest[]                @relation("StageInvoiceRequestRecipient")
+  calendarEvents                      CalendarEvent[]
+  projectCollaborations               ProjectCollaborator[]                @relation("ProjectCollaboratorUser")
+  addedProjectCollaborations          ProjectCollaborator[]                @relation("ProjectCollaboratorAdder")
+  calendarCollaborations              CalendarCollaborator[]               @relation("CalendarCollaboratorUser")
+  addedCalendarCollaborations         CalendarCollaborator[]               @relation("CalendarCollaboratorAdder")
+  createdAt                           DateTime                             @default(now())
+  updatedAt                           DateTime                             @updatedAt
 }
 
 model PasswordResetToken {
@@ -240,17 +240,17 @@ model PasswordResetToken {
 }
 
 model PermissionDefinition {
-  id                          String                         @id @default(cuid())
-  key                         String                         @unique
+  id                          String                       @id @default(cuid())
+  key                         String                       @unique
   label                       String
   description                 String
   group                       String
-  isSystem                    Boolean                        @default(true)
+  isSystem                    Boolean                      @default(true)
   rolePermissions             RolePermission[]
   collaboratorTypePermissions CollaboratorTypePermission[]
   accessPresetPermissions     AccessPresetPermission[]
-  createdAt                   DateTime                       @default(now())
-  updatedAt                   DateTime                       @updatedAt
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
 }
 
 model RolePermission {
@@ -296,43 +296,43 @@ model AccessPresetPermission {
 }
 
 model Project {
-  id               String        @id @default(cuid())
-  name             String
-  category         String
-  executorName     String?
-  executorUserId   String?
-  executorUser     User?         @relation("ProjectExecutor", fields: [executorUserId], references: [id], onDelete: SetNull)
-  description      String
-  executionType    ProjectExecutionType @default(EXTERNAL)
-  budget           Int
-  currency         String        @default("USD")
-  status           ProjectStatus @default(ONGOING)
-  priority         ProjectPriority @default(MEDIUM)
-  startDate        DateTime
-  endDate          DateTime
-  currentStageName String?
-  stageCount       Int           @default(1)
-  createdById      String
-  createdBy        User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  isPinned         Boolean       @default(false)
-  stages           ProjectStage[]
-  tags             ProjectTagAssignment[]
-  revisions        ProjectRevision[]
-  comments         ProjectComment[]
-  comparisonComments ComparisonComment[]
-  attachments      ProjectAttachment[]
-  invoiceRequests  StageInvoiceRequest[]
-  activityLogs     ProjectActivityLog[]
-  collaborators    ProjectCollaborator[]
-  executors        ProjectExecutor[]
-  archive          ProjectArchive?
-  archivedFiles    ArchivedProjectFile[]
-  completionWorkflow ProjectCompletionWorkflow?
+  id                  String                      @id @default(cuid())
+  name                String
+  category            String
+  executorName        String?
+  executorUserId      String?
+  executorUser        User?                       @relation("ProjectExecutor", fields: [executorUserId], references: [id], onDelete: SetNull)
+  description         String
+  executionType       ProjectExecutionType        @default(EXTERNAL)
+  budget              Int
+  currency            String                      @default("USD")
+  status              ProjectStatus               @default(ONGOING)
+  priority            ProjectPriority             @default(MEDIUM)
+  startDate           DateTime
+  endDate             DateTime
+  currentStageName    String?
+  stageCount          Int                         @default(1)
+  createdById         String
+  createdBy           User                        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  isPinned            Boolean                     @default(false)
+  stages              ProjectStage[]
+  tags                ProjectTagAssignment[]
+  revisions           ProjectRevision[]
+  comments            ProjectComment[]
+  comparisonComments  ComparisonComment[]
+  attachments         ProjectAttachment[]
+  invoiceRequests     StageInvoiceRequest[]
+  activityLogs        ProjectActivityLog[]
+  collaborators       ProjectCollaborator[]
+  executors           ProjectExecutor[]
+  archive             ProjectArchive?
+  archivedFiles       ArchivedProjectFile[]
+  completionWorkflow  ProjectCompletionWorkflow?
   completionDocuments ProjectCompletionDocument[]
-  completedAt      DateTime?
-  archivedAt       DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  completedAt         DateTime?
+  archivedAt          DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
 
   @@index([status])
   @@index([isPinned])
@@ -352,14 +352,14 @@ model ProjectCategory {
 }
 
 model ProjectTag {
-  id          String   @id @default(cuid())
-  name        String   @unique
+  id          String                 @id @default(cuid())
+  name        String                 @unique
   description String?
   color       String?
-  isActive    Boolean  @default(true)
+  isActive    Boolean                @default(true)
   projects    ProjectTagAssignment[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
 }
 
 model ProjectTagAssignment {
@@ -367,9 +367,55 @@ model ProjectTagAssignment {
   tagId     String
   project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tag       ProjectTag @relation(fields: [tagId], references: [id], onDelete: Restrict)
-  createdAt DateTime  @default(now())
+  createdAt DateTime   @default(now())
 
   @@id([projectId, tagId])
+  @@index([tagId])
+}
+
+model AssetTag {
+  id                  String                                @id @default(cuid())
+  name                String                                @unique
+  description         String?
+  color               String?
+  isActive            Boolean                               @default(true)
+  projectAttachments  ProjectAttachmentAssetTagAssignment[]
+  manualArchiveFiles  ManualArchiveFileAssetTagAssignment[]
+  manualLibraryAssets ManualLibraryAssetTagAssignment[]
+  createdAt           DateTime                              @default(now())
+  updatedAt           DateTime                              @updatedAt
+}
+
+model ProjectAttachmentAssetTagAssignment {
+  attachmentId String
+  tagId        String
+  attachment   ProjectAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  tag          AssetTag          @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  createdAt    DateTime          @default(now())
+
+  @@id([attachmentId, tagId])
+  @@index([tagId])
+}
+
+model ManualArchiveFileAssetTagAssignment {
+  archiveFileId String
+  tagId         String
+  archiveFile   ManualArchiveFile @relation(fields: [archiveFileId], references: [id], onDelete: Cascade)
+  tag           AssetTag          @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  createdAt     DateTime          @default(now())
+
+  @@id([archiveFileId, tagId])
+  @@index([tagId])
+}
+
+model ManualLibraryAssetTagAssignment {
+  assetId   String
+  tagId     String
+  asset     ManualLibraryAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  tag       AssetTag           @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  createdAt DateTime           @default(now())
+
+  @@id([assetId, tagId])
   @@index([tagId])
 }
 
@@ -385,16 +431,16 @@ model ProjectCurrency {
 }
 
 model ProjectCollaborator {
-  projectId        String
-  project          Project                           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userId           String
-  user             User                              @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
-  participantType  ProjectCollaboratorParticipantType?
-  chatVisibilityPaused Boolean                       @default(false)
-  addedById        String?
-  addedBy          User?                             @relation("ProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
-  visibilityPauses ProjectCollaboratorVisibilityPause[]
-  createdAt        DateTime                          @default(now())
+  projectId            String
+  project              Project                              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User                                 @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  participantType      ProjectCollaboratorParticipantType?
+  chatVisibilityPaused Boolean                              @default(false)
+  addedById            String?
+  addedBy              User?                                @relation("ProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  visibilityPauses     ProjectCollaboratorVisibilityPause[]
+  createdAt            DateTime                             @default(now())
 
   @@id([projectId, userId])
   @@index([userId])
@@ -419,16 +465,16 @@ model ProjectExecutor {
 }
 
 model ProjectCollaboratorVisibilityPause {
-  id          String              @id @default(cuid())
-  projectId   String
-  userId      String
+  id           String              @id @default(cuid())
+  projectId    String
+  userId       String
   collaborator ProjectCollaborator @relation(fields: [projectId, userId], references: [projectId, userId], onDelete: Cascade)
-  pausedAt    DateTime
-  resumedAt   DateTime?
-  createdById String
-  createdBy   User                @relation("ProjectCollaboratorVisibilityPauseCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  pausedAt     DateTime
+  resumedAt    DateTime?
+  createdById  String
+  createdBy    User                @relation("ProjectCollaboratorVisibilityPauseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([projectId, userId, pausedAt])
   @@index([projectId, pausedAt, resumedAt])
@@ -436,69 +482,69 @@ model ProjectCollaboratorVisibilityPause {
 }
 
 model CalendarCollaborator {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation("CalendarCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  id        String             @id @default(cuid())
+  userId    String             @unique
+  user      User               @relation("CalendarCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
   access    CollaboratorAccess @default(LIMITED)
   addedById String?
-  addedBy   User?    @relation("CalendarCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
+  addedBy   User?              @relation("CalendarCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime           @default(now())
 
   @@index([addedById])
 }
 
 model ProjectStage {
-  id        String        @id @default(cuid())
-  projectId String
-  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name      String
-  description String?
-  budget    Int?
-  plannedStartAt DateTime?
-  plannedDueAt DateTime?
-  invoiceRequired Boolean @default(true)
-  actualStartedAt DateTime?
-  startedById String?
-  startedBy User? @relation("ProjectStageStarter", fields: [startedById], references: [id], onDelete: SetNull)
-  status    ProjectStatus @default(PENDING)
-  order     Int
-  revisions ProjectRevision[]
-  comments  ProjectComment[]
+  id                 String                @id @default(cuid())
+  projectId          String
+  project            Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name               String
+  description        String?
+  budget             Int?
+  plannedStartAt     DateTime?
+  plannedDueAt       DateTime?
+  invoiceRequired    Boolean               @default(true)
+  actualStartedAt    DateTime?
+  startedById        String?
+  startedBy          User?                 @relation("ProjectStageStarter", fields: [startedById], references: [id], onDelete: SetNull)
+  status             ProjectStatus         @default(PENDING)
+  order              Int
+  revisions          ProjectRevision[]
+  comments           ProjectComment[]
   comparisonComments ComparisonComment[]
-  attachments ProjectAttachment[]
-  invoiceRequests StageInvoiceRequest[]
-  archives  ProjectArchive[] @relation("ProjectArchiveFinalStage")
-  activityLogs ProjectActivityLog[]
-  completedAt DateTime?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  attachments        ProjectAttachment[]
+  invoiceRequests    StageInvoiceRequest[]
+  archives           ProjectArchive[]      @relation("ProjectArchiveFinalStage")
+  activityLogs       ProjectActivityLog[]
+  completedAt        DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
   @@index([projectId, order])
   @@index([startedById])
 }
 
 model ProjectRevision {
-  id             String               @id @default(cuid())
-  projectId      String
-  project        Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stageId        String
-  stage          ProjectStage         @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  createdById    String
-  createdBy      User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  reviewedById   String?
-  reviewedBy     User?                @relation("ProjectRevisionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  revisionNumber Int
-  title          String
-  summary        String?
-  status         ProjectRevisionStatus @default(PENDING_REVIEW)
-  reviewedAt     DateTime?
+  id              String                @id @default(cuid())
+  projectId       String
+  project         Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId         String
+  stage           ProjectStage          @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  createdById     String
+  createdBy       User                  @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedById    String?
+  reviewedBy      User?                 @relation("ProjectRevisionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  revisionNumber  Int
+  title           String
+  summary         String?
+  status          ProjectRevisionStatus @default(PENDING_REVIEW)
+  reviewedAt      DateTime?
   rejectionReason String?
-  attachments    ProjectAttachment[]
-  archivedFiles  ArchivedProjectFile[] @relation("ArchivedProjectFileSourceRevision")
-  comments       ProjectComment[]
-  activityLogs   ProjectActivityLog[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  attachments     ProjectAttachment[]
+  archivedFiles   ArchivedProjectFile[] @relation("ArchivedProjectFileSourceRevision")
+  comments        ProjectComment[]
+  activityLogs    ProjectActivityLog[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@unique([stageId, revisionNumber])
   @@index([projectId, stageId, createdAt])
@@ -508,20 +554,20 @@ model ProjectRevision {
 }
 
 model ProjectComment {
-  id           String               @id @default(cuid())
-  projectId    String
-  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stageId      String
-  stage        ProjectStage         @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  revisionId   String?
-  revision     ProjectRevision?     @relation(fields: [revisionId], references: [id], onDelete: SetNull)
-  authorId     String
-  author       User                 @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  body         String
-  attachments  ProjectAttachment[]
-  mentions     ProjectCommentMention[]
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  id          String                  @id @default(cuid())
+  projectId   String
+  project     Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId     String
+  stage       ProjectStage            @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  revisionId  String?
+  revision    ProjectRevision?        @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  authorId    String
+  author      User                    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  body        String
+  attachments ProjectAttachment[]
+  mentions    ProjectCommentMention[]
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
 
   @@index([projectId, stageId, createdAt])
   @@index([revisionId])
@@ -530,11 +576,11 @@ model ProjectComment {
 
 model ProjectCommentMention {
   id              String         @id @default(cuid())
-  commentId        String
-  comment          ProjectComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  mentionedUserId  String
-  mentionedUser    User          @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
-  createdAt        DateTime      @default(now())
+  commentId       String
+  comment         ProjectComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  mentionedUserId String
+  mentionedUser   User           @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
 
   @@unique([commentId, mentionedUserId])
   @@index([mentionedUserId, createdAt])
@@ -542,36 +588,37 @@ model ProjectCommentMention {
 }
 
 model ProjectAttachment {
-  id               String             @id @default(cuid())
-  projectId        String
-  project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stageId          String?
-  stage            ProjectStage?      @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  revisionId       String?
-  revision         ProjectRevision?   @relation(fields: [revisionId], references: [id], onDelete: SetNull)
-  commentId        String?
-  comment          ProjectComment?    @relation(fields: [commentId], references: [id], onDelete: SetNull)
-  uploadedById     String
-  uploadedBy       User               @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  reviewedById     String?
-  reviewedBy       User?              @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  baseComparisonComments ComparisonComment[] @relation("ComparisonCommentBaseAttachment")
-  compareComparisonComments ComparisonComment[] @relation("ComparisonCommentCompareAttachment")
-  fileFavorites    FileFavorite[]
-  fileName         String
-  originalFileName String
-  mimeType         String
-  fileSize         Int
-  bucket           String
-  storageKey       String             @unique
-  assetType        AttachmentAssetType
-  status           AttachmentStatus   @default(UPLOADING)
-  submissionReviewStatus SubmissionReviewStatus?
-  reviewedAt        DateTime?
-  reviewNote        String?
-  archivedFiles     ArchivedProjectFile[] @relation("ArchivedProjectFileSourceAttachment")
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                        String                                @id @default(cuid())
+  projectId                 String
+  project                   Project                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId                   String?
+  stage                     ProjectStage?                         @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  revisionId                String?
+  revision                  ProjectRevision?                      @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  commentId                 String?
+  comment                   ProjectComment?                       @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  uploadedById              String
+  uploadedBy                User                                  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  reviewedById              String?
+  reviewedBy                User?                                 @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  baseComparisonComments    ComparisonComment[]                   @relation("ComparisonCommentBaseAttachment")
+  compareComparisonComments ComparisonComment[]                   @relation("ComparisonCommentCompareAttachment")
+  fileFavorites             FileFavorite[]
+  fileName                  String
+  originalFileName          String
+  mimeType                  String
+  fileSize                  Int
+  bucket                    String
+  storageKey                String                                @unique
+  assetType                 AttachmentAssetType
+  status                    AttachmentStatus                      @default(UPLOADING)
+  submissionReviewStatus    SubmissionReviewStatus?
+  reviewedAt                DateTime?
+  reviewNote                String?
+  archivedFiles             ArchivedProjectFile[]                 @relation("ArchivedProjectFileSourceAttachment")
+  assetTags                 ProjectAttachmentAssetTagAssignment[]
+  createdAt                 DateTime                              @default(now())
+  updatedAt                 DateTime                              @updatedAt
 
   @@index([projectId, createdAt])
   @@index([stageId, createdAt])
@@ -620,22 +667,22 @@ model FileFavorite {
 }
 
 model ComparisonComment {
-  id                String            @id @default(cuid())
-  projectId         String
-  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stageId           String
-  stage             ProjectStage      @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  baseAttachmentId  String
-  baseAttachment    ProjectAttachment @relation("ComparisonCommentBaseAttachment", fields: [baseAttachmentId], references: [id], onDelete: Cascade)
+  id                  String            @id @default(cuid())
+  projectId           String
+  project             Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId             String
+  stage               ProjectStage      @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  baseAttachmentId    String
+  baseAttachment      ProjectAttachment @relation("ComparisonCommentBaseAttachment", fields: [baseAttachmentId], references: [id], onDelete: Cascade)
   compareAttachmentId String
-  compareAttachment ProjectAttachment @relation("ComparisonCommentCompareAttachment", fields: [compareAttachmentId], references: [id], onDelete: Cascade)
-  xPercent          Float
-  yPercent          Float
-  body              String
-  createdById       String
-  createdBy         User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  compareAttachment   ProjectAttachment @relation("ComparisonCommentCompareAttachment", fields: [compareAttachmentId], references: [id], onDelete: Cascade)
+  xPercent            Float
+  yPercent            Float
+  body                String
+  createdById         String
+  createdBy           User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   @@index([projectId, stageId, createdAt])
   @@index([baseAttachmentId, compareAttachmentId, createdAt])
@@ -663,23 +710,23 @@ model ProjectActivityLog {
 }
 
 model ProjectArchive {
-  id                   String              @id @default(cuid())
-  projectId            String              @unique
-  project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id                   String                @id @default(cuid())
+  projectId            String                @unique
+  project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   finalStageId         String
-  finalStage           ProjectStage        @relation("ProjectArchiveFinalStage", fields: [finalStageId], references: [id], onDelete: Restrict)
+  finalStage           ProjectStage          @relation("ProjectArchiveFinalStage", fields: [finalStageId], references: [id], onDelete: Restrict)
   archivedById         String
-  archivedBy           User                @relation("ProjectArchiveArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  archivedBy           User                  @relation("ProjectArchiveArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
   projectName          String
   projectCategory      String
   projectTag           String?
   archiveCategorySlug  String
   archiveCategoryLabel String
-  status               ArchiveRecordStatus @default(ARCHIVED)
+  status               ArchiveRecordStatus   @default(ARCHIVED)
   archivedAt           DateTime
   files                ArchivedProjectFile[]
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@index([archiveCategorySlug, archivedAt])
   @@index([archivedById])
@@ -716,30 +763,30 @@ model ArchivedProjectFile {
 }
 
 model ProjectCompletionWorkflow {
-  id                           String                      @id @default(cuid())
-  projectId                    String                      @unique
-  project                      Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  approvalRequired             Boolean?
-  approvalStatus               ProjectCompletionStepStatus @default(NOT_STARTED)
-  approvalContactUserId        String?
-  approvalContactUser          User?                       @relation("ProjectCompletionApprovalContact", fields: [approvalContactUserId], references: [id], onDelete: SetNull)
-  approvalNote                 String?
-  approvalSelectedArchivedFileIds String[]                @default([])
-  approvalRequestedAt          DateTime?
-  approvalCompletedAt          DateTime?
-  copyrightRequired            Boolean?
-  copyrightStatus              ProjectCompletionStepStatus @default(NOT_STARTED)
-  copyrightContactUserId       String?
-  copyrightContactUser         User?                       @relation("ProjectCompletionCopyrightContact", fields: [copyrightContactUserId], references: [id], onDelete: SetNull)
-  copyrightNote                String?
-  copyrightRequestedAt         DateTime?
-  copyrightCompletedAt         DateTime?
-  invoiceStatus                ProjectCompletionStepStatus @default(NOT_STARTED)
-  invoiceCompletedAt           DateTime?
-  completedAt                  DateTime?
-  documents                    ProjectCompletionDocument[]
-  createdAt                    DateTime                    @default(now())
-  updatedAt                    DateTime                    @updatedAt
+  id                              String                      @id @default(cuid())
+  projectId                       String                      @unique
+  project                         Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  approvalRequired                Boolean?
+  approvalStatus                  ProjectCompletionStepStatus @default(NOT_STARTED)
+  approvalContactUserId           String?
+  approvalContactUser             User?                       @relation("ProjectCompletionApprovalContact", fields: [approvalContactUserId], references: [id], onDelete: SetNull)
+  approvalNote                    String?
+  approvalSelectedArchivedFileIds String[]                    @default([])
+  approvalRequestedAt             DateTime?
+  approvalCompletedAt             DateTime?
+  copyrightRequired               Boolean?
+  copyrightStatus                 ProjectCompletionStepStatus @default(NOT_STARTED)
+  copyrightContactUserId          String?
+  copyrightContactUser            User?                       @relation("ProjectCompletionCopyrightContact", fields: [copyrightContactUserId], references: [id], onDelete: SetNull)
+  copyrightNote                   String?
+  copyrightRequestedAt            DateTime?
+  copyrightCompletedAt            DateTime?
+  invoiceStatus                   ProjectCompletionStepStatus @default(NOT_STARTED)
+  invoiceCompletedAt              DateTime?
+  completedAt                     DateTime?
+  documents                       ProjectCompletionDocument[]
+  createdAt                       DateTime                    @default(now())
+  updatedAt                       DateTime                    @updatedAt
 
   @@index([approvalStatus])
   @@index([copyrightStatus])
@@ -773,25 +820,25 @@ model ProjectCompletionDocument {
 }
 
 model ManualArchiveFile {
-  id                   String           @id @default(cuid())
+  id                   String                                @id @default(cuid())
   fileName             String
   originalFileName     String
   projectName          String?
   projectCreatedBy     String?
   archiveCategorySlug  String
   archiveCategoryLabel String
-  tag                  String?
   projectDate          DateTime?
   mimeType             String
   fileSize             Int
   bucket               String
-  storageKey           String           @unique
-  status               AttachmentStatus @default(UPLOADING)
+  storageKey           String                                @unique
+  status               AttachmentStatus                      @default(UPLOADING)
   uploadedById         String
-  uploadedBy           User             @relation("ManualArchiveFileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
-  uploadedAt           DateTime         @default(now())
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  uploadedBy           User                                  @relation("ManualArchiveFileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  assetTags            ManualArchiveFileAssetTagAssignment[]
+  uploadedAt           DateTime                              @default(now())
+  createdAt            DateTime                              @default(now())
+  updatedAt            DateTime                              @updatedAt
 
   @@index([archiveCategorySlug, uploadedAt])
   @@index([uploadedById])
@@ -799,23 +846,23 @@ model ManualArchiveFile {
 }
 
 model ManualLibraryAsset {
-  id               String           @id @default(cuid())
+  id               String                            @id @default(cuid())
   assetName        String
   originalFileName String
   createdByName    String?
   description      String?
   category         String?
-  tag              String?
   mimeType         String
   fileSize         Int
   bucket           String
-  storageKey       String           @unique
-  status           AttachmentStatus @default(UPLOADING)
+  storageKey       String                            @unique
+  status           AttachmentStatus                  @default(UPLOADING)
   uploadedById     String
-  uploadedBy       User             @relation("ManualLibraryAssetUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
-  uploadedAt       DateTime         @default(now())
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  uploadedBy       User                              @relation("ManualLibraryAssetUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  assetTags        ManualLibraryAssetTagAssignment[]
+  uploadedAt       DateTime                          @default(now())
+  createdAt        DateTime                          @default(now())
+  updatedAt        DateTime                          @updatedAt
 
   @@index([category, uploadedAt])
   @@index([uploadedById])
@@ -823,9 +870,9 @@ model ManualLibraryAsset {
 }
 
 model Notification {
-  id           String                 @id @default(cuid())
+  id           String                  @id @default(cuid())
   userId       String
-  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   type         NotificationType
   title        String
   message      String
@@ -838,10 +885,10 @@ model Notification {
   attachmentId String?
   archiveId    String?
   url          String?
-  isRead       Boolean                @default(false)
+  isRead       Boolean                 @default(false)
   readAt       DateTime?
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
 
   @@index([userId, createdAt])
   @@index([userId, isRead, createdAt])

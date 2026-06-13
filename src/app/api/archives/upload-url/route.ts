@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     projectName?: string;
     projectCreatedBy?: string;
     archiveCategorySlug?: string;
-    tag?: string;
+    assetTagIds?: string[];
     projectDate?: string;
   } = {};
 
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     projectName: payload.projectName,
     projectCreatedBy: payload.projectCreatedBy,
     archiveCategorySlug: payload.archiveCategorySlug,
-    tag: payload.tag,
+    assetTagIds: Array.isArray(payload.assetTagIds) ? payload.assetTagIds : [],
     projectDate: payload.projectDate,
   });
 

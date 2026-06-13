@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, FileUp, Tag, Upload, X } from "lucide-react";
+import { CalendarDays, FileUp, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { AssetTagSelector } from "@/components/assets/asset-tag-selector";
 import {
   CalendarMonthGrid,
   formatCalendarDateValue,
@@ -208,7 +209,7 @@ export function ArchiveUploadButton({
   const [selectedCategory, setSelectedCategory] = useState<string>(
     defaultCategorySlug ?? AUTO_CATEGORY,
   );
-  const [tag, setTag] = useState("");
+  const [assetTagIds, setAssetTagIds] = useState<string[]>([]);
   const [projectDate, setProjectDate] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -234,7 +235,7 @@ export function ArchiveUploadButton({
     setProjectName("");
     setProjectCreatedBy("");
     setSelectedCategory(defaultCategorySlug ?? AUTO_CATEGORY);
-    setTag("");
+    setAssetTagIds([]);
     setProjectDate("");
     setSelectedFile(null);
     setIsDragging(false);
@@ -285,7 +286,7 @@ export function ArchiveUploadButton({
           projectCreatedBy,
           archiveCategorySlug:
             selectedCategory === AUTO_CATEGORY ? undefined : selectedCategory,
-          tag,
+          assetTagIds,
           projectDate,
         }),
       });
@@ -478,19 +479,11 @@ export function ArchiveUploadButton({
                   />
                 </label>
 
-                <label>
-                  <span className="mb-2 flex items-center gap-1.5 text-[13px] font-[700] text-[#2d372f]">
-                    <Tag className="h-3.5 w-3.5 text-brand" />
-                    Tag
-                  </span>
-                  <Input
-                    value={tag}
-                    onChange={(event) => setTag(event.target.value)}
-                    disabled={isUploading}
-                    className="h-11 rounded-2xl border border-line"
-                    placeholder="Optional"
-                  />
-                </label>
+                <AssetTagSelector
+                  value={assetTagIds}
+                  onChange={setAssetTagIds}
+                  disabled={isUploading}
+                />
 
                 <div>
                   <span className="mb-2 flex items-center gap-1.5 text-[13px] font-[700] text-[#2d372f]">

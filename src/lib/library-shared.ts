@@ -1,3 +1,5 @@
+import type { AssetTagRecord } from "@/lib/asset-tags";
+
 export const libraryQuickMenuOptions = [
   "assets",
   "finance",
@@ -38,6 +40,7 @@ export type LibraryItemRecord = {
   projectName: string;
   projectTag: string | null;
   projectTags: string[];
+  assetTags: AssetTagRecord[];
   uploadedAt: string;
   uploadedAtValue: string;
   createdBy: string;
@@ -88,6 +91,7 @@ export type LibraryPageData = {
   filters: {
     projects: LibraryFilterOption[];
     createdBy: LibraryFilterOption[];
+    assetTags: LibraryFilterOption[];
   };
   page: number;
   pageSize: number;
@@ -99,6 +103,7 @@ export type LibraryQueryInput = {
   search?: string;
   projectId?: string;
   createdById?: string;
+  assetTagId?: string;
   date?: LibraryDateFilter;
   type?: LibraryTypeFilter;
   quickMenu?: LibraryQuickMenuOption;

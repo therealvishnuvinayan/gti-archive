@@ -65,7 +65,7 @@ async function revalidateProjectMasterData() {
 
 function validateMasterDataDescription(
   description: string | null,
-  label: "Category" | "Tag",
+  label: "Category" | "Tag" | "Asset tag",
 ) {
   if (
     description &&
@@ -228,6 +228,83 @@ export async function saveProjectTagAction(input: SaveMasterDataInput) {
   };
 }
 
+export async function saveAssetTagAction(input: SaveMasterDataInput) {
+  await requireAdminUser();
+
+  const parsed = normalizeMasterDataInput(input);
+
+  if (!parsed.name) {
+    return { error: "Asset tag name is required." };
+  }
+
+  const descriptionError = validateMasterDataDescription(
+    parsed.description,
+    "Asset tag",
+  );
+
+  if (descriptionError) {
+    return { error: descriptionError };
+  }
+
+  const duplicate = await withPrismaRetry(() =>
+    prisma.assetTag.findFirst({
+      where: {
+        name: {
+          equals: parsed.name,
+          mode: "insensitive",
+        },
+        ...(parsed.id
+          ? {
+              id: {
+                not: parsed.id,
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (duplicate) {
+    return { error: "An asset tag with this name already exists." };
+  }
+
+  const tag = await withPrismaRetry(() =>
+    parsed.id
+      ? prisma.assetTag.update({
+          where: {
+            id: parsed.id,
+          },
+          data: {
+            name: parsed.name,
+            description: parsed.description,
+            color: parsed.color,
+            isActive: parsed.isActive,
+          },
+        })
+      : prisma.assetTag.create({
+          data: {
+            name: parsed.name,
+            description: parsed.description,
+            color: parsed.color,
+            isActive: parsed.isActive,
+          },
+        }),
+  );
+
+  await revalidateProjectMasterData();
+
+  return {
+    success: true,
+    item: {
+      id: tag.id,
+      name: tag.name,
+    },
+  };
+}
+
 export async function saveProjectCurrencyAction(input: SaveMasterDataInput) {
   await requireAdminUser();
 
@@ -350,6 +427,25 @@ export async function setProjectTagStatusAction(input: ToggleMasterDataInput) {
   return { success: true };
 }
 
+export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
+  await requireAdminUser();
+
+  await withPrismaRetry(() =>
+    prisma.assetTag.update({
+      where: {
+        id: input.id,
+      },
+      data: {
+        isActive: input.isActive,
+      },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
 export async function setProjectCurrencyStatusAction(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
@@ -441,6 +537,55 @@ export async function deleteProjectTagAction(id: string) {
 
   await withPrismaRetry(() =>
     prisma.projectTag.delete({
+      where: { id },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function deleteAssetTagAction(id: string) {
+  await requireSuperAdminUser();
+
+  const tag = await withPrismaRetry(() =>
+    prisma.assetTag.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    }),
+  );
+
+  if (!tag) {
+    return { error: "Asset tag not found." };
+  }
+
+  const usageCount = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.projectAttachmentAssetTagAssignment.count({
+        where: {
+          tagId: tag.id,
+        },
+      }),
+      prisma.manualArchiveFileAssetTagAssignment.count({
+        where: {
+          tagId: tag.id,
+        },
+      }),
+      prisma.manualLibraryAssetTagAssignment.count({
+        where: {
+          tagId: tag.id,
+        },
+      }),
+    ]).then((counts) => counts.reduce((total, count) => total + count, 0)),
+  );
+
+  if (usageCount > 0) {
+    return { error: "This asset tag is already used by existing assets. Deactivate it instead." };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.assetTag.delete({
       where: { id },
     }),
   );

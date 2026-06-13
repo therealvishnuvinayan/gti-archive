@@ -62,6 +62,7 @@ import {
   buildFileTypeNotAllowedPayload,
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
+import { validateActiveAssetTagIds } from "@/lib/asset-tags";
 
 type AccessUser = Pick<
   User,
@@ -189,6 +190,7 @@ export type RequestUploadInput = {
   mimeType: string;
   fileSize: number;
   assetType: AttachmentAssetType;
+  assetTagIds?: string[];
 };
 
 type UploadRequestErrorResult = { error: string } | UploadFileTypeErrorPayload;
@@ -2974,6 +2976,12 @@ export async function requestAttachmentUpload(
     });
   }
 
+  const tagSelection = await validateActiveAssetTagIds(input.assetTagIds ?? []);
+
+  if (tagSelection.error) {
+    return { error: tagSelection.error };
+  }
+
   const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${sanitizeFileName(
     input.originalFileName,
   )}`;
@@ -3009,6 +3017,18 @@ export async function requestAttachmentUpload(
         reviewedById: null,
         reviewedAt: null,
         reviewNote: null,
+        assetTags:
+          tagSelection.tagIds.length > 0
+            ? {
+                create: tagSelection.tagIds.map((tagId) => ({
+                  tag: {
+                    connect: {
+                      id: tagId,
+                    },
+                  },
+                })),
+              }
+            : undefined,
       },
       select: {
         id: true,

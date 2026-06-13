@@ -40,6 +40,11 @@ import {
   buildFileTypeNotAllowedPayload,
   isAllowedAssetFile,
 } from "@/lib/upload-validation";
+import {
+  mapAssetTagAssignments,
+  validateActiveAssetTagIds,
+  type AssetTagAssignmentRecord,
+} from "@/lib/asset-tags";
 
 const libraryAssetTypes = [
   AttachmentAssetType.GENERAL_PROJECT_ASSET,
@@ -86,6 +91,7 @@ type RawLibraryAttachment = {
   createdAt: Date;
   uploadedById: string;
   assetType: AttachmentAssetType;
+  assetTags: AssetTagAssignmentRecord[];
   project: {
     id: string;
     name: string;
@@ -121,7 +127,7 @@ type RawManualLibraryAsset = {
   originalFileName: string;
   createdByName: string | null;
   category: string | null;
-  tag: string | null;
+  assetTags: AssetTagAssignmentRecord[];
   mimeType: string;
   uploadedAt: Date;
   uploadedById: string;
@@ -140,7 +146,7 @@ type RequestManualLibraryAssetUploadInput = {
   createdByName?: string | null;
   description?: string | null;
   category?: string | null;
-  tag?: string | null;
+  assetTagIds?: string[];
 };
 
 function getLibraryUserDisplayName(user: { name: string | null; email: string }) {
@@ -193,10 +199,6 @@ function normalizeLibraryProjectTags(values: Array<string | null | undefined>) {
   });
 
   return [...normalized.values()];
-}
-
-function splitLibraryProjectTagSnapshot(value: string | null | undefined) {
-  return normalizeLibraryProjectTags((value ?? "").split(","));
 }
 
 function getLibraryProjectTagNames(project: RawLibraryAttachment["project"]) {
@@ -363,6 +365,7 @@ function mapAttachmentToLibraryItem(
     : getLibraryTypeLabel(attachment.originalFileName, attachment.mimeType);
   const isFinance = isStageInvoice || isFinanceLibraryFile(attachment.originalFileName);
   const projectTags = getLibraryProjectTagNames(attachment.project);
+  const assetTags = mapAssetTagAssignments(attachment.assetTags);
 
   return {
     id: attachment.id,
@@ -372,6 +375,7 @@ function mapAttachmentToLibraryItem(
     projectName: attachment.project.name,
     projectTag: formatLibraryProjectTagsLabel(projectTags),
     projectTags,
+    assetTags,
     uploadedAt: formatLibraryDate(attachment.createdAt),
     uploadedAtValue: attachment.createdAt.toISOString(),
     createdBy: getLibraryUserDisplayName(attachment.uploadedBy),
@@ -395,7 +399,7 @@ function mapManualAssetToLibraryItem(
   const isFinance = asset.category === "QUOTATION_INVOICE" || isFinanceLibraryFile(asset.assetName);
   const createdByName =
     asset.createdByName?.trim() || getLibraryUserDisplayName(asset.uploadedBy);
-  const projectTags = splitLibraryProjectTagSnapshot(asset.tag);
+  const assetTags = mapAssetTagAssignments(asset.assetTags);
 
   return {
     id: asset.id,
@@ -403,8 +407,9 @@ function mapManualAssetToLibraryItem(
     fileName: asset.assetName,
     projectId: asset.category ? `manual-library-${asset.category}` : "manual-library",
     projectName: categoryLabel,
-    projectTag: formatLibraryProjectTagsLabel(projectTags),
-    projectTags,
+    projectTag: null,
+    projectTags: [],
+    assetTags,
     uploadedAt: formatLibraryDate(asset.uploadedAt),
     uploadedAtValue: asset.uploadedAt.toISOString(),
     createdBy: createdByName,
@@ -451,7 +456,13 @@ function applyLibraryFilters(
   input: Required<
     Pick<
       LibraryQueryInput,
-      "search" | "projectId" | "createdById" | "date" | "type" | "quickMenu"
+      | "search"
+      | "projectId"
+      | "createdById"
+      | "assetTagId"
+      | "date"
+      | "type"
+      | "quickMenu"
     >
   >,
 ) {
@@ -495,6 +506,7 @@ function applyLibraryFilters(
         item.projectName,
         item.projectTag ?? "",
         ...item.projectTags,
+        ...item.assetTags.map((tag) => tag.name),
         item.createdBy,
         item.createdByEmail,
         item.type,
@@ -503,6 +515,12 @@ function applyLibraryFilters(
         .join(" ")
         .toLowerCase()
         .includes(search),
+    );
+  }
+
+  if (input.assetTagId) {
+    filteredItems = filteredItems.filter((item) =>
+      item.assetTags.some((tag) => tag.id === input.assetTagId),
     );
   }
 
@@ -560,6 +578,17 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
         createdAt: true,
         uploadedById: true,
         assetType: true,
+        assetTags: {
+          include: {
+            tag: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+              },
+            },
+          },
+        },
         uploadedBy: {
           select: {
             id: true,
@@ -626,7 +655,17 @@ async function getAccessibleManualLibraryAssets() {
         originalFileName: true,
         createdByName: true,
         category: true,
-        tag: true,
+        assetTags: {
+          include: {
+            tag: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+              },
+            },
+          },
+        },
         mimeType: true,
         uploadedAt: true,
         uploadedById: true,
@@ -716,12 +755,22 @@ export async function getLibraryPageDataForUser(
           .sort((left, right) => left[1].label.localeCompare(right[1].label)),
       ).values(),
     ),
+    assetTags: Array.from(
+      new Map(
+        visibleItems
+          .flatMap((item) =>
+            item.assetTags.map((tag) => [tag.id, { id: tag.id, label: tag.name }] as const),
+          )
+          .sort((left, right) => left[1].label.localeCompare(right[1].label)),
+      ).values(),
+    ),
   };
 
   const filteredItems = applyLibraryFilters(visibleItems, {
     search: input.search?.trim() ?? "",
     projectId: input.projectId?.trim() ?? "",
     createdById: input.createdById?.trim() ?? "",
+    assetTagId: input.assetTagId?.trim() ?? "",
     date: input.date ?? "all",
     type: input.type ?? "All Types",
     quickMenu: input.quickMenu ?? "assets",
@@ -788,6 +837,12 @@ export async function requestManualLibraryAssetUpload(
     } as const;
   }
 
+  const tagSelection = await validateActiveAssetTagIds(input.assetTagIds ?? []);
+
+  if (tagSelection.error) {
+    return { error: tagSelection.error } as const;
+  }
+
   const category = parseManualLibraryCategory(input.category);
   const bucket = getS3BucketName();
   const storageKey = buildManualLibraryAssetKey(user.id, input.originalFileName);
@@ -805,7 +860,18 @@ export async function requestManualLibraryAssetUpload(
         createdByName: normalizeOptionalLibraryText(input.createdByName),
         description: normalizeOptionalLibraryText(input.description),
         category,
-        tag: normalizeOptionalLibraryText(input.tag),
+        assetTags:
+          tagSelection.tagIds.length > 0
+            ? {
+                create: tagSelection.tagIds.map((tagId) => ({
+                  tag: {
+                    connect: {
+                      id: tagId,
+                    },
+                  },
+                })),
+              }
+            : undefined,
         mimeType: input.mimeType,
         fileSize: input.fileSize,
         bucket,

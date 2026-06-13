@@ -36,6 +36,7 @@ type ArchiveFilters = {
   projectName: string;
   archivedBy: string;
   projectTag: string;
+  assetTag: string;
 };
 
 const defaultFilters: ArchiveFilters = {
@@ -43,11 +44,13 @@ const defaultFilters: ArchiveFilters = {
   projectName: "",
   archivedBy: "",
   projectTag: "",
+  assetTag: "",
 };
 
 const ALL_PROJECTS = "__all_projects__";
 const ALL_USERS = "__all_users__";
 const ALL_TAGS = "__all_tags__";
+const ALL_ASSET_TAGS = "__all_asset_tags__";
 
 function uniqueValues(items: ArchivedProjectFileRecord[], key: keyof ArchivedProjectFileRecord) {
   return Array.from(new Set(items.map((item) => item[key] as string).filter(Boolean))).sort(
@@ -60,6 +63,18 @@ function uniqueProjectTags(items: ArchivedProjectFileRecord[]) {
     new Set(items.flatMap((item) => item.projectTags).filter(Boolean)),
   ).sort((left, right) =>
     left.localeCompare(right, undefined, { sensitivity: "base" }),
+  );
+}
+
+function uniqueAssetTags(items: ArchivedProjectFileRecord[]) {
+  return Array.from(
+    new Map(
+      items
+        .flatMap((item) => item.assetTags)
+        .map((tag) => [tag.id, { id: tag.id, label: tag.name }] as const),
+    ).values(),
+  ).sort((left, right) =>
+    left.label.localeCompare(right.label, undefined, { sensitivity: "base" }),
   );
 }
 
@@ -76,6 +91,7 @@ export function ArchiveCategoryWorkspace({
       projectName: uniqueValues(items, "projectName"),
       archivedBy: uniqueValues(items, "archivedBy"),
       projectTag: uniqueProjectTags(items),
+      assetTag: uniqueAssetTags(items),
     }),
     [items],
   );
@@ -91,6 +107,7 @@ export function ArchiveCategoryWorkspace({
           item.projectCategory,
           item.projectTag,
           ...item.projectTags,
+          ...item.assetTags.map((tag) => tag.name),
           item.archivedBy,
           item.recordTypeLabel,
           item.sourceLabel,
@@ -114,11 +131,22 @@ export function ArchiveCategoryWorkspace({
         return false;
       }
 
+      if (
+        filters.assetTag &&
+        !item.assetTags.some((tag) => tag.id === filters.assetTag)
+      ) {
+        return false;
+      }
+
       return true;
     });
   }, [filters, items]);
   const hasActiveFilters = Boolean(
-    filters.search || filters.projectName || filters.archivedBy || filters.projectTag,
+    filters.search ||
+      filters.projectName ||
+      filters.archivedBy ||
+      filters.projectTag ||
+      filters.assetTag,
   );
 
   function updateFilter<K extends keyof ArchiveFilters>(key: K, value: ArchiveFilters[K]) {
@@ -154,7 +182,7 @@ export function ArchiveCategoryWorkspace({
       <MotionSection y={10}>
         <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
           <Card className="rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3 shadow-none">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
               <Input
                 value={filters.search}
                 onChange={(event) => updateFilter("search", event.target.value)}
@@ -210,13 +238,32 @@ export function ArchiveCategoryWorkspace({
                 }
               >
                 <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-                  <SelectValue placeholder="All Tags" />
+                  <SelectValue placeholder="Project Tags" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_TAGS}>All Tags</SelectItem>
+                  <SelectItem value={ALL_TAGS}>All project tags</SelectItem>
                   {options.projectTag.map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.assetTag || ALL_ASSET_TAGS}
+                onValueChange={(value) =>
+                  updateFilter("assetTag", value === ALL_ASSET_TAGS ? "" : value)
+                }
+              >
+                <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+                  <SelectValue placeholder="Asset Tags" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_ASSET_TAGS}>All asset tags</SelectItem>
+                  {options.assetTag.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -267,6 +314,35 @@ export function ArchiveCategoryWorkspace({
                             <span>{item.fileSizeLabel}</span>
                             <span>{item.sourceLabel}</span>
                           </div>
+                          {item.assetTags.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {item.assetTags.slice(0, 3).map((tag) => (
+                                <span
+                                  key={tag.id}
+                                  className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
+                                  title={tag.name}
+                                  style={
+                                    tag.color
+                                      ? {
+                                          backgroundColor: `${tag.color}18`,
+                                          color: tag.color,
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  {tag.name}
+                                </span>
+                              ))}
+                              {item.assetTags.length > 3 ? (
+                                <span
+                                  className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
+                                  title={item.assetTags.map((tag) => tag.name).join(", ")}
+                                >
+                                  +{item.assetTags.length - 3}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -275,7 +351,10 @@ export function ArchiveCategoryWorkspace({
                       <p className="font-[700] text-[#111712]">{item.projectName}</p>
                       <p className="text-[#687269]">{item.projectCategory}</p>
                       {item.projectTags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-[700] text-[#687269]">
+                            Project tags:
+                          </span>
                           {item.projectTags.slice(0, 3).map((tag) => (
                             <span
                               key={tag}
@@ -295,7 +374,7 @@ export function ArchiveCategoryWorkspace({
                           ) : null}
                         </div>
                       ) : (
-                        <p className="text-[#687269]">Tag: —</p>
+                        <p className="text-[#687269]">Project tags: —</p>
                       )}
                     </div>
 
