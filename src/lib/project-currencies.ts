@@ -1,4 +1,4 @@
-export const ALLOWED_PROJECT_CURRENCIES = ["AED", "USD", "EUR"] as const;
+export const ALLOWED_PROJECT_CURRENCIES = ["USD", "AED", "EUR"] as const;
 
 export type ProjectCurrencyCode = (typeof ALLOWED_PROJECT_CURRENCIES)[number];
 
@@ -6,8 +6,8 @@ export const PROJECT_CURRENCY_OPTIONS: Array<{
   code: ProjectCurrencyCode;
   name: string;
 }> = [
-  { code: "AED", name: "UAE Dirham" },
   { code: "USD", name: "US Dollar" },
+  { code: "AED", name: "UAE Dirham" },
   { code: "EUR", name: "Euro" },
 ];
 
