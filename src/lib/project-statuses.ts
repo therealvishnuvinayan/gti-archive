@@ -1,18 +1,24 @@
 import { unstable_cache } from "next/cache";
-import { ProjectStatusGroup } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const DEFAULT_PROJECT_STATUS_SLUG = "in-progress";
-export type ProjectStatusGroupValue = ProjectStatusGroup;
 
-export type ProjectStatusOptionRecord = {
+export const defaultProjectStatusGroupSlugs = {
+  active: "active",
+  pending: "pending",
+  onHold: "on-hold",
+  completed: "completed",
+  archived: "archived",
+  cancelled: "cancelled",
+} as const;
+
+export type ProjectStatusGroupOptionRecord = {
   id: string;
   name: string;
   slug: string;
   description: string;
   color: string;
-  group: ProjectStatusGroup;
   sortOrder: number;
   isActive: boolean;
   isSystem: boolean;
@@ -20,12 +26,49 @@ export type ProjectStatusOptionRecord = {
   updatedAt: string;
 };
 
+export type ProjectStatusOptionRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  color: string;
+  groupId: string | null;
+  groupName: string;
+  groupSlug: string;
+  groupColor: string;
+  groupIsActive: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ActiveProjectStatusGroupOption = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+};
+
 export type ActiveProjectStatusOption = {
   id: string;
   name: string;
   slug: string;
   color: string;
-  group: ProjectStatusGroup;
+  groupId: string | null;
+  groupName: string;
+  groupSlug: string;
+  groupColor: string;
+  groupIsActive: boolean;
+};
+
+export type ProjectStatusGroupDisplay = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  isActive: boolean;
 };
 
 export type ProjectStatusDisplay = {
@@ -33,16 +76,15 @@ export type ProjectStatusDisplay = {
   name: string;
   slug: string | null;
   color: string;
-  group: ProjectStatusGroup | null;
+  group: ProjectStatusGroupDisplay | null;
 };
 
-type ProjectStatusLike = {
+type ProjectStatusGroupLike = {
   id: string;
   name: string;
   slug: string;
   description?: string | null;
   color?: string | null;
-  group: ProjectStatusGroup;
   sortOrder?: number;
   isActive?: boolean;
   isSystem?: boolean;
@@ -50,23 +92,20 @@ type ProjectStatusLike = {
   updatedAt?: Date | string | number;
 } | null | undefined;
 
-export const projectStatusGroupLabels: Record<ProjectStatusGroup, string> = {
-  ACTIVE: "Active",
-  PENDING: "Pending",
-  ON_HOLD: "On Hold",
-  COMPLETED: "Completed",
-  ARCHIVED: "Archived",
-  CANCELLED: "Cancelled",
-};
-
-export const projectStatusGroupOptions = [
-  { value: ProjectStatusGroup.ACTIVE, label: projectStatusGroupLabels.ACTIVE },
-  { value: ProjectStatusGroup.PENDING, label: projectStatusGroupLabels.PENDING },
-  { value: ProjectStatusGroup.ON_HOLD, label: projectStatusGroupLabels.ON_HOLD },
-  { value: ProjectStatusGroup.COMPLETED, label: projectStatusGroupLabels.COMPLETED },
-  { value: ProjectStatusGroup.ARCHIVED, label: projectStatusGroupLabels.ARCHIVED },
-  { value: ProjectStatusGroup.CANCELLED, label: projectStatusGroupLabels.CANCELLED },
-] as const;
+type ProjectStatusLike = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  color?: string | null;
+  groupId?: string | null;
+  group?: ProjectStatusGroupLike;
+  sortOrder?: number;
+  isActive?: boolean;
+  isSystem?: boolean;
+  createdAt?: Date | string | number;
+  updatedAt?: Date | string | number;
+} | null | undefined;
 
 function toStatusDate(date: Date | string | number | undefined) {
   return date instanceof Date ? date : new Date(date ?? Date.now());
@@ -97,14 +136,39 @@ export function normalizeProjectStatusSlug(value: string) {
     .slice(0, 80);
 }
 
+export const normalizeProjectStatusGroupSlug = normalizeProjectStatusSlug;
+
+export function mapProjectStatusGroupOption(
+  group: NonNullable<ProjectStatusGroupLike>,
+) {
+  return {
+    id: group.id,
+    name: group.name.trim(),
+    slug: group.slug.trim(),
+    description: group.description?.trim() || "",
+    color: group.color?.trim() || "",
+    sortOrder: group.sortOrder ?? 0,
+    isActive: group.isActive ?? true,
+    isSystem: group.isSystem ?? false,
+    createdAt: formatStatusTimestamp(group.createdAt),
+    updatedAt: formatStatusTimestamp(group.updatedAt),
+  } satisfies ProjectStatusGroupOptionRecord;
+}
+
 export function mapProjectStatusOption(status: NonNullable<ProjectStatusLike>) {
+  const group = status.group ?? null;
+
   return {
     id: status.id,
     name: status.name.trim(),
     slug: status.slug.trim(),
     description: status.description?.trim() || "",
     color: status.color?.trim() || "",
-    group: status.group,
+    groupId: status.groupId ?? group?.id ?? null,
+    groupName: group?.name.trim() || "No group",
+    groupSlug: group?.slug.trim() || "",
+    groupColor: group?.color?.trim() || "",
+    groupIsActive: group?.isActive ?? true,
     sortOrder: status.sortOrder ?? 0,
     isActive: status.isActive ?? true,
     isSystem: status.isSystem ?? false,
@@ -124,24 +188,61 @@ export function getProjectStatusDisplay(status: ProjectStatusLike): ProjectStatu
     };
   }
 
+  const group = status.group ?? null;
+
   return {
     id: status.id,
     name: status.name.trim() || "No status",
     slug: status.slug.trim() || null,
     color: status.color?.trim() || "",
-    group: status.group,
+    group: group
+      ? {
+          id: group.id,
+          name: group.name.trim(),
+          slug: group.slug.trim(),
+          color: group.color?.trim() || "",
+          isActive: group.isActive ?? true,
+        }
+      : null,
   };
 }
 
 export function isProjectStatusCompleted(status: ProjectStatusLike) {
+  const groupSlug = status?.group?.slug;
+
   return (
-    status?.group === ProjectStatusGroup.COMPLETED ||
-    status?.group === ProjectStatusGroup.ARCHIVED
+    groupSlug === defaultProjectStatusGroupSlugs.completed ||
+    groupSlug === defaultProjectStatusGroupSlugs.archived
   );
 }
 
 export function isProjectStatusActiveGroup(status: ProjectStatusLike) {
-  return status?.group === ProjectStatusGroup.ACTIVE;
+  return status?.group?.slug === defaultProjectStatusGroupSlugs.active;
+}
+
+export async function getActiveProjectStatusGroupOptions(): Promise<
+  ActiveProjectStatusGroupOption[]
+> {
+  const groups = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.projectStatusGroupOption.findMany({
+          where: {
+            isActive: true,
+          },
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        }),
+      ),
+    ["active-project-status-group-options"],
+    { revalidate: 20, tags: ["project-master-data"] },
+  )();
+
+  return groups.map((group) => ({
+    id: group.id,
+    name: group.name.trim(),
+    slug: group.slug.trim(),
+    color: group.color?.trim() || "",
+  }));
 }
 
 export async function getActiveProjectStatusOptions(): Promise<ActiveProjectStatusOption[]> {
@@ -151,6 +252,14 @@ export async function getActiveProjectStatusOptions(): Promise<ActiveProjectStat
         prisma.projectStatusOption.findMany({
           where: {
             isActive: true,
+            group: {
+              is: {
+                isActive: true,
+              },
+            },
+          },
+          include: {
+            group: true,
           },
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         }),
@@ -159,13 +268,21 @@ export async function getActiveProjectStatusOptions(): Promise<ActiveProjectStat
     { revalidate: 20, tags: ["project-master-data"] },
   )();
 
-  return statuses.map((status) => ({
-    id: status.id,
-    name: status.name.trim(),
-    slug: status.slug.trim(),
-    color: status.color?.trim() || "",
-    group: status.group,
-  }));
+  return statuses.map((status) => {
+    const mapped = mapProjectStatusOption(status);
+
+    return {
+      id: mapped.id,
+      name: mapped.name,
+      slug: mapped.slug,
+      color: mapped.color,
+      groupId: mapped.groupId,
+      groupName: mapped.groupName,
+      groupSlug: mapped.groupSlug,
+      groupColor: mapped.groupColor,
+      groupIsActive: mapped.groupIsActive,
+    };
+  });
 }
 
 export async function getProjectStatusOptionsForForm(currentStatusId?: string | null) {
@@ -174,23 +291,34 @@ export async function getProjectStatusOptionsForForm(currentStatusId?: string | 
       where: currentStatusId
         ? {
             OR: [
-              { isActive: true },
+              {
+                isActive: true,
+                group: {
+                  is: {
+                    isActive: true,
+                  },
+                },
+              },
               { id: currentStatusId },
             ],
           }
         : {
             isActive: true,
+            group: {
+              is: {
+                isActive: true,
+              },
+            },
           },
+      include: {
+        group: true,
+      },
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
     }),
   );
 
   return statuses.map((status) => ({
-    id: status.id,
-    name: status.name.trim(),
-    slug: status.slug.trim(),
-    color: status.color?.trim() || "",
-    group: status.group,
+    ...mapProjectStatusOption(status),
     isActive: status.isActive,
   }));
 }
@@ -201,6 +329,14 @@ export async function getDefaultProjectStatusOption() {
       where: {
         isActive: true,
         slug: DEFAULT_PROJECT_STATUS_SLUG,
+        group: {
+          is: {
+            isActive: true,
+          },
+        },
+      },
+      include: {
+        group: true,
       },
     }),
   );
@@ -213,6 +349,14 @@ export async function getDefaultProjectStatusOption() {
     prisma.projectStatusOption.findFirst({
       where: {
         isActive: true,
+        group: {
+          is: {
+            isActive: true,
+          },
+        },
+      },
+      include: {
+        group: true,
       },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
@@ -225,22 +369,40 @@ export async function getActiveProjectStatusOptionById(statusId: string) {
       where: {
         id: statusId,
         isActive: true,
+        group: {
+          is: {
+            isActive: true,
+          },
+        },
+      },
+      include: {
+        group: true,
       },
     }),
   );
 }
 
-export async function getProjectStatusOptionByGroup(
-  group: ProjectStatusGroup,
+export async function getProjectStatusOptionByGroupSlug(
+  groupSlug: string,
   preferredSlug?: string,
 ) {
+  const normalizedGroupSlug = normalizeProjectStatusGroupSlug(groupSlug);
+
   if (preferredSlug) {
     const status = await withPrismaRetry(() =>
       prisma.projectStatusOption.findFirst({
         where: {
-          group,
           slug: preferredSlug,
           isActive: true,
+          group: {
+            is: {
+              slug: normalizedGroupSlug,
+              isActive: true,
+            },
+          },
+        },
+        include: {
+          group: true,
         },
       }),
     );
@@ -253,8 +415,16 @@ export async function getProjectStatusOptionByGroup(
   return withPrismaRetry(() =>
     prisma.projectStatusOption.findFirst({
       where: {
-        group,
         isActive: true,
+        group: {
+          is: {
+            slug: normalizedGroupSlug,
+            isActive: true,
+          },
+        },
+      },
+      include: {
+        group: true,
       },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),

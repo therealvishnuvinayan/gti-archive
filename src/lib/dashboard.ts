@@ -1,7 +1,6 @@
 import {
   CalendarEventType,
   ProjectExecutorRole,
-  ProjectStatusGroup,
   StageStatus,
   UserRole,
   type Prisma,
@@ -18,6 +17,7 @@ import {
 } from "@/lib/projects";
 import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 
 type DashboardUser = Pick<User, "id" | "role" | "calendarAccess"> & PermissionUser;
 
@@ -25,7 +25,9 @@ type DashboardCollaborationProjectRecord = {
   id: string;
   name: string;
   status: {
-    group: ProjectStatusGroup;
+    group: {
+      slug: string;
+    } | null;
   } | null;
   createdBy: {
     id: string;
@@ -96,7 +98,23 @@ const activeProjectStatusWhere: Prisma.ProjectWhereInput = {
       status: {
         is: {
           group: {
-            notIn: [ProjectStatusGroup.COMPLETED, ProjectStatusGroup.ARCHIVED],
+            is: null,
+          },
+        },
+      },
+    },
+    {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: {
+                notIn: [
+                  defaultProjectStatusGroupSlugs.completed,
+                  defaultProjectStatusGroupSlugs.archived,
+                ],
+              },
+            },
           },
         },
       },
@@ -527,9 +545,14 @@ function buildCollaborationItems(
   currentUser: DashboardUser,
 ): DashboardCollaboratorRecord[] {
   const activeProjects = projects.filter(
-    (project) =>
-      project.status?.group !== ProjectStatusGroup.COMPLETED &&
-      project.status?.group !== ProjectStatusGroup.ARCHIVED,
+    (project) => {
+      const groupSlug = project.status?.group?.slug;
+
+      return (
+        groupSlug !== defaultProjectStatusGroupSlugs.completed &&
+        groupSlug !== defaultProjectStatusGroupSlugs.archived
+      );
+    },
   );
   const seen = new Set<string>();
   const items: DashboardCollaboratorRecord[] = [];
@@ -666,7 +689,11 @@ export async function getDashboardCollaboration(
         name: true,
         status: {
           select: {
-            group: true,
+            group: {
+              select: {
+                slug: true,
+              },
+            },
           },
         },
         createdBy: {

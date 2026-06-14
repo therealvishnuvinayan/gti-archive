@@ -1,4 +1,1 @@
-CREATE TYPE "ProjectExecutionType" AS ENUM ('INTERNAL', 'EXTERNAL');
-
-ALTER TABLE "Project"
-  ADD COLUMN "executionType" "ProjectExecutionType" NOT NULL DEFAULT 'EXTERNAL';
+-- Squashed into 20260526000000_init_current_schema.

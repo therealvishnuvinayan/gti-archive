@@ -1,7 +1,6 @@
 import {
   AttachmentAssetType,
   AttachmentStatus,
-  ProjectStatusGroup,
   ProjectCompletionDocumentType,
   ProjectRevisionStatus,
   StageStatus,
@@ -31,7 +30,10 @@ import {
   assertProjectAccess,
 } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { isProjectStatusCompleted } from "@/lib/project-statuses";
+import {
+  defaultProjectStatusGroupSlugs,
+  isProjectStatusCompleted,
+} from "@/lib/project-statuses";
 import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
@@ -339,7 +341,23 @@ async function getProjectArchiveBase(projectId: string) {
             tag: true,
           },
         },
-        status: true,
+        status: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            group: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                isActive: true,
+              },
+            },
+          },
+        },
         createdById: true,
         executorUserId: true,
         executors: {
@@ -1760,7 +1778,23 @@ export async function completeProjectArchive(
           id: true,
           createdById: true,
           statusId: true,
-          status: true,
+          status: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              group: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  color: true,
+                  isActive: true,
+                },
+              },
+            },
+          },
           completedAt: true,
           archivedAt: true,
           archive: {
@@ -1838,7 +1872,12 @@ export async function completeProjectArchive(
 
       const completedStatus = await tx.projectStatusOption.findFirst({
         where: {
-          group: ProjectStatusGroup.COMPLETED,
+          group: {
+            is: {
+              slug: defaultProjectStatusGroupSlugs.completed,
+              isActive: true,
+            },
+          },
           isActive: true,
         },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],

@@ -7,7 +7,6 @@ import {
   ProjectCompletionStepStatus,
   ProjectExecutionType,
   ProjectExecutorRole,
-  ProjectStatusGroup,
   StageStatus,
   type CollaboratorType,
 } from "@prisma/client";
@@ -38,7 +37,10 @@ import {
   DEFAULT_PROJECT_PRIORITY,
   isProjectPriority,
 } from "@/lib/project-priority";
-import { isProjectStatusCompleted } from "@/lib/project-statuses";
+import {
+  defaultProjectStatusGroupSlugs,
+  isProjectStatusCompleted,
+} from "@/lib/project-statuses";
 
 function parseBudget(value: string) {
   const normalized = value.trim().replace(/,/g, "");
@@ -127,23 +129,25 @@ function isProjectExecutorRole(value: string): value is ProjectExecutorRole {
 }
 
 function getInitialStageStatuses(
-  projectStatusGroup: ProjectStatusGroup | null,
+  projectStatusGroupSlug: string | null | undefined,
   stageCount: number,
 ) {
+  const normalizedGroupSlug = projectStatusGroupSlug ?? "";
+
   if (
-    projectStatusGroup === ProjectStatusGroup.COMPLETED ||
-    projectStatusGroup === ProjectStatusGroup.ARCHIVED
+    normalizedGroupSlug === defaultProjectStatusGroupSlugs.completed ||
+    normalizedGroupSlug === defaultProjectStatusGroupSlugs.archived
   ) {
     return Array.from({ length: stageCount }, () => StageStatus.COMPLETED);
   }
 
-  if (projectStatusGroup === ProjectStatusGroup.PENDING) {
+  if (normalizedGroupSlug === defaultProjectStatusGroupSlugs.pending) {
     return Array.from({ length: stageCount }, () => StageStatus.PENDING);
   }
 
   if (
-    projectStatusGroup === ProjectStatusGroup.ON_HOLD ||
-    projectStatusGroup === ProjectStatusGroup.CANCELLED
+    normalizedGroupSlug === defaultProjectStatusGroupSlugs.onHold ||
+    normalizedGroupSlug === defaultProjectStatusGroupSlugs.cancelled
   ) {
     return Array.from({ length: stageCount }, (_, index) =>
       index === 0 ? StageStatus.ON_HOLD : StageStatus.PENDING,
@@ -669,7 +673,13 @@ async function resolveSubmittedProjectStatus(
     select: {
       id: true,
       name: true,
-      group: true,
+      group: {
+        select: {
+          id: true,
+          slug: true,
+          isActive: true,
+        },
+      },
       isActive: true,
     },
   });
@@ -688,6 +698,15 @@ async function resolveSubmittedProjectStatus(
       error: "Please correct the highlighted fields.",
       fieldErrors: {
         statusId: "Choose an active project status.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  if ((!status.group || !status.group.isActive) && status.id !== options.allowInactiveStatusId) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        statusId: "Choose a project status with an active group.",
       } satisfies ProjectFormFieldErrors,
     };
   }
@@ -949,7 +968,7 @@ export async function createProjectAction(
   } = validated.data;
   const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
   const stageStatuses = getInitialStageStatuses(
-    resolvedStatus.status.group,
+    resolvedStatus.status.group?.slug,
     stageNames.length,
   );
 
@@ -1194,7 +1213,15 @@ export async function updateProjectAction(
           name: true,
           slug: true,
           color: true,
-          group: true,
+          group: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              isActive: true,
+            },
+          },
         },
       },
       createdById: true,
@@ -1713,7 +1740,15 @@ export async function deleteProjectAction(projectId: string) {
           name: true,
           slug: true,
           color: true,
-          group: true,
+          group: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              isActive: true,
+            },
+          },
         },
       },
       createdById: true,

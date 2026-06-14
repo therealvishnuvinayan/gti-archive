@@ -19,6 +19,7 @@ import {
 import {
   deleteAssetTagAction,
   deleteArchiveCategoryAction,
+  deleteProjectStatusGroupAction,
   deleteProjectStatusAction,
   deleteProjectCategoryAction,
   deleteProjectCurrencyAction,
@@ -27,6 +28,7 @@ import {
   saveArchiveCategoryAction,
   saveProjectCategoryAction,
   saveProjectCurrencyAction,
+  saveProjectStatusGroupAction,
   saveProjectStatusAction,
   saveProjectTagAction,
 } from "@/app/(dashboard)/settings/project-master-data/actions";
@@ -40,14 +42,10 @@ import type {
   ProjectMasterCurrencyRecord,
   ProjectMasterDataItemRecord,
   ProjectMasterDataSummary,
+  ProjectStatusGroupMasterDataRecord,
   ProjectStatusMasterDataRecord,
 } from "@/lib/project-master-data";
 import { PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH } from "@/lib/project-master-data";
-import {
-  projectStatusGroupLabels,
-  projectStatusGroupOptions,
-  type ProjectStatusGroupValue,
-} from "@/lib/project-statuses";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -73,6 +71,7 @@ import {
 
 type MasterDataTab =
   | "categories"
+  | "projectStatusGroups"
   | "projectStatuses"
   | "tags"
   | "assetTags"
@@ -89,7 +88,7 @@ type MasterDataFormState = {
   iconUrl: string;
   iconKey: string;
   parentId: string;
-  group: ProjectStatusGroupValue;
+  groupId: string;
   sortOrder: string;
   isActive: boolean;
 };
@@ -99,12 +98,13 @@ type MasterDataFieldErrors = {
   description?: string;
   code?: string;
   slug?: string;
-  group?: string;
+  groupId?: string;
   sortOrder?: string;
 };
 
 type ProjectMasterDataWorkspaceProps = {
   categories: ProjectMasterDataItemRecord[];
+  projectStatusGroups: ProjectStatusGroupMasterDataRecord[];
   projectStatuses: ProjectStatusMasterDataRecord[];
   tags: ProjectMasterDataItemRecord[];
   assetTags: ProjectMasterDataItemRecord[];
@@ -119,6 +119,7 @@ type DeleteTarget = {
   tab: MasterDataTab;
   item:
     | ProjectMasterDataItemRecord
+    | ProjectStatusGroupMasterDataRecord
     | ProjectStatusMasterDataRecord
     | ProjectMasterCurrencyRecord
     | ArchiveCategoryMasterDataRecord;
@@ -126,6 +127,7 @@ type DeleteTarget = {
 
 type MasterDataTableItem =
   | ProjectMasterDataItemRecord
+  | ProjectStatusGroupMasterDataRecord
   | ProjectStatusMasterDataRecord
   | ProjectMasterCurrencyRecord
   | ArchiveCategoryMasterDataRecord;
@@ -149,7 +151,7 @@ const defaultFormState: MasterDataFormState = {
   iconUrl: "",
   iconKey: "",
   parentId: "",
-  group: "ACTIVE",
+  groupId: "",
   sortOrder: "0",
   isActive: true,
 };
@@ -234,6 +236,8 @@ function getMasterDataLabel(tab: MasterDataTab) {
       return "Category";
     case "tags":
       return "Tag";
+    case "projectStatusGroups":
+      return "Project Status Group";
     case "projectStatuses":
       return "Project Status";
     case "assetTags":
@@ -252,6 +256,8 @@ function getMasterDataTitle(tab: MasterDataTab) {
       return "Categories";
     case "tags":
       return "Project Tags";
+    case "projectStatusGroups":
+      return "Project Status Groups";
     case "projectStatuses":
       return "Project Statuses";
     case "assetTags":
@@ -340,6 +346,7 @@ function MasterDataTable({
 }) {
   const isCurrency = type === "currencies";
   const isArchiveCategory = type === "archiveCategories";
+  const isProjectStatusGroup = type === "projectStatusGroups";
   const isProjectStatus = type === "projectStatuses";
   const canShowActions = canManage || canDelete;
   const emptyLabel =
@@ -347,8 +354,10 @@ function MasterDataTable({
       ? "No master data available."
       : type === "categories"
         ? "No categories added yet."
-        : type === "projectStatuses"
-          ? "No project statuses added yet."
+        : type === "projectStatusGroups"
+          ? "No project status groups added yet."
+          : type === "projectStatuses"
+            ? "No project statuses added yet."
         : type === "tags"
           ? "No tags added yet."
           : type === "assetTags"
@@ -370,8 +379,10 @@ function MasterDataTable({
             <p className="mt-1 text-[14px] text-[#738072]">
               {type === "categories"
                 ? `${canManage ? "Manage" : "View"} project categories used across the system.`
-                : type === "projectStatuses"
-                  ? `${canManage ? "Manage" : "View"} project statuses available in project forms and filters.`
+                : type === "projectStatusGroups"
+                  ? `${canManage ? "Manage" : "View"} project status groups used by dashboard and grouped filters.`
+                  : type === "projectStatuses"
+                    ? `${canManage ? "Manage" : "View"} project statuses available in project forms and filters.`
                 : type === "tags"
                   ? `${canManage ? "Manage" : "View"} tags used to label and group projects.`
                   : type === "assetTags"
@@ -417,6 +428,15 @@ function MasterDataTable({
                           "Status",
                           ...(canShowActions ? ["Actions"] : []),
                         ]
+                      : isProjectStatusGroup
+                        ? [
+                            "Name",
+                            "Slug",
+                            "Sort",
+                            "Color",
+                            "Status",
+                            ...(canShowActions ? ["Actions"] : []),
+                          ]
                       : isProjectStatus
                         ? [
                             "Name",
@@ -449,24 +469,27 @@ function MasterDataTable({
                   const currencyItem = item as ProjectMasterCurrencyRecord;
                   const generalItem = item as ProjectMasterDataItemRecord;
                   const archiveCategoryItem = item as ArchiveCategoryMasterDataRecord;
+                  const projectStatusGroupItem = item as ProjectStatusGroupMasterDataRecord;
                   const projectStatusItem = item as ProjectStatusMasterDataRecord;
 
                   return (
                     <tr key={item.id}>
                       <td className="border-b border-[#f1f4f0] px-4 py-4 text-[15px] font-[700] text-[#172019]">
                         <div className="flex items-center gap-3">
-                          {isArchiveCategory || isProjectStatus ? (
+                          {isArchiveCategory || isProjectStatusGroup || isProjectStatus ? (
                             <ColorDot
                               color={
                                 isArchiveCategory
                                   ? archiveCategoryItem.color
-                                  : projectStatusItem.color
+                                  : isProjectStatusGroup
+                                    ? projectStatusGroupItem.color
+                                    : projectStatusItem.color
                               }
                             />
                           ) : null}
                           <div>
                             <p>{item.name}</p>
-                            {(isArchiveCategory || isProjectStatus) &&
+                            {(isArchiveCategory || isProjectStatusGroup || isProjectStatus) &&
                             "description" in item &&
                             item.description ? (
                               <p className="mt-1 max-w-[300px] text-[13px] font-[500] text-[#667067]">
@@ -497,13 +520,30 @@ function MasterDataTable({
                             {archiveCategoryItem.sortOrder}
                           </td>
                         </>
+                      ) : isProjectStatusGroup ? (
+                        <>
+                          <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-brand">
+                            {projectStatusGroupItem.slug}
+                          </td>
+                          <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-[#2b352d]">
+                            {projectStatusGroupItem.sortOrder}
+                          </td>
+                          <td className="border-b border-[#f1f4f0] px-4 py-4">
+                            <ColorDot color={projectStatusGroupItem.color} />
+                          </td>
+                        </>
                       ) : isProjectStatus ? (
                         <>
                           <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-brand">
                             {projectStatusItem.slug}
                           </td>
                           <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-[#2b352d]">
-                            {projectStatusGroupLabels[projectStatusItem.group]}
+                            {projectStatusItem.groupName}
+                            {!projectStatusItem.groupIsActive ? (
+                              <span className="ml-2 rounded-full bg-[#f4f4f5] px-2 py-0.5 text-[11px] text-[#666f68]">
+                                Inactive
+                              </span>
+                            ) : null}
                           </td>
                           <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-[#2b352d]">
                             {projectStatusItem.sortOrder}
@@ -576,6 +616,7 @@ function MasterDataDrawer({
   mode,
   form,
   archiveCategories,
+  projectStatusGroups,
   iconPreviewSrc,
   iconUploadError,
   fieldErrors,
@@ -592,6 +633,7 @@ function MasterDataDrawer({
   mode: "add" | "edit";
   form: MasterDataFormState;
   archiveCategories: ArchiveCategoryMasterDataRecord[];
+  projectStatusGroups: ProjectStatusGroupMasterDataRecord[];
   iconPreviewSrc: string;
   iconUploadError?: string;
   fieldErrors: MasterDataFieldErrors;
@@ -613,9 +655,17 @@ function MasterDataDrawer({
   const label = getMasterDataLabel(tab);
   const isCurrency = tab === "currencies";
   const isArchiveCategory = tab === "archiveCategories";
+  const isProjectStatusGroup = tab === "projectStatusGroups";
   const isProjectStatus = tab === "projectStatuses";
   const descriptionLength = form.description.trim().length;
   const parentOptions = archiveCategories.filter((category) => category.id !== form.id);
+  const currentProjectStatusGroup = projectStatusGroups.find((group) => group.id === form.groupId);
+  const projectStatusGroupOptions = [
+    ...projectStatusGroups.filter((group) => group.isActive),
+    ...(currentProjectStatusGroup && !currentProjectStatusGroup.isActive
+      ? [currentProjectStatusGroup]
+      : []),
+  ];
 
   return (
     <div className="fixed inset-0 z-50 bg-[#102116]/30 backdrop-blur-[2px]">
@@ -698,7 +748,7 @@ function MasterDataDrawer({
               </label>
             ) : (
               <>
-                {isArchiveCategory || isProjectStatus ? (
+                {isArchiveCategory || isProjectStatusGroup || isProjectStatus ? (
                   <label className="space-y-2">
                     <span className="block text-[13px] font-[700] text-[#2b352d]">
                       Slug <span className="text-[#c5524d]">*</span>
@@ -719,7 +769,9 @@ function MasterDataDrawer({
                       <span className="text-[12px] text-[#6d776e]">
                         {isArchiveCategory
                           ? "Used in the archive URL, for example /archives/artworks."
-                          : "Used as the stable project status key."}
+                          : isProjectStatusGroup
+                            ? "Used as the stable project status group key."
+                            : "Used as the stable project status key."}
                       </span>
                     )}
                   </label>
@@ -731,29 +783,28 @@ function MasterDataDrawer({
                       Group <span className="text-[#c5524d]">*</span>
                     </span>
                     <Select
-                      value={form.group}
-                      onValueChange={(value) =>
-                        onChange("group", value as ProjectStatusGroupValue)
-                      }
+                      value={form.groupId}
+                      onValueChange={(value) => onChange("groupId", value)}
                     >
                       <SelectTrigger
                         className={`h-12 rounded-2xl border bg-white ${
-                          fieldErrors.group ? "border-[#e0a8a6]" : "border-line"
+                          fieldErrors.groupId ? "border-[#e0a8a6]" : "border-line"
                         }`}
                       >
                         <SelectValue placeholder="Choose group" />
                       </SelectTrigger>
                       <SelectContent>
                         {projectStatusGroupOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.name}
+                            {!option.isActive ? " (Inactive)" : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {fieldErrors.group ? (
+                    {fieldErrors.groupId ? (
                       <span className="text-[12px] font-[600] text-[#bb4d49]">
-                        {fieldErrors.group}
+                        {fieldErrors.groupId}
                       </span>
                     ) : (
                       <span className="text-[12px] text-[#6d776e]">
@@ -949,7 +1000,7 @@ function MasterDataDrawer({
                   </>
                 ) : null}
 
-                {isProjectStatus ? (
+                {isProjectStatusGroup || isProjectStatus ? (
                   <label className="space-y-2">
                     <span className="block text-[13px] font-[700] text-[#2b352d]">
                       Sort Order
@@ -1069,6 +1120,7 @@ function MasterDataDrawer({
 
 export function ProjectMasterDataWorkspace({
   categories,
+  projectStatusGroups,
   projectStatuses,
   tags,
   assetTags,
@@ -1138,7 +1190,7 @@ export function ProjectMasterDataWorkspace({
       iconUrl: "iconUrl" in item ? item.iconUrl : "",
       iconKey: "iconKey" in item ? item.iconKey : "",
       parentId: "parentId" in item ? item.parentId ?? "" : "",
-      group: "group" in item ? item.group : "ACTIVE",
+      groupId: "groupId" in item ? item.groupId ?? "" : "",
       sortOrder: "sortOrder" in item ? String(item.sortOrder) : "0",
       isActive: item.isActive,
     });
@@ -1205,7 +1257,11 @@ export function ProjectMasterDataWorkspace({
       } else if (!/^[A-Z]{3}$/.test(normalizedCode)) {
         nextFieldErrors.code = "Currency code must be 3 uppercase letters.";
       }
-    } else if (activeTab === "archiveCategories" || activeTab === "projectStatuses") {
+    } else if (
+      activeTab === "archiveCategories" ||
+      activeTab === "projectStatusGroups" ||
+      activeTab === "projectStatuses"
+    ) {
       const normalizedSlug = normalizeSlug(form.slug || normalizedName);
       const sortOrderNumber = Number(form.sortOrder || "0");
 
@@ -1213,8 +1269,8 @@ export function ProjectMasterDataWorkspace({
         nextFieldErrors.slug = "Slug is required.";
       }
 
-      if (activeTab === "projectStatuses" && !form.group) {
-        nextFieldErrors.group = "Group is required.";
+      if (activeTab === "projectStatuses" && !form.groupId) {
+        nextFieldErrors.groupId = "Group is required.";
       }
 
       if (!Number.isFinite(sortOrderNumber) || !Number.isInteger(sortOrderNumber)) {
@@ -1236,7 +1292,7 @@ export function ProjectMasterDataWorkspace({
       nextFieldErrors.description ||
       nextFieldErrors.code ||
       nextFieldErrors.slug ||
-      nextFieldErrors.group ||
+      nextFieldErrors.groupId ||
       nextFieldErrors.sortOrder
     ) {
       setFieldErrors(nextFieldErrors);
@@ -1279,7 +1335,17 @@ export function ProjectMasterDataWorkspace({
                     description: form.description,
                     color: form.color,
                     slug: normalizeSlug(form.slug || normalizedName),
-                    group: form.group,
+                    groupId: form.groupId,
+                    sortOrder: Number(form.sortOrder || "0"),
+                    isActive: form.isActive,
+                  })
+              : activeTab === "projectStatusGroups"
+                ? await saveProjectStatusGroupAction({
+                    id: form.id,
+                    name: normalizedName,
+                    description: form.description,
+                    color: form.color,
+                    slug: normalizeSlug(form.slug || normalizedName),
                     sortOrder: Number(form.sortOrder || "0"),
                     isActive: form.isActive,
                   })
@@ -1318,6 +1384,8 @@ export function ProjectMasterDataWorkspace({
             ? "Unable to save currency."
             : activeTab === "projectStatuses"
               ? "Unable to save project status."
+            : activeTab === "projectStatusGroups"
+              ? "Unable to save project status group."
             : activeTab === "assetTags"
               ? "Unable to save asset tag."
               : activeTab === "archiveCategories"
@@ -1343,6 +1411,10 @@ export function ProjectMasterDataWorkspace({
               ? dialogMode === "add"
                 ? "Project status added successfully."
                 : "Project status updated successfully."
+            : activeTab === "projectStatusGroups"
+              ? dialogMode === "add"
+                ? "Project status group added successfully."
+                : "Project status group updated successfully."
             : activeTab === "assetTags"
               ? dialogMode === "add"
                 ? "Asset tag added successfully."
@@ -1407,6 +1479,8 @@ export function ProjectMasterDataWorkspace({
             ? await deleteProjectCategoryAction(deleteTarget.item.id)
             : deleteTarget.tab === "tags"
               ? await deleteProjectTagAction(deleteTarget.item.id)
+              : deleteTarget.tab === "projectStatusGroups"
+                ? await deleteProjectStatusGroupAction(deleteTarget.item.id)
               : deleteTarget.tab === "projectStatuses"
                 ? await deleteProjectStatusAction(deleteTarget.item.id)
               : deleteTarget.tab === "assetTags"
@@ -1424,6 +1498,8 @@ export function ProjectMasterDataWorkspace({
         showSuccessToast(
           deleteTarget.tab === "currencies"
             ? "Currency deleted successfully."
+            : deleteTarget.tab === "projectStatusGroups"
+              ? "Project status group deleted successfully."
             : deleteTarget.tab === "projectStatuses"
               ? "Project status deleted successfully."
             : deleteTarget.tab === "assetTags"
@@ -1477,6 +1553,18 @@ export function ProjectMasterDataWorkspace({
             title="Active Categories"
             value={summary.activeCategories}
             subtitle="Visible in project forms"
+            icon={FolderKanban}
+          />
+          <SummaryCard
+            title="Total Status Groups"
+            value={summary.totalProjectStatusGroups}
+            subtitle="Saved values"
+            icon={FolderKanban}
+          />
+          <SummaryCard
+            title="Active Status Groups"
+            value={summary.activeProjectStatusGroups}
+            subtitle="Used for grouping"
             icon={FolderKanban}
           />
           <SummaryCard
@@ -1560,6 +1648,9 @@ export function ProjectMasterDataWorkspace({
               <TabsTrigger value="projectStatuses" className="min-w-[160px] py-3 text-[15px]">
                 Project Statuses
               </TabsTrigger>
+              <TabsTrigger value="projectStatusGroups" className="min-w-[180px] py-3 text-[15px]">
+                Status Groups
+              </TabsTrigger>
               <TabsTrigger value="tags" className="min-w-[140px] py-3 text-[15px]">
                 Project Tags
               </TabsTrigger>
@@ -1614,6 +1705,19 @@ export function ProjectMasterDataWorkspace({
             />
           </TabsContent>
 
+          <TabsContent value="projectStatusGroups">
+            <MasterDataTable
+              type="projectStatusGroups"
+              items={projectStatusGroups}
+              onAdd={() => openAddDrawer("projectStatusGroups")}
+              onEdit={(item) => openEditDrawer("projectStatusGroups", item)}
+              onDelete={(item) => handleDelete("projectStatusGroups", item)}
+              canManage={canManageItems}
+              canDelete={canDeleteItems}
+              pending={isPending}
+            />
+          </TabsContent>
+
           <TabsContent value="assetTags">
             <MasterDataTable
               type="assetTags"
@@ -1661,6 +1765,7 @@ export function ProjectMasterDataWorkspace({
         mode={dialogMode}
         form={form}
         archiveCategories={archiveCategories}
+        projectStatusGroups={projectStatusGroups}
         iconPreviewSrc={iconPreviewSrc}
         iconUploadError={iconUploadError}
         fieldErrors={fieldErrors}
@@ -1680,7 +1785,9 @@ export function ProjectMasterDataWorkspace({
         onChange={(field, value) =>
           setForm((current) => {
             if (
-              (activeTab === "archiveCategories" || activeTab === "projectStatuses") &&
+              (activeTab === "archiveCategories" ||
+                activeTab === "projectStatusGroups" ||
+                activeTab === "projectStatuses") &&
               dialogMode === "add" &&
               field === "name" &&
               typeof value === "string" &&
@@ -1708,6 +1815,8 @@ export function ProjectMasterDataWorkspace({
         title={
           deleteTarget?.tab === "categories"
             ? "Delete Category"
+            : deleteTarget?.tab === "projectStatusGroups"
+              ? "Delete Project Status Group"
             : deleteTarget?.tab === "projectStatuses"
               ? "Delete Project Status"
             : deleteTarget?.tab === "tags"

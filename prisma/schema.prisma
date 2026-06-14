@@ -39,15 +39,6 @@ enum CollaboratorAccess {
   NONE
 }
 
-enum ProjectStatusGroup {
-  ACTIVE
-  PENDING
-  ON_HOLD
-  COMPLETED
-  ARCHIVED
-  CANCELLED
-}
-
 enum StageStatus {
   PENDING
   ONGOING
@@ -367,7 +358,8 @@ model ProjectStatusOption {
   slug        String             @unique
   description String?
   color       String?
-  group       ProjectStatusGroup @default(ACTIVE)
+  groupId     String?
+  group       ProjectStatusGroupOption? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   sortOrder   Int                @default(0)
   isActive    Boolean            @default(true)
   isSystem    Boolean            @default(false)
@@ -376,7 +368,24 @@ model ProjectStatusOption {
   updatedAt   DateTime           @updatedAt
 
   @@index([slug])
-  @@index([group, isActive, sortOrder])
+  @@index([groupId, isActive, sortOrder])
+}
+
+model ProjectStatusGroupOption {
+  id          String                @id @default(cuid())
+  name        String
+  slug        String                @unique
+  description String?
+  color       String?
+  sortOrder   Int                   @default(0)
+  isActive    Boolean               @default(true)
+  isSystem    Boolean               @default(false)
+  statuses    ProjectStatusOption[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([slug])
+  @@index([isActive, sortOrder])
 }
 
 model ProjectTag {

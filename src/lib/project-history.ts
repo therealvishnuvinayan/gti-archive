@@ -73,6 +73,22 @@ type AccessUser = Pick<
   libraryAccess?: User["libraryAccess"];
 };
 
+const projectStatusSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  color: true,
+  group: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      color: true,
+      isActive: true,
+    },
+  },
+} as const;
+
 export type ProjectHistoryAccessUser = AccessUser;
 
 type StageHistoryQueryRecord = {
@@ -643,7 +659,9 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
             role: true,
           },
         },
-        status: true,
+        status: {
+          select: projectStatusSelect,
+        },
         archivedAt: true,
         executionType: true,
         currency: true,
@@ -1218,7 +1236,9 @@ export async function createStageComment(
                 role: true,
               },
             },
-            status: true,
+            status: {
+              select: projectStatusSelect,
+            },
             archivedAt: true,
             collaborators: {
               where: {
@@ -1417,7 +1437,9 @@ export async function prepareStageCommentUploads(
                 role: true,
               },
             },
-            status: true,
+            status: {
+              select: projectStatusSelect,
+            },
             archivedAt: true,
             collaborators: {
               where: {
@@ -2048,7 +2070,9 @@ export async function reviewStageSubmission(
           select: {
             createdById: true,
             executionType: true,
-            status: true,
+            status: {
+              select: projectStatusSelect,
+            },
           },
         },
       },
@@ -2147,7 +2171,9 @@ export async function reviewProjectRevision(
           select: {
             createdById: true,
             executionType: true,
-            status: true,
+            status: {
+              select: projectStatusSelect,
+            },
           },
         },
       },
@@ -2420,7 +2446,9 @@ export async function requestStageInvoice(
             createdById: true,
             executorUserId: true,
             executionType: true,
-            status: true,
+            status: {
+              select: projectStatusSelect,
+            },
             archivedAt: true,
             executors: {
               select: {
@@ -2643,7 +2671,9 @@ export async function requestAttachmentUpload(
                   role: true,
                 },
               },
-              status: true,
+              status: {
+                select: projectStatusSelect,
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -2727,7 +2757,9 @@ export async function requestAttachmentUpload(
                   role: true,
                 },
               },
-              status: true,
+              status: {
+                select: projectStatusSelect,
+              },
               archivedAt: true,
               executionType: true,
               collaborators: {
@@ -2818,7 +2850,9 @@ export async function requestAttachmentUpload(
                   role: true,
                 },
               },
-              status: true,
+              status: {
+                select: projectStatusSelect,
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -2892,7 +2926,9 @@ export async function requestAttachmentUpload(
                   role: true,
                 },
               },
-              status: true,
+              status: {
+                select: projectStatusSelect,
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -2933,7 +2969,9 @@ export async function requestAttachmentUpload(
         select: {
           id: true,
           createdById: true,
-          status: true,
+          status: {
+            select: projectStatusSelect,
+          },
         },
       }),
     );
@@ -3094,7 +3132,9 @@ export async function completeAttachmentUpload(
                 userId: true,
               },
             },
-            status: true,
+            status: {
+              select: projectStatusSelect,
+            },
             archivedAt: true,
             executionType: true,
           },

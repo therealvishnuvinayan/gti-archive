@@ -47,7 +47,11 @@ type ProjectsBrowserProps = {
     name: string;
     slug: string;
     color: string;
-    group: string;
+    groupId: string | null;
+    groupName: string;
+    groupSlug: string;
+    groupColor: string;
+    groupIsActive: boolean;
   }>;
   tagOptions: string[];
   filters: ProjectFilter[];

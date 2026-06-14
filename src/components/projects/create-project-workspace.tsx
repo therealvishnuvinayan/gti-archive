@@ -72,8 +72,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import type { ProjectCollaboratorRecord } from "@/lib/projects";
-import { DEFAULT_PROJECT_STATUS_SLUG, projectStatusGroupLabels } from "@/lib/project-statuses";
-import type { ProjectStatusGroup } from "@prisma/client";
+import { DEFAULT_PROJECT_STATUS_SLUG } from "@/lib/project-statuses";
 import {
   DEFAULT_PROJECT_PRIORITY,
   formatProjectPriority,
@@ -156,7 +155,11 @@ type ProjectStatusSelectOption = {
   name: string;
   slug: string;
   color: string;
-  group: ProjectStatusGroup;
+  groupId: string | null;
+  groupName: string;
+  groupSlug: string;
+  groupColor: string;
+  groupIsActive: boolean;
   isActive: boolean;
 };
 
@@ -893,7 +896,11 @@ export function CreateProjectWorkspace({
         name: initialValues.statusName || "No status",
         slug: initialValues.statusId,
         color: initialValues.statusColor,
-        group: initialValues.statusGroup ?? "ACTIVE",
+        groupId: initialValues.statusGroupId,
+        groupName: initialValues.statusGroupName || "No group",
+        groupSlug: initialValues.statusGroupSlug,
+        groupColor: initialValues.statusGroupColor,
+        groupIsActive: initialValues.statusGroupIsActive,
         isActive: initialValues.statusIsActive,
       },
       ...statusOptions,
@@ -1161,7 +1168,11 @@ export function CreateProjectWorkspace({
           name: initialValues.statusName || "No status",
           slug: projectStatusId,
           color: initialValues.statusColor,
-          group: initialValues.statusGroup ?? "ACTIVE",
+          groupId: initialValues.statusGroupId,
+          groupName: initialValues.statusGroupName || "No group",
+          groupSlug: initialValues.statusGroupSlug,
+          groupColor: initialValues.statusGroupColor,
+          groupIsActive: initialValues.statusGroupIsActive,
           isActive: initialValues.statusIsActive,
         },
         ...initialStatusOptions,
@@ -2934,7 +2945,8 @@ export function CreateProjectWorkspace({
                             <span className="text-[11px] text-[#8a938b]">(Inactive)</span>
                           ) : null}
                           <span className="text-[11px] text-[#8a938b]">
-                            {projectStatusGroupLabels[option.group]}
+                            {option.groupName || "No group"}
+                            {!option.groupIsActive ? " (Inactive)" : ""}
                           </span>
                         </span>
                       </SelectItem>

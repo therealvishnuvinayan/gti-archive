@@ -487,7 +487,23 @@ async function getProjectCompletionProject(projectId: string) {
         name: true,
         category: true,
         executionType: true,
-        status: true,
+        status: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            group: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                isActive: true,
+              },
+            },
+          },
+        },
         createdById: true,
         executorUserId: true,
         executors: {
@@ -1518,7 +1534,23 @@ export async function finalizeProjectCompletionDocumentUpload(
             },
           },
           executionType: true,
-          status: true,
+          status: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              group: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  color: true,
+                  isActive: true,
+                },
+              },
+            },
+          },
           archivedAt: true,
           completedAt: true,
           archive: {

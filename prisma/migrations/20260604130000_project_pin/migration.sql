@@ -1,3 +1,1 @@
-ALTER TABLE "Project" ADD COLUMN "isPinned" BOOLEAN NOT NULL DEFAULT false;
-
-CREATE INDEX "Project_isPinned_idx" ON "Project"("isPinned");
+-- Squashed into 20260526000000_init_current_schema.

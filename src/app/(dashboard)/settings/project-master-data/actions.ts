@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
-import { ProjectStatusGroup } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
 import { normalizeArchiveCategorySlug } from "@/lib/archive-categories";
@@ -11,7 +10,10 @@ import {
   PROJECT_MASTER_DATA_CACHE_TAG,
   PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH,
 } from "@/lib/project-master-data";
-import { normalizeProjectStatusSlug } from "@/lib/project-statuses";
+import {
+  normalizeProjectStatusGroupSlug,
+  normalizeProjectStatusSlug,
+} from "@/lib/project-statuses";
 import { buildArchiveCategoryIconPrefix } from "@/lib/storage/s3";
 
 type SaveMasterDataInput = {
@@ -24,7 +26,7 @@ type SaveMasterDataInput = {
   iconUrl?: string;
   iconKey?: string;
   parentId?: string | null;
-  group?: string;
+  groupId?: string | null;
   sortOrder?: number;
   isActive: boolean;
 };
@@ -67,7 +69,7 @@ function normalizeMasterDataInput(input: SaveMasterDataInput) {
     iconUrl: input.iconUrl?.trim() || null,
     iconKey: input.iconKey?.trim() || null,
     parentId: input.parentId?.trim() || null,
-    group: input.group?.trim() || "",
+    groupId: input.groupId?.trim() || null,
     sortOrder: Number.isFinite(input.sortOrder) ? Math.trunc(input.sortOrder ?? 0) : 0,
     isActive: input.isActive,
   };
@@ -82,8 +84,13 @@ function normalizeProjectStatusInput(input: SaveMasterDataInput) {
   };
 }
 
-function isProjectStatusGroup(value: string): value is ProjectStatusGroup {
-  return Object.values(ProjectStatusGroup).includes(value as ProjectStatusGroup);
+function normalizeProjectStatusGroupInput(input: SaveMasterDataInput) {
+  const parsed = normalizeMasterDataInput(input);
+
+  return {
+    ...parsed,
+    slug: normalizeProjectStatusGroupSlug(input.slug || input.name),
+  };
 }
 
 async function revalidateProjectMasterData() {
@@ -94,7 +101,13 @@ async function revalidateProjectMasterData() {
 
 function validateMasterDataDescription(
   description: string | null,
-  label: "Category" | "Tag" | "Asset tag" | "Archive category" | "Project status",
+  label:
+    | "Category"
+    | "Tag"
+    | "Asset tag"
+    | "Archive category"
+    | "Project status"
+    | "Project status group",
 ) {
   if (
     description &&
@@ -333,6 +346,94 @@ export async function saveProjectTagAction(input: SaveMasterDataInput) {
   };
 }
 
+export async function saveProjectStatusGroupAction(input: SaveMasterDataInput) {
+  await requireAdminUser();
+
+  const parsed = normalizeProjectStatusGroupInput(input);
+
+  if (!parsed.name) {
+    return { error: "Project status group name is required." };
+  }
+
+  if (!parsed.slug) {
+    return { error: "Project status group slug is required." };
+  }
+
+  const descriptionError = validateMasterDataDescription(
+    parsed.description,
+    "Project status group",
+  );
+
+  if (descriptionError) {
+    return { error: descriptionError };
+  }
+
+  const duplicate = await withPrismaRetry(() =>
+    prisma.projectStatusGroupOption.findFirst({
+      where: {
+        slug: {
+          equals: parsed.slug,
+          mode: "insensitive",
+        },
+        ...(parsed.id
+          ? {
+              id: {
+                not: parsed.id,
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (duplicate) {
+    return { error: "A project status group with this slug already exists." };
+  }
+
+  const group = await withPrismaRetry(() =>
+    parsed.id
+      ? prisma.projectStatusGroupOption.update({
+          where: {
+            id: parsed.id,
+          },
+          data: {
+            name: parsed.name,
+            slug: parsed.slug,
+            description: parsed.description,
+            color: parsed.color,
+            sortOrder: parsed.sortOrder,
+            isActive: parsed.isActive,
+          },
+        })
+      : prisma.projectStatusGroupOption.create({
+          data: {
+            name: parsed.name,
+            slug: parsed.slug,
+            description: parsed.description,
+            color: parsed.color,
+            sortOrder: parsed.sortOrder,
+            isActive: parsed.isActive,
+          },
+        }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidateTag("projects", "max");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+
+  return {
+    success: true,
+    item: {
+      id: group.id,
+      name: group.name,
+    },
+  };
+}
+
 export async function saveProjectStatusAction(input: SaveMasterDataInput) {
   await requireAdminUser();
 
@@ -346,11 +447,26 @@ export async function saveProjectStatusAction(input: SaveMasterDataInput) {
     return { error: "Project status slug is required." };
   }
 
-  if (!isProjectStatusGroup(parsed.group)) {
+  if (!parsed.groupId) {
     return { error: "Choose a valid project status group." };
   }
 
-  const group = parsed.group;
+  const groupId = parsed.groupId;
+
+  const group = await withPrismaRetry(() =>
+    prisma.projectStatusGroupOption.findUnique({
+      where: {
+        id: groupId,
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (!group) {
+    return { error: "Choose a valid project status group." };
+  }
 
   const descriptionError = validateMasterDataDescription(
     parsed.description,
@@ -397,7 +513,7 @@ export async function saveProjectStatusAction(input: SaveMasterDataInput) {
             slug: parsed.slug,
             description: parsed.description,
             color: parsed.color,
-            group,
+            groupId: group.id,
             sortOrder: parsed.sortOrder,
             isActive: parsed.isActive,
           },
@@ -408,7 +524,7 @@ export async function saveProjectStatusAction(input: SaveMasterDataInput) {
             slug: parsed.slug,
             description: parsed.description,
             color: parsed.color,
-            group,
+            groupId: group.id,
             sortOrder: parsed.sortOrder,
             isActive: parsed.isActive,
           },
@@ -734,6 +850,28 @@ export async function setProjectTagStatusAction(input: ToggleMasterDataInput) {
   return { success: true };
 }
 
+export async function setProjectStatusGroupAction(input: ToggleMasterDataInput) {
+  await requireAdminUser();
+
+  await withPrismaRetry(() =>
+    prisma.projectStatusGroupOption.update({
+      where: {
+        id: input.id,
+      },
+      data: {
+        isActive: input.isActive,
+      },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidateTag("projects", "max");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+
+  return { success: true };
+}
+
 export async function setProjectStatusAction(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
@@ -895,6 +1033,46 @@ export async function deleteProjectTagAction(id: string) {
   );
 
   await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function deleteProjectStatusGroupAction(id: string) {
+  await requireSuperAdminUser();
+
+  const group = await withPrismaRetry(() =>
+    prisma.projectStatusGroupOption.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    }),
+  );
+
+  if (!group) {
+    return { error: "Project status group not found." };
+  }
+
+  const usageCount = await withPrismaRetry(() =>
+    prisma.projectStatusOption.count({
+      where: {
+        groupId: group.id,
+      },
+    }),
+  );
+
+  if (usageCount > 0) {
+    return { error: "This project status group is used by statuses. Deactivate it instead." };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.projectStatusGroupOption.delete({
+      where: { id },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidateTag("projects", "max");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
 
   return { success: true };
 }

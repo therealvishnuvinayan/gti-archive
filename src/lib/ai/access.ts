@@ -47,7 +47,15 @@ export async function canUseChatAiTools(
             name: true,
             slug: true,
             color: true,
-            group: true,
+            group: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                isActive: true,
+              },
+            },
           },
         },
         collaborators: {

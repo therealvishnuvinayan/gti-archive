@@ -1,5 +1,4 @@
 import { unstable_cache } from "next/cache";
-import type { ProjectStatusGroup } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
@@ -49,7 +48,24 @@ export type ProjectStatusMasterDataRecord = {
   slug: string;
   description: string;
   color: string;
-  group: ProjectStatusGroup;
+  groupId: string | null;
+  groupName: string;
+  groupSlug: string;
+  groupColor: string;
+  groupIsActive: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectStatusGroupMasterDataRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  color: string;
   sortOrder: number;
   isActive: boolean;
   isSystem: boolean;
@@ -60,6 +76,8 @@ export type ProjectStatusMasterDataRecord = {
 export type ProjectMasterDataSummary = {
   totalCategories: number;
   activeCategories: number;
+  totalProjectStatusGroups: number;
+  activeProjectStatusGroups: number;
   totalProjectStatuses: number;
   activeProjectStatuses: number;
   totalTags: number;
@@ -74,6 +92,7 @@ export type ProjectMasterDataSummary = {
 
 export type ProjectMasterDataRecord = {
   categories: ProjectMasterDataItemRecord[];
+  projectStatusGroups: ProjectStatusGroupMasterDataRecord[];
   projectStatuses: ProjectStatusMasterDataRecord[];
   tags: ProjectMasterDataItemRecord[];
   assetTags: ProjectMasterDataItemRecord[];
@@ -84,12 +103,23 @@ export type ProjectMasterDataRecord = {
 
 export type ActiveProjectMasterDataOptions = {
   categories: string[];
+  projectStatusGroups: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    color: string;
+    isActive: boolean;
+  }>;
   projectStatuses: Array<{
     id: string;
     name: string;
     slug: string;
     color: string;
-    group: ProjectStatusGroup;
+    groupId: string | null;
+    groupName: string;
+    groupSlug: string;
+    groupColor: string;
+    groupIsActive: boolean;
     isActive: boolean;
   }>;
   tags: string[];
@@ -204,7 +234,13 @@ function mapProjectStatusItem(item: {
   slug: string;
   description: string | null;
   color: string | null;
-  group: ProjectStatusGroup;
+  groupId: string | null;
+  group?: {
+    name: string;
+    slug: string;
+    color: string | null;
+    isActive: boolean;
+  } | null;
   sortOrder: number;
   isActive: boolean;
   isSystem: boolean;
@@ -217,13 +253,43 @@ function mapProjectStatusItem(item: {
     slug: item.slug.trim(),
     description: item.description?.trim() || "",
     color: item.color?.trim() || "",
-    group: item.group,
+    groupId: item.groupId,
+    groupName: item.group?.name.trim() || "No group",
+    groupSlug: item.group?.slug.trim() || "",
+    groupColor: item.group?.color?.trim() || "",
+    groupIsActive: item.group?.isActive ?? true,
     sortOrder: item.sortOrder,
     isActive: item.isActive,
     isSystem: item.isSystem,
     createdAt: formatMasterDataTimestamp(item.createdAt),
     updatedAt: formatMasterDataTimestamp(item.updatedAt),
   } satisfies ProjectStatusMasterDataRecord;
+}
+
+function mapProjectStatusGroupItem(item: {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  color: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  createdAt: Date | string | number;
+  updatedAt: Date | string | number;
+}) {
+  return {
+    id: item.id,
+    name: item.name.trim(),
+    slug: item.slug.trim(),
+    description: item.description?.trim() || "",
+    color: item.color?.trim() || "",
+    sortOrder: item.sortOrder,
+    isActive: item.isActive,
+    isSystem: item.isSystem,
+    createdAt: formatMasterDataTimestamp(item.createdAt),
+    updatedAt: formatMasterDataTimestamp(item.updatedAt),
+  } satisfies ProjectStatusGroupMasterDataRecord;
 }
 
 export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
@@ -234,7 +300,13 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
           prisma.projectCategory.findMany({
             orderBy: [{ isActive: "desc" }, { name: "asc" }],
           }),
+          prisma.projectStatusGroupOption.findMany({
+            orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+          }),
           prisma.projectStatusOption.findMany({
+            include: {
+              group: true,
+            },
             orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
           }),
           prisma.projectTag.findMany({
@@ -267,11 +339,20 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     { revalidate: 20, tags: [PROJECT_MASTER_DATA_CACHE_TAG] },
   );
 
-  const [categories, projectStatuses, tags, assetTags, archiveCategories, currencies] =
+  const [
+    categories,
+    projectStatusGroups,
+    projectStatuses,
+    tags,
+    assetTags,
+    archiveCategories,
+    currencies,
+  ] =
     await fetchMasterData();
 
   return {
     categories: categories.map(mapMasterDataItem),
+    projectStatusGroups: projectStatusGroups.map(mapProjectStatusGroupItem),
     projectStatuses: projectStatuses.map(mapProjectStatusItem),
     tags: tags.map(mapMasterDataItem),
     assetTags: assetTags.map(mapMasterDataItem),
@@ -280,6 +361,8 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     summary: {
       totalCategories: categories.length,
       activeCategories: categories.filter((item) => item.isActive).length,
+      totalProjectStatusGroups: projectStatusGroups.length,
+      activeProjectStatusGroups: projectStatusGroups.filter((item) => item.isActive).length,
       totalProjectStatuses: projectStatuses.length,
       activeProjectStatuses: projectStatuses.filter((item) => item.isActive).length,
       totalTags: tags.length,
@@ -301,6 +384,15 @@ export async function getActiveProjectMasterDataOptions(): Promise<ActiveProject
     categories: masterData.categories
       .filter((item) => item.isActive)
       .map((item) => item.name),
+    projectStatusGroups: masterData.projectStatusGroups
+      .filter((item) => item.isActive)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        slug: item.slug,
+        color: item.color,
+        isActive: item.isActive,
+      })),
     projectStatuses: masterData.projectStatuses
       .filter((item) => item.isActive)
       .map((item) => ({
@@ -308,7 +400,11 @@ export async function getActiveProjectMasterDataOptions(): Promise<ActiveProject
         name: item.name,
         slug: item.slug,
         color: item.color,
-        group: item.group,
+        groupId: item.groupId,
+        groupName: item.groupName,
+        groupSlug: item.groupSlug,
+        groupColor: item.groupColor,
+        groupIsActive: item.groupIsActive,
         isActive: item.isActive,
       })),
     tags: masterData.tags

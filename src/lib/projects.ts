@@ -5,7 +5,6 @@ import {
   Prisma,
   ProjectExecutionType,
   ProjectExecutorRole,
-  ProjectStatusGroup,
   ProjectRevisionStatus,
   StageStatus,
   SubmissionReviewStatus,
@@ -53,6 +52,7 @@ import {
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
+  defaultProjectStatusGroupSlugs,
   getActiveProjectStatusOptions,
   getProjectStatusDisplay,
   isProjectStatusCompleted,
@@ -81,12 +81,28 @@ type ProjectStageWithStarter = ProjectStage & {
   }>;
 };
 
+const projectStatusGroupSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  color: true,
+  isActive: true,
+} as const;
+
+type ProjectStatusGroupRelation = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string | null;
+  isActive?: boolean;
+} | null;
+
 type ProjectStatusRelation = {
   id: string;
   name: string;
   slug: string;
   color: string | null;
-  group: ProjectStatusGroup;
+  group: ProjectStatusGroupRelation;
   isActive?: boolean;
 } | null;
 
@@ -167,7 +183,11 @@ export type ProjectEditorRecord = {
   statusId: string | null;
   statusName: string;
   statusColor: string;
-  statusGroup: ProjectStatusGroup | null;
+  statusGroupId: string | null;
+  statusGroupName: string;
+  statusGroupSlug: string;
+  statusGroupColor: string;
+  statusGroupIsActive: boolean;
   statusIsActive: boolean;
   startDate: string;
   endDate: string;
@@ -696,45 +716,75 @@ function buildProjectStatusWhere(statusFilter?: string): Prisma.ProjectWhereInpu
     return null;
   }
 
-  if (statusFilter === "ONGOING" || statusFilter === ProjectStatusGroup.ACTIVE) {
-    return {
-      status: {
-        is: {
-          group: ProjectStatusGroup.ACTIVE,
-        },
-      },
-    };
-  }
+  const normalizedFilter = statusFilter.trim();
+  const groupFilterPrefix = "group:";
 
-  if (statusFilter === ProjectStatusGroup.COMPLETED) {
+  if (normalizedFilter.startsWith(groupFilterPrefix)) {
+    const groupSlug = normalizedFilter.slice(groupFilterPrefix.length);
+
+    if (!groupSlug) {
+      return null;
+    }
+
     return {
       status: {
         is: {
           group: {
-            in: [ProjectStatusGroup.COMPLETED, ProjectStatusGroup.ARCHIVED],
+            is: {
+              slug: groupSlug,
+            },
           },
         },
       },
     };
   }
 
-  if (
-    statusFilter === ProjectStatusGroup.PENDING ||
-    statusFilter === ProjectStatusGroup.ON_HOLD ||
-    statusFilter === ProjectStatusGroup.ARCHIVED ||
-    statusFilter === ProjectStatusGroup.CANCELLED
-  ) {
+  const groupSlugByLegacyFilter: Record<string, string> = {
+    ONGOING: defaultProjectStatusGroupSlugs.active,
+    ACTIVE: defaultProjectStatusGroupSlugs.active,
+    PENDING: defaultProjectStatusGroupSlugs.pending,
+    ON_HOLD: defaultProjectStatusGroupSlugs.onHold,
+    ARCHIVED: defaultProjectStatusGroupSlugs.archived,
+    CANCELLED: defaultProjectStatusGroupSlugs.cancelled,
+  };
+
+  if (normalizedFilter === "COMPLETED") {
     return {
       status: {
         is: {
-          group: statusFilter,
+          group: {
+            is: {
+              slug: {
+                in: [
+                  defaultProjectStatusGroupSlugs.completed,
+                  defaultProjectStatusGroupSlugs.archived,
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  const legacyGroupSlug = groupSlugByLegacyFilter[normalizedFilter];
+
+  if (legacyGroupSlug) {
+    return {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: legacyGroupSlug,
+            },
+          },
         },
       },
     };
   }
 
   return {
-    statusId: statusFilter,
+    statusId: normalizedFilter,
   };
 }
 
@@ -1275,7 +1325,11 @@ function mapProjectToEditor(
     statusId: statusDisplay.id,
     statusName: statusDisplay.name,
     statusColor: statusDisplay.color,
-    statusGroup: statusDisplay.group,
+    statusGroupId: statusDisplay.group?.id ?? null,
+    statusGroupName: statusDisplay.group?.name ?? "No group",
+    statusGroupSlug: statusDisplay.group?.slug ?? "",
+    statusGroupColor: statusDisplay.group?.color ?? "",
+    statusGroupIsActive: statusDisplay.group?.isActive ?? true,
     statusIsActive: project.status?.isActive ?? true,
     startDate: formatProjectInputDate(project.startDate),
     endDate: formatProjectInputDate(project.endDate),
@@ -2028,7 +2082,9 @@ export async function getDashboardProjectCounts(
           select: {
             status: {
               select: {
-                group: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
               },
             },
           },
@@ -2046,23 +2102,21 @@ export async function getDashboardProjectCounts(
 
   const counts = projects.reduce(
     (accumulator, project) => {
-      switch (project.status?.group) {
-        case ProjectStatusGroup.PENDING:
-          accumulator.pending += 1;
-          break;
-        case ProjectStatusGroup.ON_HOLD:
-          accumulator.onHold += 1;
-          break;
-        case ProjectStatusGroup.COMPLETED:
-        case ProjectStatusGroup.ARCHIVED:
-          accumulator.completed += 1;
-          break;
-        case ProjectStatusGroup.ACTIVE:
-          accumulator.ongoing += 1;
-          break;
-        default:
-          break;
+      const groupSlug = project.status?.group?.slug;
+
+      if (groupSlug === defaultProjectStatusGroupSlugs.pending) {
+        accumulator.pending += 1;
+      } else if (groupSlug === defaultProjectStatusGroupSlugs.onHold) {
+        accumulator.onHold += 1;
+      } else if (
+        groupSlug === defaultProjectStatusGroupSlugs.completed ||
+        groupSlug === defaultProjectStatusGroupSlugs.archived
+      ) {
+        accumulator.completed += 1;
+      } else if (groupSlug === defaultProjectStatusGroupSlugs.active) {
+        accumulator.ongoing += 1;
       }
+
       return accumulator;
     },
     {
@@ -2102,7 +2156,9 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
                 name: true,
                 slug: true,
                 color: true,
-                group: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
               },
             },
             category: true,
@@ -2183,7 +2239,9 @@ export async function getProjectsList(
                 name: true,
                 slug: true,
                 color: true,
-                group: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
               },
             },
             tags: {
@@ -2276,7 +2334,9 @@ export async function getProjectById(
                 name: true,
                 slug: true,
                 color: true,
-                group: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
               },
             },
             tags: {
@@ -2432,7 +2492,9 @@ export async function getProjectShellById(
                 name: true,
                 slug: true,
                 color: true,
-                group: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
               },
             },
             tags: {
@@ -2547,7 +2609,9 @@ export async function getProjectEditorById(
                 name: true,
                 slug: true,
                 color: true,
-                group: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
                 isActive: true,
               },
             },
@@ -2691,7 +2755,9 @@ export async function getProjectEditAccessById(
             name: true,
             slug: true,
             color: true,
-            group: true,
+            group: {
+              select: projectStatusGroupSelect,
+            },
           },
         },
         createdById: true,

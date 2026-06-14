@@ -1,5 +1,5 @@
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
-import type { ProjectExecutionType, ProjectExecutorRole, ProjectStatusGroup } from "@prisma/client";
+import type { ProjectExecutionType, ProjectExecutorRole } from "@prisma/client";
 
 export type ProjectFormFieldErrors = {
   name?: string;
@@ -96,7 +96,11 @@ export type ProjectEditorInitialValues = {
   statusId: string | null;
   statusName: string;
   statusColor: string;
-  statusGroup: ProjectStatusGroup | null;
+  statusGroupId: string | null;
+  statusGroupName: string;
+  statusGroupSlug: string;
+  statusGroupColor: string;
+  statusGroupIsActive: boolean;
   statusIsActive: boolean;
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   startDate: string;
