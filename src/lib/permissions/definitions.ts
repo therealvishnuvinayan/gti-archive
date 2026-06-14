@@ -73,7 +73,6 @@ export const permissionCatalog = {
     "archive.view",
     "archive.uploadFile",
     "archive.download",
-    "archive.delete",
   ],
   completion: [
     "completion.viewChecklist",
@@ -106,7 +105,6 @@ export const permissionCatalog = {
   notification: [
     "notification.view",
     "notification.markRead",
-    "notification.manageSettings",
   ],
   settings: [
     "settings.viewOwnProfile",
@@ -487,12 +485,6 @@ const permissionMetadata: Record<
     moduleGated: true,
     hardRule: true,
   },
-  "archive.delete": {
-    label: "Delete archive files",
-    description: "Reserved permission coverage for archive deletion workflows.",
-    moduleGated: true,
-    hardRule: true,
-  },
   "completion.viewChecklist": {
     label: "View completion checklist",
     description: "Open the post-archive completion workflow.",
@@ -634,12 +626,6 @@ const permissionMetadata: Record<
   "notification.markRead": {
     label: "Mark notifications read",
     description: "Mark the user's own notifications as read or unread.",
-    moduleGated: false,
-    hardRule: true,
-  },
-  "notification.manageSettings": {
-    label: "Manage notification settings",
-    description: "Reserved permission coverage for future notification settings.",
     moduleGated: false,
     hardRule: true,
   },
@@ -788,7 +774,6 @@ export const permissionModuleMap: Record<PermissionKey, ModuleName> = {
   "archive.view": "archive",
   "archive.uploadFile": "archive",
   "archive.download": "archive",
-  "archive.delete": "archive",
   "completion.viewChecklist": "project",
   "completion.setApprovalRequired": "project",
   "completion.prepareApproval": "project",
@@ -813,7 +798,6 @@ export const permissionModuleMap: Record<PermissionKey, ModuleName> = {
   "calendar.assignParticipants": "calendar",
   "notification.view": "notification",
   "notification.markRead": "notification",
-  "notification.manageSettings": "notification",
   "settings.viewOwnProfile": "settings",
   "settings.updateOwnProfile": "settings",
   "settings.changeOwnPassword": "settings",

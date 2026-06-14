@@ -15,7 +15,6 @@ import {
   getCollaboratorTypeGroup,
   getCollaboratorTypeLabel,
   isProjectCollaboratorParticipantType,
-  resolveCollaboratorType,
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -116,15 +115,13 @@ function mapCollaborator(user: Pick<
   | "name"
   | "collaboratorType"
 >): CollaboratorRecord {
-  const resolvedType = resolveCollaboratorType(user.collaboratorType);
-
   return {
     id: user.id,
     name: user.name?.trim() || getFallbackName(user.email),
     email: user.email,
-    type: resolvedType,
-    typeLabel: getCollaboratorTypeLabel(resolvedType),
-    typeGroup: getCollaboratorTypeGroup(resolvedType),
+    type: user.collaboratorType,
+    typeLabel: getCollaboratorTypeLabel(user.collaboratorType),
+    typeGroup: getCollaboratorTypeGroup(user.collaboratorType),
   };
 }
 

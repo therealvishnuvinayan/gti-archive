@@ -10,15 +10,6 @@ export const projectCollaboratorParticipantTypes = [
 export type ProjectCollaboratorParticipantType =
   (typeof projectCollaboratorParticipantTypes)[number];
 
-export const legacyCollaboratorTypeValues = ["INTERNAL", "EXTERNAL"] as const;
-
-export type LegacyCollaboratorTypeValue =
-  (typeof legacyCollaboratorTypeValues)[number];
-
-export type AnyCollaboratorTypeValue =
-  | ProjectCollaboratorParticipantType
-  | LegacyCollaboratorTypeValue;
-
 type CollaboratorGroup = "internal" | "external";
 
 type CollaboratorTypeMeta = {
@@ -95,49 +86,20 @@ export function getProjectCollaboratorTypeMeta(
   return collaboratorTypeMetaMap[type];
 }
 
-export function isLegacyCollaboratorTypeValue(
-  value: string,
-): value is LegacyCollaboratorTypeValue {
-  return legacyCollaboratorTypeValues.includes(value as LegacyCollaboratorTypeValue);
-}
-
-export function isAnyCollaboratorTypeValue(
-  value: string,
-): value is AnyCollaboratorTypeValue {
-  return (
-    isProjectCollaboratorParticipantType(value) ||
-    isLegacyCollaboratorTypeValue(value)
-  );
-}
-
-export function resolveCollaboratorType(
-  type: AnyCollaboratorTypeValue | null | undefined,
-): ProjectCollaboratorParticipantType {
-  if (!type || type === "INTERNAL") {
-    return "GTI_INTERNAL_CLIENT";
-  }
-
-  if (type === "EXTERNAL") {
-    return "EXTERNAL_FREELANCER";
-  }
-
-  return type;
-}
-
 export function getCollaboratorTypeLabel(
-  type: AnyCollaboratorTypeValue | null | undefined,
+  type: ProjectCollaboratorParticipantType | null | undefined,
 ) {
-  return getProjectCollaboratorTypeMeta(resolveCollaboratorType(type)).label;
+  return getProjectCollaboratorTypeMeta(type).label;
 }
 
 export function getCollaboratorTypeGroup(
-  type: AnyCollaboratorTypeValue | null | undefined,
+  type: ProjectCollaboratorParticipantType | null | undefined,
 ) {
-  return getProjectCollaboratorTypeMeta(resolveCollaboratorType(type)).group;
+  return getProjectCollaboratorTypeMeta(type).group;
 }
 
 export function getCollaboratorRoleLabel(
-  type: AnyCollaboratorTypeValue | null | undefined,
+  type: ProjectCollaboratorParticipantType | null | undefined,
 ) {
   return getCollaboratorTypeGroup(type) === "external"
     ? "External Collaborator"

@@ -6,7 +6,6 @@ import type {
 } from "@/lib/permissions/definitions";
 import {
   isProjectCollaboratorParticipantType,
-  resolveCollaboratorType,
 } from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
@@ -68,7 +67,7 @@ function mapManagedUser(user: {
     name: user.name?.trim() || getFallbackName(user.email),
     email: user.email,
     role: user.role,
-    collaboratorType: resolveCollaboratorType(user.collaboratorType),
+    collaboratorType: user.collaboratorType,
     status: getManagedUserStatus(user),
   };
 }
@@ -124,21 +123,6 @@ export async function countSuperAdmins() {
     prisma.user.count({
       where: {
         role: UserRole.SUPER_ADMIN,
-      },
-    }),
-  );
-}
-
-export async function countLegacyCollaboratorTypeUsers() {
-  return withPrismaRetry(() =>
-    prisma.user.count({
-      where: {
-        collaboratorType: {
-          in: [
-            CollaboratorType.INTERNAL,
-            CollaboratorType.EXTERNAL,
-          ],
-        },
       },
     }),
   );

@@ -7,7 +7,6 @@ import {
 import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 
-import { resolveCollaboratorType } from "../project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "../prisma";
 import {
   allPermissionKeys,
@@ -538,10 +537,9 @@ export async function resetPermissionProfileToDefaults(
 export async function getPermissionProfileSnapshotForUser(
   user: PermissionProfileUser,
 ): Promise<PermissionProfileSnapshot> {
-  const resolvedCollaboratorType = resolveCollaboratorType(user.collaboratorType);
   const [roleProfile, collaboratorTypeProfile] = await Promise.all([
     getCachedRoleProfile(user.role as PermissionRole),
-    getCachedCollaboratorTypeProfile(resolvedCollaboratorType),
+    getCachedCollaboratorTypeProfile(user.collaboratorType),
   ]);
 
   const rolePermissions = getEnabledPermissionSet(roleProfile.state);
