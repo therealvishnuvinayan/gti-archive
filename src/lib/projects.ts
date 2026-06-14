@@ -34,6 +34,10 @@ import {
   type ProjectPriorityValue,
 } from "@/lib/project-priority";
 import {
+  DEFAULT_PROJECT_CURRENCY,
+  resolveProjectCurrency,
+} from "@/lib/project-currencies";
+import {
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
   isTimestampHiddenByPauseWindows,
@@ -422,13 +426,19 @@ export function formatProjectDate(date: Date | string | number) {
 
 export function formatProjectBudget(
   budget: number | null | undefined,
-  currency = "USD",
+  currency: string | null | undefined = DEFAULT_PROJECT_CURRENCY,
 ) {
   if (!budget || budget <= 0) {
-    return "—";
+    return "Not specified";
   }
 
-  return `${budget.toLocaleString("en-US")} ${currency}`;
+  const currencyCode = resolveProjectCurrency(currency ?? "");
+
+  if (!currencyCode) {
+    return "Not specified";
+  }
+
+  return `${budget.toLocaleString("en-US")} ${currencyCode}`;
 }
 
 export function formatProjectExecutionTypeLabel(
