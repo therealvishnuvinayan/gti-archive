@@ -1,5 +1,5 @@
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
-import type { ProjectExecutionType, ProjectExecutorRole } from "@prisma/client";
+import type { ProjectExecutionType, ProjectExecutorRole, ProjectStatusGroup } from "@prisma/client";
 
 export type ProjectFormFieldErrors = {
   name?: string;
@@ -13,7 +13,7 @@ export type ProjectFormFieldErrors = {
   budget?: string;
   budgetSummary?: string;
   currency?: string;
-  status?: string;
+  statusId?: string;
   startDate?: string;
   endDate?: string;
   attachments?: string;
@@ -93,7 +93,11 @@ export type ProjectEditorInitialValues = {
   budget: string;
   currency: string | null;
   canViewBudget: boolean;
-  status: "ONGOING" | "ON_HOLD" | "PENDING" | "COMPLETED";
+  statusId: string | null;
+  statusName: string;
+  statusColor: string;
+  statusGroup: ProjectStatusGroup | null;
+  statusIsActive: boolean;
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   startDate: string;
   endDate: string;

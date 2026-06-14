@@ -1,7 +1,8 @@
 import {
   CalendarEventType,
   ProjectExecutorRole,
-  ProjectStatus,
+  ProjectStatusGroup,
+  StageStatus,
   UserRole,
   type Prisma,
   type User,
@@ -23,7 +24,9 @@ type DashboardUser = Pick<User, "id" | "role" | "calendarAccess"> & PermissionUs
 type DashboardCollaborationProjectRecord = {
   id: string;
   name: string;
-  status: ProjectStatus;
+  status: {
+    group: ProjectStatusGroup;
+  } | null;
   createdBy: {
     id: string;
     name: string | null;
@@ -80,6 +83,25 @@ type DashboardNotificationCandidate = {
 type ProjectUrlTarget = {
   projectId: string;
   stageId: string | null;
+};
+
+const activeProjectStatusWhere: Prisma.ProjectWhereInput = {
+  OR: [
+    {
+      status: {
+        is: null,
+      },
+    },
+    {
+      status: {
+        is: {
+          group: {
+            notIn: [ProjectStatusGroup.COMPLETED, ProjectStatusGroup.ARCHIVED],
+          },
+        },
+      },
+    },
+  ],
 };
 
 export type DashboardUpdateRecord = {
@@ -504,7 +526,11 @@ function buildCollaborationItems(
   projects: DashboardCollaborationProjectRecord[],
   currentUser: DashboardUser,
 ): DashboardCollaboratorRecord[] {
-  const activeProjects = projects.filter((project) => project.status !== ProjectStatus.COMPLETED);
+  const activeProjects = projects.filter(
+    (project) =>
+      project.status?.group !== ProjectStatusGroup.COMPLETED &&
+      project.status?.group !== ProjectStatusGroup.ARCHIVED,
+  );
   const seen = new Set<string>();
   const items: DashboardCollaboratorRecord[] = [];
 
@@ -629,9 +655,7 @@ export async function getDashboardCollaboration(
   const projects = await withPrismaRetry(() =>
     prisma.project.findMany({
       where: withAccessibleProjectScope(accessibleWhere, {
-        status: {
-          not: ProjectStatus.COMPLETED,
-        },
+        ...activeProjectStatusWhere,
       }),
       orderBy: {
         updatedAt: "desc",
@@ -640,7 +664,11 @@ export async function getDashboardCollaboration(
       select: {
         id: true,
         name: true,
-        status: true,
+        status: {
+          select: {
+            group: true,
+          },
+        },
         createdBy: {
           select: {
             id: true,
@@ -690,16 +718,15 @@ export async function getDashboardDeadlines(
   limit = 8,
 ): Promise<DashboardDeadlineRecord[]> {
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
-  const activeProjectWhere = withAccessibleProjectScope(accessibleWhere, {
-    status: {
-      not: ProjectStatus.COMPLETED,
-    },
-  });
+  const activeProjectWhere = withAccessibleProjectScope(
+    accessibleWhere,
+    activeProjectStatusWhere,
+  );
   const stageDeadlines = await withPrismaRetry(() =>
     prisma.projectStage.findMany({
       where: {
         status: {
-          not: ProjectStatus.COMPLETED,
+          not: StageStatus.COMPLETED,
         },
         plannedDueAt: {
           not: null,
@@ -730,11 +757,7 @@ export async function getDashboardDeadlines(
   ];
   const projectFallbackWhere = withAccessibleProjectScope(
     accessibleWhere,
-    {
-      status: {
-        not: ProjectStatus.COMPLETED,
-      },
-    },
+    activeProjectStatusWhere,
     ...(projectIdsWithStageDeadlines.length > 0
       ? [{ id: { notIn: projectIdsWithStageDeadlines } }]
       : []),

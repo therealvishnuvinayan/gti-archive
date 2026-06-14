@@ -29,6 +29,7 @@ import {
 } from "@/lib/permissions/resolver";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import { assertProjectAccess } from "@/lib/project-history";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   buildProjectCompletionDocumentKey,
@@ -318,13 +319,16 @@ function getCompletionDocumentUploadPermissionKey(
 }
 
 function isCompletedProject(project: {
-  status: string;
+  status: Parameters<typeof isProjectStatusCompleted>[0];
   archive: { id: string } | null;
   archivedAt: Date | null;
   completedAt: Date | null;
 }) {
   return Boolean(
-    project.archive || project.archivedAt || project.completedAt || project.status === "COMPLETED",
+    project.archive ||
+      project.archivedAt ||
+      project.completedAt ||
+      isProjectStatusCompleted(project.status),
   );
 }
 

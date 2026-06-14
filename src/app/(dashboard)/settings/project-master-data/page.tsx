@@ -19,6 +19,7 @@ export default async function ProjectMasterDataPage() {
     <DashboardLayout>
       <ProjectMasterDataWorkspace
         categories={masterData.categories}
+        projectStatuses={masterData.projectStatuses}
         tags={masterData.tags}
         assetTags={masterData.assetTags}
         archiveCategories={masterData.archiveCategories}

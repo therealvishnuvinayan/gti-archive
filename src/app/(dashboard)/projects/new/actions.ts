@@ -7,7 +7,8 @@ import {
   ProjectCompletionStepStatus,
   ProjectExecutionType,
   ProjectExecutorRole,
-  ProjectStatus,
+  ProjectStatusGroup,
+  StageStatus,
   type CollaboratorType,
 } from "@prisma/client";
 
@@ -37,6 +38,7 @@ import {
   DEFAULT_PROJECT_PRIORITY,
   isProjectPriority,
 } from "@/lib/project-priority";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 function parseBudget(value: string) {
   const normalized = value.trim().replace(/,/g, "");
@@ -116,10 +118,6 @@ function validateBudgetAllocation(input: {
   };
 }
 
-function isProjectStatus(value: string): value is ProjectStatus {
-  return Object.values(ProjectStatus).includes(value as ProjectStatus);
-}
-
 function isProjectExecutionType(value: string): value is ProjectExecutionType {
   return Object.values(ProjectExecutionType).includes(value as ProjectExecutionType);
 }
@@ -129,19 +127,31 @@ function isProjectExecutorRole(value: string): value is ProjectExecutorRole {
 }
 
 function getInitialStageStatuses(
-  projectStatus: ProjectStatus,
+  projectStatusGroup: ProjectStatusGroup | null,
   stageCount: number,
 ) {
-  if (projectStatus === ProjectStatus.COMPLETED) {
-    return Array.from({ length: stageCount }, () => ProjectStatus.COMPLETED);
+  if (
+    projectStatusGroup === ProjectStatusGroup.COMPLETED ||
+    projectStatusGroup === ProjectStatusGroup.ARCHIVED
+  ) {
+    return Array.from({ length: stageCount }, () => StageStatus.COMPLETED);
   }
 
-  if (projectStatus === ProjectStatus.PENDING) {
-    return Array.from({ length: stageCount }, () => ProjectStatus.PENDING);
+  if (projectStatusGroup === ProjectStatusGroup.PENDING) {
+    return Array.from({ length: stageCount }, () => StageStatus.PENDING);
+  }
+
+  if (
+    projectStatusGroup === ProjectStatusGroup.ON_HOLD ||
+    projectStatusGroup === ProjectStatusGroup.CANCELLED
+  ) {
+    return Array.from({ length: stageCount }, (_, index) =>
+      index === 0 ? StageStatus.ON_HOLD : StageStatus.PENDING,
+    );
   }
 
   return Array.from({ length: stageCount }, (_, index) =>
-    index === 0 ? projectStatus : ProjectStatus.PENDING,
+    index === 0 ? StageStatus.ONGOING : StageStatus.PENDING,
   );
 }
 
@@ -171,7 +181,7 @@ function parseProjectFormData(formData: FormData) {
   const executionTypeInput = String(formData.get("executionType") ?? "").trim();
   const budgetInput = String(formData.get("budget") ?? "").trim();
   const currencyInput = String(formData.get("currency") ?? "").trim().toUpperCase();
-  const statusInput = String(formData.get("status") ?? "").trim();
+  const statusId = String(formData.get("statusId") ?? "").trim();
   const startDateInput = String(formData.get("startDate") ?? "").trim();
   const endDateInput = String(formData.get("endDate") ?? "").trim();
   const stageNames = formData
@@ -234,7 +244,7 @@ function parseProjectFormData(formData: FormData) {
     executionTypeInput,
     budgetInput,
     currencyInput,
-    statusInput,
+    statusId,
     startDateInput,
     endDateInput,
     stageNames,
@@ -492,7 +502,7 @@ function validateProjectFormData(
   }
   if (requireBudget && !parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
   if (requireBudget && !parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
-  if (!parsed.statusInput) fieldErrors.status = "Project status is required.";
+  if (!parsed.statusId) fieldErrors.statusId = "Project status is required.";
   if (!parsed.startDateInput) fieldErrors.startDate = "Project start date is required.";
   if (!parsed.endDateInput) fieldErrors.endDate = "Project end date is required.";
 
@@ -507,7 +517,6 @@ function validateProjectFormData(
     requireBudget || (Number.isFinite(parsedBudget) && parsedBudget > 0)
       ? parsedBudget
       : 0;
-  const status = isProjectStatus(parsed.statusInput) ? parsed.statusInput : null;
   const priority = parsed.priorityInput
     ? isProjectPriority(parsed.priorityInput)
       ? parsed.priorityInput
@@ -527,13 +536,6 @@ function validateProjectFormData(
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: { budget: "Enter a valid project budget." },
-    };
-  }
-
-  if (!status) {
-    return {
-      error: "Please correct the highlighted fields.",
-      fieldErrors: { status: "Choose a valid project status." },
     };
   }
 
@@ -641,7 +643,7 @@ function validateProjectFormData(
       executionType,
       budget,
       currency: parsed.currencyInput || "USD",
-      status,
+      statusId: parsed.statusId,
       priority,
       startDate,
       endDate,
@@ -651,9 +653,47 @@ function validateProjectFormData(
       stageDueDates: parsed.stageDueDates.map((value) =>
         value ? new Date(value) : null,
       ),
-      stageStatuses: getInitialStageStatuses(status, parsed.stageNames.length),
       currentStageName: normalizedStageNames[0] || "Stage 1",
     },
+  };
+}
+
+async function resolveSubmittedProjectStatus(
+  statusId: string,
+  options: { allowInactiveStatusId?: string | null } = {},
+) {
+  const status = await prisma.projectStatusOption.findUnique({
+    where: {
+      id: statusId,
+    },
+    select: {
+      id: true,
+      name: true,
+      group: true,
+      isActive: true,
+    },
+  });
+
+  if (!status) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        statusId: "Choose a valid project status.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  if (!status.isActive && status.id !== options.allowInactiveStatusId) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        statusId: "Choose an active project status.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  return {
+    status,
   };
 }
 
@@ -833,7 +873,7 @@ function stageHasLinkedHistory(stage: {
   actualStartedAt: Date | null;
   startedById: string | null;
   completedAt: Date | null;
-  status: ProjectStatus;
+  status: StageStatus;
   _count: {
     comments: number;
     revisions: number;
@@ -845,7 +885,7 @@ function stageHasLinkedHistory(stage: {
 }) {
   return (
     Boolean(stage.actualStartedAt || stage.startedById || stage.completedAt) ||
-    stage.status !== ProjectStatus.PENDING ||
+    stage.status !== StageStatus.PENDING ||
     stage._count.comments > 0 ||
     stage._count.revisions > 0 ||
     stage._count.attachments > 0 ||
@@ -879,6 +919,12 @@ export async function createProjectAction(
     return resolvedTags;
   }
 
+  const resolvedStatus = await resolveSubmittedProjectStatus(validated.data.statusId);
+
+  if ("error" in resolvedStatus) {
+    return resolvedStatus;
+  }
+
   const {
     name,
     category,
@@ -887,7 +933,7 @@ export async function createProjectAction(
     executionType,
     budget,
     currency,
-    status,
+    statusId,
     priority,
     startDate,
     endDate,
@@ -897,12 +943,15 @@ export async function createProjectAction(
     stageStartDates,
     stageDueDates,
     stageInvoiceRequired,
-    stageStatuses,
     currentStageName,
     collaboratorIds,
     collaboratorParticipantTypes,
   } = validated.data;
   const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
+  const stageStatuses = getInitialStageStatuses(
+    resolvedStatus.status.group,
+    stageNames.length,
+  );
 
   const currencyCode =
     (await resolveProjectCurrencyCode(currency)) ??
@@ -986,7 +1035,7 @@ export async function createProjectAction(
           executionType,
           budget,
           currency: currencyCode,
-          status,
+          statusId,
           priority,
           startDate,
           endDate,
@@ -1138,7 +1187,16 @@ export async function updateProjectAction(
       currency: true,
       executionType: true,
       budget: true,
-      status: true,
+      statusId: true,
+      status: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          color: true,
+          group: true,
+        },
+      },
       createdById: true,
       executorUserId: true,
       executors: {
@@ -1188,7 +1246,7 @@ export async function updateProjectAction(
     return { error: "You are not allowed to edit projects." };
   }
 
-  if (existingProject.status === ProjectStatus.COMPLETED) {
+  if (isProjectStatusCompleted(existingProject.status)) {
     return { error: "Completed projects cannot be edited." };
   }
 
@@ -1211,6 +1269,14 @@ export async function updateProjectAction(
     return resolvedTags;
   }
 
+  const resolvedStatus = await resolveSubmittedProjectStatus(validated.data.statusId, {
+    allowInactiveStatusId: existingProject.statusId,
+  });
+
+  if ("error" in resolvedStatus) {
+    return resolvedStatus;
+  }
+
   const {
     name,
     category,
@@ -1219,7 +1285,7 @@ export async function updateProjectAction(
     executionType,
     budget,
     currency,
-    status,
+    statusId,
     priority,
     startDate,
     endDate,
@@ -1229,7 +1295,6 @@ export async function updateProjectAction(
     stageStartDates,
     stageDueDates,
     stageInvoiceRequired,
-    stageStatuses,
     stageIds,
     currentStageName,
     collaboratorIds,
@@ -1349,7 +1414,6 @@ export async function updateProjectAction(
   );
   const submittedExistingStageIds = stageIds.filter(Boolean);
   const submittedExistingStageIdSet = new Set(submittedExistingStageIds);
-  const projectStatusChanged = existingProject.status !== status;
   const executionTypeChanged = existingProject.executionType !== executionType;
 
   if (submittedExistingStageIdSet.size !== submittedExistingStageIds.length) {
@@ -1384,7 +1448,7 @@ export async function updateProjectAction(
           executionType,
           budget: canUpdateBudget ? budget : existingProject.budget,
           currency: currencyCode,
-          status,
+          statusId,
           priority,
           startDate,
           endDate,
@@ -1575,9 +1639,6 @@ export async function updateProjectAction(
             ? stageInvoiceRequired[index] ?? existingStage?.invoiceRequired ?? true
             : false,
           order: index + 1,
-          ...(projectStatusChanged
-            ? { status: stageStatuses[index] ?? ProjectStatus.PENDING }
-            : {}),
         };
 
         if (existingStage) {
@@ -1592,7 +1653,7 @@ export async function updateProjectAction(
           data: {
             ...stageData,
             projectId,
-            status: stageStatuses[index] ?? ProjectStatus.PENDING,
+            status: StageStatus.PENDING,
           },
         });
       }
@@ -1646,7 +1707,15 @@ export async function deleteProjectAction(projectId: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: {
-      status: true,
+      status: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          color: true,
+          group: true,
+        },
+      },
       createdById: true,
       executorUserId: true,
       collaborators: {
@@ -1670,7 +1739,7 @@ export async function deleteProjectAction(projectId: string) {
     throw new Error("You are not allowed to delete projects.");
   }
 
-  if (project.status === ProjectStatus.COMPLETED) {
+  if (isProjectStatusCompleted(project.status)) {
     throw new Error("Completed projects cannot be deleted.");
   }
 

@@ -5,8 +5,8 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   ProjectExecutionType,
-  ProjectStatus,
   ProjectRevisionStatus,
+  StageStatus,
   SubmissionReviewStatus,
   UserRole,
   type ProjectExecutorRole,
@@ -42,6 +42,7 @@ import {
 } from "@/lib/project-collaborator-visibility";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   buildProjectAssetKey,
@@ -1122,7 +1123,7 @@ export async function createStageRevision(
     throw new Error("Only a Main Executor can submit work for review.");
   }
 
-  if (project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(project.status)) {
     throw new Error("This project is already completed.");
   }
 
@@ -1130,7 +1131,7 @@ export async function createStageRevision(
     throw new Error("This project has already been archived.");
   }
 
-  if (stage.status === "COMPLETED") {
+  if (stage.status === StageStatus.COMPLETED) {
     throw new Error("This stage is already completed.");
   }
 
@@ -1255,7 +1256,7 @@ export async function createStageComment(
     "You do not have permission to add project comments.",
   );
 
-  if (stage.project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(stage.project.status)) {
     throw new Error("This project is already completed.");
   }
 
@@ -1454,7 +1455,7 @@ export async function prepareStageCommentUploads(
     "You do not have permission to add project comments.",
   );
 
-  if (stage.project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(stage.project.status)) {
     return { error: "This project is already completed." };
   }
 
@@ -1837,7 +1838,7 @@ export async function startProjectStageWork(
     throw new Error("Only a Main Executor can accept the brief for this stage.");
   }
 
-  if (project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(project.status)) {
     throw new Error("This project is already completed.");
   }
 
@@ -1849,7 +1850,7 @@ export async function startProjectStageWork(
     throw new Error("This stage has already been started.");
   }
 
-  if (stage.status === ProjectStatus.COMPLETED) {
+  if (stage.status === StageStatus.COMPLETED) {
     throw new Error("This stage is already completed.");
   }
 
@@ -1864,7 +1865,7 @@ export async function startProjectStageWork(
         data: {
           actualStartedAt: startedAt,
           startedById: user.id,
-          status: ProjectStatus.ONGOING,
+          status: StageStatus.ONGOING,
         },
         select: {
           id: true,
@@ -1919,7 +1920,7 @@ export async function completeProjectStage(
     throw new Error("Only the project owner can mark this stage as complete.");
   }
 
-  if (project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(project.status)) {
     throw new Error("This project is already completed.");
   }
 
@@ -1933,7 +1934,7 @@ export async function completeProjectStage(
   const stageIndex = orderedStages.findIndex((item) => item.id === stage.id);
   const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
 
-  if (stage.status === "COMPLETED") {
+  if (stage.status === StageStatus.COMPLETED) {
     return {
       id: stage.id,
       status: stage.status,
@@ -1962,7 +1963,7 @@ export async function completeProjectStage(
           id: stage.id,
         },
         data: {
-          status: "COMPLETED",
+          status: StageStatus.COMPLETED,
           completedAt: new Date(),
         },
         select: {
@@ -1973,7 +1974,7 @@ export async function completeProjectStage(
 
       if (nextStage) {
         const nextStageStatus =
-          nextStage.status === "PENDING" ? "ONGOING" : nextStage.status;
+          nextStage.status === StageStatus.PENDING ? StageStatus.ONGOING : nextStage.status;
 
         if (nextStageStatus !== nextStage.status) {
           await tx.projectStage.update({
@@ -1992,7 +1993,6 @@ export async function completeProjectStage(
           },
           data: {
             currentStageName: nextStage.name,
-            status: nextStageStatus,
           },
         });
       } else {
@@ -2016,7 +2016,7 @@ export async function completeProjectStage(
       ? {
           id: nextStage.id,
           name: nextStage.name,
-          status: nextStage.status === "PENDING" ? "ONGOING" : nextStage.status,
+          status: nextStage.status === StageStatus.PENDING ? StageStatus.ONGOING : nextStage.status,
         }
       : null,
     allStagesCompleted: !nextStage,
@@ -2080,7 +2080,7 @@ export async function reviewStageSubmission(
     throw new Error("Only the project owner can review submissions.");
   }
 
-  if (attachment.project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(attachment.project.status)) {
     throw new Error("This project is already completed.");
   }
 
@@ -2176,7 +2176,7 @@ export async function reviewProjectRevision(
     throw new Error("Only the project owner can review this submission.");
   }
 
-  if (revision.project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(revision.project.status)) {
     throw new Error("This project is already completed.");
   }
 
@@ -2192,7 +2192,7 @@ export async function reviewProjectRevision(
 
   if (
     input.status === "APPROVED" &&
-    revision.stage.status !== "COMPLETED" &&
+    revision.stage.status !== StageStatus.COMPLETED &&
     isStageInvoiceRequired(revision.project, revision.stage) &&
     !(await hasReadyStageInvoice(input.projectId, revision.stageId))
   ) {
@@ -2255,7 +2255,7 @@ export async function reviewProjectRevision(
       let stageCompletion:
         | {
             id: string;
-            status: "COMPLETED";
+            status: StageStatus;
             nextStage: {
               id: string;
               name: string;
@@ -2265,7 +2265,7 @@ export async function reviewProjectRevision(
           }
         | null = null;
 
-      if (input.status === "APPROVED" && revision.stage.status !== "COMPLETED") {
+      if (input.status === "APPROVED" && revision.stage.status !== StageStatus.COMPLETED) {
         const orderedStages = await tx.projectStage.findMany({
           where: {
             projectId: revision.projectId,
@@ -2291,14 +2291,14 @@ export async function reviewProjectRevision(
             id: revision.stageId,
           },
           data: {
-            status: "COMPLETED",
+            status: StageStatus.COMPLETED,
             completedAt,
           },
         });
 
         if (nextStage) {
           const nextStageStatus =
-            nextStage.status === "PENDING" ? "ONGOING" : nextStage.status;
+            nextStage.status === StageStatus.PENDING ? StageStatus.ONGOING : nextStage.status;
 
           if (nextStageStatus !== nextStage.status) {
             await tx.projectStage.update({
@@ -2317,17 +2317,16 @@ export async function reviewProjectRevision(
             },
             data: {
               currentStageName: nextStage.name,
-              status: nextStageStatus,
             },
           });
 
           stageCompletion = {
             id: revision.stageId,
-            status: "COMPLETED",
+            status: StageStatus.COMPLETED,
             nextStage: {
               id: nextStage.id,
               name: nextStage.name,
-              status: nextStage.status === "PENDING" ? "ONGOING" : nextStage.status,
+              status: nextStage.status === StageStatus.PENDING ? StageStatus.ONGOING : nextStage.status,
             },
             allStagesCompleted: false,
           };
@@ -2343,7 +2342,7 @@ export async function reviewProjectRevision(
 
           stageCompletion = {
             id: revision.stageId,
-            status: "COMPLETED",
+            status: StageStatus.COMPLETED,
             nextStage: null,
             allStagesCompleted: true,
           };
@@ -2468,7 +2467,7 @@ export async function requestStageInvoice(
     throw new Error("Only the project owner can request an invoice.");
   }
 
-  if (stage.project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(stage.project.status)) {
     throw new Error("This project is already completed.");
   }
 
@@ -2476,7 +2475,7 @@ export async function requestStageInvoice(
     throw new Error("This project has already been archived.");
   }
 
-  if (stage.status === "COMPLETED") {
+  if (stage.status === StageStatus.COMPLETED) {
     throw new Error("This stage is already completed.");
   }
 
@@ -2672,7 +2671,7 @@ export async function requestAttachmentUpload(
       return { error: "Only a Main Executor can submit work for review." };
     }
 
-    if (revision.project.status === "COMPLETED") {
+    if (isProjectStatusCompleted(revision.project.status)) {
       return { error: "This project is already completed." };
     }
 
@@ -2680,7 +2679,7 @@ export async function requestAttachmentUpload(
       return { error: "Please accept the brief before submitting work." };
     }
 
-    if (revision.stage.status === "COMPLETED") {
+    if (revision.stage.status === StageStatus.COMPLETED) {
       return { error: "This stage is already completed." };
     }
   } else if (input.assetType === AttachmentAssetType.STAGE_INVOICE) {
@@ -2763,7 +2762,7 @@ export async function requestAttachmentUpload(
       };
     }
 
-    if (stage.project.status === "COMPLETED") {
+    if (isProjectStatusCompleted(stage.project.status)) {
       return { error: "This project is already completed." };
     }
 
@@ -2771,7 +2770,7 @@ export async function requestAttachmentUpload(
       return { error: "This project has already been archived." };
     }
 
-    if (stage.status === "COMPLETED") {
+    if (stage.status === StageStatus.COMPLETED) {
       return { error: "This stage is already completed." };
     }
 
@@ -2848,7 +2847,7 @@ export async function requestAttachmentUpload(
       return { error: "Only a Main Executor can upload submissions for review." };
     }
 
-    if (revision.project.status === "COMPLETED") {
+    if (isProjectStatusCompleted(revision.project.status)) {
       return { error: "This project is already completed." };
     }
 
@@ -2856,7 +2855,7 @@ export async function requestAttachmentUpload(
       return { error: "Please accept the brief before submitting work." };
     }
 
-    if (revision.stage.status === "COMPLETED") {
+    if (revision.stage.status === StageStatus.COMPLETED) {
       return { error: "This stage is already completed." };
     }
   } else if (input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT) {
@@ -2918,7 +2917,7 @@ export async function requestAttachmentUpload(
       return { error: "You do not have permission to upload chat attachments." };
     }
 
-    if (comment.project.status === "COMPLETED") {
+    if (isProjectStatusCompleted(comment.project.status)) {
       return { error: "This project is already completed." };
     }
 
@@ -2958,7 +2957,7 @@ export async function requestAttachmentUpload(
 
     if (
       input.assetType !== AttachmentAssetType.FINAL_ARCHIVE &&
-      project.status === "COMPLETED"
+      isProjectStatusCompleted(project.status)
     ) {
       return { error: "This project is already completed." };
     }
@@ -3134,7 +3133,7 @@ export async function completeAttachmentUpload(
       throw new Error("Stage not found.");
     }
 
-    if (attachment.project.status === "COMPLETED") {
+    if (isProjectStatusCompleted(attachment.project.status)) {
       throw new Error("This project is already completed.");
     }
 
@@ -3142,7 +3141,7 @@ export async function completeAttachmentUpload(
       throw new Error("This project has already been archived.");
     }
 
-    if (attachment.stage.status === "COMPLETED") {
+    if (attachment.stage.status === StageStatus.COMPLETED) {
       throw new Error("This stage is already completed.");
     }
 

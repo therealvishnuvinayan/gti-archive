@@ -33,6 +33,7 @@ export default async function NewProjectPage() {
       <CreateProjectWorkspace
         availableCollaborators={collaborators}
         categoryOptions={masterDataOptions.categories}
+        statusOptions={masterDataOptions.projectStatuses}
         tagOptions={masterDataOptions.tags}
         currencyOptions={masterDataOptions.currencies}
         canManageProjectMasterData={canManageProjectMasterData}

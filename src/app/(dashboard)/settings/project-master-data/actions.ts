@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
+import { ProjectStatusGroup } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
 import { normalizeArchiveCategorySlug } from "@/lib/archive-categories";
@@ -10,6 +11,7 @@ import {
   PROJECT_MASTER_DATA_CACHE_TAG,
   PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH,
 } from "@/lib/project-master-data";
+import { normalizeProjectStatusSlug } from "@/lib/project-statuses";
 import { buildArchiveCategoryIconPrefix } from "@/lib/storage/s3";
 
 type SaveMasterDataInput = {
@@ -22,6 +24,7 @@ type SaveMasterDataInput = {
   iconUrl?: string;
   iconKey?: string;
   parentId?: string | null;
+  group?: string;
   sortOrder?: number;
   isActive: boolean;
 };
@@ -64,9 +67,23 @@ function normalizeMasterDataInput(input: SaveMasterDataInput) {
     iconUrl: input.iconUrl?.trim() || null,
     iconKey: input.iconKey?.trim() || null,
     parentId: input.parentId?.trim() || null,
+    group: input.group?.trim() || "",
     sortOrder: Number.isFinite(input.sortOrder) ? Math.trunc(input.sortOrder ?? 0) : 0,
     isActive: input.isActive,
   };
+}
+
+function normalizeProjectStatusInput(input: SaveMasterDataInput) {
+  const parsed = normalizeMasterDataInput(input);
+
+  return {
+    ...parsed,
+    slug: normalizeProjectStatusSlug(input.slug || input.name),
+  };
+}
+
+function isProjectStatusGroup(value: string): value is ProjectStatusGroup {
+  return Object.values(ProjectStatusGroup).includes(value as ProjectStatusGroup);
 }
 
 async function revalidateProjectMasterData() {
@@ -77,7 +94,7 @@ async function revalidateProjectMasterData() {
 
 function validateMasterDataDescription(
   description: string | null,
-  label: "Category" | "Tag" | "Asset tag" | "Archive category",
+  label: "Category" | "Tag" | "Asset tag" | "Archive category" | "Project status",
 ) {
   if (
     description &&
@@ -312,6 +329,102 @@ export async function saveProjectTagAction(input: SaveMasterDataInput) {
     item: {
       id: tag.id,
       name: tag.name,
+    },
+  };
+}
+
+export async function saveProjectStatusAction(input: SaveMasterDataInput) {
+  await requireAdminUser();
+
+  const parsed = normalizeProjectStatusInput(input);
+
+  if (!parsed.name) {
+    return { error: "Project status name is required." };
+  }
+
+  if (!parsed.slug) {
+    return { error: "Project status slug is required." };
+  }
+
+  if (!isProjectStatusGroup(parsed.group)) {
+    return { error: "Choose a valid project status group." };
+  }
+
+  const group = parsed.group;
+
+  const descriptionError = validateMasterDataDescription(
+    parsed.description,
+    "Project status",
+  );
+
+  if (descriptionError) {
+    return { error: descriptionError };
+  }
+
+  const duplicate = await withPrismaRetry(() =>
+    prisma.projectStatusOption.findFirst({
+      where: {
+        slug: {
+          equals: parsed.slug,
+          mode: "insensitive",
+        },
+        ...(parsed.id
+          ? {
+              id: {
+                not: parsed.id,
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (duplicate) {
+    return { error: "A project status with this slug already exists." };
+  }
+
+  const status = await withPrismaRetry(() =>
+    parsed.id
+      ? prisma.projectStatusOption.update({
+          where: {
+            id: parsed.id,
+          },
+          data: {
+            name: parsed.name,
+            slug: parsed.slug,
+            description: parsed.description,
+            color: parsed.color,
+            group,
+            sortOrder: parsed.sortOrder,
+            isActive: parsed.isActive,
+          },
+        })
+      : prisma.projectStatusOption.create({
+          data: {
+            name: parsed.name,
+            slug: parsed.slug,
+            description: parsed.description,
+            color: parsed.color,
+            group,
+            sortOrder: parsed.sortOrder,
+            isActive: parsed.isActive,
+          },
+        }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidateTag("projects", "max");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+
+  return {
+    success: true,
+    item: {
+      id: status.id,
+      name: status.name,
     },
   };
 }
@@ -621,6 +734,28 @@ export async function setProjectTagStatusAction(input: ToggleMasterDataInput) {
   return { success: true };
 }
 
+export async function setProjectStatusAction(input: ToggleMasterDataInput) {
+  await requireAdminUser();
+
+  await withPrismaRetry(() =>
+    prisma.projectStatusOption.update({
+      where: {
+        id: input.id,
+      },
+      data: {
+        isActive: input.isActive,
+      },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidateTag("projects", "max");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+
+  return { success: true };
+}
+
 export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
@@ -760,6 +895,46 @@ export async function deleteProjectTagAction(id: string) {
   );
 
   await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function deleteProjectStatusAction(id: string) {
+  await requireSuperAdminUser();
+
+  const status = await withPrismaRetry(() =>
+    prisma.projectStatusOption.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    }),
+  );
+
+  if (!status) {
+    return { error: "Project status not found." };
+  }
+
+  const usageCount = await withPrismaRetry(() =>
+    prisma.project.count({
+      where: {
+        statusId: status.id,
+      },
+    }),
+  );
+
+  if (usageCount > 0) {
+    return { error: "This project status is already used by existing projects. Deactivate it instead." };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.projectStatusOption.delete({
+      where: { id },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidateTag("projects", "max");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
 
   return { success: true };
 }

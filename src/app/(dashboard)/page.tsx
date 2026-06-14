@@ -52,11 +52,11 @@ function getStatCards(counts: DashboardProjectCounts) {
       emphasize: true,
     },
     {
-      title: "Ongoing Projects",
+      title: "Active Projects",
       value: `${counts.ongoing}`.padStart(2, "0"),
       delta: `${counts.ongoing}`.padStart(2, "0"),
       note: "Currently active",
-      href: "/projects?status=ONGOING&sort=newest",
+      href: "/projects?status=ACTIVE&sort=newest",
     },
     {
       title: "Pending Projects",

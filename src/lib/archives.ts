@@ -1,8 +1,10 @@
 import {
   AttachmentAssetType,
   AttachmentStatus,
+  ProjectStatusGroup,
   ProjectCompletionDocumentType,
   ProjectRevisionStatus,
+  StageStatus,
   SubmissionReviewStatus,
   type User,
 } from "@prisma/client";
@@ -29,6 +31,7 @@ import {
   assertProjectAccess,
 } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
@@ -578,30 +581,30 @@ function normalizePreparedArchiveFiles(files: ArchivableAttachment[]) {
   }));
 }
 
-function formatProjectStageStatus(status: string) {
+function formatProjectStageStatus(status: StageStatus) {
   switch (status) {
-    case "COMPLETED":
+    case StageStatus.COMPLETED:
       return "Completed";
-    case "ONGOING":
+    case StageStatus.ONGOING:
       return "In Progress";
-    case "PENDING":
+    case StageStatus.PENDING:
       return "Pending";
-    case "ON_HOLD":
+    case StageStatus.ON_HOLD:
       return "On Hold";
     default:
-      return status
+      return String(status)
         .toLowerCase()
         .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
   }
 }
 
 function getIncompleteProjectStages(
-  project: { stages: Array<{ id: string; name: string; status: string }> },
+  project: { stages: Array<{ id: string; name: string; status: StageStatus }> },
 ) {
   return project.stages
-    .filter((stage) => stage.status !== "COMPLETED")
+    .filter((stage) => stage.status !== StageStatus.COMPLETED)
     .map((stage) => ({
       id: stage.id,
       name: stage.name,
@@ -610,7 +613,7 @@ function getIncompleteProjectStages(
 }
 
 function getAllStagesCompletionError(
-  project: { stages: Array<{ id: string; name: string; status: string }> },
+  project: { stages: Array<{ id: string; name: string; status: StageStatus }> },
 ) {
   const incompleteStages = getIncompleteProjectStages(project);
 
@@ -637,7 +640,12 @@ function ensureProjectCanBeCompleted(
     throw new Error("Only the project owner can complete and archive this project.");
   }
 
-  if (project.archive || project.archivedAt || project.completedAt || project.status === "COMPLETED") {
+  if (
+    project.archive ||
+    project.archivedAt ||
+    project.completedAt ||
+    isProjectStatusCompleted(project.status)
+  ) {
     throw new Error("Project is already completed.");
   }
 
@@ -1586,7 +1594,10 @@ export async function getProjectCompletionSummary(
   const incompleteStages = getIncompleteProjectStages(project);
   const allStagesCompleted = incompleteStages.length === 0 && project.stages.length > 0;
   const isCompleted = Boolean(
-    project.archive || project.archivedAt || project.completedAt || project.status === "COMPLETED",
+    project.archive ||
+      project.archivedAt ||
+      project.completedAt ||
+      isProjectStatusCompleted(project.status),
   );
   const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
   const canViewArchivedFiles = hasPermission(user, "archive.view");
@@ -1748,6 +1759,7 @@ export async function completeProjectArchive(
         select: {
           id: true,
           createdById: true,
+          statusId: true,
           status: true,
           completedAt: true,
           archivedAt: true,
@@ -1781,7 +1793,7 @@ export async function completeProjectArchive(
         latestProject.archive ||
         latestProject.archivedAt ||
         latestProject.completedAt ||
-        latestProject.status === "COMPLETED"
+        isProjectStatusCompleted(latestProject.status)
       ) {
         throw new Error("Project is already completed.");
       }
@@ -1824,12 +1836,23 @@ export async function completeProjectArchive(
         },
       });
 
+      const completedStatus = await tx.projectStatusOption.findFirst({
+        where: {
+          group: ProjectStatusGroup.COMPLETED,
+          isActive: true,
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+        },
+      });
+
       await tx.project.update({
         where: {
           id: archiveProject.id,
         },
         data: {
-          status: "COMPLETED",
+          statusId: completedStatus?.id ?? latestProject.statusId,
           currentStageName: finalStage.name,
           completedAt: archivedAt,
           archivedAt,

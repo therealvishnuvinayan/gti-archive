@@ -44,6 +44,7 @@ export default async function EditProjectPage({
       <CreateProjectWorkspace
         availableCollaborators={collaborators}
         categoryOptions={masterDataOptions.categories}
+        statusOptions={masterDataOptions.projectStatuses}
         tagOptions={masterDataOptions.tags}
         currencyOptions={masterDataOptions.currencies}
         mode="edit"

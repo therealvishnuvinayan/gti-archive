@@ -72,6 +72,8 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import type { ProjectCollaboratorRecord } from "@/lib/projects";
+import { DEFAULT_PROJECT_STATUS_SLUG, projectStatusGroupLabels } from "@/lib/project-statuses";
+import type { ProjectStatusGroup } from "@prisma/client";
 import {
   DEFAULT_PROJECT_PRIORITY,
   formatProjectPriority,
@@ -89,16 +91,7 @@ import {
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
 
-const projectStatusOptions = [
-  { value: "ONGOING", label: "Ongoing" },
-  { value: "ON_HOLD", label: "On Hold" },
-  { value: "PENDING", label: "Pending" },
-  { value: "COMPLETED", label: "Completed" },
-] as const;
-
 const MAX_PROJECT_TAGS = 5;
-
-type ProjectStatusValue = (typeof projectStatusOptions)[number]["value"];
 
 const projectExecutionTypeOptions = [
   {
@@ -142,6 +135,7 @@ type MonthPickerProps = {
 type CreateProjectWorkspaceProps = {
   availableCollaborators: CollaboratorRecord[];
   categoryOptions?: string[];
+  statusOptions?: ProjectStatusSelectOption[];
   tagOptions?: string[];
   currencyOptions?: Array<{
     code: string;
@@ -155,6 +149,15 @@ type CreateProjectWorkspaceProps = {
     previousState: ProjectFormState,
     formData: FormData,
   ) => Promise<ProjectFormState>;
+};
+
+type ProjectStatusSelectOption = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  group: ProjectStatusGroup;
+  isActive: boolean;
 };
 
 type ExecutorOption = {
@@ -392,6 +395,14 @@ function getDefaultProjectCurrencyCode(
   return (
     currencyOptions.find((currency) => currency.code === "USD")?.code ??
     currencyOptions[0]?.code ??
+    ""
+  );
+}
+
+function getDefaultProjectStatusId(statusOptions: ProjectStatusSelectOption[]) {
+  return (
+    statusOptions.find((status) => status.slug === DEFAULT_PROJECT_STATUS_SLUG)?.id ??
+    statusOptions[0]?.id ??
     ""
   );
 }
@@ -831,6 +842,7 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
 export function CreateProjectWorkspace({
   availableCollaborators,
   categoryOptions = [],
+  statusOptions = [],
   tagOptions = [],
   currencyOptions = [],
   canManageProjectMasterData = false,
@@ -867,8 +879,28 @@ export function CreateProjectWorkspace({
       : DEFAULT_PROJECT_PRIORITY,
   );
   const [projectBrief, setProjectBrief] = useState(initialValues?.description ?? "");
-  const [projectStatus, setProjectStatus] = useState<ProjectStatusValue>(
-    initialValues?.status ?? "ONGOING",
+  const initialStatusOptions = useMemo<ProjectStatusSelectOption[]>(() => {
+    if (
+      !initialValues?.statusId ||
+      statusOptions.some((status) => status.id === initialValues.statusId)
+    ) {
+      return statusOptions;
+    }
+
+    return [
+      {
+        id: initialValues.statusId,
+        name: initialValues.statusName || "No status",
+        slug: initialValues.statusId,
+        color: initialValues.statusColor,
+        group: initialValues.statusGroup ?? "ACTIVE",
+        isActive: initialValues.statusIsActive,
+      },
+      ...statusOptions,
+    ];
+  }, [initialValues, statusOptions]);
+  const [projectStatusId, setProjectStatusId] = useState(
+    initialValues?.statusId ?? getDefaultProjectStatusId(initialStatusOptions),
   );
   const [startDate, setStartDate] = useState<Date | null>(
     initialValues?.startDate ? new Date(initialValues.startDate) : null,
@@ -1117,6 +1149,33 @@ export function CreateProjectWorkspace({
 
     return currencyOptions;
   }, [currencyOptions, projectCurrency]);
+  const projectStatusSelectOptions = useMemo(() => {
+    if (
+      projectStatusId &&
+      !initialStatusOptions.some((status) => status.id === projectStatusId) &&
+      initialValues?.statusId === projectStatusId
+    ) {
+      return [
+        {
+          id: projectStatusId,
+          name: initialValues.statusName || "No status",
+          slug: projectStatusId,
+          color: initialValues.statusColor,
+          group: initialValues.statusGroup ?? "ACTIVE",
+          isActive: initialValues.statusIsActive,
+        },
+        ...initialStatusOptions,
+      ];
+    }
+
+    return initialStatusOptions;
+  }, [initialStatusOptions, initialValues, projectStatusId]);
+  const selectedProjectStatus = useMemo(
+    () =>
+      projectStatusSelectOptions.find((status) => status.id === projectStatusId) ??
+      null,
+    [projectStatusId, projectStatusSelectOptions],
+  );
   const executorOptions = useMemo<ExecutorOption[]>(
     () =>
       availableCollaboratorRecords.map((collaborator) => ({
@@ -1194,8 +1253,7 @@ export function CreateProjectWorkspace({
       deadline: endDate ? formatDateValue(endDate) : "—",
       executor: executorOverviewLabel,
       tag: projectTags.length > 0 ? projectTags.join(", ") : "—",
-      status:
-        projectStatusOptions.find((option) => option.value === projectStatus)?.label || "—",
+      status: selectedProjectStatus?.name ?? "—",
       priority: formatProjectPriority(projectPriority),
     }),
     [
@@ -1207,7 +1265,7 @@ export function CreateProjectWorkspace({
       executorOverviewLabel,
       projectTags,
       projectPriority,
-      projectStatus,
+      selectedProjectStatus,
       parsedProjectBudget,
       remainingStageBudget,
       stages.length,
@@ -2505,7 +2563,7 @@ export function CreateProjectWorkspace({
         <input key={tag} type="hidden" name="tags" value={tag} />
       ))}
       <input type="hidden" name="currency" value={projectCurrency} />
-      <input type="hidden" name="status" value={projectStatus} />
+      <input type="hidden" name="statusId" value={projectStatusId} />
       <input type="hidden" name="priority" value={projectPriority} />
       {assignedCollaborators.map((collaborator) => (
         <div key={collaborator.id}>
@@ -2844,24 +2902,46 @@ export function CreateProjectWorkspace({
               <label className="block">
                 <RequiredLabel>Project Status</RequiredLabel>
                 <Select
-                  value={projectStatus}
+                  value={projectStatusId}
                   onValueChange={(nextValue) => {
-                    setProjectStatus(nextValue as ProjectStatusValue);
-                    clearFieldError("status");
+                    setProjectStatusId(nextValue);
+                    clearFieldError("statusId");
                   }}
+                  disabled={projectStatusSelectOptions.length === 0}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
-                    <SelectValue />
+                    <SelectValue
+                      placeholder={
+                        projectStatusSelectOptions.length === 0
+                          ? "No statuses available"
+                          : "Select project status"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {projectStatusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                    {projectStatusSelectOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        <span className="flex items-center gap-2">
+                          {option.color ? (
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: option.color }}
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          <span>{option.name}</span>
+                          {!option.isActive ? (
+                            <span className="text-[11px] text-[#8a938b]">(Inactive)</span>
+                          ) : null}
+                          <span className="text-[11px] text-[#8a938b]">
+                            {projectStatusGroupLabels[option.group]}
+                          </span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <FieldError message={getFieldError("status", fieldErrors.status)} />
+                <FieldError message={getFieldError("statusId", fieldErrors.statusId)} />
               </label>
 
               <label className="block">
