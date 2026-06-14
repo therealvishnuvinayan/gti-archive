@@ -24,6 +24,24 @@ export type ProjectMasterCurrencyRecord = {
   updatedAt: string;
 };
 
+export type ArchiveCategoryMasterDataRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  iconUrl: string;
+  iconKey: string;
+  color: string;
+  parentId: string | null;
+  parentName: string | null;
+  childCount: number;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ProjectMasterDataSummary = {
   totalCategories: number;
   activeCategories: number;
@@ -31,6 +49,8 @@ export type ProjectMasterDataSummary = {
   activeTags: number;
   totalAssetTags: number;
   activeAssetTags: number;
+  totalArchiveCategories: number;
+  activeArchiveCategories: number;
   totalCurrencies: number;
   activeCurrencies: number;
 };
@@ -39,6 +59,7 @@ export type ProjectMasterDataRecord = {
   categories: ProjectMasterDataItemRecord[];
   tags: ProjectMasterDataItemRecord[];
   assetTags: ProjectMasterDataItemRecord[];
+  archiveCategories: ArchiveCategoryMasterDataRecord[];
   currencies: ProjectMasterCurrencyRecord[];
   summary: ProjectMasterDataSummary;
 };
@@ -115,6 +136,42 @@ function mapCurrencyItem(item: {
   } satisfies ProjectMasterCurrencyRecord;
 }
 
+function mapArchiveCategoryItem(item: {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  iconUrl: string | null;
+  iconKey: string | null;
+  color: string | null;
+  parentId: string | null;
+  parent?: { name: string } | null;
+  children?: Array<{ id: string }>;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  createdAt: Date | string | number;
+  updatedAt: Date | string | number;
+}) {
+  return {
+    id: item.id,
+    name: item.name.trim(),
+    slug: item.slug.trim(),
+    description: item.description?.trim() || "",
+    iconUrl: item.iconUrl?.trim() || "",
+    iconKey: item.iconKey?.trim() || "",
+    color: item.color?.trim() || "",
+    parentId: item.parentId,
+    parentName: item.parent?.name ?? null,
+    childCount: item.children?.length ?? 0,
+    sortOrder: item.sortOrder,
+    isActive: item.isActive,
+    isSystem: item.isSystem,
+    createdAt: formatMasterDataTimestamp(item.createdAt),
+    updatedAt: formatMasterDataTimestamp(item.updatedAt),
+  } satisfies ArchiveCategoryMasterDataRecord;
+}
+
 export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
   const fetchMasterData = unstable_cache(
     async () =>
@@ -129,6 +186,21 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
           prisma.assetTag.findMany({
             orderBy: [{ isActive: "desc" }, { name: "asc" }],
           }),
+          prisma.archiveCategory.findMany({
+            orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+            include: {
+              parent: {
+                select: {
+                  name: true,
+                },
+              },
+              children: {
+                select: {
+                  id: true,
+                },
+              },
+            },
+          }),
           prisma.projectCurrency.findMany({
             orderBy: [{ isActive: "desc" }, { code: "asc" }],
           }),
@@ -138,12 +210,13 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     { revalidate: 20, tags: [PROJECT_MASTER_DATA_CACHE_TAG] },
   );
 
-  const [categories, tags, assetTags, currencies] = await fetchMasterData();
+  const [categories, tags, assetTags, archiveCategories, currencies] = await fetchMasterData();
 
   return {
     categories: categories.map(mapMasterDataItem),
     tags: tags.map(mapMasterDataItem),
     assetTags: assetTags.map(mapMasterDataItem),
+    archiveCategories: archiveCategories.map(mapArchiveCategoryItem),
     currencies: currencies.map(mapCurrencyItem),
     summary: {
       totalCategories: categories.length,
@@ -152,6 +225,8 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
       activeTags: tags.filter((item) => item.isActive).length,
       totalAssetTags: assetTags.length,
       activeAssetTags: assetTags.filter((item) => item.isActive).length,
+      totalArchiveCategories: archiveCategories.length,
+      activeArchiveCategories: archiveCategories.filter((item) => item.isActive).length,
       totalCurrencies: currencies.length,
       activeCurrencies: currencies.filter((item) => item.isActive).length,
     },

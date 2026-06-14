@@ -1,6 +1,9 @@
+import { createElement } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  Archive,
   BadgeCheck,
+  Box,
   FileImage,
   FileStack,
   Images,
@@ -14,49 +17,28 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import {
-  archiveCategoryDefinitions,
-  getArchiveCategoryBySlug,
-  type ArchiveCategorySlug,
-} from "@/lib/archive-categories";
+export const archiveCategoryIconOptions = [
+  { key: "archive", label: "Archive", icon: Archive },
+  { key: "badge-check", label: "Badge", icon: BadgeCheck },
+  { key: "box", label: "Box", icon: Box },
+  { key: "file-stack", label: "File Stack", icon: FileStack },
+  { key: "images", label: "Images", icon: Images },
+  { key: "megaphone", label: "Megaphone", icon: Megaphone },
+  { key: "newspaper", label: "Newspaper", icon: Newspaper },
+  { key: "panel-top", label: "Website", icon: PanelTop },
+  { key: "play", label: "Video", icon: Play },
+  { key: "scroll-text", label: "Document", icon: ScrollText },
+  { key: "shapes", label: "Shapes", icon: Shapes },
+  { key: "shield-alert", label: "Alert", icon: ShieldAlert },
+  { key: "sparkles", label: "Sparkles", icon: Sparkles },
+] as const;
 
-export type ArchiveCategory = {
-  slug: ArchiveCategorySlug;
-  title: string;
-  icon: LucideIcon;
-};
+const archiveCategoryIconMap = new Map<string, LucideIcon>(
+  archiveCategoryIconOptions.map((option) => [option.key, option.icon]),
+);
 
-const archiveCategoryIconMap: Record<ArchiveCategorySlug, LucideIcon> = {
-  artworks: Shapes,
-  promotions: Sparkles,
-  advertisements: Megaphone,
-  "website-data": PanelTop,
-  revisions: FileStack,
-  "product-renders": Images,
-  "3d-assets": Shapes,
-  videos: Play,
-  documents: ScrollText,
-  "health-warnings": ShieldAlert,
-  "catalogues-flyers": Newspaper,
-  "exhibition-materials": BadgeCheck,
-};
-
-export const archiveCategories: ArchiveCategory[] = archiveCategoryDefinitions.map((category) => ({
-  ...category,
-  icon: archiveCategoryIconMap[category.slug],
-}));
-
-export function getArchiveCategory(slug: string) {
-  const category = getArchiveCategoryBySlug(slug);
-
-  if (!category) {
-    return null;
-  }
-
-  return {
-    ...category,
-    icon: archiveCategoryIconMap[category.slug],
-  } satisfies ArchiveCategory;
+export function getArchiveCategoryIcon(iconKey: string | null | undefined) {
+  return archiveCategoryIconMap.get(iconKey?.trim() ?? "") ?? Archive;
 }
 
 export function getFileTypeIcon(type: string): LucideIcon {
@@ -67,4 +49,42 @@ export function getFileTypeIcon(type: string): LucideIcon {
   }
 
   return ScrollText;
+}
+
+export function getArchiveCategoryIconImageSrc(iconUrl: string | null | undefined) {
+  const trimmedUrl = iconUrl?.trim();
+
+  if (!trimmedUrl) {
+    return "";
+  }
+
+  if (
+    trimmedUrl.startsWith("http://") ||
+    trimmedUrl.startsWith("https://") ||
+    trimmedUrl.startsWith("/")
+  ) {
+    return trimmedUrl;
+  }
+
+  return `/api/archive-category-icons/preview?key=${encodeURIComponent(trimmedUrl)}`;
+}
+
+export function ArchiveCategoryIconGlyph({
+  iconKey,
+  className,
+}: {
+  iconKey: string | null | undefined;
+  className?: string;
+}) {
+  return createElement(getArchiveCategoryIcon(iconKey), { className });
+}
+
+export function ArchiveFileTypeIcon({
+  type,
+  className,
+}: {
+  type: string;
+  className?: string;
+}) {
+  return createElement(getFileTypeIcon(type), { className });
 }

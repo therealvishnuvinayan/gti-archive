@@ -137,7 +137,6 @@ function revalidateArchiveFlow(projectId: string, categorySlug?: string) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/chat`);
   revalidatePath("/archives");
-  revalidatePath("/archives/documents");
 
   if (categorySlug) {
     revalidatePath(`/archives/${categorySlug}`);
@@ -463,7 +462,7 @@ export async function prepareProjectCompletionAction(input: {
 export async function completeProjectArchiveAction(input: {
   projectId: string;
   stageId: string;
-  archiveCategorySlug?: string;
+  archiveCategoryId?: string;
   files: Array<{
     sourceAttachmentId: string;
     finalArchiveFileName: string;

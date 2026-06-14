@@ -1892,7 +1892,7 @@ export function ProjectChatWorkspace({
     useState<ProjectArchivePreparation | null>(null);
   const [archiveFileNames, setArchiveFileNames] = useState<Record<string, string>>({});
   const [archiveFileErrors, setArchiveFileErrors] = useState<Record<string, string>>({});
-  const [archiveCategorySlug, setArchiveCategorySlug] = useState<string>("");
+  const [archiveCategoryId, setArchiveCategoryId] = useState<string>("");
   const [archiveCompletionError, setArchiveCompletionError] = useState<string | null>(null);
   const [isCompletingProject, setIsCompletingProject] = useState(false);
   const [, startRefresh] = useTransition();
@@ -2703,7 +2703,7 @@ export function ProjectChatWorkspace({
     setArchivePreparation(null);
     setArchiveFileNames({});
     setArchiveFileErrors({});
-    setArchiveCategorySlug("");
+    setArchiveCategoryId("");
     setProjectCompletionConfirmOpen(false);
   }
 
@@ -2772,7 +2772,7 @@ export function ProjectChatWorkspace({
       }
 
       setArchivePreparation(result.preparation);
-      setArchiveCategorySlug(result.preparation.selectedCategorySlug);
+      setArchiveCategoryId(result.preparation.selectedCategoryId);
       setArchiveFileNames(
         Object.fromEntries(
           result.preparation.files.map((file) => [
@@ -2825,6 +2825,11 @@ export function ProjectChatWorkspace({
 
     setArchiveFileErrors(nextErrors);
 
+    if (!archiveCategoryId) {
+      setArchiveCompletionError("Choose an archive category before continuing.");
+      return;
+    }
+
     if (Object.values(nextErrors).some(Boolean)) {
       setArchiveCompletionError("Fix the archive file names before continuing.");
       return;
@@ -2837,7 +2842,7 @@ export function ProjectChatWorkspace({
       const result = await completeProjectArchiveAction({
         projectId: archivePreparation.projectId,
         stageId: archivePreparation.finalStageId,
-        archiveCategorySlug,
+        archiveCategoryId,
         files: archivePreparation.files.map((file) => ({
           sourceAttachmentId: file.sourceAttachmentId,
           finalArchiveFileName:
@@ -6077,18 +6082,25 @@ export function ProjectChatWorkspace({
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-[#70806f]">
                     Archive Category
                   </p>
-                  <Select value={archiveCategorySlug} onValueChange={setArchiveCategorySlug}>
+                  <Select value={archiveCategoryId} onValueChange={setArchiveCategoryId}>
                     <SelectTrigger className="h-11 rounded-[14px] border border-line">
                       <SelectValue placeholder="Choose archive category" />
                     </SelectTrigger>
                     <SelectContent>
                       {archivePreparation.categories.map((category) => (
-                        <SelectItem key={category.slug} value={category.slug}>
-                          {category.title}
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.parentName
+                            ? `${category.parentName} / ${category.name}`
+                            : category.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {archivePreparation.categories.length === 0 ? (
+                    <p className="text-[12px] font-[600] text-[#bb4d49]">
+                      No active archive categories are available.
+                    </p>
+                  ) : null}
                 </div>
               </div>
 

@@ -3,12 +3,14 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
+import { normalizeArchiveCategorySlug } from "@/lib/archive-categories";
 import { requirePermission } from "@/lib/permissions/require";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   PROJECT_MASTER_DATA_CACHE_TAG,
   PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH,
 } from "@/lib/project-master-data";
+import { buildArchiveCategoryIconPrefix } from "@/lib/storage/s3";
 
 type SaveMasterDataInput = {
   id?: string;
@@ -16,6 +18,11 @@ type SaveMasterDataInput = {
   description?: string;
   color?: string;
   code?: string;
+  slug?: string;
+  iconUrl?: string;
+  iconKey?: string;
+  parentId?: string | null;
+  sortOrder?: number;
   isActive: boolean;
 };
 
@@ -53,6 +60,11 @@ function normalizeMasterDataInput(input: SaveMasterDataInput) {
     description: input.description?.trim() || null,
     color: input.color?.trim() || null,
     code: input.code?.trim().toUpperCase() || "",
+    slug: normalizeArchiveCategorySlug(input.slug || input.name),
+    iconUrl: input.iconUrl?.trim() || null,
+    iconKey: input.iconKey?.trim() || null,
+    parentId: input.parentId?.trim() || null,
+    sortOrder: Number.isFinite(input.sortOrder) ? Math.trunc(input.sortOrder ?? 0) : 0,
     isActive: input.isActive,
   };
 }
@@ -65,13 +77,89 @@ async function revalidateProjectMasterData() {
 
 function validateMasterDataDescription(
   description: string | null,
-  label: "Category" | "Tag" | "Asset tag",
+  label: "Category" | "Tag" | "Asset tag" | "Archive category",
 ) {
   if (
     description &&
     description.length > PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH
   ) {
     return `${label} description must be ${PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH} characters or fewer.`;
+  }
+
+  return null;
+}
+
+function isAllowedArchiveCategoryIconReference(value: string | null) {
+  if (!value) {
+    return true;
+  }
+
+  return (
+    value.startsWith(buildArchiveCategoryIconPrefix()) ||
+    value.startsWith("https://") ||
+    value.startsWith("http://") ||
+    value.startsWith("/")
+  );
+}
+
+async function validateArchiveCategoryParent(input: {
+  id?: string;
+  parentId: string | null;
+}) {
+  const parentId = input.parentId;
+
+  if (!parentId) {
+    return null;
+  }
+
+  if (input.id && parentId === input.id) {
+    return "Parent category cannot be itself.";
+  }
+
+  const parent = await withPrismaRetry(() =>
+    prisma.archiveCategory.findUnique({
+      where: {
+        id: parentId,
+      },
+      select: {
+        id: true,
+        parentId: true,
+      },
+    }),
+  );
+
+  if (!parent) {
+    return "Choose a valid parent category.";
+  }
+
+  const visited = new Set<string>();
+  let nextParentId: string | null = parent.parentId;
+
+  while (nextParentId) {
+    const ancestorId = nextParentId;
+
+    if (visited.has(ancestorId)) {
+      return "Archive category hierarchy is invalid.";
+    }
+
+    if (input.id && ancestorId === input.id) {
+      return "Archive category parent cannot create a circular hierarchy.";
+    }
+
+    visited.add(ancestorId);
+
+    const nextParent = await withPrismaRetry(() =>
+      prisma.archiveCategory.findUnique({
+        where: {
+          id: ancestorId,
+        },
+        select: {
+          parentId: true,
+        },
+      }),
+    );
+
+    nextParentId = nextParent?.parentId ?? null;
   }
 
   return null;
@@ -305,6 +393,112 @@ export async function saveAssetTagAction(input: SaveMasterDataInput) {
   };
 }
 
+export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
+  await requireAdminUser();
+
+  const parsed = normalizeMasterDataInput(input);
+
+  if (!parsed.name) {
+    return { error: "Archive category name is required." };
+  }
+
+  if (!parsed.slug) {
+    return { error: "Archive category slug is required." };
+  }
+
+  const descriptionError = validateMasterDataDescription(
+    parsed.description,
+    "Archive category",
+  );
+
+  if (descriptionError) {
+    return { error: descriptionError };
+  }
+
+  if (!isAllowedArchiveCategoryIconReference(parsed.iconUrl)) {
+    return { error: "Upload a valid archive category icon." };
+  }
+
+  const parentError = await validateArchiveCategoryParent({
+    id: parsed.id,
+    parentId: parsed.parentId,
+  });
+
+  if (parentError) {
+    return { error: parentError };
+  }
+
+  const duplicate = await withPrismaRetry(() =>
+    prisma.archiveCategory.findFirst({
+      where: {
+        slug: {
+          equals: parsed.slug,
+          mode: "insensitive",
+        },
+        ...(parsed.id
+          ? {
+              id: {
+                not: parsed.id,
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (duplicate) {
+    return { error: "An archive category with this slug already exists." };
+  }
+
+  const category = await withPrismaRetry(() =>
+    parsed.id
+      ? prisma.archiveCategory.update({
+          where: {
+            id: parsed.id,
+          },
+          data: {
+            name: parsed.name,
+            slug: parsed.slug,
+            description: parsed.description,
+            iconUrl: parsed.iconUrl,
+            iconKey: parsed.iconKey,
+            color: parsed.color,
+            parentId: parsed.parentId,
+            sortOrder: parsed.sortOrder,
+            isActive: parsed.isActive,
+          },
+        })
+      : prisma.archiveCategory.create({
+          data: {
+            name: parsed.name,
+            slug: parsed.slug,
+            description: parsed.description,
+            iconUrl: parsed.iconUrl,
+            iconKey: parsed.iconKey,
+            color: parsed.color,
+            parentId: parsed.parentId,
+            sortOrder: parsed.sortOrder,
+            isActive: parsed.isActive,
+          },
+        }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidatePath("/archives");
+  revalidatePath(`/archives/${category.slug}`);
+
+  return {
+    success: true,
+    item: {
+      id: category.id,
+      name: category.name,
+    },
+  };
+}
+
 export async function saveProjectCurrencyAction(input: SaveMasterDataInput) {
   await requireAdminUser();
 
@@ -442,6 +636,30 @@ export async function setAssetTagStatusAction(input: ToggleMasterDataInput) {
   );
 
   await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInput) {
+  await requireAdminUser();
+
+  const category = await withPrismaRetry(() =>
+    prisma.archiveCategory.update({
+      where: {
+        id: input.id,
+      },
+      data: {
+        isActive: input.isActive,
+      },
+      select: {
+        slug: true,
+      },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidatePath("/archives");
+  revalidatePath(`/archives/${category.slug}`);
 
   return { success: true };
 }
@@ -591,6 +809,66 @@ export async function deleteAssetTagAction(id: string) {
   );
 
   await revalidateProjectMasterData();
+
+  return { success: true };
+}
+
+export async function deleteArchiveCategoryAction(id: string) {
+  await requireSuperAdminUser();
+
+  const category = await withPrismaRetry(() =>
+    prisma.archiveCategory.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        children: {
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
+      },
+    }),
+  );
+
+  if (!category) {
+    return { error: "Archive category not found." };
+  }
+
+  if (category.children.length > 0) {
+    return { error: "This archive category has child categories. Move or delete them first." };
+  }
+
+  const usageCount = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.projectArchive.count({
+        where: {
+          archiveCategoryId: category.id,
+        },
+      }),
+      prisma.manualArchiveFile.count({
+        where: {
+          archiveCategoryId: category.id,
+        },
+      }),
+    ]).then((counts) => counts.reduce((total, count) => total + count, 0)),
+  );
+
+  if (usageCount > 0) {
+    return { error: "This archive category is already used by archive records. Deactivate it instead." };
+  }
+
+  await withPrismaRetry(() =>
+    prisma.archiveCategory.delete({
+      where: { id },
+    }),
+  );
+
+  await revalidateProjectMasterData();
+  revalidatePath("/archives");
+  revalidatePath(`/archives/${category.slug}`);
 
   return { success: true };
 }

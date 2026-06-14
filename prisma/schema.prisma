@@ -386,6 +386,30 @@ model AssetTag {
   updatedAt           DateTime                              @updatedAt
 }
 
+model ArchiveCategory {
+  id                 String              @id @default(cuid())
+  name               String
+  slug               String              @unique
+  description        String?
+  iconUrl            String?
+  iconKey            String?
+  color              String?
+  parentId           String?
+  parent             ArchiveCategory?    @relation("ArchiveCategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children           ArchiveCategory[]   @relation("ArchiveCategoryHierarchy")
+  sortOrder          Int                 @default(0)
+  isActive           Boolean             @default(true)
+  isSystem           Boolean             @default(false)
+  projectArchives    ProjectArchive[]
+  manualArchiveFiles ManualArchiveFile[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([slug])
+  @@index([parentId])
+  @@index([isActive, sortOrder])
+}
+
 model ProjectAttachmentAssetTagAssignment {
   attachmentId String
   tagId        String
@@ -710,25 +734,25 @@ model ProjectActivityLog {
 }
 
 model ProjectArchive {
-  id                   String                @id @default(cuid())
-  projectId            String                @unique
-  project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  finalStageId         String
-  finalStage           ProjectStage          @relation("ProjectArchiveFinalStage", fields: [finalStageId], references: [id], onDelete: Restrict)
-  archivedById         String
-  archivedBy           User                  @relation("ProjectArchiveArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
-  projectName          String
-  projectCategory      String
-  projectTag           String?
-  archiveCategorySlug  String
-  archiveCategoryLabel String
-  status               ArchiveRecordStatus   @default(ARCHIVED)
-  archivedAt           DateTime
-  files                ArchivedProjectFile[]
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  id                String                @id @default(cuid())
+  projectId         String                @unique
+  project           Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  finalStageId      String
+  finalStage        ProjectStage          @relation("ProjectArchiveFinalStage", fields: [finalStageId], references: [id], onDelete: Restrict)
+  archivedById      String
+  archivedBy        User                  @relation("ProjectArchiveArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  projectName       String
+  projectCategory   String
+  projectTag        String?
+  archiveCategoryId String?
+  archiveCategory   ArchiveCategory?      @relation(fields: [archiveCategoryId], references: [id], onDelete: SetNull)
+  status            ArchiveRecordStatus   @default(ARCHIVED)
+  archivedAt        DateTime
+  files             ArchivedProjectFile[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
-  @@index([archiveCategorySlug, archivedAt])
+  @@index([archiveCategoryId, archivedAt])
   @@index([archivedById])
 }
 
@@ -820,27 +844,27 @@ model ProjectCompletionDocument {
 }
 
 model ManualArchiveFile {
-  id                   String                                @id @default(cuid())
-  fileName             String
-  originalFileName     String
-  projectName          String?
-  projectCreatedBy     String?
-  archiveCategorySlug  String
-  archiveCategoryLabel String
-  projectDate          DateTime?
-  mimeType             String
-  fileSize             Int
-  bucket               String
-  storageKey           String                                @unique
-  status               AttachmentStatus                      @default(UPLOADING)
-  uploadedById         String
-  uploadedBy           User                                  @relation("ManualArchiveFileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
-  assetTags            ManualArchiveFileAssetTagAssignment[]
-  uploadedAt           DateTime                              @default(now())
-  createdAt            DateTime                              @default(now())
-  updatedAt            DateTime                              @updatedAt
+  id                String                                @id @default(cuid())
+  fileName          String
+  originalFileName  String
+  projectName       String?
+  projectCreatedBy  String?
+  archiveCategoryId String?
+  archiveCategory   ArchiveCategory?                      @relation(fields: [archiveCategoryId], references: [id], onDelete: SetNull)
+  projectDate       DateTime?
+  mimeType          String
+  fileSize          Int
+  bucket            String
+  storageKey        String                                @unique
+  status            AttachmentStatus                      @default(UPLOADING)
+  uploadedById      String
+  uploadedBy        User                                  @relation("ManualArchiveFileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  assetTags         ManualArchiveFileAssetTagAssignment[]
+  uploadedAt        DateTime                              @default(now())
+  createdAt         DateTime                              @default(now())
+  updatedAt         DateTime                              @updatedAt
 
-  @@index([archiveCategorySlug, uploadedAt])
+  @@index([archiveCategoryId, uploadedAt])
   @@index([uploadedById])
   @@index([status])
 }

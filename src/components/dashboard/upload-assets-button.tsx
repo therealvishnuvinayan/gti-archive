@@ -21,10 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  archiveCategoryDefinitions,
-  type ArchiveCategorySlug,
-} from "@/lib/archive-categories";
 import { dismissToast, showErrorToast, showSuccessToast } from "@/lib/toast";
 import {
   PROJECT_ASSET_ALLOWED_EXTENSIONS,
@@ -35,21 +31,34 @@ import {
 const ACCEPTED_FILE_TYPES = PROJECT_ASSET_ALLOWED_EXTENSIONS.map(
   (extension) => `.${extension}`,
 ).join(",");
-const AUTO_CATEGORY = "__auto_category__";
+const NO_CATEGORY = "__no_archive_category__";
+
+type ArchiveCategoryOption = {
+  id: string;
+  name: string;
+  slug: string;
+  parentId: string | null;
+  parentName: string | null;
+};
 
 type ArchiveUploadButtonProps = {
   canUploadAssets: boolean;
   disabledReason?: string;
-  defaultCategorySlug?: ArchiveCategorySlug;
+  defaultCategoryId?: string;
   buttonLabel?: string;
 };
 
 type ArchiveUploadResponse = {
   archiveFileId?: string;
   uploadUrl?: string;
-  archiveCategorySlug?: ArchiveCategorySlug;
+  archiveCategorySlug?: string;
   error?: string;
 } & Partial<UploadFileTypeErrorPayload>;
+
+type ArchiveCategoriesResponse = {
+  categories?: ArchiveCategoryOption[];
+  error?: string;
+};
 
 function formatFileSize(size: number) {
   if (size >= 1024 * 1024) {
@@ -197,7 +206,7 @@ function ArchiveProjectDateField({
 export function ArchiveUploadButton({
   canUploadAssets,
   disabledReason,
-  defaultCategorySlug,
+  defaultCategoryId,
   buttonLabel = "Upload to Archive",
 }: ArchiveUploadButtonProps) {
   const router = useRouter();
@@ -206,8 +215,10 @@ export function ArchiveUploadButton({
   const [fileName, setFileName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [projectCreatedBy, setProjectCreatedBy] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>(
-    defaultCategorySlug ?? AUTO_CATEGORY,
+  const [categories, setCategories] = useState<ArchiveCategoryOption[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
+    defaultCategoryId ?? NO_CATEGORY,
   );
   const [assetTagIds, setAssetTagIds] = useState<string[]>([]);
   const [projectDate, setProjectDate] = useState("");
@@ -216,12 +227,58 @@ export function ArchiveUploadButton({
   const [isUploading, setIsUploading] = useState(false);
   const [formError, setFormError] = useState<string>();
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadCategories() {
+      setCategoriesLoading(true);
+
+      try {
+        const response = await fetch("/api/archive-categories", {
+          method: "GET",
+          cache: "no-store",
+        });
+        const payload = (await response.json()) as ArchiveCategoriesResponse;
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load archive categories.");
+        }
+
+        if (!cancelled) {
+          setCategories(payload.categories ?? []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unable to load archive categories.";
+          setFormError(message);
+        }
+      } finally {
+        if (!cancelled) {
+          setCategoriesLoading(false);
+        }
+      }
+    }
+
+    loadCategories().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
   function openModal() {
     if (!canUploadAssets) {
       return;
     }
 
-    setSelectedCategory(defaultCategorySlug ?? AUTO_CATEGORY);
+    setSelectedCategoryId(defaultCategoryId ?? NO_CATEGORY);
     setIsOpen(true);
   }
 
@@ -234,7 +291,7 @@ export function ArchiveUploadButton({
     setFileName("");
     setProjectName("");
     setProjectCreatedBy("");
-    setSelectedCategory(defaultCategorySlug ?? AUTO_CATEGORY);
+    setSelectedCategoryId(defaultCategoryId ?? NO_CATEGORY);
     setAssetTagIds([]);
     setProjectDate("");
     setSelectedFile(null);
@@ -269,7 +326,7 @@ export function ArchiveUploadButton({
       description: selectedFile.name,
     });
     let archiveFileId: string | undefined;
-    let archiveCategorySlug: ArchiveCategorySlug | undefined;
+    let archiveCategorySlug: string | undefined;
 
     try {
       const uploadRequest = await fetch("/api/archives/upload-url", {
@@ -284,8 +341,8 @@ export function ArchiveUploadButton({
           fileSize: selectedFile.size,
           projectName,
           projectCreatedBy,
-          archiveCategorySlug:
-            selectedCategory === AUTO_CATEGORY ? undefined : selectedCategory,
+          archiveCategoryId:
+            selectedCategoryId === NO_CATEGORY ? undefined : selectedCategoryId,
           assetTagIds,
           projectDate,
         }),
@@ -435,18 +492,26 @@ export function ArchiveUploadButton({
                     Archive category
                   </span>
                   <Select
-                    value={selectedCategory}
-                    onValueChange={setSelectedCategory}
-                    disabled={isUploading}
+                    value={selectedCategoryId}
+                    onValueChange={setSelectedCategoryId}
+                    disabled={isUploading || categoriesLoading}
                   >
                     <SelectTrigger className="h-11 rounded-2xl border border-line">
-                      <SelectValue placeholder="Auto-detect category" />
+                      <SelectValue
+                        placeholder={
+                          categoriesLoading
+                            ? "Loading categories..."
+                            : "Select archive category"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent className="z-[120]">
-                      <SelectItem value={AUTO_CATEGORY}>Auto-detect category</SelectItem>
-                      {archiveCategoryDefinitions.map((category) => (
-                        <SelectItem key={category.slug} value={category.slug}>
-                          {category.title}
+                      <SelectItem value={NO_CATEGORY}>Uncategorized</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.parentName
+                            ? `${category.parentName} / ${category.name}`
+                            : category.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

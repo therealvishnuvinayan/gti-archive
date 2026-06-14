@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
+  Archive,
   BadgeDollarSign,
   Check,
   FolderKanban,
+  ImagePlus,
   Pencil,
   Plus,
   Tags,
@@ -16,15 +18,23 @@ import {
 
 import {
   deleteAssetTagAction,
+  deleteArchiveCategoryAction,
   deleteProjectCategoryAction,
   deleteProjectCurrencyAction,
   deleteProjectTagAction,
   saveAssetTagAction,
+  saveArchiveCategoryAction,
   saveProjectCategoryAction,
   saveProjectCurrencyAction,
   saveProjectTagAction,
 } from "@/app/(dashboard)/settings/project-master-data/actions";
+import {
+  ArchiveCategoryIconGlyph,
+  archiveCategoryIconOptions,
+  getArchiveCategoryIconImageSrc,
+} from "@/components/archives/archive-data";
 import type {
+  ArchiveCategoryMasterDataRecord,
   ProjectMasterCurrencyRecord,
   ProjectMasterDataItemRecord,
   ProjectMasterDataSummary,
@@ -34,11 +44,26 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import {
+  PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+  PROFILE_IMAGE_ALLOWED_MIME_TYPES,
+  buildFileTypeNotAllowedPayload,
+  formatUploadFileTypeError,
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
-type MasterDataTab = "categories" | "tags" | "assetTags" | "currencies";
+type MasterDataTab = "categories" | "tags" | "assetTags" | "archiveCategories" | "currencies";
 
 type MasterDataFormState = {
   id?: string;
@@ -46,6 +71,11 @@ type MasterDataFormState = {
   description: string;
   color: string;
   code: string;
+  slug: string;
+  iconUrl: string;
+  iconKey: string;
+  parentId: string;
+  sortOrder: string;
   isActive: boolean;
 };
 
@@ -53,12 +83,15 @@ type MasterDataFieldErrors = {
   name?: string;
   description?: string;
   code?: string;
+  slug?: string;
+  sortOrder?: string;
 };
 
 type ProjectMasterDataWorkspaceProps = {
   categories: ProjectMasterDataItemRecord[];
   tags: ProjectMasterDataItemRecord[];
   assetTags: ProjectMasterDataItemRecord[];
+  archiveCategories: ArchiveCategoryMasterDataRecord[];
   currencies: ProjectMasterCurrencyRecord[];
   summary: ProjectMasterDataSummary;
   canManageItems: boolean;
@@ -67,8 +100,13 @@ type ProjectMasterDataWorkspaceProps = {
 
 type DeleteTarget = {
   tab: MasterDataTab;
-  item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord;
+  item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord | ArchiveCategoryMasterDataRecord;
 } | null;
+
+type MasterDataTableItem =
+  | ProjectMasterDataItemRecord
+  | ProjectMasterCurrencyRecord
+  | ArchiveCategoryMasterDataRecord;
 
 const colorOptions = [
   "#34a853",
@@ -85,8 +123,87 @@ const defaultFormState: MasterDataFormState = {
   description: "",
   color: "",
   code: "",
+  slug: "",
+  iconUrl: "",
+  iconKey: "",
+  parentId: "",
+  sortOrder: "0",
   isActive: true,
 };
+
+const NO_PARENT_CATEGORY = "__no_parent_category__";
+const NO_ICON_KEY = "__no_icon_key__";
+const maxArchiveCategoryIconBytes = 2 * 1024 * 1024;
+const allowedArchiveCategoryIconTypes = new Set<string>(PROFILE_IMAGE_ALLOWED_MIME_TYPES);
+const archiveCategoryIconAccept = PROFILE_IMAGE_ALLOWED_MIME_TYPES.join(",");
+
+function normalizeSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function validateArchiveCategoryIcon(file: File) {
+  if (!allowedArchiveCategoryIconTypes.has(file.type.toLowerCase())) {
+    return formatUploadFileTypeError(
+      buildFileTypeNotAllowedPayload({
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        allowedExtensions: PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+        error: "Archive category icon file type is not allowed.",
+      }),
+    );
+  }
+
+  if (file.size > maxArchiveCategoryIconBytes) {
+    return "Archive category icon must be smaller than 2MB.";
+  }
+
+  return null;
+}
+
+async function uploadArchiveCategoryIcon(file: File) {
+  const uploadRequest = await fetch("/api/archive-category-icons/upload-url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      fileSize: file.size,
+    }),
+  });
+
+  const uploadPayload = (await uploadRequest.json()) as {
+    uploadUrl?: string;
+    storageKey?: string;
+    error?: string;
+  } & Partial<UploadFileTypeErrorPayload>;
+
+  if (!uploadRequest.ok || !uploadPayload.uploadUrl || !uploadPayload.storageKey) {
+    throw new Error(
+      getUploadErrorMessage(uploadPayload, "Unable to prepare the archive category icon upload."),
+    );
+  }
+
+  const putResponse = await fetch(uploadPayload.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+
+  if (!putResponse.ok) {
+    throw new Error("Unable to upload the archive category icon right now.");
+  }
+
+  return uploadPayload.storageKey;
+}
 
 function getMasterDataLabel(tab: MasterDataTab) {
   switch (tab) {
@@ -96,6 +213,8 @@ function getMasterDataLabel(tab: MasterDataTab) {
       return "Tag";
     case "assetTags":
       return "Asset Tag";
+    case "archiveCategories":
+      return "Archive Category";
     case "currencies":
     default:
       return "Currency";
@@ -110,6 +229,8 @@ function getMasterDataTitle(tab: MasterDataTab) {
       return "Project Tags";
     case "assetTags":
       return "Asset Tags";
+    case "archiveCategories":
+      return "Archive Categories";
     case "currencies":
     default:
       return "Currencies";
@@ -182,15 +303,16 @@ function MasterDataTable({
   pending,
 }: {
   type: MasterDataTab;
-  items: ProjectMasterDataItemRecord[] | ProjectMasterCurrencyRecord[];
+  items: MasterDataTableItem[];
   onAdd: () => void;
-  onEdit: (item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord) => void;
-  onDelete: (item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord) => void;
+  onEdit: (item: MasterDataTableItem) => void;
+  onDelete: (item: MasterDataTableItem) => void;
   canManage: boolean;
   canDelete: boolean;
   pending: boolean;
 }) {
   const isCurrency = type === "currencies";
+  const isArchiveCategory = type === "archiveCategories";
   const canShowActions = canManage || canDelete;
   const emptyLabel =
     !canManage
@@ -201,7 +323,9 @@ function MasterDataTable({
           ? "No tags added yet."
           : type === "assetTags"
             ? "No asset tags added yet."
-            : "No currencies added yet.";
+            : type === "archiveCategories"
+              ? "No archive categories added yet."
+              : "No currencies added yet.";
   const label = getMasterDataLabel(type);
   const title = getMasterDataTitle(type);
 
@@ -220,7 +344,9 @@ function MasterDataTable({
                   ? `${canManage ? "Manage" : "View"} tags used to label and group projects.`
                   : type === "assetTags"
                     ? `${canManage ? "Manage" : "View"} asset tags used across library and archive assets.`
-                  : `${canManage ? "Manage" : "View"} active currency codes used in project budgets.`}
+                    : type === "archiveCategories"
+                      ? `${canManage ? "Manage" : "View"} archive categories used across archive pages and uploads.`
+                      : `${canManage ? "Manage" : "View"} active currency codes used in project budgets.`}
             </p>
           </div>
           {canManage ? (
@@ -249,7 +375,17 @@ function MasterDataTable({
                         "Status",
                         ...(canShowActions ? ["Actions"] : []),
                       ]
-                    : [
+                    : isArchiveCategory
+                      ? [
+                          "Name",
+                          "Slug",
+                          "Parent",
+                          "Icon",
+                          "Sort",
+                          "Status",
+                          ...(canShowActions ? ["Actions"] : []),
+                        ]
+                      : [
                         "Name",
                         "Description",
                         "Color",
@@ -270,16 +406,46 @@ function MasterDataTable({
                 {items.map((item) => {
                   const currencyItem = item as ProjectMasterCurrencyRecord;
                   const generalItem = item as ProjectMasterDataItemRecord;
+                  const archiveCategoryItem = item as ArchiveCategoryMasterDataRecord;
 
                   return (
                     <tr key={item.id}>
                       <td className="border-b border-[#f1f4f0] px-4 py-4 text-[15px] font-[700] text-[#172019]">
-                        {item.name}
+                        <div className="flex items-center gap-3">
+                          {isArchiveCategory ? (
+                            <ColorDot color={archiveCategoryItem.color} />
+                          ) : null}
+                          <div>
+                            <p>{item.name}</p>
+                            {isArchiveCategory && archiveCategoryItem.description ? (
+                              <p className="mt-1 max-w-[300px] text-[13px] font-[500] text-[#667067]">
+                                {archiveCategoryItem.description}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
                       </td>
                       {isCurrency ? (
                         <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-brand">
                           {currencyItem.code}
                         </td>
+                      ) : isArchiveCategory ? (
+                        <>
+                          <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-brand">
+                            {archiveCategoryItem.slug}
+                          </td>
+                          <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] text-[#667067]">
+                            {archiveCategoryItem.parentName || "—"}
+                          </td>
+                          <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] text-[#667067]">
+                            {archiveCategoryItem.iconUrl
+                              ? "Custom URL"
+                              : archiveCategoryItem.iconKey || "—"}
+                          </td>
+                          <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-[#2b352d]">
+                            {archiveCategoryItem.sortOrder}
+                          </td>
+                        </>
                       ) : (
                         <>
                           <td className="max-w-[320px] border-b border-[#f1f4f0] px-4 py-4 text-[14px] text-[#667067]">
@@ -343,17 +509,25 @@ function MasterDataDrawer({
   tab,
   mode,
   form,
+  archiveCategories,
+  iconPreviewSrc,
+  iconUploadError,
   fieldErrors,
   error,
   saving,
   onClose,
   onSubmit,
   onChange,
+  onIconFileChange,
+  onRemoveIcon,
 }: {
   isOpen: boolean;
   tab: MasterDataTab;
   mode: "add" | "edit";
   form: MasterDataFormState;
+  archiveCategories: ArchiveCategoryMasterDataRecord[];
+  iconPreviewSrc: string;
+  iconUploadError?: string;
   fieldErrors: MasterDataFieldErrors;
   error?: string;
   saving: boolean;
@@ -363,6 +537,8 @@ function MasterDataDrawer({
     field: K,
     value: MasterDataFormState[K],
   ) => void;
+  onIconFileChange: (file: File) => void;
+  onRemoveIcon: () => void;
 }) {
   if (!isOpen) {
     return null;
@@ -370,7 +546,9 @@ function MasterDataDrawer({
 
   const label = getMasterDataLabel(tab);
   const isCurrency = tab === "currencies";
+  const isArchiveCategory = tab === "archiveCategories";
   const descriptionLength = form.description.trim().length;
+  const parentOptions = archiveCategories.filter((category) => category.id !== form.id);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#102116]/30 backdrop-blur-[2px]">
@@ -453,6 +631,31 @@ function MasterDataDrawer({
               </label>
             ) : (
               <>
+                {isArchiveCategory ? (
+                  <label className="space-y-2">
+                    <span className="block text-[13px] font-[700] text-[#2b352d]">
+                      Slug <span className="text-[#c5524d]">*</span>
+                    </span>
+                    <Input
+                      value={form.slug}
+                      onChange={(event) => onChange("slug", normalizeSlug(event.target.value))}
+                      placeholder="archive-category-slug"
+                      className={`h-12 rounded-2xl border ${
+                        fieldErrors.slug ? "border-[#e0a8a6]" : "border-line"
+                      }`}
+                    />
+                    {fieldErrors.slug ? (
+                      <span className="text-[12px] font-[600] text-[#bb4d49]">
+                        {fieldErrors.slug}
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-[#6d776e]">
+                        Used in the archive URL, for example /archives/artworks.
+                      </span>
+                    )}
+                  </label>
+                ) : null}
+
                 <label className="space-y-2">
                   <span className="block text-[13px] font-[700] text-[#2b352d]">
                     Description
@@ -481,6 +684,163 @@ function MasterDataDrawer({
                     </span>
                   )}
                 </label>
+
+                {isArchiveCategory ? (
+                  <>
+                    <label className="space-y-2">
+                      <span className="block text-[13px] font-[700] text-[#2b352d]">
+                        Parent Category
+                      </span>
+                      <Select
+                        value={form.parentId || NO_PARENT_CATEGORY}
+                        onValueChange={(value) =>
+                          onChange(
+                            "parentId",
+                            value === NO_PARENT_CATEGORY ? "" : value,
+                          )
+                        }
+                      >
+                        <SelectTrigger className="h-12 rounded-2xl border border-line bg-white">
+                          <SelectValue placeholder="No parent category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_PARENT_CATEGORY}>
+                            No parent category
+                          </SelectItem>
+                          {parentOptions.map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                              {category.parentName
+                                ? `${category.parentName} / ${category.name}`
+                                : category.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="block text-[13px] font-[700] text-[#2b352d]">
+                        Icon
+                      </span>
+                      <Select
+                        value={form.iconKey || NO_ICON_KEY}
+                        onValueChange={(value) =>
+                          onChange("iconKey", value === NO_ICON_KEY ? "" : value)
+                        }
+                      >
+                        <SelectTrigger className="h-12 rounded-2xl border border-line bg-white">
+                          <SelectValue placeholder="Choose icon" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_ICON_KEY}>No icon</SelectItem>
+                          {archiveCategoryIconOptions.map((option) => (
+                            <SelectItem key={option.key} value={option.key}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </label>
+
+                    <div className="space-y-3">
+                      <span className="block text-[13px] font-[700] text-[#2b352d]">
+                        Upload Icon
+                      </span>
+                      <div className="flex flex-col gap-3 rounded-[22px] border border-line bg-[#fbfdfb] p-4 sm:flex-row sm:items-center">
+                        <div
+                          className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-[#dde8de] bg-white text-brand"
+                          style={form.color ? { color: form.color } : undefined}
+                        >
+                          {iconPreviewSrc ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={iconPreviewSrc}
+                              alt=""
+                              className="h-full w-full object-contain p-2"
+                            />
+                          ) : (
+                            <ArchiveCategoryIconGlyph
+                              iconKey={form.iconKey}
+                              className="h-8 w-8"
+                            />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              asChild
+                              type="button"
+                              variant="outline"
+                              className="h-10 rounded-full"
+                            >
+                              <label className="cursor-pointer">
+                                <ImagePlus className="h-4 w-4" />
+                                Upload icon
+                                <input
+                                  type="file"
+                                  accept={archiveCategoryIconAccept}
+                                  className="sr-only"
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+
+                                    if (file) {
+                                      onIconFileChange(file);
+                                    }
+
+                                    event.target.value = "";
+                                  }}
+                                />
+                              </label>
+                            </Button>
+                            {iconPreviewSrc ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={onRemoveIcon}
+                                className="h-10 rounded-full"
+                              >
+                                Remove
+                              </Button>
+                            ) : null}
+                          </div>
+                          {iconUploadError ? (
+                            <p className="mt-2 text-[12px] font-[600] text-[#bb4d49]">
+                              {iconUploadError}
+                            </p>
+                          ) : (
+                            <p className="mt-2 text-[12px] text-[#6d776e]">
+                              Upload PNG, JPG, JPEG, GIF, or WebP. Uploaded icons take priority over the selected icon.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <label className="space-y-2">
+                      <span className="block text-[13px] font-[700] text-[#2b352d]">
+                        Sort Order
+                      </span>
+                      <Input
+                        value={form.sortOrder}
+                        onChange={(event) => onChange("sortOrder", event.target.value)}
+                        type="number"
+                        inputMode="numeric"
+                        className={`h-12 rounded-2xl border ${
+                          fieldErrors.sortOrder ? "border-[#e0a8a6]" : "border-line"
+                        }`}
+                      />
+                      {fieldErrors.sortOrder ? (
+                        <span className="text-[12px] font-[600] text-[#bb4d49]">
+                          {fieldErrors.sortOrder}
+                        </span>
+                      ) : (
+                        <span className="text-[12px] text-[#6d776e]">
+                          Lower numbers appear first.
+                        </span>
+                      )}
+                    </label>
+                  </>
+                ) : null}
 
                 <div className="space-y-3">
                   <span className="block text-[13px] font-[700] text-[#2b352d]">
@@ -578,6 +938,7 @@ export function ProjectMasterDataWorkspace({
   categories,
   tags,
   assetTags,
+  archiveCategories,
   currencies,
   summary,
   canManageItems,
@@ -588,11 +949,24 @@ export function ProjectMasterDataWorkspace({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
   const [form, setForm] = useState<MasterDataFormState>(defaultFormState);
+  const [selectedIconFile, setSelectedIconFile] = useState<File | null>(null);
+  const [selectedIconPreviewSrc, setSelectedIconPreviewSrc] = useState("");
+  const [iconUploadError, setIconUploadError] = useState<string>();
   const [error, setError] = useState<string>();
   const [fieldErrors, setFieldErrors] = useState<MasterDataFieldErrors>({});
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [deleteError, setDeleteError] = useState<string>();
   const [isPending, startTransition] = useTransition();
+  const iconPreviewSrc =
+    selectedIconPreviewSrc || getArchiveCategoryIconImageSrc(form.iconUrl);
+
+  useEffect(() => {
+    return () => {
+      if (selectedIconPreviewSrc.startsWith("blob:")) {
+        URL.revokeObjectURL(selectedIconPreviewSrc);
+      }
+    };
+  }, [selectedIconPreviewSrc]);
 
   function openAddDrawer(tab: MasterDataTab) {
     if (!canManageItems) {
@@ -602,6 +976,9 @@ export function ProjectMasterDataWorkspace({
     setActiveTab(tab);
     setDialogMode("add");
     setForm(defaultFormState);
+    setSelectedIconFile(null);
+    setSelectedIconPreviewSrc("");
+    setIconUploadError(undefined);
     setError(undefined);
     setFieldErrors({});
     setDrawerOpen(true);
@@ -609,7 +986,7 @@ export function ProjectMasterDataWorkspace({
 
   function openEditDrawer(
     tab: MasterDataTab,
-    item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord,
+    item: MasterDataTableItem,
   ) {
     if (!canManageItems) {
       return;
@@ -623,11 +1000,57 @@ export function ProjectMasterDataWorkspace({
       description: "description" in item ? item.description : "",
       color: "color" in item ? item.color : "",
       code: "code" in item ? item.code : "",
+      slug: "slug" in item ? item.slug : "",
+      iconUrl: "iconUrl" in item ? item.iconUrl : "",
+      iconKey: "iconKey" in item ? item.iconKey : "",
+      parentId: "parentId" in item ? item.parentId ?? "" : "",
+      sortOrder: "sortOrder" in item ? String(item.sortOrder) : "0",
       isActive: item.isActive,
     });
+    setSelectedIconFile(null);
+    setSelectedIconPreviewSrc("");
+    setIconUploadError(undefined);
     setError(undefined);
     setFieldErrors({});
     setDrawerOpen(true);
+  }
+
+  function handleArchiveCategoryIconFile(file: File) {
+    const validationError = validateArchiveCategoryIcon(file);
+
+    if (validationError) {
+      setIconUploadError(validationError);
+      showErrorToast("Unable to use icon.", validationError);
+      return;
+    }
+
+    const nextPreviewSrc = URL.createObjectURL(file);
+
+    setSelectedIconFile(file);
+    setSelectedIconPreviewSrc((current) => {
+      if (current.startsWith("blob:")) {
+        URL.revokeObjectURL(current);
+      }
+
+      return nextPreviewSrc;
+    });
+    setIconUploadError(undefined);
+  }
+
+  function removeArchiveCategoryIcon() {
+    setSelectedIconFile(null);
+    setSelectedIconPreviewSrc((current) => {
+      if (current.startsWith("blob:")) {
+        URL.revokeObjectURL(current);
+      }
+
+      return "";
+    });
+    setIconUploadError(undefined);
+    setForm((current) => ({
+      ...current,
+      iconUrl: "",
+    }));
   }
 
   function handleSubmit() {
@@ -647,6 +1070,21 @@ export function ProjectMasterDataWorkspace({
       } else if (!/^[A-Z]{3}$/.test(normalizedCode)) {
         nextFieldErrors.code = "Currency code must be 3 uppercase letters.";
       }
+    } else if (activeTab === "archiveCategories") {
+      const normalizedSlug = normalizeSlug(form.slug || normalizedName);
+      const sortOrderNumber = Number(form.sortOrder || "0");
+
+      if (!normalizedSlug) {
+        nextFieldErrors.slug = "Slug is required.";
+      }
+
+      if (!Number.isFinite(sortOrderNumber) || !Number.isInteger(sortOrderNumber)) {
+        nextFieldErrors.sortOrder = "Sort order must be a whole number.";
+      }
+
+      if (normalizedDescriptionLength > PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH) {
+        nextFieldErrors.description = `Archive Category description must be ${PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH} characters or fewer.`;
+      }
     } else if (
       normalizedDescriptionLength > PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH
     ) {
@@ -654,7 +1092,13 @@ export function ProjectMasterDataWorkspace({
       nextFieldErrors.description = `${label} description must be ${PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH} characters or fewer.`;
     }
 
-    if (nextFieldErrors.name || nextFieldErrors.description || nextFieldErrors.code) {
+    if (
+      nextFieldErrors.name ||
+      nextFieldErrors.description ||
+      nextFieldErrors.code ||
+      nextFieldErrors.slug ||
+      nextFieldErrors.sortOrder
+    ) {
       setFieldErrors(nextFieldErrors);
       showErrorToast("Unable to save value.", "Please review the highlighted fields.");
       return;
@@ -665,27 +1109,56 @@ export function ProjectMasterDataWorkspace({
 
     startTransition(async () => {
       try {
+        let archiveCategoryIconUrl = form.iconUrl;
+
+        if (activeTab === "archiveCategories" && selectedIconFile) {
+          archiveCategoryIconUrl = await uploadArchiveCategoryIcon(selectedIconFile);
+        }
+
         const result =
           activeTab === "categories"
             ? await saveProjectCategoryAction({
-                ...form,
+                id: form.id,
                 name: normalizedName,
+                description: form.description,
+                color: form.color,
+                isActive: form.isActive,
               })
             : activeTab === "tags"
               ? await saveProjectTagAction({
-                  ...form,
+                  id: form.id,
                   name: normalizedName,
+                  description: form.description,
+                  color: form.color,
+                  isActive: form.isActive,
                 })
               : activeTab === "assetTags"
                 ? await saveAssetTagAction({
-                    ...form,
+                    id: form.id,
                     name: normalizedName,
+                    description: form.description,
+                    color: form.color,
+                    isActive: form.isActive,
                   })
-              : await saveProjectCurrencyAction({
-                  ...form,
-                  name: normalizedName,
-                  code: form.code.trim().toUpperCase(),
-                });
+                : activeTab === "archiveCategories"
+                  ? await saveArchiveCategoryAction({
+                      id: form.id,
+                      name: normalizedName,
+                      description: form.description,
+                      color: form.color,
+                      slug: normalizeSlug(form.slug || normalizedName),
+                      iconUrl: archiveCategoryIconUrl,
+                      iconKey: form.iconKey,
+                      parentId: form.parentId || null,
+                      sortOrder: Number(form.sortOrder || "0"),
+                      isActive: form.isActive,
+                    })
+                  : await saveProjectCurrencyAction({
+                      id: form.id,
+                      name: normalizedName,
+                      code: form.code.trim().toUpperCase(),
+                      isActive: form.isActive,
+                    });
 
         if (result.error) {
           setError(result.error);
@@ -694,15 +1167,20 @@ export function ProjectMasterDataWorkspace({
             ? "Unable to save currency."
             : activeTab === "assetTags"
               ? "Unable to save asset tag."
-            : activeTab === "tags"
-              ? "Unable to save tag."
-              : "Unable to save category.",
+              : activeTab === "archiveCategories"
+                ? "Unable to save archive category."
+                : activeTab === "tags"
+                  ? "Unable to save tag."
+                  : "Unable to save category.",
             result.error,
           );
           return;
         }
 
         setDrawerOpen(false);
+        setSelectedIconFile(null);
+        setSelectedIconPreviewSrc("");
+        setIconUploadError(undefined);
         showSuccessToast(
           activeTab === "currencies"
             ? dialogMode === "add"
@@ -712,20 +1190,33 @@ export function ProjectMasterDataWorkspace({
               ? dialogMode === "add"
                 ? "Asset tag added successfully."
                 : "Asset tag updated successfully."
-            : activeTab === "tags"
-              ? dialogMode === "add"
-                ? "Tag added successfully."
-                : "Tag updated successfully."
-              : dialogMode === "add"
-                ? "Category added successfully."
-                : "Category updated successfully.",
+              : activeTab === "archiveCategories"
+                ? dialogMode === "add"
+                  ? "Archive category added successfully."
+                  : "Archive category updated successfully."
+                : activeTab === "tags"
+                  ? dialogMode === "add"
+                    ? "Tag added successfully."
+                    : "Tag updated successfully."
+                  : dialogMode === "add"
+                    ? "Category added successfully."
+                    : "Category updated successfully.",
         );
         router.refresh();
-      } catch {
-        setError("Unable to save this value right now. Please try again.");
+      } catch (saveError) {
+        const message =
+          saveError instanceof Error
+            ? saveError.message
+            : "Unable to save this value right now. Please try again.";
+
+        if (activeTab === "archiveCategories" && selectedIconFile) {
+          setIconUploadError(message);
+        }
+
+        setError(message);
         showErrorToast(
           "Unable to save value.",
-          "Unable to save this value right now. Please try again.",
+          message,
         );
       }
     });
@@ -733,7 +1224,7 @@ export function ProjectMasterDataWorkspace({
 
   function handleDelete(
     tab: MasterDataTab,
-    item: ProjectMasterDataItemRecord | ProjectMasterCurrencyRecord,
+    item: MasterDataTableItem,
   ) {
     if (!canDeleteItems) {
       return;
@@ -761,7 +1252,9 @@ export function ProjectMasterDataWorkspace({
               ? await deleteProjectTagAction(deleteTarget.item.id)
               : deleteTarget.tab === "assetTags"
                 ? await deleteAssetTagAction(deleteTarget.item.id)
-              : await deleteProjectCurrencyAction(deleteTarget.item.id);
+                : deleteTarget.tab === "archiveCategories"
+                  ? await deleteArchiveCategoryAction(deleteTarget.item.id)
+                  : await deleteProjectCurrencyAction(deleteTarget.item.id);
 
         if (result.error) {
           setDeleteError(result.error);
@@ -774,9 +1267,11 @@ export function ProjectMasterDataWorkspace({
             ? "Currency deleted successfully."
             : deleteTarget.tab === "assetTags"
               ? "Asset tag deleted successfully."
-            : deleteTarget.tab === "tags"
-              ? "Tag deleted successfully."
-              : "Category deleted successfully.",
+              : deleteTarget.tab === "archiveCategories"
+                ? "Archive category deleted successfully."
+                : deleteTarget.tab === "tags"
+                  ? "Tag deleted successfully."
+                  : "Category deleted successfully.",
         );
         setDeleteTarget(null);
         router.refresh();
@@ -801,7 +1296,7 @@ export function ProjectMasterDataWorkspace({
             Project Master Data
           </h1>
           <p className="mt-3 max-w-[720px] text-[16px] leading-7 text-[#6f776f]">
-            Manage reusable project categories, project tags, asset tags, and currencies.
+            Manage reusable project categories, project tags, asset tags, archive categories, and currencies.
           </p>
           <div className="mt-5">
             <Button asChild variant="outline">
@@ -810,7 +1305,7 @@ export function ProjectMasterDataWorkspace({
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <SummaryCard
             title="Total Categories"
             value={summary.totalCategories}
@@ -848,6 +1343,18 @@ export function ProjectMasterDataWorkspace({
             icon={Tags}
           />
           <SummaryCard
+            title="Total Archive Categories"
+            value={summary.totalArchiveCategories}
+            subtitle="Saved archive groups"
+            icon={Archive}
+          />
+          <SummaryCard
+            title="Active Archive Categories"
+            value={summary.activeArchiveCategories}
+            subtitle="Visible in archive flows"
+            icon={Archive}
+          />
+          <SummaryCard
             title="Total Currencies"
             value={summary.totalCurrencies}
             subtitle="Saved values"
@@ -882,6 +1389,9 @@ export function ProjectMasterDataWorkspace({
               </TabsTrigger>
               <TabsTrigger value="assetTags" className="min-w-[140px] py-3 text-[15px]">
                 Asset Tags
+              </TabsTrigger>
+              <TabsTrigger value="archiveCategories" className="min-w-[160px] py-3 text-[15px]">
+                Archive Categories
               </TabsTrigger>
               <TabsTrigger value="currencies" className="min-w-[140px] py-3 text-[15px]">
                 Currencies
@@ -928,6 +1438,19 @@ export function ProjectMasterDataWorkspace({
             />
           </TabsContent>
 
+          <TabsContent value="archiveCategories">
+            <MasterDataTable
+              type="archiveCategories"
+              items={archiveCategories}
+              onAdd={() => openAddDrawer("archiveCategories")}
+              onEdit={(item) => openEditDrawer("archiveCategories", item)}
+              onDelete={(item) => handleDelete("archiveCategories", item)}
+              canManage={canManageItems}
+              canDelete={canDeleteItems}
+              pending={isPending}
+            />
+          </TabsContent>
+
           <TabsContent value="currencies">
             <MasterDataTable
               type="currencies"
@@ -948,23 +1471,47 @@ export function ProjectMasterDataWorkspace({
         tab={activeTab}
         mode={dialogMode}
         form={form}
+        archiveCategories={archiveCategories}
+        iconPreviewSrc={iconPreviewSrc}
+        iconUploadError={iconUploadError}
         fieldErrors={fieldErrors}
         error={error}
         saving={isPending}
         onClose={() => {
           if (!isPending) {
             setDrawerOpen(false);
+            setSelectedIconFile(null);
+            setSelectedIconPreviewSrc("");
+            setIconUploadError(undefined);
             setError(undefined);
             setFieldErrors({});
           }
         }}
         onSubmit={handleSubmit}
         onChange={(field, value) =>
-          setForm((current) => ({
-            ...current,
-            [field]: value,
-          }))
+          setForm((current) => {
+            if (
+              activeTab === "archiveCategories" &&
+              dialogMode === "add" &&
+              field === "name" &&
+              typeof value === "string" &&
+              (!current.slug || current.slug === normalizeSlug(current.name))
+            ) {
+              return {
+                ...current,
+                name: value,
+                slug: normalizeSlug(value),
+              };
+            }
+
+            return {
+              ...current,
+              [field]: value,
+            };
+          })
         }
+        onIconFileChange={handleArchiveCategoryIconFile}
+        onRemoveIcon={removeArchiveCategoryIcon}
       />
 
       <ConfirmationDialog
@@ -976,7 +1523,9 @@ export function ProjectMasterDataWorkspace({
               ? "Delete Tag"
               : deleteTarget?.tab === "assetTags"
                 ? "Delete Asset Tag"
-              : "Delete Currency"
+                : deleteTarget?.tab === "archiveCategories"
+                  ? "Delete Archive Category"
+                  : "Delete Currency"
         }
         description={
           deleteTarget

@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import { Download, X } from "lucide-react";
 
-import { getFileTypeIcon } from "@/components/archives/archive-data";
+import {
+  ArchiveCategoryIconGlyph,
+  ArchiveFileTypeIcon,
+  getArchiveCategoryIconImageSrc,
+} from "@/components/archives/archive-data";
 import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
 import {
   MotionItem,
@@ -12,7 +16,6 @@ import {
 } from "@/components/motion/motion-primitives";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -22,11 +25,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ArchivedProjectFileRecord } from "@/lib/archives";
-import type { ArchiveCategorySlug } from "@/lib/archive-categories";
 
 type ArchiveCategoryWorkspaceProps = {
-  categorySlug: ArchiveCategorySlug;
+  categoryId: string;
   categoryTitle: string;
+  categoryDescription: string;
+  categoryIconUrl: string;
+  categoryIconKey: string;
+  categoryColor: string;
   items: ArchivedProjectFileRecord[];
   canUploadArchives: boolean;
 };
@@ -79,12 +85,17 @@ function uniqueAssetTags(items: ArchivedProjectFileRecord[]) {
 }
 
 export function ArchiveCategoryWorkspace({
-  categorySlug,
+  categoryId,
   categoryTitle,
+  categoryDescription,
+  categoryIconUrl,
+  categoryIconKey,
+  categoryColor,
   items,
   canUploadArchives,
 }: ArchiveCategoryWorkspaceProps) {
   const [filters, setFilters] = useState<ArchiveFilters>(defaultFilters);
+  const categoryIconSrc = getArchiveCategoryIconImageSrc(categoryIconUrl);
 
   const options = useMemo(
     () => ({
@@ -162,26 +173,42 @@ export function ArchiveCategoryWorkspace({
       <MotionSection>
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex-1">
-            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-              {categoryTitle}
-            </h1>
+            <div className="flex items-center gap-4">
+              <div
+                className="grid h-16 w-16 shrink-0 place-items-center rounded-[18px] bg-white text-brand shadow-[0_12px_30px_rgba(23,39,28,0.08)]"
+                style={categoryColor ? { color: categoryColor } : undefined}
+              >
+                {categoryIconSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={categoryIconSrc} alt="" className="h-10 w-10 object-contain" />
+                ) : (
+                  <ArchiveCategoryIconGlyph
+                    iconKey={categoryIconKey}
+                    className="h-9 w-9"
+                  />
+                )}
+              </div>
+              <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+                {categoryTitle}
+              </h1>
+            </div>
             <p className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
-              Final archived files, completion documents, and manual archive uploads are
-              read-only. Allowed users can view or download files in this category.
+              {categoryDescription ||
+                "Final archived files, completion documents, and manual archive uploads are read-only. Allowed users can view or download files in this category."}
             </p>
           </div>
           <ArchiveUploadButton
             canUploadAssets={canUploadArchives}
             disabledReason="You do not have permission to upload to Archive."
-            defaultCategorySlug={categorySlug}
+            defaultCategoryId={categoryId}
             buttonLabel="Add Archive File"
           />
         </header>
       </MotionSection>
 
       <MotionSection y={10}>
-        <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
-          <Card className="rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3 shadow-none">
+        <div className="rounded-[30px] bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
+          <div className="rounded-[18px] bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3">
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
               <Input
                 value={filters.search}
@@ -269,7 +296,7 @@ export function ArchiveCategoryWorkspace({
                 </SelectContent>
               </Select>
             </div>
-          </Card>
+          </div>
 
           {hasActiveFilters ? (
             <div className="mt-3 flex justify-end">
@@ -286,17 +313,17 @@ export function ArchiveCategoryWorkspace({
           ) : null}
 
           <MotionStaggerGroup className="mt-4 space-y-3" stagger={0.035}>
-            {visibleItems.map((item) => {
-              const Icon = getFileTypeIcon(item.fileTypeLabel);
-
-              return (
+            {visibleItems.map((item) => (
                 <MotionItem key={item.id} layout className="rounded-[20px]">
                   <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[minmax(0,2.2fr)_minmax(150px,1.2fr)_minmax(120px,1fr)_minmax(120px,1.1fr)_minmax(220px,auto)]">
                     <div className="min-w-0">
                       <div className="flex items-start gap-3">
-                        <Card className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
-                          <Icon className="h-5 w-5 text-brand" />
-                        </Card>
+                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
+                          <ArchiveFileTypeIcon
+                            type={item.fileTypeLabel}
+                            className="h-5 w-5 text-brand"
+                          />
+                        </div>
                         <div className="min-w-0">
                           <h3 className="truncate text-[14px] font-[700] leading-[1.25] text-[#111712]">
                             {item.finalArchiveFileName}
@@ -411,8 +438,7 @@ export function ArchiveCategoryWorkspace({
                     </div>
                   </article>
                 </MotionItem>
-              );
-            })}
+              ))}
 
             {visibleItems.length === 0 ? (
               <MotionItem y={8}>
@@ -438,7 +464,7 @@ export function ArchiveCategoryWorkspace({
               </MotionItem>
             ) : null}
           </MotionStaggerGroup>
-        </Card>
+        </div>
       </MotionSection>
     </section>
   );
