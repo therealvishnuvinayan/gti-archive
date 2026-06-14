@@ -1,5 +1,5 @@
 -- DropForeignKey
-ALTER TABLE "AccessPresetPermission" DROP CONSTRAINT IF EXISTS "AccessPresetPermission_permissionKey_fkey";
+ALTER TABLE IF EXISTS "AccessPresetPermission" DROP CONSTRAINT IF EXISTS "AccessPresetPermission_permissionKey_fkey";
 
 -- DropIndex
 DROP INDEX IF EXISTS "AccessPresetPermission_accessPreset_idx";
