@@ -289,7 +289,7 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-invite-collaborators",
     title: "How to invite collaborators",
-    description: "Add internal or external collaborators and give them the right project or module access.",
+    description: "Add collaborators and assign the right permission profile.",
     sectionId: "collaboration-permissions",
     keywords: ["invite collaborator", "internal", "external", "permission profile"],
   },

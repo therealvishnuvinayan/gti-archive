@@ -51,9 +51,6 @@ import {
   getSupportedLanguageByCode,
 } from "@/lib/ai/languages";
 import { getStageSubmissionAttachments } from "@/lib/comparison-utils";
-import {
-  getDefaultProjectCollaboratorParticipantType,
-} from "@/lib/project-collaborator-participant-types";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
@@ -1910,13 +1907,7 @@ export function ProjectChatWorkspace({
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
-    type: "Internal",
-    permissions: {
-      project: "none",
-      calendar: "none",
-      library: "none",
-      archive: "none",
-    },
+    type: "GTI_INTERNAL_CLIENT",
   });
 
   useEffect(() => {
@@ -2493,29 +2484,13 @@ export function ProjectChatWorkspace({
     setCollaboratorForm((current) => ({ ...current, [field]: value }));
   }
 
-  function setCollaboratorPermissionValue(
-    area: keyof CollaboratorForm["permissions"],
-    value: CollaboratorForm["permissions"][keyof CollaboratorForm["permissions"]],
-  ) {
-    setCollaboratorForm((current) => ({
-      ...current,
-      permissions: { ...current.permissions, [area]: value },
-    }));
-  }
-
   function openCollaboratorInvite() {
     setCollaboratorPickerOpen(false);
     setDraftCollaboratorIds([]);
     setCollaboratorForm({
       name: "",
       email: "",
-      type: "Internal",
-      permissions: {
-        project: "none",
-        calendar: "none",
-        library: "none",
-        archive: "none",
-      },
+      type: "GTI_INTERNAL_CLIENT",
     });
     setCollaboratorDialogError(undefined);
     setCollaboratorDialogOpen(true);
@@ -2571,14 +2546,14 @@ export function ProjectChatWorkspace({
         return selection;
       }
 
-      const group = availableCollaborator.type === "External" ? "external" : "internal";
+      const group = availableCollaborator.typeGroup;
       selection.push({
         id: availableCollaborator.id,
         name: availableCollaborator.name,
         email: availableCollaborator.email,
-        role: availableCollaborator.type === "External" ? "External Collaborator" : "Collaborator",
+        role: group === "external" ? "External Collaborator" : "Collaborator",
         group,
-        participantType: getDefaultProjectCollaboratorParticipantType(group),
+        participantType: availableCollaborator.type,
         chatVisibilityPaused: false,
         access: "view",
         removable: true,
@@ -2660,9 +2635,7 @@ export function ProjectChatWorkspace({
           })),
         {
           id: inviteResult.collaborator.id,
-          participantType: getDefaultProjectCollaboratorParticipantType(
-            inviteResult.collaborator.type === "External" ? "external" : "internal",
-          ),
+          participantType: inviteResult.collaborator.type,
         },
       ]);
 
@@ -5885,7 +5858,6 @@ export function ProjectChatWorkspace({
           void handleCollaboratorInvite();
         }}
         onChange={setCollaboratorFormValue}
-        onPermissionChange={setCollaboratorPermissionValue}
       />
       <ConfirmationDialog
         isOpen={acceptBriefDialogOpen}

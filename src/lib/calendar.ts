@@ -5,10 +5,7 @@ import type {
   CalendarEventType,
   User,
 } from "@prisma/client";
-import {
-  CollaboratorAccess,
-  UserRole,
-} from "@prisma/client";
+import { UserRole } from "@prisma/client";
 
 import { CALENDAR_COLLABORATORS_CACHE_TAG } from "@/lib/collaboration";
 import {
@@ -71,8 +68,7 @@ export type CalendarAccessState = {
   canManageCollaborators: boolean;
   canViewSharedSchedule: boolean;
 };
-export type CalendarAccessUser = Pick<User, "id" | "role" | "calendarAccess"> &
-  PermissionUser;
+export type CalendarAccessUser = Pick<User, "id" | "role"> & PermissionUser;
 
 type CalendarEventWithCreator = CalendarEvent & {
   createdBy?: Pick<User, "name" | "email"> | null;
@@ -235,7 +231,6 @@ function buildCalendarAccessState(
   return {
     canManageCollaborators:
       isAssignedCollaborator &&
-      user.calendarAccess === CollaboratorAccess.FULL &&
       hasPermission(user, "calendar.assignParticipants"),
     canViewSharedSchedule: isAssignedCollaborator,
   };
@@ -263,7 +258,7 @@ export async function getCalendarAccessState(
 
       return buildCalendarAccessState(user, Boolean(assignment));
     },
-    [`calendar-access:${user.id}:${user.role}:${user.calendarAccess}`],
+    [`calendar-access:${user.id}:${user.role}`],
     {
       revalidate: 20,
       tags: [CALENDAR_COLLABORATORS_CACHE_TAG],

@@ -15,9 +15,9 @@ export default async function EditProjectPage({
   params: Promise<{ slug: string }>;
 }) {
   const [{ slug }, user] = await Promise.all([params, requireUser()]);
-  const projectAccess = await getProjectEditAccessById(slug, user);
+  const editAccess = await getProjectEditAccessById(slug, user);
 
-  if (!projectAccess?.canEdit) {
+  if (!editAccess?.canEdit) {
     notFound();
   }
 

@@ -19,7 +19,7 @@ import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 
-type DashboardUser = Pick<User, "id" | "role" | "calendarAccess"> & PermissionUser;
+type DashboardUser = Pick<User, "id" | "role"> & PermissionUser;
 
 type DashboardCollaborationProjectRecord = {
   id: string;

@@ -4,7 +4,10 @@ import type {
   CollaboratorTypeValue,
   PermissionRole,
 } from "@/lib/permissions/definitions";
-import { resolveCollaboratorType } from "@/lib/project-collaborator-participant-types";
+import {
+  isProjectCollaboratorParticipantType,
+  resolveCollaboratorType,
+} from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export type ManagedUserStatus = "ACTIVE" | "INVITED" | "INVITE_EXPIRED";
@@ -126,9 +129,28 @@ export async function countSuperAdmins() {
   );
 }
 
+export async function countLegacyCollaboratorTypeUsers() {
+  return withPrismaRetry(() =>
+    prisma.user.count({
+      where: {
+        collaboratorType: {
+          in: [
+            CollaboratorType.INTERNAL,
+            CollaboratorType.EXTERNAL,
+          ],
+        },
+      },
+    }),
+  );
+}
+
 export async function updateManagedUserPermissions(
   input: ManagedUserUpdateInput,
 ) {
+  if (!isProjectCollaboratorParticipantType(input.collaboratorType)) {
+    throw new Error("Choose a valid collaborator type.");
+  }
+
   const updatedUser = await withPrismaRetry(() =>
     prisma.user.update({
       where: {

@@ -15,7 +15,6 @@ import {
 } from "@/app/(dashboard)/collaboration/actions";
 import {
   CollaboratorDialog,
-  type AccessArea,
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
 import {
@@ -30,21 +29,11 @@ import type { CollaboratorRecord } from "@/lib/collaboration";
 import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
-function getDefaultPermissions(): CollaboratorForm["permissions"] {
-  return {
-    project: "none",
-    calendar: "none",
-    library: "none",
-    archive: "none",
-  };
-}
-
 function getDefaultForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "Internal",
-    permissions: getDefaultPermissions(),
+    type: "GTI_INTERNAL_CLIENT",
   };
 }
 
@@ -92,16 +81,6 @@ export function CollaborationWorkspace({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function setPermissionValue(
-    area: AccessArea,
-    value: CollaboratorForm["permissions"][AccessArea],
-  ) {
-    setForm((current) => ({
-      ...current,
-      permissions: { ...current.permissions, [area]: value },
-    }));
-  }
-
   function openInviteDialog() {
     setDialogMode("invite");
     setEditingId(null);
@@ -118,7 +97,6 @@ export function CollaborationWorkspace({
       name: collaborator.name,
       email: collaborator.email,
       type: collaborator.type,
-      permissions: { ...collaborator.permissions },
     });
     setDialogError(undefined);
     setPageNotice(undefined);
@@ -248,8 +226,7 @@ export function CollaborationWorkspace({
                   Permission model
                 </p>
                 <p className="mt-1 text-[14px] leading-6 text-[#6f7771]">
-                  Module access values are visibility gates only. Detailed actions are controlled
-                  by permission profiles and hard business rules.
+                  Access is controlled by permission profiles and hard business rules.
                 </p>
               </div>
               <Badge variant="outline" className="w-fit border-[#d8e6d7] bg-white text-[#4d6552]">
@@ -273,7 +250,7 @@ export function CollaborationWorkspace({
                   Collaborators
                 </h2>
                 <p className="mt-2 text-[14px] text-[#6f7771]">
-                  Contact records, collaborator type, and module gate settings.
+                  Contact records and collaborator type settings.
                 </p>
               </div>
 
@@ -345,7 +322,7 @@ export function CollaborationWorkspace({
                           variant="outline"
                           className="border-[#e1eadf] bg-[#f8fbf8] text-[#4d6552]"
                         >
-                          {collaborator.type}
+                          {collaborator.typeLabel}
                         </Badge>
                       </div>
 
@@ -405,7 +382,6 @@ export function CollaborationWorkspace({
         }}
         onSubmit={handleSaveCollaborator}
         onChange={setFormValue}
-        onPermissionChange={setPermissionValue}
       />
 
       <ConfirmationDialog

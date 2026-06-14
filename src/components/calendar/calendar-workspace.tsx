@@ -30,9 +30,7 @@ import {
 } from "@/components/calendar/calendar-month-grid";
 import {
   CollaboratorDialog,
-  type AccessArea,
   type CollaboratorForm,
-  type PermissionLevel,
 } from "@/components/collaboration/collaborator-dialog";
 import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -268,13 +266,7 @@ export function CalendarWorkspace({
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
-    type: "Internal",
-    permissions: {
-      project: "none",
-      calendar: "none",
-      library: "none",
-      archive: "none",
-    },
+    type: "GTI_INTERNAL_CLIENT",
   });
   const [form, setForm] = useState<CalendarFormState>(
     getDefaultForm(formatCalendarDateValue(today)),
@@ -302,38 +294,13 @@ export function CalendarWorkspace({
   );
   const visibleCollaborators = useMemo(
     () =>
-      assignedCollaboratorRecords
-        .filter((collaborator) => collaborator.permissions.calendar !== "none")
-        .sort((left, right) => {
-          if (left.permissions.calendar === right.permissions.calendar) {
-            return left.name.localeCompare(right.name);
-          }
-
-          if (left.permissions.calendar === "full") {
-            return -1;
-          }
-
-          if (right.permissions.calendar === "full") {
-            return 1;
-          }
-
-          if (left.permissions.calendar === "limited") {
-            return -1;
-          }
-
-          if (right.permissions.calendar === "limited") {
-            return 1;
-          }
-
-          return 0;
-        }),
+      [...assignedCollaboratorRecords].sort((left, right) =>
+        left.name.localeCompare(right.name),
+      ),
     [assignedCollaboratorRecords],
   );
-  const calendarAccessCollaboratorRecords = useMemo(
-    () =>
-      availableCollaboratorRecords.filter(
-        (collaborator) => collaborator.permissions.calendar !== "none",
-      ),
+  const calendarCollaboratorOptions = useMemo(
+    () => availableCollaboratorRecords,
     [availableCollaboratorRecords],
   );
   const assignedCollaboratorIds = useMemo(
@@ -359,26 +326,13 @@ export function CalendarWorkspace({
     setCollaboratorForm((current) => ({ ...current, [field]: value }));
   }
 
-  function setCollaboratorPermissionValue(area: AccessArea, value: PermissionLevel) {
-    setCollaboratorForm((current) => ({
-      ...current,
-      permissions: { ...current.permissions, [area]: value },
-    }));
-  }
-
   function openCollaboratorDialog() {
     setCollaboratorPickerOpen(false);
     setCollaboratorPickerError(undefined);
     setCollaboratorForm({
       name: "",
       email: "",
-      type: "Internal",
-      permissions: {
-        project: "none",
-        calendar: "limited",
-        library: "none",
-        archive: "none",
-      },
+      type: "GTI_INTERNAL_CLIENT",
     });
     setCollaboratorDialogError(undefined);
     setTimeout(() => {
@@ -440,13 +394,6 @@ export function CalendarWorkspace({
     if (!collaboratorForm.name.trim() || !collaboratorForm.email.trim()) {
       setCollaboratorDialogError("Enter both collaborator name and email.");
       showErrorToast("Unable to save collaborator.", "Enter both collaborator name and email.");
-      return;
-    }
-
-    if (collaboratorForm.permissions.calendar === "none") {
-      const message = "Choose Limited or Full calendar access before adding this collaborator.";
-      setCollaboratorDialogError(message);
-      showErrorToast("Unable to add calendar collaborator.", message);
       return;
     }
 
@@ -1041,20 +988,8 @@ export function CalendarWorkspace({
                       <p className="truncate text-[13px] font-[600] text-[#232c26]">
                         {collaborator.name}
                       </p>
-                      <p
-                        className={`text-[10px] ${
-                          collaborator.permissions.calendar === "full"
-                            ? "text-[#50b848]"
-                            : collaborator.permissions.calendar === "limited"
-                              ? "text-[#f29b23]"
-                              : "text-[#8b938d]"
-                        }`}
-                      >
-                        {collaborator.permissions.calendar === "full"
-                          ? "Full Access"
-                          : collaborator.permissions.calendar === "limited"
-                            ? "Limited Access"
-                          : "No Access"}
+                      <p className="text-[10px] text-[#50b848]">
+                        Shared calendar
                       </p>
                     </div>
                     {canManageCollaborators ? (
@@ -1403,11 +1338,10 @@ export function CalendarWorkspace({
         }}
         onSubmit={saveCollaborator}
         onChange={setCollaboratorFormValue}
-        onPermissionChange={setCollaboratorPermissionValue}
       />
       <CollaboratorPickerDialog
         isOpen={collaboratorPickerOpen}
-        collaborators={calendarAccessCollaboratorRecords}
+        collaborators={calendarCollaboratorOptions}
         selectedIds={pickerSelectedCollaboratorIds}
         error={collaboratorPickerError}
         saving={collaboratorPickerSaving}

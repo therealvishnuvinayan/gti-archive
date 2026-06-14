@@ -44,7 +44,9 @@ import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ProjectCollaboratorsSummary } from "@/components/projects/project-collaborators-panel";
 import {
-  getDefaultProjectCollaboratorParticipantType,
+  getCollaboratorTypeGroup,
+  getCollaboratorTypeLabel,
+  projectCollaboratorParticipantTypes,
 } from "@/lib/project-collaborator-participant-types";
 import {
   MotionItem,
@@ -169,6 +171,7 @@ type ExecutorOption = {
   name: string;
   email: string;
   type: CollaboratorRecord["type"];
+  typeLabel: string;
 };
 
 type ProjectExecutorRoleValue = ProjectEditorInitialExecutor["role"];
@@ -402,31 +405,22 @@ function getDefaultExecutorInviteForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "Internal",
-    permissions: {
-      project: "full",
-      calendar: "none",
-      library: "none",
-      archive: "none",
-    },
+    type: "GTI_INTERNAL_CLIENT",
   };
 }
 
 function buildAssignedCollaboratorRecord(
   collaborator: CollaboratorRecord,
 ): ProjectEditorInitialCollaborator {
+  const group = collaborator.typeGroup;
+
   return {
     id: collaborator.id,
     name: collaborator.name,
     email: collaborator.email,
-    role:
-      collaborator.type === "External"
-        ? "External Collaborator"
-        : "Collaborator",
-    group: collaborator.type === "External" ? "external" : "internal",
-    participantType: getDefaultProjectCollaboratorParticipantType(
-      collaborator.type === "External" ? "external" : "internal",
-    ),
+    role: group === "external" ? "External Collaborator" : "Collaborator",
+    group,
+    participantType: collaborator.type,
     access: "view",
     removable: true,
   };
@@ -543,7 +537,7 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function formatExecutorTypeLabel(type: CollaboratorRecord["type"]) {
-  return type === "External" ? "External Collaborator" : "Internal Collaborator";
+  return getCollaboratorTypeLabel(type);
 }
 
 function formatProjectExecutorRoleLabel(role: ProjectExecutorRoleValue) {
@@ -560,7 +554,7 @@ function buildProjectExecutorRecord(
     email: executor.email,
     role,
     roleLabel: formatProjectExecutorRoleLabel(role),
-    group: executor.type === "External" ? "external" : "internal",
+    group: getCollaboratorTypeGroup(executor.type),
     chatVisibilityPaused: false,
   };
 }
@@ -748,8 +742,11 @@ function InviteExecutorDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Internal">Internal</SelectItem>
-                  <SelectItem value="External">External</SelectItem>
+                  {projectCollaboratorParticipantTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {getCollaboratorTypeLabel(type)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </label>
@@ -820,13 +817,7 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "Internal",
-    permissions: {
-      project: "none",
-      calendar: "none",
-      library: "none",
-      archive: "none",
-    },
+    type: "GTI_INTERNAL_CLIENT",
   };
 }
 
@@ -1128,6 +1119,7 @@ export function CreateProjectWorkspace({
         name: collaborator.name,
         email: collaborator.email,
         type: collaborator.type,
+        typeLabel: collaborator.typeLabel,
       })),
     [availableCollaboratorRecords],
   );
@@ -1143,7 +1135,7 @@ export function CreateProjectWorkspace({
     }
 
     return executorOptions.filter((option) =>
-      [option.name, option.email, option.type, formatExecutorTypeLabel(option.type)].some(
+      [option.name, option.email, option.typeLabel, formatExecutorTypeLabel(option.type)].some(
         (value) => value.toLowerCase().includes(query),
       ),
     );
@@ -1297,16 +1289,6 @@ export function CreateProjectWorkspace({
     value: CollaboratorForm[K],
   ) {
     setCollaboratorForm((current) => ({ ...current, [field]: value }));
-  }
-
-  function setCollaboratorPermissionValue(
-    area: keyof CollaboratorForm["permissions"],
-    value: CollaboratorForm["permissions"][keyof CollaboratorForm["permissions"]],
-  ) {
-    setCollaboratorForm((current) => ({
-      ...current,
-      permissions: { ...current.permissions, [area]: value },
-    }));
   }
 
   function setExecutorInviteFormValue<K extends keyof CollaboratorForm>(
@@ -1716,12 +1698,6 @@ export function CreateProjectWorkspace({
     try {
       const result = await saveCollaboratorAction({
         ...executorInviteForm,
-        permissions: {
-          project: "full",
-          calendar: "none",
-          library: "none",
-          archive: "none",
-        },
         allowExistingUser: true,
       });
 
@@ -1740,6 +1716,7 @@ export function CreateProjectWorkspace({
           name: result.collaborator.name,
           email: result.collaborator.email,
           type: result.collaborator.type,
+          typeLabel: result.collaborator.typeLabel,
         },
         executorRoleDraft,
       );
@@ -3882,7 +3859,6 @@ export function CreateProjectWorkspace({
         }}
         onSubmit={handleCollaboratorInvite}
         onChange={setCollaboratorFormValue}
-        onPermissionChange={setCollaboratorPermissionValue}
       />
       <QuickAddMasterDataDialog
         isOpen={quickAddMasterDataKind !== null}

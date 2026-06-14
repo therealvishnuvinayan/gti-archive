@@ -79,7 +79,7 @@ const documentExtensions = new Set([
 
 type LibraryUser = Pick<
   User,
-  "id" | "role" | "name" | "email" | "libraryAccess" | "projectAccess"
+  "id" | "role" | "name" | "email"
 > &
   PermissionUser;
 

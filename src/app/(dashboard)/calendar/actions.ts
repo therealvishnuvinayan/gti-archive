@@ -19,7 +19,7 @@ import {
   updateCalendarCollaborators,
 } from "@/lib/collaboration";
 
-type CalendarManagerUser = Pick<User, "id" | "role" | "calendarAccess">;
+type CalendarManagerUser = Pick<User, "id" | "role">;
 
 async function assertCalendarManager(user: CalendarManagerUser) {
   const access = await getCalendarAccessState(user);

@@ -1,12 +1,10 @@
 import {
   collaboratorTypeValues,
-  moduleAccessValues,
   permissionDefinitions,
   permissionGroupDefinitions,
   permissionProfileTypeValues,
   permissionRoleValues,
   type CollaboratorTypeValue,
-  type ModuleAccessValue,
   type PermissionDefinitionRecord,
   type PermissionGroup,
   type PermissionProfileType,
@@ -29,12 +27,6 @@ export type PermissionMatrixProfileOption = {
   value: string;
   label: string;
   description: string;
-};
-
-const accessPresetDescriptions: Record<ModuleAccessValue, string> = {
-  FULL: "Legacy compatibility preset with broad module access.",
-  LIMITED: "Legacy compatibility preset with mostly read-only access.",
-  NONE: "Legacy compatibility preset with no default permission keys.",
 };
 
 const permissionGroupItems = permissionGroupDefinitions.map((group) => ({
@@ -71,12 +63,6 @@ export function getPermissionProfileOptions(
         description: `Applies to users assigned the ${getCollaboratorTypeLabel(
           type as CollaboratorTypeValue,
         )} collaborator type.`,
-      }));
-    case "accessPreset":
-      return moduleAccessValues.map((preset) => ({
-        value: preset,
-        label: preset,
-        description: accessPresetDescriptions[preset],
       }));
   }
 }

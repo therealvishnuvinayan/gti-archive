@@ -33,12 +33,6 @@ enum ProjectCollaboratorParticipantType {
   CLIENT_OF_GTI
 }
 
-enum CollaboratorAccess {
-  FULL
-  LIMITED
-  NONE
-}
-
 enum StageStatus {
   PENDING
   ONGOING
@@ -183,10 +177,6 @@ model User {
   passwordChangedAt                   DateTime?
   role                                UserRole                             @default(COLLABORATOR)
   collaboratorType                    CollaboratorType                     @default(GTI_INTERNAL_CLIENT)
-  projectAccess                       CollaboratorAccess                   @default(NONE)
-  calendarAccess                      CollaboratorAccess                   @default(NONE)
-  libraryAccess                       CollaboratorAccess                   @default(NONE)
-  archiveAccess                       CollaboratorAccess                   @default(NONE)
   inviteToken                         String?                              @unique
   inviteExpiresAt                     DateTime?
   inviteAcceptedAt                    DateTime?
@@ -247,7 +237,6 @@ model PermissionDefinition {
   isSystem                    Boolean                      @default(true)
   rolePermissions             RolePermission[]
   collaboratorTypePermissions CollaboratorTypePermission[]
-  accessPresetPermissions     AccessPresetPermission[]
   createdAt                   DateTime                     @default(now())
   updatedAt                   DateTime                     @updatedAt
 }
@@ -277,20 +266,6 @@ model CollaboratorTypePermission {
 
   @@unique([collaboratorType, permissionKey])
   @@index([collaboratorType])
-  @@index([permissionKey])
-}
-
-model AccessPresetPermission {
-  id            String               @id @default(cuid())
-  accessPreset  CollaboratorAccess
-  permissionKey String
-  permission    PermissionDefinition @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
-  enabled       Boolean              @default(true)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-
-  @@unique([accessPreset, permissionKey])
-  @@index([accessPreset])
   @@index([permissionKey])
 }
 
@@ -530,7 +505,6 @@ model CalendarCollaborator {
   id        String             @id @default(cuid())
   userId    String             @unique
   user      User               @relation("CalendarCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
-  access    CollaboratorAccess @default(LIMITED)
   addedById String?
   addedBy   User?              @relation("CalendarCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
   createdAt DateTime           @default(now())

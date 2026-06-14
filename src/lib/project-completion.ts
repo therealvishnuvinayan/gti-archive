@@ -50,7 +50,7 @@ import {
 
 export type ProjectCompletionWorkflowUser = Pick<
   User,
-  "id" | "role" | "email" | "name" | "projectAccess" | "collaboratorType"
+  "id" | "role" | "email" | "name" | "collaboratorType"
 > &
   PermissionUser;
 

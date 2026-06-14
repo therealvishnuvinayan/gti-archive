@@ -12,14 +12,9 @@ export const collaboratorTypeValues = projectCollaboratorParticipantTypes;
 
 export type CollaboratorTypeValue = (typeof collaboratorTypeValues)[number];
 
-export const moduleAccessValues = ["FULL", "LIMITED", "NONE"] as const;
-
-export type ModuleAccessValue = (typeof moduleAccessValues)[number];
-
 export const permissionProfileTypeValues = [
   "role",
   "collaboratorType",
-  "accessPreset",
 ] as const;
 
 export type PermissionProfileType = (typeof permissionProfileTypeValues)[number];
@@ -95,7 +90,6 @@ export const permissionCatalog = {
     "collaboration.createUser",
     "collaboration.updateUser",
     "collaboration.deleteGlobal",
-    "collaboration.manageModuleAccess",
     "collaborator.inviteToProject",
     "collaborator.removeFromProject",
     "collaborator.pauseVisibility",
@@ -561,7 +555,7 @@ const permissionMetadata: Record<
   },
   "collaboration.updateUser": {
     label: "Update users",
-    description: "Update collaborator account details and legacy module access.",
+    description: "Update collaborator account details.",
     moduleGated: false,
     hardRule: false,
   },
@@ -570,12 +564,6 @@ const permissionMetadata: Record<
     description: "Delete collaborator accounts when no history references block deletion.",
     moduleGated: false,
     hardRule: true,
-  },
-  "collaboration.manageModuleAccess": {
-    label: "Manage module access",
-    description: "Change collaborator type and legacy module access assignments.",
-    moduleGated: false,
-    hardRule: false,
   },
   "collaborator.inviteToProject": {
     label: "Invite project collaborators",
@@ -813,7 +801,6 @@ export const permissionModuleMap: Record<PermissionKey, ModuleName> = {
   "collaboration.createUser": "collaboration",
   "collaboration.updateUser": "collaboration",
   "collaboration.deleteGlobal": "collaboration",
-  "collaboration.manageModuleAccess": "collaboration",
   "collaborator.inviteToProject": "collaboration",
   "collaborator.removeFromProject": "collaboration",
   "collaborator.pauseVisibility": "collaboration",
@@ -896,7 +883,6 @@ export const defaultRolePermissions: Record<PermissionRole, readonly PermissionK
     "collaboration.viewDirectory",
     "collaboration.createUser",
     "collaboration.updateUser",
-    "collaboration.manageModuleAccess",
     "collaborator.inviteToProject",
     "collaborator.removeFromProject",
     "collaborator.pauseVisibility",
@@ -965,29 +951,6 @@ export const defaultCollaboratorTypePermissions: Record<
   }),
   {} as Record<CollaboratorTypeValue, readonly PermissionKey[]>,
 );
-
-const readOnlyPermissionKeys = allPermissionKeys.filter((permissionKey) => {
-  return (
-    permissionKey.endsWith(".view") ||
-    permissionKey.endsWith(".list") ||
-    permissionKey === "dashboard.viewProjectCounts" ||
-    permissionKey === "dashboard.viewRecentProjects" ||
-    permissionKey === "library.filter" ||
-    permissionKey === "project.viewParticipants" ||
-    permissionKey === "completion.viewChecklist" ||
-    permissionKey === "notification.view" ||
-    permissionKey === "help.view"
-  );
-});
-
-export const defaultAccessPresetPermissions: Record<
-  ModuleAccessValue,
-  readonly PermissionKey[]
-> = {
-  FULL: allPermissionKeys,
-  LIMITED: readOnlyPermissionKeys,
-  NONE: [],
-};
 
 export const criticalSuperAdminPermissionKeys = [
   "dashboard.view",

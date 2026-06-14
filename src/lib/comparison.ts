@@ -20,7 +20,7 @@ import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 type AccessUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
+  "id" | "email" | "name" | "role" | "collaboratorType"
 > &
   PermissionUser;
 

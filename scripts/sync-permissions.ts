@@ -10,9 +10,6 @@ async function main() {
   console.log(
     `Collaborator type rows seeded: ${result.collaboratorTypePermissionsSeeded}`,
   );
-  console.log(
-    `Access preset rows seeded: ${result.accessPresetPermissionsSeeded}`,
-  );
 }
 
 main()

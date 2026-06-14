@@ -12,16 +12,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  getCollaboratorTypeLabel,
+  projectCollaboratorParticipantTypes,
+  type ProjectCollaboratorParticipantType,
+} from "@/lib/project-collaborator-participant-types";
 
-export type AccessArea = "project" | "calendar" | "library" | "archive";
-export type PermissionLevel = "full" | "limited" | "none";
-export type CollaboratorType = "Internal" | "External";
+export type CollaboratorType = ProjectCollaboratorParticipantType;
 
 export type CollaboratorForm = {
   name: string;
   email: string;
   type: CollaboratorType;
-  permissions: Record<AccessArea, PermissionLevel>;
 };
 
 type CollaboratorDialogProps = {
@@ -36,21 +38,7 @@ type CollaboratorDialogProps = {
     field: K,
     value: CollaboratorForm[K],
   ) => void;
-  onPermissionChange: (area: AccessArea, value: PermissionLevel) => void;
 };
-
-const areaLabels: Record<AccessArea, string> = {
-  project: "Projects module gate",
-  calendar: "Calendar module gate",
-  library: "Library module gate",
-  archive: "Archives module gate",
-};
-
-const permissionOptions: Array<{ value: PermissionLevel; label: string }> = [
-  { value: "full", label: "Full access" },
-  { value: "limited", label: "Limited access" },
-  { value: "none", label: "No access" },
-];
 
 export function CollaboratorDialog({
   isOpen,
@@ -61,7 +49,6 @@ export function CollaboratorDialog({
   onClose,
   onSubmit,
   onChange,
-  onPermissionChange,
 }: CollaboratorDialogProps) {
   if (!isOpen) {
     return null;
@@ -74,12 +61,12 @@ export function CollaboratorDialog({
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
               <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
-                {mode === "invite" ? "Invite Collaborator" : "Edit Access"}
+                {mode === "invite" ? "Invite Collaborator" : "Edit Collaborator"}
               </h2>
               <p className="mt-1 text-[14px] text-[#6a706b]">
                 {mode === "invite"
-                  ? "Add a collaborator and set module visibility gates."
-                  : "Update collaborator details and module visibility gates."}
+                  ? "Add a collaborator and set their business type."
+                  : "Update collaborator details and business type."}
               </p>
             </div>
             <Button
@@ -121,8 +108,11 @@ export function CollaboratorDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Internal">Internal</SelectItem>
-                  <SelectItem value="External">External</SelectItem>
+                  {projectCollaboratorParticipantTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {getCollaboratorTypeLabel(type)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </label>
@@ -137,51 +127,6 @@ export function CollaboratorDialog({
                 className="rounded-2xl border border-line"
               />
             </label>
-          </div>
-
-          <div className="mt-6 space-y-3 rounded-[22px] border border-line bg-[#fbfcfa] p-4">
-            <div>
-              <p className="text-[15px] font-[700] text-[#1f2923]">
-                Module Access Gates
-              </p>
-              <p className="mt-1 text-[12px] leading-5 text-[#7a837b]">
-                These values control whether this user can access each module. Detailed actions are controlled by permission profiles.
-              </p>
-            </div>
-            {(Object.keys(areaLabels) as AccessArea[]).map((area) => (
-              <Card key={area} className="rounded-[18px] border border-line shadow-none">
-                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="sm:max-w-[55%]">
-                    <p className="text-[14px] font-[700] text-[#1f2923]">
-                      {areaLabels[area]}
-                    </p>
-                    <p className="mt-1 text-[12px] leading-5 text-[#7a837b]">
-                      Controls module visibility only, not detailed action permissions.
-                    </p>
-                  </div>
-
-                  <div className="w-full sm:w-[190px]">
-                    <Select
-                      value={form.permissions[area]}
-                      onValueChange={(value) =>
-                        onPermissionChange(area, value as PermissionLevel)
-                      }
-                    >
-                      <SelectTrigger className="rounded-full border border-line">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {permissionOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
           </div>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">

@@ -67,11 +67,9 @@ import { validateActiveAssetTagIds } from "@/lib/asset-tags";
 
 type AccessUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
+  "id" | "email" | "name" | "role" | "collaboratorType"
 > &
-  PermissionUser & {
-  libraryAccess?: User["libraryAccess"];
-};
+  PermissionUser;
 
 const projectStatusSelect = {
   id: true,
