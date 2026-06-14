@@ -21,7 +21,6 @@ type SaveMasterDataInput = {
   name: string;
   description?: string;
   color?: string;
-  code?: string;
   slug?: string;
   iconUrl?: string;
   iconKey?: string;
@@ -64,7 +63,6 @@ function normalizeMasterDataInput(input: SaveMasterDataInput) {
     name: input.name.trim(),
     description: input.description?.trim() || null,
     color: input.color?.trim() || null,
-    code: input.code?.trim().toUpperCase() || "",
     slug: normalizeArchiveCategorySlug(input.slug || input.name),
     iconUrl: input.iconUrl?.trim() || null,
     iconKey: input.iconKey?.trim() || null,
@@ -728,90 +726,6 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
   };
 }
 
-export async function saveProjectCurrencyAction(input: SaveMasterDataInput) {
-  await requireAdminUser();
-
-  const parsed = normalizeMasterDataInput(input);
-
-  if (!parsed.name) {
-    return { error: "Currency name is required." };
-  }
-
-  if (!parsed.code) {
-    return { error: "Currency code is required." };
-  }
-
-  if (!/^[A-Z]{3}$/.test(parsed.code)) {
-    return { error: "Currency code must be 3 uppercase letters." };
-  }
-
-  const duplicate = await withPrismaRetry(() =>
-    prisma.projectCurrency.findFirst({
-      where: {
-        OR: [
-          {
-            code: {
-              equals: parsed.code,
-              mode: "insensitive",
-            },
-          },
-          {
-            name: {
-              equals: parsed.name,
-              mode: "insensitive",
-            },
-          },
-        ],
-        ...(parsed.id
-          ? {
-              id: {
-                not: parsed.id,
-              },
-            }
-          : {}),
-      },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-      },
-    }),
-  );
-
-  if (duplicate) {
-    if (duplicate.code.toLowerCase() === parsed.code.toLowerCase()) {
-      return { error: "A currency with this code already exists." };
-    }
-
-    return { error: "A currency with this name already exists." };
-  }
-
-  await withPrismaRetry(() =>
-    parsed.id
-      ? prisma.projectCurrency.update({
-          where: {
-            id: parsed.id,
-          },
-          data: {
-            name: parsed.name,
-            code: parsed.code,
-            isActive: parsed.isActive,
-          },
-        })
-      : prisma.projectCurrency.create({
-          data: {
-            name: parsed.name,
-            code: parsed.code,
-            isActive: parsed.isActive,
-          },
-        }),
-  );
-
-  await revalidateProjectMasterData();
-
-  return { success: true };
-}
-
 export async function setProjectCategoryStatusAction(input: ToggleMasterDataInput) {
   await requireAdminUser();
 
@@ -933,25 +847,6 @@ export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInpu
   await revalidateProjectMasterData();
   revalidatePath("/archives");
   revalidatePath(`/archives/${category.slug}`);
-
-  return { success: true };
-}
-
-export async function setProjectCurrencyStatusAction(input: ToggleMasterDataInput) {
-  await requireAdminUser();
-
-  await withPrismaRetry(() =>
-    prisma.projectCurrency.update({
-      where: {
-        id: input.id,
-      },
-      data: {
-        isActive: input.isActive,
-      },
-    }),
-  );
-
-  await revalidateProjectMasterData();
 
   return { success: true };
 }
@@ -1222,46 +1117,6 @@ export async function deleteArchiveCategoryAction(id: string) {
   await revalidateProjectMasterData();
   revalidatePath("/archives");
   revalidatePath(`/archives/${category.slug}`);
-
-  return { success: true };
-}
-
-export async function deleteProjectCurrencyAction(id: string) {
-  await requireSuperAdminUser();
-
-  const currency = await withPrismaRetry(() =>
-    prisma.projectCurrency.findUnique({
-      where: { id },
-      select: { id: true, code: true },
-    }),
-  );
-
-  if (!currency) {
-    return { error: "Currency not found." };
-  }
-
-  const usageCount = await withPrismaRetry(() =>
-    prisma.project.count({
-      where: {
-        currency: {
-          equals: currency.code,
-          mode: "insensitive",
-        },
-      },
-    }),
-  );
-
-  if (usageCount > 0) {
-    return { error: "This currency is already used by existing projects. Deactivate it instead." };
-  }
-
-  await withPrismaRetry(() =>
-    prisma.projectCurrency.delete({
-      where: { id },
-    }),
-  );
-
-  await revalidateProjectMasterData();
 
   return { success: true };
 }

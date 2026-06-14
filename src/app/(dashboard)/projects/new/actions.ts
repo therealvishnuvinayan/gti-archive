@@ -38,6 +38,10 @@ import {
   isProjectPriority,
 } from "@/lib/project-priority";
 import {
+  DEFAULT_PROJECT_CURRENCY,
+  resolveProjectCurrency,
+} from "@/lib/project-currencies";
+import {
   defaultProjectStatusGroupSlugs,
   isProjectStatusCompleted,
 } from "@/lib/project-statuses";
@@ -505,7 +509,7 @@ function validateProjectFormData(
     fieldErrors.executionType = "Project execution type is required.";
   }
   if (requireBudget && !parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
-  if (requireBudget && !parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
+  if (!parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
   if (!parsed.statusId) fieldErrors.statusId = "Project status is required.";
   if (!parsed.startDateInput) fieldErrors.startDate = "Project start date is required.";
   if (!parsed.endDateInput) fieldErrors.endDate = "Project end date is required.";
@@ -646,7 +650,7 @@ function validateProjectFormData(
       stageNames: normalizedStageNames,
       executionType,
       budget,
-      currency: parsed.currencyInput || "USD",
+      currency: parsed.currencyInput,
       statusId: parsed.statusId,
       priority,
       startDate,
@@ -786,33 +790,6 @@ async function resolveSubmittedProjectTags(tagInputs: string[]) {
   return {
     tags,
   };
-}
-
-async function resolveProjectCurrencyCode(
-  currencyCode: string,
-  options: { allowInactiveCode?: string } = {},
-) {
-  const normalizedCode = currencyCode.trim().toUpperCase();
-
-  if (!normalizedCode) {
-    return null;
-  }
-
-  const currency = await prisma.projectCurrency.findFirst({
-    where: {
-      code: normalizedCode,
-      OR:
-        options.allowInactiveCode &&
-        normalizedCode === options.allowInactiveCode.trim().toUpperCase()
-          ? [{ isActive: true }, { code: normalizedCode }]
-          : [{ isActive: true }],
-    },
-    select: {
-      code: true,
-    },
-  });
-
-  return currency?.code ?? null;
 }
 
 type ResolvedProjectExecutor = {
@@ -972,14 +949,12 @@ export async function createProjectAction(
     stageNames.length,
   );
 
-  const currencyCode =
-    (await resolveProjectCurrencyCode(currency)) ??
-    (isExternalExecution ? null : "USD");
+  const currencyCode = resolveProjectCurrency(currency);
 
   if (!currencyCode) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { currency: "Choose a valid project currency." },
+      fieldErrors: { currency: "Currency must be AED, USD, or EUR." },
     };
   }
 
@@ -1355,15 +1330,13 @@ export async function updateProjectAction(
   }
 
   const currencyCode = canUpdateBudget
-    ? (await resolveProjectCurrencyCode(currency, {
-        allowInactiveCode: existingProject.currency,
-      })) ?? (isExternalExecution ? null : existingProject.currency || "USD")
-    : existingProject.currency;
+    ? resolveProjectCurrency(currency)
+    : resolveProjectCurrency(existingProject.currency) ?? DEFAULT_PROJECT_CURRENCY;
 
   if (!currencyCode) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { currency: "Choose a valid project currency." },
+      fieldErrors: { currency: "Currency must be AED, USD, or EUR." },
     };
   }
 

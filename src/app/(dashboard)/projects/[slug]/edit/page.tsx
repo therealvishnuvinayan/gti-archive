@@ -46,7 +46,6 @@ export default async function EditProjectPage({
         categoryOptions={masterDataOptions.categories}
         statusOptions={masterDataOptions.projectStatuses}
         tagOptions={masterDataOptions.tags}
-        currencyOptions={masterDataOptions.currencies}
         mode="edit"
         initialValues={project}
         canManageProjectMasterData={canManageProjectMasterData}

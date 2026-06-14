@@ -15,15 +15,6 @@ export type ProjectMasterDataItemRecord = {
   updatedAt: string;
 };
 
-export type ProjectMasterCurrencyRecord = {
-  id: string;
-  name: string;
-  code: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type ArchiveCategoryMasterDataRecord = {
   id: string;
   name: string;
@@ -86,8 +77,6 @@ export type ProjectMasterDataSummary = {
   activeAssetTags: number;
   totalArchiveCategories: number;
   activeArchiveCategories: number;
-  totalCurrencies: number;
-  activeCurrencies: number;
 };
 
 export type ProjectMasterDataRecord = {
@@ -97,7 +86,6 @@ export type ProjectMasterDataRecord = {
   tags: ProjectMasterDataItemRecord[];
   assetTags: ProjectMasterDataItemRecord[];
   archiveCategories: ArchiveCategoryMasterDataRecord[];
-  currencies: ProjectMasterCurrencyRecord[];
   summary: ProjectMasterDataSummary;
 };
 
@@ -127,10 +115,6 @@ export type ActiveProjectMasterDataOptions = {
     id: string;
     name: string;
     color: string;
-  }>;
-  currencies: Array<{
-    code: string;
-    name: string;
   }>;
 };
 
@@ -172,24 +156,6 @@ function mapMasterDataItem(item: {
     createdAt: formatMasterDataTimestamp(item.createdAt),
     updatedAt: formatMasterDataTimestamp(item.updatedAt),
   } satisfies ProjectMasterDataItemRecord;
-}
-
-function mapCurrencyItem(item: {
-  id: string;
-  name: string;
-  code: string;
-  isActive: boolean;
-  createdAt: Date | string | number;
-  updatedAt: Date | string | number;
-}) {
-  return {
-    id: item.id,
-    name: item.name.trim(),
-    code: item.code.trim().toUpperCase(),
-    isActive: item.isActive,
-    createdAt: formatMasterDataTimestamp(item.createdAt),
-    updatedAt: formatMasterDataTimestamp(item.updatedAt),
-  } satisfies ProjectMasterCurrencyRecord;
 }
 
 function mapArchiveCategoryItem(item: {
@@ -330,9 +296,6 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
               },
             },
           }),
-          prisma.projectCurrency.findMany({
-            orderBy: [{ isActive: "desc" }, { code: "asc" }],
-          }),
         ]),
       ),
     ["project-master-data"],
@@ -346,7 +309,6 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     tags,
     assetTags,
     archiveCategories,
-    currencies,
   ] =
     await fetchMasterData();
 
@@ -357,7 +319,6 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     tags: tags.map(mapMasterDataItem),
     assetTags: assetTags.map(mapMasterDataItem),
     archiveCategories: archiveCategories.map(mapArchiveCategoryItem),
-    currencies: currencies.map(mapCurrencyItem),
     summary: {
       totalCategories: categories.length,
       activeCategories: categories.filter((item) => item.isActive).length,
@@ -371,8 +332,6 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
       activeAssetTags: assetTags.filter((item) => item.isActive).length,
       totalArchiveCategories: archiveCategories.length,
       activeArchiveCategories: archiveCategories.filter((item) => item.isActive).length,
-      totalCurrencies: currencies.length,
-      activeCurrencies: currencies.filter((item) => item.isActive).length,
     },
   };
 }
@@ -416,12 +375,6 @@ export async function getActiveProjectMasterDataOptions(): Promise<ActiveProject
         id: item.id,
         name: item.name,
         color: item.color,
-      })),
-    currencies: masterData.currencies
-      .filter((item) => item.isActive)
-      .map((item) => ({
-        code: item.code,
-        name: item.name,
       })),
   };
 }

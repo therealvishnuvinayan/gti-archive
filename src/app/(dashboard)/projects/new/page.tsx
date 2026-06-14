@@ -35,7 +35,6 @@ export default async function NewProjectPage() {
         categoryOptions={masterDataOptions.categories}
         statusOptions={masterDataOptions.projectStatuses}
         tagOptions={masterDataOptions.tags}
-        currencyOptions={masterDataOptions.currencies}
         canManageProjectMasterData={canManageProjectMasterData}
         canInviteExecutor={canInviteExecutor}
       />

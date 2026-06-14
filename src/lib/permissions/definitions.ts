@@ -681,7 +681,7 @@ const permissionMetadata: Record<
   },
   "settings.manageMasterData": {
     label: "Manage master data",
-    description: "Create and update project categories, tags, and currencies.",
+    description: "Create and update project categories, statuses, tags, asset tags, and archive categories.",
     moduleGated: false,
     hardRule: false,
   },

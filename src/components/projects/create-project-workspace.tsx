@@ -72,6 +72,11 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import type { ProjectCollaboratorRecord } from "@/lib/projects";
+import {
+  DEFAULT_PROJECT_CURRENCY,
+  PROJECT_CURRENCY_OPTIONS,
+  resolveProjectCurrency,
+} from "@/lib/project-currencies";
 import { DEFAULT_PROJECT_STATUS_SLUG } from "@/lib/project-statuses";
 import {
   DEFAULT_PROJECT_PRIORITY,
@@ -136,10 +141,6 @@ type CreateProjectWorkspaceProps = {
   categoryOptions?: string[];
   statusOptions?: ProjectStatusSelectOption[];
   tagOptions?: string[];
-  currencyOptions?: Array<{
-    code: string;
-    name: string;
-  }>;
   canManageProjectMasterData?: boolean;
   canInviteExecutor?: boolean;
   mode?: "create" | "edit";
@@ -387,19 +388,6 @@ function validateClientStageTimeline(input: {
     stageDueDateErrors,
     hasConflict,
   };
-}
-
-function getDefaultProjectCurrencyCode(
-  currencyOptions: Array<{
-    code: string;
-    name: string;
-  }>,
-) {
-  return (
-    currencyOptions.find((currency) => currency.code === "USD")?.code ??
-    currencyOptions[0]?.code ??
-    ""
-  );
 }
 
 function getDefaultProjectStatusId(statusOptions: ProjectStatusSelectOption[]) {
@@ -847,7 +835,6 @@ export function CreateProjectWorkspace({
   categoryOptions = [],
   statusOptions = [],
   tagOptions = [],
-  currencyOptions = [],
   canManageProjectMasterData = false,
   canInviteExecutor = false,
   mode = "create",
@@ -874,7 +861,7 @@ export function CreateProjectWorkspace({
   const [projectTagError, setProjectTagError] = useState<string>();
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
   const [projectCurrency, setProjectCurrency] = useState<string>(
-    initialValues?.currency ?? getDefaultProjectCurrencyCode(currencyOptions),
+    resolveProjectCurrency(initialValues?.currency ?? "") ?? DEFAULT_PROJECT_CURRENCY,
   );
   const [projectPriority, setProjectPriority] = useState<ProjectPriorityValue>(
     initialValues?.priority && isProjectPriority(initialValues.priority)
@@ -1146,16 +1133,7 @@ export function CreateProjectWorkspace({
     () => mergeUniqueTextOptions(availableTagOptions, projectTags),
     [availableTagOptions, projectTags],
   );
-  const currencySelectOptions = useMemo(() => {
-    if (
-      projectCurrency &&
-      !currencyOptions.some((currency) => currency.code === projectCurrency)
-    ) {
-      return [{ code: projectCurrency, name: projectCurrency }, ...currencyOptions];
-    }
-
-    return currencyOptions;
-  }, [currencyOptions, projectCurrency]);
+  const currencySelectOptions = PROJECT_CURRENCY_OPTIONS;
   const projectStatusSelectOptions = useMemo(() => {
     if (
       projectStatusId &&
@@ -2752,16 +2730,9 @@ export function CreateProjectWorkspace({
                         clearFieldError("currency");
                         clearFieldError("budgetSummary");
                       }}
-                      disabled={currencySelectOptions.length === 0}
                     >
                       <SelectTrigger className="h-[42px] w-[108px] text-[12px] font-medium">
-                        <SelectValue
-                          placeholder={
-                            currencySelectOptions.length === 0
-                              ? "No currencies available"
-                              : "Select currency"
-                          }
-                        />
+                        <SelectValue placeholder="Select currency" />
                       </SelectTrigger>
                       <SelectContent>
                         {currencySelectOptions.map((currency) => (

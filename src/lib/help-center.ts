@@ -225,10 +225,10 @@ export const helpTopics: HelpTopic[] = [
   {
     id: "topic-settings",
     title: "Settings, Users & Master Data",
-    description: "Manage your profile, password, categories, tags, currencies, users, and permission profiles.",
+    description: "Manage your profile, password, categories, statuses, tags, users, and permission profiles.",
     sectionId: "settings-users-master-data",
     icon: Settings2,
-    keywords: ["settings", "users", "profile", "password", "categories", "tags", "currencies", "master data"],
+    keywords: ["settings", "users", "profile", "password", "categories", "statuses", "tags", "master data"],
   },
   {
     id: "topic-account-access",
@@ -458,9 +458,9 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-project-master-data",
     title: "Project Master Data rules",
-    description: "Manage active project categories, tags, and currencies used in project setup.",
+    description: "Manage active project categories, statuses, tags, asset tags, and archive categories used in setup.",
     sectionId: "settings-users-master-data",
-    keywords: ["project master data", "categories", "tags", "currencies", "active", "inactive"],
+    keywords: ["project master data", "categories", "statuses", "tags", "asset tags", "archive categories", "active", "inactive"],
   },
   {
     id: "guide-notifications",
@@ -1172,7 +1172,7 @@ export const helpSections: HelpSection[] = [
     title: "Settings, Users & master data",
     summary:
       "Settings covers personal profile and password changes, while administrative setup lives in project master data, Users & Permissions, and Manage Permissions.",
-    keywords: ["settings", "users", "master data", "categories", "tags", "currencies", "change password"],
+    keywords: ["settings", "users", "master data", "categories", "statuses", "tags", "change password"],
     blocks: [
       {
         title: "What Settings manages",
@@ -1181,7 +1181,7 @@ export const helpSections: HelpSection[] = [
           "Short bio is limited to 300 characters.",
           "Profile photo changes use the avatar upload flow and replace the previous saved photo.",
           "Password changes require the current password and confirmation of the new password.",
-          "Project Master Data such as categories, tags, and currencies used across project forms.",
+          "Project Master Data such as categories, statuses, tags, asset tags, and archive categories used across forms.",
         ],
       },
       {
@@ -1205,10 +1205,9 @@ export const helpSections: HelpSection[] = [
       {
         title: "Project Master Data",
         items: [
-          "Project Master Data manages reusable project categories, tags, and currencies.",
-          "Categories, tags, and currencies can be Active or Inactive; inactive values should not be used for new setup choices.",
-          "Currency codes use three uppercase letters, such as AED or USD.",
-          "Duplicate category names, tag names, currency names, and currency codes are blocked.",
+          "Project Master Data manages reusable project categories, project statuses, project tags, asset tags, and archive categories.",
+          "Master-data values can be Active or Inactive; inactive values should not be used for new setup choices.",
+          "Duplicate names and slugs are blocked where those identifiers are required.",
           "A master-data value already used by existing projects cannot be deleted; deactivate it instead.",
         ],
       },
@@ -1309,7 +1308,7 @@ export const helpSections: HelpSection[] = [
       {
         question: "Why is a master data option missing from a dropdown?",
         answer:
-          "The category, tag, or currency may not exist yet. Use quick-add from the project form or create it in Project Master Data if you have access.",
+          "The category, status, or tag may not exist yet. Use Project Master Data if you have access.",
       },
     ],
   },

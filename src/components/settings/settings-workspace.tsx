@@ -1180,7 +1180,7 @@ export function SettingsWorkspace({
           {canViewMasterData ? (
             <SettingsCard
               title="Project Master Data"
-              description="Manage reusable project categories, tags, and currencies used across project forms and filters."
+              description="Manage reusable project categories, statuses, tags, asset tags, and archive categories used across project forms and filters."
               action={
                 <Button
                   asChild

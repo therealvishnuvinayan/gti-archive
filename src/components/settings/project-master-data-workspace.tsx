@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
   Archive,
-  BadgeDollarSign,
   Check,
   FolderKanban,
   ImagePlus,
@@ -22,12 +21,10 @@ import {
   deleteProjectStatusGroupAction,
   deleteProjectStatusAction,
   deleteProjectCategoryAction,
-  deleteProjectCurrencyAction,
   deleteProjectTagAction,
   saveAssetTagAction,
   saveArchiveCategoryAction,
   saveProjectCategoryAction,
-  saveProjectCurrencyAction,
   saveProjectStatusGroupAction,
   saveProjectStatusAction,
   saveProjectTagAction,
@@ -39,7 +36,6 @@ import {
 } from "@/components/archives/archive-data";
 import type {
   ArchiveCategoryMasterDataRecord,
-  ProjectMasterCurrencyRecord,
   ProjectMasterDataItemRecord,
   ProjectMasterDataSummary,
   ProjectStatusGroupMasterDataRecord,
@@ -75,15 +71,13 @@ type MasterDataTab =
   | "projectStatuses"
   | "tags"
   | "assetTags"
-  | "archiveCategories"
-  | "currencies";
+  | "archiveCategories";
 
 type MasterDataFormState = {
   id?: string;
   name: string;
   description: string;
   color: string;
-  code: string;
   slug: string;
   iconUrl: string;
   iconKey: string;
@@ -96,7 +90,6 @@ type MasterDataFormState = {
 type MasterDataFieldErrors = {
   name?: string;
   description?: string;
-  code?: string;
   slug?: string;
   groupId?: string;
   sortOrder?: string;
@@ -109,7 +102,6 @@ type ProjectMasterDataWorkspaceProps = {
   tags: ProjectMasterDataItemRecord[];
   assetTags: ProjectMasterDataItemRecord[];
   archiveCategories: ArchiveCategoryMasterDataRecord[];
-  currencies: ProjectMasterCurrencyRecord[];
   summary: ProjectMasterDataSummary;
   canManageItems: boolean;
   canDeleteItems: boolean;
@@ -121,7 +113,6 @@ type DeleteTarget = {
     | ProjectMasterDataItemRecord
     | ProjectStatusGroupMasterDataRecord
     | ProjectStatusMasterDataRecord
-    | ProjectMasterCurrencyRecord
     | ArchiveCategoryMasterDataRecord;
 } | null;
 
@@ -129,7 +120,6 @@ type MasterDataTableItem =
   | ProjectMasterDataItemRecord
   | ProjectStatusGroupMasterDataRecord
   | ProjectStatusMasterDataRecord
-  | ProjectMasterCurrencyRecord
   | ArchiveCategoryMasterDataRecord;
 
 const colorOptions = [
@@ -146,7 +136,6 @@ const defaultFormState: MasterDataFormState = {
   name: "",
   description: "",
   color: "",
-  code: "",
   slug: "",
   iconUrl: "",
   iconKey: "",
@@ -244,9 +233,8 @@ function getMasterDataLabel(tab: MasterDataTab) {
       return "Asset Tag";
     case "archiveCategories":
       return "Archive Category";
-    case "currencies":
     default:
-      return "Currency";
+      return "Category";
   }
 }
 
@@ -264,9 +252,8 @@ function getMasterDataTitle(tab: MasterDataTab) {
       return "Asset Tags";
     case "archiveCategories":
       return "Archive Categories";
-    case "currencies":
     default:
-      return "Currencies";
+      return "Categories";
   }
 }
 
@@ -344,7 +331,6 @@ function MasterDataTable({
   canDelete: boolean;
   pending: boolean;
 }) {
-  const isCurrency = type === "currencies";
   const isArchiveCategory = type === "archiveCategories";
   const isProjectStatusGroup = type === "projectStatusGroups";
   const isProjectStatus = type === "projectStatuses";
@@ -362,9 +348,7 @@ function MasterDataTable({
           ? "No tags added yet."
           : type === "assetTags"
             ? "No asset tags added yet."
-            : type === "archiveCategories"
-              ? "No archive categories added yet."
-              : "No currencies added yet.";
+            : "No archive categories added yet.";
   const label = getMasterDataLabel(type);
   const title = getMasterDataTitle(type);
 
@@ -387,9 +371,7 @@ function MasterDataTable({
                   ? `${canManage ? "Manage" : "View"} tags used to label and group projects.`
                   : type === "assetTags"
                     ? `${canManage ? "Manage" : "View"} asset tags used across library and archive assets.`
-                    : type === "archiveCategories"
-                      ? `${canManage ? "Manage" : "View"} archive categories used across archive pages and uploads.`
-                      : `${canManage ? "Manage" : "View"} active currency codes used in project budgets.`}
+                    : `${canManage ? "Manage" : "View"} archive categories used across archive pages and uploads.`}
             </p>
           </div>
           {canManage ? (
@@ -411,14 +393,7 @@ function MasterDataTable({
             <table className="min-w-full border-separate border-spacing-0">
               <thead>
                 <tr className="text-left">
-                  {(isCurrency
-                    ? [
-                        "Currency Name",
-                        "Currency Code",
-                        "Status",
-                        ...(canShowActions ? ["Actions"] : []),
-                      ]
-                    : isArchiveCategory
+                  {(isArchiveCategory
                       ? [
                           "Name",
                           "Slug",
@@ -466,7 +441,6 @@ function MasterDataTable({
               </thead>
               <tbody>
                 {items.map((item) => {
-                  const currencyItem = item as ProjectMasterCurrencyRecord;
                   const generalItem = item as ProjectMasterDataItemRecord;
                   const archiveCategoryItem = item as ArchiveCategoryMasterDataRecord;
                   const projectStatusGroupItem = item as ProjectStatusGroupMasterDataRecord;
@@ -499,11 +473,7 @@ function MasterDataTable({
                           </div>
                         </div>
                       </td>
-                      {isCurrency ? (
-                        <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-brand">
-                          {currencyItem.code}
-                        </td>
-                      ) : isArchiveCategory ? (
+                      {isArchiveCategory ? (
                         <>
                           <td className="border-b border-[#f1f4f0] px-4 py-4 text-[14px] font-[700] text-brand">
                             {archiveCategoryItem.slug}
@@ -653,7 +623,6 @@ function MasterDataDrawer({
   }
 
   const label = getMasterDataLabel(tab);
-  const isCurrency = tab === "currencies";
   const isArchiveCategory = tab === "archiveCategories";
   const isProjectStatusGroup = tab === "projectStatusGroups";
   const isProjectStatus = tab === "projectStatuses";
@@ -704,8 +673,7 @@ function MasterDataDrawer({
           <div className="mt-8 space-y-6">
             <label className="space-y-2">
               <span className="block text-[13px] font-[700] text-[#2b352d]">
-                {isCurrency ? "Currency Name" : "Name"}{" "}
-                <span className="text-[#c5524d]">*</span>
+                Name <span className="text-[#c5524d]">*</span>
               </span>
               <Input
                 value={form.name}
@@ -722,32 +690,7 @@ function MasterDataDrawer({
               ) : null}
             </label>
 
-            {isCurrency ? (
-              <label className="space-y-2">
-                <span className="block text-[13px] font-[700] text-[#2b352d]">
-                  Currency Code <span className="text-[#c5524d]">*</span>
-                </span>
-                <Input
-                  value={form.code}
-                  onChange={(event) => onChange("code", event.target.value.toUpperCase())}
-                  placeholder="Enter currency code"
-                  maxLength={3}
-                  className={`h-12 rounded-2xl border uppercase ${
-                    fieldErrors.code ? "border-[#e0a8a6]" : "border-line"
-                  }`}
-                />
-                {fieldErrors.code ? (
-                  <span className="text-[12px] font-[600] text-[#bb4d49]">
-                    {fieldErrors.code}
-                  </span>
-                ) : (
-                  <span className="text-[12px] text-[#6d776e]">
-                    Use a 3-letter uppercase currency code, for example AED or USD.
-                  </span>
-                )}
-              </label>
-            ) : (
-              <>
+            <>
                 {isArchiveCategory || isProjectStatusGroup || isProjectStatus ? (
                   <label className="space-y-2">
                     <span className="block text-[13px] font-[700] text-[#2b352d]">
@@ -1064,8 +1007,7 @@ function MasterDataDrawer({
                     ))}
                   </div>
                 </div>
-              </>
-            )}
+            </>
 
             <div className="space-y-3">
               <span className="block text-[13px] font-[700] text-[#2b352d]">Status</span>
@@ -1125,7 +1067,6 @@ export function ProjectMasterDataWorkspace({
   tags,
   assetTags,
   archiveCategories,
-  currencies,
   summary,
   canManageItems,
   canDeleteItems,
@@ -1185,7 +1126,6 @@ export function ProjectMasterDataWorkspace({
       name: item.name,
       description: "description" in item ? item.description : "",
       color: "color" in item ? item.color : "",
-      code: "code" in item ? item.code : "",
       slug: "slug" in item ? item.slug : "",
       iconUrl: "iconUrl" in item ? item.iconUrl : "",
       iconKey: "iconKey" in item ? item.iconKey : "",
@@ -1249,15 +1189,7 @@ export function ProjectMasterDataWorkspace({
       nextFieldErrors.name = "Name is required.";
     }
 
-    if (activeTab === "currencies") {
-      const normalizedCode = form.code.trim().toUpperCase();
-
-      if (!normalizedCode) {
-        nextFieldErrors.code = "Currency code is required.";
-      } else if (!/^[A-Z]{3}$/.test(normalizedCode)) {
-        nextFieldErrors.code = "Currency code must be 3 uppercase letters.";
-      }
-    } else if (
+    if (
       activeTab === "archiveCategories" ||
       activeTab === "projectStatusGroups" ||
       activeTab === "projectStatuses"
@@ -1290,7 +1222,6 @@ export function ProjectMasterDataWorkspace({
     if (
       nextFieldErrors.name ||
       nextFieldErrors.description ||
-      nextFieldErrors.code ||
       nextFieldErrors.slug ||
       nextFieldErrors.groupId ||
       nextFieldErrors.sortOrder
@@ -1357,32 +1288,23 @@ export function ProjectMasterDataWorkspace({
                     color: form.color,
                     isActive: form.isActive,
                   })
-                : activeTab === "archiveCategories"
-                  ? await saveArchiveCategoryAction({
-                      id: form.id,
-                      name: normalizedName,
-                      description: form.description,
-                      color: form.color,
-                      slug: normalizeSlug(form.slug || normalizedName),
-                      iconUrl: archiveCategoryIconUrl,
-                      iconKey: form.iconKey,
-                      parentId: form.parentId || null,
-                      sortOrder: Number(form.sortOrder || "0"),
-                      isActive: form.isActive,
-                    })
-                  : await saveProjectCurrencyAction({
-                      id: form.id,
-                      name: normalizedName,
-                      code: form.code.trim().toUpperCase(),
-                      isActive: form.isActive,
-                    });
+                : await saveArchiveCategoryAction({
+                    id: form.id,
+                    name: normalizedName,
+                    description: form.description,
+                    color: form.color,
+                    slug: normalizeSlug(form.slug || normalizedName),
+                    iconUrl: archiveCategoryIconUrl,
+                    iconKey: form.iconKey,
+                    parentId: form.parentId || null,
+                    sortOrder: Number(form.sortOrder || "0"),
+                    isActive: form.isActive,
+                  });
 
         if (result.error) {
           setError(result.error);
           showErrorToast(
-          activeTab === "currencies"
-            ? "Unable to save currency."
-            : activeTab === "projectStatuses"
+          activeTab === "projectStatuses"
               ? "Unable to save project status."
             : activeTab === "projectStatusGroups"
               ? "Unable to save project status group."
@@ -1403,11 +1325,7 @@ export function ProjectMasterDataWorkspace({
         setSelectedIconPreviewSrc("");
         setIconUploadError(undefined);
         showSuccessToast(
-          activeTab === "currencies"
-            ? dialogMode === "add"
-              ? "Currency added successfully."
-              : "Currency updated successfully."
-            : activeTab === "projectStatuses"
+          activeTab === "projectStatuses"
               ? dialogMode === "add"
                 ? "Project status added successfully."
                 : "Project status updated successfully."
@@ -1485,9 +1403,7 @@ export function ProjectMasterDataWorkspace({
                 ? await deleteProjectStatusAction(deleteTarget.item.id)
               : deleteTarget.tab === "assetTags"
                 ? await deleteAssetTagAction(deleteTarget.item.id)
-                : deleteTarget.tab === "archiveCategories"
-                  ? await deleteArchiveCategoryAction(deleteTarget.item.id)
-                  : await deleteProjectCurrencyAction(deleteTarget.item.id);
+                : await deleteArchiveCategoryAction(deleteTarget.item.id);
 
         if (result.error) {
           setDeleteError(result.error);
@@ -1496,9 +1412,7 @@ export function ProjectMasterDataWorkspace({
         }
 
         showSuccessToast(
-          deleteTarget.tab === "currencies"
-            ? "Currency deleted successfully."
-            : deleteTarget.tab === "projectStatusGroups"
+          deleteTarget.tab === "projectStatusGroups"
               ? "Project status group deleted successfully."
             : deleteTarget.tab === "projectStatuses"
               ? "Project status deleted successfully."
@@ -1533,7 +1447,7 @@ export function ProjectMasterDataWorkspace({
             Project Master Data
           </h1>
           <p className="mt-3 max-w-[720px] text-[16px] leading-7 text-[#6f776f]">
-            Manage reusable project categories, project statuses, project tags, asset tags, archive categories, and currencies.
+            Manage reusable project categories, project statuses, project tags, asset tags, and archive categories.
           </p>
           <div className="mt-5">
             <Button asChild variant="outline">
@@ -1615,18 +1529,6 @@ export function ProjectMasterDataWorkspace({
             subtitle="Visible in archive flows"
             icon={Archive}
           />
-          <SummaryCard
-            title="Total Currencies"
-            value={summary.totalCurrencies}
-            subtitle="Saved values"
-            icon={BadgeDollarSign}
-          />
-          <SummaryCard
-            title="Active Currencies"
-            value={summary.activeCurrencies}
-            subtitle="Visible in project budgets"
-            icon={BadgeDollarSign}
-          />
         </div>
 
         {error && !drawerOpen ? (
@@ -1659,9 +1561,6 @@ export function ProjectMasterDataWorkspace({
               </TabsTrigger>
               <TabsTrigger value="archiveCategories" className="min-w-[160px] py-3 text-[15px]">
                 Archive Categories
-              </TabsTrigger>
-              <TabsTrigger value="currencies" className="min-w-[140px] py-3 text-[15px]">
-                Currencies
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1744,18 +1643,6 @@ export function ProjectMasterDataWorkspace({
             />
           </TabsContent>
 
-          <TabsContent value="currencies">
-            <MasterDataTable
-              type="currencies"
-              items={currencies}
-              onAdd={() => openAddDrawer("currencies")}
-              onEdit={(item) => openEditDrawer("currencies", item)}
-              onDelete={(item) => handleDelete("currencies", item)}
-              canManage={canManageItems}
-              canDelete={canDeleteItems}
-              pending={isPending}
-            />
-          </TabsContent>
         </Tabs>
       </section>
 
@@ -1821,11 +1708,9 @@ export function ProjectMasterDataWorkspace({
               ? "Delete Project Status"
             : deleteTarget?.tab === "tags"
               ? "Delete Tag"
-              : deleteTarget?.tab === "assetTags"
-                ? "Delete Asset Tag"
-                : deleteTarget?.tab === "archiveCategories"
-                  ? "Delete Archive Category"
-                  : "Delete Currency"
+            : deleteTarget?.tab === "assetTags"
+              ? "Delete Asset Tag"
+              : "Delete Archive Category"
         }
         description={
           deleteTarget

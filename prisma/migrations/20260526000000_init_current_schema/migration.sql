@@ -304,19 +304,6 @@ CREATE TABLE "ManualLibraryAssetTagAssignment" (
     CONSTRAINT "ManualLibraryAssetTagAssignment_pkey" PRIMARY KEY ("assetId","tagId")
 );
 
--- CreateTable
-CREATE TABLE "ProjectCurrency" (
-    "id" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "code" TEXT NOT NULL,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "ProjectCurrency_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "ProjectCollaborator" (
     "projectId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -802,13 +789,6 @@ CREATE INDEX "ManualArchiveFileAssetTagAssignment_tagId_idx" ON "ManualArchiveFi
 -- CreateIndex
 CREATE INDEX "ManualLibraryAssetTagAssignment_tagId_idx" ON "ManualLibraryAssetTagAssignment"("tagId");
 
--- CreateIndex
-CREATE UNIQUE INDEX "ProjectCurrency_code_key" ON "ProjectCurrency"("code");
-
--- CreateIndex
-CREATE UNIQUE INDEX "ProjectCurrency_name_key" ON "ProjectCurrency"("name");
-
--- CreateIndex
 CREATE INDEX "ProjectCollaborator_userId_idx" ON "ProjectCollaborator"("userId");
 
 -- CreateIndex
@@ -1305,15 +1285,6 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId"
 
 -- AddForeignKey
 ALTER TABLE "CalendarEvent" ADD CONSTRAINT "CalendarEvent_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-INSERT INTO "ProjectCurrency" ("id", "name", "code", "isActive", "createdAt", "updatedAt")
-VALUES
-  ('currency_aed', 'UAE Dirham', 'AED', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('currency_usd', 'US Dollar', 'USD', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('currency_eur', 'Euro', 'EUR', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('currency_inr', 'Indian Rupee', 'INR', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('currency_gbp', 'British Pound', 'GBP', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-ON CONFLICT ("code") DO NOTHING;
 
 INSERT INTO "ArchiveCategory" ("id", "name", "slug", "iconKey", "sortOrder", "isActive", "isSystem", "createdAt", "updatedAt")
 VALUES
