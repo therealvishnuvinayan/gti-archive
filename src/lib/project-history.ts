@@ -652,7 +652,6 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
       select: {
         id: true,
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -700,7 +699,6 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
 function isMainProjectExecutorUser(
   project: {
     createdById?: string | null;
-    executorUserId?: string | null;
     executors?: Array<{ userId: string; role: ProjectExecutorRole }>;
   },
   userId: string,
@@ -708,7 +706,6 @@ function isMainProjectExecutorUser(
   return isMainProjectExecutor(
     { id: userId },
     {
-      executorUserId: project.executorUserId ?? null,
       executors: project.executors,
     },
   );
@@ -1229,7 +1226,6 @@ export async function createStageComment(
         project: {
           select: {
             createdById: true,
-            executorUserId: true,
             executors: {
               select: {
                 userId: true,
@@ -1430,7 +1426,6 @@ export async function prepareStageCommentUploads(
         project: {
           select: {
             createdById: true,
-            executorUserId: true,
             executors: {
               select: {
                 userId: true,
@@ -1770,7 +1765,6 @@ export async function cancelStageRevisionSubmission(
         project: {
           select: {
             createdById: true,
-            executorUserId: true,
             executors: {
               select: {
                 userId: true,
@@ -2092,7 +2086,6 @@ export async function reviewStageSubmission(
       user,
       {
         createdById: attachment.project.createdById,
-        executorUserId: null,
       },
       "stage.reviewSubmission",
     )
@@ -2188,7 +2181,6 @@ export async function reviewProjectRevision(
     user,
     {
       createdById: revision.project.createdById,
-      executorUserId: null,
     },
     input.status === "APPROVED"
       ? "stage.markSubmissionComplete"
@@ -2444,7 +2436,6 @@ export async function requestStageInvoice(
             id: true,
             name: true,
             createdById: true,
-            executorUserId: true,
             executionType: true,
             status: {
               select: projectStatusSelect,
@@ -2664,7 +2655,6 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               createdById: true,
-              executorUserId: true,
               executors: {
                 select: {
                   userId: true,
@@ -2750,7 +2740,6 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               createdById: true,
-              executorUserId: true,
               executors: {
                 select: {
                   userId: true,
@@ -2843,7 +2832,6 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               createdById: true,
-              executorUserId: true,
               executors: {
                 select: {
                   userId: true,
@@ -2919,7 +2907,6 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               createdById: true,
-              executorUserId: true,
               executors: {
                 select: {
                   userId: true,
@@ -3117,7 +3104,6 @@ export async function completeAttachmentUpload(
         project: {
           select: {
             createdById: true,
-            executorUserId: true,
             executors: {
               select: {
                 userId: true,

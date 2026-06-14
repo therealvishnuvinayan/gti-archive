@@ -2126,20 +2126,16 @@ export function ProjectChatWorkspace({
   const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
   const isProjectExecutor = useMemo(
     () =>
-      project.executors.length > 0
-        ? project.executors.some((executor) => executor.id === currentUserId)
-        : project.executorUserId === currentUserId,
-    [currentUserId, project.executorUserId, project.executors],
+      project.executors.some((executor) => executor.id === currentUserId),
+    [currentUserId, project.executors],
   );
   const isMainProjectExecutor = useMemo(
     () =>
-      project.executors.length > 0
-        ? project.executors.some(
-            (executor) =>
-              executor.id === currentUserId && executor.role === "MAIN_EXECUTOR",
-          )
-        : project.executorUserId === currentUserId,
-    [currentUserId, project.executorUserId, project.executors],
+      project.executors.some(
+        (executor) =>
+          executor.id === currentUserId && executor.role === "MAIN_EXECUTOR",
+      ),
+    [currentUserId, project.executors],
   );
   const canSubmitWorkAsMainExecutor = isMainProjectExecutor && !isProjectOwner;
   const stageInvoiceRequired = Boolean(activeStage?.invoiceRequired);

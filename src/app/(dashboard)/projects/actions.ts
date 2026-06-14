@@ -99,7 +99,12 @@ export async function toggleProjectPinAction(projectId: string) {
     where: { id: projectId },
     select: {
       createdById: true,
-      executorUserId: true,
+      executors: {
+        select: {
+          userId: true,
+          role: true,
+        },
+      },
       isPinned: true,
       collaborators: {
         select: {

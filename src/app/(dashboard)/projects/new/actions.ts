@@ -178,8 +178,6 @@ function getEndOfDay(date: Date) {
 function parseProjectFormData(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
-  const executorName = String(formData.get("executorName") ?? "").trim();
-  const executorUserId = String(formData.get("executorUserId") ?? "").trim();
   const tags = formData
     .getAll("tags")
     .map((value) => String(value).trim())
@@ -244,8 +242,6 @@ function parseProjectFormData(formData: FormData) {
   return {
     name,
     category,
-    executorName,
-    executorUserId,
     tags,
     priorityInput,
     description,
@@ -371,13 +367,6 @@ function normalizeProjectExecutorAssignments(
     });
   });
 
-  if (assignmentMap.size === 0 && parsed.executorUserId) {
-    assignmentMap.set(parsed.executorUserId, {
-      userId: parsed.executorUserId,
-      role: ProjectExecutorRole.MAIN_EXECUTOR,
-    });
-  }
-
   const assignments = [...assignmentMap.values()];
   const hasMainExecutor = assignments.some(
     (assignment) => assignment.role === ProjectExecutorRole.MAIN_EXECUTOR,
@@ -502,7 +491,7 @@ function validateProjectFormData(
   if (!parsed.name) fieldErrors.name = "Project name is required.";
   if (!parsed.category) fieldErrors.category = "Project category is required.";
   if ("error" in executorValidation) {
-    fieldErrors.executorUserId = executorValidation.error;
+    fieldErrors.executors = executorValidation.error;
   }
   if (!parsed.description) fieldErrors.description = "Project brief is required.";
   if (!parsed.executionTypeInput) {
@@ -804,7 +793,7 @@ async function resolveProjectExecutors(
 ) {
   const normalizedExecutorAssignments = executorAssignments ?? [];
   const executorIds = normalizedExecutorAssignments.map((assignment) => assignment.userId);
-  const executorUsers = executorIds.length
+  const assignmentUsers = executorIds.length
     ? await prisma.user.findMany({
         where: {
           id: {
@@ -819,26 +808,26 @@ async function resolveProjectExecutors(
         },
       })
     : [];
-  const executorUserMap = new Map(
-    executorUsers.map((executorUser) => [executorUser.id, executorUser] as const),
+  const assignmentUserMap = new Map(
+    assignmentUsers.map((assignmentUser) => [assignmentUser.id, assignmentUser] as const),
   );
 
-  if (executorUsers.length !== executorIds.length) {
+  if (assignmentUsers.length !== executorIds.length) {
     return null;
   }
 
   const executors = normalizedExecutorAssignments.map<ResolvedProjectExecutor | null>((assignment) => {
-    const executorUser = executorUserMap.get(assignment.userId);
+    const assignmentUser = assignmentUserMap.get(assignment.userId);
 
-    if (!executorUser) {
+    if (!assignmentUser) {
       return null;
     }
 
     return {
-      userId: executorUser.id,
-      name: executorUser.name?.trim() || executorUser.email,
+      userId: assignmentUser.id,
+      name: assignmentUser.name?.trim() || assignmentUser.email,
       role: assignment.role,
-      collaboratorType: executorUser.collaboratorType,
+      collaboratorType: assignmentUser.collaboratorType,
     };
   });
 
@@ -849,19 +838,12 @@ async function resolveProjectExecutors(
   const resolvedExecutors = executors.filter(
     (executor): executor is ResolvedProjectExecutor => executor !== null,
   );
-  const legacyExecutor =
-    resolvedExecutors.find(
-      (executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
-    ) ?? resolvedExecutors[0];
-
-  if (!legacyExecutor) {
+  if (resolvedExecutors.length === 0) {
     return null;
   }
 
   return {
     executors: resolvedExecutors,
-    executorUserId: legacyExecutor.userId,
-    executorName: legacyExecutor.name,
   };
 }
 
@@ -963,7 +945,7 @@ export async function createProjectAction(
   if (!resolvedExecutors) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { executorUserId: "Choose valid project executors." },
+      fieldErrors: { executors: "Choose valid project executors." },
     };
   }
 
@@ -1023,8 +1005,6 @@ export async function createProjectAction(
         data: {
           name,
           category,
-          executorName: resolvedExecutors.executorName,
-          executorUserId: resolvedExecutors.executorUserId,
           description,
           executionType,
           budget,
@@ -1200,7 +1180,6 @@ export async function updateProjectAction(
         },
       },
       createdById: true,
-      executorUserId: true,
       executors: {
         select: {
           userId: true,
@@ -1345,7 +1324,7 @@ export async function updateProjectAction(
   if (!resolvedExecutors) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { executorUserId: "Choose valid project executors." },
+      fieldErrors: { executors: "Choose valid project executors." },
     };
   }
 
@@ -1442,8 +1421,6 @@ export async function updateProjectAction(
         data: {
           name,
           category,
-          executorName: resolvedExecutors.executorName,
-          executorUserId: resolvedExecutors.executorUserId,
           description,
           executionType,
           budget: canUpdateBudget ? budget : existingProject.budget,
@@ -1684,16 +1661,8 @@ export async function updateProjectAction(
     notifyProjectAssignmentChanges({
       projectId,
       actorId: user.id,
-      previousExecutorUserId: existingProject.executorUserId,
-      nextExecutorUserId: resolvedExecutors.executorUserId,
-      previousExecutorUserIds: [
-        existingProject.executorUserId,
-        ...existingProject.executors.map((executor) => executor.userId),
-      ].filter(Boolean) as string[],
-      nextExecutorUserIds: [
-        resolvedExecutors.executorUserId,
-        ...resolvedExecutors.executors.map((executor) => executor.userId),
-      ].filter(Boolean) as string[],
+      previousExecutorUserIds: existingProject.executors.map((executor) => executor.userId),
+      nextExecutorUserIds: resolvedExecutors.executors.map((executor) => executor.userId),
       addedCollaboratorIds,
       removedCollaboratorIds,
     }),
@@ -1725,7 +1694,12 @@ export async function deleteProjectAction(projectId: string) {
         },
       },
       createdById: true,
-      executorUserId: true,
+      executors: {
+        select: {
+          userId: true,
+          role: true,
+        },
+      },
       collaborators: {
         select: {
           userId: true,

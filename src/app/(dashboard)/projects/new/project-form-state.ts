@@ -4,8 +4,7 @@ import type { ProjectExecutionType, ProjectExecutorRole } from "@prisma/client";
 export type ProjectFormFieldErrors = {
   name?: string;
   category?: string;
-  executorName?: string;
-  executorUserId?: string;
+  executors?: string;
   priority?: string;
   tag?: string;
   description?: string;
@@ -84,8 +83,6 @@ export type ProjectEditorInitialValues = {
   id: string;
   name: string;
   category: string;
-  executorName: string;
-  executorUserId?: string | null;
   executors: ProjectEditorInitialExecutor[];
   tags: string[];
   description: string;

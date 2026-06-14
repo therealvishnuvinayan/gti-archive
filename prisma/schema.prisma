@@ -210,7 +210,6 @@ model User {
   fileFavorites                       FileFavorite[]
   activityLogs                        ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
-  assignedProjects                    Project[]                            @relation("ProjectExecutor")
   projectExecutorAssignments          ProjectExecutor[]                    @relation("ProjectExecutorUser")
   addedProjectExecutorAssignments     ProjectExecutor[]                    @relation("ProjectExecutorAddedBy")
   startedProjectStages                ProjectStage[]                       @relation("ProjectStageStarter")
@@ -299,9 +298,6 @@ model Project {
   id                  String                      @id @default(cuid())
   name                String
   category            String
-  executorName        String?
-  executorUserId      String?
-  executorUser        User?                       @relation("ProjectExecutor", fields: [executorUserId], references: [id], onDelete: SetNull)
   description         String
   executionType       ProjectExecutionType        @default(EXTERNAL)
   budget              Int
@@ -339,7 +335,6 @@ model Project {
   @@index([isPinned])
   @@index([createdAt])
   @@index([createdById])
-  @@index([executorUserId])
 }
 
 model ProjectCategory {

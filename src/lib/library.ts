@@ -101,7 +101,6 @@ type RawLibraryAttachment = {
       };
     }>;
     createdById: string;
-    executorUserId: string | null;
     executors: Array<{
       userId: string;
     }>;
@@ -333,9 +332,9 @@ function isAttachmentVisibleToUser(
     return true;
   }
 
-  const isExecutor =
-    attachment.project.executorUserId === user.id ||
-    attachment.project.executors.some((executor) => executor.userId === user.id);
+  const isExecutor = attachment.project.executors.some(
+    (executor) => executor.userId === user.id,
+  );
   const collaborator = attachment.project.collaborators.find(
     (item) => item.userId === user.id,
   );
@@ -552,7 +551,11 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
                 },
                 {
                   project: {
-                    executorUserId: user.id,
+                    executors: {
+                      some: {
+                        userId: user.id,
+                      },
+                    },
                   },
                 },
                 {
@@ -606,7 +609,6 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
               },
             },
             createdById: true,
-            executorUserId: true,
             executors: {
               select: {
                 userId: true,

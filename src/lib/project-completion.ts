@@ -258,7 +258,6 @@ function isProjectOwner(
 
 type ProjectCompletionPermissionProject = {
   createdById: string;
-  executorUserId: string | null;
   executors: Array<{
     userId: string;
     role: ProjectExecutorRole;
@@ -422,10 +421,6 @@ function mapContactOptions(project: ProjectCompletionProjectRecord) {
     addContact(executor.user, getProjectCompletionExecutorRoleLabel(executor.role));
   }
 
-  if (project.executorUser) {
-    addContact(project.executorUser, "Main Executor");
-  }
-
   const sortedCollaborators = [...project.collaborators].sort((left, right) =>
     getUserDisplayName(left.user).localeCompare(
       getUserDisplayName(right.user),
@@ -505,7 +500,6 @@ async function getProjectCompletionProject(projectId: string) {
           },
         },
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -522,13 +516,6 @@ async function getProjectCompletionProject(projectId: string) {
         archivedAt: true,
         completedAt: true,
         createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        executorUser: {
           select: {
             id: true,
             name: true,
@@ -711,7 +698,6 @@ async function ensureProjectCompletionDocumentAccess(
         project: {
           select: {
             createdById: true,
-            executorUserId: true,
             executors: {
               select: {
                 userId: true,
@@ -1526,7 +1512,6 @@ export async function finalizeProjectCompletionDocumentUpload(
         select: {
           id: true,
           createdById: true,
-          executorUserId: true,
           executors: {
             select: {
               userId: true,

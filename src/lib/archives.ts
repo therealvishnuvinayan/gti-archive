@@ -359,7 +359,6 @@ async function getProjectArchiveBase(projectId: string) {
           },
         },
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,

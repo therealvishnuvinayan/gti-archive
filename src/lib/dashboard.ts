@@ -34,11 +34,6 @@ type DashboardCollaborationProjectRecord = {
     name: string | null;
     email: string;
   };
-  executorUser: {
-    id: string;
-    name: string | null;
-    email: string;
-  } | null;
   executors: Array<{
     role: ProjectExecutorRole;
     user: {
@@ -558,34 +553,26 @@ function buildCollaborationItems(
   const items: DashboardCollaboratorRecord[] = [];
 
   for (const project of activeProjects) {
+    const executorPeople = project.executors
+      .map((assignment) => ({
+        id: assignment.user.id,
+        name: getDisplayName(assignment.user),
+        task: getExecutorRoleLabel(assignment.role),
+      }))
+      .sort((left, right) => {
+        if (left.task !== right.task) {
+          return left.task === "Main Executor" ? -1 : 1;
+        }
+
+        return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      });
     const people = [
       {
         id: project.createdBy.id,
         name: getDisplayName(project.createdBy),
         task: "Project Owner",
       },
-      ...(project.executorUser
-        ? [
-            {
-              id: project.executorUser.id,
-              name: getDisplayName(project.executorUser),
-              task: "Main Executor",
-            },
-          ]
-        : []),
-      ...project.executors
-        .map((assignment) => ({
-          id: assignment.user.id,
-          name: getDisplayName(assignment.user),
-          task: getExecutorRoleLabel(assignment.role),
-        }))
-        .sort((left, right) => {
-          if (left.task !== right.task) {
-            return left.task === "Main Executor" ? -1 : 1;
-          }
-
-          return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
-        }),
+      ...executorPeople,
       ...project.collaborators.map((assignment) => ({
         id: assignment.user.id,
         name: getDisplayName(assignment.user),
@@ -697,13 +684,6 @@ export async function getDashboardCollaboration(
           },
         },
         createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        executorUser: {
           select: {
             id: true,
             name: true,

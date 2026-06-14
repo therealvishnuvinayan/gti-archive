@@ -116,7 +116,6 @@ type ProjectWithCreator = Project & {
   tags?: Array<{
     tag: Pick<ProjectTag, "id" | "name" | "color">;
   }>;
-  executorUser?: Pick<User, "id" | "name" | "email" | "collaboratorType"> | null;
   executors?: Array<
     ProjectExecutor & {
       user: Pick<
@@ -174,8 +173,7 @@ export type ProjectEditorRecord = {
   ownerId: string;
   name: string;
   category: string;
-  executorName: string;
-  executorUserId?: string | null;
+  executorDisplayName: string;
   executors: ProjectExecutorRecord[];
   tags: string[];
   priority: ProjectPriorityValue;
@@ -355,12 +353,11 @@ export type ProjectCompareNote = {
 export type ProjectFlowRecord = {
   id: string;
   ownerId: string;
-  executorUserId?: string | null;
   executors: ProjectExecutorRecord[];
   canViewBudget: boolean;
   title: string;
   category: string;
-  executorName: string;
+  executorDisplayName: string;
   description: string;
   executionType: ProjectExecutionType;
   executionTypeLabel: string;
@@ -641,7 +638,7 @@ function mapProjectExecutorAssignmentToRecord(
 function getProjectExecutorRecords(
   project: Pick<
     ProjectWithCreator,
-    "executorName" | "executorUserId" | "executorUser" | "executors" | "collaborators"
+    "executors" | "collaborators"
   >,
 ) {
   const visibilityStateByUserId = new Map(
@@ -659,31 +656,7 @@ function getProjectExecutorRecords(
     )
     .sort(compareProjectExecutorRecords);
 
-  if (mappedExecutors.length > 0) {
-    return mappedExecutors;
-  }
-
-  if (!project.executorUserId) {
-    return [];
-  }
-
-  return [
-    {
-      id: project.executorUserId,
-      name:
-        project.executorUser?.name?.trim() ||
-        project.executorUser?.email ||
-        project.executorName?.trim() ||
-        "Main Executor",
-      email: project.executorUser?.email,
-      role: ProjectExecutorRole.MAIN_EXECUTOR,
-      roleLabel: formatProjectExecutorRole(ProjectExecutorRole.MAIN_EXECUTOR),
-      group: project.executorUser
-        ? mapCollaboratorTypeToGroup(project.executorUser.collaboratorType)
-        : "internal",
-      chatVisibilityPaused: visibilityStateByUserId.get(project.executorUserId) ?? false,
-    },
-  ];
+  return mappedExecutors;
 }
 
 function getProjectExecutorDisplayName(executors: ProjectExecutorRecord[]) {
@@ -799,7 +772,7 @@ function buildProjectStatusWhere(statusFilter?: string): Prisma.ProjectWhereInpu
 }
 
 function canAccessProjectRecord(
-  project: Pick<Project, "createdById" | "executorUserId"> & {
+  project: Pick<Project, "createdById"> & {
     executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
     collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
   },
@@ -809,7 +782,7 @@ function canAccessProjectRecord(
 }
 
 function canViewBriefContent(
-  project: Pick<Project, "createdById" | "executorUserId"> & {
+  project: Pick<Project, "createdById"> & {
     executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
   },
   currentUser: ProjectAccessUser,
@@ -1196,12 +1169,11 @@ function mapProjectToFlow(
   return {
     id: project.id,
     ownerId: project.createdById,
-    executorUserId: project.executorUserId ?? null,
     executors: executorRecords,
     canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
-    executorName: executorDisplayName,
+    executorDisplayName,
     description: allowBriefView ? project.description : "",
     executionType: project.executionType,
     executionTypeLabel: formatProjectExecutionTypeLabel(project.executionType),
@@ -1319,8 +1291,7 @@ function mapProjectToEditor(
     ownerId: project.createdById,
     name: project.name,
     category: project.category,
-    executorName: executorDisplayName,
-    executorUserId: project.executorUserId ?? null,
+    executorDisplayName,
     executors: executorRecords,
     tags,
     priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
@@ -1555,7 +1526,6 @@ async function assertProjectCollaboratorManagementAccess(
       select: {
         id: true,
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -1613,16 +1583,6 @@ export async function getProjectExecutors(projectId: string) {
         id: projectId,
       },
       select: {
-        executorName: true,
-        executorUserId: true,
-        executorUser: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            collaboratorType: true,
-          },
-        },
         executors: {
           include: {
             user: {
@@ -1649,7 +1609,6 @@ export async function requireMainExecutor(projectId: string, userId: string) {
         id: projectId,
       },
       select: {
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -1736,9 +1695,9 @@ export async function setProjectCollaboratorChatVisibility(
     throw new Error("Project owner chat visibility cannot be changed.");
   }
 
-  const isExecutorTarget =
-    project.executorUserId === input.collaboratorId ||
-    project.executors.some((executor) => executor.userId === input.collaboratorId);
+  const isExecutorTarget = project.executors.some(
+    (executor) => executor.userId === input.collaboratorId,
+  );
 
   let assignment = await withPrismaRetry(() =>
     prisma.projectCollaborator.findUnique({
@@ -1930,32 +1889,6 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
         },
         {
           createdBy: {
-            is: {
-              email: {
-                contains: query,
-                mode: "insensitive",
-              },
-            },
-          },
-        },
-        {
-          executorName: {
-            contains: query,
-            mode: "insensitive",
-          },
-        },
-        {
-          executorUser: {
-            is: {
-              name: {
-                contains: query,
-                mode: "insensitive",
-              },
-            },
-          },
-        },
-        {
-          executorUser: {
             is: {
               email: {
                 contains: query,
@@ -2265,14 +2198,6 @@ export async function getProjectsList(
                 email: true,
               },
             },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
-              },
-            },
             stages: true,
             attachments: {
               where: {
@@ -2358,14 +2283,6 @@ export async function getProjectById(
               select: {
                 name: true,
                 email: true,
-              },
-            },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
               },
             },
             executors: {
@@ -2518,14 +2435,6 @@ export async function getProjectShellById(
                 email: true,
               },
             },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
-              },
-            },
             executors: {
               include: {
                 user: {
@@ -2634,14 +2543,6 @@ export async function getProjectEditorById(
               select: {
                 name: true,
                 email: true,
-              },
-            },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
               },
             },
             executors: {
@@ -2771,7 +2672,6 @@ export async function getProjectEditAccessById(
           },
         },
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -2807,7 +2707,6 @@ export async function getProjectRouteAvailability(
       where: { id },
       select: {
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,

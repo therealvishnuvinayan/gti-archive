@@ -943,51 +943,7 @@ export function CreateProjectWorkspace({
     initialValues?.collaborators ?? [],
   );
   const [projectExecutors, setProjectExecutors] = useState<ProjectEditorInitialExecutor[]>(
-    () => {
-      if (initialValues?.executors.length) {
-        return initialValues.executors;
-      }
-
-      const fallbackExecutor = availableCollaborators.find(
-        (collaborator) =>
-          collaborator.id === initialValues?.executorUserId ||
-          ((!initialValues?.executorUserId && initialValues?.executorName
-            ? collaborator.name.trim().toLowerCase() ===
-                initialValues.executorName.trim().toLowerCase() ||
-              collaborator.email.trim().toLowerCase() ===
-                initialValues.executorName.trim().toLowerCase()
-            : false)),
-      );
-
-      if (fallbackExecutor) {
-        return [
-          buildProjectExecutorRecord(
-            {
-              id: fallbackExecutor.id,
-              name: fallbackExecutor.name,
-              email: fallbackExecutor.email,
-              type: fallbackExecutor.type,
-            },
-            "MAIN_EXECUTOR",
-          ),
-        ];
-      }
-
-      if (initialValues?.executorUserId && initialValues.executorName) {
-        return [
-          {
-            id: initialValues.executorUserId,
-            name: initialValues.executorName,
-            role: "MAIN_EXECUTOR",
-            roleLabel: formatProjectExecutorRoleLabel("MAIN_EXECUTOR"),
-            group: "internal",
-            chatVisibilityPaused: false,
-          },
-        ];
-      }
-
-      return [];
-    },
+    () => initialValues?.executors ?? [],
   );
   const [projectAttachments, setProjectAttachments] = useState<ProjectEditorInitialAttachment[]>(
     initialValues?.attachments ?? [],
@@ -1199,8 +1155,6 @@ export function CreateProjectWorkspace({
       null,
     [projectExecutors],
   );
-  const projectExecutor = primaryProjectExecutor?.name ?? "";
-  const projectExecutorUserId = primaryProjectExecutor?.id ?? "";
   const executorOverviewLabel = useMemo(() => {
     if (!primaryProjectExecutor) {
       return "—";
@@ -1465,8 +1419,7 @@ export function CreateProjectWorkspace({
           : item,
       );
     });
-    clearFieldError("executorUserId");
-    clearFieldError("executorName");
+    clearFieldError("executors");
   }
 
   function updateProjectExecutorRole(
@@ -1502,8 +1455,7 @@ export function CreateProjectWorkspace({
           : executor,
       );
     });
-    clearFieldError("executorUserId");
-    clearFieldError("executorName");
+    clearFieldError("executors");
   }
 
   function removeProjectExecutor(executor: ProjectEditorInitialExecutor) {
@@ -1523,8 +1475,7 @@ export function CreateProjectWorkspace({
       current.filter((item) => item.id !== executor.id),
     );
     setExecutorRemovalTarget(null);
-    clearFieldError("executorUserId");
-    clearFieldError("executorName");
+    clearFieldError("executors");
   }
 
   function toggleAssignedCollaborator(collaboratorId: string) {
@@ -1795,8 +1746,7 @@ export function CreateProjectWorkspace({
       setExecutorInviteOpen(false);
       setExecutorPickerOpen(false);
       setExecutorSearch("");
-      clearFieldError("executorUserId");
-      clearFieldError("executorName");
+      clearFieldError("executors");
       showSuccessToast("Executor invited.");
 
       if (result.warning) {
@@ -2539,8 +2489,6 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="startDate" value={startDate ? formatDateValue(startDate) : ""} />
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
       <input type="hidden" name="category" value={projectCategory} />
-      <input type="hidden" name="executorName" value={projectExecutor} />
-      <input type="hidden" name="executorUserId" value={projectExecutorUserId} />
       <input type="hidden" name="executionType" value={projectExecutionType} />
       {projectExecutors.map((executor) => (
         <div key={executor.id}>
@@ -3889,10 +3837,7 @@ export function CreateProjectWorkspace({
               </p>
             )}
             <FieldError
-              message={
-                getFieldError("executorUserId", fieldErrors.executorUserId) ||
-                getFieldError("executorName", fieldErrors.executorName)
-              }
+              message={getFieldError("executors", fieldErrors.executors)}
             />
           </CardContent>
         </Card>
