@@ -36,6 +36,7 @@ import {
   cancelStageRevisionSubmission,
   createStageComment,
   createStageRevision,
+  deleteStageComment,
   completeProjectStage,
   reviewProjectRevision,
   reviewStageSubmission,
@@ -66,6 +67,12 @@ type StageCommentInput = {
   body: string;
   allowEmptyBody?: boolean;
   mentionedUserIds?: string[];
+};
+
+type DeleteStageCommentInput = {
+  projectId: string;
+  stageId: string;
+  commentId: string;
 };
 
 type StageInvoiceRequestInput = {
@@ -237,6 +244,27 @@ export async function createStageCommentAction(input: StageCommentInput) {
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Unable to add the comment right now.",
+    };
+  }
+}
+
+export async function deleteStageCommentAction(input: DeleteStageCommentInput) {
+  const user = await requireUser();
+
+  try {
+    const result = await deleteStageComment(user, input);
+    revalidateProjectFlowAfterResponse();
+
+    return {
+      id: result.id,
+      deletedAt: result.deletedAt.toISOString(),
+      deletedByUserId: result.deletedByUserId,
+      displayText: result.displayText,
+    };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Unable to delete the message right now.",
     };
   }
 }

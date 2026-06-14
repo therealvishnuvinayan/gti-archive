@@ -65,6 +65,9 @@ import {
 } from "@/lib/upload-validation";
 import { validateActiveAssetTagIds } from "@/lib/asset-tags";
 
+const STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
+const DELETED_STAGE_CHAT_MESSAGE_TEXT = "This message was deleted";
+
 type AccessUser = Pick<
   User,
   "id" | "email" | "name" | "role" | "collaboratorType"
@@ -124,6 +127,8 @@ type StageCommentQueryRecord = {
   stageId: string;
   revisionId: string | null;
   body: string;
+  deletedAt: Date | null;
+  deletedByUserId: string | null;
   createdAt: Date;
   author: Pick<
     User,
@@ -484,11 +489,68 @@ function isInvoiceRequestedSystemBody(body: string) {
   return body.trim().toLowerCase().startsWith("invoice requested from ");
 }
 
+function isLegacyBriefContextBody(body: string) {
+  const normalizedBody = body.trim().toLowerCase();
+
+  return (
+    normalizedBody.startsWith("project brief:") &&
+    normalizedBody.includes("stage brief:")
+  );
+}
+
+function isSystemCommentBody(body: string) {
+  return (
+    isBriefAcceptedSystemBody(body) ||
+    Boolean(getRevisionRequestSystemDetails(body)) ||
+    isInvoiceUploadedSystemBody(body) ||
+    isInvoiceRequestedSystemBody(body) ||
+    isLegacyBriefContextBody(body)
+  );
+}
+
+function getStageChatDeleteExpiresAt(createdAt: Date | string | number) {
+  return new Date(toHistoryDate(createdAt).getTime() + STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS);
+}
+
+function isDeletableStageComment(
+  comment: {
+    body: string;
+    attachments: Array<{
+      assetType: AttachmentAssetType;
+    }>;
+  },
+) {
+  return (
+    !isSystemCommentBody(comment.body) &&
+    comment.attachments.every(
+      (attachment) => attachment.assetType === AttachmentAssetType.COMMENT_ATTACHMENT,
+    )
+  );
+}
+
 function mapCommentEntry(
   comment: StageCommentQueryRecord,
   submissionNumbers: ReadonlyMap<string, number>,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectChatEntry {
+  if (comment.deletedAt) {
+    return {
+      id: comment.id,
+      revisionId: comment.revisionId ?? undefined,
+      kind: "comment",
+      authorId: comment.author.id,
+      author: getDisplayName(comment.author),
+      authorAvatarSrc: getProfileAvatarSrc(comment.author),
+      role: getActorRole(comment.author),
+      body: DELETED_STAGE_CHAT_MESSAGE_TEXT,
+      createdAt: formatHistoryTimestamp(comment.createdAt),
+      deletedAt: comment.deletedAt.toISOString(),
+      deletedByUserId: comment.deletedByUserId,
+      mentions: [],
+      attachments: [],
+    };
+  }
+
   if (isBriefAcceptedSystemBody(comment.body)) {
     const actorName = getDisplayName(comment.author);
 
@@ -573,6 +635,9 @@ function mapCommentEntry(
     role: getActorRole(comment.author),
     body: comment.body,
     createdAt: formatHistoryTimestamp(comment.createdAt),
+    canDeleteUntil: isDeletableStageComment(comment)
+      ? getStageChatDeleteExpiresAt(comment.createdAt).toISOString()
+      : null,
     mentions: comment.mentions.map((mention) => ({
       userId: mention.mentionedUserId,
       name: getDisplayName(mention.mentionedUser),
@@ -1361,6 +1426,119 @@ export async function createStageComment(
       },
     }),
   );
+}
+
+export async function deleteStageComment(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    commentId: string;
+  },
+) {
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findFirst({
+      where: {
+        id: input.commentId,
+        projectId: input.projectId,
+        stageId: input.stageId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        stageId: true,
+        authorId: true,
+        body: true,
+        createdAt: true,
+        deletedAt: true,
+        deletedByUserId: true,
+        attachments: {
+          select: {
+            assetType: true,
+          },
+        },
+        project: {
+          select: {
+            createdById: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
+            status: {
+              select: projectStatusSelect,
+            },
+            archivedAt: true,
+            collaborators: {
+              where: {
+                userId: user.id,
+              },
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  if (!comment) {
+    throw new Error("Message not found.");
+  }
+
+  const project = assertProjectAccessFromContext(user, comment.project);
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "chat.view",
+    "You do not have permission to view project chat.",
+  );
+
+  if (comment.authorId !== user.id) {
+    throw new Error("You can only delete your own messages.");
+  }
+
+  if (comment.deletedAt) {
+    throw new Error("This message was already deleted.");
+  }
+
+  if (!isDeletableStageComment(comment)) {
+    throw new Error("This message cannot be deleted.");
+  }
+
+  if (Date.now() > getStageChatDeleteExpiresAt(comment.createdAt).getTime()) {
+    throw new Error("Messages can only be deleted within 5 minutes.");
+  }
+
+  const deletedAt = new Date();
+  const deletedComment = await withPrismaRetry(() =>
+    prisma.projectComment.update({
+      where: {
+        id: comment.id,
+      },
+      data: {
+        deletedAt,
+        deletedByUserId: user.id,
+      },
+      select: {
+        id: true,
+        deletedAt: true,
+        deletedByUserId: true,
+      },
+    }),
+  );
+
+  return {
+    id: deletedComment.id,
+    projectId: comment.projectId,
+    stageId: comment.stageId,
+    deletedAt: deletedComment.deletedAt ?? deletedAt,
+    deletedByUserId: deletedComment.deletedByUserId,
+    displayText: DELETED_STAGE_CHAT_MESSAGE_TEXT,
+  };
 }
 
 export async function prepareStageCommentUploads(

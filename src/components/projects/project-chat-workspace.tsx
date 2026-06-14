@@ -22,9 +22,11 @@ import {
   Loader2,
   Maximize2,
   Mic,
+  MoreVertical,
   Paperclip,
   Send,
   Square,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -35,6 +37,7 @@ import {
   completeProjectArchiveAction,
   createStageCommentAction,
   createStageRevisionAction,
+  deleteStageCommentAction,
   markSubmissionCompleteAction,
   markStageCompleteAction,
   prepareProjectCompletionAction,
@@ -71,6 +74,12 @@ import { StageTimeRemainingCard } from "@/components/projects/stage-time-remaini
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -138,7 +147,15 @@ type DisplayChatEntry = ProjectChatEntry & {
   serverEntryId?: string;
 };
 
+type DeletedMessageOverride = {
+  deletedAt: string;
+  deletedByUserId: string | null;
+  displayText: string;
+};
+
 const PROJECT_ASSET_INLINE_LIMIT = 4;
+const STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
+const DELETED_STAGE_CHAT_MESSAGE_TEXT = "This message was deleted";
 
 type MentionToken = {
   userId: string;
@@ -509,6 +526,10 @@ function waitForNextPaint() {
       window.requestAnimationFrame(() => resolve());
     });
   });
+}
+
+function getLocalDeleteExpiresAt(createdAtMs: number) {
+  return new Date(createdAtMs + STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS).toISOString();
 }
 
 function getArchiveFileNameError(
@@ -1803,6 +1824,14 @@ export function ProjectChatWorkspace({
   const [expandedMessageEditorOpen, setExpandedMessageEditorOpen] = useState(false);
   const [optimisticComments, setOptimisticComments] = useState<DisplayChatEntry[]>([]);
   const [confirmedComments, setConfirmedComments] = useState<DisplayChatEntry[]>([]);
+  const [deletedMessageOverrides, setDeletedMessageOverrides] = useState<
+    Record<string, DeletedMessageOverride>
+  >({});
+  const [deleteMessageTarget, setDeleteMessageTarget] =
+    useState<DisplayChatEntry | null>(null);
+  const [deleteMessageError, setDeleteMessageError] = useState<string | null>(null);
+  const [isDeletingMessage, setIsDeletingMessage] = useState(false);
+  const [deleteMenuNow, setDeleteMenuNow] = useState(() => Date.now());
   const [pendingRevisionReviewId, setPendingRevisionReviewId] = useState<string | null>(null);
   const [revisionReviewOverrides, setRevisionReviewOverrides] = useState<
     Record<
@@ -1909,6 +1938,14 @@ export function ProjectChatWorkspace({
     email: "",
     type: "GTI_INTERNAL_CLIENT",
   });
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setDeleteMenuNow(Date.now());
+    }, 15_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const input = draftInputRef.current;
@@ -2024,15 +2061,36 @@ export function ProjectChatWorkspace({
         (left, right) =>
           (left.localCreatedAtMs ?? 0) - (right.localCreatedAtMs ?? 0),
       );
-
-      return [
+      const combinedMessages: DisplayChatEntry[] = [
         ...messages.filter(
           (message) => !serverEntryIdsWithLocalOverrides.has(message.id),
         ),
         ...localMessages,
-      ].filter((message) => !isLegacyBriefContextMessage(message));
+      ];
+
+      return combinedMessages
+        .map((message) => {
+          const serverMessageId = message.serverEntryId ?? message.id;
+          const deletedOverride = deletedMessageOverrides[serverMessageId];
+
+          if (!deletedOverride) {
+            return message;
+          }
+
+          return {
+            ...message,
+            body: deletedOverride.displayText,
+            deletedAt: deletedOverride.deletedAt,
+            deletedByUserId: deletedOverride.deletedByUserId,
+            canDeleteUntil: null,
+            mentions: [],
+            attachments: [],
+          };
+        })
+        .filter((message) => !isLegacyBriefContextMessage(message));
     },
     [
+      deletedMessageOverrides,
       messages,
       serverEntryIdsWithLocalOverrides,
       visibleConfirmedComments,
@@ -2664,6 +2722,106 @@ export function ProjectChatWorkspace({
     startRefresh(() => {
       router.refresh();
     });
+  }
+
+  function resetDraftComposerHeight() {
+    const input = draftInputRef.current;
+
+    if (!input) {
+      return;
+    }
+
+    input.style.height = "auto";
+    input.style.overflowY = "hidden";
+  }
+
+  function getServerCommentId(message: DisplayChatEntry) {
+    return message.serverEntryId ?? (message.isOptimistic ? null : message.id);
+  }
+
+  function canDeleteMessage(message: DisplayChatEntry, isCurrentUserMessage: boolean) {
+    if (
+      message.kind !== "comment" ||
+      !isCurrentUserMessage ||
+      message.deletedAt ||
+      message.isOptimistic
+    ) {
+      return false;
+    }
+
+    if (!getServerCommentId(message) || !message.canDeleteUntil) {
+      return false;
+    }
+
+    const deleteUntilMs = Date.parse(message.canDeleteUntil);
+
+    return Number.isFinite(deleteUntilMs) && deleteMenuNow <= deleteUntilMs;
+  }
+
+  function openDeleteMessageDialog(message: DisplayChatEntry) {
+    setDeleteMessageTarget(message);
+    setDeleteMessageError(null);
+  }
+
+  async function handleConfirmDeleteMessage() {
+    const target = deleteMessageTarget;
+    const activeStageId = activeStage?.id;
+    const commentId = target ? getServerCommentId(target) : null;
+
+    if (!target || !commentId || !activeStageId) {
+      setDeleteMessageError("This message could not be resolved.");
+      return;
+    }
+
+    const deletedAt = new Date().toISOString();
+
+    setIsDeletingMessage(true);
+    setDeleteMessageError(null);
+    setDeletedMessageOverrides((current) => ({
+      ...current,
+      [commentId]: {
+        deletedAt,
+        deletedByUserId: currentUserId,
+        displayText: DELETED_STAGE_CHAT_MESSAGE_TEXT,
+      },
+    }));
+
+    try {
+      const result = await deleteStageCommentAction({
+        projectId: project.id,
+        stageId: activeStageId,
+        commentId,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      setDeletedMessageOverrides((current) => ({
+        ...current,
+        [commentId]: {
+          deletedAt: result.deletedAt,
+          deletedByUserId: result.deletedByUserId,
+          displayText: result.displayText,
+        },
+      }));
+      setDeleteMessageTarget(null);
+      showSuccessToast("Message deleted.");
+      refreshHistory();
+    } catch (error) {
+      setDeletedMessageOverrides((current) => {
+        const next = { ...current };
+        delete next[commentId];
+        return next;
+      });
+
+      const message =
+        error instanceof Error ? error.message : "Unable to delete the message right now.";
+      setDeleteMessageError(message);
+      showErrorToast("Unable to delete message.", message);
+    } finally {
+      setIsDeletingMessage(false);
+    }
   }
 
   function resetProjectCompletionFlow() {
@@ -3538,8 +3696,17 @@ export function ProjectChatWorkspace({
         setPendingCommentFiles([]);
         setIsSendingComment(false);
       });
+      resetDraftComposerHeight();
     } else {
-      setOptimisticComments((current) => [...current, optimisticComment]);
+      flushSync(() => {
+        setOptimisticComments((current) => [...current, optimisticComment]);
+        setDraft("");
+        setReplyingToRevision(null);
+        setSelectedMentionTokens([]);
+        setDraftSelectionStart(0);
+        setPendingCommentFiles([]);
+      });
+      resetDraftComposerHeight();
     }
 
     try {
@@ -3776,6 +3943,7 @@ export function ProjectChatWorkspace({
                 body: body || "Attachment uploaded.",
                 mentions: uploadMentionTokens,
                 createdAt: "Just now",
+                canDeleteUntil: getLocalDeleteExpiresAt(localCreatedAtMs),
                 localCreatedAtMs,
                 attachments: successfulUploads.map((result) => ({
                   id: result.attachmentId,
@@ -3852,12 +4020,6 @@ export function ProjectChatWorkspace({
         serverEntryId: commentResult.commentId,
       }));
 
-      setDraft("");
-      setReplyingToRevision(null);
-      setSelectedMentionTokens([]);
-      setDraftSelectionStart(0);
-      setPendingCommentFiles([]);
-
       setConfirmedComments((current) => [
         ...current,
         {
@@ -3874,6 +4036,7 @@ export function ProjectChatWorkspace({
             mentionedUserIds.includes(mention.userId),
           ),
           createdAt: "Just now",
+          canDeleteUntil: getLocalDeleteExpiresAt(localCreatedAtMs),
           localCreatedAtMs,
           attachments: [],
         },
@@ -3888,6 +4051,10 @@ export function ProjectChatWorkspace({
       );
       const message =
         error instanceof Error ? error.message : "Unable to send the comment right now.";
+      setDraft(body);
+      setReplyingToRevision(revisionReplyTarget);
+      setSelectedMentionTokens(selectedMentionTokens);
+      setDraftSelectionStart(body.length);
       setComposerError(message);
       showErrorToast("Unable to send comment.", message);
     } finally {
@@ -4956,6 +5123,11 @@ export function ProjectChatWorkspace({
                     currentUserId,
                     currentUserDisplayName,
                   ) === "right";
+                const isDeletedMessage = Boolean(message.deletedAt);
+                const showDeleteMessageAction = canDeleteMessage(
+                  message,
+                  isCurrentUserMessage,
+                );
                 const previousMessageIndex = displayedMessages.findIndex(
                   (entry) => entry.id === message.id,
                 ) - 1;
@@ -4965,9 +5137,12 @@ export function ProjectChatWorkspace({
                     displayedMessages[previousMessageIndex],
                     message,
                   );
-                const hasAttachments = Boolean(message.attachments?.length);
+                const hasAttachments =
+                  !isDeletedMessage && Boolean(message.attachments?.length);
                 const hasSubmissionAttachment =
-                  message.attachments?.some((attachment) => attachment.isSubmission) ?? false;
+                  !isDeletedMessage &&
+                  (message.attachments?.some((attachment) => attachment.isSubmission) ??
+                    false);
                 const attachmentLabel = hasSubmissionAttachment
                   ? "Submission uploaded"
                   : "Attachment uploaded";
@@ -4989,7 +5164,36 @@ export function ProjectChatWorkspace({
                     hideGutterContent={isGroupedWithPrevious}
                     grouped={isGroupedWithPrevious}
                   >
-                    <Card className={`min-w-0 ${bubbleClassName}`}>
+                    <Card
+                      className={`relative min-w-0 ${bubbleClassName}`}
+                      style={showDeleteMessageAction ? { paddingRight: "2.75rem" } : undefined}
+                    >
+                      {showDeleteMessageAction ? (
+                        <div className="absolute right-2 top-2 z-10">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 shrink-0 border border-[#d9e5db] bg-white/90 text-[#58675d] shadow-[0_8px_18px_rgba(18,35,23,0.08)] hover:bg-white hover:text-[#173120]"
+                                aria-label="Message actions"
+                              >
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="min-w-[11rem]">
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => openDeleteMessageDialog(message)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete message
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      ) : null}
                       {linkedRevisionLabel ? (
                         <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
                           <span
@@ -5041,14 +5245,21 @@ export function ProjectChatWorkspace({
                           {message.createdAt}
                         </span>
                       </div>
-                      <p
-                        className={`mt-2 whitespace-pre-wrap break-words text-[13px] leading-5 ${
-                          isCurrentUserMessage ? "text-[#173120]" : "text-[#111712]"
-                        }`}
-                      >
-                        {renderCommentBodyWithMentions(message.body, message.mentions)}
-                      </p>
-                      {message.attachments?.length ? (
+                      {isDeletedMessage ? (
+                        <p className="mt-2 inline-flex items-center gap-1.5 whitespace-pre-wrap break-words text-[13px] italic leading-5 text-[#7b877f]">
+                          <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                          {DELETED_STAGE_CHAT_MESSAGE_TEXT}
+                        </p>
+                      ) : (
+                        <p
+                          className={`mt-2 whitespace-pre-wrap break-words text-[13px] leading-5 ${
+                            isCurrentUserMessage ? "text-[#173120]" : "text-[#111712]"
+                          }`}
+                        >
+                          {renderCommentBodyWithMentions(message.body, message.mentions)}
+                        </p>
+                      )}
+                      {!isDeletedMessage && message.attachments?.length ? (
                         <AttachmentHistoryList
                           attachments={message.attachments}
                           compact
@@ -5275,7 +5486,7 @@ export function ProjectChatWorkspace({
 
               <div
                 ref={mentionDropdownRef}
-                className="relative flex flex-col gap-2.5 rounded-[26px] border border-[#dde6dd] bg-[#fbfcfa] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
+                className="relative flex min-w-0 flex-col gap-2.5 rounded-[22px] border border-[#dde6dd] bg-[#fbfcfa] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] sm:px-4"
               >
                 <Textarea
                   ref={draftInputRef}
@@ -5333,7 +5544,7 @@ export function ProjectChatWorkspace({
                   }}
                   placeholder="Add a comment or upload files for this stage revision history."
                   rows={1}
-                  className="box-border max-h-[168px] min-h-[64px] w-full resize-none overflow-y-hidden rounded-[18px] border border-transparent bg-white/70 px-3.5 py-3 text-[14px] leading-6 text-[#29322c] shadow-none outline-none placeholder:text-[#9aa39b] focus-visible:ring-0"
+                  className="box-border max-h-[168px] min-h-[58px] w-full resize-none overflow-y-hidden rounded-[16px] border border-transparent bg-white/70 px-3.5 py-3.5 text-[14px] leading-[22px] text-[#29322c] shadow-none outline-none placeholder:text-[#9aa39b] focus-visible:ring-0"
                 />
                 {mentionDropdownOpen ? (
                   <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 z-20 overflow-hidden rounded-[22px] border border-[#dbe7dd] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.12)]">
@@ -5376,7 +5587,7 @@ export function ProjectChatWorkspace({
                     </div>
                   </div>
                 ) : null}
-                <div className="flex w-full flex-wrap items-center justify-end gap-2 border-t border-[#e5ece5] pt-2">
+                <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-1.5 border-t border-[#e5ece5] pt-2 sm:gap-2">
                   <Button
                     type="button"
                     variant="ghost"
@@ -5975,6 +6186,26 @@ export function ProjectChatWorkspace({
         }}
         onConfirm={() => {
           void handlePrepareProjectCompletion();
+        }}
+      />
+      <ConfirmationDialog
+        isOpen={Boolean(deleteMessageTarget)}
+        title="Delete message?"
+        description="Delete this message? Others will see that a message was deleted."
+        confirmLabel="Delete message"
+        tone="destructive"
+        pending={isDeletingMessage}
+        error={deleteMessageError ?? undefined}
+        onClose={() => {
+          if (isDeletingMessage) {
+            return;
+          }
+
+          setDeleteMessageError(null);
+          setDeleteMessageTarget(null);
+        }}
+        onConfirm={() => {
+          void handleConfirmDeleteMessage();
         }}
       />
       <BriefDialog

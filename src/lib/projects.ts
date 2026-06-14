@@ -322,6 +322,9 @@ export type ProjectChatEntry = {
   role: string;
   body: string;
   createdAt: string;
+  deletedAt?: string | null;
+  deletedByUserId?: string | null;
+  canDeleteUntil?: string | null;
   mentions?: Array<{
     userId: string;
     name: string;

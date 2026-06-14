@@ -184,6 +184,7 @@ model User {
   revisions                           ProjectRevision[]
   reviewedRevisions                   ProjectRevision[]                    @relation("ProjectRevisionReviewer")
   comments                            ProjectComment[]
+  deletedProjectComments              ProjectComment[]                     @relation("ProjectCommentDeletedBy")
   commentMentions                     ProjectCommentMention[]
   comparisonComments                  ComparisonComment[]
   attachments                         ProjectAttachment[]
@@ -571,24 +572,28 @@ model ProjectRevision {
 }
 
 model ProjectComment {
-  id          String                  @id @default(cuid())
-  projectId   String
-  project     Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stageId     String
-  stage       ProjectStage            @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  revisionId  String?
-  revision    ProjectRevision?        @relation(fields: [revisionId], references: [id], onDelete: SetNull)
-  authorId    String
-  author      User                    @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  body        String
-  attachments ProjectAttachment[]
-  mentions    ProjectCommentMention[]
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @updatedAt
+  id              String                  @id @default(cuid())
+  projectId       String
+  project         Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId         String
+  stage           ProjectStage            @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  revisionId      String?
+  revision        ProjectRevision?        @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  authorId        String
+  author          User                    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  body            String
+  deletedAt       DateTime?
+  deletedByUserId String?
+  deletedByUser   User?                   @relation("ProjectCommentDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
+  attachments     ProjectAttachment[]
+  mentions        ProjectCommentMention[]
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
   @@index([projectId, stageId, createdAt])
   @@index([revisionId])
   @@index([authorId])
+  @@index([deletedByUserId])
 }
 
 model ProjectCommentMention {
