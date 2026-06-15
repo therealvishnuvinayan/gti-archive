@@ -66,6 +66,8 @@ import {
 export const PROJECTS_CACHE_TAG = "projects";
 export const INTERNAL_EXECUTION_NOT_REQUIRED_LABEL =
   "Not required for internal execution";
+export const PROJECT_BUDGET_NOT_REQUIRED_LABEL = "No budget required";
+export const PROJECT_BUDGET_REQUIRED_NOT_SET_LABEL = "Budget required - not set";
 export const MAX_PROJECT_TAGS = 5;
 
 type BudgetAccessUser = Pick<User, "id">;
@@ -179,6 +181,7 @@ export type ProjectEditorRecord = {
   priority: ProjectPriorityValue;
   description: string;
   executionType: ProjectExecutionType;
+  budgetRequired: boolean;
   budget: string;
   currency: string | null;
   canViewBudget: boolean;
@@ -453,13 +456,17 @@ function isInternalExecutionProject(project: Pick<Project, "executionType">) {
   return project.executionType === ProjectExecutionType.INTERNAL;
 }
 
-function formatProjectBudgetForExecution(
-  project: Pick<Project, "executionType" | "currency">,
+function formatProjectBudgetForRequirement(
+  project: Pick<Project, "budgetRequired" | "currency">,
   budget: number | null | undefined,
 ) {
-  return isInternalExecutionProject(project)
-    ? INTERNAL_EXECUTION_NOT_REQUIRED_LABEL
-    : formatProjectBudget(budget, project.currency);
+  if (budget && budget > 0) {
+    return formatProjectBudget(budget, project.currency);
+  }
+
+  return project.budgetRequired
+    ? PROJECT_BUDGET_REQUIRED_NOT_SET_LABEL
+    : PROJECT_BUDGET_NOT_REQUIRED_LABEL;
 }
 
 export function canViewProjectBudget(
@@ -1046,7 +1053,7 @@ function mapStageToCard(
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
     budget: allowBudgetView
-      ? formatProjectBudgetForExecution(project, stage.budget)
+      ? formatProjectBudgetForRequirement(project, stage.budget)
       : "Restricted",
     actualStartedAt: formatProjectDateTime(stage.actualStartedAt),
     actualStartedAtValue: toProjectIsoString(stage.actualStartedAt),
@@ -1181,7 +1188,7 @@ function mapProjectToFlow(
     executionType: project.executionType,
     executionTypeLabel: formatProjectExecutionTypeLabel(project.executionType),
     budget: allowBudgetView
-      ? formatProjectBudgetForExecution(project, project.budget)
+      ? formatProjectBudgetForRequirement(project, project.budget)
       : "Restricted",
     currency: allowBudgetView ? project.currency : null,
     statusLabel: getProjectStatusDisplay(project.status).name,
@@ -1300,8 +1307,9 @@ function mapProjectToEditor(
     priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
     description: allowBriefView ? project.description : "",
     executionType: project.executionType,
+    budgetRequired: project.budgetRequired,
     budget:
-      allowBudgetView && (!isInternalExecutionProject(project) || project.budget > 0)
+      allowBudgetView && project.budget && project.budget > 0
         ? String(project.budget)
         : "",
     currency: allowBudgetView ? project.currency : null,
@@ -1322,11 +1330,11 @@ function mapProjectToEditor(
       name: stage.name,
       invoiceRequired: isInternalExecutionProject(project) ? false : stage.invoiceRequired,
       budget:
-        allowBudgetView && (!isInternalExecutionProject(project) || (stage.budget ?? 0) > 0)
+        allowBudgetView && ((stage.budget ?? 0) > 0 || (index === 0 && (project.budget ?? 0) > 0))
           ? stage.budget && stage.budget > 0
             ? String(stage.budget)
             : index === 0
-              ? String(project.budget)
+              ? String(project.budget ?? "")
               : ""
           : "",
       description: allowBriefView ? stage.description?.trim() || "" : "",

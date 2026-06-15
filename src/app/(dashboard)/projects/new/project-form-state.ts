@@ -9,6 +9,7 @@ export type ProjectFormFieldErrors = {
   tag?: string;
   description?: string;
   executionType?: string;
+  budgetRequired?: string;
   budget?: string;
   budgetSummary?: string;
   currency?: string;
@@ -87,6 +88,7 @@ export type ProjectEditorInitialValues = {
   tags: string[];
   description: string;
   executionType: ProjectExecutionType;
+  budgetRequired: boolean;
   budget: string;
   currency: string | null;
   canViewBudget: boolean;

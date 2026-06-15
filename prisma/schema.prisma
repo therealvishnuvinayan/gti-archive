@@ -274,7 +274,8 @@ model Project {
   category            String
   description         String
   executionType       ProjectExecutionType        @default(EXTERNAL)
-  budget              Int
+  budgetRequired      Boolean                     @default(false)
+  budget              Int?
   currency            String                      @default("USD")
   statusId            String?
   status              ProjectStatusOption?        @relation(fields: [statusId], references: [id], onDelete: SetNull)

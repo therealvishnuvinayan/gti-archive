@@ -104,13 +104,26 @@ const projectExecutionTypeOptions = [
     value: "INTERNAL",
     label: "Internal Execution",
     shortLabel: "Internal",
-    description: "Handled inside the company. Budget, invoices, and external documents are not required.",
+    description: "Handled inside the company. Budget and external documents are optional.",
   },
   {
     value: "EXTERNAL",
     label: "External Execution",
     shortLabel: "External",
-    description: "Handled by an outside party. Budget, invoices, copyright, and official documents apply.",
+    description: "Handled by an outside party. External projects can be created with or without a budget.",
+  },
+] as const;
+
+const budgetRequirementOptions = [
+  {
+    value: false,
+    label: "No budget required",
+    description: "Save the project without a mandatory budget amount.",
+  },
+  {
+    value: true,
+    label: "Budget required",
+    description: "Require a positive project budget and currency before saving.",
   },
 ] as const;
 
@@ -850,6 +863,9 @@ export function CreateProjectWorkspace({
     normalizeProjectTagValues(initialValues?.tags ?? []),
   );
   const [projectTagError, setProjectTagError] = useState<string>();
+  const [projectBudgetRequired, setProjectBudgetRequired] = useState(
+    initialValues?.budgetRequired ?? false,
+  );
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
   const [projectCurrency, setProjectCurrency] = useState<string>(
     resolveProjectCurrency(initialValues?.currency ?? "") ?? DEFAULT_PROJECT_CURRENCY,
@@ -982,7 +998,7 @@ export function CreateProjectWorkspace({
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
   const isInternalExecution = projectExecutionType === "INTERNAL";
   const isExternalExecution = projectExecutionType === "EXTERNAL";
-  const isBudgetRequired = canViewBudget && isExternalExecution;
+  const isBudgetRequired = canViewBudget && projectBudgetRequired;
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
   const displayedAttachmentError =
     attachmentError ?? getFieldError("attachments", fieldErrors.attachments);
@@ -1002,16 +1018,15 @@ export function CreateProjectWorkspace({
   const hasInvalidBudgetInputs = useMemo(
     () =>
       canViewBudget &&
-      isExternalExecution &&
       (projectBudget.trim().length > 0
         ? !Number.isFinite(parsedProjectBudget) || parsedProjectBudget <= 0
         : false),
-    [canViewBudget, isExternalExecution, parsedProjectBudget, projectBudget],
+    [canViewBudget, parsedProjectBudget, projectBudget],
   );
   const hasInvalidStageBudgetInputs = useMemo(
     () =>
       canViewBudget &&
-      isExternalExecution &&
+      isBudgetRequired &&
       stages.some((stage, index) => {
         if (!stage.budget.trim()) {
           return false;
@@ -1020,23 +1035,38 @@ export function CreateProjectWorkspace({
         const budget = parsedStageBudgets[index];
         return !Number.isFinite(budget) || budget <= 0;
       }),
-    [canViewBudget, isExternalExecution, parsedStageBudgets, stages],
+    [canViewBudget, isBudgetRequired, parsedStageBudgets, stages],
   );
   const hasMissingStageBudgetInputs = useMemo(
-    () => isBudgetRequired && stages.some((stage) => !stage.budget.trim()),
-    [isBudgetRequired, stages],
+    () =>
+      isBudgetRequired &&
+      isExternalExecution &&
+      stages.some((stage) => !stage.budget.trim()),
+    [isBudgetRequired, isExternalExecution, stages],
   );
   const remainingStageBudget = useMemo(() => {
-    if (!canViewBudget || !isExternalExecution || !Number.isFinite(parsedProjectBudget)) {
+    if (
+      !canViewBudget ||
+      !isExternalExecution ||
+      !isBudgetRequired ||
+      !Number.isFinite(parsedProjectBudget)
+    ) {
       return null;
     }
 
     return parsedProjectBudget - totalStageBudget;
-  }, [canViewBudget, isExternalExecution, parsedProjectBudget, totalStageBudget]);
+  }, [
+    canViewBudget,
+    isBudgetRequired,
+    isExternalExecution,
+    parsedProjectBudget,
+    totalStageBudget,
+  ]);
   const hasBudgetConflict = useMemo(
     () =>
       canViewBudget &&
       isExternalExecution &&
+      isBudgetRequired &&
       Number.isFinite(parsedProjectBudget) &&
       !hasMissingStageBudgetInputs &&
       !hasInvalidStageBudgetInputs &&
@@ -1045,6 +1075,7 @@ export function CreateProjectWorkspace({
       canViewBudget,
       hasInvalidStageBudgetInputs,
       hasMissingStageBudgetInputs,
+      isBudgetRequired,
       isExternalExecution,
       parsedProjectBudget,
       totalStageBudget,
@@ -1162,23 +1193,23 @@ export function CreateProjectWorkspace({
       executionType:
         projectExecutionTypeOptions.find((option) => option.value === projectExecutionType)
           ?.label ?? "External Execution",
-      budget: isInternalExecution
-        ? "Not required for internal execution"
-        : canViewBudget
+      budget: canViewBudget
           ? Number.isFinite(parsedProjectBudget)
             ? formatBudgetDisplay(parsedProjectBudget, projectCurrency ?? "")
-            : projectBudget
+            : projectBudgetRequired
+              ? "Budget required - not set"
+              : projectBudget
               ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
-              : "—"
+              : "No budget required"
           : "Restricted",
       allocatedStageBudget:
-        isInternalExecution
+        !isBudgetRequired || !isExternalExecution
           ? "Not required"
           : canViewBudget && Number.isFinite(totalStageBudget)
           ? formatBudgetDisplay(totalStageBudget, projectCurrency ?? "")
           : "—",
       remainingStageBudget:
-        isInternalExecution
+        !isBudgetRequired || !isExternalExecution
           ? "Not required"
           : canViewBudget && remainingStageBudget !== null
           ? formatBudgetDifference(remainingStageBudget, projectCurrency ?? "")
@@ -1193,8 +1224,10 @@ export function CreateProjectWorkspace({
     }),
     [
       canViewBudget,
-      isInternalExecution,
+      isBudgetRequired,
+      isExternalExecution,
       projectBudget,
+      projectBudgetRequired,
       projectCurrency,
       projectExecutionType,
       executorOverviewLabel,
@@ -2467,6 +2500,7 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
       <input type="hidden" name="category" value={projectCategory} />
       <input type="hidden" name="executionType" value={projectExecutionType} />
+      <input type="hidden" name="budgetRequired" value={projectBudgetRequired ? "true" : "false"} />
       {projectExecutors.map((executor) => (
         <div key={executor.id}>
           <input type="hidden" name="executorIds" value={executor.id} />
@@ -2626,8 +2660,66 @@ export function CreateProjectWorkspace({
                 <FieldError message={getFieldError("category", fieldErrors.category)} />
               </label>
 
-              <label className="block">
+              <div className="space-y-3">
+                <FieldLabel>Budget Requirement</FieldLabel>
+                {canViewBudget ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {budgetRequirementOptions.map((option) => {
+                      const isSelected = projectBudgetRequired === option.value;
+
+                      return (
+                        <button
+                          key={option.label}
+                          type="button"
+                          onClick={() => {
+                            setProjectBudgetRequired(option.value);
+                            clearFieldError("budgetRequired");
+                            clearFieldError("budget");
+                            clearFieldError("currency");
+                            clearFieldError("budgetSummary");
+                          }}
+                          className={`rounded-[18px] border px-4 py-3 text-left transition ${
+                            isSelected
+                              ? "border-brand bg-[#eef8f0] shadow-[0_12px_24px_rgba(38,128,79,0.12)]"
+                              : "border-[#dce6dd] bg-white hover:border-brand/60"
+                          }`}
+                        >
+                          <span className="flex items-center justify-between gap-3">
+                            <span className="text-[13px] font-semibold text-[#173120]">
+                              {option.label}
+                            </span>
+                            <span
+                              className={`flex size-5 items-center justify-center rounded-full border ${
+                                isSelected
+                                  ? "border-brand bg-brand text-white"
+                                  : "border-[#c8d6ca] text-transparent"
+                              }`}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </span>
+                          </span>
+                          <span className="mt-2 block text-[11px] leading-4 text-[#6f786f]">
+                            {option.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-[18px] border border-[#dfe5df] bg-[#f7faf7] px-4 py-3 text-[12px] font-medium text-[#6f786f]">
+                    Budget requirement is restricted to the project owner.
+                  </div>
+                )}
                 {isExternalExecution ? (
+                  <p className="text-[12px] font-medium text-[#6f786f]">
+                    External projects can be created with or without a budget.
+                  </p>
+                ) : null}
+                <FieldError message={getFieldError("budgetRequired", fieldErrors.budgetRequired)} />
+              </div>
+
+              <label className="block">
+                {isBudgetRequired ? (
                   <RequiredLabel>Project Budget</RequiredLabel>
                 ) : (
                   <FieldLabel>Project Budget</FieldLabel>
@@ -2642,9 +2734,9 @@ export function CreateProjectWorkspace({
                       inputMode="numeric"
                       pattern="[0-9]*"
                       placeholder={
-                        isInternalExecution
-                          ? "Optional budget"
-                          : "Enter Project Budget...."
+                        isBudgetRequired
+                          ? "Enter Project Budget...."
+                          : "Optional budget"
                       }
                       className="h-[42px] min-w-0 flex-1 text-[12px]"
                     />
@@ -2675,9 +2767,9 @@ export function CreateProjectWorkspace({
                 )}
                 {canViewBudget ? (
                   <>
-                    {isInternalExecution ? (
+                    {!isBudgetRequired ? (
                       <p className="mt-2 text-[12px] font-medium text-[#6f786f]">
-                        Budget is not required for internal execution.
+                        Leave the amount empty when this project has no budget.
                       </p>
                     ) : null}
                     <FieldError
@@ -3147,7 +3239,7 @@ export function CreateProjectWorkspace({
                     Project Budget
                   </p>
                   <p className="mt-1 font-semibold text-[#173120]">
-                    {isInternalExecution
+                    {!isBudgetRequired
                       ? "Not required"
                       : Number.isFinite(parsedProjectBudget)
                         ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
@@ -3159,7 +3251,7 @@ export function CreateProjectWorkspace({
                     Stage Total
                   </p>
                   <p className="mt-1 font-semibold text-[#173120]">
-                    {isInternalExecution
+                    {!isBudgetRequired || !isExternalExecution
                       ? "Not required"
                       : formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
                   </p>
@@ -3173,7 +3265,7 @@ export function CreateProjectWorkspace({
                       hasBudgetConflict ? "text-[#ba3f31]" : "text-brand"
                     }`}
                   >
-                    {isInternalExecution
+                    {!isBudgetRequired || !isExternalExecution
                       ? "Not required"
                       : remainingStageBudget !== null
                       ? formatBudgetDifference(remainingStageBudget, projectCurrency || "")
@@ -3250,20 +3342,24 @@ export function CreateProjectWorkspace({
                     />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                       Stage Budget{" "}
-                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
+                      {isBudgetRequired && isExternalExecution ? (
+                        <span className="text-[#d3554d]">*</span>
+                      ) : null}
                     </p>
                     {canViewBudget ? (
                       <Input
                         value={stage.budget}
                         onChange={(event) => handleStageBudgetChange(stage.id, event.target.value)}
                         name="stageBudgets"
-                        required={isBudgetRequired}
+                        required={isBudgetRequired && isExternalExecution}
                         inputMode="numeric"
                         pattern="[0-9]*"
                         placeholder={
                           isInternalExecution
                             ? "Optional stage budget"
-                            : `Stage ${index + 1} Budget...`
+                            : isBudgetRequired
+                              ? `Stage ${index + 1} Budget...`
+                              : "Optional stage budget"
                         }
                         className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
                       />
