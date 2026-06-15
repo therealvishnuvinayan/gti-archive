@@ -467,133 +467,163 @@ function ComparisonViewerSurface({
           : "h-[min(82dvh,900px)] rounded-[24px] border-[#dbe4dc]"
       }`}
     >
-      <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className={`text-[16px] font-[700] ${fullscreenMode ? "text-white" : "text-[#111712]"}`}>
+      <div className="mb-4 shrink-0 space-y-3">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <p className={`min-w-0 text-[16px] font-[700] ${fullscreenMode ? "text-white" : "text-[#111712]"}`}>
             {fullscreenMode ? "Detailed Submission Review" : "Submission Overlay Viewer"}
           </p>
-          <p className={`mt-1 text-[12px] ${fullscreenMode ? "text-white/62" : "text-[#6a736b]"}`}>
-            View normally, drag in Pan mode, or use Comment mode and double-click to pin a note.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant={toolMode === "view" ? "default" : "secondary"}
-            size="sm"
-            className="rounded-full"
-            onClick={() => setToolMode("view")}
-          >
-            <MousePointer2 className="h-4 w-4" />
-            View
-          </Button>
-          <Button
-            type="button"
-            variant={toolMode === "pan" ? "default" : "secondary"}
-            size="sm"
-            className="rounded-full"
-            onClick={() => setToolMode("pan")}
-          >
-            <Hand className="h-4 w-4" />
-            Pan
-          </Button>
-          <Button
-            type="button"
-            variant={toolMode === "comment" ? "default" : "secondary"}
-            size="sm"
-            className="rounded-full"
-            onClick={() => setToolMode("comment")}
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-            Comment
-          </Button>
-          <Button
-            type="button"
-            variant={zoomMode === "fit" ? "default" : "secondary"}
-            size="sm"
-            className="rounded-full"
-            onClick={setFitMode}
-          >
-            Fit
-          </Button>
-          <Select
-            value={zoomSelectValue}
-            onValueChange={(value) => {
-              if (value === "fit") {
-                setFitMode();
-                return;
-              }
-
-              if (value === "width") {
-                setWidthMode();
-                return;
-              }
-
-              if (value.startsWith("custom-")) {
-                return;
-              }
-
-              setZoomPreset(Number(value));
-            }}
-          >
-            <SelectTrigger className="h-9 w-[136px] rounded-full border border-[#d8dfd8] bg-white px-3 text-[12px] font-[700] text-[#152019]">
-              <SelectValue placeholder={`Zoom: ${currentZoomLabel}`} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="fit">Fit</SelectItem>
-              <SelectItem value="width">Fill width</SelectItem>
-              {!isPresetZoom && zoomMode === "zoom" ? (
-                <SelectItem value={zoomSelectValue} disabled>
-                  {formatZoomPercent(zoomScale)}
-                </SelectItem>
-              ) : null}
-              {ZOOM_PRESETS.map((preset) => (
-                <SelectItem key={preset} value={String(preset)}>
-                  {formatZoomPercent(preset)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            className="size-9 rounded-full"
-            onClick={zoomOut}
-            aria-label="Zoom out"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            className="size-9 rounded-full"
-            onClick={zoomIn}
-            aria-label="Zoom in"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </Button>
           <Button
             type="button"
             variant="secondary"
             size="sm"
-            className="rounded-full"
-            onClick={onToggleCommentsVisible}
-          >
-            {commentsVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {commentsVisible ? "Hide comments" : "Show comments"}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="rounded-full"
+            className="h-9 shrink-0 rounded-full px-3 text-[12px]"
             onClick={onToggleFullscreen}
           >
             {fullscreenMode ? <X className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
             {fullscreenMode ? "Close Fullscreen" : "Maximize"}
           </Button>
+        </div>
+        <div className="grid gap-2 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.15fr)_auto]">
+          <div className={`min-w-0 rounded-[18px] border px-3 py-2 ${
+            fullscreenMode ? "border-white/10 bg-white/5" : "border-[#dfe8e0] bg-[#f8fbf8]"
+          }`}>
+            <p className={`mb-2 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+              fullscreenMode ? "text-white/52" : "text-[#708075]"
+            }`}>
+              Tool
+            </p>
+            <div className="flex min-w-0 flex-wrap gap-1.5">
+              <Button
+                type="button"
+                variant={toolMode === "view" ? "default" : "secondary"}
+                size="sm"
+                className="h-8 rounded-full px-3 text-[12px]"
+                onClick={() => setToolMode("view")}
+              >
+                <MousePointer2 className="h-3.5 w-3.5" />
+                View
+              </Button>
+              <Button
+                type="button"
+                variant={toolMode === "pan" ? "default" : "secondary"}
+                size="sm"
+                className="h-8 rounded-full px-3 text-[12px]"
+                onClick={() => setToolMode("pan")}
+              >
+                <Hand className="h-3.5 w-3.5" />
+                Pan
+              </Button>
+              <Button
+                type="button"
+                variant={toolMode === "comment" ? "default" : "secondary"}
+                size="sm"
+                className="h-8 rounded-full px-3 text-[12px]"
+                onClick={() => setToolMode("comment")}
+              >
+                <MessageSquarePlus className="h-3.5 w-3.5" />
+                Comment
+              </Button>
+            </div>
+          </div>
+
+          <div className={`min-w-0 rounded-[18px] border px-3 py-2 ${
+            fullscreenMode ? "border-white/10 bg-white/5" : "border-[#dfe8e0] bg-[#f8fbf8]"
+          }`}>
+            <p className={`mb-2 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+              fullscreenMode ? "text-white/52" : "text-[#708075]"
+            }`}>
+              Zoom
+            </p>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <Button
+                type="button"
+                variant={zoomMode === "fit" ? "default" : "secondary"}
+                size="sm"
+                className="h-8 rounded-full px-3 text-[12px]"
+                onClick={setFitMode}
+              >
+                Fit
+              </Button>
+              <Select
+                value={zoomSelectValue}
+                onValueChange={(value) => {
+                  if (value === "fit") {
+                    setFitMode();
+                    return;
+                  }
+
+                  if (value === "width") {
+                    setWidthMode();
+                    return;
+                  }
+
+                  if (value.startsWith("custom-")) {
+                    return;
+                  }
+
+                  setZoomPreset(Number(value));
+                }}
+              >
+                <SelectTrigger className="h-8 w-[120px] rounded-full border border-[#d8dfd8] bg-white px-3 text-[12px] font-[700] text-[#152019]">
+                  <SelectValue placeholder={`Zoom: ${currentZoomLabel}`} />
+                </SelectTrigger>
+                <SelectContent className="z-[130]">
+                  <SelectItem value="fit">Fit</SelectItem>
+                  <SelectItem value="width">Fill width</SelectItem>
+                  {!isPresetZoom && zoomMode === "zoom" ? (
+                    <SelectItem value={zoomSelectValue} disabled>
+                      {formatZoomPercent(zoomScale)}
+                    </SelectItem>
+                  ) : null}
+                  {ZOOM_PRESETS.map((preset) => (
+                    <SelectItem key={preset} value={String(preset)}>
+                      {formatZoomPercent(preset)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="size-8 rounded-full"
+                onClick={zoomOut}
+                aria-label="Zoom out"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="size-8 rounded-full"
+                onClick={zoomIn}
+                aria-label="Zoom in"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          <div className={`min-w-0 rounded-[18px] border px-3 py-2 ${
+            fullscreenMode ? "border-white/10 bg-white/5" : "border-[#dfe8e0] bg-[#f8fbf8]"
+          }`}>
+            <p className={`mb-2 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+              fullscreenMode ? "text-white/52" : "text-[#708075]"
+            }`}>
+              Markers
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 rounded-full px-3 text-[12px]"
+              onClick={onToggleCommentsVisible}
+            >
+              {commentsVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              {commentsVisible ? "Hide" : "Show"}
+            </Button>
+          </div>
         </div>
       </div>
 
