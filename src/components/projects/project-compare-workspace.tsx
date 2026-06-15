@@ -1,9 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Expand, Loader2, Send, X, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  Download,
+  Expand,
+  Eye,
+  EyeOff,
+  Hand,
+  Loader2,
+  MessageSquarePlus,
+  MousePointer2,
+  Send,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 
 import {
   createComparisonCommentAction,
@@ -60,6 +73,13 @@ type PendingCommentPosition = {
 };
 
 type CompareZoomMode = "fit" | "width" | "zoom";
+type CompareToolMode = "view" | "pan" | "comment";
+
+const ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+
+function formatZoomPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
 
 function clampPercent(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, value));
@@ -235,7 +255,7 @@ function ComparisonCommentsPanel({
         </div>
       ) : (
         <p className="mt-3 text-[13px] text-[#6f786f]">
-          No comparison comments yet. Click the artwork to add the first pinned note.
+          No comparison comments yet. Use Comment mode, then double-click the artwork to add a pinned note.
         </p>
       )}
     </Card>
@@ -262,6 +282,8 @@ function ComparisonViewerSurface({
   onCompareImageLoad,
   comparisonAspectRatio,
   onToggleFullscreen,
+  commentsVisible,
+  onToggleCommentsVisible,
   fullscreenMode = false,
 }: {
   baseSubmission: ProjectAttachmentRecord;
@@ -283,15 +305,37 @@ function ComparisonViewerSurface({
   onCompareImageLoad: (dimensions: ImageDimensions) => void;
   comparisonAspectRatio: number;
   onToggleFullscreen: () => void;
+  commentsVisible: boolean;
+  onToggleCommentsVisible: () => void;
   fullscreenMode?: boolean;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const panStartRef = useRef<{
+    pointerX: number;
+    pointerY: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
   const [zoomMode, setZoomMode] = useState<CompareZoomMode>("fit");
   const [zoomScale, setZoomScale] = useState(1.25);
+  const [toolMode, setToolMode] = useState<CompareToolMode>("view");
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
   const activeComment = comments.find((comment) => comment.id === activeCommentId) ?? null;
   const baseOpacity = 1 - opacity / 100;
   const compareOpacity = opacity / 100;
   const isFitMode = zoomMode === "fit";
+  const currentZoomLabel =
+    zoomMode === "fit" ? "Fit" : zoomMode === "width" ? "Fill" : formatZoomPercent(zoomScale);
+  const isPresetZoom = ZOOM_PRESETS.some((preset) => Math.abs(preset - zoomScale) < 0.001);
+  const zoomSelectValue =
+    zoomMode === "fit"
+      ? "fit"
+      : zoomMode === "width"
+        ? "width"
+        : isPresetZoom
+          ? String(zoomScale)
+          : `custom-${zoomScale}`;
   const fitWidth = `min(100%, ${Math.max(18, comparisonAspectRatio * (fullscreenMode ? 72 : 64))}dvh, ${Math.max(
     220,
     Math.round(comparisonAspectRatio * (fullscreenMode ? 920 : 700)),
@@ -302,6 +346,9 @@ function ComparisonViewerSurface({
       : zoomMode === "width"
         ? "100%"
         : `${Math.round(100 * zoomScale)}%`;
+  const baseLabelStrong = baseOpacity >= compareOpacity;
+  const compareLabelStrong = compareOpacity >= baseOpacity;
+  const panLimit = Math.max(120, Math.round(360 * zoomScale));
 
   function getPopoverPosition(comment: {
     xPercent: number;
@@ -313,8 +360,12 @@ function ComparisonViewerSurface({
     };
   }
 
-  function handleFrameClick(event: React.MouseEvent<HTMLDivElement>) {
+  function handleFrameDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("[data-comment-interactive='true']")) {
+      return;
+    }
+
+    if (toolMode !== "comment") {
       return;
     }
 
@@ -339,16 +390,23 @@ function ComparisonViewerSurface({
   function setFitMode() {
     setZoomMode("fit");
     setZoomScale(1.25);
+    setPanOffset({ x: 0, y: 0 });
   }
 
   function setWidthMode() {
     setZoomMode("width");
     setZoomScale(1);
+    setPanOffset({ x: 0, y: 0 });
+  }
+
+  function setZoomPreset(nextScale: number) {
+    setZoomMode("zoom");
+    setZoomScale(nextScale);
   }
 
   function zoomOut() {
     setZoomMode("zoom");
-    setZoomScale((current) => Math.max(1.25, Number((current - 0.25).toFixed(2))));
+    setZoomScale((current) => Math.max(0.25, Number((current - 0.25).toFixed(2))));
   }
 
   function zoomIn() {
@@ -356,22 +414,99 @@ function ComparisonViewerSurface({
     setZoomScale((current) => Math.min(3, Number((current + 0.25).toFixed(2))));
   }
 
+  function handlePanPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (toolMode !== "pan" || event.button !== 0) {
+      return;
+    }
+
+    if ((event.target as HTMLElement).closest("[data-comment-interactive='true']")) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panStartRef.current = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      offsetX: panOffset.x,
+      offsetY: panOffset.y,
+    };
+    setIsPanning(true);
+  }
+
+  function handlePanPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!isPanning || !panStartRef.current) {
+      return;
+    }
+
+    const nextX =
+      panStartRef.current.offsetX + event.clientX - panStartRef.current.pointerX;
+    const nextY =
+      panStartRef.current.offsetY + event.clientY - panStartRef.current.pointerY;
+
+    setPanOffset({
+      x: Math.max(-panLimit, Math.min(panLimit, nextX)),
+      y: Math.max(-panLimit, Math.min(panLimit, nextY)),
+    });
+  }
+
+  function endPan(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    panStartRef.current = null;
+    setIsPanning(false);
+  }
+
   return (
     <Card
-      className={`flex min-h-0 flex-col rounded-[24px] border border-[#dbe4dc] bg-white/95 p-4 shadow-[0_16px_36px_rgba(17,34,24,0.08)] sm:p-5 ${
-        fullscreenMode ? "h-full" : "h-[min(82dvh,900px)]"
+      className={`flex min-h-0 flex-col border bg-white/95 p-4 shadow-[0_16px_36px_rgba(17,34,24,0.08)] sm:p-5 ${
+        fullscreenMode
+          ? "h-full rounded-none border-[#303832] bg-[#151a17] text-white shadow-none"
+          : "h-[min(82dvh,900px)] rounded-[24px] border-[#dbe4dc]"
       }`}
     >
       <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-[16px] font-[700] text-[#111712]">
+          <p className={`text-[16px] font-[700] ${fullscreenMode ? "text-white" : "text-[#111712]"}`}>
             {fullscreenMode ? "Detailed Submission Review" : "Submission Overlay Viewer"}
           </p>
-          <p className="mt-1 text-[12px] text-[#6a736b]">
-            Click anywhere on the artwork to pin a comparison comment.
+          <p className={`mt-1 text-[12px] ${fullscreenMode ? "text-white/62" : "text-[#6a736b]"}`}>
+            View normally, drag in Pan mode, or use Comment mode and double-click to pin a note.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant={toolMode === "view" ? "default" : "secondary"}
+            size="sm"
+            className="rounded-full"
+            onClick={() => setToolMode("view")}
+          >
+            <MousePointer2 className="h-4 w-4" />
+            View
+          </Button>
+          <Button
+            type="button"
+            variant={toolMode === "pan" ? "default" : "secondary"}
+            size="sm"
+            className="rounded-full"
+            onClick={() => setToolMode("pan")}
+          >
+            <Hand className="h-4 w-4" />
+            Pan
+          </Button>
+          <Button
+            type="button"
+            variant={toolMode === "comment" ? "default" : "secondary"}
+            size="sm"
+            className="rounded-full"
+            onClick={() => setToolMode("comment")}
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            Comment
+          </Button>
           <Button
             type="button"
             variant={zoomMode === "fit" ? "default" : "secondary"}
@@ -381,15 +516,44 @@ function ComparisonViewerSurface({
           >
             Fit
           </Button>
-          <Button
-            type="button"
-            variant={zoomMode === "width" ? "default" : "secondary"}
-            size="sm"
-            className="rounded-full"
-            onClick={setWidthMode}
+          <Select
+            value={zoomSelectValue}
+            onValueChange={(value) => {
+              if (value === "fit") {
+                setFitMode();
+                return;
+              }
+
+              if (value === "width") {
+                setWidthMode();
+                return;
+              }
+
+              if (value.startsWith("custom-")) {
+                return;
+              }
+
+              setZoomPreset(Number(value));
+            }}
           >
-            100%
-          </Button>
+            <SelectTrigger className="h-9 w-[136px] rounded-full border border-[#d8dfd8] bg-white px-3 text-[12px] font-[700] text-[#152019]">
+              <SelectValue placeholder={`Zoom: ${currentZoomLabel}`} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="fit">Fit</SelectItem>
+              <SelectItem value="width">Fill width</SelectItem>
+              {!isPresetZoom && zoomMode === "zoom" ? (
+                <SelectItem value={zoomSelectValue} disabled>
+                  {formatZoomPercent(zoomScale)}
+                </SelectItem>
+              ) : null}
+              {ZOOM_PRESETS.map((preset) => (
+                <SelectItem key={preset} value={String(preset)}>
+                  {formatZoomPercent(preset)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             type="button"
             variant="secondary"
@@ -415,6 +579,16 @@ function ComparisonViewerSurface({
             variant="secondary"
             size="sm"
             className="rounded-full"
+            onClick={onToggleCommentsVisible}
+          >
+            {commentsVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {commentsVisible ? "Hide comments" : "Show comments"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="rounded-full"
             onClick={onToggleFullscreen}
           >
             {fullscreenMode ? <X className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
@@ -424,21 +598,43 @@ function ComparisonViewerSurface({
       </div>
 
       <div
-        className={`min-h-0 flex-1 rounded-[28px] border border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)] p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
-          isFitMode ? "overflow-hidden" : "overflow-auto"
+        className={`min-h-0 flex-1 border p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
+          fullscreenMode
+            ? "rounded-none border-[#2b332e] bg-[#0f1311]"
+            : "rounded-[28px] border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)]"
+        } ${
+          isFitMode || toolMode === "pan" ? "overflow-hidden" : "overflow-auto"
         }`}
+        onPointerDown={handlePanPointerDown}
+        onPointerMove={handlePanPointerMove}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
       >
-        <div className={`flex min-h-full min-w-full ${isFitMode ? "items-center justify-center" : "items-start justify-start"}`}>
+        <div
+          className={`flex min-h-full min-w-full ${
+            isFitMode || toolMode === "pan" ? "items-center justify-center" : "items-start justify-start"
+          }`}
+        >
           <div
             ref={frameRef}
-            className="relative shrink-0 overflow-hidden rounded-[22px] bg-white/35"
+            className={`relative shrink-0 overflow-hidden rounded-[22px] bg-white/35 ${
+              toolMode === "pan"
+                ? isPanning
+                  ? "cursor-grabbing"
+                  : "cursor-grab"
+                : toolMode === "comment"
+                  ? "cursor-crosshair"
+                  : "cursor-default"
+            }`}
             style={{
               aspectRatio: comparisonAspectRatio,
               width: frameWidth,
               maxWidth: isFitMode ? "100%" : undefined,
               maxHeight: isFitMode ? "100%" : undefined,
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+              transition: isPanning ? "none" : "transform 120ms ease",
             }}
-            onClick={handleFrameClick}
+            onDoubleClick={handleFrameDoubleClick}
           >
             <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2">
               <span className="rounded-full bg-white/90 px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#235f3d] shadow-[0_8px_18px_rgba(19,34,24,0.08)]">
@@ -478,7 +674,7 @@ function ComparisonViewerSurface({
               draggable={false}
             />
 
-            {comments.map((comment, index) => {
+            {commentsVisible ? comments.map((comment, index) => {
               const isActive = activeCommentId === comment.id;
 
               return (
@@ -505,9 +701,9 @@ function ComparisonViewerSurface({
                   {index + 1}
                 </button>
               );
-            })}
+            }) : null}
 
-            {activeComment ? (
+            {commentsVisible && activeComment ? (
               <div
                 data-comment-interactive="true"
                 className="absolute z-30 w-[min(18rem,calc(100%-1rem))] -translate-x-1/2 rounded-[18px] border border-[#d8e5d9] bg-white p-3 shadow-[0_18px_36px_rgba(14,31,20,0.14)]"
@@ -589,9 +785,31 @@ function ComparisonViewerSurface({
       </div>
 
       <div className="mt-4 shrink-0 rounded-[20px] border border-[#dde6de] bg-[#f8fbf8] px-4 py-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="inline-flex min-w-[150px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#3e9e69)] px-4 py-1.5 text-[12px] font-[700] text-white">
-            {opacity}% Compare Opacity
+        <div className="grid gap-3">
+          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
+            <div className="min-w-0">
+              <p
+                className={`truncate text-[12px] font-[800] ${
+                  baseLabelStrong ? "text-[#173120]" : "text-[#7c887f]"
+                }`}
+                title={baseSubmission.originalFileName}
+              >
+                Artwork 1: {baseSubmission.originalFileName}
+              </p>
+            </div>
+            <div className="inline-flex min-w-[170px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#3e9e69)] px-4 py-1.5 text-[12px] font-[700] text-white">
+              Blend: {100 - opacity}% / {opacity}%
+            </div>
+            <div className="min-w-0 text-left lg:text-right">
+              <p
+                className={`truncate text-[12px] font-[800] ${
+                  compareLabelStrong ? "text-[#173120]" : "text-[#7c887f]"
+                }`}
+                title={compareSubmission.originalFileName}
+              >
+                Artwork 2: {compareSubmission.originalFileName}
+              </p>
+            </div>
           </div>
           <input
             type="range"
@@ -635,6 +853,7 @@ export function ProjectCompareWorkspace({
   const [commentError, setCommentError] = useState<string | null>(null);
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [viewerFullscreen, setViewerFullscreen] = useState(false);
+  const [commentsVisible, setCommentsVisible] = useState(true);
   const [opacity, setOpacity] = useState(100);
   const [baseImageDimensions, setBaseImageDimensions] = useState<ImageDimensions | null>(null);
   const [compareImageDimensions, setCompareImageDimensions] = useState<ImageDimensions | null>(
@@ -672,6 +891,48 @@ export function ProjectCompareWorkspace({
 
     return maxHeight > 0 ? maxWidth / maxHeight : 1;
   }, [baseImageDimensions, compareImageDimensions]);
+
+  useEffect(() => {
+    if (!viewerFullscreen && !pendingComment && !activeCommentId) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    if (viewerFullscreen) {
+      document.body.style.overflow = "hidden";
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (pendingComment) {
+        setPendingComment(null);
+        setCommentDraft("");
+        setCommentError(null);
+        return;
+      }
+
+      if (activeCommentId) {
+        setActiveCommentId(null);
+        return;
+      }
+
+      setViewerFullscreen(false);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      if (viewerFullscreen) {
+        document.body.style.overflow = previousOverflow;
+      }
+
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeCommentId, pendingComment, viewerFullscreen]);
 
   function applyUpdatedCollaborators(updatedCollaborators: ProjectCollaboratorRecord[]) {
     setCollaborators((current) => {
@@ -937,6 +1198,8 @@ export function ProjectCompareWorkspace({
                 onCompareImageLoad={setCompareImageDimensions}
                 comparisonAspectRatio={comparisonAspectRatio}
                 onToggleFullscreen={() => setViewerFullscreen(true)}
+                commentsVisible={commentsVisible}
+                onToggleCommentsVisible={() => setCommentsVisible((current) => !current)}
               />
 
               <ComparisonCommentsPanel
@@ -1052,12 +1315,12 @@ export function ProjectCompareWorkspace({
       </div>
 
       {viewerFullscreen && hasEnoughSubmissions && baseSubmission && compareSubmission ? (
-        <div className="fixed inset-0 z-50 bg-[#102118]/82 p-4 backdrop-blur-[3px] sm:p-6">
-          <div className="mx-auto flex h-full max-w-[1600px] flex-col gap-4 overflow-hidden rounded-[30px] border border-[#dce6dd] bg-[#f7faf7] p-4 shadow-[0_36px_90px_rgba(12,26,18,0.34)] sm:p-6">
-            <div className="flex items-center justify-between gap-3">
+        <div className="fixed inset-0 z-[100] bg-[#0f1311]">
+          <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#0f1311] p-3 text-white sm:p-4">
+            <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
               <div>
-                <p className="text-[24px] font-semibold tracking-tight text-[#111712]">Compare Submissions</p>
-                <p className="text-[13px] text-[#68726a]">
+                <p className="text-[22px] font-semibold tracking-tight text-white">Compare Submissions</p>
+                <p className="text-[13px] text-white/62">
                   {formatSubmissionLabel(baseSubmission)} vs {formatSubmissionLabel(compareSubmission)}
                 </p>
               </div>
@@ -1099,6 +1362,8 @@ export function ProjectCompareWorkspace({
                   onCompareImageLoad={setCompareImageDimensions}
                   comparisonAspectRatio={comparisonAspectRatio}
                   onToggleFullscreen={() => setViewerFullscreen(false)}
+                  commentsVisible={commentsVisible}
+                  onToggleCommentsVisible={() => setCommentsVisible((current) => !current)}
                   fullscreenMode
                 />
 

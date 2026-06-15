@@ -127,7 +127,7 @@ type StageCommentQueryRecord = {
   stageId: string;
   revisionId: string | null;
   body: string;
-  deletedAt: Date | null;
+  deletedAt: Date | string | null;
   deletedByUserId: string | null;
   createdAt: Date;
   author: Pick<
@@ -544,7 +544,7 @@ function mapCommentEntry(
       role: getActorRole(comment.author),
       body: DELETED_STAGE_CHAT_MESSAGE_TEXT,
       createdAt: formatHistoryTimestamp(comment.createdAt),
-      deletedAt: comment.deletedAt.toISOString(),
+      deletedAt: toHistoryDate(comment.deletedAt).toISOString(),
       deletedByUserId: comment.deletedByUserId,
       mentions: [],
       attachments: [],
