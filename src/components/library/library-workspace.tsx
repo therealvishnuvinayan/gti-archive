@@ -57,6 +57,7 @@ function buildLibraryUrl(input: {
   search: string;
   projectId: string;
   createdById: string;
+  assetTagId: string;
   date: LibraryDateFilter;
   type: LibraryTypeFilter;
   quickMenu: LibraryQuickMenuOption;
@@ -67,6 +68,7 @@ function buildLibraryUrl(input: {
     search: input.search,
     projectId: input.projectId,
     createdById: input.createdById,
+    assetTagId: input.assetTagId,
     date: input.date,
     type: input.type,
     quickMenu: input.quickMenu,
@@ -168,6 +170,7 @@ type LibraryWorkspaceProps = {
     search: string;
     projectId: string;
     createdById: string;
+    assetTagId: string;
     date: LibraryDateFilter;
     type: LibraryTypeFilter;
     quickMenu: LibraryQuickMenuOption;
@@ -186,6 +189,7 @@ export function LibraryWorkspace({
   const [projectId, setProjectId] = useState(initialQuery?.projectId || "all");
   const [dateFilter, setDateFilter] = useState<LibraryDateFilter>(initialQuery?.date ?? "all");
   const [createdById, setCreatedById] = useState(initialQuery?.createdById || "all");
+  const [assetTagId, setAssetTagId] = useState(initialQuery?.assetTagId || "all");
   const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(initialQuery?.type ?? "All Types");
   const [currentPage, setCurrentPage] = useState(initialData.page);
   const [pageSize, setPageSize] = useState<(typeof pageSizeOptions)[number]>(
@@ -210,6 +214,7 @@ export function LibraryWorkspace({
             search: deferredSearch,
             projectId: projectId === "all" ? "" : projectId,
             createdById: createdById === "all" ? "" : createdById,
+            assetTagId: assetTagId === "all" ? "" : assetTagId,
             date: dateFilter,
             type: typeFilter,
             quickMenu: activeQuickMenu,
@@ -259,7 +264,7 @@ export function LibraryWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [activeQuickMenu, createdById, currentPage, dateFilter, deferredSearch, pageSize, projectId, typeFilter]);
+  }, [activeQuickMenu, assetTagId, createdById, currentPage, dateFilter, deferredSearch, pageSize, projectId, typeFilter]);
 
   async function refetchLibraryPage() {
     setLoading(true);
@@ -272,6 +277,7 @@ export function LibraryWorkspace({
           search: deferredSearch,
           projectId: projectId === "all" ? "" : projectId,
           createdById: createdById === "all" ? "" : createdById,
+          assetTagId: assetTagId === "all" ? "" : assetTagId,
           date: dateFilter,
           type: typeFilter,
           quickMenu: activeQuickMenu,
@@ -466,7 +472,7 @@ export function LibraryWorkspace({
           </div>
 
           <Card className="rounded-[24px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-4 shadow-none">
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.6fr)_repeat(5,minmax(0,1fr))]">
               <Input
                 value={search}
                 onChange={(event) => {
@@ -474,7 +480,7 @@ export function LibraryWorkspace({
                   setSearch(event.target.value);
                   setCurrentPage(1);
                 }}
-                placeholder="Search by file, project, user, or type"
+                placeholder="Search by file, project, asset tag, user, or type"
                 className="h-[42px] border-0 px-5 text-[13px] text-[#657069]"
               />
 
@@ -536,6 +542,27 @@ export function LibraryWorkspace({
                 <SelectContent>
                   <SelectItem value="all">All users</SelectItem>
                   {data.filters.createdBy.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={assetTagId}
+                onValueChange={(value) => {
+                  setLoading(true);
+                  setAssetTagId(value);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-[42px] border-0 text-[13px] text-[#657069]">
+                  <SelectValue placeholder="Asset Tags" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All asset tags</SelectItem>
+                  {data.filters.assetTags.map((option) => (
                     <SelectItem key={option.id} value={option.id}>
                       {option.label}
                     </SelectItem>
@@ -614,30 +641,47 @@ export function LibraryWorkspace({
                             <p className="font-[700] leading-[1.25] text-[#18211a]">
                               {item.fileName}
                             </p>
-                            {item.projectTags.length > 0 ? (
+                            {item.assetTags.length > 0 ? (
                               <div className="mt-2 flex flex-wrap gap-1.5">
-                                {item.projectTags.slice(0, 3).map((tag) => (
+                                {item.assetTags.slice(0, 3).map((tag) => (
                                   <span
-                                    key={tag}
+                                    key={tag.id}
                                     className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
-                                    title={tag}
+                                    title={tag.name}
+                                    style={
+                                      tag.color
+                                        ? {
+                                            backgroundColor: `${tag.color}18`,
+                                            color: tag.color,
+                                          }
+                                        : undefined
+                                    }
                                   >
-                                    {tag}
+                                    {tag.name}
                                   </span>
                                 ))}
-                                {item.projectTags.length > 3 ? (
+                                {item.assetTags.length > 3 ? (
                                   <span
                                     className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
-                                    title={item.projectTag ?? undefined}
+                                    title={item.assetTags.map((tag) => tag.name).join(", ")}
                                   >
-                                    +{item.projectTags.length - 3}
+                                    +{item.assetTags.length - 3}
                                   </span>
                                 ) : null}
                               </div>
                             ) : null}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-[#314036]">{item.projectName}</td>
+                        <td className="px-4 py-4 text-[#314036]">
+                          <div>
+                            <p>{item.projectName}</p>
+                            {item.projectTags.length > 0 ? (
+                              <p className="mt-1 text-[11px] text-[#6b756d]">
+                                Project tags: {item.projectTags.join(", ")}
+                              </p>
+                            ) : null}
+                          </div>
+                        </td>
                         <td className="px-4 py-4 text-[#5f6b62]">{item.uploadedAt}</td>
                         <td className="px-4 py-4 text-[#314036]">{item.createdBy}</td>
                         <td className="px-4 py-4">

@@ -430,7 +430,7 @@ export function ProjectDetailWorkspace({
                 <OverviewRow label="Stages" value={project.stageCount} />
                 <OverviewRow label="Project Started" value={project.startDate} />
                 <OverviewRow label="Project Deadline" value={project.endDate} />
-                <OverviewRow label="Executor" value={project.executorName} />
+                <OverviewRow label="Executor" value={project.executorDisplayName} />
                 <OverviewRow label="Project Tags" value={<ProjectTagChips tags={project.tags} />} />
                 <OverviewRow label="Priority" value={project.priority} priority />
               </dl>

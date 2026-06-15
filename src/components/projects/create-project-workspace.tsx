@@ -44,7 +44,9 @@ import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ProjectCollaboratorsSummary } from "@/components/projects/project-collaborators-panel";
 import {
-  getDefaultProjectCollaboratorParticipantType,
+  getCollaboratorTypeGroup,
+  getCollaboratorTypeLabel,
+  projectCollaboratorParticipantTypes,
 } from "@/lib/project-collaborator-participant-types";
 import {
   MotionItem,
@@ -73,6 +75,12 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import type { ProjectCollaboratorRecord } from "@/lib/projects";
 import {
+  DEFAULT_PROJECT_CURRENCY,
+  PROJECT_CURRENCY_OPTIONS,
+  resolveProjectCurrency,
+} from "@/lib/project-currencies";
+import { DEFAULT_PROJECT_STATUS_SLUG } from "@/lib/project-statuses";
+import {
   DEFAULT_PROJECT_PRIORITY,
   formatProjectPriority,
   isProjectPriority,
@@ -89,29 +97,33 @@ import {
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
 
-const projectStatusOptions = [
-  { value: "ONGOING", label: "Ongoing" },
-  { value: "ON_HOLD", label: "On Hold" },
-  { value: "PENDING", label: "Pending" },
-  { value: "COMPLETED", label: "Completed" },
-] as const;
-
 const MAX_PROJECT_TAGS = 5;
-
-type ProjectStatusValue = (typeof projectStatusOptions)[number]["value"];
 
 const projectExecutionTypeOptions = [
   {
     value: "INTERNAL",
     label: "Internal Execution",
     shortLabel: "Internal",
-    description: "Handled inside the company. Budget, invoices, and external documents are not required.",
+    description: "Handled inside the company. Budget and external documents are optional.",
   },
   {
     value: "EXTERNAL",
     label: "External Execution",
     shortLabel: "External",
-    description: "Handled by an outside party. Budget, invoices, copyright, and official documents apply.",
+    description: "Handled by an outside party. External projects can be created with or without a budget.",
+  },
+] as const;
+
+const budgetRequirementOptions = [
+  {
+    value: false,
+    label: "No budget required",
+    description: "Save the project without a mandatory budget amount.",
+  },
+  {
+    value: true,
+    label: "Budget required",
+    description: "Require a positive project budget and currency before saving.",
   },
 ] as const;
 
@@ -142,11 +154,8 @@ type MonthPickerProps = {
 type CreateProjectWorkspaceProps = {
   availableCollaborators: CollaboratorRecord[];
   categoryOptions?: string[];
+  statusOptions?: ProjectStatusSelectOption[];
   tagOptions?: string[];
-  currencyOptions?: Array<{
-    code: string;
-    name: string;
-  }>;
   canManageProjectMasterData?: boolean;
   canInviteExecutor?: boolean;
   mode?: "create" | "edit";
@@ -157,11 +166,25 @@ type CreateProjectWorkspaceProps = {
   ) => Promise<ProjectFormState>;
 };
 
+type ProjectStatusSelectOption = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  groupId: string | null;
+  groupName: string;
+  groupSlug: string;
+  groupColor: string;
+  groupIsActive: boolean;
+  isActive: boolean;
+};
+
 type ExecutorOption = {
   id: string;
   name: string;
   email: string;
   type: CollaboratorRecord["type"];
+  typeLabel: string;
 };
 
 type ProjectExecutorRoleValue = ProjectEditorInitialExecutor["role"];
@@ -383,15 +406,10 @@ function validateClientStageTimeline(input: {
   };
 }
 
-function getDefaultProjectCurrencyCode(
-  currencyOptions: Array<{
-    code: string;
-    name: string;
-  }>,
-) {
+function getDefaultProjectStatusId(statusOptions: ProjectStatusSelectOption[]) {
   return (
-    currencyOptions.find((currency) => currency.code === "USD")?.code ??
-    currencyOptions[0]?.code ??
+    statusOptions.find((status) => status.slug === DEFAULT_PROJECT_STATUS_SLUG)?.id ??
+    statusOptions[0]?.id ??
     ""
   );
 }
@@ -400,31 +418,22 @@ function getDefaultExecutorInviteForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "Internal",
-    permissions: {
-      project: "full",
-      calendar: "none",
-      library: "none",
-      archive: "none",
-    },
+    type: "GTI_INTERNAL_CLIENT",
   };
 }
 
 function buildAssignedCollaboratorRecord(
   collaborator: CollaboratorRecord,
 ): ProjectEditorInitialCollaborator {
+  const group = collaborator.typeGroup;
+
   return {
     id: collaborator.id,
     name: collaborator.name,
     email: collaborator.email,
-    role:
-      collaborator.type === "External"
-        ? "External Collaborator"
-        : "Collaborator",
-    group: collaborator.type === "External" ? "external" : "internal",
-    participantType: getDefaultProjectCollaboratorParticipantType(
-      collaborator.type === "External" ? "external" : "internal",
-    ),
+    role: group === "external" ? "External Collaborator" : "Collaborator",
+    group,
+    participantType: collaborator.type,
     access: "view",
     removable: true,
   };
@@ -541,7 +550,7 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function formatExecutorTypeLabel(type: CollaboratorRecord["type"]) {
-  return type === "External" ? "External Collaborator" : "Internal Collaborator";
+  return getCollaboratorTypeLabel(type);
 }
 
 function formatProjectExecutorRoleLabel(role: ProjectExecutorRoleValue) {
@@ -558,7 +567,7 @@ function buildProjectExecutorRecord(
     email: executor.email,
     role,
     roleLabel: formatProjectExecutorRoleLabel(role),
-    group: executor.type === "External" ? "external" : "internal",
+    group: getCollaboratorTypeGroup(executor.type),
     chatVisibilityPaused: false,
   };
 }
@@ -746,8 +755,11 @@ function InviteExecutorDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Internal">Internal</SelectItem>
-                  <SelectItem value="External">External</SelectItem>
+                  {projectCollaboratorParticipantTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {getCollaboratorTypeLabel(type)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </label>
@@ -818,21 +830,15 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "Internal",
-    permissions: {
-      project: "none",
-      calendar: "none",
-      library: "none",
-      archive: "none",
-    },
+    type: "GTI_INTERNAL_CLIENT",
   };
 }
 
 export function CreateProjectWorkspace({
   availableCollaborators,
   categoryOptions = [],
+  statusOptions = [],
   tagOptions = [],
-  currencyOptions = [],
   canManageProjectMasterData = false,
   canInviteExecutor = false,
   mode = "create",
@@ -857,9 +863,12 @@ export function CreateProjectWorkspace({
     normalizeProjectTagValues(initialValues?.tags ?? []),
   );
   const [projectTagError, setProjectTagError] = useState<string>();
+  const [projectBudgetRequired, setProjectBudgetRequired] = useState(
+    initialValues?.budgetRequired ?? false,
+  );
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
   const [projectCurrency, setProjectCurrency] = useState<string>(
-    initialValues?.currency ?? getDefaultProjectCurrencyCode(currencyOptions),
+    resolveProjectCurrency(initialValues?.currency ?? "") ?? DEFAULT_PROJECT_CURRENCY,
   );
   const [projectPriority, setProjectPriority] = useState<ProjectPriorityValue>(
     initialValues?.priority && isProjectPriority(initialValues.priority)
@@ -867,8 +876,32 @@ export function CreateProjectWorkspace({
       : DEFAULT_PROJECT_PRIORITY,
   );
   const [projectBrief, setProjectBrief] = useState(initialValues?.description ?? "");
-  const [projectStatus, setProjectStatus] = useState<ProjectStatusValue>(
-    initialValues?.status ?? "ONGOING",
+  const initialStatusOptions = useMemo<ProjectStatusSelectOption[]>(() => {
+    if (
+      !initialValues?.statusId ||
+      statusOptions.some((status) => status.id === initialValues.statusId)
+    ) {
+      return statusOptions;
+    }
+
+    return [
+      {
+        id: initialValues.statusId,
+        name: initialValues.statusName || "No status",
+        slug: initialValues.statusId,
+        color: initialValues.statusColor,
+        groupId: initialValues.statusGroupId,
+        groupName: initialValues.statusGroupName || "No group",
+        groupSlug: initialValues.statusGroupSlug,
+        groupColor: initialValues.statusGroupColor,
+        groupIsActive: initialValues.statusGroupIsActive,
+        isActive: initialValues.statusIsActive,
+      },
+      ...statusOptions,
+    ];
+  }, [initialValues, statusOptions]);
+  const [projectStatusId, setProjectStatusId] = useState(
+    initialValues?.statusId ?? getDefaultProjectStatusId(initialStatusOptions),
   );
   const [startDate, setStartDate] = useState<Date | null>(
     initialValues?.startDate ? new Date(initialValues.startDate) : null,
@@ -917,51 +950,7 @@ export function CreateProjectWorkspace({
     initialValues?.collaborators ?? [],
   );
   const [projectExecutors, setProjectExecutors] = useState<ProjectEditorInitialExecutor[]>(
-    () => {
-      if (initialValues?.executors.length) {
-        return initialValues.executors;
-      }
-
-      const fallbackExecutor = availableCollaborators.find(
-        (collaborator) =>
-          collaborator.id === initialValues?.executorUserId ||
-          ((!initialValues?.executorUserId && initialValues?.executorName
-            ? collaborator.name.trim().toLowerCase() ===
-                initialValues.executorName.trim().toLowerCase() ||
-              collaborator.email.trim().toLowerCase() ===
-                initialValues.executorName.trim().toLowerCase()
-            : false)),
-      );
-
-      if (fallbackExecutor) {
-        return [
-          buildProjectExecutorRecord(
-            {
-              id: fallbackExecutor.id,
-              name: fallbackExecutor.name,
-              email: fallbackExecutor.email,
-              type: fallbackExecutor.type,
-            },
-            "MAIN_EXECUTOR",
-          ),
-        ];
-      }
-
-      if (initialValues?.executorUserId && initialValues.executorName) {
-        return [
-          {
-            id: initialValues.executorUserId,
-            name: initialValues.executorName,
-            role: "MAIN_EXECUTOR",
-            roleLabel: formatProjectExecutorRoleLabel("MAIN_EXECUTOR"),
-            group: "internal",
-            chatVisibilityPaused: false,
-          },
-        ];
-      }
-
-      return [];
-    },
+    () => initialValues?.executors ?? [],
   );
   const [projectAttachments, setProjectAttachments] = useState<ProjectEditorInitialAttachment[]>(
     initialValues?.attachments ?? [],
@@ -1009,7 +998,7 @@ export function CreateProjectWorkspace({
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
   const isInternalExecution = projectExecutionType === "INTERNAL";
   const isExternalExecution = projectExecutionType === "EXTERNAL";
-  const isBudgetRequired = canViewBudget && isExternalExecution;
+  const isBudgetRequired = canViewBudget && projectBudgetRequired;
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
   const displayedAttachmentError =
     attachmentError ?? getFieldError("attachments", fieldErrors.attachments);
@@ -1029,16 +1018,15 @@ export function CreateProjectWorkspace({
   const hasInvalidBudgetInputs = useMemo(
     () =>
       canViewBudget &&
-      isExternalExecution &&
       (projectBudget.trim().length > 0
         ? !Number.isFinite(parsedProjectBudget) || parsedProjectBudget <= 0
         : false),
-    [canViewBudget, isExternalExecution, parsedProjectBudget, projectBudget],
+    [canViewBudget, parsedProjectBudget, projectBudget],
   );
   const hasInvalidStageBudgetInputs = useMemo(
     () =>
       canViewBudget &&
-      isExternalExecution &&
+      isBudgetRequired &&
       stages.some((stage, index) => {
         if (!stage.budget.trim()) {
           return false;
@@ -1047,23 +1035,38 @@ export function CreateProjectWorkspace({
         const budget = parsedStageBudgets[index];
         return !Number.isFinite(budget) || budget <= 0;
       }),
-    [canViewBudget, isExternalExecution, parsedStageBudgets, stages],
+    [canViewBudget, isBudgetRequired, parsedStageBudgets, stages],
   );
   const hasMissingStageBudgetInputs = useMemo(
-    () => isBudgetRequired && stages.some((stage) => !stage.budget.trim()),
-    [isBudgetRequired, stages],
+    () =>
+      isBudgetRequired &&
+      isExternalExecution &&
+      stages.some((stage) => !stage.budget.trim()),
+    [isBudgetRequired, isExternalExecution, stages],
   );
   const remainingStageBudget = useMemo(() => {
-    if (!canViewBudget || !isExternalExecution || !Number.isFinite(parsedProjectBudget)) {
+    if (
+      !canViewBudget ||
+      !isExternalExecution ||
+      !isBudgetRequired ||
+      !Number.isFinite(parsedProjectBudget)
+    ) {
       return null;
     }
 
     return parsedProjectBudget - totalStageBudget;
-  }, [canViewBudget, isExternalExecution, parsedProjectBudget, totalStageBudget]);
+  }, [
+    canViewBudget,
+    isBudgetRequired,
+    isExternalExecution,
+    parsedProjectBudget,
+    totalStageBudget,
+  ]);
   const hasBudgetConflict = useMemo(
     () =>
       canViewBudget &&
       isExternalExecution &&
+      isBudgetRequired &&
       Number.isFinite(parsedProjectBudget) &&
       !hasMissingStageBudgetInputs &&
       !hasInvalidStageBudgetInputs &&
@@ -1072,6 +1075,7 @@ export function CreateProjectWorkspace({
       canViewBudget,
       hasInvalidStageBudgetInputs,
       hasMissingStageBudgetInputs,
+      isBudgetRequired,
       isExternalExecution,
       parsedProjectBudget,
       totalStageBudget,
@@ -1107,16 +1111,38 @@ export function CreateProjectWorkspace({
     () => mergeUniqueTextOptions(availableTagOptions, projectTags),
     [availableTagOptions, projectTags],
   );
-  const currencySelectOptions = useMemo(() => {
+  const currencySelectOptions = PROJECT_CURRENCY_OPTIONS;
+  const projectStatusSelectOptions = useMemo(() => {
     if (
-      projectCurrency &&
-      !currencyOptions.some((currency) => currency.code === projectCurrency)
+      projectStatusId &&
+      !initialStatusOptions.some((status) => status.id === projectStatusId) &&
+      initialValues?.statusId === projectStatusId
     ) {
-      return [{ code: projectCurrency, name: projectCurrency }, ...currencyOptions];
+      return [
+        {
+          id: projectStatusId,
+          name: initialValues.statusName || "No status",
+          slug: projectStatusId,
+          color: initialValues.statusColor,
+          groupId: initialValues.statusGroupId,
+          groupName: initialValues.statusGroupName || "No group",
+          groupSlug: initialValues.statusGroupSlug,
+          groupColor: initialValues.statusGroupColor,
+          groupIsActive: initialValues.statusGroupIsActive,
+          isActive: initialValues.statusIsActive,
+        },
+        ...initialStatusOptions,
+      ];
     }
 
-    return currencyOptions;
-  }, [currencyOptions, projectCurrency]);
+    return initialStatusOptions;
+  }, [initialStatusOptions, initialValues, projectStatusId]);
+  const selectedProjectStatus = useMemo(
+    () =>
+      projectStatusSelectOptions.find((status) => status.id === projectStatusId) ??
+      null,
+    [projectStatusId, projectStatusSelectOptions],
+  );
   const executorOptions = useMemo<ExecutorOption[]>(
     () =>
       availableCollaboratorRecords.map((collaborator) => ({
@@ -1124,6 +1150,7 @@ export function CreateProjectWorkspace({
         name: collaborator.name,
         email: collaborator.email,
         type: collaborator.type,
+        typeLabel: collaborator.typeLabel,
       })),
     [availableCollaboratorRecords],
   );
@@ -1139,7 +1166,7 @@ export function CreateProjectWorkspace({
     }
 
     return executorOptions.filter((option) =>
-      [option.name, option.email, option.type, formatExecutorTypeLabel(option.type)].some(
+      [option.name, option.email, option.typeLabel, formatExecutorTypeLabel(option.type)].some(
         (value) => value.toLowerCase().includes(query),
       ),
     );
@@ -1151,8 +1178,6 @@ export function CreateProjectWorkspace({
       null,
     [projectExecutors],
   );
-  const projectExecutor = primaryProjectExecutor?.name ?? "";
-  const projectExecutorUserId = primaryProjectExecutor?.id ?? "";
   const executorOverviewLabel = useMemo(() => {
     if (!primaryProjectExecutor) {
       return "—";
@@ -1168,23 +1193,23 @@ export function CreateProjectWorkspace({
       executionType:
         projectExecutionTypeOptions.find((option) => option.value === projectExecutionType)
           ?.label ?? "External Execution",
-      budget: isInternalExecution
-        ? "Not required for internal execution"
-        : canViewBudget
+      budget: canViewBudget
           ? Number.isFinite(parsedProjectBudget)
             ? formatBudgetDisplay(parsedProjectBudget, projectCurrency ?? "")
-            : projectBudget
+            : projectBudgetRequired
+              ? "Budget required - not set"
+              : projectBudget
               ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
-              : "—"
+              : "No budget required"
           : "Restricted",
       allocatedStageBudget:
-        isInternalExecution
+        !isBudgetRequired || !isExternalExecution
           ? "Not required"
           : canViewBudget && Number.isFinite(totalStageBudget)
           ? formatBudgetDisplay(totalStageBudget, projectCurrency ?? "")
           : "—",
       remainingStageBudget:
-        isInternalExecution
+        !isBudgetRequired || !isExternalExecution
           ? "Not required"
           : canViewBudget && remainingStageBudget !== null
           ? formatBudgetDifference(remainingStageBudget, projectCurrency ?? "")
@@ -1194,20 +1219,21 @@ export function CreateProjectWorkspace({
       deadline: endDate ? formatDateValue(endDate) : "—",
       executor: executorOverviewLabel,
       tag: projectTags.length > 0 ? projectTags.join(", ") : "—",
-      status:
-        projectStatusOptions.find((option) => option.value === projectStatus)?.label || "—",
+      status: selectedProjectStatus?.name ?? "—",
       priority: formatProjectPriority(projectPriority),
     }),
     [
       canViewBudget,
-      isInternalExecution,
+      isBudgetRequired,
+      isExternalExecution,
       projectBudget,
+      projectBudgetRequired,
       projectCurrency,
       projectExecutionType,
       executorOverviewLabel,
       projectTags,
       projectPriority,
-      projectStatus,
+      selectedProjectStatus,
       parsedProjectBudget,
       remainingStageBudget,
       stages.length,
@@ -1296,16 +1322,6 @@ export function CreateProjectWorkspace({
     value: CollaboratorForm[K],
   ) {
     setCollaboratorForm((current) => ({ ...current, [field]: value }));
-  }
-
-  function setCollaboratorPermissionValue(
-    area: keyof CollaboratorForm["permissions"],
-    value: CollaboratorForm["permissions"][keyof CollaboratorForm["permissions"]],
-  ) {
-    setCollaboratorForm((current) => ({
-      ...current,
-      permissions: { ...current.permissions, [area]: value },
-    }));
   }
 
   function setExecutorInviteFormValue<K extends keyof CollaboratorForm>(
@@ -1418,8 +1434,7 @@ export function CreateProjectWorkspace({
           : item,
       );
     });
-    clearFieldError("executorUserId");
-    clearFieldError("executorName");
+    clearFieldError("executors");
   }
 
   function updateProjectExecutorRole(
@@ -1455,8 +1470,7 @@ export function CreateProjectWorkspace({
           : executor,
       );
     });
-    clearFieldError("executorUserId");
-    clearFieldError("executorName");
+    clearFieldError("executors");
   }
 
   function removeProjectExecutor(executor: ProjectEditorInitialExecutor) {
@@ -1476,8 +1490,7 @@ export function CreateProjectWorkspace({
       current.filter((item) => item.id !== executor.id),
     );
     setExecutorRemovalTarget(null);
-    clearFieldError("executorUserId");
-    clearFieldError("executorName");
+    clearFieldError("executors");
   }
 
   function toggleAssignedCollaborator(collaboratorId: string) {
@@ -1718,12 +1731,6 @@ export function CreateProjectWorkspace({
     try {
       const result = await saveCollaboratorAction({
         ...executorInviteForm,
-        permissions: {
-          project: "full",
-          calendar: "none",
-          library: "none",
-          archive: "none",
-        },
         allowExistingUser: true,
       });
 
@@ -1742,14 +1749,14 @@ export function CreateProjectWorkspace({
           name: result.collaborator.name,
           email: result.collaborator.email,
           type: result.collaborator.type,
+          typeLabel: result.collaborator.typeLabel,
         },
         executorRoleDraft,
       );
       setExecutorInviteOpen(false);
       setExecutorPickerOpen(false);
       setExecutorSearch("");
-      clearFieldError("executorUserId");
-      clearFieldError("executorName");
+      clearFieldError("executors");
       showSuccessToast("Executor invited.");
 
       if (result.warning) {
@@ -2492,9 +2499,8 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="startDate" value={startDate ? formatDateValue(startDate) : ""} />
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
       <input type="hidden" name="category" value={projectCategory} />
-      <input type="hidden" name="executorName" value={projectExecutor} />
-      <input type="hidden" name="executorUserId" value={projectExecutorUserId} />
       <input type="hidden" name="executionType" value={projectExecutionType} />
+      <input type="hidden" name="budgetRequired" value={projectBudgetRequired ? "true" : "false"} />
       {projectExecutors.map((executor) => (
         <div key={executor.id}>
           <input type="hidden" name="executorIds" value={executor.id} />
@@ -2505,7 +2511,7 @@ export function CreateProjectWorkspace({
         <input key={tag} type="hidden" name="tags" value={tag} />
       ))}
       <input type="hidden" name="currency" value={projectCurrency} />
-      <input type="hidden" name="status" value={projectStatus} />
+      <input type="hidden" name="statusId" value={projectStatusId} />
       <input type="hidden" name="priority" value={projectPriority} />
       {assignedCollaborators.map((collaborator) => (
         <div key={collaborator.id}>
@@ -2654,8 +2660,66 @@ export function CreateProjectWorkspace({
                 <FieldError message={getFieldError("category", fieldErrors.category)} />
               </label>
 
-              <label className="block">
+              <div className="space-y-3">
+                <FieldLabel>Budget Requirement</FieldLabel>
+                {canViewBudget ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {budgetRequirementOptions.map((option) => {
+                      const isSelected = projectBudgetRequired === option.value;
+
+                      return (
+                        <button
+                          key={option.label}
+                          type="button"
+                          onClick={() => {
+                            setProjectBudgetRequired(option.value);
+                            clearFieldError("budgetRequired");
+                            clearFieldError("budget");
+                            clearFieldError("currency");
+                            clearFieldError("budgetSummary");
+                          }}
+                          className={`rounded-[18px] border px-4 py-3 text-left transition ${
+                            isSelected
+                              ? "border-brand bg-[#eef8f0] shadow-[0_12px_24px_rgba(38,128,79,0.12)]"
+                              : "border-[#dce6dd] bg-white hover:border-brand/60"
+                          }`}
+                        >
+                          <span className="flex items-center justify-between gap-3">
+                            <span className="text-[13px] font-semibold text-[#173120]">
+                              {option.label}
+                            </span>
+                            <span
+                              className={`flex size-5 items-center justify-center rounded-full border ${
+                                isSelected
+                                  ? "border-brand bg-brand text-white"
+                                  : "border-[#c8d6ca] text-transparent"
+                              }`}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </span>
+                          </span>
+                          <span className="mt-2 block text-[11px] leading-4 text-[#6f786f]">
+                            {option.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-[18px] border border-[#dfe5df] bg-[#f7faf7] px-4 py-3 text-[12px] font-medium text-[#6f786f]">
+                    Budget requirement is restricted to the project owner.
+                  </div>
+                )}
                 {isExternalExecution ? (
+                  <p className="text-[12px] font-medium text-[#6f786f]">
+                    External projects can be created with or without a budget.
+                  </p>
+                ) : null}
+                <FieldError message={getFieldError("budgetRequired", fieldErrors.budgetRequired)} />
+              </div>
+
+              <label className="block">
+                {isBudgetRequired ? (
                   <RequiredLabel>Project Budget</RequiredLabel>
                 ) : (
                   <FieldLabel>Project Budget</FieldLabel>
@@ -2670,9 +2734,9 @@ export function CreateProjectWorkspace({
                       inputMode="numeric"
                       pattern="[0-9]*"
                       placeholder={
-                        isInternalExecution
-                          ? "Optional budget"
-                          : "Enter Project Budget...."
+                        isBudgetRequired
+                          ? "Enter Project Budget...."
+                          : "Optional budget"
                       }
                       className="h-[42px] min-w-0 flex-1 text-[12px]"
                     />
@@ -2683,16 +2747,9 @@ export function CreateProjectWorkspace({
                         clearFieldError("currency");
                         clearFieldError("budgetSummary");
                       }}
-                      disabled={currencySelectOptions.length === 0}
                     >
                       <SelectTrigger className="h-[42px] w-[108px] text-[12px] font-medium">
-                        <SelectValue
-                          placeholder={
-                            currencySelectOptions.length === 0
-                              ? "No currencies available"
-                              : "Select currency"
-                          }
-                        />
+                        <SelectValue placeholder="Select currency" />
                       </SelectTrigger>
                       <SelectContent>
                         {currencySelectOptions.map((currency) => (
@@ -2710,9 +2767,9 @@ export function CreateProjectWorkspace({
                 )}
                 {canViewBudget ? (
                   <>
-                    {isInternalExecution ? (
+                    {!isBudgetRequired ? (
                       <p className="mt-2 text-[12px] font-medium text-[#6f786f]">
-                        Budget is not required for internal execution.
+                        Leave the amount empty when this project has no budget.
                       </p>
                     ) : null}
                     <FieldError
@@ -2844,24 +2901,47 @@ export function CreateProjectWorkspace({
               <label className="block">
                 <RequiredLabel>Project Status</RequiredLabel>
                 <Select
-                  value={projectStatus}
+                  value={projectStatusId}
                   onValueChange={(nextValue) => {
-                    setProjectStatus(nextValue as ProjectStatusValue);
-                    clearFieldError("status");
+                    setProjectStatusId(nextValue);
+                    clearFieldError("statusId");
                   }}
+                  disabled={projectStatusSelectOptions.length === 0}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
-                    <SelectValue />
+                    <SelectValue
+                      placeholder={
+                        projectStatusSelectOptions.length === 0
+                          ? "No statuses available"
+                          : "Select project status"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {projectStatusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                    {projectStatusSelectOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        <span className="flex items-center gap-2">
+                          {option.color ? (
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: option.color }}
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          <span>{option.name}</span>
+                          {!option.isActive ? (
+                            <span className="text-[11px] text-[#8a938b]">(Inactive)</span>
+                          ) : null}
+                          <span className="text-[11px] text-[#8a938b]">
+                            {option.groupName || "No group"}
+                            {!option.groupIsActive ? " (Inactive)" : ""}
+                          </span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <FieldError message={getFieldError("status", fieldErrors.status)} />
+                <FieldError message={getFieldError("statusId", fieldErrors.statusId)} />
               </label>
 
               <label className="block">
@@ -3159,7 +3239,7 @@ export function CreateProjectWorkspace({
                     Project Budget
                   </p>
                   <p className="mt-1 font-semibold text-[#173120]">
-                    {isInternalExecution
+                    {!isBudgetRequired
                       ? "Not required"
                       : Number.isFinite(parsedProjectBudget)
                         ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
@@ -3171,7 +3251,7 @@ export function CreateProjectWorkspace({
                     Stage Total
                   </p>
                   <p className="mt-1 font-semibold text-[#173120]">
-                    {isInternalExecution
+                    {!isBudgetRequired || !isExternalExecution
                       ? "Not required"
                       : formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
                   </p>
@@ -3185,7 +3265,7 @@ export function CreateProjectWorkspace({
                       hasBudgetConflict ? "text-[#ba3f31]" : "text-brand"
                     }`}
                   >
-                    {isInternalExecution
+                    {!isBudgetRequired || !isExternalExecution
                       ? "Not required"
                       : remainingStageBudget !== null
                       ? formatBudgetDifference(remainingStageBudget, projectCurrency || "")
@@ -3262,20 +3342,24 @@ export function CreateProjectWorkspace({
                     />
                     <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
                       Stage Budget{" "}
-                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
+                      {isBudgetRequired && isExternalExecution ? (
+                        <span className="text-[#d3554d]">*</span>
+                      ) : null}
                     </p>
                     {canViewBudget ? (
                       <Input
                         value={stage.budget}
                         onChange={(event) => handleStageBudgetChange(stage.id, event.target.value)}
                         name="stageBudgets"
-                        required={isBudgetRequired}
+                        required={isBudgetRequired && isExternalExecution}
                         inputMode="numeric"
                         pattern="[0-9]*"
                         placeholder={
                           isInternalExecution
                             ? "Optional stage budget"
-                            : `Stage ${index + 1} Budget...`
+                            : isBudgetRequired
+                              ? `Stage ${index + 1} Budget...`
+                              : "Optional stage budget"
                         }
                         className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
                       />
@@ -3826,10 +3910,7 @@ export function CreateProjectWorkspace({
               </p>
             )}
             <FieldError
-              message={
-                getFieldError("executorUserId", fieldErrors.executorUserId) ||
-                getFieldError("executorName", fieldErrors.executorName)
-              }
+              message={getFieldError("executors", fieldErrors.executors)}
             />
           </CardContent>
         </Card>
@@ -3874,7 +3955,6 @@ export function CreateProjectWorkspace({
         }}
         onSubmit={handleCollaboratorInvite}
         onChange={setCollaboratorFormValue}
-        onPermissionChange={setCollaboratorPermissionValue}
       />
       <QuickAddMasterDataDialog
         isOpen={quickAddMasterDataKind !== null}

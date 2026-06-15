@@ -6,6 +6,7 @@ import {
   ProjectExecutionType,
   ProjectExecutorRole,
   ProjectRevisionStatus,
+  StageStatus,
   SubmissionReviewStatus,
   UserRole,
 } from "@prisma/client";
@@ -16,7 +17,6 @@ import type {
   ProjectExecutor,
   ProjectTag,
   ProjectStage,
-  ProjectStatus,
   User,
 } from "@prisma/client";
 
@@ -33,6 +33,10 @@ import {
   formatProjectPriority,
   type ProjectPriorityValue,
 } from "@/lib/project-priority";
+import {
+  DEFAULT_PROJECT_CURRENCY,
+  resolveProjectCurrency,
+} from "@/lib/project-currencies";
 import {
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
@@ -51,10 +55,19 @@ import {
 } from "@/lib/permissions/resolver";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  defaultProjectStatusGroupSlugs,
+  getActiveProjectStatusOptions,
+  getProjectStatusDisplay,
+  isProjectStatusCompleted,
+  type ActiveProjectStatusOption,
+} from "@/lib/project-statuses";
 
 export const PROJECTS_CACHE_TAG = "projects";
 export const INTERNAL_EXECUTION_NOT_REQUIRED_LABEL =
   "Not required for internal execution";
+export const PROJECT_BUDGET_NOT_REQUIRED_LABEL = "No budget required";
+export const PROJECT_BUDGET_REQUIRED_NOT_SET_LABEL = "Budget required - not set";
 export const MAX_PROJECT_TAGS = 5;
 
 type BudgetAccessUser = Pick<User, "id">;
@@ -74,12 +87,37 @@ type ProjectStageWithStarter = ProjectStage & {
   }>;
 };
 
+const projectStatusGroupSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  color: true,
+  isActive: true,
+} as const;
+
+type ProjectStatusGroupRelation = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string | null;
+  isActive?: boolean;
+} | null;
+
+type ProjectStatusRelation = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string | null;
+  group: ProjectStatusGroupRelation;
+  isActive?: boolean;
+} | null;
+
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
+  status: ProjectStatusRelation;
   tags?: Array<{
     tag: Pick<ProjectTag, "id" | "name" | "color">;
   }>;
-  executorUser?: Pick<User, "id" | "name" | "email" | "collaboratorType"> | null;
   executors?: Array<
     ProjectExecutor & {
       user: Pick<
@@ -137,17 +175,25 @@ export type ProjectEditorRecord = {
   ownerId: string;
   name: string;
   category: string;
-  executorName: string;
-  executorUserId?: string | null;
+  executorDisplayName: string;
   executors: ProjectExecutorRecord[];
   tags: string[];
   priority: ProjectPriorityValue;
   description: string;
   executionType: ProjectExecutionType;
+  budgetRequired: boolean;
   budget: string;
   currency: string | null;
   canViewBudget: boolean;
-  status: ProjectStatus;
+  statusId: string | null;
+  statusName: string;
+  statusColor: string;
+  statusGroupId: string | null;
+  statusGroupName: string;
+  statusGroupSlug: string;
+  statusGroupColor: string;
+  statusGroupIsActive: boolean;
+  statusIsActive: boolean;
   startDate: string;
   endDate: string;
   stages: Array<{
@@ -175,7 +221,7 @@ export type ProjectStageRecord = {
   order: number;
   label: string;
   name: string;
-  statusLabel: "Pending" | "Ongoing" | "Completed";
+  statusLabel: "Pending" | "Ongoing" | "On Hold" | "Completed";
   subtitle: string;
   description: string;
   title: string;
@@ -279,6 +325,9 @@ export type ProjectChatEntry = {
   role: string;
   body: string;
   createdAt: string;
+  deletedAt?: string | null;
+  deletedByUserId?: string | null;
+  canDeleteUntil?: string | null;
   mentions?: Array<{
     userId: string;
     name: string;
@@ -310,12 +359,11 @@ export type ProjectCompareNote = {
 export type ProjectFlowRecord = {
   id: string;
   ownerId: string;
-  executorUserId?: string | null;
   executors: ProjectExecutorRecord[];
   canViewBudget: boolean;
   title: string;
   category: string;
-  executorName: string;
+  executorDisplayName: string;
   description: string;
   executionType: ProjectExecutionType;
   executionTypeLabel: string;
@@ -348,7 +396,7 @@ export type DashboardProjectCounts = {
 };
 
 export type ProjectsListFilter = {
-  status?: "ALL" | "ONGOING" | "PENDING" | "ON_HOLD" | "COMPLETED";
+  status?: string;
   query?: string;
   category?: string;
   tag?: string;
@@ -356,33 +404,9 @@ export type ProjectsListFilter = {
 };
 
 export type ProjectListFilterOptions = {
+  statuses: ActiveProjectStatusOption[];
   categories: string[];
   tags: string[];
-};
-
-export const projectStatusMeta: Record<
-  ProjectStatus,
-  {
-    label: string;
-    dashboardLabel: string;
-  }
-> = {
-  ONGOING: {
-    label: "In Progress",
-    dashboardLabel: "Ongoing",
-  },
-  ON_HOLD: {
-    label: "On Hold",
-    dashboardLabel: "On Hold",
-  },
-  PENDING: {
-    label: "Pending",
-    dashboardLabel: "Pending",
-  },
-  COMPLETED: {
-    label: "Completed",
-    dashboardLabel: "Completed",
-  },
 };
 
 function toProjectDate(date: Date | string | number) {
@@ -405,13 +429,19 @@ export function formatProjectDate(date: Date | string | number) {
 
 export function formatProjectBudget(
   budget: number | null | undefined,
-  currency = "USD",
+  currency: string | null | undefined = DEFAULT_PROJECT_CURRENCY,
 ) {
   if (!budget || budget <= 0) {
-    return "—";
+    return "Not specified";
   }
 
-  return `${budget.toLocaleString("en-US")} ${currency}`;
+  const currencyCode = resolveProjectCurrency(currency ?? "");
+
+  if (!currencyCode) {
+    return "Not specified";
+  }
+
+  return `${budget.toLocaleString("en-US")} ${currencyCode}`;
 }
 
 export function formatProjectExecutionTypeLabel(
@@ -426,13 +456,17 @@ function isInternalExecutionProject(project: Pick<Project, "executionType">) {
   return project.executionType === ProjectExecutionType.INTERNAL;
 }
 
-function formatProjectBudgetForExecution(
-  project: Pick<Project, "executionType" | "currency">,
+function formatProjectBudgetForRequirement(
+  project: Pick<Project, "budgetRequired" | "currency">,
   budget: number | null | undefined,
 ) {
-  return isInternalExecutionProject(project)
-    ? INTERNAL_EXECUTION_NOT_REQUIRED_LABEL
-    : formatProjectBudget(budget, project.currency);
+  if (budget && budget > 0) {
+    return formatProjectBudget(budget, project.currency);
+  }
+
+  return project.budgetRequired
+    ? PROJECT_BUDGET_REQUIRED_NOT_SET_LABEL
+    : PROJECT_BUDGET_NOT_REQUIRED_LABEL;
 }
 
 export function canViewProjectBudget(
@@ -614,7 +648,7 @@ function mapProjectExecutorAssignmentToRecord(
 function getProjectExecutorRecords(
   project: Pick<
     ProjectWithCreator,
-    "executorName" | "executorUserId" | "executorUser" | "executors" | "collaborators"
+    "executors" | "collaborators"
   >,
 ) {
   const visibilityStateByUserId = new Map(
@@ -632,31 +666,7 @@ function getProjectExecutorRecords(
     )
     .sort(compareProjectExecutorRecords);
 
-  if (mappedExecutors.length > 0) {
-    return mappedExecutors;
-  }
-
-  if (!project.executorUserId) {
-    return [];
-  }
-
-  return [
-    {
-      id: project.executorUserId,
-      name:
-        project.executorUser?.name?.trim() ||
-        project.executorUser?.email ||
-        project.executorName?.trim() ||
-        "Main Executor",
-      email: project.executorUser?.email,
-      role: ProjectExecutorRole.MAIN_EXECUTOR,
-      roleLabel: formatProjectExecutorRole(ProjectExecutorRole.MAIN_EXECUTOR),
-      group: project.executorUser
-        ? mapCollaboratorTypeToGroup(project.executorUser.collaboratorType)
-        : "internal",
-      chatVisibilityPaused: visibilityStateByUserId.get(project.executorUserId) ?? false,
-    },
-  ];
+  return mappedExecutors;
 }
 
 function getProjectExecutorDisplayName(executors: ProjectExecutorRecord[]) {
@@ -694,8 +704,85 @@ function maskCollaboratorVisibilityState(collaborator: ProjectCollaboratorRecord
   };
 }
 
+function buildProjectStatusWhere(statusFilter?: string): Prisma.ProjectWhereInput | null {
+  if (!statusFilter || statusFilter === "ALL") {
+    return null;
+  }
+
+  const normalizedFilter = statusFilter.trim();
+  const groupFilterPrefix = "group:";
+
+  if (normalizedFilter.startsWith(groupFilterPrefix)) {
+    const groupSlug = normalizedFilter.slice(groupFilterPrefix.length);
+
+    if (!groupSlug) {
+      return null;
+    }
+
+    return {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: groupSlug,
+            },
+          },
+        },
+      },
+    };
+  }
+
+  const groupSlugByLegacyFilter: Record<string, string> = {
+    ONGOING: defaultProjectStatusGroupSlugs.active,
+    ACTIVE: defaultProjectStatusGroupSlugs.active,
+    PENDING: defaultProjectStatusGroupSlugs.pending,
+    ON_HOLD: defaultProjectStatusGroupSlugs.onHold,
+    ARCHIVED: defaultProjectStatusGroupSlugs.archived,
+    CANCELLED: defaultProjectStatusGroupSlugs.cancelled,
+  };
+
+  if (normalizedFilter === "COMPLETED") {
+    return {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: {
+                in: [
+                  defaultProjectStatusGroupSlugs.completed,
+                  defaultProjectStatusGroupSlugs.archived,
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  const legacyGroupSlug = groupSlugByLegacyFilter[normalizedFilter];
+
+  if (legacyGroupSlug) {
+    return {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: legacyGroupSlug,
+            },
+          },
+        },
+      },
+    };
+  }
+
+  return {
+    statusId: normalizedFilter,
+  };
+}
+
 function canAccessProjectRecord(
-  project: Pick<Project, "createdById" | "executorUserId"> & {
+  project: Pick<Project, "createdById"> & {
     executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
     collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
   },
@@ -705,7 +792,7 @@ function canAccessProjectRecord(
 }
 
 function canViewBriefContent(
-  project: Pick<Project, "createdById" | "executorUserId"> & {
+  project: Pick<Project, "createdById"> & {
     executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
   },
   currentUser: ProjectAccessUser,
@@ -820,13 +907,13 @@ function mapAttachmentToRecord(
   };
 }
 
-function mapStageStatusToVisual(status: ProjectStatus): ProjectStageVisualStatus {
+function mapStageStatusToVisual(status: StageStatus): ProjectStageVisualStatus {
   switch (status) {
-    case "COMPLETED":
+    case StageStatus.COMPLETED:
       return "completed";
-    case "ON_HOLD":
+    case StageStatus.ON_HOLD:
       return "on-hold";
-    case "PENDING":
+    case StageStatus.PENDING:
       return "pending";
     default:
       return "in-progress";
@@ -834,20 +921,23 @@ function mapStageStatusToVisual(status: ProjectStatus): ProjectStageVisualStatus
 }
 
 function mapStageStatusToDisplayLabel(
-  status: ProjectStatus,
+  status: StageStatus,
 ): ProjectStageRecord["statusLabel"] {
   switch (status) {
-    case "COMPLETED":
+    case StageStatus.COMPLETED:
       return "Completed";
-    case "PENDING":
+    case StageStatus.ON_HOLD:
+      return "On Hold";
+    case StageStatus.PENDING:
       return "Pending";
     default:
       return "Ongoing";
   }
 }
 
-function buildSyntheticStages(project: Project): ProjectStageWithStarter[] {
+function buildSyntheticStages(project: ProjectWithCreator): ProjectStageWithStarter[] {
   const isInternalExecution = isInternalExecutionProject(project);
+  const completed = isProjectStatusCompleted(project.status);
 
   return Array.from({ length: Math.max(project.stageCount, 1) }, (_, index) => ({
     id: `${project.id}-stage-${index + 1}`,
@@ -864,7 +954,11 @@ function buildSyntheticStages(project: Project): ProjectStageWithStarter[] {
     invoiceRequired: !isInternalExecution,
     plannedStartAt: project.startDate,
     plannedDueAt: project.endDate,
-    status: index === 0 ? project.status : "PENDING",
+    status: completed
+      ? StageStatus.COMPLETED
+      : index === 0
+        ? StageStatus.ONGOING
+        : StageStatus.PENDING,
     order: index + 1,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
@@ -879,9 +973,11 @@ function getProjectStages(project: ProjectWithCreator) {
   return buildSyntheticStages(project);
 }
 
-export function formatProjectStageLabel(project: Pick<Project, "currentStageName" | "status">) {
+export function formatProjectStageLabel(
+  project: Pick<Project, "currentStageName"> & { status: ProjectStatusRelation },
+) {
   const stageName = project.currentStageName?.trim() || "Stage 1";
-  const statusLabel = projectStatusMeta[project.status].label;
+  const statusLabel = getProjectStatusDisplay(project.status).name;
 
   return `${stageName} : ${statusLabel}`;
 }
@@ -903,10 +999,10 @@ function mapProjectToCard(
     isPinned: project.isPinned,
     canPin: hasProjectPermission(currentUser, project, "project.update"),
     canEdit:
-      project.status !== "COMPLETED" &&
+      !isProjectStatusCompleted(project.status) &&
       hasProjectPermission(currentUser, project, "project.update"),
     canDelete:
-      project.status !== "COMPLETED" &&
+      !isProjectStatusCompleted(project.status) &&
       hasProjectPermission(currentUser, project, "project.delete"),
   };
 }
@@ -949,7 +1045,7 @@ function mapStageToCard(
   return {
     id: stage.id,
     order: stage.order,
-    label: `${stage.name} : ${projectStatusMeta[stage.status].label}`,
+    label: `${stage.name} : ${mapStageStatusToDisplayLabel(stage.status)}`,
     name: stage.name,
     statusLabel: mapStageStatusToDisplayLabel(stage.status),
     subtitle: project.category,
@@ -957,7 +1053,7 @@ function mapStageToCard(
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
     budget: allowBudgetView
-      ? formatProjectBudgetForExecution(project, stage.budget)
+      ? formatProjectBudgetForRequirement(project, stage.budget)
       : "Restricted",
     actualStartedAt: formatProjectDateTime(stage.actualStartedAt),
     actualStartedAtValue: toProjectIsoString(stage.actualStartedAt),
@@ -1083,20 +1179,19 @@ function mapProjectToFlow(
   return {
     id: project.id,
     ownerId: project.createdById,
-    executorUserId: project.executorUserId ?? null,
     executors: executorRecords,
     canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
-    executorName: executorDisplayName,
+    executorDisplayName,
     description: allowBriefView ? project.description : "",
     executionType: project.executionType,
     executionTypeLabel: formatProjectExecutionTypeLabel(project.executionType),
     budget: allowBudgetView
-      ? formatProjectBudgetForExecution(project, project.budget)
+      ? formatProjectBudgetForRequirement(project, project.budget)
       : "Restricted",
     currency: allowBudgetView ? project.currency : null,
-    statusLabel: projectStatusMeta[project.status].label,
+    statusLabel: getProjectStatusDisplay(project.status).name,
     currentStageName: currentStage?.name ?? project.currentStageName?.trim() ?? "Stage 1",
     currentStageId: currentStage?.id ?? null,
     stageCount: stages.length,
@@ -1181,6 +1276,7 @@ function mapProjectToEditor(
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
   const tags = getProjectTagNames(project);
+  const statusDisplay = getProjectStatusDisplay(project.status);
   const projectBriefAttachments = project.attachments
     .filter(isProjectBriefAttachment)
     .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
@@ -1205,20 +1301,28 @@ function mapProjectToEditor(
     ownerId: project.createdById,
     name: project.name,
     category: project.category,
-    executorName: executorDisplayName,
-    executorUserId: project.executorUserId ?? null,
+    executorDisplayName,
     executors: executorRecords,
     tags,
     priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
     description: allowBriefView ? project.description : "",
     executionType: project.executionType,
+    budgetRequired: project.budgetRequired,
     budget:
-      allowBudgetView && (!isInternalExecutionProject(project) || project.budget > 0)
+      allowBudgetView && project.budget && project.budget > 0
         ? String(project.budget)
         : "",
     currency: allowBudgetView ? project.currency : null,
     canViewBudget: allowBudgetView,
-    status: project.status,
+    statusId: statusDisplay.id,
+    statusName: statusDisplay.name,
+    statusColor: statusDisplay.color,
+    statusGroupId: statusDisplay.group?.id ?? null,
+    statusGroupName: statusDisplay.group?.name ?? "No group",
+    statusGroupSlug: statusDisplay.group?.slug ?? "",
+    statusGroupColor: statusDisplay.group?.color ?? "",
+    statusGroupIsActive: statusDisplay.group?.isActive ?? true,
+    statusIsActive: project.status?.isActive ?? true,
     startDate: formatProjectInputDate(project.startDate),
     endDate: formatProjectInputDate(project.endDate),
     stages: stages.map((stage, index) => ({
@@ -1226,11 +1330,11 @@ function mapProjectToEditor(
       name: stage.name,
       invoiceRequired: isInternalExecutionProject(project) ? false : stage.invoiceRequired,
       budget:
-        allowBudgetView && (!isInternalExecutionProject(project) || (stage.budget ?? 0) > 0)
+        allowBudgetView && ((stage.budget ?? 0) > 0 || (index === 0 && (project.budget ?? 0) > 0))
           ? stage.budget && stage.budget > 0
             ? String(stage.budget)
             : index === 0
-              ? String(project.budget)
+              ? String(project.budget ?? "")
               : ""
           : "",
       description: allowBriefView ? stage.description?.trim() || "" : "",
@@ -1433,7 +1537,6 @@ async function assertProjectCollaboratorManagementAccess(
       select: {
         id: true,
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -1491,16 +1594,6 @@ export async function getProjectExecutors(projectId: string) {
         id: projectId,
       },
       select: {
-        executorName: true,
-        executorUserId: true,
-        executorUser: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            collaboratorType: true,
-          },
-        },
         executors: {
           include: {
             user: {
@@ -1527,7 +1620,6 @@ export async function requireMainExecutor(projectId: string, userId: string) {
         id: projectId,
       },
       select: {
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -1614,9 +1706,9 @@ export async function setProjectCollaboratorChatVisibility(
     throw new Error("Project owner chat visibility cannot be changed.");
   }
 
-  const isExecutorTarget =
-    project.executorUserId === input.collaboratorId ||
-    project.executors.some((executor) => executor.userId === input.collaboratorId);
+  const isExecutorTarget = project.executors.some(
+    (executor) => executor.userId === input.collaboratorId,
+  );
 
   let assignment = await withPrismaRetry(() =>
     prisma.projectCollaborator.findUnique({
@@ -1750,14 +1842,11 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
   const query = filter.query?.trim();
   const category = filter.category?.trim();
   const tag = filter.tag?.trim();
-  const statusWhere =
-    filter.status === "ALL" || !filter.status
-      ? undefined
-      : filter.status;
+  const statusWhere = buildProjectStatusWhere(filter.status);
   const clauses: Prisma.ProjectWhereInput[] = [];
 
   if (statusWhere) {
-    clauses.push({ status: statusWhere });
+    clauses.push(statusWhere);
   }
 
   if (query) {
@@ -1790,7 +1879,7 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
           },
         },
         {
-          createdBy: {
+          status: {
             is: {
               name: {
                 contains: query,
@@ -1802,22 +1891,6 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
         {
           createdBy: {
             is: {
-              email: {
-                contains: query,
-                mode: "insensitive",
-              },
-            },
-          },
-        },
-        {
-          executorName: {
-            contains: query,
-            mode: "insensitive",
-          },
-        },
-        {
-          executorUser: {
-            is: {
               name: {
                 contains: query,
                 mode: "insensitive",
@@ -1826,7 +1899,7 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
           },
         },
         {
-          executorUser: {
+          createdBy: {
             is: {
               email: {
                 contains: query,
@@ -1900,28 +1973,31 @@ export async function getProjectListFilterOptions(
   currentUser: ProjectAccessUser,
 ): Promise<ProjectListFilterOptions> {
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
-  const projects = await unstable_cache(
-    async () =>
-      withPrismaRetry(() =>
-        prisma.project.findMany({
-          where: accessibleWhere,
-          select: {
-            category: true,
-            tags: {
-              include: {
-                tag: true,
+  const [projects, statuses] = await Promise.all([
+    unstable_cache(
+      async () =>
+        withPrismaRetry(() =>
+          prisma.project.findMany({
+            where: accessibleWhere,
+            select: {
+              category: true,
+              tags: {
+                include: {
+                  tag: true,
+                },
               },
             },
-          },
-        }),
-      ),
-    [
-      "project-list-filter-options",
-      currentUser.id,
-      currentUser.role,
-    ],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  )();
+          }),
+        ),
+      [
+        "project-list-filter-options",
+        currentUser.id,
+        currentUser.role,
+      ],
+      { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+    )(),
+    getActiveProjectStatusOptions(),
+  ]);
 
   const categories = new Map<string, string>();
   const tags = new Map<string, string>();
@@ -1938,6 +2014,7 @@ export async function getProjectListFilterOptions(
   }
 
   return {
+    statuses,
     categories: [...categories.values()].sort((left, right) =>
       left.localeCompare(right, undefined, { sensitivity: "base" }),
     ),
@@ -1954,11 +2031,16 @@ export async function getDashboardProjectCounts(
   const getCachedCounts = unstable_cache(
     async () =>
       withPrismaRetry(() =>
-        prisma.project.groupBy({
-          by: ["status"],
+        prisma.project.findMany({
           where: accessibleWhere,
-          _count: {
-            _all: true,
+          select: {
+            status: {
+              select: {
+                group: {
+                  select: projectStatusGroupSelect,
+                },
+              },
+            },
           },
         }),
       ),
@@ -1970,28 +2052,41 @@ export async function getDashboardProjectCounts(
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
-  const grouped = await getCachedCounts();
+  const projects = await getCachedCounts();
 
-  const counts = grouped.reduce<Record<ProjectStatus, number>>(
-    (accumulator, item) => {
-      accumulator[item.status] = item._count._all;
+  const counts = projects.reduce(
+    (accumulator, project) => {
+      const groupSlug = project.status?.group?.slug;
+
+      if (groupSlug === defaultProjectStatusGroupSlugs.pending) {
+        accumulator.pending += 1;
+      } else if (groupSlug === defaultProjectStatusGroupSlugs.onHold) {
+        accumulator.onHold += 1;
+      } else if (
+        groupSlug === defaultProjectStatusGroupSlugs.completed ||
+        groupSlug === defaultProjectStatusGroupSlugs.archived
+      ) {
+        accumulator.completed += 1;
+      } else if (groupSlug === defaultProjectStatusGroupSlugs.active) {
+        accumulator.ongoing += 1;
+      }
+
       return accumulator;
     },
     {
-      ONGOING: 0,
-      ON_HOLD: 0,
-      PENDING: 0,
-      COMPLETED: 0,
+      ongoing: 0,
+      onHold: 0,
+      pending: 0,
+      completed: 0,
     },
   );
-  const total = grouped.reduce((sum, item) => sum + item._count._all, 0);
 
   return {
-    total,
-    ongoing: counts.ONGOING,
-    onHold: counts.ON_HOLD,
-    pending: counts.PENDING,
-    completed: counts.COMPLETED,
+    total: projects.length,
+    ongoing: counts.ongoing,
+    onHold: counts.onHold,
+    pending: counts.pending,
+    completed: counts.completed,
   };
 }
 
@@ -2009,7 +2104,17 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
           select: {
             id: true,
             name: true,
-            status: true,
+            status: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
+              },
+            },
             category: true,
             tags: {
               include: {
@@ -2036,7 +2141,7 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
     return {
       id: project.id,
       name: project.name,
-      statusLabel: projectStatusMeta[project.status].dashboardLabel,
+      statusLabel: getProjectStatusDisplay(project.status).name,
       meta: [
         project.category,
         tagLabel === "—" ? null : tagLabel,
@@ -2082,6 +2187,17 @@ export async function getProjectsList(
             ],
           },
           include: {
+            status: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
+              },
+            },
             tags: {
               include: {
                 tag: true,
@@ -2091,14 +2207,6 @@ export async function getProjectsList(
               select: {
                 name: true,
                 email: true,
-              },
-            },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
               },
             },
             stages: true,
@@ -2166,6 +2274,17 @@ export async function getProjectById(
         prisma.project.findUnique({
           where: { id },
           include: {
+            status: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
+              },
+            },
             tags: {
               include: {
                 tag: true,
@@ -2175,14 +2294,6 @@ export async function getProjectById(
               select: {
                 name: true,
                 email: true,
-              },
-            },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
               },
             },
             executors: {
@@ -2313,6 +2424,17 @@ export async function getProjectShellById(
         prisma.project.findUnique({
           where: { id },
           include: {
+            status: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
+              },
+            },
             tags: {
               include: {
                 tag: true,
@@ -2322,14 +2444,6 @@ export async function getProjectShellById(
               select: {
                 name: true,
                 email: true,
-              },
-            },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
               },
             },
             executors: {
@@ -2419,6 +2533,18 @@ export async function getProjectEditorById(
         prisma.project.findUnique({
           where: { id },
           include: {
+            status: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
+                isActive: true,
+              },
+            },
             tags: {
               include: {
                 tag: true,
@@ -2428,14 +2554,6 @@ export async function getProjectEditorById(
               select: {
                 name: true,
                 email: true,
-              },
-            },
-            executorUser: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
               },
             },
             executors: {
@@ -2553,9 +2671,18 @@ export async function getProjectEditAccessById(
     prisma.project.findUnique({
       where: { id },
       select: {
-        status: true,
+        status: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            group: {
+              select: projectStatusGroupSelect,
+            },
+          },
+        },
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -2577,7 +2704,7 @@ export async function getProjectEditAccessById(
 
   return {
     canEdit:
-      project.status !== "COMPLETED" &&
+      !isProjectStatusCompleted(project.status) &&
       hasProjectPermission(currentUser, project, "project.update"),
   };
 }
@@ -2591,7 +2718,6 @@ export async function getProjectRouteAvailability(
       where: { id },
       select: {
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,

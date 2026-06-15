@@ -2,7 +2,6 @@ import { unstable_cache } from "next/cache";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import {
-  CollaboratorAccess as PrismaCollaboratorAccess,
   CollaboratorType as PrismaCollaboratorType,
   UserRole,
   type User,
@@ -12,30 +11,33 @@ import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
 import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
 import { sendResendEmail } from "@/lib/email/resend";
 import { getPasswordValidationMessage } from "@/lib/password-rules";
-import { getCollaboratorTypeGroup } from "@/lib/project-collaborator-participant-types";
+import {
+  getCollaboratorTypeGroup,
+  getCollaboratorTypeLabel,
+  isProjectCollaboratorParticipantType,
+  type ProjectCollaboratorParticipantType,
+} from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 export const COLLABORATORS_CACHE_TAG = "collaborators";
 export const CALENDAR_COLLABORATORS_CACHE_TAG = "calendar-collaborators";
 
-export type AccessArea = "project" | "calendar" | "library" | "archive";
-export type PermissionLevel = "full" | "limited" | "none";
-export type CollaboratorType = "Internal" | "External";
+export type CollaboratorType = ProjectCollaboratorParticipantType;
 
 export type CollaboratorRecord = {
   id: string;
   name: string;
   email: string;
   type: CollaboratorType;
-  permissions: Record<AccessArea, PermissionLevel>;
+  typeLabel: string;
+  typeGroup: "internal" | "external";
 };
 
 export type CollaboratorInput = {
   name: string;
   email: string;
   type: CollaboratorType;
-  permissions: Record<AccessArea, PermissionLevel>;
 };
 
 export type InviteRegistrationRecord =
@@ -69,37 +71,10 @@ type CollaboratorValidationResult =
         name: string;
         email: string;
         type: PrismaCollaboratorType;
-        projectAccess: PrismaCollaboratorAccess;
-        calendarAccess: PrismaCollaboratorAccess;
-        libraryAccess: PrismaCollaboratorAccess;
-        archiveAccess: PrismaCollaboratorAccess;
       };
     };
 
 const INVITE_EXPIRY_DAYS = 7;
-
-const permissionMap: Record<PermissionLevel, PrismaCollaboratorAccess> = {
-  full: "FULL",
-  limited: "LIMITED",
-  none: "NONE",
-};
-
-const reversePermissionMap: Record<PrismaCollaboratorAccess, PermissionLevel> = {
-  FULL: "full",
-  LIMITED: "limited",
-  NONE: "none",
-};
-
-const collaboratorTypeMap: Record<CollaboratorType, PrismaCollaboratorType> = {
-  Internal: "GTI_INTERNAL_CLIENT",
-  External: "EXTERNAL_FREELANCER",
-};
-
-function mapCollaboratorTypeToLegacyGroup(
-  type: PrismaCollaboratorType,
-): CollaboratorType {
-  return getCollaboratorTypeGroup(type) === "external" ? "External" : "Internal";
-}
 
 function getFallbackName(email: string) {
   const [localPart] = email.split("@");
@@ -139,22 +114,14 @@ function mapCollaborator(user: Pick<
   | "email"
   | "name"
   | "collaboratorType"
-  | "projectAccess"
-  | "calendarAccess"
-  | "libraryAccess"
-  | "archiveAccess"
 >): CollaboratorRecord {
   return {
     id: user.id,
     name: user.name?.trim() || getFallbackName(user.email),
     email: user.email,
-    type: mapCollaboratorTypeToLegacyGroup(user.collaboratorType),
-    permissions: {
-      project: reversePermissionMap[user.projectAccess],
-      calendar: reversePermissionMap[user.calendarAccess],
-      library: reversePermissionMap[user.libraryAccess],
-      archive: reversePermissionMap[user.archiveAccess],
-    },
+    type: user.collaboratorType,
+    typeLabel: getCollaboratorTypeLabel(user.collaboratorType),
+    typeGroup: getCollaboratorTypeGroup(user.collaboratorType),
   };
 }
 
@@ -172,7 +139,7 @@ function validateCollaboratorInput(
     return { error: "Enter a valid collaborator email." };
   }
 
-  if (!(input.type in collaboratorTypeMap)) {
+  if (!isProjectCollaboratorParticipantType(input.type)) {
     return { error: "Choose a valid collaborator type." };
   }
 
@@ -180,11 +147,7 @@ function validateCollaboratorInput(
     data: {
       name,
       email,
-      type: collaboratorTypeMap[input.type],
-      projectAccess: permissionMap[input.permissions.project],
-      calendarAccess: permissionMap[input.permissions.calendar],
-      libraryAccess: permissionMap[input.permissions.library],
-      archiveAccess: permissionMap[input.permissions.archive],
+      type: input.type as PrismaCollaboratorType,
     },
   };
 }
@@ -205,10 +168,6 @@ export async function getCollaborators() {
             email: true,
             name: true,
             collaboratorType: true,
-            projectAccess: true,
-            calendarAccess: true,
-            libraryAccess: true,
-            archiveAccess: true,
           },
         }),
       ),
@@ -222,13 +181,6 @@ export async function getCollaborators() {
 async function listCalendarCollaborators() {
   const collaborators = await withPrismaRetry(() =>
     prisma.calendarCollaborator.findMany({
-      where: {
-        user: {
-          calendarAccess: {
-            not: PrismaCollaboratorAccess.NONE,
-          },
-        },
-      },
       orderBy: {
         createdAt: "asc",
       },
@@ -239,10 +191,6 @@ async function listCalendarCollaborators() {
             email: true,
             name: true,
             collaboratorType: true,
-            projectAccess: true,
-            calendarAccess: true,
-            libraryAccess: true,
-            archiveAccess: true,
           },
         },
       },
@@ -276,9 +224,6 @@ export async function updateCalendarCollaborators(
               in: normalizedIds,
             },
             role: UserRole.COLLABORATOR,
-            calendarAccess: {
-              not: PrismaCollaboratorAccess.NONE,
-            },
           },
           select: {
             id: true,
@@ -353,10 +298,6 @@ export async function createCollaborator(
       email: true,
       name: true,
       collaboratorType: true,
-      projectAccess: true,
-      calendarAccess: true,
-      libraryAccess: true,
-      archiveAccess: true,
     },
   });
 
@@ -380,10 +321,6 @@ export async function createCollaborator(
       name: parsed.data.name,
       role: UserRole.COLLABORATOR,
       collaboratorType: parsed.data.type,
-      projectAccess: parsed.data.projectAccess,
-      calendarAccess: parsed.data.calendarAccess,
-      libraryAccess: parsed.data.libraryAccess,
-      archiveAccess: parsed.data.archiveAccess,
       passwordHash: hashAuthPassword(randomUUID()),
       inviteToken,
       inviteExpiresAt,
@@ -393,10 +330,6 @@ export async function createCollaborator(
       email: true,
       name: true,
       collaboratorType: true,
-      projectAccess: true,
-      calendarAccess: true,
-      libraryAccess: true,
-      archiveAccess: true,
     },
   });
 
@@ -405,8 +338,7 @@ export async function createCollaborator(
     collaboratorEmail: collaborator.email,
     inviterName,
     inviteUrl: buildInviteUrl(inviteToken),
-    collaboratorType: input.type,
-    permissions: input.permissions,
+    collaboratorType: getCollaboratorTypeLabel(input.type),
   });
 
   const emailResult = await sendResendEmail({
@@ -478,20 +410,12 @@ export async function updateCollaborator(
       name: parsed.data.name,
       role: UserRole.COLLABORATOR,
       collaboratorType: parsed.data.type,
-      projectAccess: parsed.data.projectAccess,
-      calendarAccess: parsed.data.calendarAccess,
-      libraryAccess: parsed.data.libraryAccess,
-      archiveAccess: parsed.data.archiveAccess,
     },
     select: {
       id: true,
       email: true,
       name: true,
       collaboratorType: true,
-      projectAccess: true,
-      calendarAccess: true,
-      libraryAccess: true,
-      archiveAccess: true,
     },
   });
 

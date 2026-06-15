@@ -19,7 +19,6 @@ The database stores editable profile assignments for:
 
 - global roles
 - collaborator types
-- access presets retained for legacy compatibility
 
 Users are assigned to a role and collaborator type. Per-user permission overrides and project-specific permission overrides are not implemented.
 

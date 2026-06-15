@@ -26,8 +26,7 @@ export default async function CollaborationPage() {
         initialCollaborators={collaborators}
         canSaveCollaborators={
           hasPermission(user, "collaboration.createUser") &&
-          hasPermission(user, "collaboration.updateUser") &&
-          hasPermission(user, "collaboration.manageModuleAccess")
+          hasPermission(user, "collaboration.updateUser")
         }
         canDeleteCollaborators={hasPermission(user, "collaboration.deleteGlobal")}
         canManagePermissions={

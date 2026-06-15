@@ -18,6 +18,7 @@ export default async function LibraryPage({
     search?: string;
     projectId?: string;
     createdById?: string;
+    assetTagId?: string;
     date?: string;
     type?: string;
     quickMenu?: string;
@@ -36,6 +37,7 @@ export default async function LibraryPage({
     search: resolvedSearchParams?.search?.trim() ?? "",
     projectId: resolvedSearchParams?.projectId?.trim() ?? "",
     createdById: resolvedSearchParams?.createdById?.trim() ?? "",
+    assetTagId: resolvedSearchParams?.assetTagId?.trim() ?? "",
     date: parseLibraryDateFilter(resolvedSearchParams?.date),
     type: parseLibraryTypeFilter(resolvedSearchParams?.type),
     quickMenu: parseLibraryQuickMenu(resolvedSearchParams?.quickMenu),

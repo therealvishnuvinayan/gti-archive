@@ -224,7 +224,7 @@ function ExecutorCompactRow({
             )}`}
           >
             <span className="truncate">
-              {executor.group === "external" ? "External" : "Internal"}
+              {executor.group === "external" ? "External Collaborator" : "Internal Collaborator"}
             </span>
           </span>
         </div>

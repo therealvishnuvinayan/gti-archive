@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileUp, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { AssetTagSelector } from "@/components/assets/asset-tag-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -72,7 +73,7 @@ export function LibraryUploadButton({
   const [createdByName, setCreatedByName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<LibraryUploadCategory>("PROJECT_ASSET");
-  const [tag, setTag] = useState("");
+  const [assetTagIds, setAssetTagIds] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -88,7 +89,7 @@ export function LibraryUploadButton({
     setCreatedByName("");
     setDescription("");
     setCategory("PROJECT_ASSET");
-    setTag("");
+    setAssetTagIds([]);
     setSelectedFile(null);
     setIsDragging(false);
     setFormError(undefined);
@@ -136,7 +137,7 @@ export function LibraryUploadButton({
           createdByName,
           description,
           category,
-          tag,
+          assetTagIds,
         }),
       });
 
@@ -309,18 +310,11 @@ export function LibraryUploadButton({
                   />
                 </label>
 
-                <label>
-                  <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
-                    Tag
-                  </span>
-                  <Input
-                    value={tag}
-                    onChange={(event) => setTag(event.target.value)}
-                    disabled={isUploading}
-                    className="h-11 rounded-2xl border border-line"
-                    placeholder="Optional"
-                  />
-                </label>
+                <AssetTagSelector
+                  value={assetTagIds}
+                  onChange={setAssetTagIds}
+                  disabled={isUploading}
+                />
 
                 <label className="sm:col-span-2">
                   <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">

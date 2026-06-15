@@ -15,9 +15,9 @@ export default async function EditProjectPage({
   params: Promise<{ slug: string }>;
 }) {
   const [{ slug }, user] = await Promise.all([params, requireUser()]);
-  const projectAccess = await getProjectEditAccessById(slug, user);
+  const editAccess = await getProjectEditAccessById(slug, user);
 
-  if (!projectAccess?.canEdit) {
+  if (!editAccess?.canEdit) {
     notFound();
   }
 
@@ -44,8 +44,8 @@ export default async function EditProjectPage({
       <CreateProjectWorkspace
         availableCollaborators={collaborators}
         categoryOptions={masterDataOptions.categories}
+        statusOptions={masterDataOptions.projectStatuses}
         tagOptions={masterDataOptions.tags}
-        currencyOptions={masterDataOptions.currencies}
         mode="edit"
         initialValues={project}
         canManageProjectMasterData={canManageProjectMasterData}

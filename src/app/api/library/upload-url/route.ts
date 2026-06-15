@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     createdByName?: string;
     description?: string;
     category?: string;
-    tag?: string;
+    assetTagIds?: string[];
   } = {};
 
   try {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     createdByName: payload.createdByName,
     description: payload.description,
     category: payload.category,
-    tag: payload.tag,
+    assetTagIds: Array.isArray(payload.assetTagIds) ? payload.assetTagIds : [],
   });
 
   if ("error" in result) {

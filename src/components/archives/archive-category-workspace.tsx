@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import { Download, X } from "lucide-react";
 
-import { getFileTypeIcon } from "@/components/archives/archive-data";
+import {
+  ArchiveCategoryIconGlyph,
+  ArchiveFileTypeIcon,
+  getArchiveCategoryIconImageSrc,
+} from "@/components/archives/archive-data";
 import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
 import {
   MotionItem,
@@ -12,7 +16,6 @@ import {
 } from "@/components/motion/motion-primitives";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -22,11 +25,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ArchivedProjectFileRecord } from "@/lib/archives";
-import type { ArchiveCategorySlug } from "@/lib/archive-categories";
 
 type ArchiveCategoryWorkspaceProps = {
-  categorySlug: ArchiveCategorySlug;
+  categoryId: string;
   categoryTitle: string;
+  categoryDescription: string;
+  categoryIconUrl: string;
+  categoryIconKey: string;
+  categoryColor: string;
   items: ArchivedProjectFileRecord[];
   canUploadArchives: boolean;
 };
@@ -36,6 +42,7 @@ type ArchiveFilters = {
   projectName: string;
   archivedBy: string;
   projectTag: string;
+  assetTag: string;
 };
 
 const defaultFilters: ArchiveFilters = {
@@ -43,11 +50,13 @@ const defaultFilters: ArchiveFilters = {
   projectName: "",
   archivedBy: "",
   projectTag: "",
+  assetTag: "",
 };
 
 const ALL_PROJECTS = "__all_projects__";
 const ALL_USERS = "__all_users__";
 const ALL_TAGS = "__all_tags__";
+const ALL_ASSET_TAGS = "__all_asset_tags__";
 
 function uniqueValues(items: ArchivedProjectFileRecord[], key: keyof ArchivedProjectFileRecord) {
   return Array.from(new Set(items.map((item) => item[key] as string).filter(Boolean))).sort(
@@ -63,19 +72,37 @@ function uniqueProjectTags(items: ArchivedProjectFileRecord[]) {
   );
 }
 
+function uniqueAssetTags(items: ArchivedProjectFileRecord[]) {
+  return Array.from(
+    new Map(
+      items
+        .flatMap((item) => item.assetTags)
+        .map((tag) => [tag.id, { id: tag.id, label: tag.name }] as const),
+    ).values(),
+  ).sort((left, right) =>
+    left.label.localeCompare(right.label, undefined, { sensitivity: "base" }),
+  );
+}
+
 export function ArchiveCategoryWorkspace({
-  categorySlug,
+  categoryId,
   categoryTitle,
+  categoryDescription,
+  categoryIconUrl,
+  categoryIconKey,
+  categoryColor,
   items,
   canUploadArchives,
 }: ArchiveCategoryWorkspaceProps) {
   const [filters, setFilters] = useState<ArchiveFilters>(defaultFilters);
+  const categoryIconSrc = getArchiveCategoryIconImageSrc(categoryIconUrl);
 
   const options = useMemo(
     () => ({
       projectName: uniqueValues(items, "projectName"),
       archivedBy: uniqueValues(items, "archivedBy"),
       projectTag: uniqueProjectTags(items),
+      assetTag: uniqueAssetTags(items),
     }),
     [items],
   );
@@ -91,6 +118,7 @@ export function ArchiveCategoryWorkspace({
           item.projectCategory,
           item.projectTag,
           ...item.projectTags,
+          ...item.assetTags.map((tag) => tag.name),
           item.archivedBy,
           item.recordTypeLabel,
           item.sourceLabel,
@@ -114,11 +142,22 @@ export function ArchiveCategoryWorkspace({
         return false;
       }
 
+      if (
+        filters.assetTag &&
+        !item.assetTags.some((tag) => tag.id === filters.assetTag)
+      ) {
+        return false;
+      }
+
       return true;
     });
   }, [filters, items]);
   const hasActiveFilters = Boolean(
-    filters.search || filters.projectName || filters.archivedBy || filters.projectTag,
+    filters.search ||
+      filters.projectName ||
+      filters.archivedBy ||
+      filters.projectTag ||
+      filters.assetTag,
   );
 
   function updateFilter<K extends keyof ArchiveFilters>(key: K, value: ArchiveFilters[K]) {
@@ -134,27 +173,43 @@ export function ArchiveCategoryWorkspace({
       <MotionSection>
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex-1">
-            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-              {categoryTitle}
-            </h1>
+            <div className="flex items-center gap-4">
+              <div
+                className="grid h-16 w-16 shrink-0 place-items-center rounded-[18px] bg-white text-brand shadow-[0_12px_30px_rgba(23,39,28,0.08)]"
+                style={categoryColor ? { color: categoryColor } : undefined}
+              >
+                {categoryIconSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={categoryIconSrc} alt="" className="h-10 w-10 object-contain" />
+                ) : (
+                  <ArchiveCategoryIconGlyph
+                    iconKey={categoryIconKey}
+                    className="h-9 w-9"
+                  />
+                )}
+              </div>
+              <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+                {categoryTitle}
+              </h1>
+            </div>
             <p className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
-              Final archived files, completion documents, and manual archive uploads are
-              read-only. Allowed users can view or download files in this category.
+              {categoryDescription ||
+                "Final archived files, completion documents, and manual archive uploads are read-only. Allowed users can view or download files in this category."}
             </p>
           </div>
           <ArchiveUploadButton
             canUploadAssets={canUploadArchives}
             disabledReason="You do not have permission to upload to Archive."
-            defaultCategorySlug={categorySlug}
+            defaultCategoryId={categoryId}
             buttonLabel="Add Archive File"
           />
         </header>
       </MotionSection>
 
       <MotionSection y={10}>
-        <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
-          <Card className="rounded-[18px] border-0 bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3 shadow-none">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+        <div className="rounded-[30px] bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
+          <div className="rounded-[18px] bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] p-3">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
               <Input
                 value={filters.search}
                 onChange={(event) => updateFilter("search", event.target.value)}
@@ -210,10 +265,10 @@ export function ArchiveCategoryWorkspace({
                 }
               >
                 <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
-                  <SelectValue placeholder="All Tags" />
+                  <SelectValue placeholder="Project Tags" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_TAGS}>All Tags</SelectItem>
+                  <SelectItem value={ALL_TAGS}>All project tags</SelectItem>
                   {options.projectTag.map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
@@ -221,8 +276,27 @@ export function ArchiveCategoryWorkspace({
                   ))}
                 </SelectContent>
               </Select>
+
+              <Select
+                value={filters.assetTag || ALL_ASSET_TAGS}
+                onValueChange={(value) =>
+                  updateFilter("assetTag", value === ALL_ASSET_TAGS ? "" : value)
+                }
+              >
+                <SelectTrigger className="h-[36px] border-0 text-[12px] text-[#657069]">
+                  <SelectValue placeholder="Asset Tags" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_ASSET_TAGS}>All asset tags</SelectItem>
+                  {options.assetTag.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </Card>
+          </div>
 
           {hasActiveFilters ? (
             <div className="mt-3 flex justify-end">
@@ -239,17 +313,17 @@ export function ArchiveCategoryWorkspace({
           ) : null}
 
           <MotionStaggerGroup className="mt-4 space-y-3" stagger={0.035}>
-            {visibleItems.map((item) => {
-              const Icon = getFileTypeIcon(item.fileTypeLabel);
-
-              return (
+            {visibleItems.map((item) => (
                 <MotionItem key={item.id} layout className="rounded-[20px]">
                   <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[minmax(0,2.2fr)_minmax(150px,1.2fr)_minmax(120px,1fr)_minmax(120px,1.1fr)_minmax(220px,auto)]">
                     <div className="min-w-0">
                       <div className="flex items-start gap-3">
-                        <Card className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
-                          <Icon className="h-5 w-5 text-brand" />
-                        </Card>
+                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
+                          <ArchiveFileTypeIcon
+                            type={item.fileTypeLabel}
+                            className="h-5 w-5 text-brand"
+                          />
+                        </div>
                         <div className="min-w-0">
                           <h3 className="truncate text-[14px] font-[700] leading-[1.25] text-[#111712]">
                             {item.finalArchiveFileName}
@@ -267,6 +341,35 @@ export function ArchiveCategoryWorkspace({
                             <span>{item.fileSizeLabel}</span>
                             <span>{item.sourceLabel}</span>
                           </div>
+                          {item.assetTags.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {item.assetTags.slice(0, 3).map((tag) => (
+                                <span
+                                  key={tag.id}
+                                  className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
+                                  title={tag.name}
+                                  style={
+                                    tag.color
+                                      ? {
+                                          backgroundColor: `${tag.color}18`,
+                                          color: tag.color,
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  {tag.name}
+                                </span>
+                              ))}
+                              {item.assetTags.length > 3 ? (
+                                <span
+                                  className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
+                                  title={item.assetTags.map((tag) => tag.name).join(", ")}
+                                >
+                                  +{item.assetTags.length - 3}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -275,7 +378,10 @@ export function ArchiveCategoryWorkspace({
                       <p className="font-[700] text-[#111712]">{item.projectName}</p>
                       <p className="text-[#687269]">{item.projectCategory}</p>
                       {item.projectTags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-[700] text-[#687269]">
+                            Project tags:
+                          </span>
                           {item.projectTags.slice(0, 3).map((tag) => (
                             <span
                               key={tag}
@@ -295,7 +401,7 @@ export function ArchiveCategoryWorkspace({
                           ) : null}
                         </div>
                       ) : (
-                        <p className="text-[#687269]">Tag: —</p>
+                        <p className="text-[#687269]">Project tags: —</p>
                       )}
                     </div>
 
@@ -332,8 +438,7 @@ export function ArchiveCategoryWorkspace({
                     </div>
                   </article>
                 </MotionItem>
-              );
-            })}
+              ))}
 
             {visibleItems.length === 0 ? (
               <MotionItem y={8}>
@@ -359,7 +464,7 @@ export function ArchiveCategoryWorkspace({
               </MotionItem>
             ) : null}
           </MotionStaggerGroup>
-        </Card>
+        </div>
       </MotionSection>
     </section>
   );

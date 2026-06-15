@@ -13,7 +13,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type FavoriteAccessUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
+  "id" | "email" | "name" | "role" | "collaboratorType"
 > &
   PermissionUser;
 

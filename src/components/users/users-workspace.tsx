@@ -99,7 +99,6 @@ const statusBadgeStyles: Record<ManagedUserStatus, string> = {
 const profileTypeLabels: Record<PermissionProfileType, string> = {
   role: "Role",
   collaboratorType: "Collaborator Type",
-  accessPreset: "Access Preset",
 };
 
 function sortUsers(users: ManagedUserRecord[]) {

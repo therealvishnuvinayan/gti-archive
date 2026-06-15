@@ -31,7 +31,6 @@ async function getProjectStageContext(projectId: string, stageId?: string | null
         id: true,
         name: true,
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -82,10 +81,9 @@ export async function notifyProjectCreated(input: {
     return;
   }
 
-  const executorIds = dedupeRecipients([
-    project.executorUserId,
-    ...project.executors.map((executor) => executor.userId),
-  ]).filter((userId) => userId !== input.actorId);
+  const executorIds = getProjectExecutorRecipientUserIds(project).filter(
+    (userId) => userId !== input.actorId,
+  );
 
   if (executorIds.length > 0) {
     await createNotificationsForUsers({
@@ -310,7 +308,6 @@ export async function notifyStageSubmissionReviewDecision(
         project: {
           select: {
             id: true,
-            executorUserId: true,
             executors: {
               select: {
                 userId: true,
@@ -426,7 +423,6 @@ export async function notifyStageTransition(input: {
       },
       select: {
         id: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,

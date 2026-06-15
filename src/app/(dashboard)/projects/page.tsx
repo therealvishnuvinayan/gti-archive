@@ -12,12 +12,12 @@ import { hasPermission } from "@/lib/permissions/resolver";
 
 type ProjectFilter = {
   label: string;
-  value: "ALL" | "ONGOING" | "PENDING" | "ON_HOLD" | "COMPLETED";
+  value: "ALL" | "ACTIVE" | "PENDING" | "ON_HOLD" | "COMPLETED";
 };
 
 const projectFilters: ProjectFilter[] = [
   { label: "All", value: "ALL" },
-  { label: "Ongoing", value: "ONGOING" },
+  { label: "Active", value: "ACTIVE" },
   { label: "Pending", value: "PENDING" },
   { label: "On Hold", value: "ON_HOLD" },
   { label: "Completed", value: "COMPLETED" },
@@ -35,14 +35,7 @@ export default async function ProjectsPage({
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const activeStatus =
-    resolvedSearchParams.status === "ALL" ||
-    resolvedSearchParams.status === "ONGOING" ||
-    resolvedSearchParams.status === "PENDING" ||
-    resolvedSearchParams.status === "ON_HOLD" ||
-    resolvedSearchParams.status === "COMPLETED"
-      ? resolvedSearchParams.status
-      : "ONGOING";
+  const activeStatus = resolvedSearchParams.status?.trim() || "ACTIVE";
   const query = resolvedSearchParams.q?.trim() ?? "";
   const activeSort =
     resolvedSearchParams.sort === "oldest" ||
@@ -84,6 +77,7 @@ export default async function ProjectsPage({
           activeCategory={activeCategory}
           activeTag={activeTag}
           categoryOptions={filterOptions.categories}
+          statusOptions={filterOptions.statuses}
           tagOptions={filterOptions.tags}
           filters={projectFilters}
         />

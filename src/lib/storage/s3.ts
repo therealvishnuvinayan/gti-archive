@@ -121,6 +121,17 @@ export function buildUserAvatarKey(userId: string, originalFileName: string) {
   return `${buildUserAvatarPrefix(userId)}${uniqueFileName}`;
 }
 
+export function buildArchiveCategoryIconPrefix() {
+  return "settings/archive-category-icons/";
+}
+
+export function buildArchiveCategoryIconKey(userId: string, originalFileName: string) {
+  const safeFileName = sanitizeFileName(originalFileName);
+  const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safeFileName}`;
+
+  return `${buildArchiveCategoryIconPrefix()}${userId}/${uniqueFileName}`;
+}
+
 type BuildProjectAssetKeyInput = {
   projectId: string;
   stageId?: string | null;

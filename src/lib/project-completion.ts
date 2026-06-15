@@ -29,6 +29,7 @@ import {
 } from "@/lib/permissions/resolver";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import { assertProjectAccess } from "@/lib/project-history";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   buildProjectCompletionDocumentKey,
@@ -49,7 +50,7 @@ import {
 
 export type ProjectCompletionWorkflowUser = Pick<
   User,
-  "id" | "role" | "email" | "name" | "projectAccess" | "collaboratorType"
+  "id" | "role" | "email" | "name" | "collaboratorType"
 > &
   PermissionUser;
 
@@ -257,7 +258,6 @@ function isProjectOwner(
 
 type ProjectCompletionPermissionProject = {
   createdById: string;
-  executorUserId: string | null;
   executors: Array<{
     userId: string;
     role: ProjectExecutorRole;
@@ -318,13 +318,16 @@ function getCompletionDocumentUploadPermissionKey(
 }
 
 function isCompletedProject(project: {
-  status: string;
+  status: Parameters<typeof isProjectStatusCompleted>[0];
   archive: { id: string } | null;
   archivedAt: Date | null;
   completedAt: Date | null;
 }) {
   return Boolean(
-    project.archive || project.archivedAt || project.completedAt || project.status === "COMPLETED",
+    project.archive ||
+      project.archivedAt ||
+      project.completedAt ||
+      isProjectStatusCompleted(project.status),
   );
 }
 
@@ -418,10 +421,6 @@ function mapContactOptions(project: ProjectCompletionProjectRecord) {
     addContact(executor.user, getProjectCompletionExecutorRoleLabel(executor.role));
   }
 
-  if (project.executorUser) {
-    addContact(project.executorUser, "Main Executor");
-  }
-
   const sortedCollaborators = [...project.collaborators].sort((left, right) =>
     getUserDisplayName(left.user).localeCompare(
       getUserDisplayName(right.user),
@@ -483,9 +482,24 @@ async function getProjectCompletionProject(projectId: string) {
         name: true,
         category: true,
         executionType: true,
-        status: true,
+        status: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            group: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                isActive: true,
+              },
+            },
+          },
+        },
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -502,13 +516,6 @@ async function getProjectCompletionProject(projectId: string) {
         archivedAt: true,
         completedAt: true,
         createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        executorUser: {
           select: {
             id: true,
             name: true,
@@ -691,7 +698,6 @@ async function ensureProjectCompletionDocumentAccess(
         project: {
           select: {
             createdById: true,
-            executorUserId: true,
             executors: {
               select: {
                 userId: true,
@@ -1506,7 +1512,6 @@ export async function finalizeProjectCompletionDocumentUpload(
         select: {
           id: true,
           createdById: true,
-          executorUserId: true,
           executors: {
             select: {
               userId: true,
@@ -1514,7 +1519,23 @@ export async function finalizeProjectCompletionDocumentUpload(
             },
           },
           executionType: true,
-          status: true,
+          status: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              group: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  color: true,
+                  isActive: true,
+                },
+              },
+            },
+          },
           archivedAt: true,
           completedAt: true,
           archive: {

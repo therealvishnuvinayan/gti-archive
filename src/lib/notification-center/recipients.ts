@@ -7,7 +7,6 @@ type ProjectNotificationContext = {
   id: string;
   name: string;
   createdById: string;
-  executorUserId: string | null;
   executors: Array<{
     userId: string;
     role: ProjectExecutorRole;
@@ -32,7 +31,6 @@ export async function getProjectNotificationContext(projectId: string) {
         id: true,
         name: true,
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
@@ -70,7 +68,6 @@ export function dedupeRecipients(recipientUserIds: Array<string | null | undefin
 }
 
 type ProjectExecutorRecipientProject = {
-  executorUserId?: string | null;
   executors?: Array<{
     userId: string;
     role?: ProjectExecutorRole | null;
@@ -92,9 +89,7 @@ export function getProjectExecutorRecipientUserIds(
           .filter((executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR)
           .map((executor) => executor.userId)
       : executorRecords.map((executor) => executor.userId);
-  const fallbackExecutorIds =
-    executorRecords.length === 0 ? [project.executorUserId ?? null] : [];
-  const recipients = dedupeRecipients([...currentExecutorIds, ...fallbackExecutorIds]);
+  const recipients = dedupeRecipients(currentExecutorIds);
 
   return excludeActor(recipients, options.excludeUserId);
 }
@@ -121,12 +116,30 @@ export async function getProjectExecutorId(projectId: string) {
         id: projectId,
       },
       select: {
-        executorUserId: true,
+        executors: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
       },
     }),
   );
 
-  return project?.executorUserId ?? null;
+  if (!project) {
+    return null;
+  }
+
+  return (
+    project.executors.find(
+      (executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
+    )?.userId ??
+    project.executors[0]?.userId ??
+    null
+  );
 }
 
 export async function getProjectCollaboratorUserIds(projectId: string) {
@@ -150,12 +163,13 @@ export async function getProjectParticipantUserIds(
     return [];
   }
 
+  const executorRecipientIds =
+    options.includeExecutor === false
+      ? []
+      : getProjectExecutorRecipientUserIds(project);
   const recipients = dedupeRecipients([
     options.includeOwner === false ? null : project.createdById,
-    options.includeExecutor === false ? null : project.executorUserId,
-    ...(options.includeExecutor === false
-      ? []
-      : project.executors.map((executor) => executor.userId)),
+    ...executorRecipientIds,
     ...(options.includeCollaborators === false
       ? []
       : project.collaborators.map((collaborator) => collaborator.userId)),
@@ -178,10 +192,7 @@ export async function filterRecipientsVisibleForStageEvent(
   const collaboratorMap = new Map(
     project.collaborators.map((collaborator) => [collaborator.userId, collaborator] as const),
   );
-  const executorUserIds = new Set([
-    project.executorUserId,
-    ...project.executors.map((executor) => executor.userId),
-  ].filter(Boolean) as string[]);
+  const assignmentRecipientIds = new Set(getProjectExecutorRecipientUserIds(project));
 
   return recipientUserIds.filter((recipientUserId) => {
     if (recipientUserId === project.createdById) {
@@ -191,7 +202,7 @@ export async function filterRecipientsVisibleForStageEvent(
     const collaborator = collaboratorMap.get(recipientUserId);
 
     if (!collaborator) {
-      return executorUserIds.has(recipientUserId);
+      return assignmentRecipientIds.has(recipientUserId);
     }
 
     if (collaborator.chatVisibilityPaused && collaborator.visibilityPauses.length === 0) {

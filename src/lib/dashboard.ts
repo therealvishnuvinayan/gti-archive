@@ -1,7 +1,7 @@
 import {
   CalendarEventType,
   ProjectExecutorRole,
-  ProjectStatus,
+  StageStatus,
   UserRole,
   type Prisma,
   type User,
@@ -17,23 +17,23 @@ import {
 } from "@/lib/projects";
 import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 
-type DashboardUser = Pick<User, "id" | "role" | "calendarAccess"> & PermissionUser;
+type DashboardUser = Pick<User, "id" | "role"> & PermissionUser;
 
 type DashboardCollaborationProjectRecord = {
   id: string;
   name: string;
-  status: ProjectStatus;
+  status: {
+    group: {
+      slug: string;
+    } | null;
+  } | null;
   createdBy: {
     id: string;
     name: string | null;
     email: string;
   };
-  executorUser: {
-    id: string;
-    name: string | null;
-    email: string;
-  } | null;
   executors: Array<{
     role: ProjectExecutorRole;
     user: {
@@ -80,6 +80,41 @@ type DashboardNotificationCandidate = {
 type ProjectUrlTarget = {
   projectId: string;
   stageId: string | null;
+};
+
+const activeProjectStatusWhere: Prisma.ProjectWhereInput = {
+  OR: [
+    {
+      status: {
+        is: null,
+      },
+    },
+    {
+      status: {
+        is: {
+          group: {
+            is: null,
+          },
+        },
+      },
+    },
+    {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: {
+                notIn: [
+                  defaultProjectStatusGroupSlugs.completed,
+                  defaultProjectStatusGroupSlugs.archived,
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
+  ],
 };
 
 export type DashboardUpdateRecord = {
@@ -504,39 +539,40 @@ function buildCollaborationItems(
   projects: DashboardCollaborationProjectRecord[],
   currentUser: DashboardUser,
 ): DashboardCollaboratorRecord[] {
-  const activeProjects = projects.filter((project) => project.status !== ProjectStatus.COMPLETED);
+  const activeProjects = projects.filter(
+    (project) => {
+      const groupSlug = project.status?.group?.slug;
+
+      return (
+        groupSlug !== defaultProjectStatusGroupSlugs.completed &&
+        groupSlug !== defaultProjectStatusGroupSlugs.archived
+      );
+    },
+  );
   const seen = new Set<string>();
   const items: DashboardCollaboratorRecord[] = [];
 
   for (const project of activeProjects) {
+    const executorPeople = project.executors
+      .map((assignment) => ({
+        id: assignment.user.id,
+        name: getDisplayName(assignment.user),
+        task: getExecutorRoleLabel(assignment.role),
+      }))
+      .sort((left, right) => {
+        if (left.task !== right.task) {
+          return left.task === "Main Executor" ? -1 : 1;
+        }
+
+        return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      });
     const people = [
       {
         id: project.createdBy.id,
         name: getDisplayName(project.createdBy),
         task: "Project Owner",
       },
-      ...(project.executorUser
-        ? [
-            {
-              id: project.executorUser.id,
-              name: getDisplayName(project.executorUser),
-              task: "Main Executor",
-            },
-          ]
-        : []),
-      ...project.executors
-        .map((assignment) => ({
-          id: assignment.user.id,
-          name: getDisplayName(assignment.user),
-          task: getExecutorRoleLabel(assignment.role),
-        }))
-        .sort((left, right) => {
-          if (left.task !== right.task) {
-            return left.task === "Main Executor" ? -1 : 1;
-          }
-
-          return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
-        }),
+      ...executorPeople,
       ...project.collaborators.map((assignment) => ({
         id: assignment.user.id,
         name: getDisplayName(assignment.user),
@@ -629,9 +665,7 @@ export async function getDashboardCollaboration(
   const projects = await withPrismaRetry(() =>
     prisma.project.findMany({
       where: withAccessibleProjectScope(accessibleWhere, {
-        status: {
-          not: ProjectStatus.COMPLETED,
-        },
+        ...activeProjectStatusWhere,
       }),
       orderBy: {
         updatedAt: "desc",
@@ -640,15 +674,16 @@ export async function getDashboardCollaboration(
       select: {
         id: true,
         name: true,
-        status: true,
-        createdBy: {
+        status: {
           select: {
-            id: true,
-            name: true,
-            email: true,
+            group: {
+              select: {
+                slug: true,
+              },
+            },
           },
         },
-        executorUser: {
+        createdBy: {
           select: {
             id: true,
             name: true,
@@ -690,16 +725,15 @@ export async function getDashboardDeadlines(
   limit = 8,
 ): Promise<DashboardDeadlineRecord[]> {
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
-  const activeProjectWhere = withAccessibleProjectScope(accessibleWhere, {
-    status: {
-      not: ProjectStatus.COMPLETED,
-    },
-  });
+  const activeProjectWhere = withAccessibleProjectScope(
+    accessibleWhere,
+    activeProjectStatusWhere,
+  );
   const stageDeadlines = await withPrismaRetry(() =>
     prisma.projectStage.findMany({
       where: {
         status: {
-          not: ProjectStatus.COMPLETED,
+          not: StageStatus.COMPLETED,
         },
         plannedDueAt: {
           not: null,
@@ -730,11 +764,7 @@ export async function getDashboardDeadlines(
   ];
   const projectFallbackWhere = withAccessibleProjectScope(
     accessibleWhere,
-    {
-      status: {
-        not: ProjectStatus.COMPLETED,
-      },
-    },
+    activeProjectStatusWhere,
     ...(projectIdsWithStageDeadlines.length > 0
       ? [{ id: { notIn: projectIdsWithStageDeadlines } }]
       : []),

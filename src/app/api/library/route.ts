@@ -24,6 +24,7 @@ export async function GET(request: Request) {
       search: searchParams.get("search") ?? "",
       projectId: searchParams.get("projectId") ?? "",
       createdById: searchParams.get("createdById") ?? "",
+      assetTagId: searchParams.get("assetTagId") ?? "",
       date: parseLibraryDateFilter(searchParams.get("date")),
       type: parseLibraryTypeFilter(searchParams.get("type")),
       quickMenu: parseLibraryQuickMenu(searchParams.get("quickMenu")),

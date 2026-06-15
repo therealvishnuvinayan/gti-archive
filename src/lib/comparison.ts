@@ -16,10 +16,11 @@ import {
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 type AccessUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
+  "id" | "email" | "name" | "role" | "collaboratorType"
 > &
   PermissionUser;
 
@@ -285,7 +286,7 @@ export async function createComparisonComment(
     throw new Error("You do not have permission to comment in compare.");
   }
 
-  if (project.status === "COMPLETED") {
+  if (isProjectStatusCompleted(project.status)) {
     throw new Error("This project is already completed.");
   }
 

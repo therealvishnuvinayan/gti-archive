@@ -4,7 +4,7 @@ import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
 
 export type LibraryAccessUser = Pick<
   User,
-  "role" | "libraryAccess" | "projectAccess"
+  "role"
 > &
   PermissionUser;
 

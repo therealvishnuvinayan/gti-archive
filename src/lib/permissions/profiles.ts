@@ -7,22 +7,18 @@ import {
 import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 
-import { resolveCollaboratorType } from "../project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "../prisma";
 import {
   allPermissionKeys,
   collaboratorTypeValues,
   criticalSuperAdminPermissionKeys,
-  defaultAccessPresetPermissions,
   defaultCollaboratorTypePermissions,
   defaultRolePermissions,
-  moduleAccessValues,
   permissionDefinitionMap,
   permissionDefinitions,
   permissionProfileTypeValues,
   permissionRoleValues,
   type CollaboratorTypeValue,
-  type ModuleAccessValue,
   type PermissionDefinitionRecord,
   type PermissionKey,
   type PermissionProfileType,
@@ -48,7 +44,6 @@ export type PermissionSyncResult = {
   definitionsSynced: number;
   rolePermissionsSeeded: number;
   collaboratorTypePermissionsSeeded: number;
-  accessPresetPermissionsSeeded: number;
 };
 
 type PermissionProfileUser = Pick<User, "role" | "collaboratorType">;
@@ -100,10 +95,6 @@ function getDefaultPermissionSetForCollaboratorType(
   return new Set(defaultCollaboratorTypePermissions[collaboratorType]);
 }
 
-function getDefaultPermissionSetForAccessPreset(accessPreset: ModuleAccessValue) {
-  return new Set(defaultAccessPresetPermissions[accessPreset]);
-}
-
 function getDefaultProfileState(
   profileType: PermissionProfileType,
   profileKey: string,
@@ -118,10 +109,6 @@ function getDefaultProfileState(
         getDefaultPermissionSetForCollaboratorType(
           profileKey as CollaboratorTypeValue,
         ),
-      );
-    case "accessPreset":
-      return buildPermissionState(
-        getDefaultPermissionSetForAccessPreset(profileKey as ModuleAccessValue),
       );
   }
 }
@@ -277,44 +264,6 @@ const getCachedCollaboratorTypeProfile = cache(
   },
 );
 
-const getCachedAccessPresetProfile = cache(async (accessPreset: ModuleAccessValue) => {
-  const getCachedRows = unstable_cache(
-    async () =>
-      withPrismaRetry(() =>
-        prisma.accessPresetPermission.findMany({
-          where: {
-            accessPreset,
-            permissionKey: {
-              in: allPermissionKeys,
-            },
-          },
-          select: {
-            permissionKey: true,
-            enabled: true,
-          },
-        }),
-      ),
-    ["permission-profile", "accessPreset", accessPreset],
-    {
-      tags: [
-        PERMISSION_PROFILE_CACHE_TAG,
-        getPermissionProfileCacheTag("accessPreset", accessPreset),
-      ],
-    },
-  );
-
-  try {
-    const rows = await getCachedRows();
-    return mergeProfileRows("accessPreset", accessPreset, rows);
-  } catch (error) {
-    if (isPermissionStorageUnavailable(error)) {
-      return mergeProfileRows("accessPreset", accessPreset, []);
-    }
-
-    throw error;
-  }
-});
-
 export async function getPermissionProfile(
   profileType: PermissionProfileType,
   profileKey: string,
@@ -338,12 +287,6 @@ export async function getPermissionProfile(
       return getCachedCollaboratorTypeProfile(
         profileKey as CollaboratorTypeValue,
       );
-    case "accessPreset":
-      if (!moduleAccessValues.includes(profileKey as ModuleAccessValue)) {
-        throw new Error("Invalid access preset profile.");
-      }
-
-      return getCachedAccessPresetProfile(profileKey as ModuleAccessValue);
   }
 }
 
@@ -390,18 +333,9 @@ export async function syncPermissionDefinitions(): Promise<PermissionSyncResult>
                 }),
               ),
           );
-          const accessPresetRows = moduleAccessValues.flatMap((accessPreset) =>
-            getProfileDefaultRowData("accessPreset", accessPreset).map((row) => ({
-              accessPreset,
-              permissionKey: row.permissionKey,
-              enabled: row.enabled,
-            })),
-          );
-
           const [
             rolePermissionsResult,
             collaboratorTypePermissionsResult,
-            accessPresetPermissionsResult,
           ] = await Promise.all([
             tx.rolePermission.createMany({
               data: rolePermissionRows,
@@ -411,10 +345,6 @@ export async function syncPermissionDefinitions(): Promise<PermissionSyncResult>
               data: collaboratorTypeRows,
               skipDuplicates: true,
             }),
-            tx.accessPresetPermission.createMany({
-              data: accessPresetRows,
-              skipDuplicates: true,
-            }),
           ]);
 
           return {
@@ -422,7 +352,6 @@ export async function syncPermissionDefinitions(): Promise<PermissionSyncResult>
             rolePermissionsSeeded: rolePermissionsResult.count,
             collaboratorTypePermissionsSeeded:
               collaboratorTypePermissionsResult.count,
-            accessPresetPermissionsSeeded: accessPresetPermissionsResult.count,
           };
         },
         {
@@ -578,46 +507,6 @@ export async function savePermissionProfile(input: {
 
           return;
         }
-        case "accessPreset": {
-          const accessPreset = profileKey as ModuleAccessValue;
-
-          await tx.accessPresetPermission.createMany({
-            data: rows.map((row) => ({
-              accessPreset,
-              permissionKey: row.permissionKey,
-              enabled: row.enabled,
-            })),
-            skipDuplicates: true,
-          });
-
-          if (enabledPermissionKeys.length > 0) {
-            await tx.accessPresetPermission.updateMany({
-              where: {
-                accessPreset,
-                permissionKey: {
-                  in: enabledPermissionKeys,
-                },
-              },
-              data: {
-                enabled: true,
-              },
-            });
-          }
-
-          if (disabledPermissionKeys.length > 0) {
-            await tx.accessPresetPermission.updateMany({
-              where: {
-                accessPreset,
-                permissionKey: {
-                  in: disabledPermissionKeys,
-                },
-              },
-              data: {
-                enabled: false,
-              },
-            });
-          }
-        }
       }
     }),
   );
@@ -648,10 +537,9 @@ export async function resetPermissionProfileToDefaults(
 export async function getPermissionProfileSnapshotForUser(
   user: PermissionProfileUser,
 ): Promise<PermissionProfileSnapshot> {
-  const resolvedCollaboratorType = resolveCollaboratorType(user.collaboratorType);
   const [roleProfile, collaboratorTypeProfile] = await Promise.all([
     getCachedRoleProfile(user.role as PermissionRole),
-    getCachedCollaboratorTypeProfile(resolvedCollaboratorType),
+    getCachedCollaboratorTypeProfile(user.collaboratorType),
   ]);
 
   const rolePermissions = getEnabledPermissionSet(roleProfile.state);

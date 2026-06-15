@@ -33,10 +33,6 @@ export async function saveCollaboratorAction(input: SaveCollaboratorInput) {
     };
   }
 
-  if (!hasPermission(user, "collaboration.manageModuleAccess")) {
-    return { error: "You are not allowed to manage collaborator access." };
-  }
-
   const result = input.collaboratorId
     ? await updateCollaborator(input.collaboratorId, input)
     : await createCollaborator(getUserDisplayName(user), input, {

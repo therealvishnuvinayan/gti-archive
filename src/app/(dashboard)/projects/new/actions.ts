@@ -7,7 +7,7 @@ import {
   ProjectCompletionStepStatus,
   ProjectExecutionType,
   ProjectExecutorRole,
-  ProjectStatus,
+  StageStatus,
   type CollaboratorType,
 } from "@prisma/client";
 
@@ -37,6 +37,14 @@ import {
   DEFAULT_PROJECT_PRIORITY,
   isProjectPriority,
 } from "@/lib/project-priority";
+import {
+  DEFAULT_PROJECT_CURRENCY,
+  resolveProjectCurrency,
+} from "@/lib/project-currencies";
+import {
+  defaultProjectStatusGroupSlugs,
+  isProjectStatusCompleted,
+} from "@/lib/project-statuses";
 
 function parseBudget(value: string) {
   const normalized = value.trim().replace(/,/g, "");
@@ -49,6 +57,10 @@ function parseBudget(value: string) {
   return Number.isFinite(parsed) ? parsed : NaN;
 }
 
+function parseBudgetRequired(value: string) {
+  return ["1", "true", "on", "yes"].includes(value.trim().toLowerCase());
+}
+
 function formatBudgetValue(value: number, currencyCode: string) {
   const formattedNumber = new Intl.NumberFormat("en-US", {
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
@@ -59,7 +71,7 @@ function formatBudgetValue(value: number, currencyCode: string) {
 }
 
 function validateBudgetAllocation(input: {
-  projectBudget: number;
+  projectBudget: number | null;
   stageBudgetInputs: string[];
   currencyCode: string;
   requireBudget: boolean;
@@ -68,32 +80,38 @@ function validateBudgetAllocation(input: {
     return null;
   }
 
+  const projectBudget = input.projectBudget;
   const stageBudgets = input.stageBudgetInputs.map((value) => parseBudget(value));
   const hasInvalidStageBudget = stageBudgets.some(
     (budget) => !Number.isFinite(budget) || budget < 0,
   );
 
-  if (hasInvalidStageBudget || !Number.isFinite(input.projectBudget) || input.projectBudget < 0) {
+  if (
+    hasInvalidStageBudget ||
+    projectBudget === null ||
+    !Number.isFinite(projectBudget) ||
+    projectBudget < 0
+  ) {
     return null;
   }
 
   const totalStageBudget = stageBudgets.reduce((sum, budget) => sum + budget, 0);
 
-  if (totalStageBudget === input.projectBudget) {
+  if (totalStageBudget === projectBudget) {
     return null;
   }
 
-  const difference = Math.abs(totalStageBudget - input.projectBudget);
+  const difference = Math.abs(totalStageBudget - projectBudget);
   const mismatchLabel =
-    totalStageBudget > input.projectBudget ? "over budget" : "unallocated";
+    totalStageBudget > projectBudget ? "over budget" : "unallocated";
   const mismatchDescription =
-    totalStageBudget > input.projectBudget
+    totalStageBudget > projectBudget
       ? "stage budgets add up to"
       : "stage budgets only add up to";
 
   return {
     error: `Stage budgets must equal the total project budget. Total project budget is ${formatBudgetValue(
-      input.projectBudget,
+      projectBudget,
       input.currencyCode,
     )}, but ${mismatchDescription} ${formatBudgetValue(
       totalStageBudget,
@@ -105,7 +123,7 @@ function validateBudgetAllocation(input: {
         input.currencyCode,
       )} ${mismatchLabel}.`,
       budget: `Project budget is ${formatBudgetValue(
-        input.projectBudget,
+        projectBudget,
         input.currencyCode,
       )}, but stages total ${formatBudgetValue(totalStageBudget, input.currencyCode)}.`,
       stageBudgets: input.stageBudgetInputs.map((value) => {
@@ -114,10 +132,6 @@ function validateBudgetAllocation(input: {
       }),
     } satisfies ProjectFormFieldErrors,
   };
-}
-
-function isProjectStatus(value: string): value is ProjectStatus {
-  return Object.values(ProjectStatus).includes(value as ProjectStatus);
 }
 
 function isProjectExecutionType(value: string): value is ProjectExecutionType {
@@ -129,19 +143,33 @@ function isProjectExecutorRole(value: string): value is ProjectExecutorRole {
 }
 
 function getInitialStageStatuses(
-  projectStatus: ProjectStatus,
+  projectStatusGroupSlug: string | null | undefined,
   stageCount: number,
 ) {
-  if (projectStatus === ProjectStatus.COMPLETED) {
-    return Array.from({ length: stageCount }, () => ProjectStatus.COMPLETED);
+  const normalizedGroupSlug = projectStatusGroupSlug ?? "";
+
+  if (
+    normalizedGroupSlug === defaultProjectStatusGroupSlugs.completed ||
+    normalizedGroupSlug === defaultProjectStatusGroupSlugs.archived
+  ) {
+    return Array.from({ length: stageCount }, () => StageStatus.COMPLETED);
   }
 
-  if (projectStatus === ProjectStatus.PENDING) {
-    return Array.from({ length: stageCount }, () => ProjectStatus.PENDING);
+  if (normalizedGroupSlug === defaultProjectStatusGroupSlugs.pending) {
+    return Array.from({ length: stageCount }, () => StageStatus.PENDING);
+  }
+
+  if (
+    normalizedGroupSlug === defaultProjectStatusGroupSlugs.onHold ||
+    normalizedGroupSlug === defaultProjectStatusGroupSlugs.cancelled
+  ) {
+    return Array.from({ length: stageCount }, (_, index) =>
+      index === 0 ? StageStatus.ON_HOLD : StageStatus.PENDING,
+    );
   }
 
   return Array.from({ length: stageCount }, (_, index) =>
-    index === 0 ? projectStatus : ProjectStatus.PENDING,
+    index === 0 ? StageStatus.ONGOING : StageStatus.PENDING,
   );
 }
 
@@ -160,8 +188,6 @@ function getEndOfDay(date: Date) {
 function parseProjectFormData(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
-  const executorName = String(formData.get("executorName") ?? "").trim();
-  const executorUserId = String(formData.get("executorUserId") ?? "").trim();
   const tags = formData
     .getAll("tags")
     .map((value) => String(value).trim())
@@ -169,9 +195,10 @@ function parseProjectFormData(formData: FormData) {
   const priorityInput = String(formData.get("priority") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const executionTypeInput = String(formData.get("executionType") ?? "").trim();
+  const budgetRequiredInput = String(formData.get("budgetRequired") ?? "").trim();
   const budgetInput = String(formData.get("budget") ?? "").trim();
   const currencyInput = String(formData.get("currency") ?? "").trim().toUpperCase();
-  const statusInput = String(formData.get("status") ?? "").trim();
+  const statusId = String(formData.get("statusId") ?? "").trim();
   const startDateInput = String(formData.get("startDate") ?? "").trim();
   const endDateInput = String(formData.get("endDate") ?? "").trim();
   const stageNames = formData
@@ -226,15 +253,14 @@ function parseProjectFormData(formData: FormData) {
   return {
     name,
     category,
-    executorName,
-    executorUserId,
     tags,
     priorityInput,
     description,
     executionTypeInput,
+    budgetRequiredInput,
     budgetInput,
     currencyInput,
-    statusInput,
+    statusId,
     startDateInput,
     endDateInput,
     stageNames,
@@ -353,13 +379,6 @@ function normalizeProjectExecutorAssignments(
     });
   });
 
-  if (assignmentMap.size === 0 && parsed.executorUserId) {
-    assignmentMap.set(parsed.executorUserId, {
-      userId: parsed.executorUserId,
-      role: ProjectExecutorRole.MAIN_EXECUTOR,
-    });
-  }
-
   const assignments = [...assignmentMap.values()];
   const hasMainExecutor = assignments.some(
     (assignment) => assignment.role === ProjectExecutorRole.MAIN_EXECUTOR,
@@ -470,29 +489,44 @@ function validateStageTimeline(
 
 function validateProjectFormData(
   parsed: ReturnType<typeof parseProjectFormData>,
-  options: { requireBudget?: boolean } = {},
+  options: {
+    canUpdateBudget?: boolean;
+    existingBudgetRequired?: boolean;
+    existingBudget?: number | null;
+    existingCurrency?: string | null;
+  } = {},
 ) {
   const executionType = isProjectExecutionType(parsed.executionTypeInput)
     ? parsed.executionTypeInput
     : null;
-  const requireBudget =
-    executionType === ProjectExecutionType.EXTERNAL && (options.requireBudget ?? true);
+  const canUpdateBudget = options.canUpdateBudget ?? true;
+  const submittedBudgetRequired = parseBudgetRequired(parsed.budgetRequiredInput);
+  const budgetRequired = canUpdateBudget
+    ? submittedBudgetRequired
+    : options.existingBudgetRequired ?? false;
+  const hasBudgetInput = parsed.budgetInput.length > 0;
+  const requireBudget = budgetRequired && canUpdateBudget;
+  const requireStageBudget =
+    canUpdateBudget && budgetRequired && executionType === ProjectExecutionType.EXTERNAL;
   const requireStageDetails = executionType === ProjectExecutionType.EXTERNAL;
+  const requireCurrency = canUpdateBudget && (budgetRequired || hasBudgetInput);
   const fieldErrors: ProjectFormFieldErrors = {};
   const executorValidation = normalizeProjectExecutorAssignments(parsed);
 
   if (!parsed.name) fieldErrors.name = "Project name is required.";
   if (!parsed.category) fieldErrors.category = "Project category is required.";
   if ("error" in executorValidation) {
-    fieldErrors.executorUserId = executorValidation.error;
+    fieldErrors.executors = executorValidation.error;
   }
   if (!parsed.description) fieldErrors.description = "Project brief is required.";
   if (!parsed.executionTypeInput) {
     fieldErrors.executionType = "Project execution type is required.";
   }
   if (requireBudget && !parsed.budgetInput) fieldErrors.budget = "Project budget is required.";
-  if (requireBudget && !parsed.currencyInput) fieldErrors.currency = "Project currency is required.";
-  if (!parsed.statusInput) fieldErrors.status = "Project status is required.";
+  if (requireCurrency && !parsed.currencyInput) {
+    fieldErrors.currency = "Project currency is required.";
+  }
+  if (!parsed.statusId) fieldErrors.statusId = "Project status is required.";
   if (!parsed.startDateInput) fieldErrors.startDate = "Project start date is required.";
   if (!parsed.endDateInput) fieldErrors.endDate = "Project end date is required.";
 
@@ -503,11 +537,16 @@ function validateProjectFormData(
   const executorAssignments =
     "assignments" in executorValidation ? executorValidation.assignments : [];
   const parsedBudget = parseBudget(parsed.budgetInput);
-  const budget =
-    requireBudget || (Number.isFinite(parsedBudget) && parsedBudget > 0)
+  const budget = canUpdateBudget
+    ? hasBudgetInput || budgetRequired
       ? parsedBudget
-      : 0;
-  const status = isProjectStatus(parsed.statusInput) ? parsed.statusInput : null;
+      : null
+    : options.existingBudget ?? null;
+  const currency = canUpdateBudget
+    ? budgetRequired || hasBudgetInput
+      ? parsed.currencyInput
+      : DEFAULT_PROJECT_CURRENCY
+    : options.existingCurrency ?? DEFAULT_PROJECT_CURRENCY;
   const priority = parsed.priorityInput
     ? isProjectPriority(parsed.priorityInput)
       ? parsed.priorityInput
@@ -523,17 +562,13 @@ function validateProjectFormData(
     };
   }
 
-  if (requireBudget && (!Number.isFinite(budget) || budget <= 0)) {
+  if (
+    (budgetRequired || hasBudgetInput) &&
+    (budget === null || !Number.isFinite(budget) || budget <= 0)
+  ) {
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: { budget: "Enter a valid project budget." },
-    };
-  }
-
-  if (!status) {
-    return {
-      error: "Please correct the highlighted fields.",
-      fieldErrors: { status: "Choose a valid project status." },
     };
   }
 
@@ -566,7 +601,7 @@ function validateProjectFormData(
       error: "Please add at least one stage.",
       fieldErrors: {
         stageNames: [...["Stage name is required."]],
-        ...(requireBudget ? { stageBudgets: [...["Stage budget is required."]] } : {}),
+        ...(requireStageBudget ? { stageBudgets: [...["Stage budget is required."]] } : {}),
         ...(requireStageDetails
           ? {
               stageDescriptions: [...["Stage brief is required."]],
@@ -585,7 +620,7 @@ function validateProjectFormData(
     value ? undefined : "Stage name is required.",
   );
   const stageBudgetErrors: Array<string | undefined> = parsed.stageBudgets.map((value) => {
-    if (!requireBudget) {
+    if (!requireStageBudget) {
       return undefined;
     }
 
@@ -625,8 +660,8 @@ function validateProjectFormData(
   const budgetConflict = validateBudgetAllocation({
     projectBudget: budget,
     stageBudgetInputs: parsed.stageBudgets,
-    currencyCode: parsed.currencyInput || "—",
-    requireBudget,
+    currencyCode: currency || "—",
+    requireBudget: requireStageBudget,
   });
 
   if (budgetConflict) {
@@ -639,9 +674,10 @@ function validateProjectFormData(
       executorAssignments,
       stageNames: normalizedStageNames,
       executionType,
+      budgetRequired,
       budget,
-      currency: parsed.currencyInput || "USD",
-      status,
+      currency,
+      statusId: parsed.statusId,
       priority,
       startDate,
       endDate,
@@ -651,9 +687,62 @@ function validateProjectFormData(
       stageDueDates: parsed.stageDueDates.map((value) =>
         value ? new Date(value) : null,
       ),
-      stageStatuses: getInitialStageStatuses(status, parsed.stageNames.length),
       currentStageName: normalizedStageNames[0] || "Stage 1",
     },
+  };
+}
+
+async function resolveSubmittedProjectStatus(
+  statusId: string,
+  options: { allowInactiveStatusId?: string | null } = {},
+) {
+  const status = await prisma.projectStatusOption.findUnique({
+    where: {
+      id: statusId,
+    },
+    select: {
+      id: true,
+      name: true,
+      group: {
+        select: {
+          id: true,
+          slug: true,
+          isActive: true,
+        },
+      },
+      isActive: true,
+    },
+  });
+
+  if (!status) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        statusId: "Choose a valid project status.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  if (!status.isActive && status.id !== options.allowInactiveStatusId) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        statusId: "Choose an active project status.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  if ((!status.group || !status.group.isActive) && status.id !== options.allowInactiveStatusId) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        statusId: "Choose a project status with an active group.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
+  return {
+    status,
   };
 }
 
@@ -729,33 +818,6 @@ async function resolveSubmittedProjectTags(tagInputs: string[]) {
   };
 }
 
-async function resolveProjectCurrencyCode(
-  currencyCode: string,
-  options: { allowInactiveCode?: string } = {},
-) {
-  const normalizedCode = currencyCode.trim().toUpperCase();
-
-  if (!normalizedCode) {
-    return null;
-  }
-
-  const currency = await prisma.projectCurrency.findFirst({
-    where: {
-      code: normalizedCode,
-      OR:
-        options.allowInactiveCode &&
-        normalizedCode === options.allowInactiveCode.trim().toUpperCase()
-          ? [{ isActive: true }, { code: normalizedCode }]
-          : [{ isActive: true }],
-    },
-    select: {
-      code: true,
-    },
-  });
-
-  return currency?.code ?? null;
-}
-
 type ResolvedProjectExecutor = {
   userId: string;
   name: string;
@@ -768,7 +830,7 @@ async function resolveProjectExecutors(
 ) {
   const normalizedExecutorAssignments = executorAssignments ?? [];
   const executorIds = normalizedExecutorAssignments.map((assignment) => assignment.userId);
-  const executorUsers = executorIds.length
+  const assignmentUsers = executorIds.length
     ? await prisma.user.findMany({
         where: {
           id: {
@@ -783,26 +845,26 @@ async function resolveProjectExecutors(
         },
       })
     : [];
-  const executorUserMap = new Map(
-    executorUsers.map((executorUser) => [executorUser.id, executorUser] as const),
+  const assignmentUserMap = new Map(
+    assignmentUsers.map((assignmentUser) => [assignmentUser.id, assignmentUser] as const),
   );
 
-  if (executorUsers.length !== executorIds.length) {
+  if (assignmentUsers.length !== executorIds.length) {
     return null;
   }
 
   const executors = normalizedExecutorAssignments.map<ResolvedProjectExecutor | null>((assignment) => {
-    const executorUser = executorUserMap.get(assignment.userId);
+    const assignmentUser = assignmentUserMap.get(assignment.userId);
 
-    if (!executorUser) {
+    if (!assignmentUser) {
       return null;
     }
 
     return {
-      userId: executorUser.id,
-      name: executorUser.name?.trim() || executorUser.email,
+      userId: assignmentUser.id,
+      name: assignmentUser.name?.trim() || assignmentUser.email,
       role: assignment.role,
-      collaboratorType: executorUser.collaboratorType,
+      collaboratorType: assignmentUser.collaboratorType,
     };
   });
 
@@ -813,19 +875,12 @@ async function resolveProjectExecutors(
   const resolvedExecutors = executors.filter(
     (executor): executor is ResolvedProjectExecutor => executor !== null,
   );
-  const legacyExecutor =
-    resolvedExecutors.find(
-      (executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
-    ) ?? resolvedExecutors[0];
-
-  if (!legacyExecutor) {
+  if (resolvedExecutors.length === 0) {
     return null;
   }
 
   return {
     executors: resolvedExecutors,
-    executorUserId: legacyExecutor.userId,
-    executorName: legacyExecutor.name,
   };
 }
 
@@ -833,7 +888,7 @@ function stageHasLinkedHistory(stage: {
   actualStartedAt: Date | null;
   startedById: string | null;
   completedAt: Date | null;
-  status: ProjectStatus;
+  status: StageStatus;
   _count: {
     comments: number;
     revisions: number;
@@ -845,7 +900,7 @@ function stageHasLinkedHistory(stage: {
 }) {
   return (
     Boolean(stage.actualStartedAt || stage.startedById || stage.completedAt) ||
-    stage.status !== ProjectStatus.PENDING ||
+    stage.status !== StageStatus.PENDING ||
     stage._count.comments > 0 ||
     stage._count.revisions > 0 ||
     stage._count.attachments > 0 ||
@@ -866,7 +921,7 @@ export async function createProjectAction(
   }
 
   const validated = validateProjectFormData(parseProjectFormData(formData), {
-    requireBudget: true,
+    canUpdateBudget: true,
   });
 
   if ("error" in validated) {
@@ -879,15 +934,22 @@ export async function createProjectAction(
     return resolvedTags;
   }
 
+  const resolvedStatus = await resolveSubmittedProjectStatus(validated.data.statusId);
+
+  if ("error" in resolvedStatus) {
+    return resolvedStatus;
+  }
+
   const {
     name,
     category,
     executorAssignments,
     description,
     executionType,
+    budgetRequired,
     budget,
     currency,
-    status,
+    statusId,
     priority,
     startDate,
     endDate,
@@ -897,21 +959,22 @@ export async function createProjectAction(
     stageStartDates,
     stageDueDates,
     stageInvoiceRequired,
-    stageStatuses,
     currentStageName,
     collaboratorIds,
     collaboratorParticipantTypes,
   } = validated.data;
   const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
+  const stageStatuses = getInitialStageStatuses(
+    resolvedStatus.status.group?.slug,
+    stageNames.length,
+  );
 
-  const currencyCode =
-    (await resolveProjectCurrencyCode(currency)) ??
-    (isExternalExecution ? null : "USD");
+  const currencyCode = resolveProjectCurrency(currency);
 
   if (!currencyCode) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { currency: "Choose a valid project currency." },
+      fieldErrors: { currency: "Currency must be AED, USD, or EUR." },
     };
   }
 
@@ -920,7 +983,7 @@ export async function createProjectAction(
   if (!resolvedExecutors) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { executorUserId: "Choose valid project executors." },
+      fieldErrors: { executors: "Choose valid project executors." },
     };
   }
 
@@ -980,13 +1043,12 @@ export async function createProjectAction(
         data: {
           name,
           category,
-          executorName: resolvedExecutors.executorName,
-          executorUserId: resolvedExecutors.executorUserId,
           description,
           executionType,
+          budgetRequired,
           budget,
           currency: currencyCode,
-          status,
+          statusId,
           priority,
           startDate,
           endDate,
@@ -1038,7 +1100,7 @@ export async function createProjectAction(
                 budget:
                   isExternalExecution && Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
                     ? parsedStageBudget
-                    : isExternalExecution && index === 0
+                    : isExternalExecution && budgetRequired && index === 0
                       ? budget
                       : null,
                 plannedStartAt: stageStartDates[index],
@@ -1137,10 +1199,27 @@ export async function updateProjectAction(
     select: {
       currency: true,
       executionType: true,
+      budgetRequired: true,
       budget: true,
-      status: true,
+      statusId: true,
+      status: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          color: true,
+          group: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              isActive: true,
+            },
+          },
+        },
+      },
       createdById: true,
-      executorUserId: true,
       executors: {
         select: {
           userId: true,
@@ -1188,7 +1267,7 @@ export async function updateProjectAction(
     return { error: "You are not allowed to edit projects." };
   }
 
-  if (existingProject.status === ProjectStatus.COMPLETED) {
+  if (isProjectStatusCompleted(existingProject.status)) {
     return { error: "Completed projects cannot be edited." };
   }
 
@@ -1198,7 +1277,10 @@ export async function updateProjectAction(
     "project.updateBudget",
   );
   const validated = validateProjectFormData(parseProjectFormData(formData), {
-    requireBudget: canUpdateBudget,
+    canUpdateBudget,
+    existingBudgetRequired: existingProject.budgetRequired,
+    existingBudget: existingProject.budget,
+    existingCurrency: existingProject.currency,
   });
 
   if ("error" in validated) {
@@ -1211,15 +1293,24 @@ export async function updateProjectAction(
     return resolvedTags;
   }
 
+  const resolvedStatus = await resolveSubmittedProjectStatus(validated.data.statusId, {
+    allowInactiveStatusId: existingProject.statusId,
+  });
+
+  if ("error" in resolvedStatus) {
+    return resolvedStatus;
+  }
+
   const {
     name,
     category,
     executorAssignments,
     description,
     executionType,
+    budgetRequired,
     budget,
     currency,
-    status,
+    statusId,
     priority,
     startDate,
     endDate,
@@ -1229,7 +1320,6 @@ export async function updateProjectAction(
     stageStartDates,
     stageDueDates,
     stageInvoiceRequired,
-    stageStatuses,
     stageIds,
     currentStageName,
     collaboratorIds,
@@ -1238,19 +1328,6 @@ export async function updateProjectAction(
     stageAttachmentIds,
   } = validated.data;
   const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
-
-  if (
-    isExternalExecution &&
-    !canUpdateBudget &&
-    (!Number.isFinite(existingProject.budget) || existingProject.budget <= 0)
-  ) {
-    return {
-      error: "Please correct the highlighted fields.",
-      fieldErrors: {
-        budget: "External execution requires a valid project budget.",
-      },
-    };
-  }
 
   const submittedAttachmentValidation = await validateSubmittedProjectAttachments({
     projectId,
@@ -1263,15 +1340,13 @@ export async function updateProjectAction(
   }
 
   const currencyCode = canUpdateBudget
-    ? (await resolveProjectCurrencyCode(currency, {
-        allowInactiveCode: existingProject.currency,
-      })) ?? (isExternalExecution ? null : existingProject.currency || "USD")
-    : existingProject.currency;
+    ? resolveProjectCurrency(currency)
+    : resolveProjectCurrency(existingProject.currency) ?? DEFAULT_PROJECT_CURRENCY;
 
   if (!currencyCode) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { currency: "Choose a valid project currency." },
+      fieldErrors: { currency: "Currency must be AED, USD, or EUR." },
     };
   }
 
@@ -1280,7 +1355,7 @@ export async function updateProjectAction(
   if (!resolvedExecutors) {
     return {
       error: "Please correct the highlighted fields.",
-      fieldErrors: { executorUserId: "Choose valid project executors." },
+      fieldErrors: { executors: "Choose valid project executors." },
     };
   }
 
@@ -1349,7 +1424,6 @@ export async function updateProjectAction(
   );
   const submittedExistingStageIds = stageIds.filter(Boolean);
   const submittedExistingStageIdSet = new Set(submittedExistingStageIds);
-  const projectStatusChanged = existingProject.status !== status;
   const executionTypeChanged = existingProject.executionType !== executionType;
 
   if (submittedExistingStageIdSet.size !== submittedExistingStageIds.length) {
@@ -1378,13 +1452,12 @@ export async function updateProjectAction(
         data: {
           name,
           category,
-          executorName: resolvedExecutors.executorName,
-          executorUserId: resolvedExecutors.executorUserId,
           description,
           executionType,
+          budgetRequired: canUpdateBudget ? budgetRequired : existingProject.budgetRequired,
           budget: canUpdateBudget ? budget : existingProject.budget,
           currency: currencyCode,
-          status,
+          statusId,
           priority,
           startDate,
           endDate,
@@ -1561,7 +1634,7 @@ export async function updateProjectAction(
         const nextBudget = canUpdateBudget
           ? isExternalExecution && Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
             ? parsedStageBudget
-            : isExternalExecution && index === 0
+            : isExternalExecution && budgetRequired && index === 0
               ? budget
               : null
           : existingStage?.budget ?? null;
@@ -1575,9 +1648,6 @@ export async function updateProjectAction(
             ? stageInvoiceRequired[index] ?? existingStage?.invoiceRequired ?? true
             : false,
           order: index + 1,
-          ...(projectStatusChanged
-            ? { status: stageStatuses[index] ?? ProjectStatus.PENDING }
-            : {}),
         };
 
         if (existingStage) {
@@ -1592,7 +1662,7 @@ export async function updateProjectAction(
           data: {
             ...stageData,
             projectId,
-            status: stageStatuses[index] ?? ProjectStatus.PENDING,
+            status: StageStatus.PENDING,
           },
         });
       }
@@ -1623,16 +1693,8 @@ export async function updateProjectAction(
     notifyProjectAssignmentChanges({
       projectId,
       actorId: user.id,
-      previousExecutorUserId: existingProject.executorUserId,
-      nextExecutorUserId: resolvedExecutors.executorUserId,
-      previousExecutorUserIds: [
-        existingProject.executorUserId,
-        ...existingProject.executors.map((executor) => executor.userId),
-      ].filter(Boolean) as string[],
-      nextExecutorUserIds: [
-        resolvedExecutors.executorUserId,
-        ...resolvedExecutors.executors.map((executor) => executor.userId),
-      ].filter(Boolean) as string[],
+      previousExecutorUserIds: existingProject.executors.map((executor) => executor.userId),
+      nextExecutorUserIds: resolvedExecutors.executors.map((executor) => executor.userId),
       addedCollaboratorIds,
       removedCollaboratorIds,
     }),
@@ -1646,9 +1708,30 @@ export async function deleteProjectAction(projectId: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: {
-      status: true,
+      status: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          color: true,
+          group: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              isActive: true,
+            },
+          },
+        },
+      },
       createdById: true,
-      executorUserId: true,
+      executors: {
+        select: {
+          userId: true,
+          role: true,
+        },
+      },
       collaborators: {
         select: {
           userId: true,
@@ -1670,7 +1753,7 @@ export async function deleteProjectAction(projectId: string) {
     throw new Error("You are not allowed to delete projects.");
   }
 
-  if (project.status === ProjectStatus.COMPLETED) {
+  if (isProjectStatusCompleted(project.status)) {
     throw new Error("Completed projects cannot be deleted.");
   }
 

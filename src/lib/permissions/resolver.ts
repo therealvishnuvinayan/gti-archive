@@ -20,7 +20,7 @@ export type PermissionUser = Pick<User, "id" | "role"> & {
 
 export type ProjectPermissionContext = Pick<
   Project,
-  "createdById" | "executorUserId"
+  "createdById"
 > & {
   executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
   collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
@@ -78,28 +78,22 @@ export function isProjectOwner(
 
 export function isProjectExecutor(
   user: Pick<PermissionUser, "id">,
-  project: Pick<ProjectPermissionContext, "executorUserId" | "executors">,
+  project: Pick<ProjectPermissionContext, "executors">,
 ) {
-  if (project.executors && project.executors.length > 0) {
-    return project.executors.some((executor) => executor.userId === user.id);
-  }
-
-  return Boolean(project.executorUserId && project.executorUserId === user.id);
+  return project.executors?.some((executor) => executor.userId === user.id) ?? false;
 }
 
 export function isMainProjectExecutor(
   user: Pick<PermissionUser, "id">,
-  project: Pick<ProjectPermissionContext, "executorUserId" | "executors">,
+  project: Pick<ProjectPermissionContext, "executors">,
 ) {
-  if (project.executors && project.executors.length > 0) {
-    return project.executors.some(
+  return (
+    project.executors?.some(
       (executor) =>
         executor.userId === user.id &&
         executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
-    );
-  }
-
-  return Boolean(project.executorUserId && project.executorUserId === user.id);
+    ) ?? false
+  );
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
@@ -142,7 +136,6 @@ export function getAccessibleProjectsWhere(user: PermissionUser): Prisma.Project
   return {
     OR: [
       { createdById: user.id },
-      { executorUserId: user.id },
       {
         executors: {
           some: {

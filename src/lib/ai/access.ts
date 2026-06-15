@@ -1,11 +1,10 @@
-import { ProjectStatus } from "@prisma/client";
-
 import {
   hasPermission,
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 export const AI_PERMISSION_ERROR =
   "You do not have permission to use AI tools in this chat.";
@@ -35,14 +34,29 @@ export async function canUseChatAiTools(
       },
       select: {
         createdById: true,
-        executorUserId: true,
         executors: {
           select: {
             userId: true,
             role: true,
           },
         },
-        status: true,
+        status: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            group: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                isActive: true,
+              },
+            },
+          },
+        },
         collaborators: {
           select: {
             userId: true,
@@ -60,7 +74,7 @@ export async function canUseChatAiTools(
     }),
   );
 
-  if (!project || project.status === ProjectStatus.COMPLETED) {
+  if (!project || isProjectStatusCompleted(project.status)) {
     return false;
   }
 

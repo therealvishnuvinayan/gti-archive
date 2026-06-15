@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type ProjectFilterValue = "ALL" | "ONGOING" | "PENDING" | "ON_HOLD" | "COMPLETED";
+type ProjectFilterValue = string;
 type ProjectSortValue = "newest" | "oldest" | "name";
 
 type ProjectFilter = {
@@ -42,6 +42,17 @@ type ProjectsBrowserProps = {
   activeCategory: string;
   activeTag: string;
   categoryOptions: string[];
+  statusOptions: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    color: string;
+    groupId: string | null;
+    groupName: string;
+    groupSlug: string;
+    groupColor: string;
+    groupIsActive: boolean;
+  }>;
   tagOptions: string[];
   filters: ProjectFilter[];
 };
@@ -53,8 +64,9 @@ function getEmptyStateCopy(
   query: string,
   category: string,
   tag: string,
+  selectedStatusName?: string,
 ) {
-  if (query || category || tag) {
+  if (query || category || tag || selectedStatusName) {
     return {
       title: "No projects found",
       description: "Try changing your search or filters.",
@@ -73,7 +85,9 @@ function getEmptyStateCopy(
   const statusLabel =
     activeStatus === "ALL"
       ? "project"
-      : activeStatus === "PENDING"
+      : activeStatus === "ACTIVE"
+        ? "active"
+        : activeStatus === "PENDING"
         ? "pending or paused"
         : activeStatus === "ON_HOLD"
           ? "on hold"
@@ -118,6 +132,7 @@ function ProjectsGridSkeleton() {
 }
 
 const ALL_CATEGORIES = "__all_categories__";
+const ALL_PROJECT_STATUSES = "__all_project_statuses__";
 const ALL_TAGS = "__all_tags__";
 
 export function ProjectsBrowser({
@@ -130,6 +145,7 @@ export function ProjectsBrowser({
   activeCategory,
   activeTag,
   categoryOptions,
+  statusOptions,
   tagOptions,
   filters,
 }: ProjectsBrowserProps) {
@@ -138,7 +154,9 @@ export function ProjectsBrowser({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const hasActiveFilters = Boolean(query || activeCategory || activeTag);
+  const activeStatusOption =
+    statusOptions.find((status) => status.id === activeStatus) ?? null;
+  const hasActiveFilters = Boolean(query || activeCategory || activeTag || activeStatusOption);
   const currentSearch = searchParams.toString();
   const currentProjectsHref = currentSearch ? `${pathname}?${currentSearch}` : pathname;
   const emptyState = getEmptyStateCopy(
@@ -148,6 +166,7 @@ export function ProjectsBrowser({
     query,
     activeCategory,
     activeTag,
+    activeStatusOption?.name,
   );
 
   const navigate = ({
@@ -203,7 +222,7 @@ export function ProjectsBrowser({
 
   function clearFilters() {
     startTransition(() => {
-      router.push(`${pathname}?status=${activeStatus}&sort=${activeSort}`, {
+      router.push(`${pathname}?status=ACTIVE&sort=${activeSort}`, {
         scroll: false,
       });
     });
@@ -255,6 +274,36 @@ export function ProjectsBrowser({
                     {categoryValues.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={activeStatusOption?.id ?? ALL_PROJECT_STATUSES}
+                  onValueChange={(value) =>
+                    navigate({
+                      status: value === ALL_PROJECT_STATUSES ? "ALL" : value,
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-[46px] w-full min-w-[160px] rounded-[16px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium shadow-[0_10px_24px_rgba(18,34,25,0.04)] sm:w-[184px]">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_PROJECT_STATUSES}>All Statuses</SelectItem>
+                    {statusOptions.map((status) => (
+                      <SelectItem key={status.id} value={status.id}>
+                        <span className="flex items-center gap-2">
+                          {status.color ? (
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: status.color }}
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          <span>{status.name}</span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

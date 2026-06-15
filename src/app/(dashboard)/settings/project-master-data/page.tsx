@@ -19,8 +19,11 @@ export default async function ProjectMasterDataPage() {
     <DashboardLayout>
       <ProjectMasterDataWorkspace
         categories={masterData.categories}
+        projectStatusGroups={masterData.projectStatusGroups}
+        projectStatuses={masterData.projectStatuses}
         tags={masterData.tags}
-        currencies={masterData.currencies}
+        assetTags={masterData.assetTags}
+        archiveCategories={masterData.archiveCategories}
         summary={masterData.summary}
         canManageItems={hasPermission(user, "settings.manageMasterData")}
         canDeleteItems={hasPermission(user, "settings.deleteMasterData")}

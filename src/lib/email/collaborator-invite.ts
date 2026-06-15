@@ -1,46 +1,10 @@
-import type {
-  CollaboratorInput,
-  PermissionLevel,
-} from "@/lib/collaboration";
-
 type InviteEmailPayload = {
   collaboratorName: string;
   collaboratorEmail: string;
   inviterName: string;
   inviteUrl: string;
-  collaboratorType: CollaboratorInput["type"];
-  permissions: CollaboratorInput["permissions"];
+  collaboratorType: string;
 };
-
-const permissionLabelMap: Record<PermissionLevel, string> = {
-  full: "Full access",
-  limited: "Limited access",
-  none: "No access",
-};
-
-const areaLabelMap: Record<keyof CollaboratorInput["permissions"], string> = {
-  project: "Project",
-  calendar: "Calendar",
-  library: "Library",
-  archive: "Archives",
-};
-
-function buildPermissionRows(
-  permissions: CollaboratorInput["permissions"],
-) {
-  return (Object.keys(permissions) as Array<keyof typeof permissions>)
-    .map((area) => {
-      const permission = permissions[area];
-
-      return `
-        <tr>
-          <td style="padding: 10px 14px; border-bottom: 1px solid #edf2ec; color: #5f6b62; font-size: 13px;">${areaLabelMap[area]}</td>
-          <td style="padding: 10px 14px; border-bottom: 1px solid #edf2ec; color: #173f2d; font-size: 13px; font-weight: 700;">${permissionLabelMap[permission]}</td>
-        </tr>
-      `;
-    })
-    .join("");
-}
 
 export function buildCollaboratorInviteEmail({
   collaboratorName,
@@ -48,10 +12,8 @@ export function buildCollaboratorInviteEmail({
   inviterName,
   inviteUrl,
   collaboratorType,
-  permissions,
 }: InviteEmailPayload) {
   const subject = `You’ve been invited to GTI Archive`;
-  const permissionRows = buildPermissionRows(permissions);
   const safeName = collaboratorName || collaboratorEmail;
 
   const html = `
@@ -61,7 +23,7 @@ export function buildCollaboratorInviteEmail({
           <div style="font-size:13px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.78;">GTI Archive</div>
           <h1 style="margin:18px 0 10px; font-size:36px; line-height:1.04; font-weight:700;">You’ve been invited</h1>
           <p style="margin:0; max-width:480px; font-size:16px; line-height:1.7; color:rgba(255,255,255,0.9);">
-            ${inviterName} invited you to collaborate in GTI Archive as an ${collaboratorType.toLowerCase()} collaborator.
+            ${inviterName} invited you to collaborate in GTI Archive as ${collaboratorType}.
           </p>
         </div>
 
@@ -70,15 +32,8 @@ export function buildCollaboratorInviteEmail({
             Hello ${safeName},
           </p>
           <p style="margin:0 0 24px; font-size:15px; line-height:1.8; color:#4d5a51;">
-            Your account has been prepared and access has been assigned. Use the button below to set your password and activate your collaborator access.
+            Your account has been prepared. Use the button below to set your password and activate your collaborator access.
           </p>
-
-          <div style="margin:0 0 26px; padding:20px 22px; border:1px solid #e2e8e2; border-radius:22px; background:#f8fbf8;">
-            <div style="font-size:12px; text-transform:uppercase; letter-spacing:0.16em; color:#7a867c; margin-bottom:12px;">Assigned access</div>
-            <table style="width:100%; border-collapse:collapse; background:#ffffff; border:1px solid #edf2ec; border-radius:16px; overflow:hidden;">
-              <tbody>${permissionRows}</tbody>
-            </table>
-          </div>
 
           <div style="text-align:center; margin:30px 0 28px;">
             <a href="${inviteUrl}" style="display:inline-block; padding:16px 32px; border-radius:999px; background:linear-gradient(90deg,#2f8d5d,#123f2d); color:#ffffff; text-decoration:none; font-size:16px; font-weight:700; box-shadow:0 16px 34px rgba(35,94,63,0.24);">
@@ -104,12 +59,7 @@ export function buildCollaboratorInviteEmail({
   const text = [
     "You’ve been invited to GTI Archive",
     "",
-    `${inviterName} invited you as an ${collaboratorType.toLowerCase()} collaborator.`,
-    "",
-    "Assigned access:",
-    ...(Object.keys(permissions) as Array<keyof typeof permissions>).map(
-      (area) => `- ${areaLabelMap[area]}: ${permissionLabelMap[permissions[area]]}`,
-    ),
+    `${inviterName} invited you as ${collaboratorType}.`,
     "",
     `Set your password: ${inviteUrl}`,
   ].join("\n");
