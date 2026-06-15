@@ -1,4 +1,5 @@
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
+import type { ProjectExecutionType, ProjectExecutorRole } from "@prisma/client";
 
 export type ProjectFormFieldErrors = {
   name?: string;
@@ -8,12 +9,14 @@ export type ProjectFormFieldErrors = {
   priority?: string;
   tag?: string;
   description?: string;
+  executionType?: string;
   budget?: string;
   budgetSummary?: string;
   currency?: string;
   status?: string;
   startDate?: string;
   endDate?: string;
+  attachments?: string;
   stageNames?: Array<string | undefined>;
   stageBudgets?: Array<string | undefined>;
   stageDescriptions?: Array<string | undefined>;
@@ -26,6 +29,7 @@ export type ProjectFormState = {
   projectId?: string;
   initialBriefStageId?: string;
   initialBriefCommentId?: string;
+  createdStageIds?: string[];
   fieldErrors?: ProjectFormFieldErrors;
 };
 
@@ -36,8 +40,10 @@ export type ProjectEditorInitialStage = {
   name: string;
   budget: string;
   description: string;
+  invoiceRequired: boolean;
   plannedStartAt: string;
   plannedDueAt: string;
+  attachments: ProjectEditorInitialAttachment[];
 };
 
 export type ProjectEditorInitialAttachment = {
@@ -64,14 +70,26 @@ export type ProjectEditorInitialCollaborator = {
   removable?: boolean;
 };
 
+export type ProjectEditorInitialExecutor = {
+  id: string;
+  name: string;
+  email?: string;
+  role: ProjectExecutorRole;
+  roleLabel: string;
+  group: "internal" | "external";
+  chatVisibilityPaused: boolean;
+};
+
 export type ProjectEditorInitialValues = {
   id: string;
   name: string;
   category: string;
   executorName: string;
   executorUserId?: string | null;
-  tag: string;
+  executors: ProjectEditorInitialExecutor[];
+  tags: string[];
   description: string;
+  executionType: ProjectExecutionType;
   budget: string;
   currency: string | null;
   canViewBudget: boolean;

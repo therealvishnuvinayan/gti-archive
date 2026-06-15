@@ -1,5 +1,5 @@
 import { revalidateTag } from "next/cache";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { completeAttachmentUpload } from "@/lib/project-history";
@@ -37,7 +37,9 @@ export async function POST(request: Request) {
       Boolean(payload.failed),
       payload.metadata,
     );
-    revalidateTag(PROJECTS_CACHE_TAG, "max");
+    after(() => {
+      revalidateTag(PROJECTS_CACHE_TAG, "max");
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { LibraryWorkspace } from "@/components/library/library-workspace";
 import { requireUser } from "@/lib/auth";
@@ -7,6 +9,7 @@ import {
   parseLibraryQuickMenu,
   parseLibraryTypeFilter,
 } from "@/lib/library-shared";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 export default async function LibraryPage({
   searchParams,
@@ -23,6 +26,11 @@ export default async function LibraryPage({
   }>;
 }) {
   const user = await requireUser();
+
+  if (!hasPermission(user, "library.view")) {
+    redirect("/");
+  }
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const initialQuery = {
     search: resolvedSearchParams?.search?.trim() ?? "",
@@ -35,6 +43,7 @@ export default async function LibraryPage({
     pageSize: Number(resolvedSearchParams?.pageSize ?? "10"),
   };
   const initialData = await getLibraryPageDataForUser(user, initialQuery);
+  const canUploadAssets = hasPermission(user, "library.uploadAsset");
 
   return (
     <DashboardLayout
@@ -42,7 +51,11 @@ export default async function LibraryPage({
         searchPlaceholder: "Search library...",
       }}
     >
-      <LibraryWorkspace initialData={initialData} initialQuery={initialQuery} />
+      <LibraryWorkspace
+        initialData={initialData}
+        canUploadAssets={canUploadAssets}
+        initialQuery={initialQuery}
+      />
     </DashboardLayout>
   );
 }

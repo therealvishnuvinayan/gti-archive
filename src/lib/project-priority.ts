@@ -1,8 +1,8 @@
 export const projectPriorityOptions = [
-  { value: "LOW", label: "Low" },
-  { value: "MEDIUM", label: "Medium" },
-  { value: "HIGH", label: "High" },
   { value: "URGENT", label: "Urgent" },
+  { value: "HIGH", label: "High" },
+  { value: "MEDIUM", label: "Medium" },
+  { value: "LOW", label: "Low" },
 ] as const;
 
 export type ProjectPriorityValue = (typeof projectPriorityOptions)[number]["value"];

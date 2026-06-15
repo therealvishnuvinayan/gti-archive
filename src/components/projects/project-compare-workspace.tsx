@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Expand, Loader2, Send, X } from "lucide-react";
+import { Download, Expand, Loader2, Send, X, ZoomIn, ZoomOut } from "lucide-react";
 
 import {
   createComparisonCommentAction,
@@ -43,6 +43,8 @@ type ProjectCompareWorkspaceProps = {
   initialCompareAttachmentId?: string | null;
   initialComments: ComparisonCommentRecord[];
   canManageCollaborators: boolean;
+  canManageChatVisibility: boolean;
+  currentUserId: string;
 };
 
 type ImageDimensions = {
@@ -56,6 +58,8 @@ type PendingCommentPosition = {
   displayXPercent: number;
   displayYPercent: number;
 };
+
+type CompareZoomMode = "fit" | "width" | "zoom";
 
 function clampPercent(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, value));
@@ -181,6 +185,63 @@ function ComparisonSelectionCard({
   );
 }
 
+function ComparisonCommentsPanel({
+  comments,
+  activeCommentId,
+  onSelectComment,
+}: {
+  comments: ComparisonCommentRecord[];
+  activeCommentId: string | null;
+  onSelectComment: (commentId: string) => void;
+}) {
+  return (
+    <Card className="flex min-h-0 flex-col rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
+      <CardTitle className="shrink-0 text-[22px] font-semibold tracking-tight text-brand">
+        Comments
+      </CardTitle>
+      {comments.length > 0 ? (
+        <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          {comments.map((comment, index) => {
+            const isActive = activeCommentId === comment.id;
+
+            return (
+              <button
+                key={comment.id}
+                type="button"
+                className={`flex w-full items-start gap-3 rounded-[18px] border px-4 py-3 text-left transition ${
+                  isActive
+                    ? "border-brand/45 bg-[#f4fbf5] shadow-[0_10px_22px_rgba(18,35,23,0.05)]"
+                    : "border-[#e0e7e1] bg-white hover:border-brand/25"
+                }`}
+                onClick={() => onSelectComment(comment.id)}
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#edf7ef] text-[12px] font-[800] text-[#2b8b56]">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-[700] text-[#111712]">
+                    {comment.author}
+                  </span>
+                  <span className="block text-[10px] text-[#7d867f]">
+                    {comment.role} · {comment.createdAt}
+                  </span>
+                  <span className="mt-1 block text-[13px] leading-[1.45] text-[#2b342d]">
+                    {comment.body}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 text-[13px] text-[#6f786f]">
+          No comparison comments yet. Click the artwork to add the first pinned note.
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function ComparisonViewerSurface({
   baseSubmission,
   compareSubmission,
@@ -225,9 +286,22 @@ function ComparisonViewerSurface({
   fullscreenMode?: boolean;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const [zoomMode, setZoomMode] = useState<CompareZoomMode>("fit");
+  const [zoomScale, setZoomScale] = useState(1.25);
   const activeComment = comments.find((comment) => comment.id === activeCommentId) ?? null;
   const baseOpacity = 1 - opacity / 100;
   const compareOpacity = opacity / 100;
+  const isFitMode = zoomMode === "fit";
+  const fitWidth = `min(100%, ${Math.max(18, comparisonAspectRatio * (fullscreenMode ? 72 : 64))}dvh, ${Math.max(
+    220,
+    Math.round(comparisonAspectRatio * (fullscreenMode ? 920 : 700)),
+  )}px)`;
+  const frameWidth =
+    zoomMode === "fit"
+      ? fitWidth
+      : zoomMode === "width"
+        ? "100%"
+        : `${Math.round(100 * zoomScale)}%`;
 
   function getPopoverPosition(comment: {
     xPercent: number;
@@ -262,9 +336,33 @@ function ComparisonViewerSurface({
     });
   }
 
+  function setFitMode() {
+    setZoomMode("fit");
+    setZoomScale(1.25);
+  }
+
+  function setWidthMode() {
+    setZoomMode("width");
+    setZoomScale(1);
+  }
+
+  function zoomOut() {
+    setZoomMode("zoom");
+    setZoomScale((current) => Math.max(1.25, Number((current - 0.25).toFixed(2))));
+  }
+
+  function zoomIn() {
+    setZoomMode("zoom");
+    setZoomScale((current) => Math.min(3, Number((current + 0.25).toFixed(2))));
+  }
+
   return (
-    <Card className="rounded-[24px] border border-[#dbe4dc] bg-white/95 p-4 shadow-[0_16px_36px_rgba(17,34,24,0.08)] sm:p-5">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <Card
+      className={`flex min-h-0 flex-col rounded-[24px] border border-[#dbe4dc] bg-white/95 p-4 shadow-[0_16px_36px_rgba(17,34,24,0.08)] sm:p-5 ${
+        fullscreenMode ? "h-full" : "h-[min(82dvh,900px)]"
+      }`}
+    >
+      <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-[16px] font-[700] text-[#111712]">
             {fullscreenMode ? "Detailed Submission Review" : "Submission Overlay Viewer"}
@@ -273,171 +371,224 @@ function ComparisonViewerSurface({
             Click anywhere on the artwork to pin a comparison comment.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="rounded-full"
-          onClick={onToggleFullscreen}
-        >
-          {fullscreenMode ? <X className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
-          {fullscreenMode ? "Close Fullscreen" : "Maximize"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant={zoomMode === "fit" ? "default" : "secondary"}
+            size="sm"
+            className="rounded-full"
+            onClick={setFitMode}
+          >
+            Fit
+          </Button>
+          <Button
+            type="button"
+            variant={zoomMode === "width" ? "default" : "secondary"}
+            size="sm"
+            className="rounded-full"
+            onClick={setWidthMode}
+          >
+            100%
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="size-9 rounded-full"
+            onClick={zoomOut}
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="size-9 rounded-full"
+            onClick={zoomIn}
+            aria-label="Zoom in"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="rounded-full"
+            onClick={onToggleFullscreen}
+          >
+            {fullscreenMode ? <X className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
+            {fullscreenMode ? "Close Fullscreen" : "Maximize"}
+          </Button>
+        </div>
       </div>
 
       <div
-        ref={frameRef}
-        className="relative overflow-hidden rounded-[28px] border border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)] shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)]"
-        style={{ aspectRatio: comparisonAspectRatio }}
-        onClick={handleFrameClick}
+        className={`min-h-0 flex-1 rounded-[28px] border border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)] p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
+          isFitMode ? "overflow-hidden" : "overflow-auto"
+        }`}
       >
-        <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2">
-          <span className="rounded-full bg-white/90 px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#235f3d] shadow-[0_8px_18px_rgba(19,34,24,0.08)]">
-            Base · {formatSubmissionLabel(baseSubmission)}
-          </span>
-          <span className="rounded-full bg-[#eef8f1]/95 px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58] shadow-[0_8px_18px_rgba(19,34,24,0.08)]">
-            Compare · {formatSubmissionLabel(compareSubmission)}
-          </span>
-        </div>
-
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={baseSubmission.previewPath}
-          alt={baseSubmission.originalFileName}
-          onLoad={(event) =>
-            onBaseImageLoad({
-              width: event.currentTarget.naturalWidth,
-              height: event.currentTarget.naturalHeight,
-            })
-          }
-          className="absolute inset-0 h-full w-full object-contain select-none"
-          style={{ opacity: baseOpacity }}
-          draggable={false}
-        />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={compareSubmission.previewPath}
-          alt={compareSubmission.originalFileName}
-          onLoad={(event) =>
-            onCompareImageLoad({
-              width: event.currentTarget.naturalWidth,
-              height: event.currentTarget.naturalHeight,
-            })
-          }
-          className="absolute inset-0 h-full w-full object-contain select-none"
-          style={{ opacity: compareOpacity }}
-          draggable={false}
-        />
-
-        {comments.map((comment, index) => {
-          const isActive = activeCommentId === comment.id;
-
-          return (
-            <button
-              key={comment.id}
-              type="button"
-              data-comment-interactive="true"
-              className={`absolute z-20 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[11px] font-[800] shadow-[0_12px_22px_rgba(16,33,23,0.16)] transition ${
-                isActive
-                  ? "border-[#1f7a4b] bg-[#1f7a4b] text-white"
-                  : "border-white/90 bg-[#fff8ed] text-[#8a4e14]"
-              }`}
-              style={{
-                left: `${comment.xPercent}%`,
-                top: `${comment.yPercent}%`,
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                onCancelComment();
-                onActiveCommentChange(isActive ? null : comment.id);
-              }}
-              aria-label={`Open comment ${index + 1}`}
-            >
-              {index + 1}
-            </button>
-          );
-        })}
-
-        {activeComment ? (
+        <div className={`flex min-h-full min-w-full ${isFitMode ? "items-center justify-center" : "items-start justify-start"}`}>
           <div
-            data-comment-interactive="true"
-            className="absolute z-30 w-[min(18rem,calc(100%-1rem))] -translate-x-1/2 rounded-[18px] border border-[#d8e5d9] bg-white p-3 shadow-[0_18px_36px_rgba(14,31,20,0.14)]"
-            style={getPopoverPosition(activeComment)}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[12px] font-[700] text-[#111712]">{activeComment.author}</p>
-                <p className="text-[10px] text-[#7b847d]">
-                  {activeComment.role} · {activeComment.createdAt}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="text-[#7d847e] transition hover:text-[#27322b]"
-                onClick={() => onActiveCommentChange(null)}
-                aria-label="Close comment"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="mt-2 text-[12px] leading-[1.45] text-[#111712]">{activeComment.body}</p>
-          </div>
-        ) : null}
-
-        {pendingComment ? (
-          <div
-            data-comment-interactive="true"
-            className="absolute z-30 w-[min(19rem,calc(100%-1rem))] -translate-x-1/2 rounded-[20px] border border-[#d8e5d9] bg-white p-3 shadow-[0_20px_38px_rgba(14,31,20,0.16)]"
+            ref={frameRef}
+            className="relative shrink-0 overflow-hidden rounded-[22px] bg-white/35"
             style={{
-              left: `${pendingComment.displayXPercent}%`,
-              top: `${pendingComment.displayYPercent}%`,
+              aspectRatio: comparisonAspectRatio,
+              width: frameWidth,
+              maxWidth: isFitMode ? "100%" : undefined,
+              maxHeight: isFitMode ? "100%" : undefined,
             }}
-            onClick={(event) => event.stopPropagation()}
+            onClick={handleFrameClick}
           >
-            <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58]">
-              New Comment
-            </p>
-            <Textarea
-              value={commentDraft}
-              onChange={(event) => onCommentDraftChange(event.target.value)}
-              placeholder="Type your comment"
-              className="mt-3 min-h-[90px] rounded-[16px] border border-[#dce6de] bg-[#f8fbf8] text-[13px]"
-            />
-            {commentError ? (
-              <p className="mt-2 text-[12px] text-[#bd554f]">{commentError}</p>
-            ) : null}
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="rounded-full"
-                onClick={onCancelComment}
-                disabled={isSavingComment}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="rounded-full"
-                onClick={onSaveComment}
-                disabled={isSavingComment}
-              >
-                {isSavingComment ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-                Save Comment
-              </Button>
+            <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2">
+              <span className="rounded-full bg-white/90 px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#235f3d] shadow-[0_8px_18px_rgba(19,34,24,0.08)]">
+                Base · {formatSubmissionLabel(baseSubmission)}
+              </span>
+              <span className="rounded-full bg-[#eef8f1]/95 px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58] shadow-[0_8px_18px_rgba(19,34,24,0.08)]">
+                Compare · {formatSubmissionLabel(compareSubmission)}
+              </span>
             </div>
+
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={baseSubmission.previewPath}
+              alt={baseSubmission.originalFileName}
+              onLoad={(event) =>
+                onBaseImageLoad({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                })
+              }
+              className="absolute inset-0 h-full w-full object-contain select-none"
+              style={{ opacity: baseOpacity }}
+              draggable={false}
+            />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={compareSubmission.previewPath}
+              alt={compareSubmission.originalFileName}
+              onLoad={(event) =>
+                onCompareImageLoad({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                })
+              }
+              className="absolute inset-0 h-full w-full object-contain select-none"
+              style={{ opacity: compareOpacity }}
+              draggable={false}
+            />
+
+            {comments.map((comment, index) => {
+              const isActive = activeCommentId === comment.id;
+
+              return (
+                <button
+                  key={comment.id}
+                  type="button"
+                  data-comment-interactive="true"
+                  className={`absolute z-20 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-[11px] font-[800] shadow-[0_12px_22px_rgba(16,33,23,0.16)] transition ${
+                    isActive
+                      ? "border-[#1f7a4b] bg-[#1f7a4b] text-white"
+                      : "border-white/90 bg-[#fff8ed] text-[#8a4e14]"
+                  }`}
+                  style={{
+                    left: `${comment.xPercent}%`,
+                    top: `${comment.yPercent}%`,
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCancelComment();
+                    onActiveCommentChange(isActive ? null : comment.id);
+                  }}
+                  aria-label={`Open comment ${index + 1}`}
+                >
+                  {index + 1}
+                </button>
+              );
+            })}
+
+            {activeComment ? (
+              <div
+                data-comment-interactive="true"
+                className="absolute z-30 w-[min(18rem,calc(100%-1rem))] -translate-x-1/2 rounded-[18px] border border-[#d8e5d9] bg-white p-3 shadow-[0_18px_36px_rgba(14,31,20,0.14)]"
+                style={getPopoverPosition(activeComment)}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-[700] text-[#111712]">{activeComment.author}</p>
+                    <p className="text-[10px] text-[#7b847d]">
+                      {activeComment.role} · {activeComment.createdAt}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-[#7d847e] transition hover:text-[#27322b]"
+                    onClick={() => onActiveCommentChange(null)}
+                    aria-label="Close comment"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="mt-2 text-[12px] leading-[1.45] text-[#111712]">{activeComment.body}</p>
+              </div>
+            ) : null}
+
+            {pendingComment ? (
+              <div
+                data-comment-interactive="true"
+                className="absolute z-30 w-[min(19rem,calc(100%-1rem))] -translate-x-1/2 rounded-[20px] border border-[#d8e5d9] bg-white p-3 shadow-[0_20px_38px_rgba(14,31,20,0.16)]"
+                style={{
+                  left: `${pendingComment.displayXPercent}%`,
+                  top: `${pendingComment.displayYPercent}%`,
+                }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58]">
+                  New Message
+                </p>
+                <Textarea
+                  value={commentDraft}
+                  onChange={(event) => onCommentDraftChange(event.target.value)}
+                  placeholder="Type your comparison message"
+                  className="mt-3 min-h-[90px] rounded-[16px] border border-[#dce6de] bg-[#f8fbf8] text-[13px]"
+                />
+                {commentError ? (
+                  <p className="mt-2 text-[12px] text-[#bd554f]">{commentError}</p>
+                ) : null}
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={onCancelComment}
+                    disabled={isSavingComment}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={onSaveComment}
+                    disabled={isSavingComment}
+                  >
+                    {isSavingComment ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Send Message
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
 
-      <div className="mt-4 rounded-[20px] border border-[#dde6de] bg-[#f8fbf8] px-4 py-3">
+      <div className="mt-4 shrink-0 rounded-[20px] border border-[#dde6de] bg-[#f8fbf8] px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="inline-flex min-w-[150px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#3e9e69)] px-4 py-1.5 text-[12px] font-[700] text-white">
             {opacity}% Compare Opacity
@@ -466,6 +617,8 @@ export function ProjectCompareWorkspace({
   initialCompareAttachmentId,
   initialComments,
   canManageCollaborators,
+  canManageChatVisibility,
+  currentUserId,
 }: ProjectCompareWorkspaceProps) {
   const router = useRouter();
   const [isSelectionPending, startSelectionTransition] = useTransition();
@@ -621,7 +774,7 @@ export function ProjectCompareWorkspace({
     const body = commentDraft.trim();
 
     if (!body) {
-      setCommentError("Enter a comment before saving.");
+      setCommentError("Enter a message before sending.");
       return;
     }
 
@@ -652,18 +805,32 @@ export function ProjectCompareWorkspace({
       setActiveCommentId(result.comment.id);
       setPendingComment(null);
       setCommentDraft("");
+      router.refresh();
     } catch (error) {
       setCommentError(
         error instanceof Error
           ? error.message
-          : "Unable to save the comparison comment right now.",
+          : "Unable to send the comparison message right now.",
       );
     } finally {
       setIsSavingComment(false);
     }
   }
 
+  function selectComparisonComment(commentId: string) {
+    setPendingComment(null);
+    setCommentDraft("");
+    setCommentError(null);
+    setActiveCommentId(commentId);
+  }
+
   const hasEnoughSubmissions = submissions.length >= 2;
+  const insufficientSubmissionMessage =
+    submissions.length === 0
+      ? "No image submissions available for comparison."
+      : submissions.length === 1
+        ? "Upload another image revision to compare changes."
+        : null;
 
   return (
     <section className="space-y-6">
@@ -672,7 +839,7 @@ export function ProjectCompareWorkspace({
           <Card className="overflow-hidden rounded-[24px] border-none bg-[linear-gradient(135deg,#2f8d5d,#46a470)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h1 className="text-[28px] font-[700] tracking-[-0.03em]">
+                <h1 className="text-[28px] font-semibold tracking-tight">
                   Compare Submissions
                 </h1>
                 <p className="mt-2 max-w-[620px] text-[14px] text-white/82">
@@ -709,8 +876,8 @@ export function ProjectCompareWorkspace({
 
           {!hasEnoughSubmissions ? (
             <Card className="rounded-[20px] border border-dashed border-[#d7e3d8] bg-white p-6 text-center shadow-[0_12px_28px_rgba(19,28,22,0.04)]">
-              <CardTitle className="text-[20px] text-[#111712]">
-                Upload at least two image submissions to compare.
+              <CardTitle className="text-[20px] font-semibold tracking-tight text-[#111712]">
+                {insufficientSubmissionMessage}
               </CardTitle>
               <p className="mt-2 text-[13px] text-[#6f786f]">
                 Only same-stage PNG, JPG, JPEG, and WebP submissions are supported here.
@@ -718,7 +885,7 @@ export function ProjectCompareWorkspace({
             </Card>
           ) : null}
 
-          {submissions.length > 0 ? (
+          {hasEnoughSubmissions ? (
             <div className="grid gap-4 xl:grid-cols-2">
               <ComparisonSelectionCard
                 label="Base Submission"
@@ -745,7 +912,7 @@ export function ProjectCompareWorkspace({
           ) : null}
 
           {hasEnoughSubmissions && baseSubmission && compareSubmission ? (
-            <>
+            <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <ComparisonViewerSurface
                 baseSubmission={baseSubmission}
                 compareSubmission={compareSubmission}
@@ -772,59 +939,17 @@ export function ProjectCompareWorkspace({
                 onToggleFullscreen={() => setViewerFullscreen(true)}
               />
 
-              <Card className="rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
-                <CardTitle className="text-[22px] text-brand">Comments</CardTitle>
-                {comments.length > 0 ? (
-                  <div className="mt-4 space-y-3">
-                    {comments.map((comment, index) => {
-                      const isActive = activeCommentId === comment.id;
-
-                      return (
-                        <button
-                          key={comment.id}
-                          type="button"
-                          className={`flex w-full items-start gap-3 rounded-[18px] border px-4 py-3 text-left transition ${
-                            isActive
-                              ? "border-brand/45 bg-[#f4fbf5] shadow-[0_10px_22px_rgba(18,35,23,0.05)]"
-                              : "border-[#e0e7e1] bg-white hover:border-brand/25"
-                          }`}
-                          onClick={() => {
-                            setPendingComment(null);
-                            setCommentDraft("");
-                            setCommentError(null);
-                            setActiveCommentId(comment.id);
-                          }}
-                        >
-                          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#edf7ef] text-[12px] font-[800] text-[#2b8b56]">
-                            {index + 1}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[13px] font-[700] text-[#111712]">
-                              {comment.author}
-                            </span>
-                            <span className="block text-[10px] text-[#7d867f]">
-                              {comment.role} · {comment.createdAt}
-                            </span>
-                            <span className="mt-1 block text-[13px] leading-[1.45] text-[#2b342d]">
-                              {comment.body}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="mt-3 text-[13px] text-[#6f786f]">
-                    No comparison comments yet. Click the artwork to add the first pinned note.
-                  </p>
-                )}
-              </Card>
-            </>
+              <ComparisonCommentsPanel
+                comments={comments}
+                activeCommentId={activeCommentId}
+                onSelectComment={selectComparisonComment}
+              />
+            </div>
           ) : null}
 
           {submissions.length > 0 ? (
             <Card className="rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
-              <CardTitle className="text-[22px] text-brand">Available Submissions</CardTitle>
+              <CardTitle className="text-[22px] font-semibold tracking-tight text-brand">Available Submissions</CardTitle>
               <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 {submissions.map((submission) => (
                   <div
@@ -879,26 +1004,30 @@ export function ProjectCompareWorkspace({
         <div className="space-y-4">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
-              <CardTitle className="text-[20px] text-brand">Stage Overview</CardTitle>
+              <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">Stage Overview</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <dl className="space-y-1.5 text-[13px] text-[#242b26]">
                 <div>
-                  <dt className="inline font-[700]">Budget :</dt>{" "}
+                  <dt className="inline font-semibold">Execution Type :</dt>{" "}
+                  <dd className="inline">{project.executionTypeLabel}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-semibold">Budget :</dt>{" "}
                   <dd className="inline">{activeStage?.budget ?? project.budget}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Revisions :</dt>{" "}
+                  <dt className="inline font-semibold">Revisions :</dt>{" "}
                   <dd className="inline">
                     {history.entries.filter((entry) => entry.kind === "revision").length}
                   </dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Stage Started :</dt>{" "}
+                  <dt className="inline font-semibold">Stage Started :</dt>{" "}
                   <dd className="inline">{activeStage?.plannedStartAt ?? project.startDate}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-[700]">Stage Deadline :</dt>{" "}
+                  <dt className="inline font-semibold">Stage Deadline :</dt>{" "}
                   <dd className="inline">{activeStage?.plannedDueAt ?? project.endDate}</dd>
                 </div>
               </dl>
@@ -907,11 +1036,12 @@ export function ProjectCompareWorkspace({
 
           <ProjectCollaboratorsPanel
             collaborators={collaborators}
+            currentUserId={currentUserId}
             onRemove={
               canManageCollaborators ? (collaboratorId) => removeCollaborator(collaboratorId) : undefined
             }
             onToggleChatVisibility={
-              canManageCollaborators
+              canManageChatVisibility
                 ? (collaboratorId, paused) =>
                     handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
                 : undefined
@@ -926,7 +1056,7 @@ export function ProjectCompareWorkspace({
           <div className="mx-auto flex h-full max-w-[1600px] flex-col gap-4 overflow-hidden rounded-[30px] border border-[#dce6dd] bg-[#f7faf7] p-4 shadow-[0_36px_90px_rgba(12,26,18,0.34)] sm:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[24px] font-[700] text-[#111712]">Compare Submissions</p>
+                <p className="text-[24px] font-semibold tracking-tight text-[#111712]">Compare Submissions</p>
                 <p className="text-[13px] text-[#68726a]">
                   {formatSubmissionLabel(baseSubmission)} vs {formatSubmissionLabel(compareSubmission)}
                 </p>
@@ -943,8 +1073,8 @@ export function ProjectCompareWorkspace({
               </Button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto">
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
                 <ComparisonViewerSurface
                   baseSubmission={baseSubmission}
                   compareSubmission={compareSubmission}
@@ -972,53 +1102,11 @@ export function ProjectCompareWorkspace({
                   fullscreenMode
                 />
 
-                <Card className="rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
-                  <CardTitle className="text-[22px] text-brand">Comments</CardTitle>
-                  {comments.length > 0 ? (
-                    <div className="mt-4 space-y-3">
-                      {comments.map((comment, index) => {
-                        const isActive = activeCommentId === comment.id;
-
-                        return (
-                          <button
-                            key={comment.id}
-                            type="button"
-                            className={`flex w-full items-start gap-3 rounded-[18px] border px-4 py-3 text-left transition ${
-                              isActive
-                                ? "border-brand/45 bg-[#f4fbf5] shadow-[0_10px_22px_rgba(18,35,23,0.05)]"
-                                : "border-[#e0e7e1] bg-white hover:border-brand/25"
-                            }`}
-                            onClick={() => {
-                              setPendingComment(null);
-                              setCommentDraft("");
-                              setCommentError(null);
-                              setActiveCommentId(comment.id);
-                            }}
-                          >
-                            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#edf7ef] text-[12px] font-[800] text-[#2b8b56]">
-                              {index + 1}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-[13px] font-[700] text-[#111712]">
-                                {comment.author}
-                              </span>
-                              <span className="block text-[10px] text-[#7d867f]">
-                                {comment.role} · {comment.createdAt}
-                              </span>
-                              <span className="mt-1 block text-[13px] leading-[1.45] text-[#2b342d]">
-                                {comment.body}
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-[13px] text-[#6f786f]">
-                      No comparison comments yet. Click the artwork to add the first pinned note.
-                    </p>
-                  )}
-                </Card>
+                <ComparisonCommentsPanel
+                  comments={comments}
+                  activeCommentId={activeCommentId}
+                  onSelectComment={selectComparisonComment}
+                />
               </div>
             </div>
           </div>

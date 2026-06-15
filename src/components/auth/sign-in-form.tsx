@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
@@ -113,12 +114,12 @@ export function SignInForm({ hasAnyUsers }: SignInFormProps) {
           Remember me
         </label>
 
-        <button
-          type="button"
+        <Link
+          href="/forgot-password"
           className="text-left text-[16px] font-semibold text-brand transition-colors hover:text-brand-dark"
         >
           Forgot password?
-        </button>
+        </Link>
       </div>
 
       {state.error ? (

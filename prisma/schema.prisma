@@ -16,6 +16,12 @@ enum UserRole {
 enum CollaboratorType {
   INTERNAL
   EXTERNAL
+  GTI_INTERNAL_CLIENT
+  GTI_SISTER_COMPANY_INTERNAL_CLIENT
+  EXTERNAL_FREELANCER
+  EXTERNAL_AGENCY
+  EXTERNAL_VENDOR
+  CLIENT_OF_GTI
 }
 
 enum ProjectCollaboratorParticipantType {
@@ -40,11 +46,21 @@ enum ProjectStatus {
   COMPLETED
 }
 
+enum ProjectExecutionType {
+  INTERNAL
+  EXTERNAL
+}
+
 enum ProjectPriority {
   LOW
   MEDIUM
   HIGH
   URGENT
+}
+
+enum ProjectExecutorRole {
+  MAIN_EXECUTOR
+  EXECUTOR
 }
 
 enum CalendarEventType {
@@ -67,6 +83,7 @@ enum AttachmentAssetType {
   REVISION_PREVIEW
   REVISION_THUMBNAIL
   COMMENT_ATTACHMENT
+  STAGE_INVOICE
   FINAL_ARCHIVE
   GENERAL_PROJECT_ASSET
 }
@@ -138,6 +155,7 @@ enum NotificationType {
   APPROVAL_PROOF_UPLOADED
   COPYRIGHT_TRANSFER_REQUIRED
   COPYRIGHT_DOCUMENT_UPLOADED
+  INVOICE_REQUESTED
   INVOICE_UPLOADED
 }
 
@@ -164,7 +182,7 @@ model User {
   passwordHash      String
   passwordChangedAt DateTime?
   role              UserRole           @default(COLLABORATOR)
-  collaboratorType  CollaboratorType   @default(INTERNAL)
+  collaboratorType  CollaboratorType   @default(GTI_INTERNAL_CLIENT)
   projectAccess     CollaboratorAccess @default(NONE)
   calendarAccess    CollaboratorAccess @default(NONE)
   libraryAccess     CollaboratorAccess @default(NONE)
@@ -173,6 +191,7 @@ model User {
   inviteExpiresAt   DateTime?
   inviteAcceptedAt  DateTime?
   sessions          Session[]
+  passwordResetTokens PasswordResetToken[]
   projects          Project[]
   revisions         ProjectRevision[]
   reviewedRevisions ProjectRevision[]   @relation("ProjectRevisionReviewer")
@@ -185,13 +204,19 @@ model User {
   approvalContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionApprovalContact")
   copyrightContactWorkflows ProjectCompletionWorkflow[] @relation("ProjectCompletionCopyrightContact")
   uploadedCompletionDocuments ProjectCompletionDocument[] @relation("ProjectCompletionDocumentUploadedBy")
+  manualArchiveFiles ManualArchiveFile[] @relation("ManualArchiveFileUploadedBy")
+  manualLibraryAssets ManualLibraryAsset[] @relation("ManualLibraryAssetUploadedBy")
   notifications    Notification[]
   fileFavorites    FileFavorite[]
   activityLogs      ProjectActivityLog[]
   createdCollaboratorVisibilityPauses ProjectCollaboratorVisibilityPause[] @relation("ProjectCollaboratorVisibilityPauseCreator")
   assignedProjects  Project[]           @relation("ProjectExecutor")
+  projectExecutorAssignments ProjectExecutor[] @relation("ProjectExecutorUser")
+  addedProjectExecutorAssignments ProjectExecutor[] @relation("ProjectExecutorAddedBy")
   startedProjectStages ProjectStage[]   @relation("ProjectStageStarter")
   reviewedStageSubmissions ProjectAttachment[] @relation("SubmissionReviewer")
+  stageInvoiceRequestsMade StageInvoiceRequest[] @relation("StageInvoiceRequestRequester")
+  stageInvoiceRequestsReceived StageInvoiceRequest[] @relation("StageInvoiceRequestRecipient")
   calendarEvents    CalendarEvent[]
   projectCollaborations       ProjectCollaborator[] @relation("ProjectCollaboratorUser")
   addedProjectCollaborations  ProjectCollaborator[] @relation("ProjectCollaboratorAdder")
@@ -201,15 +226,84 @@ model User {
   updatedAt         DateTime           @updatedAt
 }
 
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PermissionDefinition {
+  id                          String                         @id @default(cuid())
+  key                         String                         @unique
+  label                       String
+  description                 String
+  group                       String
+  isSystem                    Boolean                        @default(true)
+  rolePermissions             RolePermission[]
+  collaboratorTypePermissions CollaboratorTypePermission[]
+  accessPresetPermissions     AccessPresetPermission[]
+  createdAt                   DateTime                       @default(now())
+  updatedAt                   DateTime                       @updatedAt
+}
+
+model RolePermission {
+  id            String               @id @default(cuid())
+  role          UserRole
+  permissionKey String
+  permission    PermissionDefinition @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
+  enabled       Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([role, permissionKey])
+  @@index([role])
+  @@index([permissionKey])
+}
+
+model CollaboratorTypePermission {
+  id               String               @id @default(cuid())
+  collaboratorType CollaboratorType
+  permissionKey    String
+  permission       PermissionDefinition @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
+  enabled          Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@unique([collaboratorType, permissionKey])
+  @@index([collaboratorType])
+  @@index([permissionKey])
+}
+
+model AccessPresetPermission {
+  id            String               @id @default(cuid())
+  accessPreset  CollaboratorAccess
+  permissionKey String
+  permission    PermissionDefinition @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
+  enabled       Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([accessPreset, permissionKey])
+  @@index([accessPreset])
+  @@index([permissionKey])
+}
+
 model Project {
   id               String        @id @default(cuid())
   name             String
   category         String
-  tag              String?
   executorName     String?
   executorUserId   String?
   executorUser     User?         @relation("ProjectExecutor", fields: [executorUserId], references: [id], onDelete: SetNull)
   description      String
+  executionType    ProjectExecutionType @default(EXTERNAL)
   budget           Int
   currency         String        @default("USD")
   status           ProjectStatus @default(ONGOING)
@@ -220,13 +314,17 @@ model Project {
   stageCount       Int           @default(1)
   createdById      String
   createdBy        User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  isPinned         Boolean       @default(false)
   stages           ProjectStage[]
+  tags             ProjectTagAssignment[]
   revisions        ProjectRevision[]
   comments         ProjectComment[]
   comparisonComments ComparisonComment[]
   attachments      ProjectAttachment[]
+  invoiceRequests  StageInvoiceRequest[]
   activityLogs     ProjectActivityLog[]
   collaborators    ProjectCollaborator[]
+  executors        ProjectExecutor[]
   archive          ProjectArchive?
   archivedFiles    ArchivedProjectFile[]
   completionWorkflow ProjectCompletionWorkflow?
@@ -237,6 +335,7 @@ model Project {
   updatedAt        DateTime      @updatedAt
 
   @@index([status])
+  @@index([isPinned])
   @@index([createdAt])
   @@index([createdById])
   @@index([executorUserId])
@@ -258,8 +357,20 @@ model ProjectTag {
   description String?
   color       String?
   isActive    Boolean  @default(true)
+  projects    ProjectTagAssignment[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model ProjectTagAssignment {
+  projectId String
+  tagId     String
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tag       ProjectTag @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  createdAt DateTime  @default(now())
+
+  @@id([projectId, tagId])
+  @@index([tagId])
 }
 
 model ProjectCurrency {
@@ -290,6 +401,23 @@ model ProjectCollaborator {
   @@index([addedById])
 }
 
+model ProjectExecutor {
+  projectId String
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation("ProjectExecutorUser", fields: [userId], references: [id], onDelete: Cascade)
+  role      ProjectExecutorRole @default(EXECUTOR)
+  addedById String?
+  addedBy   User?               @relation("ProjectExecutorAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@index([addedById])
+  @@index([role])
+}
+
 model ProjectCollaboratorVisibilityPause {
   id          String              @id @default(cuid())
   projectId   String
@@ -311,6 +439,7 @@ model CalendarCollaborator {
   id        String   @id @default(cuid())
   userId    String   @unique
   user      User     @relation("CalendarCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  access    CollaboratorAccess @default(LIMITED)
   addedById String?
   addedBy   User?    @relation("CalendarCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
@@ -327,6 +456,7 @@ model ProjectStage {
   budget    Int?
   plannedStartAt DateTime?
   plannedDueAt DateTime?
+  invoiceRequired Boolean @default(true)
   actualStartedAt DateTime?
   startedById String?
   startedBy User? @relation("ProjectStageStarter", fields: [startedById], references: [id], onDelete: SetNull)
@@ -336,6 +466,7 @@ model ProjectStage {
   comments  ProjectComment[]
   comparisonComments ComparisonComment[]
   attachments ProjectAttachment[]
+  invoiceRequests StageInvoiceRequest[]
   archives  ProjectArchive[] @relation("ProjectArchiveFinalStage")
   activityLogs ProjectActivityLog[]
   completedAt DateTime?
@@ -450,6 +581,28 @@ model ProjectAttachment {
   @@index([reviewedById])
   @@index([status])
   @@index([submissionReviewStatus])
+}
+
+model StageInvoiceRequest {
+  id              String       @id @default(cuid())
+  projectId       String
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId         String
+  stage           ProjectStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  requestedById   String
+  requestedBy     User         @relation("StageInvoiceRequestRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  requestedFromId String
+  requestedFrom   User         @relation("StageInvoiceRequestRecipient", fields: [requestedFromId], references: [id], onDelete: Restrict)
+  note            String?
+  fulfilledAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([stageId])
+  @@index([projectId, createdAt])
+  @@index([requestedById])
+  @@index([requestedFromId])
+  @@index([fulfilledAt])
 }
 
 model FileFavorite {
@@ -617,6 +770,56 @@ model ProjectCompletionDocument {
   @@unique([workflowId, type])
   @@index([projectId, type, uploadedAt])
   @@index([uploadedById])
+}
+
+model ManualArchiveFile {
+  id                   String           @id @default(cuid())
+  fileName             String
+  originalFileName     String
+  projectName          String?
+  projectCreatedBy     String?
+  archiveCategorySlug  String
+  archiveCategoryLabel String
+  tag                  String?
+  projectDate          DateTime?
+  mimeType             String
+  fileSize             Int
+  bucket               String
+  storageKey           String           @unique
+  status               AttachmentStatus @default(UPLOADING)
+  uploadedById         String
+  uploadedBy           User             @relation("ManualArchiveFileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedAt           DateTime         @default(now())
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([archiveCategorySlug, uploadedAt])
+  @@index([uploadedById])
+  @@index([status])
+}
+
+model ManualLibraryAsset {
+  id               String           @id @default(cuid())
+  assetName        String
+  originalFileName String
+  createdByName    String?
+  description      String?
+  category         String?
+  tag              String?
+  mimeType         String
+  fileSize         Int
+  bucket           String
+  storageKey       String           @unique
+  status           AttachmentStatus @default(UPLOADING)
+  uploadedById     String
+  uploadedBy       User             @relation("ManualLibraryAssetUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedAt       DateTime         @default(now())
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([category, uploadedAt])
+  @@index([uploadedById])
+  @@index([status])
 }
 
 model Notification {

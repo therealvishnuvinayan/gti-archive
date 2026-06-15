@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useRef, useTransition } from "react";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 
@@ -35,7 +35,7 @@ type ProjectFilter = {
 type ProjectsBrowserProps = {
   projects: ProjectCardItem[];
   hasAnyProjects: boolean;
-  canManageProjects: boolean;
+  canCreateProject: boolean;
   activeStatus: ProjectFilterValue;
   activeSort: ProjectSortValue;
   query: string;
@@ -48,6 +48,7 @@ type ProjectsBrowserProps = {
 
 function getEmptyStateCopy(
   hasAnyProjects: boolean,
+  canCreateProject: boolean,
   activeStatus: ProjectFilterValue,
   query: string,
   category: string,
@@ -63,7 +64,9 @@ function getEmptyStateCopy(
   if (!hasAnyProjects) {
     return {
       title: "No projects found",
-      description: "Create a project to populate the projects board.",
+      description: canCreateProject
+        ? "Create a project to populate the projects board."
+        : "There are no projects to show right now.",
     };
   }
 
@@ -120,7 +123,7 @@ const ALL_TAGS = "__all_tags__";
 export function ProjectsBrowser({
   projects,
   hasAnyProjects,
-  canManageProjects,
+  canCreateProject,
   activeStatus,
   activeSort,
   query,
@@ -132,11 +135,15 @@ export function ProjectsBrowser({
 }: ProjectsBrowserProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const hasActiveFilters = Boolean(query || activeCategory || activeTag);
+  const currentSearch = searchParams.toString();
+  const currentProjectsHref = currentSearch ? `${pathname}?${currentSearch}` : pathname;
   const emptyState = getEmptyStateCopy(
     hasAnyProjects,
+    canCreateProject,
     activeStatus,
     query,
     activeCategory,
@@ -207,19 +214,19 @@ export function ProjectsBrowser({
       <MotionSection>
         <header className="space-y-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <h1 className="text-[42px] font-extrabold tracking-[-0.05em] text-[#0f1411] sm:text-[52px]">
+            <h1 className="text-[42px] font-semibold tracking-tight text-[#0f1411] sm:text-[52px]">
               Projects
             </h1>
 
             <form onSubmit={handleSearchSubmit} className="w-full lg:w-auto">
-              <label className="relative block lg:w-[360px] xl:w-[400px]">
+              <label className="relative block lg:w-[520px] xl:w-[560px]">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#91a091]" />
                 <Input
                   key={query}
                   ref={searchInputRef}
                   type="search"
                   defaultValue={query}
-                  placeholder="Search projects..."
+                  placeholder="Search by project name, owner, category, tag, or executor..."
                   className="h-[52px] rounded-[18px] border border-[#dde6dd] bg-white pl-11 pr-4 text-[15px] shadow-[0_10px_28px_rgba(18,34,25,0.05)]"
                 />
                 <button type="submit" className="sr-only">
@@ -312,9 +319,11 @@ export function ProjectsBrowser({
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-end">
-              <Button asChild size="lg" className="min-w-[170px] text-[16px]">
-                <Link href="/projects/new">+ New Project</Link>
-              </Button>
+              {canCreateProject ? (
+                <Button asChild size="lg" className="min-w-[170px] text-[16px]">
+                  <Link href="/projects/new">+ New Project</Link>
+                </Button>
+              ) : null}
               {hasAnyProjects ? (
                 <ProjectSortDropdown
                   activeSort={activeSort}
@@ -342,7 +351,7 @@ export function ProjectsBrowser({
         >
           {projects.map((project) => (
             <MotionItem key={project.id} y={10} layout>
-              <ProjectCard project={project} canManage={canManageProjects} />
+              <ProjectCard project={project} returnHref={currentProjectsHref} />
             </MotionItem>
           ))}
         </MotionStaggerGroup>

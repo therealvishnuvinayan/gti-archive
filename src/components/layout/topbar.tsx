@@ -24,12 +24,13 @@ export type DashboardTopbarProps = {
   user?: DashboardUserView;
   onOpenSidebar: () => void;
   leadingContent?: ReactNode;
+  showNotifications?: boolean;
 };
 
 const defaultUser: DashboardUserView = {
-  name: "Demo User",
-  email: "demouser@gulbahartobacco.com",
-  initials: "DU",
+  name: "Account",
+  email: "User account",
+  initials: "A",
   avatarSrc: null,
 };
 
@@ -89,6 +90,7 @@ export function Topbar({
   user = defaultUser,
   onOpenSidebar,
   leadingContent,
+  showNotifications = true,
 }: DashboardTopbarProps) {
   const signOutFormRef = useRef<HTMLFormElement>(null);
   const [signOutPending, setSignOutPending] = useState(false);
@@ -113,7 +115,7 @@ export function Topbar({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-          <NotificationDropdown />
+          {showNotifications ? <NotificationDropdown /> : null}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

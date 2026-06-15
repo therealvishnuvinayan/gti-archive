@@ -3,6 +3,7 @@ import { ProjectCompletionDocumentType } from "@prisma/client";
 
 import { getCurrentUser } from "@/lib/auth";
 import { requestProjectCompletionDocumentUpload } from "@/lib/project-completion";
+import { UploadFileTypeError } from "@/lib/upload-validation";
 
 function isProjectCompletionDocumentType(
   value: unknown,
@@ -54,6 +55,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof UploadFileTypeError) {
+      return NextResponse.json(error.payload, { status: 400 });
+    }
+
     const message =
       error instanceof Error
         ? error.message

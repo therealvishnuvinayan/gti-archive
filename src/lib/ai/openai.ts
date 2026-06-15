@@ -2,10 +2,13 @@ import { getSupportedLanguageByCode } from "@/lib/ai/languages";
 
 const OPENAI_API_BASE_URL = "https://api.openai.com/v1";
 const TRANSLATION_MODEL = process.env.OPENAI_TRANSLATION_MODEL ?? "gpt-4.1-mini";
+const STAGE_SUMMARY_MODEL =
+  process.env.OPENAI_STAGE_SUMMARY_MODEL ?? "gpt-4.1-mini";
 const TRANSCRIPTION_MODEL =
   process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe";
 export const MAX_TRANSLATION_CHARACTERS = 4000;
 export const MAX_TRANSCRIPTION_BYTES = 10 * 1024 * 1024;
+export const MAX_STAGE_SUMMARY_CONTEXT_CHARACTERS = 5000;
 
 type TranslationResponse = {
   sourceLanguageCode: string;
@@ -35,10 +38,13 @@ function getOpenAiErrorMessage(payload: OpenAiErrorPayload | null, fallback: str
 }
 
 async function createStructuredChatCompletion<T>(input: {
+  model?: string;
   schemaName: string;
   schema: Record<string, unknown>;
   systemPrompt: string;
   userPrompt: string;
+  fallbackErrorMessage?: string;
+  timeoutMs?: number;
 }) {
   const response = await fetch(`${OPENAI_API_BASE_URL}/chat/completions`, {
     method: "POST",
@@ -47,7 +53,7 @@ async function createStructuredChatCompletion<T>(input: {
       Authorization: `Bearer ${getOpenAiApiKey()}`,
     },
     body: JSON.stringify({
-      model: TRANSLATION_MODEL,
+      model: input.model ?? TRANSLATION_MODEL,
       temperature: 0.2,
       response_format: {
         type: "json_schema",
@@ -68,12 +74,17 @@ async function createStructuredChatCompletion<T>(input: {
         },
       ],
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(input.timeoutMs ?? 30000),
   });
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as OpenAiErrorPayload | null;
-    throw new Error(getOpenAiErrorMessage(payload, "OpenAI translation request failed."));
+    throw new Error(
+      getOpenAiErrorMessage(
+        payload,
+        input.fallbackErrorMessage ?? "OpenAI request failed.",
+      ),
+    );
   }
 
   const payload = (await response.json()) as {
@@ -209,4 +220,46 @@ export async function transcribeAudioWithOpenAI(input: {
     translatedText: translation.translatedText,
     targetLanguageCode: translation.targetLanguageCode,
   };
+}
+
+export async function summarizeStageActivityWithOpenAI(input: {
+  stageName: string;
+  stageStatus: string;
+  context: string;
+}) {
+  const context = input.context.trim();
+
+  if (!context) {
+    throw new Error("No stage activity was provided.");
+  }
+
+  if (context.length > MAX_STAGE_SUMMARY_CONTEXT_CHARACTERS) {
+    throw new Error(
+      `Stage activity context is too long. Keep it under ${MAX_STAGE_SUMMARY_CONTEXT_CHARACTERS} characters.`,
+    );
+  }
+
+  const result = await createStructuredChatCompletion<{ summary: string }>({
+    model: STAGE_SUMMARY_MODEL,
+    schemaName: "stage_activity_summary",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+      },
+      required: ["summary"],
+    },
+    systemPrompt:
+      "Summarize the activity in this project stage in 1-2 short sentences for a project management stage card. Focus on what happened, files shared, decisions, feedback, and current status. Keep it professional and under 180 characters. Do not invent details. Return strict JSON only.",
+    userPrompt: JSON.stringify({
+      stageName: input.stageName,
+      stageStatus: input.stageStatus,
+      visibleStageHistory: context,
+    }),
+    fallbackErrorMessage: "OpenAI stage summary request failed.",
+    timeoutMs: 20000,
+  });
+
+  return result.summary.trim();
 }

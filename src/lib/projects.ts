@@ -3,6 +3,8 @@ import {
   AttachmentStatus,
   AttachmentAssetType,
   Prisma,
+  ProjectExecutionType,
+  ProjectExecutorRole,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   UserRole,
@@ -11,14 +13,19 @@ import type {
   CollaboratorType,
   Project,
   ProjectCollaborator,
+  ProjectExecutor,
+  ProjectTag,
   ProjectStage,
   ProjectStatus,
   User,
 } from "@prisma/client";
 
 import {
+  getCollaboratorRoleLabel,
+  getCollaboratorTypeGroup,
   getDefaultProjectCollaboratorParticipantType,
   getProjectCollaboratorTypeMeta,
+  isProjectCollaboratorParticipantType,
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import {
@@ -26,18 +33,65 @@ import {
   formatProjectPriority,
   type ProjectPriorityValue,
 } from "@/lib/project-priority";
+import {
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows,
+} from "@/lib/project-collaborator-visibility";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import {
+  getAccessibleProjectsWhere,
+  hasPermission,
+  hasProjectPermission,
+  isProjectAdmin,
+  isProjectExecutor,
+  isMainProjectExecutor,
+  isProjectOwner,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
+import type { PermissionKey } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const PROJECTS_CACHE_TAG = "projects";
+export const INTERNAL_EXECUTION_NOT_REQUIRED_LABEL =
+  "Not required for internal execution";
+export const MAX_PROJECT_TAGS = 5;
 
 type BudgetAccessUser = Pick<User, "id">;
-export type ProjectAccessUser = Pick<User, "id" | "role">;
+export type ProjectAccessUser = PermissionUser;
+type ProjectStageWithStarter = ProjectStage & {
+  startedBy?: Pick<User, "name" | "email"> | null;
+  invoiceRequests?: Array<{
+    id: string;
+    requestedById: string;
+    requestedFromId: string;
+    note: string | null;
+    fulfilledAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    requestedBy: Pick<User, "name" | "email">;
+    requestedFrom: Pick<User, "name" | "email">;
+  }>;
+};
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
+  tags?: Array<{
+    tag: Pick<ProjectTag, "id" | "name" | "color">;
+  }>;
   executorUser?: Pick<User, "id" | "name" | "email" | "collaboratorType"> | null;
-  stages: ProjectStage[];
+  executors?: Array<
+    ProjectExecutor & {
+      user: Pick<
+        User,
+        | "id"
+        | "name"
+        | "email"
+        | "collaboratorType"
+      >;
+    }
+  >;
+  stages: ProjectStageWithStarter[];
   collaborators?: Array<
     ProjectCollaborator & {
       user: Pick<
@@ -51,6 +105,9 @@ type ProjectWithCreator = Project & {
   >;
   attachments: Array<{
     id: string;
+    stageId: string | null;
+    revisionId: string | null;
+    commentId: string | null;
     assetType: AttachmentAssetType;
     originalFileName: string;
     mimeType: string;
@@ -65,22 +122,28 @@ export type ProjectCardRecord = {
   id: string;
   stage: string;
   category: string;
+  tags: string[];
   title: string;
   createdOn: string;
   createdBy: string;
-  featured?: boolean;
-  emphasized?: boolean;
+  isPinned: boolean;
+  canPin: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
 };
 
 export type ProjectEditorRecord = {
   id: string;
+  ownerId: string;
   name: string;
   category: string;
   executorName: string;
   executorUserId?: string | null;
-  tag: string;
+  executors: ProjectExecutorRecord[];
+  tags: string[];
   priority: ProjectPriorityValue;
   description: string;
+  executionType: ProjectExecutionType;
   budget: string;
   currency: string | null;
   canViewBudget: boolean;
@@ -90,10 +153,12 @@ export type ProjectEditorRecord = {
   stages: Array<{
     id: string;
     name: string;
+    invoiceRequired: boolean;
     budget: string;
     description: string;
     plannedStartAt: string;
     plannedDueAt: string;
+    attachments: ProjectAttachmentRecord[];
   }>;
   collaborators: ProjectCollaboratorRecord[];
   attachments: ProjectAttachmentRecord[];
@@ -107,7 +172,10 @@ export type ProjectStageVisualStatus =
 
 export type ProjectStageRecord = {
   id: string;
+  order: number;
   label: string;
+  name: string;
+  statusLabel: "Pending" | "Ongoing" | "Completed";
   subtitle: string;
   description: string;
   title: string;
@@ -115,11 +183,25 @@ export type ProjectStageRecord = {
   budget: string;
   actualStartedAt: string;
   actualStartedAtValue: string | null;
+  startedByName: string | null;
   plannedStartAt: string;
   plannedStartAtValue: string | null;
   plannedDueAt: string;
   plannedDueAtValue: string | null;
   status: ProjectStageVisualStatus;
+  invoiceRequired: boolean;
+  invoiceAttachment: ProjectAttachmentRecord | null;
+  invoiceRequest: {
+    id: string;
+    requestedById: string;
+    requestedByName: string;
+    requestedFromId: string;
+    requestedFromName: string;
+    note: string | null;
+    requestedAt: string;
+    fulfilledAt: string | null;
+  } | null;
+  briefAttachments: ProjectAttachmentRecord[];
 };
 
 function toProjectIsoString(
@@ -144,6 +226,16 @@ export type ProjectCollaboratorRecord = {
   chatVisibilityPaused: boolean;
   access: "owner" | "view";
   removable?: boolean;
+};
+
+export type ProjectExecutorRecord = {
+  id: string;
+  name: string;
+  email?: string;
+  role: ProjectExecutorRole;
+  roleLabel: string;
+  group: "internal" | "external";
+  chatVisibilityPaused: boolean;
 };
 
 export type ProjectMentionParticipantRecord = {
@@ -173,12 +265,17 @@ export type ProjectAttachmentRecord = {
 
 export type ProjectChatEntry = {
   id: string;
-  kind: "revision" | "comment";
+  kind: "revision" | "comment" | "system" | "comparison";
   revisionId?: string;
+  revisionNumber?: number;
   title?: string;
   revisionStatus?: ProjectRevisionStatus | null;
   rejectionReason?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  authorId?: string;
   author: string;
+  authorAvatarSrc?: string | null;
   role: string;
   body: string;
   createdAt: string;
@@ -187,6 +284,16 @@ export type ProjectChatEntry = {
     name: string;
   }>;
   attachments?: ProjectAttachmentRecord[];
+  comparison?: {
+    baseAttachmentId: string;
+    compareAttachmentId: string;
+    baseFileName: string;
+    compareFileName: string;
+    baseSubmissionLabel: string;
+    compareSubmissionLabel: string;
+    xPercent: number;
+    yPercent: number;
+  };
 };
 
 export type ProjectCompareNote = {
@@ -204,11 +311,14 @@ export type ProjectFlowRecord = {
   id: string;
   ownerId: string;
   executorUserId?: string | null;
+  executors: ProjectExecutorRecord[];
   canViewBudget: boolean;
   title: string;
   category: string;
   executorName: string;
   description: string;
+  executionType: ProjectExecutionType;
+  executionTypeLabel: string;
   budget: string;
   currency: string | null;
   statusLabel: string;
@@ -219,7 +329,7 @@ export type ProjectFlowRecord = {
   endDate: string;
   createdOn: string;
   createdBy: string;
-  tag: string;
+  tags: string[];
   priority: string;
   stageCards: ProjectStageRecord[];
   collaborators: ProjectCollaboratorRecord[];
@@ -232,6 +342,7 @@ export type ProjectFlowRecord = {
 export type DashboardProjectCounts = {
   total: number;
   ongoing: number;
+  onHold: number;
   pending: number;
   completed: number;
 };
@@ -303,6 +414,27 @@ export function formatProjectBudget(
   return `${budget.toLocaleString("en-US")} ${currency}`;
 }
 
+export function formatProjectExecutionTypeLabel(
+  executionType: ProjectExecutionType,
+) {
+  return executionType === ProjectExecutionType.INTERNAL
+    ? "Internal Execution"
+    : "External Execution";
+}
+
+function isInternalExecutionProject(project: Pick<Project, "executionType">) {
+  return project.executionType === ProjectExecutionType.INTERNAL;
+}
+
+function formatProjectBudgetForExecution(
+  project: Pick<Project, "executionType" | "currency">,
+  budget: number | null | undefined,
+) {
+  return isInternalExecutionProject(project)
+    ? INTERNAL_EXECUTION_NOT_REQUIRED_LABEL
+    : formatProjectBudget(budget, project.currency);
+}
+
 export function canViewProjectBudget(
   project: Pick<Project, "createdById"> | { ownerId: string },
   currentUser: BudgetAccessUser,
@@ -317,6 +449,47 @@ function getCreatorName(creator: Pick<User, "name" | "email">) {
   }
 
   return creator.email;
+}
+
+function uniqueTrimmedValues(values: Array<string | null | undefined>) {
+  const normalized = new Map<string, string>();
+
+  values.forEach((value) => {
+    const trimmedValue = value?.trim();
+
+    if (!trimmedValue) {
+      return;
+    }
+
+    const key = trimmedValue.toLowerCase();
+    if (!normalized.has(key)) {
+      normalized.set(key, trimmedValue);
+    }
+  });
+
+  return [...normalized.values()];
+}
+
+function getProjectTagNames(
+  project: {
+    tags?: Array<{
+      tag: Pick<ProjectTag, "name">;
+    }>;
+  },
+) {
+  const relationTags =
+    project.tags
+      ?.map((assignment) => assignment.tag.name)
+      .filter((tagName) => tagName.trim())
+      .sort((left, right) =>
+        left.localeCompare(right, undefined, { sensitivity: "base" }),
+      ) ?? [];
+
+  return uniqueTrimmedValues(relationTags);
+}
+
+function formatProjectTagsLabel(tags: string[]) {
+  return tags.length > 0 ? tags.join(", ") : "—";
 }
 
 function formatAttachmentTimestamp(date: Date | string | number) {
@@ -380,7 +553,7 @@ function formatAttachmentFileSize(fileSize: number) {
 }
 
 function mapCollaboratorTypeToGroup(type: CollaboratorType): "internal" | "external" {
-  return type === "EXTERNAL" ? "external" : "internal";
+  return getCollaboratorTypeGroup(type);
 }
 
 function mapProjectCollaboratorAssignmentToRecord(
@@ -397,10 +570,7 @@ function mapProjectCollaboratorAssignmentToRecord(
     id: assignment.user.id,
     name: assignment.user.name?.trim() || assignment.user.email,
     email: assignment.user.email,
-    role:
-      assignment.user.collaboratorType === "EXTERNAL"
-        ? "External Collaborator"
-        : "Collaborator",
+    role: getCollaboratorRoleLabel(assignment.user.collaboratorType),
     group: getProjectCollaboratorTypeMeta(participantType).group,
     participantType,
     chatVisibilityPaused: assignment.chatVisibilityPaused,
@@ -409,52 +579,213 @@ function mapProjectCollaboratorAssignmentToRecord(
   };
 }
 
+export function formatProjectExecutorRole(role: ProjectExecutorRole) {
+  return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
+}
+
+function compareProjectExecutorRecords(
+  left: ProjectExecutorRecord,
+  right: ProjectExecutorRecord,
+) {
+  if (left.role !== right.role) {
+    return left.role === ProjectExecutorRole.MAIN_EXECUTOR ? -1 : 1;
+  }
+
+  return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+}
+
+function mapProjectExecutorAssignmentToRecord(
+  assignment: ProjectExecutor & {
+    user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
+  },
+  visibilityStateByUserId: ReadonlyMap<string, boolean>,
+): ProjectExecutorRecord {
+  return {
+    id: assignment.user.id,
+    name: assignment.user.name?.trim() || assignment.user.email,
+    email: assignment.user.email,
+    role: assignment.role,
+    roleLabel: formatProjectExecutorRole(assignment.role),
+    group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
+    chatVisibilityPaused: visibilityStateByUserId.get(assignment.user.id) ?? false,
+  };
+}
+
+function getProjectExecutorRecords(
+  project: Pick<
+    ProjectWithCreator,
+    "executorName" | "executorUserId" | "executorUser" | "executors" | "collaborators"
+  >,
+) {
+  const visibilityStateByUserId = new Map(
+    (project.collaborators ?? []).map((collaborator) => [
+      collaborator.userId,
+      collaborator.chatVisibilityPaused,
+    ] as const),
+  );
+  const mappedExecutors = (project.executors ?? [])
+    .map((assignment) =>
+      mapProjectExecutorAssignmentToRecord(assignment, visibilityStateByUserId),
+    )
+    .filter((executor, index, current) =>
+      current.findIndex((item) => item.id === executor.id) === index,
+    )
+    .sort(compareProjectExecutorRecords);
+
+  if (mappedExecutors.length > 0) {
+    return mappedExecutors;
+  }
+
+  if (!project.executorUserId) {
+    return [];
+  }
+
+  return [
+    {
+      id: project.executorUserId,
+      name:
+        project.executorUser?.name?.trim() ||
+        project.executorUser?.email ||
+        project.executorName?.trim() ||
+        "Main Executor",
+      email: project.executorUser?.email,
+      role: ProjectExecutorRole.MAIN_EXECUTOR,
+      roleLabel: formatProjectExecutorRole(ProjectExecutorRole.MAIN_EXECUTOR),
+      group: project.executorUser
+        ? mapCollaboratorTypeToGroup(project.executorUser.collaboratorType)
+        : "internal",
+      chatVisibilityPaused: visibilityStateByUserId.get(project.executorUserId) ?? false,
+    },
+  ];
+}
+
+function getProjectExecutorDisplayName(executors: ProjectExecutorRecord[]) {
+  if (executors.length === 0) {
+    return "—";
+  }
+
+  const mainExecutors = executors.filter(
+    (executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
+  );
+  const primaryExecutors = mainExecutors.length > 0 ? mainExecutors : executors;
+  const firstExecutor = primaryExecutors[0];
+
+  if (!firstExecutor) {
+    return "—";
+  }
+
+  const remainingCount = executors.length - 1;
+  return remainingCount > 0
+    ? `${firstExecutor.name} +${remainingCount}`
+    : firstExecutor.name;
+}
+
+function maskExecutorVisibilityState(executor: ProjectExecutorRecord) {
+  return {
+    ...executor,
+    chatVisibilityPaused: false,
+  };
+}
+
+function maskCollaboratorVisibilityState(collaborator: ProjectCollaboratorRecord) {
+  return {
+    ...collaborator,
+    chatVisibilityPaused: false,
+  };
+}
+
 function canAccessProjectRecord(
   project: Pick<Project, "createdById" | "executorUserId"> & {
+    executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
     collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
   },
   currentUser: ProjectAccessUser,
 ) {
-  if (
-    currentUser.role === UserRole.SUPER_ADMIN ||
-    currentUser.role === UserRole.ADMIN ||
-    project.createdById === currentUser.id ||
-    project.executorUserId === currentUser.id
-  ) {
-    return true;
+  return hasProjectPermission(currentUser, project, "project.view");
+}
+
+function canViewBriefContent(
+  project: Pick<Project, "createdById" | "executorUserId"> & {
+    executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
+  },
+  currentUser: ProjectAccessUser,
+) {
+  return (
+    isProjectAdmin(currentUser) ||
+    isProjectOwner(currentUser, project) ||
+    isProjectExecutor(currentUser, project)
+  );
+}
+
+function isStageBriefAttachment(
+  attachment: Pick<
+    ProjectWithCreator["attachments"][number],
+    "assetType" | "stageId" | "revisionId" | "commentId"
+  >,
+) {
+  return (
+    attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+    Boolean(attachment.stageId) &&
+    !attachment.revisionId &&
+    !attachment.commentId
+  );
+}
+
+function isProjectBriefAttachment(
+  attachment: Pick<
+    ProjectWithCreator["attachments"][number],
+    "assetType" | "stageId" | "revisionId" | "commentId"
+  >,
+) {
+  return (
+    attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+    !isStageBriefAttachment(attachment)
+  );
+}
+
+async function getProjectAttachmentsVisibleToUser(
+  currentUser: ProjectAccessUser,
+  project: Pick<ProjectWithCreator, "id" | "createdById" | "attachments">,
+) {
+  if (canBypassCollaboratorVisibility(currentUser, project.createdById)) {
+    return project.attachments;
   }
 
-  return (
-    project.collaborators?.some(
-      (collaborator) => collaborator.userId === currentUser.id,
-    ) ?? false
+  const visibilityState = await getProjectCollaboratorVisibilityState(
+    project.id,
+    currentUser.id,
+  );
+
+  if (!visibilityState) {
+    return project.attachments;
+  }
+
+  if (
+    visibilityState.chatVisibilityPaused &&
+    visibilityState.visibilityPauses.length === 0
+  ) {
+    return [];
+  }
+
+  return project.attachments.filter(
+    (attachment) =>
+      !isTimestampHiddenByPauseWindows(
+        attachment.createdAt,
+        visibilityState.visibilityPauses,
+      ),
   );
 }
 
 export function buildAccessibleProjectsWhere(
   currentUser?: ProjectAccessUser,
 ): Prisma.ProjectWhereInput {
-  if (
-    !currentUser ||
-    currentUser.role === UserRole.SUPER_ADMIN ||
-    currentUser.role === UserRole.ADMIN
-  ) {
-    return {};
+  if (!currentUser) {
+    return {
+      id: "__permission_denied__",
+    };
   }
 
-  return {
-    OR: [
-      { createdById: currentUser.id },
-      { executorUserId: currentUser.id },
-      {
-        collaborators: {
-          some: {
-            userId: currentUser.id,
-          },
-        },
-      },
-    ],
-  };
+  return getAccessibleProjectsWhere(currentUser);
 }
 
 function mapAttachmentToRecord(
@@ -502,7 +833,22 @@ function mapStageStatusToVisual(status: ProjectStatus): ProjectStageVisualStatus
   }
 }
 
-function buildSyntheticStages(project: Project): ProjectStage[] {
+function mapStageStatusToDisplayLabel(
+  status: ProjectStatus,
+): ProjectStageRecord["statusLabel"] {
+  switch (status) {
+    case "COMPLETED":
+      return "Completed";
+    case "PENDING":
+      return "Pending";
+    default:
+      return "Ongoing";
+  }
+}
+
+function buildSyntheticStages(project: Project): ProjectStageWithStarter[] {
+  const isInternalExecution = isInternalExecutionProject(project);
+
   return Array.from({ length: Math.max(project.stageCount, 1) }, (_, index) => ({
     id: `${project.id}-stage-${index + 1}`,
     projectId: project.id,
@@ -511,10 +857,11 @@ function buildSyntheticStages(project: Project): ProjectStage[] {
         ? project.currentStageName?.trim() || `Stage ${index + 1}`
         : `Stage ${index + 1}`,
     description: null,
-    budget: index === 0 ? project.budget : null,
+    budget: isInternalExecution ? null : index === 0 ? project.budget : null,
     actualStartedAt: null,
     startedById: null,
     completedAt: null,
+    invoiceRequired: !isInternalExecution,
     plannedStartAt: project.startDate,
     plannedDueAt: project.endDate,
     status: index === 0 ? project.status : "PENDING",
@@ -539,65 +886,170 @@ export function formatProjectStageLabel(project: Pick<Project, "currentStageName
   return `${stageName} : ${statusLabel}`;
 }
 
-function mapProjectToCard(project: ProjectWithCreator, index: number): ProjectCardRecord {
+function mapProjectToCard(
+  project: ProjectWithCreator,
+  currentUser: ProjectAccessUser,
+): ProjectCardRecord {
+  const tags = getProjectTagNames(project);
+
   return {
     id: project.id,
     stage: formatProjectStageLabel(project),
     category: project.category,
+    tags,
     title: project.name,
     createdOn: formatProjectDate(project.createdAt),
     createdBy: getCreatorName(project.createdBy),
-    featured: index === 0,
-    emphasized: index === 3,
+    isPinned: project.isPinned,
+    canPin: hasProjectPermission(currentUser, project, "project.update"),
+    canEdit:
+      project.status !== "COMPLETED" &&
+      hasProjectPermission(currentUser, project, "project.update"),
+    canDelete:
+      project.status !== "COMPLETED" &&
+      hasProjectPermission(currentUser, project, "project.delete"),
   };
+}
+
+const projectNameCollator = new Intl.Collator("en", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function compareProjectsByName(
+  left: Pick<Project, "id" | "name" | "createdAt" | "isPinned">,
+  right: Pick<Project, "id" | "name" | "createdAt" | "isPinned">,
+) {
+  if (left.isPinned !== right.isPinned) {
+    return left.isPinned ? -1 : 1;
+  }
+
+  const nameDifference = projectNameCollator.compare(left.name.trim(), right.name.trim());
+  if (nameDifference !== 0) {
+    return nameDifference;
+  }
+
+  const createdAtDifference = left.createdAt.getTime() - right.createdAt.getTime();
+  if (createdAtDifference !== 0) {
+    return createdAtDifference;
+  }
+
+  return left.id.localeCompare(right.id);
 }
 
 function mapStageToCard(
   project: ProjectWithCreator,
-  stage: ProjectStage,
+  stage: ProjectStageWithStarter,
   allowBudgetView: boolean,
+  canViewBrief: boolean,
+  briefAttachments: ProjectAttachmentRecord[] = [],
 ): ProjectStageRecord {
+  const invoiceRequest = stage.invoiceRequests?.[0] ?? null;
+
   return {
     id: stage.id,
+    order: stage.order,
     label: `${stage.name} : ${projectStatusMeta[stage.status].label}`,
+    name: stage.name,
+    statusLabel: mapStageStatusToDisplayLabel(stage.status),
     subtitle: project.category,
-    description: stage.description?.trim() || "",
+    description: canViewBrief ? stage.description?.trim() || "" : "",
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
     budget: allowBudgetView
-      ? formatProjectBudget(stage.budget, project.currency)
+      ? formatProjectBudgetForExecution(project, stage.budget)
       : "Restricted",
     actualStartedAt: formatProjectDateTime(stage.actualStartedAt),
     actualStartedAtValue: toProjectIsoString(stage.actualStartedAt),
+    startedByName: stage.startedBy ? getCreatorName(stage.startedBy) : null,
     plannedStartAt: formatProjectDateTime(stage.plannedStartAt),
     plannedStartAtValue: toProjectIsoString(stage.plannedStartAt),
     plannedDueAt: formatProjectDateTime(stage.plannedDueAt),
     plannedDueAtValue: toProjectIsoString(stage.plannedDueAt),
     status: mapStageStatusToVisual(stage.status),
+    invoiceRequired: stage.invoiceRequired,
+    invoiceAttachment: null,
+    invoiceRequest: invoiceRequest
+      ? {
+          id: invoiceRequest.id,
+          requestedById: invoiceRequest.requestedById,
+          requestedByName: getCreatorName(invoiceRequest.requestedBy),
+          requestedFromId: invoiceRequest.requestedFromId,
+          requestedFromName: getCreatorName(invoiceRequest.requestedFrom),
+          note: invoiceRequest.note,
+          requestedAt: formatProjectDateTime(invoiceRequest.updatedAt),
+          fulfilledAt: invoiceRequest.fulfilledAt
+            ? formatProjectDateTime(invoiceRequest.fulfilledAt)
+            : null,
+        }
+      : null,
+    briefAttachments: canViewBrief ? briefAttachments : [],
   };
 }
 
 function mapProjectToFlow(
   project: ProjectWithCreator,
-  currentUser: BudgetAccessUser,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
-  const executorDisplayName =
-    project.executorUser?.name?.trim() ||
-    project.executorUser?.email ||
-    project.executorName?.trim() ||
-    "—";
+  const rawExecutorRecords = getProjectExecutorRecords(project);
+  const canViewChatVisibilityState = hasProjectPermission(
+    currentUser,
+    project,
+    "collaborator.pauseVisibility",
+  );
+  const executorRecords = canViewChatVisibilityState
+    ? rawExecutorRecords
+    : rawExecutorRecords.map(maskExecutorVisibilityState);
+  const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
   const allowBudgetView = canViewProjectBudget(project, currentUser);
+  const allowBriefView = canViewBriefContent(project, currentUser);
   const stages = getProjectStages(project);
   const currentStage =
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
+  const projectBriefAttachments = project.attachments
+    .filter(isProjectBriefAttachment)
+    .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
+  const stageBriefAttachmentMap = new Map<string, ProjectAttachmentRecord[]>();
+  const stageInvoiceAttachmentMap = new Map<string, ProjectAttachmentRecord>();
+  const tags = getProjectTagNames(project);
 
-  const collaboratorRecords = (project.collaborators ?? [])
+  project.attachments
+    .filter(isStageBriefAttachment)
+    .forEach((attachment) => {
+      if (!attachment.stageId) {
+        return;
+      }
+
+      const existingAttachments = stageBriefAttachmentMap.get(attachment.stageId) ?? [];
+      stageBriefAttachmentMap.set(attachment.stageId, [
+        ...existingAttachments,
+        mapAttachmentToRecord(attachment, favoritedAttachmentIds),
+      ]);
+    });
+
+  project.attachments
+    .filter((attachment) => attachment.assetType === AttachmentAssetType.STAGE_INVOICE)
+    .forEach((attachment) => {
+      if (!attachment.stageId || stageInvoiceAttachmentMap.has(attachment.stageId)) {
+        return;
+      }
+
+      stageInvoiceAttachmentMap.set(
+        attachment.stageId,
+        mapAttachmentToRecord(attachment, favoritedAttachmentIds),
+      );
+    });
+
+  const rawCollaboratorRecords = (project.collaborators ?? [])
     .map(mapProjectCollaboratorAssignmentToRecord)
     .filter((collaborator, index, current) =>
       current.findIndex((item) => item.id === collaborator.id) === index,
     );
+  const collaboratorRecords = canViewChatVisibilityState
+    ? rawCollaboratorRecords
+    : rawCollaboratorRecords.map(maskCollaboratorVisibilityState);
   const mentionParticipants = [
     {
       id: project.createdById,
@@ -607,20 +1059,14 @@ function mapProjectToFlow(
       group: "internal" as const,
       chatVisibilityPaused: false,
     },
-    ...(project.executorUser
-      ? [
-          {
-            id: project.executorUser.id,
-            name:
-              project.executorUser.name?.trim() ||
-              project.executorUser.email,
-            email: project.executorUser.email,
-            role: "Project Executor",
-            group: mapCollaboratorTypeToGroup(project.executorUser.collaboratorType),
-            chatVisibilityPaused: false,
-          },
-        ]
-      : []),
+    ...executorRecords.map((executor) => ({
+      id: executor.id,
+      name: executor.name,
+      email: executor.email,
+      role: executor.roleLabel,
+      group: executor.group,
+      chatVisibilityPaused: executor.chatVisibilityPaused,
+    })),
     ...collaboratorRecords.map((collaborator) => ({
       id: collaborator.id,
       name: collaborator.name,
@@ -638,12 +1084,17 @@ function mapProjectToFlow(
     id: project.id,
     ownerId: project.createdById,
     executorUserId: project.executorUserId ?? null,
+    executors: executorRecords,
     canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
     executorName: executorDisplayName,
-    description: project.description,
-    budget: allowBudgetView ? formatProjectBudget(project.budget, project.currency) : "Restricted",
+    description: allowBriefView ? project.description : "",
+    executionType: project.executionType,
+    executionTypeLabel: formatProjectExecutionTypeLabel(project.executionType),
+    budget: allowBudgetView
+      ? formatProjectBudgetForExecution(project, project.budget)
+      : "Restricted",
     currency: allowBudgetView ? project.currency : null,
     statusLabel: projectStatusMeta[project.status].label,
     currentStageName: currentStage?.name ?? project.currentStageName?.trim() ?? "Stage 1",
@@ -653,9 +1104,18 @@ function mapProjectToFlow(
     endDate: formatProjectDate(project.endDate),
     createdOn: formatProjectDate(project.createdAt),
     createdBy: creatorName,
-    tag: project.tag?.trim() || "—",
+    tags,
     priority: formatProjectPriority(project.priority ?? DEFAULT_PROJECT_PRIORITY),
-    stageCards: stages.map((stage) => mapStageToCard(project, stage, allowBudgetView)),
+    stageCards: stages.map((stage) => ({
+      ...mapStageToCard(
+        project,
+        stage,
+        allowBudgetView,
+        allowBriefView,
+        stageBriefAttachmentMap.get(stage.id) ?? [],
+      ),
+      invoiceAttachment: stageInvoiceAttachmentMap.get(stage.id) ?? null,
+    })),
     collaborators: [
       {
         id: project.createdById,
@@ -670,9 +1130,7 @@ function mapProjectToFlow(
       ...collaboratorRecords,
     ],
     mentionParticipants,
-    attachments: project.attachments.map((attachment) =>
-      mapAttachmentToRecord(attachment, favoritedAttachmentIds),
-    ),
+    attachments: allowBriefView ? projectBriefAttachments : [],
     chatEntries: [],
     compareNotes: [],
   };
@@ -714,27 +1172,50 @@ function formatProjectInputDateTime(date: Date | string | number | null | undefi
 
 function mapProjectToEditor(
   project: ProjectWithCreator,
-  currentUser: BudgetAccessUser,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectEditorRecord {
   const stages = getProjectStages(project);
-  const executorDisplayName =
-    project.executorUser?.name?.trim() ||
-    project.executorUser?.email ||
-    project.executorName?.trim() ||
-    "";
+  const executorRecords = getProjectExecutorRecords(project);
+  const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
   const allowBudgetView = canViewProjectBudget(project, currentUser);
+  const allowBriefView = canViewBriefContent(project, currentUser);
+  const tags = getProjectTagNames(project);
+  const projectBriefAttachments = project.attachments
+    .filter(isProjectBriefAttachment)
+    .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
+  const stageBriefAttachmentMap = new Map<string, ProjectAttachmentRecord[]>();
+
+  project.attachments
+    .filter(isStageBriefAttachment)
+    .forEach((attachment) => {
+      if (!attachment.stageId) {
+        return;
+      }
+
+      const existingAttachments = stageBriefAttachmentMap.get(attachment.stageId) ?? [];
+      stageBriefAttachmentMap.set(attachment.stageId, [
+        ...existingAttachments,
+        mapAttachmentToRecord(attachment, favoritedAttachmentIds),
+      ]);
+    });
 
   return {
     id: project.id,
+    ownerId: project.createdById,
     name: project.name,
     category: project.category,
     executorName: executorDisplayName,
     executorUserId: project.executorUserId ?? null,
-    tag: project.tag?.trim() || "",
+    executors: executorRecords,
+    tags,
     priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
-    description: project.description,
-    budget: allowBudgetView ? String(project.budget) : "",
+    description: allowBriefView ? project.description : "",
+    executionType: project.executionType,
+    budget:
+      allowBudgetView && (!isInternalExecutionProject(project) || project.budget > 0)
+        ? String(project.budget)
+        : "",
     currency: allowBudgetView ? project.currency : null,
     canViewBudget: allowBudgetView,
     status: project.status,
@@ -743,47 +1224,64 @@ function mapProjectToEditor(
     stages: stages.map((stage, index) => ({
       id: stage.id,
       name: stage.name,
+      invoiceRequired: isInternalExecutionProject(project) ? false : stage.invoiceRequired,
       budget:
-        allowBudgetView
+        allowBudgetView && (!isInternalExecutionProject(project) || (stage.budget ?? 0) > 0)
           ? stage.budget && stage.budget > 0
             ? String(stage.budget)
             : index === 0
               ? String(project.budget)
               : ""
           : "",
-      description: stage.description?.trim() || "",
+      description: allowBriefView ? stage.description?.trim() || "" : "",
       plannedStartAt: formatProjectInputDateTime(stage.plannedStartAt ?? project.startDate),
       plannedDueAt: formatProjectInputDateTime(stage.plannedDueAt ?? project.endDate),
+      attachments: allowBriefView ? stageBriefAttachmentMap.get(stage.id) ?? [] : [],
     })),
     collaborators: (project.collaborators ?? []).map((assignment) => ({
       ...mapProjectCollaboratorAssignmentToRecord(assignment),
     })),
-    attachments: project.attachments.map((attachment) =>
-      mapAttachmentToRecord(attachment, favoritedAttachmentIds),
-    ),
+    attachments: allowBriefView ? projectBriefAttachments : [],
   };
 }
 
 export async function updateProjectCollaborators(
   projectId: string,
   collaborators: Array<{
-    id: string;
-    participantType: ProjectCollaboratorParticipantType | null;
+    id?: string;
+    userId?: string;
+    participantType?: ProjectCollaboratorParticipantType | null;
   }>,
-  addedById: string,
+  actor: ProjectAccessUser,
 ) {
+  await assertProjectCollaboratorManagementAccess(
+    actor,
+    projectId,
+    "project.manageCollaborators",
+  );
+
+  if (!Array.isArray(collaborators)) {
+    throw new Error("Collaborator selection is required.");
+  }
+
   const normalizedCollaborators = collaborators.reduce<
     Array<{ id: string; participantType: ProjectCollaboratorParticipantType | null }>
   >((current, collaborator) => {
-    const id = collaborator.id.trim();
+    const id = (collaborator.userId ?? collaborator.id ?? "").trim();
 
     if (!id || current.some((item) => item.id === id)) {
       return current;
     }
 
+    const participantType =
+      collaborator.participantType &&
+      isProjectCollaboratorParticipantType(collaborator.participantType)
+        ? collaborator.participantType
+        : null;
+
     current.push({
       id,
-      participantType: collaborator.participantType,
+      participantType,
     });
     return current;
   }, []);
@@ -807,6 +1305,11 @@ export async function updateProjectCollaborators(
     : [];
 
   const validIds = validCollaborators.map((collaborator) => collaborator.id);
+
+  if (validIds.length !== normalizedIds.length) {
+    throw new Error("One or more selected collaborators could not be found.");
+  }
+
   const validCollaboratorTypeMap = new Map(
     validCollaborators.map((collaborator) => [
       collaborator.id,
@@ -826,16 +1329,29 @@ export async function updateProjectCollaborators(
       },
       select: {
         userId: true,
+        participantType: true,
       },
     }),
   );
   const existingIds = new Set(existingAssignments.map((assignment) => assignment.userId));
+  const existingParticipantTypeMap = new Map(
+    existingAssignments.map((assignment) => [
+      assignment.userId,
+      assignment.participantType as ProjectCollaboratorParticipantType | null,
+    ]),
+  );
   const nextIds = new Set(validIds);
   const idsToDelete = existingAssignments
     .map((assignment) => assignment.userId)
     .filter((userId) => !nextIds.has(userId));
   const idsToCreate = validIds.filter((userId) => !existingIds.has(userId));
   const idsToUpdate = validIds.filter((userId) => existingIds.has(userId));
+  const resolveParticipantType = (userId: string) =>
+    validCollaboratorMap.get(userId) ??
+    existingParticipantTypeMap.get(userId) ??
+    getDefaultProjectCollaboratorParticipantType(
+      validCollaboratorTypeMap.get(userId) ?? "external",
+    );
 
   await withPrismaRetry(() =>
     prisma.$transaction([
@@ -860,11 +1376,7 @@ export async function updateProjectCollaborators(
             },
           },
           data: {
-            participantType:
-              validCollaboratorMap.get(userId) ??
-              getDefaultProjectCollaboratorParticipantType(
-                validCollaboratorTypeMap.get(userId) ?? "external",
-              ),
+            participantType: resolveParticipantType(userId),
           },
         }),
       ),
@@ -874,12 +1386,8 @@ export async function updateProjectCollaborators(
               data: idsToCreate.map((userId) => ({
                 projectId,
                 userId,
-                addedById,
-                participantType:
-                  validCollaboratorMap.get(userId) ??
-                  getDefaultProjectCollaboratorParticipantType(
-                    validCollaboratorTypeMap.get(userId) ?? "external",
-                  ),
+                addedById: actor.id,
+                participantType: resolveParticipantType(userId),
               })),
               skipDuplicates: true,
             }),
@@ -913,8 +1421,9 @@ export async function updateProjectCollaborators(
 }
 
 async function assertProjectCollaboratorManagementAccess(
-  actor: Pick<User, "id" | "role">,
+  actor: ProjectAccessUser,
   projectId: string,
+  permissionKey: PermissionKey,
 ) {
   const project = await withPrismaRetry(() =>
     prisma.project.findUnique({
@@ -924,6 +1433,13 @@ async function assertProjectCollaboratorManagementAccess(
       select: {
         id: true,
         createdById: true,
+        executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
       },
     }),
   );
@@ -933,9 +1449,9 @@ async function assertProjectCollaboratorManagementAccess(
   }
 
   if (
-    actor.role !== UserRole.SUPER_ADMIN &&
-    actor.role !== UserRole.ADMIN &&
-    project.createdById !== actor.id
+    !hasProjectPermission(actor, project, permissionKey) ||
+    (permissionKey === "project.manageCollaborators" &&
+      !hasPermission(actor, "project.manageCollaborators"))
   ) {
     throw new Error("You are not allowed to update project collaborators.");
   }
@@ -968,12 +1484,81 @@ async function getProjectCollaboratorAssignments(projectId: string) {
   return assignments.map(mapProjectCollaboratorAssignmentToRecord);
 }
 
+export async function getProjectExecutors(projectId: string) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: {
+        id: projectId,
+      },
+      select: {
+        executorName: true,
+        executorUserId: true,
+        executorUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            collaboratorType: true,
+          },
+        },
+        executors: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                collaboratorType: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  return project ? getProjectExecutorRecords(project) : [];
+}
+
+export async function requireMainExecutor(projectId: string, userId: string) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: {
+        id: projectId,
+      },
+      select: {
+        executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!isMainProjectExecutor({ id: userId }, project)) {
+    throw new Error("Only a Main Executor can perform this action.");
+  }
+
+  return project;
+}
+
 export async function removeProjectCollaborator(
-  actor: Pick<User, "id" | "role">,
+  actor: ProjectAccessUser,
   projectId: string,
   collaboratorId: string,
 ) {
-  await assertProjectCollaboratorManagementAccess(actor, projectId);
+  await assertProjectCollaboratorManagementAccess(
+    actor,
+    projectId,
+    "collaborator.removeFromProject",
+  );
 
   const assignment = await withPrismaRetry(() =>
     prisma.projectCollaborator.findUnique({
@@ -1008,16 +1593,32 @@ export async function removeProjectCollaborator(
 }
 
 export async function setProjectCollaboratorChatVisibility(
-  actor: Pick<User, "id" | "role">,
+  actor: ProjectAccessUser,
   input: {
     projectId: string;
     collaboratorId: string;
     paused: boolean;
   },
 ) {
-  await assertProjectCollaboratorManagementAccess(actor, input.projectId);
+  const project = await assertProjectCollaboratorManagementAccess(
+    actor,
+    input.projectId,
+    "collaborator.pauseVisibility",
+  );
 
-  const assignment = await withPrismaRetry(() =>
+  if (input.collaboratorId === actor.id) {
+    throw new Error("You cannot change your own chat visibility.");
+  }
+
+  if (input.collaboratorId === project.createdById) {
+    throw new Error("Project owner chat visibility cannot be changed.");
+  }
+
+  const isExecutorTarget =
+    project.executorUserId === input.collaboratorId ||
+    project.executors.some((executor) => executor.userId === input.collaboratorId);
+
+  let assignment = await withPrismaRetry(() =>
     prisma.projectCollaborator.findUnique({
       where: {
         projectId_userId: {
@@ -1034,7 +1635,42 @@ export async function setProjectCollaboratorChatVisibility(
   );
 
   if (!assignment) {
-    throw new Error("Collaborator not found.");
+    if (!input.paused || !isExecutorTarget) {
+      throw new Error("Collaborator not found.");
+    }
+
+    const targetUser = await withPrismaRetry(() =>
+      prisma.user.findUnique({
+        where: {
+          id: input.collaboratorId,
+        },
+        select: {
+          collaboratorType: true,
+        },
+      }),
+    );
+
+    if (!targetUser) {
+      throw new Error("Collaborator not found.");
+    }
+
+    assignment = await withPrismaRetry(() =>
+      prisma.projectCollaborator.create({
+        data: {
+          projectId: input.projectId,
+          userId: input.collaboratorId,
+          addedById: actor.id,
+          participantType: getDefaultProjectCollaboratorParticipantType(
+            mapCollaboratorTypeToGroup(targetUser.collaboratorType),
+          ),
+        },
+        select: {
+          projectId: true,
+          userId: true,
+          chatVisibilityPaused: true,
+        },
+      }),
+    );
   }
 
   if (assignment.chatVisibilityPaused === input.paused) {
@@ -1117,93 +1753,173 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
   const statusWhere =
     filter.status === "ALL" || !filter.status
       ? undefined
-      : filter.status === "PENDING"
-        ? {
-            in: ["PENDING", "ON_HOLD"] as ProjectStatus[],
-          }
-        : filter.status;
+      : filter.status;
+  const clauses: Prisma.ProjectWhereInput[] = [];
 
-  return {
-    ...(statusWhere
-      ? {
-          status: statusWhere,
-        }
-      : {}),
-    ...(query
-      ? {
-          OR: [
-            {
-              name: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              category: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
-            },
-            {
+  if (statusWhere) {
+    clauses.push({ status: statusWhere });
+  }
+
+  if (query) {
+    clauses.push({
+      OR: [
+        {
+          name: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          category: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          tags: {
+            some: {
               tag: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              createdBy: {
                 is: {
                   name: {
                     contains: query,
-                    mode: "insensitive" as const,
+                    mode: "insensitive",
                   },
                 },
               },
             },
-            {
-              createdBy: {
+          },
+        },
+        {
+          createdBy: {
+            is: {
+              name: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        {
+          createdBy: {
+            is: {
+              email: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        {
+          executorName: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          executorUser: {
+            is: {
+              name: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        {
+          executorUser: {
+            is: {
+              email: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        {
+          executors: {
+            some: {
+              user: {
+                is: {
+                  name: {
+                    contains: query,
+                    mode: "insensitive",
+                  },
+                },
+              },
+            },
+          },
+        },
+        {
+          executors: {
+            some: {
+              user: {
                 is: {
                   email: {
                     contains: query,
-                    mode: "insensitive" as const,
+                    mode: "insensitive",
                   },
                 },
               },
             },
-          ],
-        }
-      : {}),
-    ...(category
-      ? {
-          category: {
-            equals: category,
-            mode: "insensitive" as const,
           },
-        }
-      : {}),
-    ...(tag
-      ? {
+        },
+      ],
+    });
+  }
+
+  if (category) {
+    clauses.push({
+      category: {
+        equals: category,
+        mode: "insensitive",
+      },
+    });
+  }
+
+  if (tag) {
+    clauses.push({
+      tags: {
+        some: {
           tag: {
-            equals: tag,
-            mode: "insensitive" as const,
+            is: {
+              name: {
+                equals: tag,
+                mode: "insensitive",
+              },
+            },
           },
-        }
-      : {}),
-  };
+        },
+      },
+    });
+  }
+
+  return clauses.length > 0 ? { AND: clauses } : {};
 }
 
-export async function getProjectListFilterOptions(): Promise<ProjectListFilterOptions> {
+export async function getProjectListFilterOptions(
+  currentUser: ProjectAccessUser,
+): Promise<ProjectListFilterOptions> {
+  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
   const projects = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
+          where: accessibleWhere,
           select: {
             category: true,
-            tag: true,
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
           },
         }),
       ),
-    ["project-list-filter-options"],
+    [
+      "project-list-filter-options",
+      currentUser.id,
+      currentUser.role,
+    ],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -1216,8 +1932,7 @@ export async function getProjectListFilterOptions(): Promise<ProjectListFilterOp
       categories.set(normalizedCategory.toLowerCase(), normalizedCategory);
     }
 
-    const normalizedTag = project.tag?.trim();
-    if (normalizedTag) {
+    for (const normalizedTag of getProjectTagNames(project)) {
       tags.set(normalizedTag.toLowerCase(), normalizedTag);
     }
   }
@@ -1239,18 +1954,13 @@ export async function getDashboardProjectCounts(
   const getCachedCounts = unstable_cache(
     async () =>
       withPrismaRetry(() =>
-        Promise.all([
-          prisma.project.count({
-            where: accessibleWhere,
-          }),
-          prisma.project.groupBy({
-            by: ["status"],
-            where: accessibleWhere,
-            _count: {
-              _all: true,
-            },
-          }),
-        ]),
+        prisma.project.groupBy({
+          by: ["status"],
+          where: accessibleWhere,
+          _count: {
+            _all: true,
+          },
+        }),
       ),
     [
       "dashboard-project-counts",
@@ -1260,7 +1970,7 @@ export async function getDashboardProjectCounts(
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
-  const [total, grouped] = await getCachedCounts();
+  const grouped = await getCachedCounts();
 
   const counts = grouped.reduce<Record<ProjectStatus, number>>(
     (accumulator, item) => {
@@ -1274,11 +1984,13 @@ export async function getDashboardProjectCounts(
       COMPLETED: 0,
     },
   );
+  const total = grouped.reduce((sum, item) => sum + item._count._all, 0);
 
   return {
     total,
     ongoing: counts.ONGOING,
-    pending: counts.PENDING + counts.ON_HOLD,
+    onHold: counts.ON_HOLD,
+    pending: counts.PENDING,
     completed: counts.COMPLETED,
   };
 }
@@ -1294,6 +2006,18 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
             createdAt: "desc",
           },
           take: limit,
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            category: true,
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
+            createdAt: true,
+          },
         }),
       ),
     [
@@ -1305,29 +2029,64 @@ export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUs
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
-  return projects.map((project, index) => ({
-    name: project.name,
-    tone: index < 2 ? "brand" : index < 4 ? "deep" : "muted",
-  })) as {
+  return projects.map((project, index) => {
+    const tags = getProjectTagNames(project);
+    const tagLabel = formatProjectTagsLabel(tags);
+
+    return {
+      id: project.id,
+      name: project.name,
+      statusLabel: projectStatusMeta[project.status].dashboardLabel,
+      meta: [
+        project.category,
+        tagLabel === "—" ? null : tagLabel,
+        `Created ${formatProjectDate(project.createdAt)}`,
+      ].filter(Boolean).join(" • "),
+      href: `/projects/${project.id}`,
+      tone: index < 2 ? "brand" : index < 4 ? "deep" : "muted",
+    };
+  }) as {
+    id: string;
     name: string;
+    statusLabel: string;
+    meta: string;
+    href: string;
     tone: "brand" | "deep" | "muted";
   }[];
 }
 
-export async function getProjectsList(filter: ProjectsListFilter) {
+export async function getProjectsList(
+  filter: ProjectsListFilter,
+  currentUser: ProjectAccessUser,
+) {
   const orderBy =
     filter.sort === "oldest"
-      ? [{ createdAt: "asc" as const }]
+      ? [{ isPinned: "desc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }]
       : filter.sort === "name"
-        ? [{ name: "asc" as const }]
-        : [{ createdAt: "desc" as const }];
+        ? [
+            { isPinned: "desc" as const },
+            { name: "asc" as const },
+            { createdAt: "asc" as const },
+            { id: "asc" as const },
+          ]
+        : [{ isPinned: "desc" as const }, { createdAt: "desc" as const }, { id: "asc" as const }];
 
   const projects = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
-          where: buildProjectsWhere(filter),
+          where: {
+            AND: [
+              buildAccessibleProjectsWhere(currentUser),
+              buildProjectsWhere(filter),
+            ],
+          },
           include: {
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdBy: {
               select: {
                 name: true,
@@ -1345,7 +2104,12 @@ export async function getProjectsList(filter: ProjectsListFilter) {
             stages: true,
             attachments: {
               where: {
-                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                assetType: {
+                  in: [
+                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                    "STAGE_INVOICE" as AttachmentAssetType,
+                  ],
+                },
                 status: "READY" as AttachmentStatus,
               },
               orderBy: {
@@ -1353,6 +2117,9 @@ export async function getProjectsList(filter: ProjectsListFilter) {
               },
               select: {
                 id: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
                 assetType: true,
                 originalFileName: true,
                 mimeType: true,
@@ -1377,11 +2144,16 @@ export async function getProjectsList(filter: ProjectsListFilter) {
       filter.category?.trim().toLowerCase() ?? "",
       filter.tag?.trim().toLowerCase() ?? "",
       filter.sort ?? "newest",
+      currentUser.id,
+      currentUser.role,
     ],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
-  return projects.map(mapProjectToCard);
+  const sortedProjects =
+    filter.sort === "name" ? [...projects].sort(compareProjectsByName) : projects;
+
+  return sortedProjects.map((project) => mapProjectToCard(project, currentUser));
 }
 
 export async function getProjectById(
@@ -1394,6 +2166,11 @@ export async function getProjectById(
         prisma.project.findUnique({
           where: { id },
           include: {
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdBy: {
               select: {
                 name: true,
@@ -1408,7 +2185,44 @@ export async function getProjectById(
                 collaboratorType: true,
               },
             },
-            stages: true,
+            executors: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
+            stages: {
+              include: {
+                startedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+                invoiceRequests: {
+                  include: {
+                    requestedBy: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                    requestedFrom: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
             collaborators: {
               orderBy: {
                 createdAt: "asc",
@@ -1426,7 +2240,12 @@ export async function getProjectById(
             },
             attachments: {
               where: {
-                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                assetType: {
+                  in: [
+                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                    "STAGE_INVOICE" as AttachmentAssetType,
+                  ],
+                },
                 status: "READY" as AttachmentStatus,
               },
               orderBy: {
@@ -1434,6 +2253,9 @@ export async function getProjectById(
               },
               select: {
                 id: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
                 assetType: true,
                 originalFileName: true,
                 mimeType: true,
@@ -1450,7 +2272,7 @@ export async function getProjectById(
           },
         }),
       ),
-    ["project-by-id", id, currentUser.id],
+    ["project-by-id", id, currentUser.id, currentUser.role],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -1462,12 +2284,129 @@ export async function getProjectById(
     return null;
   }
 
+  const visibleAttachments = await getProjectAttachmentsVisibleToUser(
+    currentUser,
+    project,
+  );
   const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
     currentUser.id,
-    project.attachments.map((attachment) => attachment.id),
+    visibleAttachments.map((attachment) => attachment.id),
   );
 
-  return mapProjectToFlow(project, currentUser, favoritedAttachmentIds);
+  return mapProjectToFlow(
+    {
+      ...project,
+      attachments: visibleAttachments,
+    },
+    currentUser,
+    favoritedAttachmentIds,
+  );
+}
+
+export async function getProjectShellById(
+  id: string,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
+) {
+  const project = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findUnique({
+          where: { id },
+          include: {
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
+            createdBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            executorUser: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                collaboratorType: true,
+              },
+            },
+            executors: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
+            stages: {
+              include: {
+                startedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+                invoiceRequests: {
+                  include: {
+                    requestedBy: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                    requestedFrom: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            collaborators: {
+              orderBy: {
+                createdAt: "asc",
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ),
+    ["project-shell-by-id", id, currentUser.id, currentUser.role],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
+
+  if (!project) {
+    return null;
+  }
+
+  if (!canAccessProjectRecord(project, currentUser)) {
+    return null;
+  }
+
+  return mapProjectToFlow(
+    {
+      ...project,
+      attachments: [],
+    },
+    currentUser,
+  );
 }
 
 export async function getProjectEditorById(
@@ -1480,6 +2419,11 @@ export async function getProjectEditorById(
         prisma.project.findUnique({
           where: { id },
           include: {
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
             createdBy: {
               select: {
                 name: true,
@@ -1494,7 +2438,44 @@ export async function getProjectEditorById(
                 collaboratorType: true,
               },
             },
-            stages: true,
+            executors: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
+            stages: {
+              include: {
+                startedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+                invoiceRequests: {
+                  include: {
+                    requestedBy: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                    requestedFrom: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
             collaborators: {
               orderBy: {
                 createdAt: "asc",
@@ -1512,7 +2493,12 @@ export async function getProjectEditorById(
             },
             attachments: {
               where: {
-                assetType: "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                assetType: {
+                  in: [
+                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                    "STAGE_INVOICE" as AttachmentAssetType,
+                  ],
+                },
                 status: "READY" as AttachmentStatus,
               },
               orderBy: {
@@ -1520,6 +2506,9 @@ export async function getProjectEditorById(
               },
               select: {
                 id: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
                 assetType: true,
                 originalFileName: true,
                 mimeType: true,
@@ -1536,7 +2525,7 @@ export async function getProjectEditorById(
           },
         }),
       ),
-    ["project-editor-by-id", id, currentUser.id],
+    ["project-editor-by-id", id, currentUser.id, currentUser.role],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -1554,4 +2543,75 @@ export async function getProjectEditorById(
   );
 
   return mapProjectToEditor(project, currentUser, favoritedAttachmentIds);
+}
+
+export async function getProjectEditAccessById(
+  id: string,
+  currentUser: ProjectAccessUser,
+) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id },
+      select: {
+        status: true,
+        createdById: true,
+        executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
+        collaborators: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!project || !canAccessProjectRecord(project, currentUser)) {
+    return null;
+  }
+
+  return {
+    canEdit:
+      project.status !== "COMPLETED" &&
+      hasProjectPermission(currentUser, project, "project.update"),
+  };
+}
+
+export async function getProjectRouteAvailability(
+  id: string,
+  currentUser: ProjectAccessUser,
+): Promise<"available" | "not-found" | "access-unavailable"> {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id },
+      select: {
+        createdById: true,
+        executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
+        collaborators: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!project) {
+    return "not-found";
+  }
+
+  return canAccessProjectRecord(project, currentUser)
+    ? "available"
+    : "access-unavailable";
 }

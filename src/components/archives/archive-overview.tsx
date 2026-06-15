@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { archiveCategories } from "@/components/archives/archive-data";
+import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button";
 import {
   MotionItem,
   MotionSection,
@@ -11,22 +12,29 @@ import type { ArchiveCategorySummary } from "@/lib/archives";
 
 type ArchiveOverviewProps = {
   summaries: ArchiveCategorySummary[];
+  canUploadArchives: boolean;
 };
 
-export function ArchiveOverview({ summaries }: ArchiveOverviewProps) {
+export function ArchiveOverview({ summaries, canUploadArchives }: ArchiveOverviewProps) {
   const summaryBySlug = new Map(summaries.map((summary) => [summary.slug, summary] as const));
 
   return (
     <section className="space-y-6">
       <MotionSection>
-        <header className="flex flex-col gap-3">
-          <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-            Archives
-          </h1>
-          <p className="max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
-            Completed project files and completion documents are grouped by archive
-            category and remain available through secure view and download links.
-          </p>
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex-1">
+            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+              Archives
+            </h1>
+            <p className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
+              Completed project files, completion documents, and manual archive uploads
+              are grouped by category with secure view and download links.
+            </p>
+          </div>
+          <ArchiveUploadButton
+            canUploadAssets={canUploadArchives}
+            disabledReason="You do not have permission to upload to Archive."
+          />
         </header>
       </MotionSection>
 

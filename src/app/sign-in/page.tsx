@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 
 export default async function SignInPage() {
   const user = await getCurrentUser();
+  const currentYear = new Date().getFullYear();
 
   if (user) {
     redirect("/");
@@ -47,7 +48,7 @@ export default async function SignInPage() {
               </div>
 
               <p className="text-[14px] leading-7 text-white/82">
-                © 2025 Gulbahar Tobacco Int&apos;l FZE.
+                © {currentYear} Gulbahar Tobacco Int&apos;l FZE.
                 <br />
                 All rights reserved.
               </p>

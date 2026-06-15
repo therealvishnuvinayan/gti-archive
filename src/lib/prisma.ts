@@ -56,7 +56,8 @@ export function isPrismaConnectionError(error: unknown) {
   if (error instanceof Error) {
     return (
       error.message.includes("Error in PostgreSQL connection") ||
-      error.message.includes("Can't reach database server")
+      error.message.includes("Can't reach database server") ||
+      error.message.includes("Engine is not yet connected")
     );
   }
 

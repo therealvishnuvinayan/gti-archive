@@ -40,10 +40,10 @@ type CollaboratorDialogProps = {
 };
 
 const areaLabels: Record<AccessArea, string> = {
-  project: "Project Access",
-  calendar: "Calendar Access",
-  library: "Library Access",
-  archive: "Archives Access",
+  project: "Projects module gate",
+  calendar: "Calendar module gate",
+  library: "Library module gate",
+  archive: "Archives module gate",
 };
 
 const permissionOptions: Array<{ value: PermissionLevel; label: string }> = [
@@ -68,8 +68,8 @@ export function CollaboratorDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8">
-      <Card className="w-full max-w-[640px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#112118]/45 px-4 py-6 sm:items-center sm:py-8">
+      <Card className="max-h-[calc(100vh-3rem)] w-full max-w-[640px] overflow-y-auto rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)] sm:max-h-[calc(100vh-4rem)]">
         <CardContent className="p-6 sm:p-7">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
@@ -78,8 +78,8 @@ export function CollaboratorDialog({
               </h2>
               <p className="mt-1 text-[14px] text-[#6a706b]">
                 {mode === "invite"
-                  ? "Add a collaborator and assign access areas."
-                  : "Update what this collaborator can view or manage."}
+                  ? "Add a collaborator and set module visibility gates."
+                  : "Update collaborator details and module visibility gates."}
               </p>
             </div>
             <Button
@@ -139,16 +139,24 @@ export function CollaboratorDialog({
             </label>
           </div>
 
-          <div className="mt-6 space-y-3">
+          <div className="mt-6 space-y-3 rounded-[22px] border border-line bg-[#fbfcfa] p-4">
+            <div>
+              <p className="text-[15px] font-[700] text-[#1f2923]">
+                Module Access Gates
+              </p>
+              <p className="mt-1 text-[12px] leading-5 text-[#7a837b]">
+                These values control whether this user can access each module. Detailed actions are controlled by permission profiles.
+              </p>
+            </div>
             {(Object.keys(areaLabels) as AccessArea[]).map((area) => (
-              <Card key={area} className="rounded-[22px] border border-line shadow-none">
+              <Card key={area} className="rounded-[18px] border border-line shadow-none">
                 <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="sm:max-w-[55%]">
                     <p className="text-[14px] font-[700] text-[#1f2923]">
                       {areaLabels[area]}
                     </p>
                     <p className="mt-1 text-[12px] leading-5 text-[#7a837b]">
-                      Control whether this collaborator can view or edit this area.
+                      Controls module visibility only, not detailed action permissions.
                     </p>
                   </div>
 

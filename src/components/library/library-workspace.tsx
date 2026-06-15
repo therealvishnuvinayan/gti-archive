@@ -16,6 +16,7 @@ import {
 
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
+import { LibraryUploadButton } from "@/components/library/library-upload-button";
 import { MotionSection } from "@/components/motion/motion-primitives";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -162,6 +163,7 @@ function LibraryPreviewAction({ item }: { item: LibraryItemRecord }) {
 
 type LibraryWorkspaceProps = {
   initialData: LibraryPageData;
+  canUploadAssets: boolean;
   initialQuery?: {
     search: string;
     projectId: string;
@@ -174,6 +176,7 @@ type LibraryWorkspaceProps = {
 
 export function LibraryWorkspace({
   initialData,
+  canUploadAssets,
   initialQuery,
 }: LibraryWorkspaceProps) {
   const [activeQuickMenu, setActiveQuickMenu] =
@@ -315,7 +318,11 @@ export function LibraryWorkspace({
     setDeleteError(null);
 
     try {
-      const response = await fetch(`/api/library/attachments/${deleteTarget.id}`, {
+      const deletePath =
+        deleteTarget.source === "MANUAL_LIBRARY_ASSET"
+          ? `/api/library/manual-assets/${deleteTarget.id}`
+          : `/api/library/attachments/${deleteTarget.id}`;
+      const response = await fetch(deletePath, {
         method: "DELETE",
       });
       const payload = (await response.json()) as { success?: boolean; error?: string };
@@ -391,13 +398,20 @@ export function LibraryWorkspace({
   return (
     <section className="space-y-6">
       <MotionSection>
-        <header className="space-y-2">
-          <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
-            Library
-          </h1>
-          <p className="text-[16px] text-[#68736a]">
-            Browse working project files, attachments, and submissions from real uploads across the PMS.
-          </p>
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-[42px] font-[600] leading-none tracking-[-0.05em] text-[#0f1411] sm:text-[56px]">
+              Library
+            </h1>
+            <p className="mt-2 text-[16px] text-[#68736a]">
+              Browse working project files, attachments, submissions, and manual library uploads.
+            </p>
+          </div>
+          <LibraryUploadButton
+            canUploadAssets={canUploadAssets}
+            disabledReason="You do not have permission to upload library assets."
+            onUploaded={refetchLibraryPage}
+          />
         </header>
       </MotionSection>
 
@@ -600,10 +614,26 @@ export function LibraryWorkspace({
                             <p className="font-[700] leading-[1.25] text-[#18211a]">
                               {item.fileName}
                             </p>
-                            {item.projectTag ? (
-                              <p className="mt-1 text-[11px] text-[#7a847d]">
-                                Tag: {item.projectTag}
-                              </p>
+                            {item.projectTags.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {item.projectTags.slice(0, 3).map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
+                                    title={tag}
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                                {item.projectTags.length > 3 ? (
+                                  <span
+                                    className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
+                                    title={item.projectTag ?? undefined}
+                                  >
+                                    +{item.projectTags.length - 3}
+                                  </span>
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
                         </td>
@@ -618,16 +648,18 @@ export function LibraryWorkspace({
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-2">
                             <LibraryPreviewAction item={item} />
-                            <AttachmentFavoriteButton
-                              attachmentId={item.id}
-                              initialIsFavorited={item.isFavoritedByCurrentUser}
-                              onChange={(isFavorited) =>
-                                handleFavoriteChange(item.id, isFavorited)
-                              }
-                              className="h-9 w-9 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
-                              iconClassName="h-4.5 w-4.5"
-                              showToast={true}
-                            />
+                            {item.source === "PROJECT_ATTACHMENT" ? (
+                              <AttachmentFavoriteButton
+                                attachmentId={item.id}
+                                initialIsFavorited={item.isFavoritedByCurrentUser}
+                                onChange={(isFavorited) =>
+                                  handleFavoriteChange(item.id, isFavorited)
+                                }
+                                className="h-9 w-9 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
+                                iconClassName="h-4.5 w-4.5"
+                                showToast={true}
+                              />
+                            ) : null}
                             <Button asChild type="button" size="sm" className="min-h-[32px] px-3 text-[11px]">
                               <a
                                 href={item.downloadPath}

@@ -4,21 +4,37 @@ import {
   ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
-  CollaboratorAccess,
+  ProjectExecutionType,
+  ProjectStatus,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   UserRole,
+  type ProjectExecutorRole,
   type User,
 } from "@prisma/client";
 
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
 import {
+  getCollaboratorRoleLabel,
+  getCollaboratorTypeGroup,
+} from "@/lib/project-collaborator-participant-types";
+import type { PermissionKey } from "@/lib/permissions/definitions";
+import {
+  hasPermission,
+  hasProjectPermission,
+  isMainProjectExecutor,
+  type PermissionUser,
+  type ProjectPermissionContext,
+} from "@/lib/permissions/resolver";
+import {
   notifyFileUploaded,
-  runNotificationTask,
+  notifyInvoiceUploaded,
+  runNotificationTaskAfterResponse,
 } from "@/lib/notification-center";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import { getVisibleStageEventRecipientUserIds } from "@/lib/notification-center/recipients";
 import {
+  assertProjectTimestampVisibleForUser,
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
   isTimestampHiddenByPauseWindows,
@@ -40,11 +56,18 @@ import {
   isAllowedSubmissionImage,
   sanitizeFileName,
 } from "@/lib/storage/s3";
+import {
+  PROJECT_ASSET_ALLOWED_EXTENSIONS,
+  SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
+  buildFileTypeNotAllowedPayload,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
 type AccessUser = Pick<
   User,
   "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
-> & {
+> &
+  PermissionUser & {
   libraryAccess?: User["libraryAccess"];
 };
 
@@ -60,8 +83,12 @@ type StageHistoryQueryRecord = {
   status: ProjectRevisionStatus;
   rejectionReason: string | null;
   reviewedAt: Date | null;
+  reviewedBy: Pick<User, "name" | "email"> | null;
   createdAt: Date;
-  createdBy: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
+  createdBy: Pick<
+    User,
+    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+  >;
   attachments: Array<{
     id: string;
     assetType: AttachmentAssetType;
@@ -82,7 +109,10 @@ type StageCommentQueryRecord = {
   revisionId: string | null;
   body: string;
   createdAt: Date;
-  author: Pick<User, "id" | "name" | "email" | "role" | "collaboratorType">;
+  author: Pick<
+    User,
+    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+  >;
   mentions: Array<{
     mentionedUserId: string;
     mentionedUser: Pick<User, "name" | "email">;
@@ -100,11 +130,55 @@ type StageCommentQueryRecord = {
   }>;
 };
 
+type StageComparisonQueryRecord = {
+  id: string;
+  projectId: string;
+  stageId: string;
+  baseAttachmentId: string;
+  compareAttachmentId: string;
+  xPercent: number;
+  yPercent: number;
+  body: string;
+  createdAt: Date;
+  createdBy: Pick<
+    User,
+    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+  >;
+  baseAttachment: {
+    id: string;
+    assetType: AttachmentAssetType;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    submissionReviewStatus: SubmissionReviewStatus | null;
+    createdAt: Date;
+    status: AttachmentStatus;
+    uploadedBy: Pick<User, "name" | "email">;
+  };
+  compareAttachment: {
+    id: string;
+    assetType: AttachmentAssetType;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    submissionReviewStatus: SubmissionReviewStatus | null;
+    createdAt: Date;
+    status: AttachmentStatus;
+    uploadedBy: Pick<User, "name" | "email">;
+  };
+};
+
 export type StageHistoryRecord = {
   activeStageId: string | null;
   latestRevisionId: string | null;
   entries: ProjectChatEntry[];
 };
+
+type ActivePendingStageReview =
+  {
+    kind: "revision";
+    revisionNumber: number;
+  };
 
 export type RequestUploadInput = {
   projectId: string;
@@ -117,14 +191,91 @@ export type RequestUploadInput = {
   assetType: AttachmentAssetType;
 };
 
+type UploadRequestErrorResult = { error: string } | UploadFileTypeErrorPayload;
+
 export type RequestUploadResult =
-  | { error: string }
+  | UploadRequestErrorResult
   | {
       attachmentId: string;
       fileName: string;
       uploadUrl: string;
       storageKey: string;
     };
+
+export type StageCommentUploadFileInput = {
+  clientId?: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  assetType: "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
+};
+
+export type PrepareStageCommentUploadsInput = {
+  projectId: string;
+  stageId: string;
+  revisionId?: string | null;
+  body: string;
+  allowEmptyBody?: boolean;
+  mentionedUserIds?: string[];
+  files: StageCommentUploadFileInput[];
+};
+
+export type PrepareStageCommentUploadsResult =
+  | UploadRequestErrorResult
+  | {
+      commentId: string;
+      revisionId: string | null;
+      mentionedUserIds: string[];
+      uploads: Array<{
+        clientId?: string;
+        attachmentId: string;
+        fileName: string;
+        uploadUrl: string;
+        storageKey: string;
+      }>;
+    };
+
+export type FinalizePreparedStageCommentUploadsResult = {
+  commentId: string;
+  stageId: string;
+  mentionedUserIds: string[];
+};
+
+async function getStageReviewState(projectId: string, stageId: string) {
+  const latestRevision = await prisma.projectRevision.findFirst({
+    where: {
+      projectId,
+      stageId,
+    },
+    orderBy: {
+      revisionNumber: "desc",
+    },
+    select: {
+      id: true,
+      revisionNumber: true,
+      status: true,
+    },
+  });
+
+  if (latestRevision?.status === ProjectRevisionStatus.PENDING_REVIEW) {
+    return {
+      latestRevisionNumber: latestRevision.revisionNumber,
+      pendingReview: {
+        kind: "revision",
+        revisionNumber: latestRevision.revisionNumber,
+      } satisfies ActivePendingStageReview,
+    };
+  }
+
+  return {
+    latestRevisionNumber: latestRevision?.revisionNumber ?? 0,
+    pendingReview: null,
+  };
+}
+
+function getPendingStageReviewMessage(pendingReview: ActivePendingStageReview) {
+  return `Revision ${pendingReview.revisionNumber} is already pending review. Please wait for the project owner to review it.`;
+}
 
 function getDisplayName(user: Pick<User, "name" | "email">) {
   return user.name?.trim() || user.email;
@@ -135,7 +286,13 @@ function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
     return "Internal Team";
   }
 
-  return user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator";
+  return getCollaboratorRoleLabel(user.collaboratorType);
+}
+
+function getProfileAvatarSrc(user: Pick<User, "avatarUrl">) {
+  return user.avatarUrl
+    ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
+    : null;
 }
 
 function formatHistoryTimestamp(date: Date | string | number) {
@@ -199,7 +356,7 @@ function mapAttachmentRecord(
 
   return {
     id: attachment.id,
-    isSubmission: attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION,
+    isSubmission: submissionNumber !== undefined,
     submissionNumber,
     submissionReviewStatus: attachment.submissionReviewStatus ?? null,
     originalFileName: attachment.originalFileName,
@@ -220,11 +377,16 @@ function buildStageSubmissionNumberMap(
   revisions: StageHistoryQueryRecord[],
   comments: StageCommentQueryRecord[],
 ) {
-  const submissions = [...revisions, ...comments]
-    .flatMap((entry) => entry.attachments)
+  const revisionAttachments = revisions.flatMap((entry) => entry.attachments);
+  const revisionCommentAttachments = comments
+    .filter((entry) => Boolean(entry.revisionId))
+    .flatMap((entry) => entry.attachments);
+  const submissions = [...revisionAttachments, ...revisionCommentAttachments]
     .filter(
       (attachment) =>
-        attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+        (attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION ||
+          (attachment.assetType === AttachmentAssetType.REVISION_ORIGINAL &&
+            isAllowedSubmissionImage(attachment.originalFileName, attachment.mimeType))) &&
         attachment.status === AttachmentStatus.READY,
     )
     .filter(
@@ -249,11 +411,18 @@ function mapRevisionEntry(
   return {
     id: revision.id,
     revisionId: revision.id,
+    revisionNumber: revision.revisionNumber,
     kind: "revision",
     title: revision.title,
     revisionStatus: revision.status,
     rejectionReason: revision.rejectionReason,
+    reviewedBy: revision.reviewedBy ? getDisplayName(revision.reviewedBy) : null,
+    reviewedAt: revision.reviewedAt
+      ? formatHistoryTimestamp(revision.reviewedAt)
+      : null,
+    authorId: revision.createdBy.id,
     author: getDisplayName(revision.createdBy),
+    authorAvatarSrc: getProfileAvatarSrc(revision.createdBy),
     role: getActorRole(revision.createdBy),
     body: revision.summary?.trim() || "Revision uploaded.",
     createdAt: formatHistoryTimestamp(revision.createdAt),
@@ -269,16 +438,121 @@ function mapRevisionEntry(
   };
 }
 
+function isBriefAcceptedSystemBody(body: string) {
+  const normalizedBody = body.trim().toLowerCase();
+  return (
+    (normalizedBody.includes("accepted the brief") ||
+      normalizedBody.includes("accepted the project and stage brief")) &&
+    normalizedBody.includes("started work on this stage")
+  );
+}
+
+function getRevisionRequestSystemDetails(body: string) {
+  const match = body.trim().match(/^Revision brief for Revision (\d+):\s*(.*)$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    revisionLabel: `Revision ${match[1]}`,
+  };
+}
+
+function isInvoiceUploadedSystemBody(body: string) {
+  return body.trim().toLowerCase().includes("uploaded invoice for");
+}
+
+function isInvoiceRequestedSystemBody(body: string) {
+  return body.trim().toLowerCase().startsWith("invoice requested from ");
+}
+
 function mapCommentEntry(
   comment: StageCommentQueryRecord,
   submissionNumbers: ReadonlyMap<string, number>,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectChatEntry {
+  if (isBriefAcceptedSystemBody(comment.body)) {
+    const actorName = getDisplayName(comment.author);
+
+    return {
+      id: comment.id,
+      revisionId: comment.revisionId ?? undefined,
+      kind: "system",
+      title: "Brief accepted",
+      authorId: comment.author.id,
+      author: actorName,
+      role: getActorRole(comment.author),
+      body: `${actorName} accepted the project and stage brief and started work on this stage.`,
+      createdAt: formatHistoryTimestamp(comment.createdAt),
+      mentions: [],
+      attachments: [],
+    };
+  }
+
+  const revisionRequestSystemDetails = getRevisionRequestSystemDetails(comment.body);
+
+  if (revisionRequestSystemDetails) {
+    const actorName = getDisplayName(comment.author);
+
+    return {
+      id: comment.id,
+      revisionId: comment.revisionId ?? undefined,
+      kind: "system",
+      title: "Revision requested",
+      authorId: comment.author.id,
+      author: actorName,
+      role: getActorRole(comment.author),
+      body: `${actorName} requested a revision for ${revisionRequestSystemDetails.revisionLabel}.`,
+      createdAt: formatHistoryTimestamp(comment.createdAt),
+      mentions: [],
+      attachments: [],
+    };
+  }
+
+  if (isInvoiceUploadedSystemBody(comment.body)) {
+    const actorName = getDisplayName(comment.author);
+
+    return {
+      id: comment.id,
+      revisionId: comment.revisionId ?? undefined,
+      kind: "system",
+      title: "Invoice uploaded",
+      authorId: comment.author.id,
+      author: actorName,
+      role: getActorRole(comment.author),
+      body: comment.body,
+      createdAt: formatHistoryTimestamp(comment.createdAt),
+      mentions: [],
+      attachments: [],
+    };
+  }
+
+  if (isInvoiceRequestedSystemBody(comment.body)) {
+    const actorName = getDisplayName(comment.author);
+
+    return {
+      id: comment.id,
+      revisionId: comment.revisionId ?? undefined,
+      kind: "system",
+      title: "Invoice requested",
+      authorId: comment.author.id,
+      author: actorName,
+      role: getActorRole(comment.author),
+      body: comment.body,
+      createdAt: formatHistoryTimestamp(comment.createdAt),
+      mentions: [],
+      attachments: [],
+    };
+  }
+
   return {
     id: comment.id,
     revisionId: comment.revisionId ?? undefined,
     kind: "comment",
+    authorId: comment.author.id,
     author: getDisplayName(comment.author),
+    authorAvatarSrc: getProfileAvatarSrc(comment.author),
     role: getActorRole(comment.author),
     body: comment.body,
     createdAt: formatHistoryTimestamp(comment.createdAt),
@@ -294,7 +568,61 @@ function mapCommentEntry(
           submissionNumbers.get(attachment.id),
           favoritedAttachmentIds,
         ),
+    ),
+  };
+}
+
+function getComparisonSubmissionLabel(
+  attachment: Pick<StageComparisonQueryRecord["baseAttachment"], "id" | "status">,
+  submissionNumbers: ReadonlyMap<string, number>,
+) {
+  if (attachment.status !== AttachmentStatus.READY) {
+    return "File unavailable";
+  }
+
+  const submissionNumber = submissionNumbers.get(attachment.id);
+  return submissionNumber ? `Submission ${submissionNumber}` : "Submission";
+}
+
+function getComparisonFileName(
+  attachment: Pick<StageComparisonQueryRecord["baseAttachment"], "originalFileName" | "status">,
+) {
+  return attachment.status === AttachmentStatus.READY
+    ? attachment.originalFileName
+    : "File unavailable";
+}
+
+function mapComparisonEntry(
+  comparison: StageComparisonQueryRecord,
+  submissionNumbers: ReadonlyMap<string, number>,
+): ProjectChatEntry {
+  return {
+    id: `comparison-${comparison.id}`,
+    kind: "comparison",
+    title: "Comparison submitted",
+    authorId: comparison.createdBy.id,
+    author: getDisplayName(comparison.createdBy),
+    authorAvatarSrc: getProfileAvatarSrc(comparison.createdBy),
+    role: getActorRole(comparison.createdBy),
+    body: comparison.body,
+    createdAt: formatHistoryTimestamp(comparison.createdAt),
+    attachments: [],
+    comparison: {
+      baseAttachmentId: comparison.baseAttachmentId,
+      compareAttachmentId: comparison.compareAttachmentId,
+      baseFileName: getComparisonFileName(comparison.baseAttachment),
+      compareFileName: getComparisonFileName(comparison.compareAttachment),
+      baseSubmissionLabel: getComparisonSubmissionLabel(
+        comparison.baseAttachment,
+        submissionNumbers,
       ),
+      compareSubmissionLabel: getComparisonSubmissionLabel(
+        comparison.compareAttachment,
+        submissionNumbers,
+      ),
+      xPercent: comparison.xPercent,
+      yPercent: comparison.yPercent,
+    },
   };
 }
 
@@ -306,7 +634,15 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
         id: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         status: true,
+        archivedAt: true,
+        executionType: true,
         currency: true,
         budget: true,
         endDate: true,
@@ -328,6 +664,7 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
             id: true,
             name: true,
             budget: true,
+            invoiceRequired: true,
             actualStartedAt: true,
             status: true,
             order: true,
@@ -339,23 +676,25 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
   );
 }
 
-function isProjectExecutorUser(
-  project: { executorUserId?: string | null },
+function isMainProjectExecutorUser(
+  project: {
+    createdById?: string | null;
+    executorUserId?: string | null;
+    executors?: Array<{ userId: string; role: ProjectExecutorRole }>;
+  },
   userId: string,
 ) {
-  return Boolean(project.executorUserId && project.executorUserId === userId);
+  return isMainProjectExecutor(
+    { id: userId },
+    {
+      executorUserId: project.executorUserId ?? null,
+      executors: project.executors,
+    },
+  );
 }
 
 function canUserUploadLibraryAssets(user: AccessUser) {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return true;
-  }
-
-  return (
-    user.libraryAccess !== undefined &&
-    user.libraryAccess !== CollaboratorAccess.NONE &&
-    user.projectAccess !== CollaboratorAccess.NONE
-  );
+  return hasPermission(user, "library.uploadAsset");
 }
 
 export async function assertProjectAccess(user: AccessUser, projectId: string) {
@@ -365,17 +704,55 @@ export async function assertProjectAccess(user: AccessUser, projectId: string) {
     throw new Error("Project not found.");
   }
 
-  if (
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN ||
-    project.createdById === user.id ||
-    isProjectExecutorUser(project, user.id) ||
-    project.collaborators.length > 0
-  ) {
+  if (hasProjectPermission(user, project, "project.view")) {
     return project;
   }
 
   throw new Error("You do not have access to this project.");
+}
+
+function assertProjectAccessFromContext(
+  user: AccessUser,
+  project: ProjectPermissionContext,
+) {
+  if (hasProjectPermission(user, project, "project.view")) {
+    return project;
+  }
+
+  throw new Error("You do not have access to this project.");
+}
+
+function assertProjectWorkflowPermission(
+  user: AccessUser,
+  project: ProjectPermissionContext,
+  permissionKey: PermissionKey,
+  message: string,
+) {
+  if (!hasProjectPermission(user, project, permissionKey)) {
+    throw new Error(message);
+  }
+}
+
+function getUploadPermissionKey(assetType: AttachmentAssetType): PermissionKey {
+  switch (assetType) {
+    case AttachmentAssetType.STAGE_SUBMISSION:
+    case AttachmentAssetType.REVISION_ORIGINAL:
+      return "file.uploadSubmission";
+    case AttachmentAssetType.STAGE_INVOICE:
+      return "completion.uploadInvoice";
+    case AttachmentAssetType.COMMENT_ATTACHMENT:
+      return "chat.uploadAttachment";
+    case AttachmentAssetType.GENERAL_PROJECT_ASSET:
+    default:
+      return "library.uploadAsset";
+  }
+}
+
+function isStageInvoiceRequired(
+  project: { executionType: ProjectExecutionType },
+  stage: { invoiceRequired: boolean },
+) {
+  return project.executionType === ProjectExecutionType.EXTERNAL && stage.invoiceRequired;
 }
 
 function resolveStageId(
@@ -439,6 +816,24 @@ async function getProjectVisibilityPauseWindows(
   return visibilityState?.visibilityPauses ?? [];
 }
 
+async function hasReadyStageInvoice(projectId: string, stageId: string) {
+  const invoice = await withPrismaRetry(() =>
+    prisma.projectAttachment.findFirst({
+      where: {
+        projectId,
+        stageId,
+        assetType: AttachmentAssetType.STAGE_INVOICE,
+        status: AttachmentStatus.READY,
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  return Boolean(invoice);
+}
+
 export async function assertProjectAttachmentVisibilityForUser(
   user: AccessUser,
   attachment: {
@@ -449,30 +844,29 @@ export async function assertProjectAttachmentVisibilityForUser(
     };
   },
 ) {
-  if (canBypassCollaboratorVisibility(user, attachment.project.createdById)) {
-    return;
-  }
-
-  const visibilityState = await getProjectCollaboratorVisibilityState(
-    attachment.projectId,
-    user.id,
-  );
-  const pauseWindows = visibilityState?.visibilityPauses ?? [];
-
-  if (
-    pauseWindows.length > 0 &&
-    isTimestampHiddenByPauseWindows(attachment.createdAt, pauseWindows)
-  ) {
-    throw new Error("You do not have permission to access this file.");
-  }
+  await assertProjectTimestampVisibleForUser(user, {
+    projectId: attachment.projectId,
+    projectOwnerId: attachment.project.createdById,
+    timestamp: attachment.createdAt,
+    message: "You do not have permission to access this file.",
+  });
 }
 
 export async function getProjectStageHistory(
   user: AccessUser,
   projectId: string,
   preferredStageId?: string | null,
+  requiredPermissionKey: PermissionKey = "chat.view",
 ): Promise<StageHistoryRecord> {
   const project = await assertProjectAccess(user, projectId);
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    requiredPermissionKey,
+    requiredPermissionKey === "compare.view"
+      ? "You do not have permission to compare project submissions."
+      : "You do not have permission to view project chat.",
+  );
   const activeStageId = resolveStageId(project, preferredStageId);
 
   if (!activeStageId) {
@@ -503,6 +897,13 @@ export async function getProjectStageHistory(
                   email: true,
                   role: true,
                   collaboratorType: true,
+                  avatarUrl: true,
+                },
+              },
+              reviewedBy: {
+                select: {
+                  name: true,
+                  email: true,
                 },
               },
               attachments: {
@@ -544,6 +945,7 @@ export async function getProjectStageHistory(
                   email: true,
                   role: true,
                   collaboratorType: true,
+                  avatarUrl: true,
                 },
               },
               mentions: {
@@ -580,17 +982,81 @@ export async function getProjectStageHistory(
               },
             },
           }),
+          prisma.comparisonComment.findMany({
+            where: {
+              projectId,
+              stageId: activeStageId,
+            },
+            orderBy: {
+              createdAt: "asc",
+            },
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                  collaboratorType: true,
+                  avatarUrl: true,
+                },
+              },
+              baseAttachment: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+              compareAttachment: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
         ]),
       ),
     ["project-stage-history", projectId, activeStageId],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
-  const [allRevisions, allComments] = await getCachedHistory();
+  const [allRevisions, allComments, allComparisons] = await getCachedHistory();
   const submissionNumbers = buildStageSubmissionNumberMap(allRevisions, allComments);
   const pauseWindows = await getProjectVisibilityPauseWindows(user, project);
   const revisions = filterHistoryEntriesOutsidePauseWindows(allRevisions, pauseWindows);
   const comments = filterHistoryEntriesOutsidePauseWindows(allComments, pauseWindows);
+  const comparisons =
+    pauseWindows.length > 0
+      ? allComparisons.filter(
+          (comparison) =>
+            !isTimestampHiddenByPauseWindows(comparison.createdAt, pauseWindows),
+        )
+      : allComparisons;
   const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
     user.id,
     [...revisions, ...comments]
@@ -607,8 +1073,18 @@ export async function getProjectStageHistory(
       createdAt: toHistoryDate(comment.createdAt).getTime(),
       entry: mapCommentEntry(comment, submissionNumbers, favoritedAttachmentIds),
     })),
+    ...comparisons.map((comparison) => ({
+      createdAt: toHistoryDate(comparison.createdAt).getTime(),
+      entry: mapComparisonEntry(comparison, submissionNumbers),
+    })),
   ]
-    .sort((left, right) => right.createdAt - left.createdAt)
+    .sort((left, right) => {
+      const timeDifference = left.createdAt - right.createdAt;
+
+      return timeDifference !== 0
+        ? timeDifference
+        : left.entry.id.localeCompare(right.entry.id);
+    })
     .map((item) => item.entry);
 
   return {
@@ -633,12 +1109,23 @@ export async function createStageRevision(
     throw new Error("Stage not found.");
   }
 
-  if (!isProjectExecutorUser(project, user.id)) {
-    throw new Error("Only the project executor can submit work for review.");
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "stage.submitWork",
+    "Only a Main Executor can submit work for review.",
+  );
+
+  if (!isMainProjectExecutorUser(project, user.id)) {
+    throw new Error("Only a Main Executor can submit work for review.");
   }
 
   if (project.status === "COMPLETED") {
     throw new Error("This project is already completed.");
+  }
+
+  if (project.archivedAt) {
+    throw new Error("This project has already been archived.");
   }
 
   if (stage.status === "COMPLETED") {
@@ -650,19 +1137,13 @@ export async function createStageRevision(
   }
 
   const revision = await withPrismaRetry(async () => {
-    const latestRevision = await prisma.projectRevision.findFirst({
-      where: {
-        stageId: stage.id,
-      },
-      orderBy: {
-        revisionNumber: "desc",
-      },
-      select: {
-        revisionNumber: true,
-      },
-    });
+    const reviewState = await getStageReviewState(input.projectId, stage.id);
 
-    const revisionNumber = (latestRevision?.revisionNumber ?? 0) + 1;
+    if (reviewState.pendingReview) {
+      throw new Error(getPendingStageReviewMessage(reviewState.pendingReview));
+    }
+
+    const revisionNumber = reviewState.latestRevisionNumber + 1;
 
     return prisma.projectRevision.create({
       data: {
@@ -710,6 +1191,7 @@ export async function createStageComment(
   input: {
     projectId: string;
     stageId: string;
+    revisionId?: string | null;
     body: string;
     allowEmptyBody?: boolean;
     mentionedUserIds?: string[];
@@ -726,7 +1208,32 @@ export async function createStageComment(
         project: {
           select: {
             createdById: true,
+            executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
             status: true,
+            archivedAt: true,
+            collaborators: {
+              where: {
+                userId: user.id,
+              },
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+        revisions: {
+          orderBy: {
+            revisionNumber: "desc",
+          },
+          take: 1,
+          select: {
+            id: true,
           },
         },
       },
@@ -737,27 +1244,40 @@ export async function createStageComment(
     throw new Error("Stage not found.");
   }
 
-  await assertProjectAccess(user, input.projectId);
+  const project = assertProjectAccessFromContext(user, stage.project);
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "chat.createComment",
+    "You do not have permission to add project comments.",
+  );
 
   if (stage.project.status === "COMPLETED") {
     throw new Error("This project is already completed.");
   }
 
-  const latestRevision = await withPrismaRetry(() =>
-    prisma.projectRevision.findFirst({
-      where: {
-        stageId: stage.id,
-      },
-      orderBy: {
-        revisionNumber: "desc",
-      },
-      select: {
-        id: true,
-      },
-    }),
-  );
-
   const body = input.body.trim();
+  const requestedRevisionId = input.revisionId?.trim() || null;
+
+  if (requestedRevisionId) {
+    const revision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          id: requestedRevisionId,
+          projectId: input.projectId,
+          stageId: stage.id,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+
+    if (!revision) {
+      throw new Error("Revision not found.");
+    }
+  }
 
   if (!body && !input.allowEmptyBody) {
     throw new Error("Enter a comment before sending.");
@@ -770,6 +1290,15 @@ export async function createStageComment(
         .filter(Boolean),
     ),
   );
+
+  if (requestedMentionUserIds.length > 0) {
+    assertProjectWorkflowPermission(
+      user,
+      project,
+      "chat.mentionUser",
+      "You do not have permission to mention users.",
+    );
+  }
   const validMentionUserIds =
     requestedMentionUserIds.length > 0
       ? (
@@ -790,7 +1319,7 @@ export async function createStageComment(
       data: {
         projectId: input.projectId,
         stageId: stage.id,
-        revisionId: latestRevision?.id ?? null,
+        revisionId: requestedRevisionId,
         authorId: user.id,
         body: body || "Attachment uploaded.",
         mentions:
@@ -817,6 +1346,470 @@ export async function createStageComment(
   );
 }
 
+export async function prepareStageCommentUploads(
+  user: AccessUser,
+  input: PrepareStageCommentUploadsInput,
+): Promise<PrepareStageCommentUploadsResult> {
+  const body = input.body.trim();
+  const uploadFiles = input.files;
+
+  if (!body && !input.allowEmptyBody) {
+    return { error: "Enter a comment before sending." };
+  }
+
+  if (uploadFiles.length === 0) {
+    return { error: "Choose a file to upload." };
+  }
+
+  for (const file of uploadFiles) {
+    if (!file.originalFileName.trim()) {
+      return { error: "Choose a file to upload." };
+    }
+
+    if (!isAllowedAssetFile(file.originalFileName)) {
+      return buildFileTypeNotAllowedPayload({
+        fileName: file.originalFileName,
+        mimeType: file.mimeType,
+        allowedExtensions: PROJECT_ASSET_ALLOWED_EXTENSIONS,
+      });
+    }
+
+    if (!Number.isFinite(file.fileSize) || file.fileSize <= 0) {
+      return { error: "File size is invalid." };
+    }
+
+    if (file.fileSize > getMaxAssetUploadBytes()) {
+      return { error: "This file exceeds the allowed size limit." };
+    }
+
+    if (
+      file.assetType !== AttachmentAssetType.COMMENT_ATTACHMENT &&
+      file.assetType !== AttachmentAssetType.STAGE_SUBMISSION
+    ) {
+      return { error: "Unsupported chat upload type." };
+    }
+
+    if (file.assetType === AttachmentAssetType.STAGE_SUBMISSION) {
+      return { error: "Use Submit Work to send files for review." };
+    }
+  }
+
+  const stage = await withPrismaRetry(() =>
+    prisma.projectStage.findFirst({
+      where: {
+        id: input.stageId,
+        projectId: input.projectId,
+      },
+      select: {
+        id: true,
+        actualStartedAt: true,
+        status: true,
+        project: {
+          select: {
+            createdById: true,
+            executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
+            status: true,
+            archivedAt: true,
+            collaborators: {
+              where: {
+                userId: user.id,
+              },
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+        revisions: {
+          orderBy: {
+            revisionNumber: "desc",
+          },
+          take: 1,
+          select: {
+            id: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!stage) {
+    return { error: "Stage not found." };
+  }
+
+  const project = assertProjectAccessFromContext(user, stage.project);
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "chat.createComment",
+    "You do not have permission to add project comments.",
+  );
+
+  if (stage.project.status === "COMPLETED") {
+    return { error: "This project is already completed." };
+  }
+
+  if (stage.project.archivedAt) {
+    return { error: "This project has already been archived." };
+  }
+
+  if (
+    uploadFiles.some((file) => file.assetType === AttachmentAssetType.COMMENT_ATTACHMENT) &&
+    !hasProjectPermission(user, project, "chat.uploadAttachment")
+  ) {
+    return { error: "You do not have permission to upload chat attachments." };
+  }
+
+  const requestedMentionUserIds = Array.from(
+    new Set(
+      (input.mentionedUserIds ?? [])
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (requestedMentionUserIds.length > 0) {
+    assertProjectWorkflowPermission(
+      user,
+      project,
+      "chat.mentionUser",
+      "You do not have permission to mention users.",
+    );
+  }
+
+  const validMentionUserIds =
+    requestedMentionUserIds.length > 0
+      ? (
+          await getVisibleStageEventRecipientUserIds(input.projectId, new Date(), {
+            includeOwner: true,
+            includeExecutor: true,
+            includeCollaborators: true,
+          })
+        ).filter(
+          (recipientUserId) =>
+            recipientUserId !== user.id &&
+            requestedMentionUserIds.includes(recipientUserId),
+        )
+      : [];
+  const requestedRevisionId = input.revisionId?.trim() || null;
+
+  if (requestedRevisionId) {
+    const revision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          id: requestedRevisionId,
+          projectId: input.projectId,
+          stageId: stage.id,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+
+    if (!revision) {
+      return { error: "Revision not found." };
+    }
+  }
+
+  const commentId = randomUUID();
+  const preparedFiles = uploadFiles.map((file) => {
+    const attachmentId = randomUUID();
+    const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${sanitizeFileName(
+      file.originalFileName,
+    )}`;
+
+    return {
+      ...file,
+      attachmentId,
+      uniqueFileName,
+      storageKey: buildProjectAssetKey({
+        projectId: input.projectId,
+        stageId: stage.id,
+        revisionId: requestedRevisionId,
+        commentId,
+        assetType: file.assetType,
+        safeFileName: uniqueFileName,
+      }),
+    };
+  });
+
+  await withPrismaRetry(() =>
+    prisma.$transaction([
+      prisma.projectComment.create({
+        data: {
+          id: commentId,
+          projectId: input.projectId,
+          stageId: stage.id,
+          revisionId: requestedRevisionId,
+          authorId: user.id,
+          body: body || "Attachment uploaded.",
+          mentions:
+            validMentionUserIds.length > 0
+              ? {
+                  createMany: {
+                    data: validMentionUserIds.map((mentionedUserId) => ({
+                      mentionedUserId,
+                    })),
+                  },
+                }
+              : undefined,
+        },
+        select: {
+          id: true,
+        },
+      }),
+      prisma.projectAttachment.createMany({
+        data: preparedFiles.map((file) => ({
+          id: file.attachmentId,
+          projectId: input.projectId,
+          stageId: stage.id,
+          revisionId: requestedRevisionId,
+          commentId,
+          uploadedById: user.id,
+          fileName: file.uniqueFileName,
+          originalFileName: file.originalFileName,
+          mimeType: file.mimeType,
+          fileSize: file.fileSize,
+          bucket: getS3BucketName(),
+          storageKey: file.storageKey,
+          assetType: file.assetType,
+          status: AttachmentStatus.UPLOADING,
+          submissionReviewStatus:
+            file.assetType === AttachmentAssetType.STAGE_SUBMISSION
+              ? SubmissionReviewStatus.PENDING_REVIEW
+              : null,
+          reviewedById: null,
+          reviewedAt: null,
+          reviewNote: null,
+        })),
+      }),
+    ]),
+  );
+
+  const uploads = await Promise.all(
+    preparedFiles.map(async (file) => ({
+      clientId: file.clientId,
+      attachmentId: file.attachmentId,
+      fileName: file.uniqueFileName,
+      storageKey: file.storageKey,
+      uploadUrl: await createPresignedUploadUrl({
+        storageKey: file.storageKey,
+        mimeType: file.mimeType,
+      }),
+    })),
+  );
+
+  return {
+    commentId,
+    revisionId: requestedRevisionId,
+    mentionedUserIds: validMentionUserIds,
+    uploads,
+  };
+}
+
+export async function cancelPreparedStageCommentUploads(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    commentId: string;
+  },
+) {
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findFirst({
+      where: {
+        id: input.commentId,
+        projectId: input.projectId,
+        authorId: user.id,
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (!comment) {
+    return;
+  }
+
+  await withPrismaRetry(() =>
+    prisma.$transaction([
+      prisma.projectAttachment.deleteMany({
+        where: {
+          projectId: input.projectId,
+          commentId: comment.id,
+          uploadedById: user.id,
+          assetType: {
+            in: [
+              AttachmentAssetType.COMMENT_ATTACHMENT,
+              AttachmentAssetType.STAGE_SUBMISSION,
+            ],
+          },
+        },
+      }),
+      prisma.projectComment.delete({
+        where: {
+          id: comment.id,
+        },
+      }),
+    ]),
+  );
+}
+
+export async function finalizePreparedStageCommentUploads(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    commentId: string;
+  },
+): Promise<FinalizePreparedStageCommentUploadsResult> {
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findFirst({
+      where: {
+        id: input.commentId,
+        projectId: input.projectId,
+        authorId: user.id,
+      },
+      select: {
+        id: true,
+        stageId: true,
+        attachments: {
+          where: {
+            assetType: {
+              in: [
+                AttachmentAssetType.COMMENT_ATTACHMENT,
+                AttachmentAssetType.STAGE_SUBMISSION,
+              ],
+            },
+          },
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+        mentions: {
+          select: {
+            mentionedUserId: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!comment) {
+    throw new Error("Comment not found.");
+  }
+
+  if (
+    comment.attachments.length === 0 ||
+    comment.attachments.some((attachment) => attachment.status !== AttachmentStatus.READY)
+  ) {
+    throw new Error("All attachment uploads must finish before sending the comment.");
+  }
+
+  return {
+    commentId: comment.id,
+    stageId: comment.stageId,
+    mentionedUserIds: comment.mentions.map((mention) => mention.mentionedUserId),
+  };
+}
+
+export async function cancelStageRevisionSubmission(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    revisionId: string;
+  },
+) {
+  const revision = await withPrismaRetry(() =>
+    prisma.projectRevision.findFirst({
+      where: {
+        id: input.revisionId,
+        projectId: input.projectId,
+        stageId: input.stageId,
+        createdById: user.id,
+        status: ProjectRevisionStatus.PENDING_REVIEW,
+        reviewedById: null,
+        reviewedAt: null,
+      },
+      select: {
+        id: true,
+        project: {
+          select: {
+            createdById: true,
+            executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
+            collaborators: {
+              where: {
+                userId: user.id,
+              },
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  if (!revision) {
+    return;
+  }
+
+  const project = assertProjectAccessFromContext(user, revision.project);
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "stage.submitWork",
+    "Only a Main Executor can submit work for review.",
+  );
+
+  if (!isMainProjectExecutorUser(revision.project, user.id)) {
+    throw new Error("Only a Main Executor can cancel this revision.");
+  }
+
+  await withPrismaRetry(() =>
+    prisma.$transaction([
+      prisma.projectAttachment.deleteMany({
+        where: {
+          projectId: input.projectId,
+          stageId: input.stageId,
+          revisionId: revision.id,
+          uploadedById: user.id,
+          assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        },
+      }),
+      prisma.projectActivityLog.deleteMany({
+        where: {
+          projectId: input.projectId,
+          stageId: input.stageId,
+          revisionId: revision.id,
+        },
+      }),
+      prisma.projectRevision.delete({
+        where: {
+          id: revision.id,
+        },
+      }),
+    ]),
+  );
+}
+
 export async function startProjectStageWork(
   user: AccessUser,
   input: {
@@ -831,16 +1824,31 @@ export async function startProjectStageWork(
     throw new Error("Stage not found.");
   }
 
-  if (!isProjectExecutorUser(project, user.id)) {
-    throw new Error("Only the project executor can accept the brief for this stage.");
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "stage.acceptBrief",
+    "Only a Main Executor can accept the brief for this stage.",
+  );
+
+  if (!isMainProjectExecutorUser(project, user.id)) {
+    throw new Error("Only a Main Executor can accept the brief for this stage.");
   }
 
   if (project.status === "COMPLETED") {
     throw new Error("This project is already completed.");
   }
 
+  if (project.archivedAt) {
+    throw new Error("This project has already been archived.");
+  }
+
   if (stage.actualStartedAt) {
     throw new Error("This stage has already been started.");
+  }
+
+  if (stage.status === ProjectStatus.COMPLETED) {
+    throw new Error("This stage is already completed.");
   }
 
   return withPrismaRetry(() =>
@@ -854,10 +1862,12 @@ export async function startProjectStageWork(
         data: {
           actualStartedAt: startedAt,
           startedById: user.id,
+          status: ProjectStatus.ONGOING,
         },
         select: {
           id: true,
           actualStartedAt: true,
+          status: true,
         },
       });
 
@@ -866,7 +1876,7 @@ export async function startProjectStageWork(
           projectId: input.projectId,
           stageId: stage.id,
           authorId: user.id,
-          body: `${getDisplayName(user)} accepted the brief and started work on this stage.`,
+          body: `${getDisplayName(user)} accepted the project and stage brief and started work on this stage.`,
         },
         select: {
           id: true,
@@ -896,6 +1906,13 @@ export async function completeProjectStage(
     throw new Error("Project not found.");
   }
 
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "stage.markStageComplete",
+    "Only the project owner can mark this stage as complete.",
+  );
+
   if (project.createdById !== user.id) {
     throw new Error("Only the project owner can mark this stage as complete.");
   }
@@ -914,10 +1931,6 @@ export async function completeProjectStage(
   const stageIndex = orderedStages.findIndex((item) => item.id === stage.id);
   const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
 
-  if (!nextStage) {
-    throw new Error("Use the project completion flow to complete the final stage.");
-  }
-
   if (stage.status === "COMPLETED") {
     return {
       id: stage.id,
@@ -932,6 +1945,14 @@ export async function completeProjectStage(
       allStagesCompleted: !nextStage,
     };
   }
+
+  if (
+    isStageInvoiceRequired(project, stage) &&
+    !(await hasReadyStageInvoice(input.projectId, stage.id))
+  ) {
+    throw new Error("Invoice is required before completing this stage.");
+  }
+
   const updatedStage = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const completedStage = await tx.projectStage.update({
@@ -979,7 +2000,6 @@ export async function completeProjectStage(
           },
           data: {
             currentStageName: stage.name,
-            status: "COMPLETED",
           },
         });
       }
@@ -1025,6 +2045,7 @@ export async function reviewStageSubmission(
         project: {
           select: {
             createdById: true,
+            executionType: true,
             status: true,
           },
         },
@@ -1038,6 +2059,19 @@ export async function reviewStageSubmission(
     attachment.status !== AttachmentStatus.READY
   ) {
     throw new Error("Submission not found.");
+  }
+
+  if (
+    !hasProjectPermission(
+      user,
+      {
+        createdById: attachment.project.createdById,
+        executorUserId: null,
+      },
+      "stage.reviewSubmission",
+    )
+  ) {
+    throw new Error("Only the project owner can review submissions.");
   }
 
   if (attachment.project.createdById !== user.id) {
@@ -1104,11 +2138,13 @@ export async function reviewProjectRevision(
             name: true,
             order: true,
             status: true,
+            invoiceRequired: true,
           },
         },
         project: {
           select: {
             createdById: true,
+            executionType: true,
             status: true,
           },
         },
@@ -1119,6 +2155,20 @@ export async function reviewProjectRevision(
   if (!revision) {
     throw new Error("Submission not found.");
   }
+
+  assertProjectWorkflowPermission(
+    user,
+    {
+      createdById: revision.project.createdById,
+      executorUserId: null,
+    },
+    input.status === "APPROVED"
+      ? "stage.markSubmissionComplete"
+      : "stage.requestRevision",
+    input.status === "APPROVED"
+      ? "Only the project owner can review this submission."
+      : "Only the project owner can request revisions.",
+  );
 
   if (revision.project.createdById !== user.id) {
     throw new Error("Only the project owner can review this submission.");
@@ -1138,6 +2188,21 @@ export async function reviewProjectRevision(
     throw new Error("Revision reason is required.");
   }
 
+  if (
+    input.status === "APPROVED" &&
+    revision.stage.status !== "COMPLETED" &&
+    isStageInvoiceRequired(revision.project, revision.stage) &&
+    !(await hasReadyStageInvoice(input.projectId, revision.stageId))
+  ) {
+    throw new Error("Invoice is required before completing this stage.");
+  }
+
+  const reviewedAt = new Date();
+  const attachmentReviewStatus =
+    input.status === "APPROVED"
+      ? SubmissionReviewStatus.APPROVED
+      : SubmissionReviewStatus.REJECTED;
+
   return withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const updatedRevision = await tx.projectRevision.update({
@@ -1147,7 +2212,7 @@ export async function reviewProjectRevision(
         data: {
           status: input.status,
           reviewedById: user.id,
-          reviewedAt: new Date(),
+          reviewedAt,
           rejectionReason: input.status === "REJECTED" ? rejectionReason : null,
         },
         select: {
@@ -1155,6 +2220,27 @@ export async function reviewProjectRevision(
           status: true,
           rejectionReason: true,
           reviewedAt: true,
+          reviewedBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      await tx.projectAttachment.updateMany({
+        where: {
+          projectId: revision.projectId,
+          stageId: revision.stageId,
+          revisionId: revision.id,
+          submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW,
+        },
+        data: {
+          submissionReviewStatus: attachmentReviewStatus,
+          reviewedById: user.id,
+          reviewedAt,
+          reviewNote: input.status === "REJECTED" ? rejectionReason : null,
         },
       });
 
@@ -1196,17 +2282,19 @@ export async function reviewProjectRevision(
         const stageIndex = orderedStages.findIndex((item) => item.id === revision.stageId);
         const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
 
-        if (nextStage) {
-          await tx.projectStage.update({
-            where: {
-              id: revision.stageId,
-            },
-            data: {
-              status: "COMPLETED",
-              completedAt: new Date(),
-            },
-          });
+        const completedAt = new Date();
 
+        await tx.projectStage.update({
+          where: {
+            id: revision.stageId,
+          },
+          data: {
+            status: "COMPLETED",
+            completedAt,
+          },
+        });
+
+        if (nextStage) {
           const nextStageStatus =
             nextStage.status === "PENDING" ? "ONGOING" : nextStage.status;
 
@@ -1241,6 +2329,22 @@ export async function reviewProjectRevision(
             },
             allStagesCompleted: false,
           };
+        } else {
+          await tx.project.update({
+            where: {
+              id: revision.projectId,
+            },
+            data: {
+              currentStageName: revision.stage.name,
+            },
+          });
+
+          stageCompletion = {
+            id: revision.stageId,
+            status: "COMPLETED",
+            nextStage: null,
+            allStagesCompleted: true,
+          };
         }
       }
 
@@ -1262,11 +2366,217 @@ export async function reviewProjectRevision(
 
       return {
         ...updatedRevision,
+        reviewedBy: updatedRevision.reviewedBy
+          ? getDisplayName(updatedRevision.reviewedBy)
+          : null,
         rejectionComment,
         stageCompletion,
       };
     }),
   );
+}
+
+export async function requestStageInvoice(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    requestedFromId: string;
+    note?: string;
+  },
+) {
+  const requestedFromId = input.requestedFromId.trim();
+
+  if (!requestedFromId) {
+    throw new Error("Choose who should upload the invoice.");
+  }
+
+  const stage = await withPrismaRetry(() =>
+    prisma.projectStage.findFirst({
+      where: {
+        id: input.stageId,
+        projectId: input.projectId,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        invoiceRequired: true,
+        attachments: {
+          where: {
+            assetType: AttachmentAssetType.STAGE_INVOICE,
+            status: AttachmentStatus.READY,
+          },
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            createdById: true,
+            executorUserId: true,
+            executionType: true,
+            status: true,
+            archivedAt: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+            collaborators: {
+              select: {
+                userId: true,
+                participantType: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  if (!stage) {
+    throw new Error("Stage not found.");
+  }
+
+  assertProjectWorkflowPermission(
+    user,
+    stage.project,
+    "stage.markSubmissionComplete",
+    "Only the project owner can request an invoice.",
+  );
+
+  if (stage.project.createdById !== user.id) {
+    throw new Error("Only the project owner can request an invoice.");
+  }
+
+  if (stage.project.status === "COMPLETED") {
+    throw new Error("This project is already completed.");
+  }
+
+  if (stage.project.archivedAt) {
+    throw new Error("This project has already been archived.");
+  }
+
+  if (stage.status === "COMPLETED") {
+    throw new Error("This stage is already completed.");
+  }
+
+  if (!isStageInvoiceRequired(stage.project, stage)) {
+    throw new Error("Invoice is not required for this stage.");
+  }
+
+  if (stage.attachments.length > 0) {
+    throw new Error("An invoice has already been uploaded for this stage.");
+  }
+
+  if (requestedFromId === stage.project.createdById) {
+    throw new Error("Invoice must be requested from an executor or vendor, not the project owner.");
+  }
+
+  const executorCandidate = stage.project.executors.find(
+    (executor) => executor.userId === requestedFromId,
+  );
+  const externalCollaboratorCandidate = stage.project.collaborators.find(
+    (collaborator) =>
+      collaborator.userId === requestedFromId &&
+      getCollaboratorTypeGroup(collaborator.participantType) === "external",
+  );
+  const candidate = executorCandidate?.user ?? externalCollaboratorCandidate?.user ?? null;
+
+  if (!candidate) {
+    throw new Error("Invoice can only be requested from a project executor or external collaborator.");
+  }
+
+  const note = input.note?.trim() || null;
+  const now = new Date();
+  const requestedFromName = getDisplayName(candidate);
+  const invoiceRequestBody = note
+    ? `Invoice requested from ${requestedFromName} for ${stage.name}.\n${note}`
+    : `Invoice requested from ${requestedFromName} for ${stage.name}.`;
+
+  const { request, comment } = await withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const request = await tx.stageInvoiceRequest.upsert({
+        where: {
+          stageId: stage.id,
+        },
+        create: {
+          projectId: stage.project.id,
+          stageId: stage.id,
+          requestedById: user.id,
+          requestedFromId,
+          note,
+          fulfilledAt: null,
+        },
+        update: {
+          requestedById: user.id,
+          requestedFromId,
+          note,
+          fulfilledAt: null,
+          updatedAt: now,
+        },
+        select: {
+          id: true,
+          requestedFromId: true,
+          note: true,
+          createdAt: true,
+          updatedAt: true,
+          requestedBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+          requestedFrom: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+      const comment = await tx.projectComment.create({
+        data: {
+          projectId: stage.project.id,
+          stageId: stage.id,
+          authorId: user.id,
+          body: invoiceRequestBody,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      return { request, comment };
+    }),
+  );
+
+  return {
+    id: request.id,
+    requestedFromId: request.requestedFromId,
+    requestedFromName: getDisplayName(request.requestedFrom),
+    requestedByName: getDisplayName(request.requestedBy),
+    note: request.note,
+    requestedAt: request.updatedAt,
+    commentId: comment.id,
+  };
 }
 
 function getUploadAction(assetType: AttachmentAssetType) {
@@ -1284,7 +2594,11 @@ export async function requestAttachmentUpload(
   }
 
   if (!isAllowedAssetFile(input.originalFileName)) {
-    return { error: "This file type is not allowed." };
+    return buildFileTypeNotAllowedPayload({
+      fileName: input.originalFileName,
+      mimeType: input.mimeType,
+      allowedExtensions: PROJECT_ASSET_ALLOWED_EXTENSIONS,
+    });
   }
 
   if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
@@ -1322,7 +2636,21 @@ export async function requestAttachmentUpload(
             select: {
               createdById: true,
               executorUserId: true,
+              executors: {
+                select: {
+                  userId: true,
+                  role: true,
+                },
+              },
               status: true,
+              collaborators: {
+                where: {
+                  userId: user.id,
+                },
+                select: {
+                  userId: true,
+                },
+              },
             },
           },
         },
@@ -1332,10 +2660,14 @@ export async function requestAttachmentUpload(
     if (!revision) {
       return { error: "Revision not found." };
     }
-    await assertProjectAccess(user, input.projectId);
+    const project = assertProjectAccessFromContext(user, revision.project);
 
-    if (!isProjectExecutorUser(revision.project, user.id)) {
-      return { error: "Only the project executor can submit work for review." };
+    if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
+      return { error: "Only a Main Executor can submit work for review." };
+    }
+
+    if (!isMainProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only a Main Executor can submit work for review." };
     }
 
     if (revision.project.status === "COMPLETED") {
@@ -1349,10 +2681,183 @@ export async function requestAttachmentUpload(
     if (revision.stage.status === "COMPLETED") {
       return { error: "This stage is already completed." };
     }
-  } else if (
-    input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT ||
-    input.assetType === AttachmentAssetType.STAGE_SUBMISSION
-  ) {
+  } else if (input.assetType === AttachmentAssetType.STAGE_INVOICE) {
+    if (!input.stageId) {
+      return { error: "Stage uploads require a valid stage." };
+    }
+
+    const stageId = input.stageId;
+
+    const stage = await withPrismaRetry(() =>
+      prisma.projectStage.findFirst({
+        where: {
+          id: stageId,
+          projectId: input.projectId,
+        },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          invoiceRequired: true,
+          attachments: {
+            where: {
+              assetType: AttachmentAssetType.STAGE_INVOICE,
+              status: AttachmentStatus.READY,
+            },
+            select: {
+              id: true,
+            },
+            take: 1,
+          },
+          invoiceRequests: {
+            select: {
+              requestedFromId: true,
+              fulfilledAt: true,
+            },
+            take: 1,
+          },
+          project: {
+            select: {
+              createdById: true,
+              executorUserId: true,
+              executors: {
+                select: {
+                  userId: true,
+                  role: true,
+                },
+              },
+              status: true,
+              archivedAt: true,
+              executionType: true,
+              collaborators: {
+                where: {
+                  userId: user.id,
+                },
+                select: {
+                  userId: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    if (!stage) {
+      return { error: "Stage not found." };
+    }
+
+    assertProjectAccessFromContext(user, stage.project);
+    const activeInvoiceRequest = stage.invoiceRequests[0] ?? null;
+    const canUploadStageInvoice =
+      stage.project.createdById !== user.id &&
+      activeInvoiceRequest?.fulfilledAt === null &&
+      activeInvoiceRequest.requestedFromId === user.id;
+
+    if (!canUploadStageInvoice) {
+      return {
+        error:
+          "Only the requested invoice recipient can upload the invoice for this stage.",
+      };
+    }
+
+    if (stage.project.status === "COMPLETED") {
+      return { error: "This project is already completed." };
+    }
+
+    if (stage.project.archivedAt) {
+      return { error: "This project has already been archived." };
+    }
+
+    if (stage.status === "COMPLETED") {
+      return { error: "This stage is already completed." };
+    }
+
+    if (!isStageInvoiceRequired(stage.project, stage)) {
+      return { error: "Invoice is not required for this stage." };
+    }
+
+    if (stage.attachments.length > 0) {
+      return { error: "An invoice has already been uploaded for this stage." };
+    }
+  } else if (input.assetType === AttachmentAssetType.STAGE_SUBMISSION) {
+    if (input.commentId) {
+      return { error: "Use Submit Work to send files for review." };
+    }
+
+    if (!input.revisionId || !input.stageId) {
+      return { error: "Use Submit Work to send files for review." };
+    }
+
+    const revisionId = input.revisionId;
+    const stageId = input.stageId;
+
+    const revision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          id: revisionId,
+          projectId: input.projectId,
+          stageId,
+        },
+        select: {
+          id: true,
+          stage: {
+            select: {
+              actualStartedAt: true,
+              status: true,
+            },
+          },
+          project: {
+            select: {
+              createdById: true,
+              executorUserId: true,
+              executors: {
+                select: {
+                  userId: true,
+                  role: true,
+                },
+              },
+              status: true,
+              collaborators: {
+                where: {
+                  userId: user.id,
+                },
+                select: {
+                  userId: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    if (!revision) {
+      return { error: "Revision not found." };
+    }
+
+    const project = assertProjectAccessFromContext(user, revision.project);
+
+    if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
+      return { error: "Only a Main Executor can upload submissions for review." };
+    }
+
+    if (!isMainProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only a Main Executor can upload submissions for review." };
+    }
+
+    if (revision.project.status === "COMPLETED") {
+      return { error: "This project is already completed." };
+    }
+
+    if (!revision.stage.actualStartedAt) {
+      return { error: "Please accept the brief before submitting work." };
+    }
+
+    if (revision.stage.status === "COMPLETED") {
+      return { error: "This stage is already completed." };
+    }
+  } else if (input.assetType === AttachmentAssetType.COMMENT_ATTACHMENT) {
     if (!input.commentId || !input.stageId) {
       return { error: "Chat uploads require a valid comment and stage." };
     }
@@ -1380,7 +2885,21 @@ export async function requestAttachmentUpload(
             select: {
               createdById: true,
               executorUserId: true,
+              executors: {
+                select: {
+                  userId: true,
+                  role: true,
+                },
+              },
               status: true,
+              collaborators: {
+                where: {
+                  userId: user.id,
+                },
+                select: {
+                  userId: true,
+                },
+              },
             },
           },
         },
@@ -1391,27 +2910,10 @@ export async function requestAttachmentUpload(
       return { error: "Comment not found." };
     }
 
-    await assertProjectAccess(user, input.projectId);
+    const project = assertProjectAccessFromContext(user, comment.project);
 
-    if (
-      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-      !isProjectExecutorUser(comment.project, user.id)
-    ) {
-      return { error: "Only the project executor can upload submissions for review." };
-    }
-
-    if (
-      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-      !comment.stage.actualStartedAt
-    ) {
-      return { error: "Please accept the brief before submitting work." };
-    }
-
-    if (
-      input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-      comment.stage.status === "COMPLETED"
-    ) {
-      return { error: "This stage is already completed." };
+    if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
+      return { error: "You do not have permission to upload chat attachments." };
     }
 
     if (comment.project.status === "COMPLETED") {
@@ -1439,7 +2941,11 @@ export async function requestAttachmentUpload(
       return { error: "Project not found." };
     }
 
-    await assertProjectAccess(user, input.projectId);
+    const accessProject = await assertProjectAccess(user, input.projectId);
+
+    if (!hasProjectPermission(user, accessProject, getUploadPermissionKey(input.assetType))) {
+      return { error: "You do not have permission to upload assets to the library." };
+    }
 
     if (
       input.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
@@ -1448,7 +2954,10 @@ export async function requestAttachmentUpload(
       return { error: "You do not have permission to upload assets to the library." };
     }
 
-    if (project.status === "COMPLETED") {
+    if (
+      input.assetType !== AttachmentAssetType.FINAL_ARCHIVE &&
+      project.status === "COMPLETED"
+    ) {
       return { error: "This project is already completed." };
     }
   }
@@ -1457,9 +2966,12 @@ export async function requestAttachmentUpload(
     input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
     !isAllowedSubmissionImage(input.originalFileName, input.mimeType)
   ) {
-    return {
-      error: "Submissions must be image files because they are used for comparison.",
-    };
+    return buildFileTypeNotAllowedPayload({
+      fileName: input.originalFileName,
+      mimeType: input.mimeType,
+      allowedExtensions: SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
+      error: "Submission file type is not allowed.",
+    });
   }
 
   const uniqueFileName = `${Date.now()}-${randomUUID().slice(0, 8)}-${sanitizeFileName(
@@ -1536,7 +3048,9 @@ export async function completeAttachmentUpload(
         stageId: true,
         revisionId: true,
         commentId: true,
+        uploadedById: true,
         assetType: true,
+        status: true,
         submissionReviewStatus: true,
         bucket: true,
         storageKey: true,
@@ -1546,6 +3060,32 @@ export async function completeAttachmentUpload(
         project: {
           select: {
             createdById: true,
+            executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
+            collaborators: {
+              where: {
+                userId: user.id,
+              },
+              select: {
+                userId: true,
+              },
+            },
+            status: true,
+            archivedAt: true,
+            executionType: true,
+          },
+        },
+        stage: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            invoiceRequired: true,
           },
         },
       },
@@ -1556,7 +3096,84 @@ export async function completeAttachmentUpload(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  const project = assertProjectAccessFromContext(user, attachment.project);
+
+  if (
+    attachment.assetType !== AttachmentAssetType.STAGE_INVOICE &&
+    !hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))
+  ) {
+    throw new Error("You do not have permission to complete this upload.");
+  }
+
+  if (attachment.assetType === AttachmentAssetType.STAGE_INVOICE) {
+    if (attachment.uploadedById !== user.id) {
+      throw new Error("Only the invoice uploader can complete this upload.");
+    }
+
+    if (!attachment.stageId || !attachment.stage) {
+      throw new Error("Stage not found.");
+    }
+
+    if (attachment.project.status === "COMPLETED") {
+      throw new Error("This project is already completed.");
+    }
+
+    if (attachment.project.archivedAt) {
+      throw new Error("This project has already been archived.");
+    }
+
+    if (attachment.stage.status === "COMPLETED") {
+      throw new Error("This stage is already completed.");
+    }
+
+    if (!isStageInvoiceRequired(attachment.project, attachment.stage)) {
+      throw new Error("Invoice is not required for this stage.");
+    }
+
+    const activeInvoiceRequest = await withPrismaRetry(() =>
+      prisma.stageInvoiceRequest.findUnique({
+        where: {
+          stageId: attachment.stageId ?? attachment.stage?.id ?? "",
+        },
+        select: {
+          requestedFromId: true,
+          fulfilledAt: true,
+        },
+      }),
+    );
+
+    if (
+      !activeInvoiceRequest ||
+      activeInvoiceRequest.fulfilledAt ||
+      activeInvoiceRequest.requestedFromId !== user.id ||
+      attachment.project.createdById === user.id
+    ) {
+      throw new Error(
+        "Only the requested invoice recipient can upload the invoice for this stage.",
+      );
+    }
+
+    const existingReadyInvoice = await withPrismaRetry(() =>
+      prisma.projectAttachment.findFirst({
+        where: {
+          id: {
+            not: attachment.id,
+          },
+          projectId: attachment.projectId,
+          stageId: attachment.stageId,
+          assetType: AttachmentAssetType.STAGE_INVOICE,
+          status: AttachmentStatus.READY,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+
+    if (existingReadyInvoice) {
+      throw new Error("An invoice has already been uploaded for this stage.");
+    }
+  }
 
   if (failed) {
     await withPrismaRetry(() =>
@@ -1581,56 +3198,196 @@ export async function completeAttachmentUpload(
   }
 
   await withPrismaRetry(() =>
-    prisma.projectAttachment.update({
-      where: {
-        id: attachment.id,
-      },
-      data: {
-        status: AttachmentStatus.READY,
-        fileSize: attachment.fileSize,
-        mimeType: attachment.mimeType,
-        submissionReviewStatus:
-          attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION
-            ? attachment.submissionReviewStatus ?? SubmissionReviewStatus.PENDING_REVIEW
-            : undefined,
-      },
+    prisma.$transaction([
+      prisma.projectAttachment.update({
+        where: {
+          id: attachment.id,
+        },
+        data: {
+          status: AttachmentStatus.READY,
+          fileSize: attachment.fileSize,
+          mimeType: attachment.mimeType,
+          submissionReviewStatus:
+            attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION
+              ? attachment.submissionReviewStatus ?? SubmissionReviewStatus.PENDING_REVIEW
+              : undefined,
+        },
+      }),
+      prisma.projectActivityLog.create({
+        data: {
+          projectId: attachment.projectId,
+          stageId: attachment.stageId,
+          revisionId: attachment.revisionId,
+          actorId: user.id,
+          action: getUploadAction(attachment.assetType),
+          metadata: {
+            attachmentId: attachment.id,
+            commentId: attachment.commentId,
+            fileName: attachment.originalFileName,
+            storageKey: attachment.storageKey,
+            ...(uploadMetadata?.source
+              ? {
+                  source: uploadMetadata.source,
+                }
+              : {}),
+            ...(uploadMetadata?.category
+              ? {
+                  category: uploadMetadata.category,
+                }
+              : {}),
+            ...(uploadMetadata?.note
+              ? {
+                  note: uploadMetadata.note,
+                }
+              : {}),
+          },
+        },
+      }),
+      ...(attachment.assetType === AttachmentAssetType.STAGE_INVOICE && attachment.stage
+        ? [
+            prisma.stageInvoiceRequest.updateMany({
+              where: {
+                projectId: attachment.projectId,
+                stageId: attachment.stageId ?? attachment.stage.id,
+                fulfilledAt: null,
+              },
+              data: {
+                fulfilledAt: new Date(),
+              },
+            }),
+            prisma.projectComment.create({
+              data: {
+                projectId: attachment.projectId,
+                stageId: attachment.stageId ?? attachment.stage.id,
+                authorId: user.id,
+                body: `${getDisplayName(user)} uploaded invoice for ${attachment.stage.name}.`,
+              },
+            }),
+          ]
+        : []),
+    ]),
+  );
+
+  runNotificationTaskAfterResponse("file-uploaded", () =>
+    notifyFileUploaded({
+      actorId: user.id,
+      actorName: getDisplayName(user),
+      projectId: attachment.projectId,
+      stageId: attachment.stageId,
+      attachmentId: attachment.id,
+      assetType: attachment.assetType,
     }),
   );
 
-  await withPrismaRetry(() =>
-    prisma.projectActivityLog.create({
-      data: {
+  if (attachment.assetType === AttachmentAssetType.STAGE_INVOICE) {
+    runNotificationTaskAfterResponse("invoice-uploaded", () =>
+      notifyInvoiceUploaded({
+        actorId: user.id,
+        actorName: getDisplayName(user),
         projectId: attachment.projectId,
         stageId: attachment.stageId,
-        revisionId: attachment.revisionId,
-        actorId: user.id,
-        action: getUploadAction(attachment.assetType),
-        metadata: {
-          attachmentId: attachment.id,
-          commentId: attachment.commentId,
-          fileName: attachment.originalFileName,
-          storageKey: attachment.storageKey,
-          ...(uploadMetadata?.source
-            ? {
-                source: uploadMetadata.source,
-              }
-            : {}),
-          ...(uploadMetadata?.category
-            ? {
-                category: uploadMetadata.category,
-              }
-            : {}),
-          ...(uploadMetadata?.note
-            ? {
-                note: uploadMetadata.note,
-              }
-            : {}),
+        attachmentId: attachment.id,
+      }),
+    );
+  }
+}
+
+export async function completePreparedChatAttachmentUpload(
+  user: AccessUser,
+  input: {
+    attachmentId: string;
+    projectId: string;
+    failed?: boolean;
+  },
+) {
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findFirst({
+      where: {
+        id: input.attachmentId,
+        projectId: input.projectId,
+        uploadedById: user.id,
+        assetType: {
+          in: [
+            AttachmentAssetType.COMMENT_ATTACHMENT,
+            AttachmentAssetType.STAGE_SUBMISSION,
+          ],
         },
+      },
+      select: {
+        id: true,
+        projectId: true,
+        stageId: true,
+        revisionId: true,
+        commentId: true,
+        assetType: true,
+        status: true,
+        submissionReviewStatus: true,
+        originalFileName: true,
+        storageKey: true,
       },
     }),
   );
 
-  await runNotificationTask("file-uploaded", () =>
+  if (!attachment) {
+    throw new Error("Attachment not found.");
+  }
+
+  if (attachment.status === AttachmentStatus.READY) {
+    return;
+  }
+
+  if (attachment.status !== AttachmentStatus.UPLOADING) {
+    throw new Error("Attachment cannot be completed.");
+  }
+
+  if (input.failed) {
+    await withPrismaRetry(() =>
+      prisma.projectAttachment.update({
+        where: {
+          id: attachment.id,
+        },
+        data: {
+          status: AttachmentStatus.FAILED,
+        },
+      }),
+    );
+
+    return;
+  }
+
+  await withPrismaRetry(() =>
+    prisma.$transaction([
+      prisma.projectAttachment.update({
+        where: {
+          id: attachment.id,
+        },
+        data: {
+          status: AttachmentStatus.READY,
+          submissionReviewStatus:
+            attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION
+              ? attachment.submissionReviewStatus ?? SubmissionReviewStatus.PENDING_REVIEW
+              : undefined,
+        },
+      }),
+      prisma.projectActivityLog.create({
+        data: {
+          projectId: attachment.projectId,
+          stageId: attachment.stageId,
+          revisionId: attachment.revisionId,
+          actorId: user.id,
+          action: getUploadAction(attachment.assetType),
+          metadata: {
+            attachmentId: attachment.id,
+            commentId: attachment.commentId,
+            fileName: attachment.originalFileName,
+            storageKey: attachment.storageKey,
+          },
+        },
+      }),
+    ]),
+  );
+
+  runNotificationTaskAfterResponse("file-uploaded", () =>
     notifyFileUploaded({
       actorId: user.id,
       actorName: getDisplayName(user),
@@ -1673,7 +3430,13 @@ export async function getAttachmentDownloadUrlForUser(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(user, attachment.projectId);
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "file.download",
+    "You do not have permission to download this file.",
+  );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   return createPresignedDownloadUrl({
@@ -1715,7 +3478,13 @@ export async function getAttachmentPreviewUrlForUser(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(user, attachment.projectId);
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "file.view",
+    "You do not have permission to preview this file.",
+  );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   return createPresignedPreviewUrl({
@@ -1755,7 +3524,13 @@ export async function deleteAttachmentForUser(
     throw new Error("Attachment not found.");
   }
 
-  await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(user, attachment.projectId);
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "file.delete",
+    "You do not have permission to delete this file.",
+  );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
 
   await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(() => undefined);

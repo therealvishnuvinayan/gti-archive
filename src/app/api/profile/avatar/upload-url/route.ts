@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 import {
   buildUserAvatarKey,
   createPresignedUploadUrl,
   getMaxProfileAvatarBytes,
   isAllowedProfileImage,
 } from "@/lib/storage/s3";
+import {
+  PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+  buildFileTypeNotAllowedPayload,
+} from "@/lib/upload-validation";
 
 type UploadAvatarPayload = {
   fileName?: string;
@@ -19,6 +24,13 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (!hasPermission(user, "settings.updateOwnProfile")) {
+    return NextResponse.json(
+      { error: "You do not have permission to update your profile photo." },
+      { status: 403 },
+    );
   }
 
   let payload: UploadAvatarPayload = {};
@@ -44,7 +56,12 @@ export async function POST(request: Request) {
 
   if (!isAllowedProfileImage(payload.fileName, payload.mimeType)) {
     return NextResponse.json(
-      { error: "Profile photo must be JPG, PNG, GIF, or WebP." },
+      buildFileTypeNotAllowedPayload({
+        fileName: payload.fileName,
+        mimeType: payload.mimeType,
+        allowedExtensions: PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+        error: "Profile photo file type is not allowed.",
+      }),
       { status: 400 },
     );
   }

@@ -61,6 +61,45 @@ export async function getProjectCollaboratorVisibilityState(
   );
 }
 
+export async function assertProjectTimestampVisibleForUser(
+  user: VisibilityAccessUser,
+  input: {
+    projectId: string;
+    projectOwnerId: string;
+    timestamp: Date | string | number;
+    message?: string;
+  },
+) {
+  if (canBypassCollaboratorVisibility(user, input.projectOwnerId)) {
+    return;
+  }
+
+  const visibilityState = await getProjectCollaboratorVisibilityState(
+    input.projectId,
+    user.id,
+  );
+
+  if (!visibilityState) {
+    return;
+  }
+
+  if (
+    visibilityState.chatVisibilityPaused &&
+    visibilityState.visibilityPauses.length === 0
+  ) {
+    throw new Error(input.message ?? "You do not have permission to access this item.");
+  }
+
+  if (
+    isTimestampHiddenByPauseWindows(
+      input.timestamp,
+      visibilityState.visibilityPauses,
+    )
+  ) {
+    throw new Error(input.message ?? "You do not have permission to access this item.");
+  }
+}
+
 export function canBypassCollaboratorVisibility(
   user: VisibilityAccessUser,
   projectOwnerId: string,
@@ -71,4 +110,3 @@ export function canBypassCollaboratorVisibility(
     user.id === projectOwnerId
   );
 }
-

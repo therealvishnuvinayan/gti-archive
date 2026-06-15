@@ -6,6 +6,7 @@ import {
 } from "@/lib/notifications";
 import { getCurrentUser } from "@/lib/auth";
 import { getNotificationsForUser } from "@/lib/notification-center";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,6 +16,13 @@ export async function GET(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (!hasPermission(user, "notification.view")) {
+    return NextResponse.json(
+      { error: "You do not have permission to view notifications." },
+      { status: 403 },
+    );
   }
 
   const searchParams = new URL(request.url).searchParams;

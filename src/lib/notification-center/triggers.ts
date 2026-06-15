@@ -1,12 +1,15 @@
 import {
   AttachmentAssetType,
 } from "@prisma/client";
+import { after } from "next/server";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 import {
   getCompletionWorkflowRecipientUserIds,
   dedupeRecipients,
+  filterRecipientsVisibleForStageEvent,
+  getProjectExecutorRecipientUserIds,
   getProjectNotificationContext,
   getProjectParticipantUserIds,
   getVisibleStageEventRecipientUserIds,
@@ -29,6 +32,12 @@ async function getProjectStageContext(projectId: string, stageId?: string | null
         name: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         stages: stageId
           ? {
               where: {
@@ -56,6 +65,13 @@ export async function runNotificationTask(
   }
 }
 
+export function runNotificationTaskAfterResponse(
+  label: string,
+  task: () => Promise<void>,
+) {
+  after(() => runNotificationTask(label, task));
+}
+
 export async function notifyProjectCreated(input: {
   projectId: string;
   actorId: string;
@@ -66,9 +82,14 @@ export async function notifyProjectCreated(input: {
     return;
   }
 
-  if (project.executorUserId && project.executorUserId !== input.actorId) {
+  const executorIds = dedupeRecipients([
+    project.executorUserId,
+    ...project.executors.map((executor) => executor.userId),
+  ]).filter((userId) => userId !== input.actorId);
+
+  if (executorIds.length > 0) {
     await createNotificationsForUsers({
-      recipientUserIds: [project.executorUserId],
+      recipientUserIds: executorIds,
       type: "PROJECT_ASSIGNED",
       title: "Project assigned to you",
       message: `You have been assigned as executor for ${project.name}.`,
@@ -85,7 +106,7 @@ export async function notifyProjectCreated(input: {
   const collaboratorIds = project.collaborators
     .map((collaborator) => collaborator.userId)
     .filter(
-      (userId) => userId !== input.actorId && userId !== project.executorUserId,
+      (userId) => userId !== input.actorId && !executorIds.includes(userId),
     );
 
   await createNotificationsForUsers({
@@ -108,6 +129,8 @@ export async function notifyProjectAssignmentChanges(input: {
   actorId: string;
   previousExecutorUserId?: string | null;
   nextExecutorUserId?: string | null;
+  previousExecutorUserIds?: string[];
+  nextExecutorUserIds?: string[];
   addedCollaboratorIds?: string[];
   removedCollaboratorIds?: string[];
 }) {
@@ -117,13 +140,23 @@ export async function notifyProjectAssignmentChanges(input: {
     return;
   }
 
-  if (
-    input.nextExecutorUserId &&
-    input.nextExecutorUserId !== input.previousExecutorUserId &&
-    input.nextExecutorUserId !== input.actorId
-  ) {
+  const previousExecutorIds = new Set(
+    dedupeRecipients([
+      input.previousExecutorUserId,
+      ...(input.previousExecutorUserIds ?? []),
+    ]),
+  );
+  const nextExecutorIds = dedupeRecipients([
+    input.nextExecutorUserId,
+    ...(input.nextExecutorUserIds ?? []),
+  ]);
+  const addedExecutorIds = nextExecutorIds.filter(
+    (executorId) => executorId !== input.actorId && !previousExecutorIds.has(executorId),
+  );
+
+  if (addedExecutorIds.length > 0) {
     await createNotificationsForUsers({
-      recipientUserIds: [input.nextExecutorUserId],
+      recipientUserIds: addedExecutorIds,
       type: "PROJECT_ASSIGNED",
       title: "Project assigned to you",
       message: `You have been assigned as executor for ${project.name}.`,
@@ -138,7 +171,7 @@ export async function notifyProjectAssignmentChanges(input: {
   }
 
   const addedCollaboratorIds = (input.addedCollaboratorIds ?? []).filter(
-    (userId) => userId !== input.actorId && userId !== input.nextExecutorUserId,
+    (userId) => userId !== input.actorId && !nextExecutorIds.includes(userId),
   );
 
   if (addedCollaboratorIds.length > 0) {
@@ -278,6 +311,12 @@ export async function notifyStageSubmissionReviewDecision(
           select: {
             id: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
           },
         },
         stage: {
@@ -289,12 +328,21 @@ export async function notifyStageSubmissionReviewDecision(
     }),
   );
 
-  if (!attachment?.project.executorUserId || !attachment.stageId) {
+  if (!attachment?.stageId) {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(attachment.project, {
+    role: "main",
+  });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    attachment.project.id,
+    executorRecipients,
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [attachment.project.executorUserId],
+    recipientUserIds: recipients,
     type:
       input.status === "APPROVED" ? "REVISION_APPROVED" : "REVISION_REJECTED",
     title:
@@ -325,12 +373,22 @@ export async function notifySubmissionWorkflowDecision(input: {
   const project = await getProjectStageContext(input.projectId, input.stageId);
   const stage = project?.stages?.[0];
 
-  if (!project || !stage || !project.executorUserId || project.executorUserId === input.actorId) {
+  if (!project || !stage) {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
+    role: "main",
+    excludeUserId: input.actorId,
+  });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    executorRecipients,
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [project.executorUserId],
+    recipientUserIds: recipients,
     type:
       input.status === "COMPLETED"
         ? "SUBMISSION_COMPLETED"
@@ -369,6 +427,12 @@ export async function notifyStageTransition(input: {
       select: {
         id: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
         stages: {
           where: {
             id: {
@@ -419,7 +483,7 @@ export async function notifyStageTransition(input: {
     }),
   });
 
-  if (!input.nextStageId || !project.executorUserId || project.executorUserId === input.actorId) {
+  if (!input.nextStageId) {
     return;
   }
 
@@ -429,8 +493,18 @@ export async function notifyStageTransition(input: {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
+    role: "main",
+    excludeUserId: input.actorId,
+  });
+  const nextStageRecipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    executorRecipients,
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [project.executorUserId],
+    recipientUserIds: nextStageRecipients,
     type: "NEXT_STAGE_ACTIVATED",
     title: "Next stage activated",
     message: `${nextStage.name} is now ready to start.`,
@@ -461,9 +535,24 @@ export async function notifyCommentAdded(
     return;
   }
 
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findUnique({
+      where: {
+        id: input.commentId,
+      },
+      select: {
+        createdAt: true,
+      },
+    }),
+  );
+
+  if (!comment) {
+    return;
+  }
+
   const recipients = await getVisibleStageEventRecipientUserIds(
     project.id,
-    new Date(),
+    comment.createdAt,
     {
       excludeUserId: input.actorId,
     },
@@ -507,8 +596,28 @@ export async function notifyCommentMentioned(
     return;
   }
 
-  const recipients = dedupeRecipients(input.mentionedUserIds).filter(
+  const comment = await withPrismaRetry(() =>
+    prisma.projectComment.findUnique({
+      where: {
+        id: input.commentId,
+      },
+      select: {
+        createdAt: true,
+      },
+    }),
+  );
+
+  if (!comment) {
+    return;
+  }
+
+  const mentionedRecipients = dedupeRecipients(input.mentionedUserIds).filter(
     (recipientUserId) => recipientUserId !== input.actorId,
+  );
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    mentionedRecipients,
+    comment.createdAt,
   );
 
   await createNotificationsForUsers({
@@ -551,13 +660,29 @@ export async function notifyFileUploaded(
     return;
   }
 
-  const recipients = input.stageId
-    ? await getVisibleStageEventRecipientUserIds(project.id, new Date(), {
-        excludeUserId: input.actorId,
-      })
-    : await getProjectParticipantUserIds(project.id, {
-        excludeUserId: input.actorId,
-      });
+  const attachment = await withPrismaRetry(() =>
+    prisma.projectAttachment.findUnique({
+      where: {
+        id: input.attachmentId,
+      },
+      select: {
+        createdAt: true,
+      },
+    }),
+  );
+
+  if (!attachment) {
+    return;
+  }
+
+  const baseRecipients = await getProjectParticipantUserIds(project.id, {
+    excludeUserId: input.actorId,
+  });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    baseRecipients,
+    attachment.createdAt,
+  );
 
   await createNotificationsForUsers({
     recipientUserIds: recipients,
@@ -595,9 +720,29 @@ export async function notifyProjectArchived(input: {
     return;
   }
 
-  const recipients = await getProjectParticipantUserIds(project.id, {
+  const archive = await withPrismaRetry(() =>
+    prisma.projectArchive.findUnique({
+      where: {
+        id: input.archiveId,
+      },
+      select: {
+        archivedAt: true,
+      },
+    }),
+  );
+
+  if (!archive) {
+    return;
+  }
+
+  const baseRecipients = await getProjectParticipantUserIds(project.id, {
     excludeUserId: input.actorId,
   });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    baseRecipients,
+    archive.archivedAt,
+  );
 
   await createNotificationsForUsers({
     recipientUserIds: recipients,
@@ -621,12 +766,22 @@ export async function notifyApprovalRequired(input: {
 }) {
   const project = await getProjectNotificationContext(input.projectId);
 
-  if (!project || !project.executorUserId || project.executorUserId === input.actorId) {
+  if (!project) {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
+    role: "main",
+    excludeUserId: input.actorId,
+  });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    executorRecipients,
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [project.executorUserId],
+    recipientUserIds: recipients,
     type: "APPROVAL_REQUIRED",
     title: "Approval required",
     message: `Authority approval is required for ${project.name}.`,
@@ -649,9 +804,14 @@ export async function notifyApprovalProofUploaded(input: {
     return;
   }
 
-  const recipients = await getCompletionWorkflowRecipientUserIds(project.id, {
+  const baseRecipients = await getCompletionWorkflowRecipientUserIds(project.id, {
     excludeUserId: input.actorId,
   });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    baseRecipients,
+    new Date(),
+  );
 
   await createNotificationsForUsers({
     recipientUserIds: recipients,
@@ -673,12 +833,22 @@ export async function notifyCopyrightTransferRequired(input: {
 }) {
   const project = await getProjectNotificationContext(input.projectId);
 
-  if (!project || !project.executorUserId || project.executorUserId === input.actorId) {
+  if (!project) {
     return;
   }
 
+  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
+    role: "main",
+    excludeUserId: input.actorId,
+  });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    executorRecipients,
+    new Date(),
+  );
+
   await createNotificationsForUsers({
-    recipientUserIds: [project.executorUserId],
+    recipientUserIds: recipients,
     type: "COPYRIGHT_TRANSFER_REQUIRED",
     title: "Copyright transfer required",
     message: `Copyright transfer is required for ${project.name}.`,
@@ -701,9 +871,14 @@ export async function notifyCopyrightDocumentUploaded(input: {
     return;
   }
 
-  const recipients = await getCompletionWorkflowRecipientUserIds(project.id, {
+  const baseRecipients = await getCompletionWorkflowRecipientUserIds(project.id, {
     excludeUserId: input.actorId,
   });
+  const recipients = await filterRecipientsVisibleForStageEvent(
+    project.id,
+    baseRecipients,
+    new Date(),
+  );
 
   await createNotificationsForUsers({
     recipientUserIds: recipients,
@@ -719,26 +894,75 @@ export async function notifyCopyrightDocumentUploaded(input: {
   });
 }
 
+export async function notifyStageInvoiceRequested(input: {
+  projectId: string;
+  stageId: string;
+  recipientUserId: string;
+}) {
+  const project = await getProjectStageContext(input.projectId, input.stageId);
+  const stage = project?.stages?.[0];
+
+  if (!project || !stage) {
+    return;
+  }
+
+  await createNotificationsForUsers({
+    recipientUserIds: [input.recipientUserId],
+    type: "INVOICE_REQUESTED",
+    title: "Invoice requested",
+    message: `Invoice has been requested for ${project.name} / ${stage.name}.`,
+    entityType: "STAGE",
+    entityId: stage.id,
+    projectId: project.id,
+    stageId: stage.id,
+    url: buildNotificationUrl({
+      kind: "project-stage",
+      projectId: project.id,
+      stageId: stage.id,
+    }),
+  });
+}
+
 export async function notifyInvoiceUploaded(input: {
   projectId: string;
   actorId: string;
+  actorName?: string;
+  stageId?: string | null;
+  attachmentId?: string;
 }) {
-  const project = await getProjectNotificationContext(input.projectId);
+  const project = input.stageId
+    ? await getProjectStageContext(input.projectId, input.stageId)
+    : await getProjectNotificationContext(input.projectId);
 
   if (!project || !project.createdById || project.createdById === input.actorId) {
     return;
   }
 
+  const stage = "stages" in project ? project.stages?.[0] ?? null : null;
+
   await createNotificationsForUsers({
     recipientUserIds: [project.createdById],
     type: "INVOICE_UPLOADED",
     title: "Invoice uploaded",
-    message: `Invoice has been uploaded for ${project.name}.`,
-    entityType: "COMPLETION_DOCUMENT",
+    message:
+      input.stageId && stage
+        ? `${input.actorName ?? "Main Executor"} uploaded invoice for ${stage.name}.`
+        : `Invoice has been uploaded for ${project.name}.`,
+    entityType: input.attachmentId ? "ATTACHMENT" : "COMPLETION_DOCUMENT",
+    entityId: input.attachmentId,
     projectId: project.id,
-    url: buildNotificationUrl({
-      kind: "project",
-      projectId: project.id,
-    }),
+    stageId: input.stageId ?? undefined,
+    attachmentId: input.attachmentId,
+    url:
+      input.stageId && stage
+        ? buildNotificationUrl({
+            kind: "project-stage",
+            projectId: project.id,
+            stageId: input.stageId,
+          })
+        : buildNotificationUrl({
+            kind: "project",
+            projectId: project.id,
+          }),
   });
 }

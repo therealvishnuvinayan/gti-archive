@@ -1,15 +1,15 @@
 import { redirect } from "next/navigation";
-import { UserRole } from "@prisma/client";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectMasterDataWorkspace } from "@/components/settings/project-master-data-workspace";
 import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 import { getProjectMasterData } from "@/lib/project-master-data";
 
 export default async function ProjectMasterDataPage() {
   const user = await requireUser();
 
-  if (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+  if (!hasPermission(user, "settings.viewMasterData")) {
     redirect("/settings");
   }
 
@@ -22,7 +22,8 @@ export default async function ProjectMasterDataPage() {
         tags={masterData.tags}
         currencies={masterData.currencies}
         summary={masterData.summary}
-        canDeleteItems={user.role === UserRole.SUPER_ADMIN}
+        canManageItems={hasPermission(user, "settings.manageMasterData")}
+        canDeleteItems={hasPermission(user, "settings.deleteMasterData")}
       />
     </DashboardLayout>
   );

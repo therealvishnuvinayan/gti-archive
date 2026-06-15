@@ -11,6 +11,10 @@ import {
 } from "@prisma/client";
 
 import { CALENDAR_COLLABORATORS_CACHE_TAG } from "@/lib/collaboration";
+import {
+  hasPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const CALENDAR_CACHE_TAG = "calendar-events";
@@ -28,6 +32,8 @@ export type CalendarEventRecord = {
   calendar: CalendarTypeLabel;
   tone: EventToneLabel;
   canDelete: boolean;
+  createdByName?: string;
+  createdByEmail?: string;
 };
 
 export type SaveCalendarEventInput = {
@@ -65,7 +71,12 @@ export type CalendarAccessState = {
   canManageCollaborators: boolean;
   canViewSharedSchedule: boolean;
 };
-export type CalendarAccessUser = Pick<User, "id" | "role" | "calendarAccess">;
+export type CalendarAccessUser = Pick<User, "id" | "role" | "calendarAccess"> &
+  PermissionUser;
+
+type CalendarEventWithCreator = CalendarEvent & {
+  createdBy?: Pick<User, "name" | "email"> | null;
+};
 
 const calendarTypeMap: Record<CalendarTypeLabel, CalendarEventType> = {
   Projects: "PROJECTS",
@@ -126,15 +137,16 @@ function canDeleteCalendarEvent(
   access: CalendarAccessState,
 ) {
   return (
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN ||
-    event.createdById === user.id ||
-    access.canManageCollaborators
+    hasPermission(user, "calendar.delete") &&
+    (user.role === UserRole.SUPER_ADMIN ||
+      user.role === UserRole.ADMIN ||
+      event.createdById === user.id ||
+      access.canManageCollaborators)
   );
 }
 
 function mapCalendarEvent(
-  event: CalendarEvent,
+  event: CalendarEventWithCreator,
   user: CalendarAccessUser,
   access: CalendarAccessState,
 ): CalendarEventRecord {
@@ -148,6 +160,8 @@ function mapCalendarEvent(
     calendar: reverseCalendarTypeMap[event.type],
     tone: reverseEventToneMap[event.tone],
     canDelete: canDeleteCalendarEvent(event, user, access),
+    createdByName: event.createdBy?.name ?? undefined,
+    createdByEmail: event.createdBy?.email ?? undefined,
   };
 }
 
@@ -204,16 +218,25 @@ function buildCalendarAccessState(
   user: CalendarAccessUser,
   isAssignedCollaborator: boolean,
 ): CalendarAccessState {
+  if (!hasPermission(user, "calendar.view")) {
+    return {
+      canManageCollaborators: false,
+      canViewSharedSchedule: false,
+    };
+  }
+
   if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
     return {
-      canManageCollaborators: true,
+      canManageCollaborators: hasPermission(user, "calendar.assignParticipants"),
       canViewSharedSchedule: true,
     };
   }
 
   return {
     canManageCollaborators:
-      isAssignedCollaborator && user.calendarAccess === CollaboratorAccess.FULL,
+      isAssignedCollaborator &&
+      user.calendarAccess === CollaboratorAccess.FULL &&
+      hasPermission(user, "calendar.assignParticipants"),
     canViewSharedSchedule: isAssignedCollaborator,
   };
 }
@@ -221,6 +244,10 @@ function buildCalendarAccessState(
 export async function getCalendarAccessState(
   user: CalendarAccessUser,
 ): Promise<CalendarAccessState> {
+  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
+    return buildCalendarAccessState(user, false);
+  }
+
   const cachedAccessState = unstable_cache(
     async () => {
       const assignment = await withPrismaRetry(() =>
@@ -261,6 +288,14 @@ export async function getCalendarEvents(user: CalendarAccessUser) {
             : {
                 createdById: user.id,
               },
+          include: {
+            createdBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
           orderBy: {
             startAt: "asc",
           },
@@ -277,6 +312,10 @@ export async function createCalendarEvent(
   user: CalendarAccessUser,
   input: SaveCalendarEventInput,
 ): Promise<CreateCalendarEventResult> {
+  if (!hasPermission(user, "calendar.create")) {
+    return { error: "You are not allowed to create calendar events." };
+  }
+
   const parsed = parseCalendarEventInput(input);
 
   if ("error" in parsed) {
@@ -287,6 +326,14 @@ export async function createCalendarEvent(
     data: {
       ...parsed.data,
       createdById: user.id,
+    },
+    include: {
+      createdBy: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
     },
   });
 

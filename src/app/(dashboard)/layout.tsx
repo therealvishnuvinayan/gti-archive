@@ -1,6 +1,8 @@
 import { DashboardAppFrame } from "@/components/layout/dashboard-app-frame";
 import { requireUser, getUserDisplayName, getUserInitials } from "@/lib/auth";
-import { getDashboardProjectCounts } from "@/lib/projects";
+import {
+  getSidebarVisibility,
+} from "@/lib/permissions/resolver";
 
 export default async function DashboardRoutesLayout({
   children,
@@ -8,8 +10,8 @@ export default async function DashboardRoutesLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  const counts = await getDashboardProjectCounts();
   const displayName = getUserDisplayName(user);
+  const sidebarVisibility = getSidebarVisibility(user);
 
   return (
     <DashboardAppFrame
@@ -21,7 +23,7 @@ export default async function DashboardRoutesLayout({
           ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
           : null,
       }}
-      projectBadgeCount={counts.ongoing}
+      sidebarVisibility={sidebarVisibility}
     >
       {children}
     </DashboardAppFrame>

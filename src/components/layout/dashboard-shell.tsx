@@ -10,6 +10,7 @@ import {
   type DashboardTopbarProps,
   type DashboardUserView,
 } from "@/components/layout/topbar";
+import type { SidebarVisibility } from "@/lib/permissions/resolver";
 
 type DashboardShellTopbarProps = Omit<
   DashboardTopbarProps,
@@ -21,6 +22,7 @@ type DashboardShellProps = {
   topbarProps?: DashboardShellTopbarProps;
   user: DashboardUserView;
   projectBadgeCount?: number;
+  sidebarVisibility: SidebarVisibility;
 };
 
 export function DashboardShell({
@@ -28,17 +30,19 @@ export function DashboardShell({
   topbarProps,
   user,
   projectBadgeCount,
+  sidebarVisibility,
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
 
   return (
-    <div className="h-[100svh] overflow-hidden bg-background p-3 sm:p-4 lg:p-6">
+    <div className="h-[100dvh] overflow-hidden bg-background p-3 sm:p-4 lg:p-6">
       <div className="mx-auto flex h-full max-w-[1600px] gap-4 lg:gap-5">
         <Sidebar
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           projectBadgeCount={projectBadgeCount}
+          visibility={sidebarVisibility}
         />
 
         <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
@@ -46,9 +50,10 @@ export function DashboardShell({
             onOpenSidebar={() => setSidebarOpen(true)}
             user={user}
             {...topbarProps}
+            showNotifications={sidebarVisibility.notifications}
           />
-          <main className="dashboard-scroll min-h-0 flex-1 overflow-y-auto rounded-[32px] bg-surface p-5 shadow-[0_24px_80px_rgba(23,39,28,0.06)] sm:p-6 lg:p-8">
-            <MotionPage key={pathname} y={12}>
+          <main className="dashboard-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-[32px] bg-surface p-5 shadow-[0_24px_80px_rgba(23,39,28,0.06)] sm:p-6 lg:p-8">
+            <MotionPage key={pathname} y={12} className="min-w-0">
               {children}
             </MotionPage>
           </main>

@@ -4,13 +4,24 @@ import {
   type ComparisonCommentRecord,
   normalizeComparisonPairIds,
 } from "@/lib/comparison-utils";
-import { assertProjectAccess } from "@/lib/project-history";
+import {
+  assertProjectAccess,
+  assertProjectAttachmentVisibilityForUser,
+} from "@/lib/project-history";
+import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/resolver";
+import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
+import {
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows,
+} from "@/lib/project-collaborator-visibility";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type AccessUser = Pick<
   User,
   "id" | "email" | "name" | "role" | "projectAccess" | "collaboratorType"
->;
+> &
+  PermissionUser;
 
 function getDisplayName(user: Pick<User, "name" | "email">) {
   return user.name?.trim() || user.email;
@@ -21,7 +32,7 @@ function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
     return "Internal Team";
   }
 
-  return user.collaboratorType === "EXTERNAL" ? "External Collaborator" : "Collaborator";
+  return getCollaboratorRoleLabel(user.collaboratorType);
 }
 
 function formatComparisonTimestamp(date: Date | string | number) {
@@ -68,7 +79,7 @@ function mapComparisonCommentRecord(comment: {
   };
 }
 
-async function assertComparableSubmissionPair(
+async function resolveComparableSubmissionPair(
   user: AccessUser,
   input: {
     projectId: string;
@@ -76,14 +87,28 @@ async function assertComparableSubmissionPair(
     baseAttachmentId: string;
     compareAttachmentId: string;
   },
+  options: {
+    throwOnInvalidPair?: boolean;
+  } = {},
 ) {
-  await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(user, input.projectId);
+
+  if (!hasProjectPermission(user, project, "compare.view")) {
+    throw new Error("You do not have permission to compare project submissions.");
+  }
 
   const [normalizedBaseAttachmentId, normalizedCompareAttachmentId] =
     normalizeComparisonPairIds(input.baseAttachmentId, input.compareAttachmentId);
 
   if (normalizedBaseAttachmentId === normalizedCompareAttachmentId) {
-    throw new Error("Select two different submissions to compare.");
+    if (options.throwOnInvalidPair) {
+      throw new Error("Select two different submissions to compare.");
+    }
+
+    return {
+      status: "invalid_pair" as const,
+      project,
+    };
   }
 
   const attachments = await withPrismaRetry(() =>
@@ -94,19 +119,33 @@ async function assertComparableSubmissionPair(
         },
         projectId: input.projectId,
         stageId: input.stageId,
-        assetType: AttachmentAssetType.STAGE_SUBMISSION,
+        assetType: {
+          in: [
+            AttachmentAssetType.STAGE_SUBMISSION,
+            AttachmentAssetType.REVISION_ORIGINAL,
+          ],
+        },
         status: AttachmentStatus.READY,
       },
       select: {
         id: true,
         originalFileName: true,
         mimeType: true,
+        projectId: true,
+        createdAt: true,
       },
     }),
   );
 
   if (attachments.length !== 2) {
-    throw new Error("Comparison submissions were not found for this stage.");
+    if (options.throwOnInvalidPair) {
+      throw new Error("Comparison submissions were not found for this stage.");
+    }
+
+    return {
+      status: "missing_submissions" as const,
+      project,
+    };
   }
 
   if (
@@ -114,13 +153,53 @@ async function assertComparableSubmissionPair(
       !isComparableImageAttachment(attachment.originalFileName, attachment.mimeType),
     )
   ) {
-    throw new Error("Only PNG, JPG, JPEG, and WebP submissions can be compared right now.");
+    if (options.throwOnInvalidPair) {
+      throw new Error("Only PNG, JPG, JPEG, and WebP submissions can be compared right now.");
+    }
+
+    return {
+      status: "unsupported_submissions" as const,
+      project,
+    };
+  }
+
+  for (const attachment of attachments) {
+    await assertProjectAttachmentVisibilityForUser(user, {
+      projectId: attachment.projectId,
+      createdAt: attachment.createdAt,
+      project: {
+        createdById: project.createdById,
+      },
+    });
   }
 
   return {
+    status: "ready" as const,
     normalizedBaseAttachmentId,
     normalizedCompareAttachmentId,
+    project,
   };
+}
+
+async function getComparisonCommentVisibilityPauseWindows(
+  user: AccessUser,
+  projectId: string,
+  projectOwnerId: string,
+) {
+  if (canBypassCollaboratorVisibility(user, projectOwnerId)) {
+    return [];
+  }
+
+  const visibilityState = await getProjectCollaboratorVisibilityState(
+    projectId,
+    user.id,
+  );
+
+  if (!visibilityState) {
+    return [];
+  }
+
+  return visibilityState.visibilityPauses;
 }
 
 export async function getComparisonCommentsForPair(
@@ -132,16 +211,19 @@ export async function getComparisonCommentsForPair(
     compareAttachmentId: string;
   },
 ) {
-  const { normalizedBaseAttachmentId, normalizedCompareAttachmentId } =
-    await assertComparableSubmissionPair(user, input);
+  const pair = await resolveComparableSubmissionPair(user, input);
+
+  if (pair.status !== "ready") {
+    return [];
+  }
 
   const comments = await withPrismaRetry(() =>
     prisma.comparisonComment.findMany({
       where: {
         projectId: input.projectId,
         stageId: input.stageId,
-        baseAttachmentId: normalizedBaseAttachmentId,
-        compareAttachmentId: normalizedCompareAttachmentId,
+        baseAttachmentId: pair.normalizedBaseAttachmentId,
+        compareAttachmentId: pair.normalizedCompareAttachmentId,
       },
       orderBy: {
         createdAt: "asc",
@@ -159,7 +241,20 @@ export async function getComparisonCommentsForPair(
     }),
   );
 
-  return comments.map(mapComparisonCommentRecord);
+  const pauseWindows = await getComparisonCommentVisibilityPauseWindows(
+    user,
+    input.projectId,
+    pair.project.createdById,
+  );
+  const visibleComments =
+    pauseWindows.length > 0
+      ? comments.filter(
+          (comment) =>
+            !isTimestampHiddenByPauseWindows(comment.createdAt, pauseWindows),
+        )
+      : comments;
+
+  return visibleComments.map(mapComparisonCommentRecord);
 }
 
 export async function createComparisonComment(
@@ -177,7 +272,7 @@ export async function createComparisonComment(
   const body = input.body.trim();
 
   if (!body) {
-    throw new Error("Enter a comment before saving.");
+    throw new Error("Enter a message before sending.");
   }
 
   if (!Number.isFinite(input.xPercent) || !Number.isFinite(input.yPercent)) {
@@ -186,20 +281,29 @@ export async function createComparisonComment(
 
   const project = await assertProjectAccess(user, input.projectId);
 
+  if (!hasProjectPermission(user, project, "compare.createComment")) {
+    throw new Error("You do not have permission to comment in compare.");
+  }
+
   if (project.status === "COMPLETED") {
     throw new Error("This project is already completed.");
   }
 
-  const { normalizedBaseAttachmentId, normalizedCompareAttachmentId } =
-    await assertComparableSubmissionPair(user, input);
+  const pair = await resolveComparableSubmissionPair(user, input, {
+    throwOnInvalidPair: true,
+  });
+
+  if (pair.status !== "ready") {
+    throw new Error("Comparison submissions were not found for this stage.");
+  }
 
   const comment = await withPrismaRetry(() =>
     prisma.comparisonComment.create({
       data: {
         projectId: input.projectId,
         stageId: input.stageId,
-        baseAttachmentId: normalizedBaseAttachmentId,
-        compareAttachmentId: normalizedCompareAttachmentId,
+        baseAttachmentId: pair.normalizedBaseAttachmentId,
+        compareAttachmentId: pair.normalizedCompareAttachmentId,
         xPercent: Math.min(100, Math.max(0, input.xPercent)),
         yPercent: Math.min(100, Math.max(0, input.yPercent)),
         body,

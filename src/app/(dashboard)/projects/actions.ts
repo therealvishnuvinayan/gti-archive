@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
+import { after } from "next/server";
 
 import { getUserDisplayName, requireUser } from "@/lib/auth";
 import {
@@ -18,22 +19,27 @@ import {
   notifyProjectArchived,
   notifyProjectAssignmentChanges,
   notifyRevisionSubmitted,
+  notifyStageInvoiceRequested,
   notifyStageSubmissionReviewDecision,
   notifyStageTransition,
   notifySubmissionWorkflowDecision,
   runNotificationTask,
+  runNotificationTaskAfterResponse,
 } from "@/lib/notification-center";
 import {
   configureProjectCompletionWorkflow,
+  markProjectInvoiceNotRequired,
   prepareAuthorityApprovalRequest,
   prepareCopyrightTransferRequest,
 } from "@/lib/project-completion";
 import {
+  cancelStageRevisionSubmission,
   createStageComment,
   createStageRevision,
   completeProjectStage,
   reviewProjectRevision,
   reviewStageSubmission,
+  requestStageInvoice,
   startProjectStageWork,
 } from "@/lib/project-history";
 import {
@@ -42,7 +48,9 @@ import {
   setProjectCollaboratorChatVisibility,
   updateProjectCollaborators,
 } from "@/lib/projects";
-import { SubmissionReviewStatus, UserRole } from "@prisma/client";
+import { hasProjectPermission } from "@/lib/permissions/resolver";
+import { prisma } from "@/lib/prisma";
+import { SubmissionReviewStatus } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 
 type StageRevisionInput = {
@@ -54,9 +62,17 @@ type StageRevisionInput = {
 type StageCommentInput = {
   projectId: string;
   stageId: string;
+  revisionId?: string | null;
   body: string;
   allowEmptyBody?: boolean;
   mentionedUserIds?: string[];
+};
+
+type StageInvoiceRequestInput = {
+  projectId: string;
+  stageId: string;
+  requestedFromId: string;
+  note?: string;
 };
 
 type ComparisonCommentInput = {
@@ -71,6 +87,50 @@ type ComparisonCommentInput = {
 
 function revalidateProjectFlow() {
   revalidateTag(PROJECTS_CACHE_TAG, "max");
+}
+
+function revalidateProjectFlowAfterResponse() {
+  after(revalidateProjectFlow);
+}
+
+export async function toggleProjectPinAction(projectId: string) {
+  const user = await requireUser();
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      createdById: true,
+      executorUserId: true,
+      isPinned: true,
+      collaborators: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!hasProjectPermission(user, project, "project.update")) {
+    throw new Error("You are not allowed to pin projects.");
+  }
+
+  const updatedProject = await prisma.project.update({
+    where: { id: projectId },
+    data: {
+      isPinned: !project.isPinned,
+    },
+    select: {
+      isPinned: true,
+    },
+  });
+
+  revalidatePath("/projects");
+  revalidateProjectFlow();
+
+  return updatedProject;
 }
 
 function revalidateArchiveFlow(projectId: string, categorySlug?: string) {
@@ -104,10 +164,33 @@ export async function createStageRevisionAction(input: StageRevisionInput) {
     return {
       revisionId: revision.id,
       title: revision.title,
+      revisionNumber: revision.revisionNumber,
     };
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Unable to create a revision right now.",
+    };
+  }
+}
+
+export async function cancelStageRevisionSubmissionAction(input: {
+  projectId: string;
+  stageId: string;
+  revisionId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    await cancelStageRevisionSubmission(user, input);
+    revalidateProjectFlow();
+
+    return { success: true };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to cancel the revision right now.",
     };
   }
 }
@@ -117,9 +200,9 @@ export async function createStageCommentAction(input: StageCommentInput) {
 
   try {
     const comment = await createStageComment(user, input);
-    revalidateProjectFlow();
+    revalidateProjectFlowAfterResponse();
 
-    await runNotificationTask("comment-added", () =>
+    runNotificationTaskAfterResponse("comment-added", () =>
       notifyCommentAdded({
         actorId: user.id,
         actorName: getUserDisplayName(user),
@@ -131,7 +214,7 @@ export async function createStageCommentAction(input: StageCommentInput) {
         ),
       }),
     );
-    await runNotificationTask("comment-mentioned", () =>
+    runNotificationTaskAfterResponse("comment-mentioned", () =>
       notifyCommentMentioned({
         actorId: user.id,
         actorName: getUserDisplayName(user),
@@ -214,6 +297,32 @@ export async function acceptStageBriefAction(input: {
   }
 }
 
+export async function requestStageInvoiceAction(input: StageInvoiceRequestInput) {
+  const user = await requireUser();
+
+  try {
+    const request = await requestStageInvoice(user, input);
+    revalidateProjectFlow();
+
+    await runNotificationTask("stage-invoice-requested", () =>
+      notifyStageInvoiceRequested({
+        projectId: input.projectId,
+        stageId: input.stageId,
+        recipientUserId: request.requestedFromId,
+      }),
+    );
+
+    return { request };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to request the invoice right now.",
+    };
+  }
+}
+
 export async function createComparisonCommentAction(input: ComparisonCommentInput) {
   const user = await requireUser();
 
@@ -227,7 +336,7 @@ export async function createComparisonCommentAction(input: ComparisonCommentInpu
       error:
         error instanceof Error
           ? error.message
-          : "Unable to save the comparison comment right now.",
+          : "Unable to send the comparison message right now.",
     };
   }
 }
@@ -470,6 +579,27 @@ export async function prepareCopyrightTransferRequestAction(input: {
   }
 }
 
+export async function markProjectInvoiceNotRequiredAction(input: {
+  projectId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const workflow = await markProjectInvoiceNotRequired(user, input);
+    revalidateProjectFlow();
+    revalidateArchiveFlow(input.projectId);
+
+    return { workflow };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to mark final invoice as not required right now.",
+    };
+  }
+}
+
 export async function requestSubmissionRevisionAction(input: {
   projectId: string;
   stageId: string;
@@ -512,22 +642,19 @@ export const rejectStageSubmissionAction = requestSubmissionRevisionAction;
 export async function saveProjectCollaboratorsAction(
   projectId: string,
   collaborators: Array<{
-    id: string;
-    participantType: ProjectCollaboratorParticipantType | null;
+    id?: string;
+    userId?: string;
+    participantType?: ProjectCollaboratorParticipantType | null;
   }>,
 ) {
   const user = await requireUser();
-
-  if (user.role === UserRole.COLLABORATOR) {
-    return { error: "You are not allowed to update project collaborators." };
-  }
 
   try {
     const previousCollaboratorIds = await getProjectCollaboratorUserIds(projectId);
     const updatedCollaborators = await updateProjectCollaborators(
       projectId,
       collaborators,
-      user.id,
+      user,
     );
 
     revalidateProjectFlow();

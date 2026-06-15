@@ -1,13 +1,14 @@
-import { UserRole } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
-import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
 import {
   getDashboardProjectCounts,
+  getProjectListFilterOptions,
   getProjectsList,
 } from "@/lib/projects";
+import { hasPermission } from "@/lib/permissions/resolver";
 
 type ProjectFilter = {
   label: string;
@@ -36,6 +37,7 @@ export default async function ProjectsPage({
   const resolvedSearchParams = await searchParams;
   const activeStatus =
     resolvedSearchParams.status === "ALL" ||
+    resolvedSearchParams.status === "ONGOING" ||
     resolvedSearchParams.status === "PENDING" ||
     resolvedSearchParams.status === "ON_HOLD" ||
     resolvedSearchParams.status === "COMPLETED"
@@ -49,20 +51,25 @@ export default async function ProjectsPage({
       : "newest";
   const activeCategory = resolvedSearchParams.category?.trim() ?? "";
   const activeTag = resolvedSearchParams.tag?.trim() ?? "";
-  const [user, projects, projectCounts, filterOptions] = await Promise.all([
-    requireUser(),
+  const user = await requireUser();
+
+  if (!hasPermission(user, "project.list") && !hasPermission(user, "project.view")) {
+    redirect("/");
+  }
+
+  const [projects, projectCounts, filterOptions] = await Promise.all([
     getProjectsList({
       status: activeStatus,
       query,
       category: activeCategory,
       tag: activeTag,
       sort: activeSort,
-    }),
-    getDashboardProjectCounts(),
-    getActiveProjectMasterDataOptions(),
+    }, user),
+    getDashboardProjectCounts(user),
+    getProjectListFilterOptions(user),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
-  const canManageProjects = user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
+  const canCreateProject = hasPermission(user, "project.create");
 
   return (
     <DashboardLayout>
@@ -70,7 +77,7 @@ export default async function ProjectsPage({
         <ProjectsBrowser
           projects={projects}
           hasAnyProjects={hasAnyProjects}
-          canManageProjects={canManageProjects}
+          canCreateProject={canCreateProject}
           activeStatus={activeStatus}
           activeSort={activeSort}
           query={query}

@@ -14,6 +14,7 @@ import {
   Settings2,
   ShieldCheck,
   UserRound,
+  UsersRound,
   X,
 } from "lucide-react";
 
@@ -26,7 +27,19 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  getPasswordValidationMessage,
+  PASSWORD_REQUIREMENTS,
+} from "@/lib/password-rules";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import {
+  PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+  PROFILE_IMAGE_ALLOWED_MIME_TYPES,
+  buildFileTypeNotAllowedPayload,
+  formatUploadFileTypeError,
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
 type SettingsWorkspaceProps = {
   user: {
@@ -41,7 +54,10 @@ type SettingsWorkspaceProps = {
     jobTitle: string;
     bio: string;
   };
-  canManageMasterData?: boolean;
+  canUpdateProfile: boolean;
+  canChangePassword: boolean;
+  canViewMasterData?: boolean;
+  canViewUsers?: boolean;
 };
 
 type ProfileDraft = {
@@ -59,12 +75,8 @@ type PasswordDraft = {
 };
 
 const maxProfilePhotoBytes = 2 * 1024 * 1024;
-const allowedProfilePhotoTypes = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-]);
+const allowedProfilePhotoTypes = new Set<string>(PROFILE_IMAGE_ALLOWED_MIME_TYPES);
+const profilePhotoAccept = PROFILE_IMAGE_ALLOWED_MIME_TYPES.join(",");
 
 const departmentOptions = [
   "System Administration",
@@ -151,7 +163,14 @@ function buildProfileDraft(user: SettingsWorkspaceProps["user"]): ProfileDraft {
 
 function validateProfilePhoto(file: File) {
   if (!allowedProfilePhotoTypes.has(file.type.toLowerCase())) {
-    return "Profile photo must be JPG, PNG, GIF, or WebP.";
+    return formatUploadFileTypeError(
+      buildFileTypeNotAllowedPayload({
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        allowedExtensions: PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+        error: "Profile photo file type is not allowed.",
+      }),
+    );
   }
 
   if (file.size > maxProfilePhotoBytes) {
@@ -178,10 +197,12 @@ async function uploadProfilePhoto(file: File) {
     uploadUrl?: string;
     storageKey?: string;
     error?: string;
-  };
+  } & Partial<UploadFileTypeErrorPayload>;
 
   if (!uploadRequest.ok || !uploadPayload.uploadUrl || !uploadPayload.storageKey) {
-    throw new Error(uploadPayload.error || "Unable to prepare the profile photo upload.");
+    throw new Error(
+      getUploadErrorMessage(uploadPayload, "Unable to prepare the profile photo upload."),
+    );
   }
 
   const putResponse = await fetch(uploadPayload.uploadUrl, {
@@ -430,7 +451,7 @@ function EditProfileDrawer({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  accept={profilePhotoAccept}
                   className="hidden"
                   onChange={(event) => {
                     onSelectAvatar(event.target.files?.[0] ?? null);
@@ -707,6 +728,20 @@ function ChangePasswordDrawer({
                 disabled={saving}
               />
 
+              <div className="rounded-[20px] border border-[#dfe8df] bg-[#f7faf7] px-5 py-4">
+                <p className="text-[14px] font-[700] text-[#253129]">
+                  Password requirements
+                </p>
+                <ul className="mt-3 space-y-2 text-[14px] text-[#68736a]">
+                  {PASSWORD_REQUIREMENTS.map((requirement) => (
+                    <li key={requirement} className="flex gap-2">
+                      <span className="mt-[0.45em] h-1.5 w-1.5 rounded-full bg-brand" />
+                      <span>{requirement}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
               <PasswordInputField
                 label="Confirm New Password"
                 value={form.confirmNewPassword}
@@ -753,6 +788,10 @@ function ChangePasswordDrawer({
 
 export function SettingsWorkspace({
   user,
+  canUpdateProfile,
+  canChangePassword,
+  canViewMasterData = false,
+  canViewUsers = false,
 }: SettingsWorkspaceProps) {
   const router = useRouter();
   const [isProfileDrawerOpen, setProfileDrawerOpen] = useState(false);
@@ -1015,6 +1054,17 @@ export function SettingsWorkspace({
       return;
     }
 
+    const passwordValidationMessage = getPasswordValidationMessage(passwordForm.newPassword);
+
+    if (passwordValidationMessage) {
+      setPasswordDrawerError("Please correct the highlighted fields.");
+      setPasswordFieldErrors({
+        newPassword: passwordValidationMessage,
+      });
+      showErrorToast("Unable to update password.", "Please review the highlighted fields.");
+      return;
+    }
+
     if (passwordForm.newPassword === passwordForm.currentPassword) {
       setPasswordDrawerError("Please correct the highlighted fields.");
       setPasswordFieldErrors({
@@ -1077,7 +1127,11 @@ export function SettingsWorkspace({
           <SettingsCard
             title="Profile Information"
             description="Update your personal information and how others see you."
-            action={<ActionButton icon={PencilLine} label="Edit Profile" onClick={openDrawer} />}
+            action={
+              canUpdateProfile ? (
+                <ActionButton icon={PencilLine} label="Edit Profile" onClick={openDrawer} />
+              ) : undefined
+            }
           >
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
               <AvatarCircle
@@ -1106,11 +1160,13 @@ export function SettingsWorkspace({
             title="Password"
             description="Update your password regularly to keep your account secure."
             action={
-              <ActionButton
-                icon={LockKeyhole}
-                label="Change Password"
-                onClick={openPasswordDrawer}
-              />
+              canChangePassword ? (
+                <ActionButton
+                  icon={LockKeyhole}
+                  label="Change Password"
+                  onClick={openPasswordDrawer}
+                />
+              ) : undefined
             }
           >
             <div className="space-y-1">
@@ -1121,32 +1177,63 @@ export function SettingsWorkspace({
             </div>
           </SettingsCard>
 
-          <SettingsCard
-            title="Project Master Data"
-            description="Manage reusable project categories, tags, and currencies used across project forms and filters."
-            action={
-              <Button
-                asChild
-                type="button"
-                variant="outline"
-                className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
-              >
-                <Link href="/settings/project-master-data">
-                  <Settings2 className="h-4 w-4" />
-                  Open Project Master Data
-                </Link>
-              </Button>
-            }
-          >
-            <div className="rounded-[22px] bg-[#fbfcfa] p-4">
-              <p className="text-[15px] font-semibold text-[#1e261f]">
-                Categories and tags
-              </p>
-              <p className="mt-1 text-[14px] text-[#748074]">
-                Manage reusable values used across project forms and filters.
-              </p>
-            </div>
-          </SettingsCard>
+          {canViewMasterData ? (
+            <SettingsCard
+              title="Project Master Data"
+              description="Manage reusable project categories, tags, and currencies used across project forms and filters."
+              action={
+                <Button
+                  asChild
+                  type="button"
+                  variant="outline"
+                  className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
+                >
+                  <Link href="/settings/project-master-data">
+                    <Settings2 className="h-4 w-4" />
+                    Open Project Master Data
+                  </Link>
+                </Button>
+              }
+            >
+              <div className="rounded-[22px] bg-[#fbfcfa] p-4">
+                <p className="text-[15px] font-semibold text-[#1e261f]">
+                  Categories and tags
+                </p>
+                <p className="mt-1 text-[14px] text-[#748074]">
+                  Manage reusable values used across project forms and filters.
+                </p>
+              </div>
+            </SettingsCard>
+          ) : null}
+
+          {canViewUsers ? (
+            <SettingsCard
+              title="Users & Permissions"
+              description="Review accounts, assign roles, and configure global permission profiles."
+              action={
+                <Button
+                  asChild
+                  type="button"
+                  variant="outline"
+                  className="h-[42px] gap-2 rounded-xl border-[#b8d8c0] bg-[#fbfefc] px-4 text-[13px] font-semibold text-brand shadow-[0_8px_20px_rgba(35,104,72,0.06)] hover:bg-brand-soft"
+                >
+                  <Link href="/users">
+                    <UsersRound className="h-4 w-4" />
+                    Open Users & Permissions
+                  </Link>
+                </Button>
+              }
+            >
+              <div className="rounded-[22px] bg-[#fbfcfa] p-4">
+                <p className="text-[15px] font-semibold text-[#1e261f]">
+                  Role and permission profiles
+                </p>
+                <p className="mt-1 text-[14px] text-[#748074]">
+                  Manage global permissions without creating per-user permission overrides.
+                </p>
+              </div>
+            </SettingsCard>
+          ) : null}
         </div>
       </section>
 

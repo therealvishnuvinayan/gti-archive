@@ -4,18 +4,30 @@ import {
   Prisma,
   ProjectCompletionDocumentType,
   ProjectCompletionStepStatus,
+  ProjectExecutionType,
+  ProjectExecutorRole,
   SubmissionReviewStatus,
-  UserRole,
   type User,
 } from "@prisma/client";
 
 import { getUserDisplayName } from "@/lib/auth";
+import {
+  assertProjectTimestampVisibleForUser,
+  canBypassCollaboratorVisibility,
+  getProjectCollaboratorVisibilityState,
+  isTimestampHiddenByPauseWindows,
+} from "@/lib/project-collaborator-visibility";
 import {
   notifyApprovalProofUploaded,
   notifyCopyrightDocumentUploaded,
   notifyInvoiceUploaded,
   runNotificationTask,
 } from "@/lib/notification-center";
+import {
+  hasProjectPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
+import type { PermissionKey } from "@/lib/permissions/definitions";
 import { assertProjectAccess } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
@@ -29,11 +41,17 @@ import {
   isAllowedProjectCompletionDocument,
   sanitizeFileName,
 } from "@/lib/storage/s3";
+import {
+  COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
+  UploadFileTypeError,
+  buildFileTypeNotAllowedPayload,
+} from "@/lib/upload-validation";
 
 export type ProjectCompletionWorkflowUser = Pick<
   User,
   "id" | "role" | "email" | "name" | "projectAccess" | "collaboratorType"
->;
+> &
+  PermissionUser;
 
 export type ProjectCompletionContactOption = {
   id: string;
@@ -72,6 +90,9 @@ export type ProjectCompletionDocumentRecord = {
 export type ProjectCompletionWorkflowRecord = {
   workflowId: string;
   projectId: string;
+  executionType: ProjectExecutionType;
+  executionTypeLabel: string;
+  isInternalExecution: boolean;
   canManage: boolean;
   canUploadInvoice: boolean;
   needsInitialConfiguration: boolean;
@@ -122,6 +143,39 @@ export type RequestProjectCompletionDocumentUploadResult = {
 type ProjectCompletionProjectRecord = NonNullable<
   Awaited<ReturnType<typeof getProjectCompletionProject>>
 >;
+
+function formatCompletionExecutionTypeLabel(executionType: ProjectExecutionType) {
+  return executionType === ProjectExecutionType.INTERNAL
+    ? "Internal Execution"
+    : "External Execution";
+}
+
+function isInternalCompletionProject(
+  project: Pick<ProjectCompletionProjectRecord, "executionType">,
+) {
+  return project.executionType === ProjectExecutionType.INTERNAL;
+}
+
+function getInternalCompletionWorkflowData(completedAt = new Date()) {
+  return {
+    approvalRequired: false,
+    approvalStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+    approvalContactUserId: null,
+    approvalNote: null,
+    approvalSelectedArchivedFileIds: [],
+    approvalRequestedAt: null,
+    approvalCompletedAt: null,
+    copyrightRequired: false,
+    copyrightStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+    copyrightContactUserId: null,
+    copyrightNote: null,
+    copyrightRequestedAt: null,
+    copyrightCompletedAt: null,
+    invoiceStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+    invoiceCompletedAt: null,
+    completedAt,
+  };
+}
 
 function formatCompletionTimestamp(value: Date | string | number | null | undefined) {
   if (!value) {
@@ -174,7 +228,7 @@ function getCompletionDocumentTypeLabel(type: ProjectCompletionDocumentType) {
       return "Copyright Transfer";
     case ProjectCompletionDocumentType.INVOICE:
     default:
-      return "Invoice";
+      return "Final Invoice";
   }
 }
 
@@ -201,43 +255,66 @@ function isProjectOwner(
   return project.createdById === userId;
 }
 
-function isProjectExecutor(
-  project: Pick<ProjectCompletionProjectRecord, "executorUserId">,
-  userId: string,
-) {
-  return Boolean(project.executorUserId && project.executorUserId === userId);
-}
+type ProjectCompletionPermissionProject = {
+  createdById: string;
+  executorUserId: string | null;
+  executors: Array<{
+    userId: string;
+    role: ProjectExecutorRole;
+  }>;
+};
 
 function canViewCompletionWorkflow(
-  project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
-  user: Pick<ProjectCompletionWorkflowUser, "id">,
+  project: ProjectCompletionPermissionProject,
+  user: ProjectCompletionWorkflowUser,
 ) {
-  return isProjectOwner(project, user.id) || isProjectExecutor(project, user.id);
+  return hasProjectPermission(user, project, "completion.viewChecklist");
 }
 
 function canManageCompletionWorkflow(
   project: Pick<ProjectCompletionProjectRecord, "createdById">,
-  user: Pick<ProjectCompletionWorkflowUser, "id">,
+  user: ProjectCompletionWorkflowUser,
 ) {
   return isProjectOwner(project, user.id);
 }
 
 function canUploadInvoiceForProject(
-  project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
-  user: Pick<ProjectCompletionWorkflowUser, "id">,
+  project: ProjectCompletionPermissionProject,
+  user: ProjectCompletionWorkflowUser,
 ) {
-  return isProjectOwner(project, user.id) || isProjectExecutor(project, user.id);
+  return hasProjectPermission(user, project, "completion.uploadInvoice");
 }
 
 function canAccessCompletionDocuments(
-  project: Pick<ProjectCompletionProjectRecord, "createdById" | "executorUserId">,
-  user: Pick<ProjectCompletionWorkflowUser, "id" | "role">,
+  project: ProjectCompletionPermissionProject,
+  user: ProjectCompletionWorkflowUser,
 ) {
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
-    return true;
-  }
+  return hasProjectPermission(user, project, "completion.viewChecklist");
+}
 
-  return canUploadInvoiceForProject(project, user);
+function requireCompletionProjectPermission(
+  project: ProjectCompletionPermissionProject,
+  user: ProjectCompletionWorkflowUser,
+  permissionKey: PermissionKey,
+  message: string,
+) {
+  if (!hasProjectPermission(user, project, permissionKey)) {
+    throw new Error(message);
+  }
+}
+
+function getCompletionDocumentUploadPermissionKey(
+  documentType: ProjectCompletionDocumentType,
+) {
+  switch (documentType) {
+    case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
+      return "completion.uploadApprovalProof" satisfies PermissionKey;
+    case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
+      return "completion.uploadCopyrightDocument" satisfies PermissionKey;
+    case ProjectCompletionDocumentType.INVOICE:
+    default:
+      return "completion.uploadInvoice" satisfies PermissionKey;
+  }
 }
 
 function isCompletedProject(project: {
@@ -265,6 +342,10 @@ function getNextInvoiceStatus(
 ) {
   if (currentStatus === ProjectCompletionStepStatus.COMPLETED) {
     return ProjectCompletionStepStatus.COMPLETED;
+  }
+
+  if (currentStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
+    return ProjectCompletionStepStatus.NOT_REQUIRED;
   }
 
   return isStepResolved(approvalStatus) && isStepResolved(copyrightStatus)
@@ -295,6 +376,25 @@ function ensureRequirementChangeAllowed(
     : ProjectCompletionStepStatus.NOT_REQUIRED;
 }
 
+function getProjectCompletionExecutorRoleLabel(role: ProjectExecutorRole) {
+  return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
+}
+
+function compareProjectCompletionExecutors(
+  left: ProjectCompletionProjectRecord["executors"][number],
+  right: ProjectCompletionProjectRecord["executors"][number],
+) {
+  if (left.role !== right.role) {
+    return left.role === ProjectExecutorRole.MAIN_EXECUTOR ? -1 : 1;
+  }
+
+  return getUserDisplayName(left.user).localeCompare(
+    getUserDisplayName(right.user),
+    undefined,
+    { sensitivity: "base" },
+  );
+}
+
 function mapContactOptions(project: ProjectCompletionProjectRecord) {
   const contactMap = new Map<string, ProjectCompletionContactOption>();
 
@@ -314,17 +414,27 @@ function mapContactOptions(project: ProjectCompletionProjectRecord) {
 
   addContact(project.createdBy, "Project Owner");
 
-  if (project.executorUser) {
-    addContact(project.executorUser, "Project Executor");
+  for (const executor of [...project.executors].sort(compareProjectCompletionExecutors)) {
+    addContact(executor.user, getProjectCompletionExecutorRoleLabel(executor.role));
   }
 
-  for (const collaborator of project.collaborators) {
+  if (project.executorUser) {
+    addContact(project.executorUser, "Main Executor");
+  }
+
+  const sortedCollaborators = [...project.collaborators].sort((left, right) =>
+    getUserDisplayName(left.user).localeCompare(
+      getUserDisplayName(right.user),
+      undefined,
+      { sensitivity: "base" },
+    ),
+  );
+
+  for (const collaborator of sortedCollaborators) {
     addContact(collaborator.user, "Collaborator");
   }
 
-  return Array.from(contactMap.values()).sort((left, right) =>
-    left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
-  );
+  return Array.from(contactMap.values());
 }
 
 function mapArchivedFileOption(
@@ -372,10 +482,23 @@ async function getProjectCompletionProject(projectId: string) {
         id: true,
         name: true,
         category: true,
-        tag: true,
+        executionType: true,
         status: true,
         createdById: true,
         executorUserId: true,
+        executors: {
+          select: {
+            userId: true,
+            role: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
         archivedAt: true,
         completedAt: true,
         createdBy: {
@@ -421,6 +544,7 @@ async function getProjectCompletionProject(projectId: string) {
                 originalFileName: true,
                 mimeType: true,
                 fileSize: true,
+                archivedAt: true,
                 sourceRevisionId: true,
                 sourceRevision: {
                   select: {
@@ -563,10 +687,17 @@ async function ensureProjectCompletionDocumentAccess(
         mimeType: true,
         bucket: true,
         storageKey: true,
+        uploadedAt: true,
         project: {
           select: {
             createdById: true,
             executorUserId: true,
+            executors: {
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
           },
         },
       },
@@ -582,6 +713,13 @@ async function ensureProjectCompletionDocumentAccess(
   if (!canAccessCompletionDocuments(document.project, user)) {
     throw new Error("You do not have access to this completion document.");
   }
+
+  await assertProjectTimestampVisibleForUser(user, {
+    projectId: document.projectId,
+    projectOwnerId: document.project.createdById,
+    timestamp: document.uploadedAt,
+    message: "You do not have access to this completion document.",
+  });
 
   return document;
 }
@@ -641,17 +779,42 @@ function mapWorkflowRecord(
   );
   const documents = project.completionWorkflow.documents.map(mapDocumentRecord);
   const documentByType = new Map(documents.map((document) => [document.type, document] as const));
+  const isInternalExecution = isInternalCompletionProject(project);
+  const approvalRequired = isInternalExecution
+    ? false
+    : project.completionWorkflow.approvalRequired;
+  const approvalStatus = isInternalExecution
+    ? ProjectCompletionStepStatus.NOT_REQUIRED
+    : project.completionWorkflow.approvalStatus;
+  const approvalSelectedArchivedFileIds = isInternalExecution
+    ? []
+    : project.completionWorkflow.approvalSelectedArchivedFileIds;
+  const copyrightRequired = isInternalExecution
+    ? false
+    : project.completionWorkflow.copyrightRequired;
+  const copyrightStatus = isInternalExecution
+    ? ProjectCompletionStepStatus.NOT_REQUIRED
+    : project.completionWorkflow.copyrightStatus;
+  const invoiceStatus = isInternalExecution
+    ? ProjectCompletionStepStatus.NOT_REQUIRED
+    : project.completionWorkflow.invoiceStatus;
 
   return {
     workflowId: project.completionWorkflow.id,
     projectId: project.id,
+    executionType: project.executionType,
+    executionTypeLabel: formatCompletionExecutionTypeLabel(project.executionType),
+    isInternalExecution,
     canManage: canManageCompletionWorkflow(project, user),
-    canUploadInvoice: canUploadInvoiceForProject(project, user),
+    canUploadInvoice: isInternalExecution
+      ? false
+      : canUploadInvoiceForProject(project, user),
     needsInitialConfiguration:
-      project.completionWorkflow.approvalRequired === null ||
-      project.completionWorkflow.copyrightRequired === null,
-    approvalRequired: project.completionWorkflow.approvalRequired,
-    approvalStatus: project.completionWorkflow.approvalStatus,
+      !isInternalExecution &&
+      (project.completionWorkflow.approvalRequired === null ||
+        project.completionWorkflow.copyrightRequired === null),
+    approvalRequired,
+    approvalStatus,
     approvalContactUserId: project.completionWorkflow.approvalContactUserId ?? null,
     approvalContactName: project.completionWorkflow.approvalContactUser
       ? getUserDisplayName(project.completionWorkflow.approvalContactUser)
@@ -663,10 +826,9 @@ function mapWorkflowRecord(
     approvalCompletedAt: formatCompletionTimestamp(
       project.completionWorkflow.approvalCompletedAt,
     ),
-    approvalSelectedArchivedFileIds:
-      project.completionWorkflow.approvalSelectedArchivedFileIds,
-    copyrightRequired: project.completionWorkflow.copyrightRequired,
-    copyrightStatus: project.completionWorkflow.copyrightStatus,
+    approvalSelectedArchivedFileIds,
+    copyrightRequired,
+    copyrightStatus,
     copyrightContactUserId: project.completionWorkflow.copyrightContactUserId ?? null,
     copyrightContactName: project.completionWorkflow.copyrightContactUser
       ? getUserDisplayName(project.completionWorkflow.copyrightContactUser)
@@ -678,18 +840,19 @@ function mapWorkflowRecord(
     copyrightCompletedAt: formatCompletionTimestamp(
       project.completionWorkflow.copyrightCompletedAt,
     ),
-    invoiceStatus: project.completionWorkflow.invoiceStatus,
+    invoiceStatus,
     invoiceCompletedAt: formatCompletionTimestamp(project.completionWorkflow.invoiceCompletedAt),
     completedAt: formatCompletionTimestamp(project.completionWorkflow.completedAt),
-    isApprovalResolved: isStepResolved(project.completionWorkflow.approvalStatus),
-    isCopyrightUnlocked: isStepResolved(project.completionWorkflow.approvalStatus),
-    isCopyrightResolved: isStepResolved(project.completionWorkflow.copyrightStatus),
+    isApprovalResolved: isStepResolved(approvalStatus),
+    isCopyrightUnlocked: isStepResolved(approvalStatus),
+    isCopyrightResolved: isStepResolved(copyrightStatus),
     isInvoiceUnlocked:
-      isStepResolved(project.completionWorkflow.approvalStatus) &&
-      isStepResolved(project.completionWorkflow.copyrightStatus),
+      isInternalExecution ||
+      (isStepResolved(approvalStatus) &&
+        isStepResolved(copyrightStatus)),
     availableContacts: mapContactOptions(project),
     finalArchivedFiles,
-    approvalSelectedFiles,
+    approvalSelectedFiles: isInternalExecution ? [] : approvalSelectedFiles,
     documents,
     approvalProofDocument:
       documentByType.get(ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF) ?? null,
@@ -697,6 +860,76 @@ function mapWorkflowRecord(
       documentByType.get(ProjectCompletionDocumentType.COPYRIGHT_TRANSFER) ?? null,
     invoiceDocument: documentByType.get(ProjectCompletionDocumentType.INVOICE) ?? null,
   } satisfies ProjectCompletionWorkflowRecord;
+}
+
+async function filterCompletionProjectForVisibility(
+  project: ProjectCompletionProjectRecord,
+  user: ProjectCompletionWorkflowUser,
+): Promise<ProjectCompletionProjectRecord> {
+  if (canBypassCollaboratorVisibility(user, project.createdById)) {
+    return project;
+  }
+
+  const visibilityState = await getProjectCollaboratorVisibilityState(
+    project.id,
+    user.id,
+  );
+
+  if (!visibilityState) {
+    return project;
+  }
+
+  const hideAllVisibleFiles =
+    visibilityState.chatVisibilityPaused &&
+    visibilityState.visibilityPauses.length === 0;
+
+  if (!hideAllVisibleFiles && visibilityState.visibilityPauses.length === 0) {
+    return project;
+  }
+
+  const visibleArchiveFiles =
+    project.archive?.files.filter((file) => {
+      if (hideAllVisibleFiles) {
+        return false;
+      }
+
+      return !isTimestampHiddenByPauseWindows(
+        file.archivedAt,
+        visibilityState.visibilityPauses,
+      );
+    }) ?? [];
+  const visibleArchiveFileIds = new Set(visibleArchiveFiles.map((file) => file.id));
+  const visibleDocuments =
+    project.completionWorkflow?.documents.filter((document) => {
+      if (hideAllVisibleFiles) {
+        return false;
+      }
+
+      return !isTimestampHiddenByPauseWindows(
+        document.uploadedAt,
+        visibilityState.visibilityPauses,
+      );
+    }) ?? [];
+
+  return {
+    ...project,
+    archive: project.archive
+      ? {
+          ...project.archive,
+          files: visibleArchiveFiles,
+        }
+      : null,
+    completionWorkflow: project.completionWorkflow
+      ? {
+          ...project.completionWorkflow,
+          approvalSelectedArchivedFileIds:
+            project.completionWorkflow.approvalSelectedArchivedFileIds.filter(
+              (fileId) => visibleArchiveFileIds.has(fileId),
+            ),
+          documents: visibleDocuments,
+        }
+      : null,
+  };
 }
 
 function validateContactSelection(
@@ -744,10 +977,13 @@ export async function getProjectCompletionWorkflowForUser(
       throw new Error("Unable to load the project completion workflow.");
     }
 
-    return mapWorkflowRecord(refreshedProject, user);
+    return mapWorkflowRecord(
+      await filterCompletionProjectForVisibility(refreshedProject, user),
+      user,
+    );
   }
 
-  return mapWorkflowRecord(project, user);
+  return mapWorkflowRecord(await filterCompletionProjectForVisibility(project, user), user);
 }
 
 export async function configureProjectCompletionWorkflow(
@@ -759,6 +995,40 @@ export async function configureProjectCompletionWorkflow(
   },
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+  requireCompletionProjectPermission(
+    project,
+    user,
+    "completion.setApprovalRequired",
+    "You do not have permission to configure authority approval requirements.",
+  );
+  requireCompletionProjectPermission(
+    project,
+    user,
+    "completion.setCopyrightRequired",
+    "You do not have permission to configure copyright transfer requirements.",
+  );
+
+  if (isInternalCompletionProject(project)) {
+    await withPrismaRetry(() =>
+      prisma.$transaction(async (tx) => {
+        await ensureWorkflowExistsTx(tx, project.id);
+        await tx.projectCompletionWorkflow.update({
+          where: {
+            projectId: project.id,
+          },
+          data: getInternalCompletionWorkflowData(),
+        });
+      }),
+    );
+
+    const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
+
+    if (!workflow) {
+      throw new Error("Unable to load the updated project completion workflow.");
+    }
+
+    return workflow;
+  }
 
   await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
@@ -833,6 +1103,16 @@ export async function prepareAuthorityApprovalRequest(
   },
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+  requireCompletionProjectPermission(
+    project,
+    user,
+    "completion.prepareApproval",
+    "You do not have permission to prepare authority approval requests.",
+  );
+
+  if (isInternalCompletionProject(project)) {
+    throw new Error("Authority approval is not required for internal execution.");
+  }
 
   if (!project.archive || project.archive.files.length === 0) {
     throw new Error("No final archived files are available for authority approval.");
@@ -910,6 +1190,17 @@ export async function prepareCopyrightTransferRequest(
   },
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+  requireCompletionProjectPermission(
+    project,
+    user,
+    "completion.prepareCopyrightTransfer",
+    "You do not have permission to prepare copyright transfer requests.",
+  );
+
+  if (isInternalCompletionProject(project)) {
+    throw new Error("Copyright transfer is not required for internal execution.");
+  }
+
   const contactOptions = mapContactOptions(project);
   validateContactSelection(contactOptions, input.contactUserId, "copyright");
 
@@ -964,6 +1255,97 @@ export async function prepareCopyrightTransferRequest(
   return workflow;
 }
 
+export async function markProjectInvoiceNotRequired(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+  },
+) {
+  const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+
+  if (isInternalCompletionProject(project)) {
+    await withPrismaRetry(() =>
+      prisma.$transaction(async (tx) => {
+        await ensureWorkflowExistsTx(tx, project.id);
+        await tx.projectCompletionWorkflow.update({
+          where: {
+            projectId: project.id,
+          },
+          data: getInternalCompletionWorkflowData(),
+        });
+      }),
+    );
+
+    const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
+
+    if (!workflow) {
+      throw new Error("Unable to load the updated project completion workflow.");
+    }
+
+    return workflow;
+  }
+
+  await withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const workflow = await ensureWorkflowExistsTx(tx, project.id);
+
+      if (
+        !isStepResolved(workflow.approvalStatus) ||
+        !isStepResolved(workflow.copyrightStatus)
+      ) {
+        throw new Error(
+          "Complete or skip authority approval and copyright transfer before marking final invoice as not required.",
+        );
+      }
+
+      if (workflow.invoiceStatus === ProjectCompletionStepStatus.COMPLETED) {
+        throw new Error("Final invoice has already been completed.");
+      }
+
+      if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
+        return;
+      }
+
+      const invoiceDocument = await tx.projectCompletionDocument.findUnique({
+        where: {
+          workflowId_type: {
+            workflowId: workflow.id,
+            type: ProjectCompletionDocumentType.INVOICE,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (invoiceDocument) {
+        throw new Error("A final invoice document has already been uploaded.");
+      }
+
+      const completedAt = new Date();
+
+      await tx.projectCompletionWorkflow.update({
+        where: {
+          projectId: project.id,
+        },
+        data: {
+          invoiceStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+          invoiceCompletedAt: null,
+          completedAt,
+        },
+      });
+    }),
+  );
+
+  const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
+
+  if (!workflow) {
+    throw new Error("Unable to load the updated project completion workflow.");
+  }
+
+  return workflow;
+}
+
 export async function requestProjectCompletionDocumentUpload(
   user: ProjectCompletionWorkflowUser,
   input: RequestProjectCompletionDocumentUploadInput,
@@ -985,7 +1367,14 @@ export async function requestProjectCompletionDocumentUpload(
   }
 
   if (!isAllowedProjectCompletionDocument(input.originalFileName, input.mimeType)) {
-    throw new Error("Completion documents must be PDF, PNG, JPG, JPEG, or WebP files.");
+    throw new UploadFileTypeError(
+      buildFileTypeNotAllowedPayload({
+        fileName: input.originalFileName,
+        mimeType: input.mimeType,
+        allowedExtensions: COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
+        error: "Completion document file type is not allowed.",
+      }),
+    );
   }
 
   const project = await ensureProjectCompletionViewAccess(user, input.projectId);
@@ -993,6 +1382,17 @@ export async function requestProjectCompletionDocumentUpload(
   if (!project) {
     throw new Error("You do not have access to this completion workflow.");
   }
+
+  if (isInternalCompletionProject(project)) {
+    throw new Error("Completion documents are not required for internal execution.");
+  }
+
+  requireCompletionProjectPermission(
+    project,
+    user,
+    getCompletionDocumentUploadPermissionKey(input.documentType),
+    "You do not have permission to upload this completion document.",
+  );
 
   const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
 
@@ -1027,13 +1427,17 @@ export async function requestProjectCompletionDocumentUpload(
       break;
     case ProjectCompletionDocumentType.INVOICE:
       if (!workflow.canUploadInvoice) {
-        throw new Error("Only the project owner or project executor can upload the invoice.");
+        throw new Error("Only the project owner or project executor can upload the final invoice.");
       }
 
       if (!workflow.isInvoiceUnlocked) {
         throw new Error(
-          "Complete or skip authority approval and copyright transfer before uploading the invoice.",
+          "Complete or skip authority approval and copyright transfer before uploading the final invoice.",
         );
+      }
+
+      if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
+        throw new Error("Final invoice is marked as not required for this project.");
       }
       break;
   }
@@ -1074,7 +1478,14 @@ export async function finalizeProjectCompletionDocumentUpload(
   }
 
   if (!isAllowedProjectCompletionDocument(input.originalFileName, input.mimeType)) {
-    throw new Error("Completion documents must be PDF, PNG, JPG, JPEG, or WebP files.");
+    throw new UploadFileTypeError(
+      buildFileTypeNotAllowedPayload({
+        fileName: input.originalFileName,
+        mimeType: input.mimeType,
+        allowedExtensions: COMPLETION_DOCUMENT_ALLOWED_EXTENSIONS,
+        error: "Completion document file type is not allowed.",
+      }),
+    );
   }
 
   const expectedPrefix = buildCompletionDocumentStoragePrefix(
@@ -1096,6 +1507,13 @@ export async function finalizeProjectCompletionDocumentUpload(
           id: true,
           createdById: true,
           executorUserId: true,
+          executors: {
+            select: {
+              userId: true,
+              role: true,
+            },
+          },
+          executionType: true,
           status: true,
           archivedAt: true,
           completedAt: true,
@@ -1112,11 +1530,21 @@ export async function finalizeProjectCompletionDocumentUpload(
       }
 
       await assertProjectAccess(user, input.projectId);
+      requireCompletionProjectPermission(
+        project,
+        user,
+        getCompletionDocumentUploadPermissionKey(input.documentType),
+        "You do not have permission to upload this completion document.",
+      );
 
       if (!isCompletedProject(project)) {
         throw new Error(
           "Complete and archive the project before uploading completion documents.",
         );
+      }
+
+      if (project.executionType === ProjectExecutionType.INTERNAL) {
+        throw new Error("Completion documents are not required for internal execution.");
       }
 
       const canManage = canManageCompletionWorkflow(project, user);
@@ -1246,7 +1674,7 @@ export async function finalizeProjectCompletionDocumentUpload(
           break;
         case ProjectCompletionDocumentType.INVOICE:
           if (!canUploadInvoice) {
-            throw new Error("Only the project owner or project executor can upload the invoice.");
+            throw new Error("Only the project owner or project executor can upload the final invoice.");
           }
 
           if (
@@ -1254,8 +1682,12 @@ export async function finalizeProjectCompletionDocumentUpload(
             !isStepResolved(workflow.copyrightStatus)
           ) {
             throw new Error(
-              "Complete or skip authority approval and copyright transfer before uploading the invoice.",
+              "Complete or skip authority approval and copyright transfer before uploading the final invoice.",
             );
+          }
+
+          if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
+            throw new Error("Final invoice is marked as not required for this project.");
           }
 
           await tx.projectCompletionDocument.upsert({

@@ -54,6 +54,24 @@ function hashAuthPassword(password) {
   return `${salt}:${hash}`;
 }
 
+function getPasswordValidationErrors(value) {
+  const errors = [];
+
+  if (value.length < 6) {
+    errors.push("Password must be at least 6 characters.");
+  }
+
+  if (!/[A-Z]/.test(value)) {
+    errors.push("Password must include at least one uppercase letter.");
+  }
+
+  if (!/[0-9]/.test(value)) {
+    errors.push("Password must include at least one number.");
+  }
+
+  return errors;
+}
+
 function getArg(flag) {
   const index = process.argv.indexOf(flag);
   return index >= 0 ? process.argv[index + 1] : undefined;
@@ -71,8 +89,10 @@ if (!email || !password) {
   process.exit(1);
 }
 
-if (!password.trim()) {
-  console.error("Password is required.");
+const passwordErrors = getPasswordValidationErrors(password);
+
+if (passwordErrors.length > 0) {
+  console.error(passwordErrors.join(" "));
   process.exit(1);
 }
 

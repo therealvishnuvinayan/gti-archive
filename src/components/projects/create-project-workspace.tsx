@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useActionState,
   useEffect,
   useMemo,
@@ -22,10 +23,12 @@ import {
   createProjectAction,
   updateProjectAction,
 } from "@/app/(dashboard)/projects/new/actions";
+import { saveProjectCollaboratorsAction } from "@/app/(dashboard)/projects/actions";
 import {
   initialProjectFormState,
   type ProjectEditorInitialAttachment,
   type ProjectEditorInitialCollaborator,
+  type ProjectEditorInitialExecutor,
   type ProjectEditorInitialValues,
   type ProjectFormFieldErrors,
   type ProjectFormState,
@@ -39,11 +42,9 @@ import {
 import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
+import { ProjectCollaboratorsSummary } from "@/components/projects/project-collaborators-panel";
 import {
   getDefaultProjectCollaboratorParticipantType,
-  getProjectCollaboratorTypeMeta,
-  projectCollaboratorParticipantTypes,
-  type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import {
   MotionItem,
@@ -70,6 +71,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
+import type { ProjectCollaboratorRecord } from "@/lib/projects";
 import {
   DEFAULT_PROJECT_PRIORITY,
   formatProjectPriority,
@@ -82,6 +84,10 @@ import {
   showSuccessToast,
   showWarningToast,
 } from "@/lib/toast";
+import {
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 
 const projectStatusOptions = [
   { value: "ONGOING", label: "Ongoing" },
@@ -90,15 +96,39 @@ const projectStatusOptions = [
   { value: "COMPLETED", label: "Completed" },
 ] as const;
 
+const MAX_PROJECT_TAGS = 5;
+
 type ProjectStatusValue = (typeof projectStatusOptions)[number]["value"];
+
+const projectExecutionTypeOptions = [
+  {
+    value: "INTERNAL",
+    label: "Internal Execution",
+    shortLabel: "Internal",
+    description: "Handled inside the company. Budget, invoices, and external documents are not required.",
+  },
+  {
+    value: "EXTERNAL",
+    label: "External Execution",
+    shortLabel: "External",
+    description: "Handled by an outside party. Budget, invoices, copyright, and official documents apply.",
+  },
+] as const;
+
+type ProjectExecutionTypeValue =
+  (typeof projectExecutionTypeOptions)[number]["value"];
 
 type StageForm = {
   id: string;
+  persistedId?: string;
   name: string;
   budget: string;
   description: string;
+  invoiceRequired: boolean;
   plannedStartAt: string;
   plannedDueAt: string;
+  attachments: ProjectEditorInitialAttachment[];
+  pendingFiles: File[];
 };
 
 type MonthPickerProps = {
@@ -134,17 +164,31 @@ type ExecutorOption = {
   type: CollaboratorRecord["type"];
 };
 
+type ProjectExecutorRoleValue = ProjectEditorInitialExecutor["role"];
+
 type UploadAssetResponse = {
   attachmentId?: string;
   uploadUrl?: string;
   error?: string;
-};
+} & Partial<UploadFileTypeErrorPayload>;
 
 type QuickAddMasterDataKind = "category" | "tag";
 
 function getLocalFileTypeLabel(fileName: string) {
   const extension = fileName.split(".").pop()?.toUpperCase();
   return extension && extension.length <= 5 ? extension : "FILE";
+}
+
+function formatLocalFileSize(fileSize: number) {
+  if (fileSize >= 1024 * 1024) {
+    return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (fileSize >= 1024) {
+    return `${(fileSize / 1024).toFixed(1)} KB`;
+  }
+
+  return `${fileSize} B`;
 }
 
 function formatDateValue(date: Date) {
@@ -192,6 +236,18 @@ function formatBudgetDisplay(value: number, currencyCode: string) {
   return `${formatted} ${currencyCode}`.trim();
 }
 
+function formatBudgetDifference(value: number, currencyCode: string) {
+  if (value < 0) {
+    return `${formatBudgetDisplay(Math.abs(value), currencyCode)} over budget`;
+  }
+
+  if (value > 0) {
+    return `${formatBudgetDisplay(value, currencyCode)} unallocated`;
+  }
+
+  return formatBudgetDisplay(0, currencyCode);
+}
+
 function getStartOfDay(date: Date) {
   const normalizedDate = new Date(date);
   normalizedDate.setHours(0, 0, 0, 0);
@@ -211,6 +267,120 @@ function parseStageDateTimeValue(value: string) {
 
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function validateClientStageTimeline(input: {
+  stages: StageForm[];
+  projectStartDate: Date | null;
+  projectEndDate: Date | null;
+  includeRequired: boolean;
+  includeStageRequired?: boolean;
+}) {
+  const stageStartDateErrors: Array<string | undefined> = Array.from(
+    { length: input.stages.length },
+    () => undefined,
+  );
+  const stageDueDateErrors: Array<string | undefined> = Array.from(
+    { length: input.stages.length },
+    () => undefined,
+  );
+  const projectStartDateError =
+    input.includeRequired && !input.projectStartDate
+      ? "Project start date is required."
+      : undefined;
+  let projectEndDateError =
+    input.includeRequired && !input.projectEndDate
+      ? "Project end date is required."
+      : undefined;
+  const includeStageRequired = input.includeStageRequired ?? input.includeRequired;
+
+  if (input.projectStartDate && input.projectEndDate) {
+    const projectStartBoundary = getStartOfDay(input.projectStartDate);
+    const projectEndBoundary = getEndOfDay(input.projectEndDate);
+
+    if (getStartOfDay(input.projectEndDate) <= projectStartBoundary) {
+      projectEndDateError = "Project end date must be after the start date.";
+    }
+
+    const validRanges = new Map<number, { start: Date; due: Date }>();
+
+    input.stages.forEach((stage, index) => {
+      const stageStart = parseStageDateTimeValue(stage.plannedStartAt);
+      const stageDue = parseStageDateTimeValue(stage.plannedDueAt);
+
+      if (!stage.plannedStartAt && includeStageRequired) {
+        stageStartDateErrors[index] = "Stage start is required.";
+      } else if (stage.plannedStartAt && !stageStart) {
+        stageStartDateErrors[index] = "Choose a valid stage start.";
+      }
+
+      if (!stage.plannedDueAt && includeStageRequired) {
+        stageDueDateErrors[index] = "Stage due is required.";
+      } else if (stage.plannedDueAt && !stageDue) {
+        stageDueDateErrors[index] = "Choose a valid stage due time.";
+      }
+
+      if (!stageStart || !stageDue) {
+        return;
+      }
+
+      if (stageStart < projectStartBoundary || stageStart > projectEndBoundary) {
+        stageStartDateErrors[index] = "Stage start must be within the project date range.";
+      }
+
+      if (stageDue < projectStartBoundary || stageDue > projectEndBoundary) {
+        stageDueDateErrors[index] = "Stage due must be within the project date range.";
+      }
+
+      if (stageDue <= stageStart) {
+        stageDueDateErrors[index] = "Stage due must be after the stage start.";
+      }
+
+      if (!stageStartDateErrors[index] && !stageDueDateErrors[index]) {
+        validRanges.set(index, {
+          start: stageStart,
+          due: stageDue,
+        });
+      }
+    });
+
+    for (let index = 1; index < input.stages.length; index += 1) {
+      const previousRange = validRanges.get(index - 1);
+      const currentRange = validRanges.get(index);
+
+      if (!previousRange || !currentRange) {
+        continue;
+      }
+
+      if (currentRange.start < previousRange.due) {
+        stageStartDateErrors[index] = `Stage ${index + 1} cannot start before Stage ${index} ends.`;
+        validRanges.delete(index);
+      }
+    }
+  } else if (includeStageRequired) {
+    input.stages.forEach((stage, index) => {
+      if (!stage.plannedStartAt) {
+        stageStartDateErrors[index] = "Stage start is required.";
+      }
+
+      if (!stage.plannedDueAt) {
+        stageDueDateErrors[index] = "Stage due is required.";
+      }
+    });
+  }
+
+  const hasConflict =
+    Boolean(projectStartDateError || projectEndDateError) ||
+    stageStartDateErrors.some(Boolean) ||
+    stageDueDateErrors.some(Boolean);
+
+  return {
+    projectStartDateError,
+    projectEndDateError,
+    stageStartDateErrors,
+    stageDueDateErrors,
+    hasConflict,
+  };
 }
 
 function getDefaultProjectCurrencyCode(
@@ -306,6 +476,25 @@ function mergeUniqueTextOptions(current: string[], incoming: string[]) {
   return merged.sort((left, right) => left.localeCompare(right));
 }
 
+function normalizeProjectTagValues(values: Array<string | null | undefined>) {
+  const normalized = new Map<string, string>();
+
+  values.forEach((value) => {
+    const trimmedValue = value?.trim();
+
+    if (!trimmedValue) {
+      return;
+    }
+
+    const key = trimmedValue.toLowerCase();
+    if (!normalized.has(key)) {
+      normalized.set(key, trimmedValue);
+    }
+  });
+
+  return [...normalized.values()].slice(0, MAX_PROJECT_TAGS);
+}
+
 function MonthPicker({
   label,
   value,
@@ -355,6 +544,29 @@ function formatExecutorTypeLabel(type: CollaboratorRecord["type"]) {
   return type === "External" ? "External Collaborator" : "Internal Collaborator";
 }
 
+function formatProjectExecutorRoleLabel(role: ProjectExecutorRoleValue) {
+  return role === "MAIN_EXECUTOR" ? "Main Executor" : "Executor";
+}
+
+function buildProjectExecutorRecord(
+  executor: ExecutorOption,
+  role: ProjectExecutorRoleValue,
+): ProjectEditorInitialExecutor {
+  return {
+    id: executor.id,
+    name: executor.name,
+    email: executor.email,
+    role,
+    roleLabel: formatProjectExecutorRoleLabel(role),
+    group: executor.type === "External" ? "external" : "internal",
+    chatVisibilityPaused: false,
+  };
+}
+
+function hasMainExecutor(executors: ProjectEditorInitialExecutor[]) {
+  return executors.some((executor) => executor.role === "MAIN_EXECUTOR");
+}
+
 function QuickAddMasterDataDialog({
   isOpen,
   kind,
@@ -386,7 +598,7 @@ function QuickAddMasterDataDialog({
         <CardContent className="p-6 sm:p-7">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+              <h2 className="text-[24px] font-semibold tracking-tight text-[#111712]">
                 Add New {label}
               </h2>
               <p className="mt-1 text-[14px] text-[#6a706b]">
@@ -469,7 +681,7 @@ function InviteExecutorDialog({
         <CardContent className="p-6 sm:p-7">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-[24px] font-[700] tracking-[-0.03em] text-[#111712]">
+              <h2 className="text-[24px] font-semibold tracking-tight text-[#111712]">
                 Invite Executor
               </h2>
               <p className="mt-1 text-[14px] text-[#6a706b]">
@@ -632,27 +844,19 @@ export function CreateProjectWorkspace({
     action,
     initialProjectFormState,
   );
-  const initialExecutorOption =
-    availableCollaborators.find(
-      (collaborator) =>
-        collaborator.id === initialValues?.executorUserId ||
-        ((!initialValues?.executorUserId && initialValues?.executorName
-          ? collaborator.name.trim().toLowerCase() === initialValues.executorName.trim().toLowerCase() ||
-            collaborator.email.trim().toLowerCase() === initialValues.executorName.trim().toLowerCase()
-          : false)),
-    ) ?? null;
+  const initialExecutionType: ProjectExecutionTypeValue =
+    initialValues?.executionType === "INTERNAL" ? "INTERNAL" : "EXTERNAL";
   const [projectName, setProjectName] = useState(initialValues?.name ?? "");
+  const [projectExecutionType, setProjectExecutionType] =
+    useState<ProjectExecutionTypeValue>(initialExecutionType);
   const [availableCategoryOptions, setAvailableCategoryOptions] =
     useState<string[]>(categoryOptions);
   const [availableTagOptions, setAvailableTagOptions] = useState<string[]>(tagOptions);
   const [projectCategory, setProjectCategory] = useState(initialValues?.category ?? "");
-  const [projectExecutor, setProjectExecutor] = useState(
-    initialExecutorOption?.name ?? initialValues?.executorName ?? "",
+  const [projectTags, setProjectTags] = useState<string[]>(() =>
+    normalizeProjectTagValues(initialValues?.tags ?? []),
   );
-  const [projectExecutorUserId, setProjectExecutorUserId] = useState(
-    initialExecutorOption?.id ?? initialValues?.executorUserId ?? "",
-  );
-  const [projectTag, setProjectTag] = useState(initialValues?.tag ?? "");
+  const [projectTagError, setProjectTagError] = useState<string>();
   const [projectBudget, setProjectBudget] = useState(initialValues?.budget ?? "");
   const [projectCurrency, setProjectCurrency] = useState<string>(
     initialValues?.currency ?? getDefaultProjectCurrencyCode(currencyOptions),
@@ -682,11 +886,16 @@ export function CreateProjectWorkspace({
     initialValues?.stages.length
         ? initialValues.stages.map((stage) => ({
           id: stage.id,
+          persistedId: stage.id,
           name: stage.name,
           budget: stage.budget,
           description: stage.description,
+          invoiceRequired:
+            initialExecutionType === "INTERNAL" ? false : stage.invoiceRequired ?? true,
           plannedStartAt: stage.plannedStartAt,
           plannedDueAt: stage.plannedDueAt,
+          attachments: stage.attachments,
+          pendingFiles: [],
         }))
       : [
           {
@@ -694,8 +903,11 @@ export function CreateProjectWorkspace({
             name: "Stage 1",
             budget: "",
             description: "",
+            invoiceRequired: initialExecutionType === "EXTERNAL",
             plannedStartAt: "",
             plannedDueAt: "",
+            attachments: [],
+            pendingFiles: [],
           },
         ],
   );
@@ -704,12 +916,60 @@ export function CreateProjectWorkspace({
   const [assignedCollaborators, setAssignedCollaborators] = useState<ProjectEditorInitialCollaborator[]>(
     initialValues?.collaborators ?? [],
   );
+  const [projectExecutors, setProjectExecutors] = useState<ProjectEditorInitialExecutor[]>(
+    () => {
+      if (initialValues?.executors.length) {
+        return initialValues.executors;
+      }
+
+      const fallbackExecutor = availableCollaborators.find(
+        (collaborator) =>
+          collaborator.id === initialValues?.executorUserId ||
+          ((!initialValues?.executorUserId && initialValues?.executorName
+            ? collaborator.name.trim().toLowerCase() ===
+                initialValues.executorName.trim().toLowerCase() ||
+              collaborator.email.trim().toLowerCase() ===
+                initialValues.executorName.trim().toLowerCase()
+            : false)),
+      );
+
+      if (fallbackExecutor) {
+        return [
+          buildProjectExecutorRecord(
+            {
+              id: fallbackExecutor.id,
+              name: fallbackExecutor.name,
+              email: fallbackExecutor.email,
+              type: fallbackExecutor.type,
+            },
+            "MAIN_EXECUTOR",
+          ),
+        ];
+      }
+
+      if (initialValues?.executorUserId && initialValues.executorName) {
+        return [
+          {
+            id: initialValues.executorUserId,
+            name: initialValues.executorName,
+            role: "MAIN_EXECUTOR",
+            roleLabel: formatProjectExecutorRoleLabel("MAIN_EXECUTOR"),
+            group: "internal",
+            chatVisibilityPaused: false,
+          },
+        ];
+      }
+
+      return [];
+    },
+  );
   const [projectAttachments, setProjectAttachments] = useState<ProjectEditorInitialAttachment[]>(
     initialValues?.attachments ?? [],
   );
   const [pendingProjectFiles, setPendingProjectFiles] = useState<File[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [draftCollaboratorIds, setDraftCollaboratorIds] = useState<string[]>([]);
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>(
     getDefaultCollaboratorForm(),
   );
@@ -721,6 +981,10 @@ export function CreateProjectWorkspace({
   const [budgetConflictDialogOpen, setBudgetConflictDialogOpen] = useState(false);
   const [executorPickerOpen, setExecutorPickerOpen] = useState(false);
   const [executorSearch, setExecutorSearch] = useState("");
+  const [executorRoleDraft, setExecutorRoleDraft] =
+    useState<ProjectExecutorRoleValue>("MAIN_EXECUTOR");
+  const [executorRemovalTarget, setExecutorRemovalTarget] =
+    useState<ProjectEditorInitialExecutor | null>(null);
   const [quickAddMasterDataKind, setQuickAddMasterDataKind] =
     useState<QuickAddMasterDataKind | null>(null);
   const [quickAddMasterDataName, setQuickAddMasterDataName] = useState("");
@@ -732,8 +996,10 @@ export function CreateProjectWorkspace({
   );
   const [executorInviteError, setExecutorInviteError] = useState<string>();
   const [executorInviteSaving, setExecutorInviteSaving] = useState(false);
+  const [timelineSubmitAttempted, setTimelineSubmitAttempted] = useState(false);
   const [dirtyFieldKeys, setDirtyFieldKeys] = useState<Set<string>>(() => new Set());
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const stageAttachmentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const executorPickerRef = useRef<HTMLDivElement | null>(null);
   const handledCreatedProjectIdRef = useRef<string | null>(null);
   const handledEditProjectIdRef = useRef<string | null>(null);
@@ -741,7 +1007,12 @@ export function CreateProjectWorkspace({
   const [, startRefresh] = useTransition();
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
+  const isInternalExecution = projectExecutionType === "INTERNAL";
+  const isExternalExecution = projectExecutionType === "EXTERNAL";
+  const isBudgetRequired = canViewBudget && isExternalExecution;
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
+  const displayedAttachmentError =
+    attachmentError ?? getFieldError("attachments", fieldErrors.attachments);
   const parsedProjectBudget = useMemo(() => parseBudgetInput(projectBudget), [projectBudget]);
   const parsedStageBudgets = useMemo(
     () => stages.map((stage) => parseBudgetInput(stage.budget)),
@@ -758,14 +1029,16 @@ export function CreateProjectWorkspace({
   const hasInvalidBudgetInputs = useMemo(
     () =>
       canViewBudget &&
+      isExternalExecution &&
       (projectBudget.trim().length > 0
         ? !Number.isFinite(parsedProjectBudget) || parsedProjectBudget <= 0
         : false),
-    [canViewBudget, parsedProjectBudget, projectBudget],
+    [canViewBudget, isExternalExecution, parsedProjectBudget, projectBudget],
   );
   const hasInvalidStageBudgetInputs = useMemo(
     () =>
       canViewBudget &&
+      isExternalExecution &&
       stages.some((stage, index) => {
         if (!stage.budget.trim()) {
           return false;
@@ -774,30 +1047,53 @@ export function CreateProjectWorkspace({
         const budget = parsedStageBudgets[index];
         return !Number.isFinite(budget) || budget <= 0;
       }),
-    [canViewBudget, parsedStageBudgets, stages],
+    [canViewBudget, isExternalExecution, parsedStageBudgets, stages],
+  );
+  const hasMissingStageBudgetInputs = useMemo(
+    () => isBudgetRequired && stages.some((stage) => !stage.budget.trim()),
+    [isBudgetRequired, stages],
   );
   const remainingStageBudget = useMemo(() => {
-    if (!canViewBudget || !Number.isFinite(parsedProjectBudget)) {
+    if (!canViewBudget || !isExternalExecution || !Number.isFinite(parsedProjectBudget)) {
       return null;
     }
 
     return parsedProjectBudget - totalStageBudget;
-  }, [canViewBudget, parsedProjectBudget, totalStageBudget]);
+  }, [canViewBudget, isExternalExecution, parsedProjectBudget, totalStageBudget]);
   const hasBudgetConflict = useMemo(
     () =>
       canViewBudget &&
+      isExternalExecution &&
       Number.isFinite(parsedProjectBudget) &&
+      !hasMissingStageBudgetInputs &&
       !hasInvalidStageBudgetInputs &&
-      totalStageBudget > parsedProjectBudget,
+      totalStageBudget !== parsedProjectBudget,
     [
       canViewBudget,
       hasInvalidStageBudgetInputs,
+      hasMissingStageBudgetInputs,
+      isExternalExecution,
       parsedProjectBudget,
       totalStageBudget,
     ],
   );
   const selectedCollaboratorIds = useMemo(
-    () => assignedCollaborators.map((collaborator) => collaborator.id),
+    () =>
+      pickerOpen
+        ? draftCollaboratorIds
+        : assignedCollaborators.map((collaborator) => collaborator.id),
+    [assignedCollaborators, draftCollaboratorIds, pickerOpen],
+  );
+  const collaboratorSummaryRecords = useMemo<ProjectCollaboratorRecord[]>(
+    () =>
+      assignedCollaborators.map((collaborator) => ({
+        ...collaborator,
+        chatVisibilityPaused:
+          "chatVisibilityPaused" in collaborator &&
+          typeof collaborator.chatVisibilityPaused === "boolean"
+            ? collaborator.chatVisibilityPaused
+            : false,
+      })),
     [assignedCollaborators],
   );
   const categorySelectOptions = useMemo(
@@ -808,11 +1104,8 @@ export function CreateProjectWorkspace({
     [availableCategoryOptions, projectCategory],
   );
   const tagSelectOptions = useMemo(
-    () =>
-      projectTag && !availableTagOptions.includes(projectTag)
-        ? [projectTag, ...availableTagOptions]
-        : availableTagOptions,
-    [availableTagOptions, projectTag],
+    () => mergeUniqueTextOptions(availableTagOptions, projectTags),
+    [availableTagOptions, projectTags],
   );
   const currencySelectOptions = useMemo(() => {
     if (
@@ -834,9 +1127,9 @@ export function CreateProjectWorkspace({
       })),
     [availableCollaboratorRecords],
   );
-  const selectedExecutorOption = useMemo(
-    () => executorOptions.find((option) => option.id === projectExecutorUserId) ?? null,
-    [executorOptions, projectExecutorUserId],
+  const selectedExecutorIds = useMemo(
+    () => new Set(projectExecutors.map((executor) => executor.id)),
+    [projectExecutors],
   );
   const filteredExecutorOptions = useMemo(() => {
     const query = executorSearch.trim().toLowerCase();
@@ -851,40 +1144,68 @@ export function CreateProjectWorkspace({
       ),
     );
   }, [executorOptions, executorSearch]);
+  const primaryProjectExecutor = useMemo(
+    () =>
+      projectExecutors.find((executor) => executor.role === "MAIN_EXECUTOR") ??
+      projectExecutors[0] ??
+      null,
+    [projectExecutors],
+  );
+  const projectExecutor = primaryProjectExecutor?.name ?? "";
+  const projectExecutorUserId = primaryProjectExecutor?.id ?? "";
+  const executorOverviewLabel = useMemo(() => {
+    if (!primaryProjectExecutor) {
+      return "—";
+    }
+
+    const remainingCount = Math.max(projectExecutors.length - 1, 0);
+    return remainingCount > 0
+      ? `${primaryProjectExecutor.name} +${remainingCount}`
+      : primaryProjectExecutor.name;
+  }, [primaryProjectExecutor, projectExecutors.length]);
   const overview = useMemo(
     () => ({
-      budget: canViewBudget
-        ? Number.isFinite(parsedProjectBudget)
-          ? formatBudgetDisplay(parsedProjectBudget, projectCurrency ?? "")
-          : projectBudget
-            ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
-            : "—"
-        : "Restricted",
+      executionType:
+        projectExecutionTypeOptions.find((option) => option.value === projectExecutionType)
+          ?.label ?? "External Execution",
+      budget: isInternalExecution
+        ? "Not required for internal execution"
+        : canViewBudget
+          ? Number.isFinite(parsedProjectBudget)
+            ? formatBudgetDisplay(parsedProjectBudget, projectCurrency ?? "")
+            : projectBudget
+              ? `${projectBudget} ${projectCurrency ?? ""}`.trim()
+              : "—"
+          : "Restricted",
       allocatedStageBudget:
-        canViewBudget && Number.isFinite(totalStageBudget)
+        isInternalExecution
+          ? "Not required"
+          : canViewBudget && Number.isFinite(totalStageBudget)
           ? formatBudgetDisplay(totalStageBudget, projectCurrency ?? "")
           : "—",
       remainingStageBudget:
-        canViewBudget && remainingStageBudget !== null
-          ? remainingStageBudget < 0
-            ? `${formatBudgetDisplay(Math.abs(remainingStageBudget), projectCurrency ?? "")} over budget`
-            : formatBudgetDisplay(remainingStageBudget, projectCurrency ?? "")
+        isInternalExecution
+          ? "Not required"
+          : canViewBudget && remainingStageBudget !== null
+          ? formatBudgetDifference(remainingStageBudget, projectCurrency ?? "")
           : "—",
       stages: stages.length,
       started: startDate ? formatDateValue(startDate) : "—",
       deadline: endDate ? formatDateValue(endDate) : "—",
-      executor: projectExecutor || "—",
-      tag: projectTag || "—",
+      executor: executorOverviewLabel,
+      tag: projectTags.length > 0 ? projectTags.join(", ") : "—",
       status:
         projectStatusOptions.find((option) => option.value === projectStatus)?.label || "—",
       priority: formatProjectPriority(projectPriority),
     }),
     [
       canViewBudget,
+      isInternalExecution,
       projectBudget,
       projectCurrency,
-      projectExecutor,
-      projectTag,
+      projectExecutionType,
+      executorOverviewLabel,
+      projectTags,
       projectPriority,
       projectStatus,
       parsedProjectBudget,
@@ -896,62 +1217,14 @@ export function CreateProjectWorkspace({
     ],
   );
   const clientStageDateErrors = useMemo(() => {
-    const stageStartDates = stages.map((stage) => parseStageDateTimeValue(stage.plannedStartAt));
-    const stageDueDates = stages.map((stage) => parseStageDateTimeValue(stage.plannedDueAt));
-    const stageStartDateErrors: Array<string | undefined> = Array.from(
-      { length: stages.length },
-      () => undefined,
-    );
-    const stageDueDateErrors: Array<string | undefined> = Array.from(
-      { length: stages.length },
-      () => undefined,
-    );
-
-    if (!startDate || !endDate) {
-      return {
-        stageStartDateErrors,
-        stageDueDateErrors,
-        hasConflict: false,
-      };
-    }
-
-    const projectStartBoundary = getStartOfDay(startDate);
-    const projectEndBoundary = getEndOfDay(endDate);
-
-    stageStartDates.forEach((stageStart, index) => {
-      if (!stageStart) {
-        return;
-      }
-
-      if (stageStart < projectStartBoundary || stageStart > projectEndBoundary) {
-        stageStartDateErrors[index] = "Stage start must be within the project date range.";
-      }
+    return validateClientStageTimeline({
+      stages,
+      projectStartDate: startDate,
+      projectEndDate: endDate,
+      includeRequired: timelineSubmitAttempted,
+      includeStageRequired: timelineSubmitAttempted && isExternalExecution,
     });
-
-    stageDueDates.forEach((stageDue, index) => {
-      if (!stageDue) {
-        return;
-      }
-
-      const stageStart = stageStartDates[index];
-
-      if (stageDue < projectStartBoundary || stageDue > projectEndBoundary) {
-        stageDueDateErrors[index] = "Stage due must be within the project date range.";
-        return;
-      }
-
-      if (stageStart && stageDue <= stageStart) {
-        stageDueDateErrors[index] = "Stage due must be after the stage start.";
-      }
-    });
-
-    return {
-      stageStartDateErrors,
-      stageDueDateErrors,
-      hasConflict:
-        stageStartDateErrors.some(Boolean) || stageDueDateErrors.some(Boolean),
-    };
-  }, [endDate, startDate, stages]);
+  }, [endDate, isExternalExecution, startDate, stages, timelineSubmitAttempted]);
 
   function updateStage(id: string, patch: Partial<StageForm>) {
     setStages((current) =>
@@ -1009,8 +1282,11 @@ export function CreateProjectWorkspace({
         name: `Stage ${current.length + 1}`,
         budget: "",
         description: "",
+        invoiceRequired: isExternalExecution,
         plannedStartAt: formatDateTimeInputValue(startDate),
         plannedDueAt: formatDateTimeInputValue(endDate),
+        attachments: [],
+        pendingFiles: [],
       },
     ]);
   }
@@ -1051,6 +1327,42 @@ export function CreateProjectWorkspace({
     setQuickAddMasterDataError(undefined);
   }
 
+  function addProjectTag(tag: string) {
+    const normalizedTag = tag.trim();
+
+    if (!normalizedTag) {
+      return;
+    }
+
+    if (
+      projectTags.some(
+        (selectedTag) => selectedTag.toLowerCase() === normalizedTag.toLowerCase(),
+      )
+    ) {
+      setProjectTagError(undefined);
+      clearFieldError("tag");
+      return;
+    }
+
+    if (projectTags.length >= MAX_PROJECT_TAGS) {
+      setProjectTagError("You can add up to 5 tags only.");
+      showWarningToast("Tag limit reached.", "You can add up to 5 tags only.");
+      return;
+    }
+
+    setProjectTags((current) => [...current, normalizedTag]);
+    setProjectTagError(undefined);
+    clearFieldError("tag");
+  }
+
+  function removeProjectTag(tag: string) {
+    setProjectTags((current) =>
+      current.filter((selectedTag) => selectedTag.toLowerCase() !== tag.toLowerCase()),
+    );
+    setProjectTagError(undefined);
+    clearFieldError("tag");
+  }
+
   function openExecutorInvite(prefillValue = "") {
     const nextForm = getDefaultExecutorInviteForm();
     const trimmedPrefill = prefillValue.trim();
@@ -1072,7 +1384,100 @@ export function CreateProjectWorkspace({
   function openCollaboratorInvite() {
     setCollaboratorForm(getDefaultCollaboratorForm());
     setCollaboratorError(undefined);
+    setPickerOpen(false);
+    setDraftCollaboratorIds([]);
     setDialogOpen(true);
+  }
+
+  function openProjectCollaboratorPicker() {
+    setCollaboratorError(undefined);
+    setDraftCollaboratorIds(assignedCollaborators.map((collaborator) => collaborator.id));
+    setPickerOpen(true);
+  }
+
+  function upsertProjectExecutor(
+    executor: ExecutorOption,
+    role: ProjectExecutorRoleValue,
+  ) {
+    const nextExecutor = buildProjectExecutorRecord(executor, role);
+
+    setProjectExecutors((current) => {
+      const existingIndex = current.findIndex((item) => item.id === executor.id);
+
+      if (existingIndex === -1) {
+        return [...current, nextExecutor];
+      }
+
+      return current.map((item, index) =>
+        index === existingIndex
+          ? {
+              ...item,
+              role,
+              roleLabel: formatProjectExecutorRoleLabel(role),
+            }
+          : item,
+      );
+    });
+    clearFieldError("executorUserId");
+    clearFieldError("executorName");
+  }
+
+  function updateProjectExecutorRole(
+    executorId: string,
+    role: ProjectExecutorRoleValue,
+  ) {
+    setProjectExecutors((current) => {
+      const target = current.find((executor) => executor.id === executorId);
+
+      if (!target || target.role === role) {
+        return current;
+      }
+
+      if (
+        target.role === "MAIN_EXECUTOR" &&
+        role !== "MAIN_EXECUTOR" &&
+        current.filter((executor) => executor.role === "MAIN_EXECUTOR").length <= 1
+      ) {
+        showErrorToast(
+          "Main Executor required.",
+          "At least one Main Executor must remain assigned to the project.",
+        );
+        return current;
+      }
+
+      return current.map((executor) =>
+        executor.id === executorId
+          ? {
+              ...executor,
+              role,
+              roleLabel: formatProjectExecutorRoleLabel(role),
+            }
+          : executor,
+      );
+    });
+    clearFieldError("executorUserId");
+    clearFieldError("executorName");
+  }
+
+  function removeProjectExecutor(executor: ProjectEditorInitialExecutor) {
+    if (
+      executor.role === "MAIN_EXECUTOR" &&
+      projectExecutors.filter((item) => item.role === "MAIN_EXECUTOR").length <= 1
+    ) {
+      showErrorToast(
+        "Main Executor required.",
+        "At least one Main Executor must remain assigned to the project.",
+      );
+      setExecutorRemovalTarget(null);
+      return;
+    }
+
+    setProjectExecutors((current) =>
+      current.filter((item) => item.id !== executor.id),
+    );
+    setExecutorRemovalTarget(null);
+    clearFieldError("executorUserId");
+    clearFieldError("executorName");
   }
 
   function toggleAssignedCollaborator(collaboratorId: string) {
@@ -1084,18 +1489,88 @@ export function CreateProjectWorkspace({
       return;
     }
 
-    setAssignedCollaborators((current) => {
-      const exists = current.some((collaborator) => collaborator.id === collaboratorId);
+    setDraftCollaboratorIds((current) => {
+      const exists = current.includes(collaboratorId);
 
       if (exists) {
-        return current.filter((collaborator) => collaborator.id !== collaboratorId);
+        return current.filter((id) => id !== collaboratorId);
       }
 
-      return [
-        ...current,
-        buildAssignedCollaboratorRecord(availableCollaborator),
-      ];
+      return [...current, collaboratorId];
     });
+  }
+
+  function buildAssignedCollaboratorSelection(selectedIds: string[]) {
+    const assignedCollaboratorMap = new Map(
+      assignedCollaborators.map((collaborator) => [collaborator.id, collaborator] as const),
+    );
+    const availableCollaboratorMap = new Map(
+      availableCollaboratorRecords.map((collaborator) => [collaborator.id, collaborator] as const),
+    );
+
+    return selectedIds.reduce<ProjectEditorInitialCollaborator[]>((selection, collaboratorId) => {
+      const assignedCollaborator = assignedCollaboratorMap.get(collaboratorId);
+
+      if (assignedCollaborator) {
+        selection.push(assignedCollaborator);
+        return selection;
+      }
+
+      const availableCollaborator = availableCollaboratorMap.get(collaboratorId);
+
+      if (availableCollaborator) {
+        selection.push(buildAssignedCollaboratorRecord(availableCollaborator));
+      }
+
+      return selection;
+    }, []);
+  }
+
+  async function applyCollaboratorsSelection() {
+    const nextCollaborators = buildAssignedCollaboratorSelection(draftCollaboratorIds);
+
+    if (mode !== "edit" || !initialValues?.id) {
+      setAssignedCollaborators(nextCollaborators);
+      setPickerOpen(false);
+      setDraftCollaboratorIds([]);
+      return;
+    }
+
+    setCollaboratorSaving(true);
+    setCollaboratorError(undefined);
+
+    try {
+      const result = await saveProjectCollaboratorsAction(
+        initialValues.id,
+        nextCollaborators
+          .filter((collaborator) => collaborator.access !== "owner")
+          .map((collaborator) => ({
+            id: collaborator.id,
+            participantType: collaborator.participantType,
+          })),
+      );
+
+      if ("error" in result) {
+        setCollaboratorError(result.error);
+        showErrorToast("Unable to update collaborators.", result.error);
+        return;
+      }
+
+      setAssignedCollaborators(result.collaborators);
+      setPickerOpen(false);
+      setDraftCollaboratorIds([]);
+      showSuccessToast("Project collaborators updated successfully.");
+      refreshProjectData();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to update project collaborators right now.";
+      setCollaboratorError(message);
+      showErrorToast("Unable to update collaborators.", message);
+    } finally {
+      setCollaboratorSaving(false);
+    }
   }
 
   async function handleCollaboratorInvite() {
@@ -1118,11 +1593,38 @@ export function CreateProjectWorkspace({
       setAvailableCollaboratorRecords((current) =>
         upsertCollaboratorRecord(current, result.collaborator),
       );
-      setAssignedCollaborators((current) =>
-        upsertAssignedCollaboratorRecord(current, result.collaborator),
+      const nextAssignedCollaborators = upsertAssignedCollaboratorRecord(
+        assignedCollaborators,
+        result.collaborator,
       );
+
+      if (mode === "edit" && initialValues?.id) {
+        const saveResult = await saveProjectCollaboratorsAction(
+          initialValues.id,
+          nextAssignedCollaborators
+            .filter((collaborator) => collaborator.access !== "owner")
+            .map((collaborator) => ({
+              id: collaborator.id,
+              participantType: collaborator.participantType,
+            })),
+        );
+
+        if ("error" in saveResult) {
+          setCollaboratorError(saveResult.error);
+          showErrorToast("Unable to add collaborator.", saveResult.error);
+          return;
+        }
+
+        setAssignedCollaborators(saveResult.collaborators);
+        refreshProjectData();
+      } else {
+        setAssignedCollaborators(nextAssignedCollaborators);
+      }
+
       setDialogOpen(false);
       setPickerOpen(false);
+      setDraftCollaboratorIds([]);
+      showSuccessToast("Collaborator added successfully.");
     } catch {
       setCollaboratorError("Unable to save the collaborator right now. Please try again.");
     } finally {
@@ -1177,15 +1679,15 @@ export function CreateProjectWorkspace({
       const createdName = result.item?.name ?? normalizedName;
 
       if (quickAddMasterDataKind === "category") {
+        setProjectCategory(createdName);
         setAvailableCategoryOptions((current) =>
           mergeUniqueTextOptions(current, [createdName]),
         );
-        setProjectCategory(createdName);
         clearFieldError("category");
         showSuccessToast("Category added.");
       } else {
         setAvailableTagOptions((current) => mergeUniqueTextOptions(current, [createdName]));
-        setProjectTag(createdName);
+        addProjectTag(createdName);
         clearFieldError("tag");
         showSuccessToast("Tag added.");
       }
@@ -1234,8 +1736,15 @@ export function CreateProjectWorkspace({
       setAvailableCollaboratorRecords((current) =>
         upsertCollaboratorRecord(current, result.collaborator),
       );
-      setProjectExecutorUserId(result.collaborator.id);
-      setProjectExecutor(result.collaborator.name);
+      upsertProjectExecutor(
+        {
+          id: result.collaborator.id,
+          name: result.collaborator.name,
+          email: result.collaborator.email,
+          type: result.collaborator.type,
+        },
+        executorRoleDraft,
+      );
       setExecutorInviteOpen(false);
       setExecutorPickerOpen(false);
       setExecutorSearch("");
@@ -1262,6 +1771,22 @@ export function CreateProjectWorkspace({
     clearFieldError("budgetSummary");
   }
 
+  function handleExecutionTypeChange(nextExecutionType: ProjectExecutionTypeValue) {
+    setProjectExecutionType(nextExecutionType);
+    clearFieldError("executionType");
+    clearFieldError("budget");
+    clearFieldError("currency");
+    clearFieldError("budgetSummary");
+
+    if (nextExecutionType === "INTERNAL") {
+      setStages((current) =>
+        current.map((stage) =>
+          stage.invoiceRequired ? { ...stage, invoiceRequired: false } : stage,
+        ),
+      );
+    }
+  }
+
   function handleStageBudgetChange(stageId: string, value: string) {
     const stageIndex = stages.findIndex((stage) => stage.id === stageId);
     updateStage(stageId, {
@@ -1275,17 +1800,62 @@ export function CreateProjectWorkspace({
 
   function handleProjectFormSubmit(event: React.FormEvent<HTMLFormElement>) {
     setDirtyFieldKeys(new Set());
+    setTimelineSubmitAttempted(true);
 
-    if (clientStageDateErrors.hasConflict) {
+    if (mode === "edit" && (isUploadingAttachments || pendingProjectFiles.length > 0)) {
+      event.preventDefault();
+      const message = "Please wait for all attachments to finish uploading.";
+      setAttachmentError(message);
+      showErrorToast("Attachments still uploading.", message);
+      return;
+    }
+
+    if (mode === "edit" && attachmentError) {
+      event.preventDefault();
+      const message = "One or more attachments failed to upload. Please remove them or try again.";
+      setAttachmentError(message);
+      showErrorToast("Unable to save project.", message);
+      return;
+    }
+
+    if (
+      mode === "edit" &&
+      stages.some((stage) => stage.persistedId && stage.pendingFiles.length > 0)
+    ) {
+      event.preventDefault();
+      const message = "Please wait for all attachments to finish uploading.";
+      setAttachmentError(message);
+      showErrorToast("Attachments still uploading.", message);
+      return;
+    }
+
+    if (!hasMainExecutor(projectExecutors)) {
       event.preventDefault();
       showErrorToast(
-        "Stage date conflict.",
-        "Each stage must stay within the project date range.",
+        "Main Executor required.",
+        "Add at least one Main Executor before saving the project.",
       );
       return;
     }
 
-    if (!canViewBudget) {
+    const timelineValidation = validateClientStageTimeline({
+      stages,
+      projectStartDate: startDate,
+      projectEndDate: endDate,
+      includeRequired: true,
+      includeStageRequired: isExternalExecution,
+    });
+
+    if (timelineValidation.hasConflict) {
+      event.preventDefault();
+      showErrorToast(
+        "Stage timeline conflict.",
+        "Please review the highlighted stage timeline fields.",
+      );
+      return;
+    }
+
+    if (!isBudgetRequired) {
       return;
     }
 
@@ -1293,7 +1863,7 @@ export function CreateProjectWorkspace({
       event.preventDefault();
       showWarningToast(
         "Budget conflict.",
-        "Total stage budgets exceed the project budget.",
+        "Project budget must equal the total stage budgets.",
       );
       setBudgetConflictDialogOpen(true);
     }
@@ -1305,27 +1875,14 @@ export function CreateProjectWorkspace({
     });
   }
 
-  function updateAssignedCollaboratorParticipantType(
-    collaboratorId: string,
-    participantType: ProjectCollaboratorParticipantType,
-  ) {
-    setAssignedCollaborators((current) =>
-      current.map((collaborator) =>
-        collaborator.id === collaboratorId
-          ? { ...collaborator, participantType }
-          : collaborator,
-      ),
-    );
-  }
-
-  async function uploadProjectAsset(
+  const uploadProjectAsset = useCallback(async (
     file: File,
     projectId: string,
     options?: {
       stageId?: string | null;
       commentId?: string | null;
     },
-  ) {
+  ): Promise<ProjectEditorInitialAttachment> => {
     if (!projectId) {
       throw new Error("Save the project first before uploading attachments.");
     }
@@ -1349,7 +1906,9 @@ export function CreateProjectWorkspace({
     const uploadPayload = (await uploadRequest.json()) as UploadAssetResponse;
 
     if (!uploadRequest.ok || !uploadPayload.attachmentId || !uploadPayload.uploadUrl) {
-      throw new Error(uploadPayload.error || "Unable to prepare the attachment upload.");
+      throw new Error(
+        getUploadErrorMessage(uploadPayload, "Unable to prepare the attachment upload."),
+      );
     }
 
     try {
@@ -1381,6 +1940,19 @@ export function CreateProjectWorkspace({
       if (!completeResponse.ok) {
         throw new Error(completePayload.error || "Unable to complete the attachment upload.");
       }
+
+      return {
+        id: uploadPayload.attachmentId,
+        originalFileName: file.name,
+        fileTypeLabel: getLocalFileTypeLabel(file.name),
+        mimeType: file.type || "application/octet-stream",
+        fileSizeLabel: formatLocalFileSize(file.size),
+        uploadedBy: "You",
+        uploadedAt: "Just now",
+        previewPath: `/api/project-assets/${uploadPayload.attachmentId}/preview`,
+        downloadPath: `/api/project-assets/${uploadPayload.attachmentId}/download`,
+        isFavoritedByCurrentUser: false,
+      };
     } catch (error) {
       await fetch("/api/project-assets/complete", {
         method: "POST",
@@ -1396,7 +1968,7 @@ export function CreateProjectWorkspace({
 
       throw error;
     }
-  }
+  }, []);
 
   async function handleAttachmentSelection(files: FileList | null) {
     const selectedFiles = Array.from(files ?? []);
@@ -1406,6 +1978,7 @@ export function CreateProjectWorkspace({
     }
 
     setAttachmentError(undefined);
+    clearFieldError("attachments");
 
     if (mode === "create") {
       setPendingProjectFiles((current) => [...current, ...selectedFiles]);
@@ -1424,15 +1997,27 @@ export function CreateProjectWorkspace({
     }
 
     setIsUploadingAttachments(true);
+    setPendingProjectFiles((current) => [...current, ...selectedFiles]);
 
     try {
       for (const file of selectedFiles) {
-        await uploadProjectAsset(file, initialValues.id);
+        const attachment = await uploadProjectAsset(file, initialValues.id);
+        setProjectAttachments((current) =>
+          current.some((item) => item.id === attachment.id)
+            ? current
+            : [...current, attachment],
+        );
+        setPendingProjectFiles((current) =>
+          current.filter((pendingFile) => pendingFile !== file),
+        );
       }
       refreshProjectData();
     } catch (error) {
       setAttachmentError(
         error instanceof Error ? error.message : "Unable to upload the project attachments right now.",
+      );
+      setPendingProjectFiles((current) =>
+        current.filter((pendingFile) => !selectedFiles.includes(pendingFile)),
       );
     } finally {
       setIsUploadingAttachments(false);
@@ -1443,8 +2028,184 @@ export function CreateProjectWorkspace({
     }
   }
 
+  async function handleStageAttachmentSelection(stageId: string, files: FileList | null) {
+    const selectedFiles = Array.from(files ?? []);
+
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    const stage = stages.find((item) => item.id === stageId);
+
+    if (!stage) {
+      return;
+    }
+
+    setAttachmentError(undefined);
+    clearFieldError("attachments");
+    updateStage(stageId, {
+      pendingFiles: [...stage.pendingFiles, ...selectedFiles],
+    });
+
+    if (stageAttachmentInputRefs.current[stageId]) {
+      stageAttachmentInputRefs.current[stageId]!.value = "";
+    }
+
+    if (mode === "create" || !stage.persistedId) {
+      return;
+    }
+
+    if (!initialValues?.id) {
+      setAttachmentError("Save the project first before uploading stage brief attachments.");
+      return;
+    }
+
+    setIsUploadingAttachments(true);
+
+    try {
+      for (const file of selectedFiles) {
+        const attachment = await uploadProjectAsset(file, initialValues.id, {
+          stageId: stage.persistedId,
+        });
+        setStages((current) =>
+          current.map((item) =>
+            item.id === stageId
+              ? {
+                  ...item,
+                  attachments: item.attachments.some(
+                    (existingAttachment) => existingAttachment.id === attachment.id,
+                  )
+                    ? item.attachments
+                    : [...item.attachments, attachment],
+                  pendingFiles: item.pendingFiles.filter((pendingFile) => pendingFile !== file),
+                }
+              : item,
+          ),
+        );
+      }
+      refreshProjectData();
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error
+          ? error.message
+          : "Unable to upload the stage brief attachments right now.",
+      );
+      setStages((current) =>
+        current.map((item) =>
+          item.id === stageId
+            ? {
+                ...item,
+                pendingFiles: item.pendingFiles.filter(
+                  (pendingFile) => !selectedFiles.includes(pendingFile),
+                ),
+              }
+            : item,
+        ),
+      );
+    } finally {
+      setIsUploadingAttachments(false);
+    }
+  }
+
+  const uploadQueuedStageAttachments = useCallback(async (
+    projectId: string,
+    orderedStageIds: string[],
+  ) => {
+    for (const [index, stage] of stages.entries()) {
+      const persistedStageId = stage.persistedId ?? orderedStageIds[index];
+
+      if (!persistedStageId || stage.pendingFiles.length === 0) {
+        continue;
+      }
+
+      for (const file of stage.pendingFiles) {
+        const attachment = await uploadProjectAsset(file, projectId, {
+          stageId: persistedStageId,
+        });
+        setStages((current) =>
+          current.map((item) =>
+            item.id === stage.id
+              ? {
+                  ...item,
+                  persistedId: persistedStageId,
+                  attachments: item.attachments.some(
+                    (existingAttachment) => existingAttachment.id === attachment.id,
+                  )
+                    ? item.attachments
+                    : [...item.attachments, attachment],
+                  pendingFiles: item.pendingFiles.filter((pendingFile) => pendingFile !== file),
+                }
+              : item,
+          ),
+        );
+      }
+    }
+  }, [stages, uploadProjectAsset]);
+
   function removePendingProjectFile(index: number) {
+    clearFieldError("attachments");
     setPendingProjectFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
+
+  function removePendingStageFile(stageId: string, index: number) {
+    clearFieldError("attachments");
+    setStages((current) =>
+      current.map((stage) =>
+        stage.id === stageId
+          ? {
+              ...stage,
+              pendingFiles: stage.pendingFiles.filter((_, fileIndex) => fileIndex !== index),
+            }
+          : stage,
+      ),
+    );
+  }
+
+  async function removeStageAttachment(stageId: string, attachmentId: string) {
+    if (!initialValues?.id) {
+      return;
+    }
+
+    setDeletingAttachmentId(attachmentId);
+    setAttachmentError(undefined);
+    clearFieldError("attachments");
+
+    try {
+      const response = await fetch(
+        `/api/project-assets/${attachmentId}?projectId=${encodeURIComponent(initialValues.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to delete the stage brief attachment right now.");
+      }
+
+      setStages((current) =>
+        current.map((stage) =>
+          stage.id === stageId
+            ? {
+                ...stage,
+                attachments: stage.attachments.filter(
+                  (attachment) => attachment.id !== attachmentId,
+                ),
+              }
+            : stage,
+        ),
+      );
+      refreshProjectData();
+    } catch (error) {
+      setAttachmentError(
+        error instanceof Error
+          ? error.message
+          : "Unable to delete the stage brief attachment right now.",
+      );
+    } finally {
+      setDeletingAttachmentId(null);
+    }
   }
 
   useEffect(() => {
@@ -1473,7 +2234,9 @@ export function CreateProjectWorkspace({
       return;
     }
 
-    const toastKey = `${mode}:${formState.error}:${fieldErrors.budgetSummary ?? ""}`;
+    const toastKey = `${mode}:${formState.error}:${fieldErrors.budgetSummary ?? ""}:${
+      fieldErrors.stageStartDates?.join("|") ?? ""
+    }:${fieldErrors.stageDueDates?.join("|") ?? ""}`;
 
     if (lastFormToastKeyRef.current === toastKey) {
       return;
@@ -1486,6 +2249,18 @@ export function CreateProjectWorkspace({
       return;
     }
 
+    if (
+      formState.error === "Please review the highlighted stage timeline fields." ||
+      fieldErrors.stageStartDates?.some(Boolean) ||
+      fieldErrors.stageDueDates?.some(Boolean)
+    ) {
+      showErrorToast(
+        mode === "edit" ? "Unable to update project." : "Unable to create project.",
+        "Please review the highlighted stage timeline fields.",
+      );
+      return;
+    }
+
     showErrorToast(
       mode === "edit" ? "Unable to update project." : "Unable to create project.",
       formState.error === "Please correct the highlighted fields." ||
@@ -1493,7 +2268,13 @@ export function CreateProjectWorkspace({
         ? "Please review the highlighted fields."
         : formState.error,
     );
-  }, [fieldErrors.budgetSummary, formState.error, mode]);
+  }, [
+    fieldErrors.budgetSummary,
+    fieldErrors.stageDueDates,
+    fieldErrors.stageStartDates,
+    formState.error,
+    mode,
+  ]);
 
   useEffect(() => {
     if (mode !== "create" || !formState.projectId) {
@@ -1507,10 +2288,10 @@ export function CreateProjectWorkspace({
     handledCreatedProjectIdRef.current = formState.projectId;
 
     const projectId = formState.projectId;
-    const initialBriefStageId = formState.initialBriefStageId ?? null;
-    const initialBriefCommentId = formState.initialBriefCommentId ?? null;
+    const createdStageIds = formState.createdStageIds ?? [];
+    const hasPendingStageFiles = stages.some((stage) => stage.pendingFiles.length > 0);
 
-    if (pendingProjectFiles.length === 0) {
+    if (pendingProjectFiles.length === 0 && !hasPendingStageFiles) {
       showSuccessToast("Project created successfully.");
       router.replace(`/projects/${projectId}`);
       return;
@@ -1524,17 +2305,23 @@ export function CreateProjectWorkspace({
 
       try {
         for (const file of pendingProjectFiles) {
-          await uploadProjectAsset(file, projectId, {
-            stageId: initialBriefStageId,
-            commentId: initialBriefCommentId,
-          });
+          await uploadProjectAsset(file, projectId);
         }
+
+        await uploadQueuedStageAttachments(projectId, createdStageIds);
 
         if (cancelled) {
           return;
         }
 
         setPendingProjectFiles([]);
+        setStages((current) =>
+          current.map((stage, index) => ({
+            ...stage,
+            persistedId: stage.persistedId ?? createdStageIds[index],
+            pendingFiles: [],
+          })),
+        );
         showSuccessToast("Project created successfully.");
         router.replace(`/projects/${projectId}`);
       } catch (error) {
@@ -1565,12 +2352,14 @@ export function CreateProjectWorkspace({
       cancelled = true;
     };
   }, [
-    formState.initialBriefCommentId,
-    formState.initialBriefStageId,
+    formState.createdStageIds,
     formState.projectId,
     mode,
     pendingProjectFiles,
     router,
+    stages,
+    uploadQueuedStageAttachments,
+    uploadProjectAsset,
   ]);
 
   useEffect(() => {
@@ -1583,9 +2372,79 @@ export function CreateProjectWorkspace({
     }
 
     handledEditProjectIdRef.current = formState.projectId;
-    showSuccessToast("Project updated successfully.");
-    router.replace(`/projects/${formState.projectId}`);
-  }, [formState.projectId, mode, router]);
+    const projectId = formState.projectId;
+    const updatedStageIds = formState.createdStageIds ?? [];
+    const hasPendingStageFiles = stages.some((stage) => stage.pendingFiles.length > 0);
+
+    if (pendingProjectFiles.length === 0 && !hasPendingStageFiles) {
+      showSuccessToast("Project updated successfully.");
+      router.replace(`/projects/${projectId}`);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function completeQueuedUploads() {
+      setIsUploadingAttachments(true);
+      setAttachmentError(undefined);
+
+      try {
+        for (const file of pendingProjectFiles) {
+          await uploadProjectAsset(file, projectId);
+        }
+
+        await uploadQueuedStageAttachments(projectId, updatedStageIds);
+
+        if (cancelled) {
+          return;
+        }
+
+        setPendingProjectFiles([]);
+        setStages((current) =>
+          current.map((stage, index) => ({
+            ...stage,
+            persistedId: stage.persistedId ?? updatedStageIds[index],
+            pendingFiles: [],
+          })),
+        );
+        showSuccessToast("Project updated successfully.");
+        router.replace(`/projects/${projectId}`);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setAttachmentError(
+          error instanceof Error
+            ? `${error.message} The project was saved, but one attachment upload did not finish.`
+            : "The project was saved, but one attachment upload did not finish.",
+        );
+        showErrorToast(
+          "Project saved, but attachment upload failed.",
+          "You can retry the attachment upload from edit mode.",
+        );
+      } finally {
+        if (!cancelled) {
+          setIsUploadingAttachments(false);
+        }
+      }
+    }
+
+    void completeQueuedUploads();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    formState.createdStageIds,
+    formState.projectId,
+    mode,
+    pendingProjectFiles,
+    router,
+    stages,
+    uploadQueuedStageAttachments,
+    uploadProjectAsset,
+  ]);
 
   async function removeProjectAttachment(attachmentId: string) {
     if (!initialValues?.id) {
@@ -1594,6 +2453,7 @@ export function CreateProjectWorkspace({
 
     setDeletingAttachmentId(attachmentId);
     setAttachmentError(undefined);
+    clearFieldError("attachments");
 
     try {
       const response = await fetch(
@@ -1634,7 +2494,16 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="category" value={projectCategory} />
       <input type="hidden" name="executorName" value={projectExecutor} />
       <input type="hidden" name="executorUserId" value={projectExecutorUserId} />
-      <input type="hidden" name="tag" value={projectTag} />
+      <input type="hidden" name="executionType" value={projectExecutionType} />
+      {projectExecutors.map((executor) => (
+        <div key={executor.id}>
+          <input type="hidden" name="executorIds" value={executor.id} />
+          <input type="hidden" name="executorRoles" value={executor.role} />
+        </div>
+      ))}
+      {projectTags.map((tag) => (
+        <input key={tag} type="hidden" name="tags" value={tag} />
+      ))}
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="status" value={projectStatus} />
       <input type="hidden" name="priority" value={projectPriority} />
@@ -1647,6 +2516,9 @@ export function CreateProjectWorkspace({
             value={collaborator.participantType ?? ""}
           />
         </div>
+      ))}
+      {projectAttachments.map((attachment) => (
+        <input key={attachment.id} type="hidden" name="projectAttachmentIds" value={attachment.id} />
       ))}
       {mode === "edit" && initialValues ? (
         <input type="hidden" name="projectId" value={initialValues.id} />
@@ -1662,7 +2534,7 @@ export function CreateProjectWorkspace({
       <Card className="w-full bg-surface">
         <CardHeader>
           <div className="rounded-[20px] bg-[linear-gradient(135deg,#466d58,#5e8f75)] px-6 py-4 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)]">
-            <CardTitle className="text-[18px] font-[700] tracking-[-0.02em] text-white">
+            <CardTitle className="text-[18px] font-semibold tracking-tight text-white">
               {mode === "edit" ? "Edit project" : "Create a project"}
             </CardTitle>
           </div>
@@ -1697,9 +2569,51 @@ export function CreateProjectWorkspace({
                 <FieldError message={getFieldError("name", fieldErrors.name)} />
               </label>
 
+              <div>
+                <RequiredLabel>Project Execution Type</RequiredLabel>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {projectExecutionTypeOptions.map((option) => {
+                    const isSelected = projectExecutionType === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleExecutionTypeChange(option.value)}
+                        className={`rounded-[18px] border px-4 py-3 text-left transition ${
+                          isSelected
+                            ? "border-brand bg-[#eef8f0] shadow-[0_12px_24px_rgba(38,128,79,0.12)]"
+                            : "border-[#dce6dd] bg-white hover:border-brand/60"
+                        }`}
+                      >
+                        <span className="flex items-center justify-between gap-3">
+                          <span className="text-[13px] font-semibold text-[#173120]">
+                            {option.label}
+                          </span>
+                          <span
+                            className={`flex size-5 items-center justify-center rounded-full border ${
+                              isSelected
+                                ? "border-brand bg-brand text-white"
+                                : "border-[#c8d6ca] text-transparent"
+                            }`}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                        </span>
+                        <span className="mt-2 block text-[11px] leading-4 text-[#6f786f]">
+                          {option.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <FieldError message={getFieldError("executionType", fieldErrors.executionType)} />
+              </div>
+
               <label className="block">
                 <RequiredLabel>Project Category</RequiredLabel>
                 <Select
+                  key={`project-category-${projectCategory || "empty"}-${categorySelectOptions.join("\u001f")}`}
                   value={projectCategory}
                   onValueChange={(nextValue) => {
                     if (nextValue === "__add_category__") {
@@ -1721,9 +2635,7 @@ export function CreateProjectWorkspace({
                           ? "No categories available"
                           : "Select project category"
                       }
-                    >
-                      {projectCategory || undefined}
-                    </SelectValue>
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {categorySelectOptions.map((category) => (
@@ -1743,131 +2655,25 @@ export function CreateProjectWorkspace({
               </label>
 
               <label className="block">
-                <RequiredLabel>Project Executor</RequiredLabel>
-                <div ref={executorPickerRef} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExecutorPickerOpen((current) => !current);
-                      setExecutorSearch("");
-                    }}
-                    className="flex h-[42px] w-full items-center justify-between rounded-full border border-line bg-white px-4 text-left text-[12px] font-medium text-[#111712] shadow-[0_6px_16px_rgba(16,29,21,0.04)]"
-                    aria-haspopup="listbox"
-                    aria-expanded={executorPickerOpen}
-                  >
-                    <span className="truncate">
-                      {selectedExecutorOption?.name ||
-                        projectExecutor ||
-                        "Search and select executor"}
-                    </span>
-                    <ChevronDown className="h-4 w-4 shrink-0 text-[#7b857d]" />
-                  </button>
-
-                  {executorPickerOpen ? (
-                    <div className="absolute z-30 mt-2 w-full rounded-[20px] border border-[#dde6de] bg-white p-3 shadow-[0_24px_50px_rgba(17,31,23,0.12)]">
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a948c]" />
-                        <Input
-                          value={executorSearch}
-                          onChange={(event) => setExecutorSearch(event.target.value)}
-                          placeholder="Search and select executor"
-                          className="h-10 pl-9 text-[12px]"
-                          autoFocus
-                        />
-                      </div>
-
-                      <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
-                        {filteredExecutorOptions.length > 0 ? (
-                          filteredExecutorOptions.map((option) => {
-                            const isSelected = option.id === projectExecutorUserId;
-
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => {
-                                  setProjectExecutorUserId(option.id);
-                                  setProjectExecutor(option.name);
-                                  setExecutorPickerOpen(false);
-                                  setExecutorSearch("");
-                                  clearFieldError("executorUserId");
-                                  clearFieldError("executorName");
-                                }}
-                                className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2 text-left transition ${
-                                  isSelected
-                                    ? "bg-[#eef7ef]"
-                                    : "bg-[#fbfcfa] hover:bg-[#f3f8f3]"
-                                }`}
-                              >
-                                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
-                                  {isSelected ? (
-                                    <Check className="h-4 w-4 text-brand" />
-                                  ) : (
-                                    <span className="h-2.5 w-2.5 rounded-full bg-[#d6dfd8]" />
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="truncate text-[13px] font-[700] text-[#162019]">
-                                    {option.name}
-                                  </p>
-                                  <p className="truncate text-[11px] text-[#6f796f]">
-                                    {option.email}
-                                  </p>
-                                  <p className="mt-1 text-[10px] font-[700] uppercase tracking-[0.08em] text-brand">
-                                    {formatExecutorTypeLabel(option.type)}
-                                  </p>
-                                </div>
-                              </button>
-                            );
-                          })
-                        ) : (
-                          <div className="rounded-[16px] border border-dashed border-[#d7dfd7] bg-[#fbfcfa] px-4 py-5 text-center text-[12px] text-[#7a837b]">
-                            No executor found.
-                          </div>
-                        )}
-                      </div>
-
-                      {canInviteExecutor ? (
-                        <>
-                          <Separator className="my-3" />
-                          <button
-                            type="button"
-                            onClick={() => openExecutorInvite(executorSearch)}
-                            className="flex w-full items-center justify-center rounded-[16px] border border-[#dbe7dc] bg-[#f7fbf7] px-3 py-2 text-[13px] font-[700] text-brand transition hover:bg-[#eef8ef]"
-                          >
-                            + Invite new executor
-                          </button>
-                        </>
-                      ) : null}
-
-                      {!selectedExecutorOption && projectExecutor ? (
-                        <p className="mt-3 text-[11px] text-[#7a837b]">
-                          Current saved executor: <span className="font-[700] text-[#243028]">{projectExecutor}</span>
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-                <FieldError
-                  message={
-                    getFieldError("executorUserId", fieldErrors.executorUserId) ||
-                    getFieldError("executorName", fieldErrors.executorName)
-                  }
-                />
-              </label>
-
-              <label className="block">
-                <RequiredLabel>Project Budget</RequiredLabel>
+                {isExternalExecution ? (
+                  <RequiredLabel>Project Budget</RequiredLabel>
+                ) : (
+                  <FieldLabel>Project Budget</FieldLabel>
+                )}
                 {canViewBudget ? (
                   <div className="flex gap-2">
                     <Input
                       value={projectBudget}
                       onChange={(event) => handleBudgetChange(event.target.value)}
                       name="budget"
-                      required
+                      required={isBudgetRequired}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      placeholder="Enter Project Budget...."
+                      placeholder={
+                        isInternalExecution
+                          ? "Optional budget"
+                          : "Enter Project Budget...."
+                      }
                       className="h-[42px] min-w-0 flex-1 text-[12px]"
                     />
                     <Select
@@ -1904,6 +2710,11 @@ export function CreateProjectWorkspace({
                 )}
                 {canViewBudget ? (
                   <>
+                    {isInternalExecution ? (
+                      <p className="mt-2 text-[12px] font-medium text-[#6f786f]">
+                        Budget is not required for internal execution.
+                      </p>
+                    ) : null}
                     <FieldError
                       message={
                         getFieldError("budget", fieldErrors.budget) ||
@@ -1923,35 +2734,98 @@ export function CreateProjectWorkspace({
                           fieldErrors.budgetSummary,
                         )}
                       </div>
+                    ) : hasBudgetConflict && remainingStageBudget !== null ? (
+                      <div className="mt-3 rounded-[16px] border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[12px] font-medium text-[#ba3f31]">
+                        Project budget must equal the total stage budgets. Difference:{" "}
+                        {formatBudgetDifference(remainingStageBudget, projectCurrency || "")}.
+                      </div>
                     ) : null}
                   </>
                 ) : null}
               </label>
 
               <label className="block">
-                <FieldLabel>Project Tag</FieldLabel>
+                <FieldLabel>Project Tags</FieldLabel>
+                <p className="mb-2 text-[12px] font-medium text-[#6f786f]">
+                  Select up to 5 tags.
+                </p>
+                {projectTags.length > 0 ? (
+                  <div className="mb-3 flex min-w-0 flex-wrap gap-2">
+                    {projectTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#cde6d3] bg-[#edf7ef] px-3 py-1.5 text-[12px] font-[700] text-[#2d8055]"
+                      >
+                        <span className="truncate">{tag}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeProjectTag(tag)}
+                          className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-[#3f7a59] transition-colors hover:bg-white"
+                          aria-label={`Remove ${tag}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <Select
-                  value={projectTag || "__no_tag__"}
+                  key={`project-tags-${projectTags.join("\u001f") || "empty"}-${tagSelectOptions.join("\u001f")}`}
+                  value=""
                   onValueChange={(nextValue) => {
                     if (nextValue === "__add_tag__") {
+                      if (projectTags.length >= MAX_PROJECT_TAGS) {
+                        setProjectTagError("You can add up to 5 tags only.");
+                        showWarningToast("Tag limit reached.", "You can add up to 5 tags only.");
+                        return;
+                      }
+
                       openQuickAddMasterData("tag");
                       return;
                     }
 
-                    setProjectTag(nextValue === "__no_tag__" ? "" : nextValue);
-                    clearFieldError("tag");
+                    if (!nextValue) {
+                      return;
+                    }
+
+                    if (
+                      projectTags.some(
+                        (selectedTag) =>
+                          selectedTag.toLowerCase() === nextValue.toLowerCase(),
+                      )
+                    ) {
+                      removeProjectTag(nextValue);
+                      return;
+                    }
+
+                    addProjectTag(nextValue);
                   }}
                 >
                   <SelectTrigger className="h-[42px] text-[12px] font-medium">
-                    <SelectValue placeholder="Select project tag">
-                      {projectTag || "No tag"}
-                    </SelectValue>
+                    <SelectValue
+                      placeholder={
+                        projectTags.length >= MAX_PROJECT_TAGS
+                          ? "Maximum tags selected"
+                          : "Select project tags"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__no_tag__">No tag</SelectItem>
                     {tagSelectOptions.map((tag) => (
                       <SelectItem key={tag} value={tag}>
-                        {tag}
+                        <span className="flex items-center gap-2">
+                          <Check
+                            className={`h-3.5 w-3.5 ${
+                              projectTags.some(
+                                (selectedTag) =>
+                                  selectedTag.toLowerCase() === tag.toLowerCase(),
+                              )
+                                ? "opacity-100"
+                                : "opacity-0"
+                            }`}
+                          />
+                          <span>{tag}</span>
+                        </span>
                       </SelectItem>
                     ))}
                     {canManageProjectMasterData ? (
@@ -1962,7 +2836,9 @@ export function CreateProjectWorkspace({
                     ) : null}
                   </SelectContent>
                 </Select>
-                <FieldError message={getFieldError("tag", fieldErrors.tag)} />
+                <FieldError
+                  message={projectTagError ?? getFieldError("tag", fieldErrors.tag)}
+                />
               </label>
 
               <label className="block">
@@ -2034,7 +2910,7 @@ export function CreateProjectWorkspace({
                       type="button"
                       onClick={() => attachmentInputRef.current?.click()}
                       className="cursor-pointer"
-                      aria-label="Add project attachment files"
+                      aria-label="Add project brief attachment files"
                     >
                       <Paperclip className="h-5 w-5" />
                     </button>
@@ -2053,9 +2929,9 @@ export function CreateProjectWorkspace({
                 }}
               />
 
-              {attachmentError ? (
+              {displayedAttachmentError ? (
                 <div className="mt-3 rounded-[16px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] text-[#bb4d49]">
-                  {attachmentError}
+                  {displayedAttachmentError}
                 </div>
               ) : null}
 
@@ -2066,7 +2942,7 @@ export function CreateProjectWorkspace({
                   <CardContent className="px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[12px] font-semibold text-brand">
-                        Project Attachments
+                        Project Brief Attachments
                       </p>
                       <div className="flex items-center gap-2">
                         {isUploadingAttachments ? (
@@ -2184,7 +3060,7 @@ export function CreateProjectWorkspace({
                       </ul>
                     ) : (
                       <p className="mt-3 text-[11px] text-[#7a837b]">
-                        No project-level attachments uploaded yet.
+                        No project brief attachments uploaded yet.
                       </p>
                     )}
                     <div className="mt-3 flex justify-end gap-3">
@@ -2220,11 +3096,16 @@ export function CreateProjectWorkspace({
                 onMonthChange={setStartMonth}
               />
               <FieldError
-                message={getFieldError(
-                  "startDate",
-                  fieldErrors.startDate,
-                )}
+                message={
+                  getFieldError("startDate", fieldErrors.startDate) ||
+                  clientStageDateErrors.projectStartDateError
+                }
               />
+              {mode === "create" && !startDate ? (
+                <p className="mt-2 rounded-[14px] border border-[#dbe7dd] bg-[#f7fbf7] px-3 py-2 text-[11px] font-medium text-[#6f786f]">
+                  Calendar view defaults to today. Select a Project Start Date to confirm or change it.
+                </p>
+              ) : null}
             </MotionItem>
             <MotionItem y={8}>
               <MonthPicker
@@ -2238,10 +3119,10 @@ export function CreateProjectWorkspace({
                 onMonthChange={setEndMonth}
               />
               <FieldError
-                message={getFieldError(
-                  "endDate",
-                  fieldErrors.endDate,
-                )}
+                message={
+                  getFieldError("endDate", fieldErrors.endDate) ||
+                  clientStageDateErrors.projectEndDateError
+                }
               />
             </MotionItem>
           </MotionStaggerGroup>
@@ -2249,30 +3130,80 @@ export function CreateProjectWorkspace({
           <MotionSection y={8}>
           <div>
             <div className="flex items-center justify-between gap-4">
-              <h3 className="text-[16px] font-[600] text-brand">
-                Project Stages <span className="text-[#d3554d]">*</span>
+              <h3 className="text-[16px] font-semibold text-brand">
+                Project Stages{" "}
+                {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
               </h3>
               <Button
                 type="button"
                 onClick={addStage}
                 variant="outline"
                 size="sm"
-                className="text-[12px]"
+                className="text-[12px] font-semibold"
               >
                 <Plus className="h-4 w-4" />
                 Add Stage
               </Button>
             </div>
 
+            {canViewBudget ? (
+              <div
+                className={`mt-3 grid gap-2 rounded-[18px] border px-4 py-3 text-[12px] sm:grid-cols-3 ${
+                  hasBudgetConflict
+                    ? "border-[#f5c7c2] bg-[#fff4f3]"
+                    : "border-[#dbe7dd] bg-[#f7fbf7]"
+                }`}
+              >
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#7a837b]">
+                    Project Budget
+                  </p>
+                  <p className="mt-1 font-semibold text-[#173120]">
+                    {isInternalExecution
+                      ? "Not required"
+                      : Number.isFinite(parsedProjectBudget)
+                        ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
+                        : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#7a837b]">
+                    Stage Total
+                  </p>
+                  <p className="mt-1 font-semibold text-[#173120]">
+                    {isInternalExecution
+                      ? "Not required"
+                      : formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#7a837b]">
+                    Difference
+                  </p>
+                  <p
+                    className={`mt-1 font-semibold ${
+                      hasBudgetConflict ? "text-[#ba3f31]" : "text-brand"
+                    }`}
+                  >
+                    {isInternalExecution
+                      ? "Not required"
+                      : remainingStageBudget !== null
+                      ? formatBudgetDifference(remainingStageBudget, projectCurrency || "")
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
             {canViewBudget && hasBudgetConflict && remainingStageBudget !== null ? (
               <div className="mt-3 rounded-[18px] border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[12px] text-[#ba3f31]">
-                <p className="font-[700]">Budget conflict</p>
+                <p className="font-semibold">Budget conflict</p>
                 <p className="mt-1">
-                  The total stage budget is higher than the project budget. Please adjust the project budget or reduce the stage budgets before saving.
+                  Project budget must equal the total stage budgets before saving.
                 </p>
                 <dl className="mt-2 space-y-1">
                   <div>
-                    <dt className="inline font-[700]">Project Budget:</dt>{" "}
+                    <dt className="inline font-semibold">Project Budget:</dt>{" "}
                     <dd className="inline">
                       {Number.isFinite(parsedProjectBudget)
                         ? formatBudgetDisplay(parsedProjectBudget, projectCurrency || "")
@@ -2280,15 +3211,15 @@ export function CreateProjectWorkspace({
                     </dd>
                   </div>
                   <div>
-                    <dt className="inline font-[700]">Total Stage Budgets:</dt>{" "}
+                    <dt className="inline font-semibold">Total Stage Budgets:</dt>{" "}
                     <dd className="inline">
                       {formatBudgetDisplay(totalStageBudget, projectCurrency || "")}
                     </dd>
                   </div>
                   <div>
-                    <dt className="inline font-[700]">Difference:</dt>{" "}
+                    <dt className="inline font-semibold">Difference:</dt>{" "}
                     <dd className="inline">
-                      {formatBudgetDisplay(Math.abs(remainingStageBudget), projectCurrency || "")} over budget
+                      {formatBudgetDifference(remainingStageBudget, projectCurrency || "")}
                     </dd>
                   </div>
                 </dl>
@@ -2296,16 +3227,26 @@ export function CreateProjectWorkspace({
             ) : null}
 
             <MotionStaggerGroup
-              className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3"
+              className="mt-3 grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-3"
               stagger={0.04}
             >
               {stages.map((stage, index) => (
-                <MotionItem key={stage.id} y={8} layout>
-                <Card className="rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
-                  <CardContent className="p-4">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
-                      Stage Name <span className="text-[#d3554d]">*</span>
+                <MotionItem key={stage.id} y={8} layout className="min-w-0">
+                <Card className="min-w-0 overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
+                  <CardContent className="min-w-0 p-4">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
+                      Stage Name{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
+                    <input type="hidden" name="stageIds" value={stage.persistedId ?? ""} />
+                    {stage.attachments.map((attachment) => (
+                      <input
+                        key={attachment.id}
+                        type="hidden"
+                        name="stageAttachmentIds"
+                        value={attachment.id}
+                      />
+                    ))}
                     <Input
                       value={stage.name}
                       onChange={(event) => {
@@ -2313,24 +3254,29 @@ export function CreateProjectWorkspace({
                         clearStageFieldError("stageNames", index);
                       }}
                       name="stageNames"
-                      required
-                      className="min-h-[38px] border-brand text-center text-[14px] font-[500] text-brand"
+                      required={isExternalExecution}
+                      className="min-h-[38px] min-w-0 border-brand text-center text-[14px] font-medium text-brand"
                     />
                     <FieldError
                       message={getStageFieldError("stageNames", index, fieldErrors.stageNames?.[index])}
                     />
-                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
-                      Stage Budget <span className="text-[#d3554d]">*</span>
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
+                      Stage Budget{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     {canViewBudget ? (
                       <Input
                         value={stage.budget}
                         onChange={(event) => handleStageBudgetChange(stage.id, event.target.value)}
                         name="stageBudgets"
-                        required
+                        required={isBudgetRequired}
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        placeholder={`Stage ${index + 1} Budget...`}
+                        placeholder={
+                          isInternalExecution
+                            ? "Optional stage budget"
+                            : `Stage ${index + 1} Budget...`
+                        }
                         className="mt-3 h-[38px] bg-[#f7faf7] text-[12px]"
                       />
                     ) : (
@@ -2339,19 +3285,28 @@ export function CreateProjectWorkspace({
                       </div>
                     )}
                     {canViewBudget ? (
-                      <FieldError
-                        message={
-                          getStageFieldError("stageBudgets", index, fieldErrors.stageBudgets?.[index]) ||
-                          (stage.budget.trim().length > 0 &&
-                          (!Number.isFinite(parsedStageBudgets[index]) ||
-                            parsedStageBudgets[index] <= 0)
-                            ? "Enter a valid stage budget greater than zero."
-                            : undefined)
-                        }
-                      />
+                      <>
+                        {isInternalExecution ? (
+                          <p className="mt-2 text-[11px] font-medium text-[#6f786f]">
+                            Not required for internal execution.
+                          </p>
+                        ) : null}
+                        <FieldError
+                          message={
+                            getStageFieldError("stageBudgets", index, fieldErrors.stageBudgets?.[index]) ||
+                            (isExternalExecution &&
+                            stage.budget.trim().length > 0 &&
+                            (!Number.isFinite(parsedStageBudgets[index]) ||
+                              parsedStageBudgets[index] <= 0)
+                              ? "Enter a valid stage budget greater than zero."
+                              : undefined)
+                          }
+                        />
+                      </>
                     ) : null}
-                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
-                      Stage Start <span className="text-[#d3554d]">*</span>
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
+                      Stage Start{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     <DateTimePicker
                       name="stageStartDates"
@@ -2372,8 +3327,14 @@ export function CreateProjectWorkspace({
                         ) || clientStageDateErrors.stageStartDateErrors[index]
                       }
                     />
-                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
-                      Stage Due <span className="text-[#d3554d]">*</span>
+                    {isInternalExecution ? (
+                      <p className="mt-2 text-[11px] font-medium text-[#6f786f]">
+                        Optional for internal execution.
+                      </p>
+                    ) : null}
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
+                      Stage Due{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     <DateTimePicker
                       name="stageDueDates"
@@ -2394,8 +3355,14 @@ export function CreateProjectWorkspace({
                         ) || clientStageDateErrors.stageDueDateErrors[index]
                       }
                     />
-                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f7d72]">
-                      Stage Description <span className="text-[#d3554d]">*</span>
+                    {isInternalExecution ? (
+                      <p className="mt-2 text-[11px] font-medium text-[#6f786f]">
+                        Optional for internal execution.
+                      </p>
+                    ) : null}
+                    <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
+                      Stage Brief{" "}
+                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
                     </p>
                     <Textarea
                       value={stage.description}
@@ -2404,13 +3371,194 @@ export function CreateProjectWorkspace({
                         clearStageFieldError("stageDescriptions", index);
                       }}
                       name="stageDescriptions"
-                      required
-                      placeholder={`Stage ${index + 1} Description...`}
+                      required={isExternalExecution}
+                      placeholder={
+                        isInternalExecution
+                          ? "Optional stage brief."
+                          : "Describe what should be done in this stage."
+                      }
                       className="mt-3 min-h-[84px] bg-[#f7faf7] text-[12px]"
                     />
                     <FieldError
                       message={getStageFieldError("stageDescriptions", index, fieldErrors.stageDescriptions?.[index])}
                     />
+                    {isInternalExecution ? (
+                      <p className="mt-2 text-[11px] font-medium text-[#6f786f]">
+                        Optional for internal execution.
+                      </p>
+                    ) : null}
+                    <div className="mt-3 rounded-[14px] border border-[#dce6dd] bg-[#fbfdfb] px-3 py-2.5">
+                      <input
+                        type="hidden"
+                        name="stageInvoiceRequired"
+                        value={isInternalExecution ? "false" : stage.invoiceRequired ? "true" : "false"}
+                      />
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
+                            Invoice Required
+                          </p>
+                          <p className="mt-1 text-[11px] leading-4 text-[#7a837b]">
+                            {isInternalExecution
+                              ? "Not required for internal execution."
+                              : "Main Executor uploads the invoice before stage completion."}
+                          </p>
+                        </div>
+                        {isInternalExecution ? (
+                          <span className="rounded-full bg-[#f1f6f1] px-3 py-1.5 text-[11px] font-semibold text-[#5f6b62]">
+                            Not required
+                          </span>
+                        ) : (
+                          <div className="inline-flex rounded-full border border-[#dce6dd] bg-white p-1">
+                            <button
+                              type="button"
+                              onClick={() => updateStage(stage.id, { invoiceRequired: true })}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                                stage.invoiceRequired
+                                  ? "bg-brand text-white"
+                                  : "text-[#627068] hover:bg-[#f4f8f4]"
+                              }`}
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateStage(stage.id, { invoiceRequired: false })}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                                !stage.invoiceRequired
+                                  ? "bg-brand text-white"
+                                  : "text-[#627068] hover:bg-[#f4f8f4]"
+                              }`}
+                            >
+                              No
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 rounded-[14px] border border-[#dce6dd] bg-[#fbfdfb] px-3 py-2.5">
+                      <input
+                        ref={(node) => {
+                          stageAttachmentInputRefs.current[stage.id] = node;
+                        }}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => {
+                          void handleStageAttachmentSelection(stage.id, event.target.files);
+                        }}
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
+                          Stage Brief Attachments
+                        </p>
+                        <Badge variant="secondary">
+                          {stage.attachments.length + stage.pendingFiles.length}
+                        </Badge>
+                      </div>
+                      {stage.attachments.length > 0 || stage.pendingFiles.length > 0 ? (
+                        <ul className="mt-2 space-y-2">
+                          {stage.attachments.map((attachment) => (
+                            <li
+                              key={attachment.id}
+                              className="flex min-w-0 items-center justify-between gap-2 rounded-[12px] bg-white px-2.5 py-2"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[12px] font-medium text-[#243028]">
+                                  {attachment.originalFileName}
+                                </p>
+                                <p className="truncate text-[10px] text-[#7a837b]">
+                                  {attachment.fileSizeLabel} · {attachment.uploadedBy}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <AssetPreviewButton
+                                  fileName={attachment.originalFileName}
+                                  mimeType={attachment.mimeType}
+                                  previewPath={attachment.previewPath}
+                                  downloadPath={attachment.downloadPath}
+                                  triggerClassName="size-7 text-brand"
+                                />
+                                <AttachmentFavoriteButton
+                                  attachmentId={attachment.id}
+                                  initialIsFavorited={attachment.isFavoritedByCurrentUser}
+                                  className="size-7 text-[#7a847d] hover:bg-[#fff4f5]"
+                                />
+                                <Button
+                                  asChild
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-brand"
+                                >
+                                  <a
+                                    href={attachment.downloadPath}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    aria-label={`Download ${attachment.originalFileName}`}
+                                  >
+                                    <Download className="h-3.5 w-3.5" />
+                                  </a>
+                                </Button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void removeStageAttachment(stage.id, attachment.id);
+                                  }}
+                                  disabled={deletingAttachmentId === attachment.id}
+                                  className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44] disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label={`Remove ${attachment.originalFileName}`}
+                                >
+                                  {deletingAttachmentId === attachment.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <X className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                          {stage.pendingFiles.map((file, fileIndex) => (
+                            <li
+                              key={`${stage.id}-${file.name}-${file.size}-${fileIndex}`}
+                              className="flex min-w-0 items-center justify-between gap-2 rounded-[12px] border border-dashed border-[#d7dfd7] bg-white px-2.5 py-2"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[12px] font-medium text-[#243028]">
+                                  {file.name}
+                                </p>
+                                <p className="truncate text-[10px] text-[#7a837b]">
+                                  {formatLocalFileSize(file.size)} · Pending upload
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removePendingStageFile(stage.id, fileIndex)}
+                                className="cursor-pointer text-[#9aa49c] transition-colors hover:text-[#cf4f44]"
+                                aria-label={`Remove ${file.name}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-[11px] text-[#7a837b]">
+                          No stage brief attachments uploaded yet.
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => stageAttachmentInputRefs.current[stage.id]?.click()}
+                        disabled={isUploadingAttachments}
+                        className="mt-2 w-full justify-center text-[12px] font-semibold"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                        Add files
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
                 </MotionItem>
@@ -2418,6 +3566,13 @@ export function CreateProjectWorkspace({
             </MotionStaggerGroup>
           </div>
           </MotionSection>
+
+          <div className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf7] px-4 pb-4 pt-1">
+            <CreateProjectSubmitButton
+              mode={mode}
+              uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
+            />
+          </div>
         </CardContent>
       </Card>
       </MotionSection>
@@ -2426,56 +3581,60 @@ export function CreateProjectWorkspace({
         <MotionItem y={10}>
         <Card className="border border-brand/40">
           <CardHeader className="pb-3">
-          <CardTitle className="text-[21px] text-brand">
+          <CardTitle className="text-[21px] font-semibold tracking-tight text-brand">
             Project Overview
           </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pt-0">
           <dl className="mt-3 space-y-1.5 text-[13px] text-[#242b26]">
             <div>
-              <dt className="inline font-[700]">Budget :</dt>{" "}
+              <dt className="inline font-semibold">Execution Type :</dt>{" "}
+              <dd className="inline">{overview.executionType}</dd>
+            </div>
+            <div>
+              <dt className="inline font-semibold">Budget :</dt>{" "}
               <dd className="inline">{overview.budget}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Allocated to Stages :</dt>{" "}
+              <dt className="inline font-semibold">Allocated to Stages :</dt>{" "}
               <dd className="inline">{overview.allocatedStageBudget}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Remaining :</dt>{" "}
+              <dt className="inline font-semibold">Remaining :</dt>{" "}
               <dd
                 className={`inline ${
-                  hasBudgetConflict ? "font-[700] text-[#ba3f31]" : ""
+                  hasBudgetConflict ? "font-semibold text-[#ba3f31]" : ""
                 }`}
               >
                 {overview.remainingStageBudget}
               </dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Stages :</dt>{" "}
+              <dt className="inline font-semibold">Stages :</dt>{" "}
               <dd className="inline">{overview.stages}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Project Started :</dt>{" "}
+              <dt className="inline font-semibold">Project Started :</dt>{" "}
               <dd className="inline">{overview.started}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Project Deadline :</dt>{" "}
+              <dt className="inline font-semibold">Project Deadline :</dt>{" "}
               <dd className="inline">{overview.deadline}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Executor :</dt>{" "}
+              <dt className="inline font-semibold">Executor :</dt>{" "}
               <dd className="inline">{overview.executor}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Tag :</dt>{" "}
+              <dt className="inline font-semibold">Tag :</dt>{" "}
               <dd className="inline">{overview.tag}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Status :</dt>{" "}
+              <dt className="inline font-semibold">Status :</dt>{" "}
               <dd className="inline">{overview.status}</dd>
             </div>
             <div>
-              <dt className="inline font-[700]">Priority :</dt>{" "}
+              <dt className="inline font-semibold">Priority :</dt>{" "}
               <dd className="inline">{overview.priority}</dd>
             </div>
           </dl>
@@ -2483,108 +3642,226 @@ export function CreateProjectWorkspace({
         </Card>
         </MotionItem>
         <MotionItem y={10}>
-        <Card>
-          <CardHeader className="pb-3">
-          <CardTitle className="text-[20px] text-[#111712]">
-            Project Collaborators
-          </CardTitle>
+        <Card className="rounded-[20px]">
+          <CardHeader className="flex-col items-start gap-2 pb-3">
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-[20px] font-semibold leading-[1.15] tracking-tight">
+                  Project Executors
+                </CardTitle>
+                <p className="mt-1 text-[12px] font-[600] text-[#7a837b]">
+                  {projectExecutors.length} {projectExecutors.length === 1 ? "member" : "members"}
+                </p>
+              </div>
+            </div>
+            <div ref={executorPickerRef} className="relative w-full">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setExecutorPickerOpen((current) => !current);
+                  setExecutorSearch("");
+                }}
+                className="-ml-2 h-auto px-2 py-1 text-[13px] font-[600] text-brand"
+                aria-haspopup="listbox"
+                aria-expanded={executorPickerOpen}
+              >
+                <Plus className="h-4 w-4" />
+                Add Executor
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+
+              {executorPickerOpen ? (
+                <div className="absolute z-30 mt-2 w-full rounded-[20px] border border-[#dde6de] bg-white p-3 shadow-[0_24px_50px_rgba(17,31,23,0.12)]">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["MAIN_EXECUTOR", "EXECUTOR"] as ProjectExecutorRoleValue[]).map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setExecutorRoleDraft(role)}
+                        className={`rounded-full px-3 py-2 text-[11px] font-[800] transition ${
+                          executorRoleDraft === role
+                            ? "bg-brand text-white"
+                            : "border border-[#dbe7dc] bg-[#f7fbf7] text-brand"
+                        }`}
+                      >
+                        {formatProjectExecutorRoleLabel(role)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative mt-3">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a948c]" />
+                    <Input
+                      value={executorSearch}
+                      onChange={(event) => setExecutorSearch(event.target.value)}
+                      placeholder="Search and select executor"
+                      className="h-10 pl-9 text-[12px]"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
+                    {filteredExecutorOptions.length > 0 ? (
+                      filteredExecutorOptions.map((option) => {
+                        const isSelected = selectedExecutorIds.has(option.id);
+
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => {
+                              upsertProjectExecutor(option, executorRoleDraft);
+                              setExecutorPickerOpen(false);
+                              setExecutorSearch("");
+                            }}
+                            className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2 text-left transition ${
+                              isSelected
+                                ? "bg-[#eef7ef]"
+                                : "bg-[#fbfcfa] hover:bg-[#f3f8f3]"
+                            }`}
+                          >
+                            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
+                              {isSelected ? (
+                                <Check className="h-4 w-4 text-brand" />
+                              ) : (
+                                <span className="h-2.5 w-2.5 rounded-full bg-[#d6dfd8]" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-[700] text-[#162019]">
+                                {option.name}
+                              </p>
+                              <p className="truncate text-[11px] text-[#6f796f]">
+                                {option.email}
+                              </p>
+                              <p className="mt-1 text-[10px] font-[700] uppercase tracking-[0.08em] text-brand">
+                                {isSelected ? "Update role" : formatExecutorTypeLabel(option.type)}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-[16px] border border-dashed border-[#d7dfd7] bg-[#fbfcfa] px-4 py-5 text-center text-[12px] text-[#7a837b]">
+                        No executor found.
+                      </div>
+                    )}
+                  </div>
+
+                  {canInviteExecutor ? (
+                    <>
+                      <Separator className="my-3" />
+                      <button
+                        type="button"
+                        onClick={() => openExecutorInvite(executorSearch)}
+                        className="flex w-full items-center justify-center rounded-[16px] border border-[#dbe7dc] bg-[#f7fbf7] px-3 py-2 text-[13px] font-[700] text-brand transition hover:bg-[#eef8ef]"
+                      >
+                        + Invite new executor
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </CardHeader>
 
           <CardContent className="pt-0">
-          <div className="space-y-3">
-            {assignedCollaborators.length > 0 ? (
-              assignedCollaborators.map((collaborator) => (
-                <div
-                  key={collaborator.id}
-                  className="rounded-[16px] border border-[#e3e8e2] bg-[#fbfcfa] px-4 py-3"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-[600] text-[#1f2923]">
-                        {collaborator.name}
+            {projectExecutors.length > 0 ? (
+              <ul className="space-y-2">
+                {projectExecutors.map((executor) => (
+                  <li
+                    key={executor.id}
+                    className="flex min-h-[58px] items-start gap-3 rounded-[14px] border border-[#e3e8e2] bg-[#fbfcfa] px-3 py-2"
+                  >
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#d7efe0,#2f8d5d)] text-[10px] font-[800] text-white">
+                      {executor.name
+                        .split(" ")
+                        .map((part) => part[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-[700] leading-5 text-[#111712]">
+                        {executor.name}
                       </p>
-                      <p className="truncate text-[11px] text-[#7f877f]">
-                        {collaborator.email ?? collaborator.role}
+                      <p className="truncate text-[11px] leading-4 text-[#7a837b]">
+                        {executor.email ?? executor.roleLabel}
                       </p>
-                      <div className="mt-2">
-                        <Badge
-                          variant="secondary"
-                          className={getProjectCollaboratorTypeMeta(
-                            collaborator.participantType,
-                          ).badgeClassName}
-                        >
-                          {getProjectCollaboratorTypeMeta(collaborator.participantType).label}
-                        </Badge>
-                      </div>
-                      <div className="mt-3 max-w-[260px]">
-                        <p className="mb-1 text-[11px] font-[600] text-[#7f877f]">
-                          Collaborator Type
-                        </p>
-                        <Select
-                          value={
-                            collaborator.participantType ??
-                            getDefaultProjectCollaboratorParticipantType(collaborator.group)
-                          }
-                          onValueChange={(value) =>
-                            updateAssignedCollaboratorParticipantType(
-                              collaborator.id,
-                              value as ProjectCollaboratorParticipantType,
-                            )
-                          }
-                        >
-                          <SelectTrigger className="h-9 rounded-full border border-line bg-white text-[12px] font-medium">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projectCollaboratorParticipantTypes.map((participantType) => (
-                              <SelectItem key={participantType} value={participantType}>
-                                {getProjectCollaboratorTypeMeta(participantType).label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        {(["MAIN_EXECUTOR", "EXECUTOR"] as ProjectExecutorRoleValue[]).map((role) => (
+                          <button
+                            key={role}
+                            type="button"
+                            onClick={() => updateProjectExecutorRole(executor.id, role)}
+                            className={`rounded-full px-2 py-1 text-[10px] font-[800] transition ${
+                              executor.role === role
+                                ? "bg-brand text-white"
+                                : "border border-[#dbe7dc] bg-white text-brand"
+                            }`}
+                          >
+                            {role === "MAIN_EXECUTOR" ? "Main" : "Executor"}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                    <Badge
-                      variant="secondary"
-                      className={`shrink-0 ${
-                        collaborator.group === "external"
-                          ? "border border-[#f1dfcf] bg-[#fff4ea] text-[#ca7b3b]"
-                          : "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]"
-                      }`}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 text-[#ff6e68]"
+                      onClick={() => setExecutorRemovalTarget(executor)}
+                      aria-label={`Remove ${executor.name}`}
                     >
-                      {collaborator.group === "external" ? "External" : "Internal"}
-                    </Badge>
-                  </div>
-                </div>
-              ))
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <p className="text-[13px] text-[#7a837b]">
-                No collaborators added yet.
+              <p className="rounded-[14px] border border-dashed border-[#d6ddd6] bg-[#fbfcfa] px-4 py-5 text-[13px] text-[#7a837b]">
+                No executors added yet.
               </p>
             )}
-
-            <Button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              variant="ghost"
-              size="sm"
-              className="px-0 text-[14px] font-[600] text-brand"
-            >
-              Add Collaborator
-            </Button>
-          </div>
-
-          <Separator className="mt-6" />
-          <CreateProjectSubmitButton
-            mode={mode}
-            uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
-          />
+            <FieldError
+              message={
+                getFieldError("executorUserId", fieldErrors.executorUserId) ||
+                getFieldError("executorName", fieldErrors.executorName)
+              }
+            />
           </CardContent>
         </Card>
         </MotionItem>
+        <MotionItem y={10}>
+        <ProjectCollaboratorsSummary
+          collaborators={collaboratorSummaryRecords}
+          onAdd={openProjectCollaboratorPicker}
+          addLabel="Add Collaborator"
+          saving={collaboratorSaving}
+        />
+        </MotionItem>
       </MotionStaggerGroup>
 
+      <CollaboratorPickerDialog
+        isOpen={pickerOpen}
+        collaborators={availableCollaboratorRecords}
+        selectedIds={selectedCollaboratorIds}
+        error={collaboratorError}
+        saving={collaboratorSaving}
+        onToggle={toggleAssignedCollaborator}
+        onClose={() => {
+          setCollaboratorError(undefined);
+          setDraftCollaboratorIds([]);
+          setPickerOpen(false);
+        }}
+        onConfirm={() => {
+          void applyCollaboratorsSelection();
+        }}
+        onInviteFallback={openCollaboratorInvite}
+        confirmLabel="Apply Selection"
+      />
       <CollaboratorDialog
         isOpen={dialogOpen}
         mode="invite"
@@ -2627,20 +3904,28 @@ export function CreateProjectWorkspace({
           setExecutorInviteFormValue(field, value);
         }}
       />
-      <CollaboratorPickerDialog
-        isOpen={pickerOpen}
-        collaborators={availableCollaboratorRecords}
-        selectedIds={selectedCollaboratorIds}
-        onToggle={toggleAssignedCollaborator}
-        onClose={() => setPickerOpen(false)}
-        onConfirm={() => setPickerOpen(false)}
-        onInviteFallback={openCollaboratorInvite}
-        confirmLabel="Apply Selection"
+      <ConfirmationDialog
+        isOpen={executorRemovalTarget !== null}
+        title="Remove project executor?"
+        description={
+          executorRemovalTarget
+            ? `${executorRemovalTarget.name} will no longer be assigned as a project executor. They may remain a project collaborator if they were added separately.`
+            : ""
+        }
+        confirmLabel="Remove Executor"
+        cancelLabel="Cancel"
+        tone="destructive"
+        onClose={() => setExecutorRemovalTarget(null)}
+        onConfirm={() => {
+          if (executorRemovalTarget) {
+            removeProjectExecutor(executorRemovalTarget);
+          }
+        }}
       />
       <ConfirmationDialog
         isOpen={budgetConflictDialogOpen}
         title="Budget conflict"
-        description="The total stage budget is higher than the project budget. Please adjust the project budget or reduce the stage budgets before saving."
+        description="Project budget must equal the total stage budgets before saving."
         confirmLabel="Review Budget"
         cancelLabel="Close"
         onClose={() => setBudgetConflictDialogOpen(false)}
@@ -2657,7 +3942,9 @@ export function CreateProjectWorkspace({
               )}\nDifference: ${formatBudgetDisplay(
                 Math.abs(remainingStageBudget),
                 projectCurrency || "",
-              )} over budget`
+              )} ${
+                remainingStageBudget < 0 ? "over budget" : "unallocated"
+              }`
             : undefined
         }
       />

@@ -65,7 +65,9 @@ function SelectScrollDownButton({
 function SelectContent({
   className,
   children,
+  collisionPadding = 12,
   position = "popper",
+  sideOffset = 4,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
@@ -73,12 +75,12 @@ function SelectContent({
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
-          "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-[20px] border border-[#dde4dd] bg-white p-1.5 text-[#1d251f] shadow-[0_20px_50px_rgba(23,39,28,0.12)] data-[state=open]:animate-in data-[state=closed]:animate-out",
-          position === "popper" &&
-            "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+          "relative z-50 max-h-[min(var(--radix-select-content-available-height),24rem)] min-w-[8rem] overflow-hidden rounded-[20px] border border-[#dde4dd] bg-white p-1.5 text-[#1d251f] shadow-[0_20px_50px_rgba(23,39,28,0.12)] data-[state=open]:animate-in data-[state=closed]:animate-out",
           className,
         )}
+        collisionPadding={collisionPadding}
         position={position}
+        sideOffset={sideOffset}
         {...props}
       >
         <SelectScrollUpButton />
@@ -135,9 +137,23 @@ function SelectItem({
 }
 
 function SelectValue({
+  children,
+  placeholder,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Value>) {
-  return <SelectPrimitive.Value data-slot="select-value" {...props} />;
+  const fallbackPlaceholder =
+    placeholder ??
+    (typeof children === "string" || typeof children === "number"
+      ? String(children)
+      : undefined);
+
+  return (
+    <SelectPrimitive.Value
+      data-slot="select-value"
+      placeholder={fallbackPlaceholder}
+      {...props}
+    />
+  );
 }
 
 export {

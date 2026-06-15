@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Search, UserPlus, X } from "lucide-react";
 
 import type { CollaboratorRecord } from "@/lib/collaboration";
@@ -57,6 +57,21 @@ export function CollaboratorPickerDialog({
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "Internal" | "External">("all");
 
+  useEffect(() => {
+    if (!isOpen || saving) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose, saving]);
+
   const filteredCollaborators = useMemo(
     () =>
       collaborators.filter((collaborator) => {
@@ -78,7 +93,14 @@ export function CollaboratorPickerDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8"
+      onMouseDown={(event) => {
+        if (!saving && event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <Card className="w-full max-w-[760px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
         <CardContent className="p-6 sm:p-7">
           <div className="mb-6 flex items-start justify-between gap-4">
@@ -93,6 +115,7 @@ export function CollaboratorPickerDialog({
               variant="secondary"
               size="icon"
               onClick={onClose}
+              disabled={saving}
               className="shrink-0 border border-line"
               aria-label="Close collaborator picker"
             >

@@ -32,10 +32,12 @@ export type LibraryTypeFilter = (typeof libraryTypeFilterOptions)[number];
 
 export type LibraryItemRecord = {
   id: string;
+  source: "PROJECT_ATTACHMENT" | "MANUAL_LIBRARY_ASSET";
   fileName: string;
   projectId: string;
   projectName: string;
   projectTag: string | null;
+  projectTags: string[];
   uploadedAt: string;
   uploadedAtValue: string;
   createdBy: string;
@@ -55,12 +57,6 @@ export type LibraryFilterOption = {
   label: string;
 };
 
-export type LibraryUploadProjectOption = {
-  id: string;
-  label: string;
-  tag: string | null;
-};
-
 export const libraryUploadCategoryOptions = [
   { value: "PROJECT_ASSET", label: "Project Asset" },
   { value: "REFERENCE_FILE", label: "Reference File" },
@@ -74,7 +70,7 @@ export type LibraryUploadCategory =
   (typeof libraryUploadCategoryOptions)[number]["value"];
 
 export type LibraryUploadMetadata = {
-  source?: "dashboard-library-upload";
+  source?: "dashboard-library-upload" | "dashboard-archive-upload";
   category?: LibraryUploadCategory;
   note?: string;
 };

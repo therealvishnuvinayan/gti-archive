@@ -246,7 +246,7 @@ export function StageTimeRemainingCard({
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <AlarmClockCheck className="h-5 w-5 text-brand" />
-          <CardTitle className="text-[20px] text-brand">Time Remaining</CardTitle>
+          <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">Time Remaining</CardTitle>
         </div>
       </CardHeader>
       <CardContent className="space-y-4 pt-0">

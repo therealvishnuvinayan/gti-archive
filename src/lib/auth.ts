@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { hasValidPasswordValue } from "@/lib/password-rules";
+import { getPermissionProfileSnapshotForUser } from "@/lib/permissions/profiles";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const SESSION_COOKIE_NAME = "gti_session";
@@ -84,7 +84,7 @@ function validateCredentials(email: string, password: string) {
     throw new AuthError("Enter a valid email address.");
   }
 
-  if (!hasValidPasswordValue(password)) {
+  if (!password.trim()) {
     throw new AuthError("Password is required.");
   }
 
@@ -189,7 +189,14 @@ export const getCurrentUser = cache(async () => {
     return null;
   }
 
-  return session.user;
+  const permissionProfileSnapshot = await getPermissionProfileSnapshotForUser(
+    session.user,
+  );
+
+  return {
+    ...session.user,
+    permissionProfileSnapshot,
+  };
 });
 
 export async function requireUser() {

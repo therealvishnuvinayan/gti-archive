@@ -9,9 +9,10 @@ import {
   SESSION_COOKIE_NAME,
   verifyAuthPassword,
 } from "@/lib/auth";
-import { hasValidPasswordValue } from "@/lib/password-rules";
+import { getPasswordValidationMessage } from "@/lib/password-rules";
+import { requirePermission } from "@/lib/permissions/require";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { deleteObjectIfNeeded } from "@/lib/storage/s3";
+import { buildUserAvatarPrefix, deleteObjectIfNeeded } from "@/lib/storage/s3";
 
 type UpdateProfileInput = {
   name: string;
@@ -62,6 +63,7 @@ export async function updateProfileAction(
   input: UpdateProfileInput,
 ): Promise<UpdateProfileResult> {
   const user = await requireUser();
+  requirePermission(user, "settings.updateOwnProfile", "You do not have permission to update your profile.");
   const parsed = normalizeProfileInput(input);
 
   if (!parsed.name) {
@@ -80,6 +82,22 @@ export async function updateProfileAction(
         bio: "Short bio must be 300 characters or fewer.",
       },
     };
+  }
+
+  const hasSubmittedNewAvatar =
+    Boolean(parsed.avatarUrl) && parsed.avatarUrl !== user.avatarUrl;
+
+  if (hasSubmittedNewAvatar) {
+    const allowedAvatarPrefix = buildUserAvatarPrefix(user.id);
+
+    if (
+      !parsed.avatarUrl?.startsWith(allowedAvatarPrefix) ||
+      parsed.avatarUrl.length <= allowedAvatarPrefix.length
+    ) {
+      return {
+        error: "Invalid profile photo. Please upload the photo again.",
+      };
+    }
   }
 
   await withPrismaRetry(() =>
@@ -128,6 +146,11 @@ export async function changePasswordAction(
   input: ChangePasswordInput,
 ): Promise<ChangePasswordResult> {
   const sessionUser = await requireUser();
+  requirePermission(
+    sessionUser,
+    "settings.changeOwnPassword",
+    "You do not have permission to change your password.",
+  );
   const parsed = normalizePasswordInput(input);
 
   const fieldErrors: ChangePasswordResult["fieldErrors"] = {};
@@ -169,11 +192,13 @@ export async function changePasswordAction(
     };
   }
 
-  if (!hasValidPasswordValue(parsed.newPassword)) {
+  const passwordValidationMessage = getPasswordValidationMessage(parsed.newPassword);
+
+  if (passwordValidationMessage) {
     return {
       error: "Please correct the highlighted fields.",
       fieldErrors: {
-        newPassword: "New password is required.",
+        newPassword: passwordValidationMessage,
       },
     };
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import type { FormEvent } from "react";
 import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { useFormStatus } from "react-dom";
 
@@ -8,6 +9,10 @@ import {
   initialRegisterState,
   type RegisterState,
 } from "@/app/register/register-state";
+import {
+  getPasswordValidationMessage,
+  PASSWORD_REQUIREMENTS,
+} from "@/lib/password-rules";
 
 type RegisterFormProps = {
   email: string;
@@ -35,9 +40,30 @@ export function RegisterForm({ email, action }: RegisterFormProps) {
   );
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [clientError, setClientError] = useState<string>();
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const formData = new FormData(event.currentTarget);
+    const password = String(formData.get("password") ?? "");
+    const confirmPassword = String(formData.get("confirmPassword") ?? "");
+    const passwordValidationMessage = getPasswordValidationMessage(password);
+
+    setClientError(undefined);
+
+    if (passwordValidationMessage) {
+      event.preventDefault();
+      setClientError(passwordValidationMessage);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      event.preventDefault();
+      setClientError("Passwords do not match.");
+    }
+  }
 
   return (
-    <form action={formAction} className="space-y-8">
+    <form action={formAction} onSubmit={handleSubmit} className="space-y-8">
       <div className="space-y-2">
         <h1 className="text-[42px] font-[600] leading-[1.05] tracking-[-0.04em] text-[#19211b] sm:text-[52px]">
           Set your password
@@ -74,6 +100,7 @@ export function RegisterForm({ email, action }: RegisterFormProps) {
               name="password"
               autoComplete="new-password"
               required
+              minLength={6}
               placeholder="Create a password"
               className="w-full bg-transparent text-[17px] text-[#1b231d] outline-none placeholder:text-[#a6ada5]"
             />
@@ -116,11 +143,25 @@ export function RegisterForm({ email, action }: RegisterFormProps) {
             </button>
           </span>
         </label>
+
+        <div className="rounded-[18px] border border-[#dfe8df] bg-[#f7faf7] px-5 py-4">
+          <p className="text-[14px] font-[700] text-[#253129]">
+            Password requirements
+          </p>
+          <ul className="mt-3 space-y-2 text-[14px] text-[#68736a]">
+            {PASSWORD_REQUIREMENTS.map((requirement) => (
+              <li key={requirement} className="flex gap-2">
+                <span className="mt-[0.45em] h-1.5 w-1.5 rounded-full bg-[#2f8d5d]" />
+                <span>{requirement}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
-      {state.error ? (
+      {clientError || state.error ? (
         <p className="rounded-2xl border border-[#f5c7c2] bg-[#fff4f3] px-4 py-3 text-[14px] font-medium text-[#ba3f31]">
-          {state.error}
+          {clientError || state.error}
         </p>
       ) : null}
 
