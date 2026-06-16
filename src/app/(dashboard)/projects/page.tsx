@@ -15,6 +15,8 @@ type ProjectFilter = {
   value: "ALL" | "ACTIVE" | "PENDING" | "ON_HOLD" | "COMPLETED";
 };
 
+type ProjectSortValue = "newest" | "oldest" | "name";
+
 const projectFilters: ProjectFilter[] = [
   { label: "All", value: "ALL" },
   { label: "Active", value: "ACTIVE" },
@@ -23,27 +25,72 @@ const projectFilters: ProjectFilter[] = [
   { label: "Completed", value: "COMPLETED" },
 ];
 
+function logProjectsPageTiming(label: string, startedAt: number) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.log(`[projects:list] ${label}`, {
+    ms: Math.round(performance.now() - startedAt),
+  });
+}
+
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    status?: string;
-    q?: string;
-    sort?: string;
-    category?: string;
-    tag?: string;
-  }>;
+  searchParams: Promise<ProjectSearchParams>;
 }) {
+  const data = await loadProjectsPageData(searchParams);
+
+  return (
+    <DashboardLayout>
+      <section className="space-y-6">
+        <ProjectsBrowser
+          projects={data.projects}
+          hasAnyProjects={data.hasAnyProjects}
+          canCreateProject={data.canCreateProject}
+          activeStatus={data.activeStatus}
+          activeSort={data.activeSort}
+          query={data.query}
+          activeCategory={data.activeCategory}
+          activeTag={data.activeTag}
+          categoryOptions={data.filterOptions.categories}
+          statusOptions={data.filterOptions.statuses}
+          tagOptions={data.filterOptions.tags}
+          filters={projectFilters}
+        />
+      </section>
+    </DashboardLayout>
+  );
+}
+
+type ProjectSearchParams = {
+  status?: string;
+  q?: string;
+  sort?: string;
+  category?: string;
+  tag?: string;
+  page?: string;
+};
+
+async function loadProjectsPageData(
+  searchParams: Promise<ProjectSearchParams>,
+) {
+  const pageStartedAt = performance.now();
   const resolvedSearchParams = await searchParams;
   const activeStatus = resolvedSearchParams.status?.trim() || "ACTIVE";
   const query = resolvedSearchParams.q?.trim() ?? "";
-  const activeSort =
+  const activeSort: ProjectSortValue =
     resolvedSearchParams.sort === "oldest" ||
     resolvedSearchParams.sort === "name"
       ? resolvedSearchParams.sort
       : "newest";
   const activeCategory = resolvedSearchParams.category?.trim() ?? "";
   const activeTag = resolvedSearchParams.tag?.trim() ?? "";
+  const activePage = Math.max(
+    1,
+    Number.parseInt(resolvedSearchParams.page ?? "1", 10) || 1,
+  );
   const user = await requireUser();
 
   if (!hasPermission(user, "project.list") && !hasPermission(user, "project.view")) {
@@ -57,31 +104,24 @@ export default async function ProjectsPage({
       category: activeCategory,
       tag: activeTag,
       sort: activeSort,
+      page: activePage,
     }, user),
     getDashboardProjectCounts(user),
     getProjectListFilterOptions(user),
   ]);
   const hasAnyProjects = projectCounts.total > 0;
   const canCreateProject = hasPermission(user, "project.create");
+  logProjectsPageTiming("page total", pageStartedAt);
 
-  return (
-    <DashboardLayout>
-      <section className="space-y-6">
-        <ProjectsBrowser
-          projects={projects}
-          hasAnyProjects={hasAnyProjects}
-          canCreateProject={canCreateProject}
-          activeStatus={activeStatus}
-          activeSort={activeSort}
-          query={query}
-          activeCategory={activeCategory}
-          activeTag={activeTag}
-          categoryOptions={filterOptions.categories}
-          statusOptions={filterOptions.statuses}
-          tagOptions={filterOptions.tags}
-          filters={projectFilters}
-        />
-      </section>
-    </DashboardLayout>
-  );
+  return {
+    projects,
+    hasAnyProjects,
+    canCreateProject,
+    activeStatus,
+    activeSort,
+    query,
+    activeCategory,
+    activeTag,
+    filterOptions,
+  };
 }

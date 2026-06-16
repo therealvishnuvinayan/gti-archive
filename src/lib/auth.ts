@@ -14,6 +14,16 @@ const DEFAULT_SESSION_DAYS = 1;
 const REMEMBER_ME_SESSION_DAYS = 30;
 const SESSION_CACHE_TTL_SECONDS = 10;
 
+function logAuthTiming(label: string, startedAt: number) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.log(`[projects:list] ${label}`, {
+    ms: Math.round(performance.now() - startedAt),
+  });
+}
+
 function getSessionCookieOptions(expires?: Date) {
   return {
     httpOnly: true,
@@ -176,22 +186,29 @@ export async function signInUser(options: {
 }
 
 export const getCurrentUser = cache(async () => {
+  const startedAt = performance.now();
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
   if (!sessionToken) {
+    logAuthTiming("auth/session lookup", startedAt);
     return null;
   }
 
+  const sessionStartedAt = performance.now();
   const session = await getCachedSessionUser(sessionToken);
+  logAuthTiming("auth/session lookup", sessionStartedAt);
 
   if (!session || session.expiresAt <= new Date()) {
     return null;
   }
 
+  const permissionSnapshotStartedAt = performance.now();
   const permissionProfileSnapshot = await getPermissionProfileSnapshotForUser(
     session.user,
   );
+  logAuthTiming("permission snapshot", permissionSnapshotStartedAt);
+  logAuthTiming("auth total", startedAt);
 
   return {
     ...session.user,

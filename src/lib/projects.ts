@@ -69,6 +69,7 @@ export const INTERNAL_EXECUTION_NOT_REQUIRED_LABEL =
 export const PROJECT_BUDGET_NOT_REQUIRED_LABEL = "No budget required";
 export const PROJECT_BUDGET_REQUIRED_NOT_SET_LABEL = "Budget required - not set";
 export const MAX_PROJECT_TAGS = 5;
+const PROJECT_LIST_PAGE_SIZE = 20;
 
 type BudgetAccessUser = Pick<User, "id">;
 export type ProjectAccessUser = PermissionUser;
@@ -153,6 +154,23 @@ type ProjectWithCreator = Project & {
     submissionReviewStatus?: SubmissionReviewStatus | null;
     createdAt: Date;
     uploadedBy: Pick<User, "name" | "email">;
+  }>;
+};
+
+type ProjectCardProject = Pick<
+  Project,
+  | "id"
+  | "name"
+  | "category"
+  | "currentStageName"
+  | "createdAt"
+  | "createdById"
+  | "isPinned"
+> & {
+  createdBy: Pick<User, "name" | "email">;
+  status: ProjectStatusRelation;
+  tags?: Array<{
+    tag: Pick<ProjectTag, "name">;
   }>;
 };
 
@@ -401,6 +419,7 @@ export type ProjectsListFilter = {
   category?: string;
   tag?: string;
   sort?: "newest" | "oldest" | "name";
+  page?: number;
 };
 
 export type ProjectListFilterOptions = {
@@ -520,6 +539,21 @@ function getProjectTagNames(
       ) ?? [];
 
   return uniqueTrimmedValues(relationTags);
+}
+
+function shouldLogProjectTimings() {
+  return process.env.NODE_ENV !== "production";
+}
+
+function logProjectTiming(label: string, startedAt: number, metadata?: Record<string, unknown>) {
+  if (!shouldLogProjectTimings()) {
+    return;
+  }
+
+  console.log(`[projects:list] ${label}`, {
+    ms: Math.round(performance.now() - startedAt),
+    ...metadata,
+  });
 }
 
 function formatProjectTagsLabel(tags: string[]) {
@@ -983,7 +1017,7 @@ export function formatProjectStageLabel(
 }
 
 function mapProjectToCard(
-  project: ProjectWithCreator,
+  project: ProjectCardProject,
   currentUser: ProjectAccessUser,
 ): ProjectCardRecord {
   const tags = getProjectTagNames(project);
@@ -1972,7 +2006,11 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
 export async function getProjectListFilterOptions(
   currentUser: ProjectAccessUser,
 ): Promise<ProjectListFilterOptions> {
+  const startedAt = performance.now();
+  const accessibleWhereStartedAt = performance.now();
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
+  logProjectTiming("filter accessible where", accessibleWhereStartedAt);
+  const queryStartedAt = performance.now();
   const [projects, statuses] = await Promise.all([
     unstable_cache(
       async () =>
@@ -1982,8 +2020,12 @@ export async function getProjectListFilterOptions(
             select: {
               category: true,
               tags: {
-                include: {
-                  tag: true,
+                select: {
+                  tag: {
+                    select: {
+                      name: true,
+                    },
+                  },
                 },
               },
             },
@@ -1998,7 +2040,12 @@ export async function getProjectListFilterOptions(
     )(),
     getActiveProjectStatusOptions(),
   ]);
+  logProjectTiming("filter options query", queryStartedAt, {
+    projects: projects.length,
+    statuses: statuses.length,
+  });
 
+  const mappingStartedAt = performance.now();
   const categories = new Map<string, string>();
   const tags = new Map<string, string>();
 
@@ -2013,7 +2060,7 @@ export async function getProjectListFilterOptions(
     }
   }
 
-  return {
+  const options = {
     statuses,
     categories: [...categories.values()].sort((left, right) =>
       left.localeCompare(right, undefined, { sensitivity: "base" }),
@@ -2022,12 +2069,21 @@ export async function getProjectListFilterOptions(
       left.localeCompare(right, undefined, { sensitivity: "base" }),
     ),
   };
+  logProjectTiming("filter options mapping", mappingStartedAt, {
+    categories: categories.size,
+    tags: tags.size,
+  });
+  logProjectTiming("filter options total", startedAt);
+  return options;
 }
 
 export async function getDashboardProjectCounts(
   currentUser?: ProjectAccessUser,
 ): Promise<DashboardProjectCounts> {
+  const startedAt = performance.now();
+  const accessibleWhereStartedAt = performance.now();
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
+  logProjectTiming("sidebar count accessible where", accessibleWhereStartedAt);
   const getCachedCounts = unstable_cache(
     async () =>
       withPrismaRetry(() =>
@@ -2052,8 +2108,13 @@ export async function getDashboardProjectCounts(
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   );
 
+  const queryStartedAt = performance.now();
   const projects = await getCachedCounts();
+  logProjectTiming("sidebar count query", queryStartedAt, {
+    projects: projects.length,
+  });
 
+  const mappingStartedAt = performance.now();
   const counts = projects.reduce(
     (accumulator, project) => {
       const groupSlug = project.status?.group?.slug;
@@ -2081,13 +2142,16 @@ export async function getDashboardProjectCounts(
     },
   );
 
-  return {
+  const result = {
     total: projects.length,
     ongoing: counts.ongoing,
     onHold: counts.onHold,
     pending: counts.pending,
     completed: counts.completed,
   };
+  logProjectTiming("sidebar count mapping", mappingStartedAt);
+  logProjectTiming("sidebar count total", startedAt);
+  return result;
 }
 
 export async function getRecentProjects(limit = 5, currentUser?: ProjectAccessUser) {
@@ -2164,6 +2228,17 @@ export async function getProjectsList(
   filter: ProjectsListFilter,
   currentUser: ProjectAccessUser,
 ) {
+  const startedAt = performance.now();
+  const accessibleWhereStartedAt = performance.now();
+  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
+  logProjectTiming("accessible where", accessibleWhereStartedAt);
+
+  const filterWhereStartedAt = performance.now();
+  const filterWhere = buildProjectsWhere(filter);
+  logProjectTiming("filter where", filterWhereStartedAt);
+
+  const page = Math.max(1, Math.floor(filter.page ?? 1));
+  const skip = (page - 1) * PROJECT_LIST_PAGE_SIZE;
   const orderBy =
     filter.sort === "oldest"
       ? [{ isPinned: "desc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }]
@@ -2176,17 +2251,25 @@ export async function getProjectsList(
           ]
         : [{ isPinned: "desc" as const }, { createdAt: "desc" as const }, { id: "asc" as const }];
 
+  const queryStartedAt = performance.now();
   const projects = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
         prisma.project.findMany({
           where: {
             AND: [
-              buildAccessibleProjectsWhere(currentUser),
-              buildProjectsWhere(filter),
+              accessibleWhere,
+              filterWhere,
             ],
           },
-          include: {
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            currentStageName: true,
+            createdAt: true,
+            createdById: true,
+            isPinned: true,
             status: {
               select: {
                 id: true,
@@ -2199,8 +2282,12 @@ export async function getProjectsList(
               },
             },
             tags: {
-              include: {
-                tag: true,
+              select: {
+                tag: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
             createdBy: {
@@ -2209,40 +2296,10 @@ export async function getProjectsList(
                 email: true,
               },
             },
-            stages: true,
-            attachments: {
-              where: {
-                assetType: {
-                  in: [
-                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
-                    "STAGE_INVOICE" as AttachmentAssetType,
-                  ],
-                },
-                status: "READY" as AttachmentStatus,
-              },
-              orderBy: {
-                createdAt: "desc",
-              },
-              select: {
-                id: true,
-                stageId: true,
-                revisionId: true,
-                commentId: true,
-                assetType: true,
-                originalFileName: true,
-                mimeType: true,
-                fileSize: true,
-                createdAt: true,
-                uploadedBy: {
-                  select: {
-                    name: true,
-                    email: true,
-                  },
-                },
-              },
-            },
           },
           orderBy,
+          skip,
+          take: PROJECT_LIST_PAGE_SIZE,
         }),
       ),
     [
@@ -2252,16 +2309,32 @@ export async function getProjectsList(
       filter.category?.trim().toLowerCase() ?? "",
       filter.tag?.trim().toLowerCase() ?? "",
       filter.sort ?? "newest",
+      String(page),
+      String(PROJECT_LIST_PAGE_SIZE),
       currentUser.id,
       currentUser.role,
     ],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
+  logProjectTiming("project query", queryStartedAt, {
+    projects: projects.length,
+    page,
+    pageSize: PROJECT_LIST_PAGE_SIZE,
+  });
 
+  const mappingStartedAt = performance.now();
   const sortedProjects =
     filter.sort === "name" ? [...projects].sort(compareProjectsByName) : projects;
 
-  return sortedProjects.map((project) => mapProjectToCard(project, currentUser));
+  const mappedProjects = sortedProjects.map((project) =>
+    mapProjectToCard(project, currentUser),
+  );
+  logProjectTiming("mapping", mappingStartedAt, {
+    projects: mappedProjects.length,
+  });
+  logProjectTiming("total", startedAt);
+
+  return mappedProjects;
 }
 
 export async function getProjectById(
