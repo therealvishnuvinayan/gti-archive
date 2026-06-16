@@ -51,6 +51,7 @@ import {
 } from "@/lib/projects";
 import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { prisma } from "@/lib/prisma";
+import { logStageChatTiming } from "@/lib/stage-chat-timing";
 import { SubmissionReviewStatus } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 
@@ -206,15 +207,29 @@ export async function cancelStageRevisionSubmissionAction(input: {
   }
 }
 
-export async function createStageCommentAction(input: StageCommentInput) {
+async function createStageCommentActionResult(
+  input: StageCommentInput,
+  options: {
+    revalidateProjectFlow: boolean;
+  },
+) {
+  const totalStartedAt = performance.now();
+  const authStartedAt = performance.now();
   const user = await requireUser();
+  logStageChatTiming("send", "auth/session", authStartedAt);
 
   try {
     const comment = await createStageComment(user, input);
-    revalidateProjectFlowAfterResponse();
+    if (options.revalidateProjectFlow) {
+      const revalidateStartedAt = performance.now();
+      revalidateProjectFlowAfterResponse();
+      logStageChatTiming("send", "revalidate schedule", revalidateStartedAt);
+    }
 
-    runNotificationTaskAfterResponse("comment-added", () =>
-      notifyCommentAdded({
+    const notificationScheduleStartedAt = performance.now();
+    runNotificationTaskAfterResponse("comment-added", async () => {
+      const notificationStartedAt = performance.now();
+      await notifyCommentAdded({
         actorId: user.id,
         actorName: getUserDisplayName(user),
         projectId: input.projectId,
@@ -223,22 +238,37 @@ export async function createStageCommentAction(input: StageCommentInput) {
         excludedRecipientUserIds: comment.mentions.map(
           (mention) => mention.mentionedUserId,
         ),
-      }),
-    );
-    runNotificationTaskAfterResponse("comment-mentioned", () =>
-      notifyCommentMentioned({
+      });
+      logStageChatTiming("send", "notification creation comment-added", notificationStartedAt);
+    });
+    runNotificationTaskAfterResponse("comment-mentioned", async () => {
+      const notificationStartedAt = performance.now();
+      await notifyCommentMentioned({
         actorId: user.id,
         actorName: getUserDisplayName(user),
         projectId: input.projectId,
         stageId: input.stageId,
         commentId: comment.id,
         mentionedUserIds: comment.mentions.map((mention) => mention.mentionedUserId),
-      }),
-    );
+      });
+      logStageChatTiming(
+        "send",
+        "notification creation comment-mentioned",
+        notificationStartedAt,
+      );
+    });
+    logStageChatTiming("send", "notification scheduling", notificationScheduleStartedAt, {
+      mentionedUsers: comment.mentions.length,
+    });
+    logStageChatTiming("send", "total send action response", totalStartedAt, {
+      commentId: comment.id,
+      revalidated: options.revalidateProjectFlow,
+    });
 
     return {
       commentId: comment.id,
       revisionId: comment.revisionId,
+      createdAt: comment.createdAt.toISOString(),
       mentionedUserIds: comment.mentions.map((mention) => mention.mentionedUserId),
     };
   } catch (error) {
@@ -246,6 +276,18 @@ export async function createStageCommentAction(input: StageCommentInput) {
       error: error instanceof Error ? error.message : "Unable to add the comment right now.",
     };
   }
+}
+
+export async function createStageCommentAction(input: StageCommentInput) {
+  return createStageCommentActionResult(input, {
+    revalidateProjectFlow: true,
+  });
+}
+
+export async function createStageTextCommentAction(input: StageCommentInput) {
+  return createStageCommentActionResult(input, {
+    revalidateProjectFlow: false,
+  });
 }
 
 export async function deleteStageCommentAction(input: DeleteStageCommentInput) {

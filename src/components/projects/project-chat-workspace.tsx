@@ -35,7 +35,6 @@ import {
   acceptStageBriefAction,
   cancelStageRevisionSubmissionAction,
   completeProjectArchiveAction,
-  createStageCommentAction,
   createStageRevisionAction,
   deleteStageCommentAction,
   markSubmissionCompleteAction,
@@ -124,6 +123,7 @@ type ProjectChatWorkspaceProps = {
   canManageChatVisibility: boolean;
   completionSummary: ProjectCompletionSummary;
   completionWorkflow: ProjectCompletionWorkflowRecord | null;
+  deferCompletionData?: boolean;
 };
 
 type PendingFile = {
@@ -152,6 +152,47 @@ type DeletedMessageOverride = {
   deletedByUserId: string | null;
   displayText: string;
 };
+
+type StageChatMessagesApiResponse =
+  | {
+      activeStageId: string | null;
+      latestRevisionId: string | null;
+      entries: ProjectChatEntry[];
+      revisionCount?: number;
+      nextCursor: string | null;
+      hasMore: boolean;
+    }
+  | {
+      error: string;
+    };
+
+type ProjectCompletionApiResponse =
+  | {
+      completionSummary: ProjectCompletionSummary;
+      completionWorkflow: ProjectCompletionWorkflowRecord | null;
+    }
+  | {
+      error: string;
+    };
+
+type AvailableCollaboratorsApiResponse =
+  | {
+      collaborators: CollaboratorRecord[];
+    }
+  | {
+      error: string;
+    };
+
+type CreateStageCommentApiResponse =
+  | {
+      commentId: string;
+      revisionId: string | null;
+      createdAt: string;
+      mentionedUserIds: string[];
+    }
+  | {
+      error: string;
+    };
 
 const PROJECT_ASSET_INLINE_LIMIT = 4;
 const STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
@@ -1805,6 +1846,7 @@ export function ProjectChatWorkspace({
   canManageChatVisibility,
   completionSummary,
   completionWorkflow,
+  deferCompletionData = false,
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
@@ -1822,6 +1864,20 @@ export function ProjectChatWorkspace({
   const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<PendingFile[]>([]);
   const [expandedMessageEditorOpen, setExpandedMessageEditorOpen] = useState(false);
+  const [loadedHistoryEntries, setLoadedHistoryEntries] = useState<ProjectChatEntry[]>(
+    history.entries,
+  );
+  const [olderMessagesCursor, setOlderMessagesCursor] = useState<string | null>(
+    history.nextCursor ?? null,
+  );
+  const [hasEarlierMessages, setHasEarlierMessages] = useState(
+    Boolean(history.hasMore && history.nextCursor),
+  );
+  const [isLoadingEarlierMessages, setIsLoadingEarlierMessages] = useState(false);
+  const [olderMessagesError, setOlderMessagesError] = useState<string | null>(null);
+  const [stageRevisionCount, setStageRevisionCount] = useState(
+    history.revisionCount ?? history.entries.filter((entry) => entry.kind === "revision").length,
+  );
   const [optimisticComments, setOptimisticComments] = useState<DisplayChatEntry[]>([]);
   const [confirmedComments, setConfirmedComments] = useState<DisplayChatEntry[]>([]);
   const [deletedMessageOverrides, setDeletedMessageOverrides] = useState<
@@ -1911,6 +1967,15 @@ export function ProjectChatWorkspace({
   const [collaboratorDialogError, setCollaboratorDialogError] = useState<string>();
   const [completionOverrides, setCompletionOverrides] =
     useState<Partial<ProjectCompletionSummary> | null>(null);
+  const [completionData, setCompletionData] = useState<{
+    summary: ProjectCompletionSummary;
+    workflow: ProjectCompletionWorkflowRecord | null;
+  }>({
+    summary: completionSummary,
+    workflow: completionWorkflow,
+  });
+  const [isCompletionDataLoading, setIsCompletionDataLoading] =
+    useState(deferCompletionData);
   const [projectCompletionConfirmOpen, setProjectCompletionConfirmOpen] = useState(false);
   const [projectCompletionError, setProjectCompletionError] = useState<string | null>(null);
   const [isPreparingProjectCompletion, setIsPreparingProjectCompletion] = useState(false);
@@ -1948,6 +2013,23 @@ export function ProjectChatWorkspace({
   }, []);
 
   useEffect(() => {
+    setLoadedHistoryEntries(history.entries);
+    setOlderMessagesCursor(history.nextCursor ?? null);
+    setHasEarlierMessages(Boolean(history.hasMore && history.nextCursor));
+    setStageRevisionCount(
+      history.revisionCount ??
+        history.entries.filter((entry) => entry.kind === "revision").length,
+    );
+    setOlderMessagesError(null);
+  }, [
+    history.activeStageId,
+    history.entries,
+    history.hasMore,
+    history.nextCursor,
+    history.revisionCount,
+  ]);
+
+  useEffect(() => {
     const input = draftInputRef.current;
 
     if (!input) {
@@ -1983,10 +2065,11 @@ export function ProjectChatWorkspace({
     }));
   }
 
-  const messages = history.entries;
+  const messages = loadedHistoryEntries;
   const completionState = completionOverrides
-    ? { ...completionSummary, ...completionOverrides }
-    : completionSummary;
+    ? { ...completionData.summary, ...completionOverrides }
+    : completionData.summary;
+  const effectiveCompletionWorkflow = completionData.workflow;
   const inlineProjectAssets = project.attachments.slice(0, PROJECT_ASSET_INLINE_LIMIT);
   const hasMoreProjectAssets =
     project.attachments.length > PROJECT_ASSET_INLINE_LIMIT;
@@ -2148,6 +2231,75 @@ export function ProjectChatWorkspace({
 
     return stageCards.find((stage) => stage.id === stageId) ?? stageCards[0];
   }, [project.currentStageId, stageCards, stageId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    setCompletionData({
+      summary: completionSummary,
+      workflow: completionWorkflow,
+    });
+
+    if (!deferCompletionData) {
+      setIsCompletionDataLoading(false);
+      return () => controller.abort();
+    }
+
+    setIsCompletionDataLoading(true);
+
+    const query = activeStage?.id
+      ? `?stage=${encodeURIComponent(activeStage.id)}`
+      : "";
+
+    fetch(`/api/projects/${encodeURIComponent(project.id)}/completion${query}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = (await response.json()) as ProjectCompletionApiResponse;
+
+        if (!response.ok || "error" in payload) {
+          throw new Error(
+            "error" in payload
+              ? payload.error
+              : "Unable to load project completion details.",
+          );
+        }
+
+        if (!cancelled) {
+          setCompletionData({
+            summary: payload.completionSummary,
+            workflow: payload.completionWorkflow,
+          });
+        }
+      })
+      .catch((error) => {
+        if (
+          cancelled ||
+          (error instanceof DOMException && error.name === "AbortError")
+        ) {
+          return;
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsCompletionDataLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    activeStage?.id,
+    completionSummary,
+    completionWorkflow,
+    deferCompletionData,
+    project.id,
+  ]);
+
   const committedCollaboratorIds = useMemo(
     () =>
       collaborators
@@ -2554,9 +2706,37 @@ export function ProjectChatWorkspace({
     setCollaboratorDialogOpen(true);
   }
 
-  function openCollaboratorPicker() {
+  async function openCollaboratorPicker() {
     setCollaboratorDialogError(undefined);
     setDraftCollaboratorIds(committedCollaboratorIds);
+    setCollaboratorSaving(true);
+
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(project.id)}/collaborators/available`,
+        {
+          cache: "no-store",
+        },
+      );
+      const payload = (await response.json()) as AvailableCollaboratorsApiResponse;
+
+      if (!response.ok || "error" in payload) {
+        throw new Error(
+          "error" in payload ? payload.error : "Unable to load collaborators.",
+        );
+      }
+
+      setAvailableCollaboratorRecords(payload.collaborators);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to load collaborators right now.";
+      setCollaboratorDialogError(message);
+      showErrorToast("Unable to load collaborators.", message);
+      return;
+    } finally {
+      setCollaboratorSaving(false);
+    }
+
     setCollaboratorPickerOpen(true);
   }
 
@@ -2722,6 +2902,59 @@ export function ProjectChatWorkspace({
     startRefresh(() => {
       router.refresh();
     });
+  }
+
+  async function loadEarlierMessages() {
+    const activeStageId = activeStage?.id;
+
+    if (!activeStageId || !olderMessagesCursor || isLoadingEarlierMessages) {
+      return;
+    }
+
+    setIsLoadingEarlierMessages(true);
+    setOlderMessagesError(null);
+
+    try {
+      const params = new URLSearchParams({
+        cursor: olderMessagesCursor,
+        limit: "30",
+      });
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(project.id)}/stages/${encodeURIComponent(
+          activeStageId,
+        )}/chat/messages?${params.toString()}`,
+        {
+          cache: "no-store",
+        },
+      );
+      const payload = (await response.json()) as StageChatMessagesApiResponse;
+
+      if (!response.ok || "error" in payload) {
+        throw new Error(
+          "error" in payload ? payload.error : "Unable to load earlier messages.",
+        );
+      }
+
+      setLoadedHistoryEntries((current) => {
+        const currentIds = new Set(current.map((entry) => entry.id));
+        const earlierEntries = payload.entries.filter(
+          (entry) => !currentIds.has(entry.id),
+        );
+
+        return [...earlierEntries, ...current];
+      });
+      setOlderMessagesCursor(payload.nextCursor);
+      setHasEarlierMessages(Boolean(payload.hasMore && payload.nextCursor));
+      if (typeof payload.revisionCount === "number") {
+        setStageRevisionCount(payload.revisionCount);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to load earlier messages.";
+      setOlderMessagesError(message);
+    } finally {
+      setIsLoadingEarlierMessages(false);
+    }
   }
 
   function resetDraftComposerHeight() {
@@ -4002,17 +4235,31 @@ export function ProjectChatWorkspace({
         return;
       }
 
-      const commentResult = await createStageCommentAction({
-        projectId: project.id,
-        stageId: activeStageId,
-        revisionId: commentRevisionId,
-        body,
-        allowEmptyBody: false,
-        mentionedUserIds,
-      });
+      const commentResponse = await fetch(
+        `/api/projects/${encodeURIComponent(project.id)}/stages/${encodeURIComponent(
+          activeStageId,
+        )}/chat/comments`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            revisionId: commentRevisionId,
+            body,
+            mentionedUserIds,
+          }),
+        },
+      );
+      const commentResult =
+        (await commentResponse.json()) as CreateStageCommentApiResponse;
 
-      if ("error" in commentResult) {
-        throw new Error(commentResult.error);
+      if (!commentResponse.ok || "error" in commentResult) {
+        throw new Error(
+          "error" in commentResult
+            ? commentResult.error
+            : "Unable to send the comment right now.",
+        );
       }
 
       updateOptimisticComment(optimisticCommentId, (entry) => ({
@@ -4689,15 +4936,25 @@ export function ProjectChatWorkspace({
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
 
-          {isProjectCompleted && completionWorkflow ? (
+          {isProjectCompleted && effectiveCompletionWorkflow ? (
             <ProjectCompletionChecklist
               projectId={project.id}
-              workflow={completionWorkflow}
+              workflow={effectiveCompletionWorkflow}
             />
           ) : null}
 
+          {isProjectCompleted && isCompletionDataLoading ? (
+            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+              <CardContent className="flex items-center gap-2 px-5 py-4 text-[13px] font-semibold text-[#5f6b62]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading completion details...
+              </CardContent>
+            </Card>
+          ) : null}
+
           {isProjectCompleted &&
-          !completionWorkflow &&
+          !effectiveCompletionWorkflow &&
+          !isCompletionDataLoading &&
           (isProjectOwner || isProjectExecutor) ? (
             <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
               <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
@@ -4809,6 +5066,32 @@ export function ProjectChatWorkspace({
                 </div>
               </CardContent>
             </Card>
+          ) : null}
+
+          {hasEarlierMessages ? (
+            <div className="flex justify-center py-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="rounded-full border border-[#dbe7dd] bg-white text-[12px]"
+                onClick={() => {
+                  void loadEarlierMessages();
+                }}
+                disabled={isLoadingEarlierMessages}
+              >
+                {isLoadingEarlierMessages ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Load earlier messages
+              </Button>
+            </div>
+          ) : null}
+
+          {olderMessagesError ? (
+            <div className="mx-auto max-w-[520px] rounded-[16px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-center text-[12px] font-semibold text-[#a64038]">
+              {olderMessagesError}
+            </div>
           ) : null}
 
           {stageStartSystemMessage ? (
@@ -5694,9 +5977,7 @@ export function ProjectChatWorkspace({
                 </div>
                 <div>
                   <dt className="inline font-semibold">Revisions :</dt>{" "}
-                  <dd className="inline">
-                    {messages.filter((message) => message.kind === "revision").length}
-                  </dd>
+                  <dd className="inline">{stageRevisionCount}</dd>
                 </div>
                 <div>
                   <dt className="inline font-semibold">Started At :</dt>{" "}
@@ -5935,7 +6216,9 @@ export function ProjectChatWorkspace({
             }
             onAdd={
               canManageCollaborators && !isProjectCompleted
-                ? openCollaboratorPicker
+                ? () => {
+                    void openCollaboratorPicker();
+                  }
                 : undefined
             }
             onToggleChatVisibility={
