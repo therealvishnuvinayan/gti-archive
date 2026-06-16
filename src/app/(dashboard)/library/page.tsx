@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { LibraryWorkspace } from "@/components/library/library-workspace";
+import { getActiveAssetTagOptions } from "@/lib/asset-tags";
 import { requireUser } from "@/lib/auth";
+import { createDevTimer, logDevTiming, timeDevAsync } from "@/lib/dev-timing";
 import { getLibraryPageDataForUser } from "@/lib/library";
 import {
   parseLibraryDateFilter,
@@ -26,13 +28,24 @@ export default async function LibraryPage({
     pageSize?: string;
   }>;
 }) {
+  const timer = createDevTimer("[library:init]");
   const user = await requireUser();
+  timer.mark("auth/session");
 
-  if (!hasPermission(user, "library.view")) {
+  const canViewLibrary = hasPermission(user, "library.view");
+  const canUploadAssets = hasPermission(user, "library.uploadAsset");
+  timer.mark("permission check", {
+    canViewLibrary,
+    canUploadAssets,
+  });
+
+  if (!canViewLibrary) {
     redirect("/");
   }
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  timer.mark("search params");
+
   const initialQuery = {
     search: resolvedSearchParams?.search?.trim() ?? "",
     projectId: resolvedSearchParams?.projectId?.trim() ?? "",
@@ -42,10 +55,26 @@ export default async function LibraryPage({
     type: parseLibraryTypeFilter(resolvedSearchParams?.type),
     quickMenu: parseLibraryQuickMenu(resolvedSearchParams?.quickMenu),
     page: Number(resolvedSearchParams?.page ?? "1"),
-    pageSize: Number(resolvedSearchParams?.pageSize ?? "10"),
+    pageSize: Number(resolvedSearchParams?.pageSize ?? "20"),
   };
-  const initialData = await getLibraryPageDataForUser(user, initialQuery);
-  const canUploadAssets = hasPermission(user, "library.uploadAsset");
+  const [initialData, assetTagOptions] = await Promise.all([
+    timeDevAsync("[library:list]", "library list query", () =>
+      getLibraryPageDataForUser(user, initialQuery),
+    ),
+    canUploadAssets
+      ? timeDevAsync("[library:asset-tags]", "asset tag query", () =>
+          getActiveAssetTagOptions(),
+        )
+      : Promise.resolve([]),
+  ]);
+  logDevTiming("[library:init]", "recent files query skipped", {
+    reason: "Library page does not load a separate recent-files dataset.",
+  });
+  timer.end("total", {
+    returnedItems: initialData.items.length,
+    totalItems: initialData.total,
+    activeAssetTags: assetTagOptions.length,
+  });
 
   return (
     <DashboardLayout
@@ -55,6 +84,7 @@ export default async function LibraryPage({
     >
       <LibraryWorkspace
         initialData={initialData}
+        assetTagOptions={assetTagOptions}
         canUploadAssets={canUploadAssets}
         initialQuery={initialQuery}
       />
