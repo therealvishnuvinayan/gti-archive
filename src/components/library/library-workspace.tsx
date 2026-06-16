@@ -692,18 +692,21 @@ export function LibraryWorkspace({
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-2">
                             <LibraryPreviewAction item={item} />
-                            {item.source === "PROJECT_ATTACHMENT" ? (
-                              <AttachmentFavoriteButton
-                                attachmentId={item.id}
-                                initialIsFavorited={item.isFavoritedByCurrentUser}
-                                onChange={(isFavorited) =>
-                                  handleFavoriteChange(item.id, isFavorited)
-                                }
-                                className="h-9 w-9 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
-                                iconClassName="h-4.5 w-4.5"
-                                showToast={true}
-                              />
-                            ) : null}
+                            <AttachmentFavoriteButton
+                              attachmentId={item.id}
+                              initialIsFavorited={item.isFavoritedByCurrentUser}
+                              onChange={(isFavorited) =>
+                                handleFavoriteChange(item.id, isFavorited)
+                              }
+                              favoriteApiPath={
+                                item.source === "PROJECT_ATTACHMENT"
+                                  ? `/api/project-assets/${item.id}/favorite`
+                                  : `/api/library/manual-assets/${item.id}/favorite`
+                              }
+                              className="h-9 w-9 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
+                              iconClassName="h-4.5 w-4.5"
+                              showToast={true}
+                            />
                             <Button asChild type="button" size="sm" className="min-h-[32px] px-3 text-[11px]">
                               <a
                                 href={item.downloadPath}

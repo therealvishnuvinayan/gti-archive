@@ -10,6 +10,7 @@ import {
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import { getFavoriteManualLibraryAssetIdSetForUser } from "@/lib/manual-library-asset-favorites";
 import {
   hasPermission,
   type PermissionUser,
@@ -393,6 +394,7 @@ function mapAttachmentToLibraryItem(
 function mapManualAssetToLibraryItem(
   user: LibraryUser,
   asset: RawManualLibraryAsset,
+  favoritedAssetIds?: ReadonlySet<string>,
 ): LibraryItemRecord {
   const categoryLabel = getManualLibraryCategoryLabel(asset.category);
   const isFinance = asset.category === "QUOTATION_INVOICE" || isFinanceLibraryFile(asset.assetName);
@@ -420,7 +422,7 @@ function mapManualAssetToLibraryItem(
     previewPath: `/api/library/manual-assets/${asset.id}/preview`,
     downloadPath: `/api/library/manual-assets/${asset.id}/download`,
     canDelete: canDeleteManualLibraryAsset(user, asset.uploadedById),
-    isFavoritedByCurrentUser: false,
+    isFavoritedByCurrentUser: favoritedAssetIds?.has(asset.id) ?? false,
   };
 }
 
@@ -708,15 +710,23 @@ export async function getLibraryPageDataForUser(
     getAccessibleLibraryAttachments(user),
     getAccessibleManualLibraryAssets(),
   ]);
-  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
-    user.id,
-    rawAttachments.map((attachment) => attachment.id),
-  );
+  const [favoritedAttachmentIds, favoritedManualAssetIds] = await Promise.all([
+    getFavoriteAttachmentIdSetForUser(
+      user.id,
+      rawAttachments.map((attachment) => attachment.id),
+    ),
+    getFavoriteManualLibraryAssetIdSetForUser(
+      user.id,
+      manualAssets.map((asset) => asset.id),
+    ),
+  ]);
   const visibleItems = [
     ...rawAttachments.map((attachment) =>
       mapAttachmentToLibraryItem(user, attachment, favoritedAttachmentIds),
     ),
-    ...manualAssets.map((asset) => mapManualAssetToLibraryItem(user, asset)),
+    ...manualAssets.map((asset) =>
+      mapManualAssetToLibraryItem(user, asset, favoritedManualAssetIds),
+    ),
   ].sort(
     (left, right) =>
       new Date(right.uploadedAtValue).getTime() -

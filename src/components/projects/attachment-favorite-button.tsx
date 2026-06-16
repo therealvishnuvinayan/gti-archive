@@ -13,6 +13,7 @@ type AttachmentFavoriteButtonProps = {
   iconClassName?: string;
   showToast?: boolean;
   onChange?: (isFavorited: boolean) => void;
+  favoriteApiPath?: string;
 };
 
 export function AttachmentFavoriteButton({
@@ -22,9 +23,11 @@ export function AttachmentFavoriteButton({
   iconClassName,
   showToast = true,
   onChange,
+  favoriteApiPath,
 }: AttachmentFavoriteButtonProps) {
   const [isFavorited, setIsFavorited] = useState(initialIsFavorited);
   const [isPending, startTransition] = useTransition();
+  const apiPath = favoriteApiPath ?? `/api/project-assets/${attachmentId}/favorite`;
 
   function handleToggle() {
     const nextState = !isFavorited;
@@ -33,7 +36,7 @@ export function AttachmentFavoriteButton({
 
     startTransition(async () => {
       try {
-        const response = await fetch(`/api/project-assets/${attachmentId}/favorite`, {
+        const response = await fetch(apiPath, {
           method: nextState ? "POST" : "DELETE",
         });
         const payload = (await response.json()) as {
