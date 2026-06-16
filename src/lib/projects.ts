@@ -75,6 +75,10 @@ type BudgetAccessUser = Pick<User, "id">;
 export type ProjectAccessUser = PermissionUser;
 type ProjectStageWithStarter = ProjectStage & {
   startedBy?: Pick<User, "name" | "email"> | null;
+  _count?: {
+    revisions: number;
+    comparisonComments: number;
+  };
   invoiceRequests?: Array<{
     id: string;
     requestedById: string;
@@ -253,6 +257,8 @@ export type ProjectStageRecord = {
   plannedDueAt: string;
   plannedDueAtValue: string | null;
   status: ProjectStageVisualStatus;
+  revisionCount?: number;
+  comparisonCount?: number;
   invoiceRequired: boolean;
   invoiceAttachment: ProjectAttachmentRecord | null;
   invoiceRequest: {
@@ -330,6 +336,7 @@ export type ProjectAttachmentRecord = {
 export type ProjectChatEntry = {
   id: string;
   kind: "revision" | "comment" | "system" | "comparison";
+  cursor?: string;
   revisionId?: string;
   revisionNumber?: number;
   title?: string;
@@ -377,6 +384,7 @@ export type ProjectCompareNote = {
 export type ProjectFlowRecord = {
   id: string;
   ownerId: string;
+  isCompleted: boolean;
   executors: ProjectExecutorRecord[];
   canViewBudget: boolean;
   title: string;
@@ -1097,6 +1105,8 @@ function mapStageToCard(
     plannedDueAt: formatProjectDateTime(stage.plannedDueAt),
     plannedDueAtValue: toProjectIsoString(stage.plannedDueAt),
     status: mapStageStatusToVisual(stage.status),
+    revisionCount: stage._count?.revisions,
+    comparisonCount: stage._count?.comparisonComments,
     invoiceRequired: stage.invoiceRequired,
     invoiceAttachment: null,
     invoiceRequest: invoiceRequest
@@ -1213,6 +1223,7 @@ function mapProjectToFlow(
   return {
     id: project.id,
     ownerId: project.createdById,
+    isCompleted: isProjectStatusCompleted(project.status),
     executors: executorRecords,
     canViewBudget: allowBudgetView,
     title: project.name,
@@ -2591,6 +2602,104 @@ export async function getProjectShellById(
     {
       ...project,
       attachments: [],
+    },
+    currentUser,
+  );
+}
+
+export async function getProjectChatShellById(
+  id: string,
+  currentUser: BudgetAccessUser & ProjectAccessUser,
+) {
+  const project = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findUnique({
+          where: { id },
+          include: {
+            status: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                group: {
+                  select: projectStatusGroupSelect,
+                },
+              },
+            },
+            createdBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            executors: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
+            stages: {
+              orderBy: {
+                order: "asc",
+              },
+              include: {
+                _count: {
+                  select: {
+                    revisions: true,
+                    comparisonComments: true,
+                  },
+                },
+                startedBy: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+            collaborators: {
+              orderBy: {
+                createdAt: "asc",
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    collaboratorType: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ),
+    ["project-chat-shell-by-id", id, currentUser.id, currentUser.role],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
+
+  if (!project) {
+    return null;
+  }
+
+  if (!canAccessProjectRecord(project, currentUser)) {
+    return null;
+  }
+
+  return mapProjectToFlow(
+    {
+      ...project,
+      attachments: [],
+      tags: [],
     },
     currentUser,
   );

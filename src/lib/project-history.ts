@@ -43,6 +43,7 @@ import {
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
+import { logStageChatTiming } from "@/lib/stage-chat-timing";
 import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   buildProjectAssetKey,
@@ -67,6 +68,8 @@ import { validateActiveAssetTagIds } from "@/lib/asset-tags";
 
 const STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
 const DELETED_STAGE_CHAT_MESSAGE_TEXT = "This message was deleted";
+const DEFAULT_STAGE_CHAT_MESSAGE_LIMIT = 30;
+const MAX_STAGE_CHAT_MESSAGE_LIMIT = 50;
 
 type AccessUser = Pick<
   User,
@@ -193,6 +196,9 @@ export type StageHistoryRecord = {
   activeStageId: string | null;
   latestRevisionId: string | null;
   entries: ProjectChatEntry[];
+  revisionCount?: number;
+  nextCursor?: string | null;
+  hasMore?: boolean;
 };
 
 type ActivePendingStageReview =
@@ -716,6 +722,13 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
         id: true,
         createdById: true,
         executors: {
+          ...(userId
+            ? {
+                where: {
+                  userId,
+                },
+              }
+            : {}),
           select: {
             userId: true,
             role: true,
@@ -757,6 +770,80 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
       },
     }),
   );
+}
+
+export type ProjectStageChatAccessRecord = ProjectPermissionContext & {
+  id: string;
+  stages: Array<{
+    id: string;
+    revisionCount?: number;
+    comparisonCount?: number;
+  }>;
+};
+
+async function getStageChatAccessRecord(
+  projectId: string,
+  stageId: string,
+  userId: string,
+): Promise<ProjectStageChatAccessRecord | null> {
+  const stage = await withPrismaRetry(() =>
+    prisma.projectStage.findUnique({
+      where: {
+        id: stageId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        _count: {
+          select: {
+            revisions: true,
+            comparisonComments: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            createdById: true,
+            executors: {
+              where: {
+                userId,
+              },
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
+            collaborators: {
+              where: {
+                userId,
+              },
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  if (!stage || stage.projectId !== projectId) {
+    return null;
+  }
+
+  return {
+    id: stage.project.id,
+    createdById: stage.project.createdById,
+    executors: stage.project.executors,
+    collaborators: stage.project.collaborators,
+    stages: [
+      {
+        id: stage.id,
+        revisionCount: stage._count.revisions,
+        comparisonCount: stage._count.comparisonComments,
+      },
+    ],
+  };
 }
 
 function isMainProjectExecutorUser(
@@ -837,7 +924,7 @@ function isStageInvoiceRequired(
 }
 
 function resolveStageId(
-  project: Awaited<ReturnType<typeof getProjectAccessRecord>>,
+  project: ProjectStageChatAccessRecord | null,
   preferredStageId?: string | null,
 ) {
   if (!project) {
@@ -887,7 +974,7 @@ function filterHistoryEntriesOutsidePauseWindows<
 
 async function getProjectVisibilityPauseWindows(
   user: AccessUser,
-  project: NonNullable<Awaited<ReturnType<typeof getProjectAccessRecord>>>,
+  project: Pick<ProjectStageChatAccessRecord, "id" | "createdById">,
 ) {
   if (canBypassCollaboratorVisibility(user, project.createdById)) {
     return [];
@@ -895,6 +982,125 @@ async function getProjectVisibilityPauseWindows(
 
   const visibilityState = await getProjectCollaboratorVisibilityState(project.id, user.id);
   return visibilityState?.visibilityPauses ?? [];
+}
+
+type StageChatCursorSource = "revision" | "comment" | "comparison";
+
+type StageChatCursor = {
+  source: StageChatCursorSource;
+  id: string;
+  createdAt: string;
+};
+
+type DecodedStageChatCursor = Omit<StageChatCursor, "createdAt"> & {
+  createdAt: Date;
+};
+
+type StageChatTimelineItem =
+  | {
+      source: "revision";
+      id: string;
+      createdAt: Date;
+      entry: StageHistoryQueryRecord;
+    }
+  | {
+      source: "comment";
+      id: string;
+      createdAt: Date;
+      entry: StageCommentQueryRecord;
+    }
+  | {
+      source: "comparison";
+      id: string;
+      createdAt: Date;
+      entry: StageComparisonQueryRecord;
+    };
+
+function clampStageChatMessageLimit(limit?: number) {
+  if (!Number.isFinite(limit) || !limit || limit < 1) {
+    return DEFAULT_STAGE_CHAT_MESSAGE_LIMIT;
+  }
+
+  return Math.min(MAX_STAGE_CHAT_MESSAGE_LIMIT, Math.floor(limit));
+}
+
+function encodeStageChatCursor(
+  source: StageChatCursorSource,
+  createdAt: Date | string | number,
+  id: string,
+) {
+  const payload: StageChatCursor = {
+    source,
+    id,
+    createdAt: toHistoryDate(createdAt).toISOString(),
+  };
+
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+function decodeStageChatCursor(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as Partial<StageChatCursor>;
+    const createdAt = payload.createdAt ? new Date(payload.createdAt) : null;
+
+    if (
+      !payload.source ||
+      !payload.id ||
+      !createdAt ||
+      Number.isNaN(createdAt.getTime())
+    ) {
+      return null;
+    }
+
+    return {
+      source: payload.source,
+      id: payload.id,
+      createdAt,
+    } satisfies DecodedStageChatCursor;
+  } catch {
+    return null;
+  }
+}
+
+function buildStageChatCreatedAtWhere(cursor: DecodedStageChatCursor | null) {
+  return cursor
+    ? {
+        lt: cursor.createdAt,
+      }
+    : undefined;
+}
+
+function mapStageChatTimelineItem(
+  item: StageChatTimelineItem,
+  submissionNumbers: ReadonlyMap<string, number>,
+  favoritedAttachmentIds: ReadonlySet<string>,
+) {
+  const cursor = encodeStageChatCursor(item.source, item.createdAt, item.id);
+
+  if (item.source === "revision") {
+    return {
+      ...mapRevisionEntry(item.entry, submissionNumbers, favoritedAttachmentIds),
+      cursor,
+    };
+  }
+
+  if (item.source === "comparison") {
+    return {
+      ...mapComparisonEntry(item.entry, submissionNumbers),
+      cursor,
+    };
+  }
+
+  return {
+    ...mapCommentEntry(item.entry, submissionNumbers, favoritedAttachmentIds),
+    cursor,
+  };
 }
 
 async function hasReadyStageInvoice(projectId: string, stageId: string) {
@@ -931,6 +1137,537 @@ export async function assertProjectAttachmentVisibilityForUser(
     timestamp: attachment.createdAt,
     message: "You do not have permission to access this file.",
   });
+}
+
+export async function getProjectStageChatMessages(
+  user: AccessUser,
+  projectId: string,
+  preferredStageId?: string | null,
+  options: {
+    limit?: number;
+    cursor?: string | null;
+    requiredPermissionKey?: PermissionKey;
+    projectAccessRecord?: ProjectStageChatAccessRecord | null;
+    includeWorkflowCards?: "auto" | "always" | "never";
+  } = {},
+): Promise<StageHistoryRecord> {
+  const totalStartedAt = performance.now();
+  const projectLookupStartedAt = performance.now();
+  const project =
+    options.projectAccessRecord ??
+    (preferredStageId
+      ? await getStageChatAccessRecord(projectId, preferredStageId, user.id)
+      : await getProjectAccessRecord(projectId, user.id));
+  logStageChatTiming("init", "project lookup", projectLookupStartedAt, {
+    projectId,
+    reusedRouteContext: Boolean(options.projectAccessRecord),
+    stageScoped: Boolean(!options.projectAccessRecord && preferredStageId),
+  });
+
+  const permissionStartedAt = performance.now();
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!hasProjectPermission(user, project, "project.view")) {
+    throw new Error("You do not have access to this project.");
+  }
+
+  const requiredPermissionKey = options.requiredPermissionKey ?? "chat.view";
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    requiredPermissionKey,
+    requiredPermissionKey === "compare.view"
+      ? "You do not have permission to compare project submissions."
+      : "You do not have permission to view project chat.",
+  );
+  logStageChatTiming("init", "permission check", permissionStartedAt);
+
+  const stageLookupStartedAt = performance.now();
+  const activeStageId = resolveStageId(project, preferredStageId);
+  logStageChatTiming("init", "stage lookup", stageLookupStartedAt, {
+    activeStageId,
+    preferredStageId,
+  });
+
+  if (!activeStageId) {
+    logStageChatTiming("init", "total page data", totalStartedAt, {
+      entries: 0,
+      hasMore: false,
+    });
+
+    return {
+      activeStageId: null,
+      latestRevisionId: null,
+      entries: [],
+      revisionCount: 0,
+      nextCursor: null,
+      hasMore: false,
+    };
+  }
+
+  const limit = clampStageChatMessageLimit(options.limit);
+  const cursor = decodeStageChatCursor(options.cursor);
+  const createdAtWhere = buildStageChatCreatedAtWhere(cursor);
+  const take = limit + 1;
+  const activeStage = project.stages.find((stageItem) => stageItem.id === activeStageId);
+  const knownRevisionCount =
+    activeStage &&
+    "revisionCount" in activeStage &&
+    typeof activeStage.revisionCount === "number"
+      ? activeStage.revisionCount
+      : null;
+  const knownComparisonCount =
+    activeStage &&
+    "comparisonCount" in activeStage &&
+    typeof activeStage.comparisonCount === "number"
+      ? activeStage.comparisonCount
+      : null;
+
+  const messagesQueryStartedAt = performance.now();
+  const commentsPromise = withPrismaRetry(() =>
+    prisma.projectComment.findMany({
+      where: {
+        projectId,
+        stageId: activeStageId,
+        createdAt: createdAtWhere,
+      },
+      orderBy: [
+        {
+          createdAt: "desc",
+        },
+        {
+          id: "desc",
+        },
+      ],
+      take,
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            collaboratorType: true,
+            avatarUrl: true,
+          },
+        },
+        mentions: {
+          select: {
+            mentionedUserId: true,
+            mentionedUser: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        attachments: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            id: true,
+            assetType: true,
+            originalFileName: true,
+            mimeType: true,
+            fileSize: true,
+            submissionReviewStatus: true,
+            createdAt: true,
+            status: true,
+            uploadedBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ).finally(() =>
+    logStageChatTiming("init", "latest messages query", messagesQueryStartedAt, {
+      limit: take,
+    }),
+  );
+
+  const latestRevisionStartedAt = performance.now();
+  const latestRevisionPromise =
+    options.includeWorkflowCards === "never" || knownRevisionCount === 0
+      ? Promise.resolve(null).finally(() =>
+          logStageChatTiming("init", "latest revision query", latestRevisionStartedAt, {
+            skipped: true,
+            knownRevisionCount,
+          }),
+        )
+      : withPrismaRetry(() =>
+          prisma.projectRevision.findFirst({
+            where: {
+              projectId,
+              stageId: activeStageId,
+            },
+            orderBy: {
+              revisionNumber: "desc",
+            },
+            select: {
+              id: true,
+            },
+          }),
+        ).finally(() =>
+          logStageChatTiming("init", "latest revision query", latestRevisionStartedAt),
+        );
+
+  const comparisonProbeStartedAt = performance.now();
+  const comparisonProbePromise =
+    options.includeWorkflowCards === "never" || knownComparisonCount === 0
+      ? Promise.resolve(null).finally(() =>
+          logStageChatTiming("init", "comparison activity probe", comparisonProbeStartedAt, {
+            skipped: true,
+            knownComparisonCount,
+          }),
+        )
+      : knownComparisonCount !== null && knownComparisonCount > 0
+        ? Promise.resolve({ id: "__known_comparison_activity__" }).finally(() =>
+            logStageChatTiming(
+              "init",
+              "comparison activity probe",
+              comparisonProbeStartedAt,
+              {
+                skipped: true,
+                knownComparisonCount,
+              },
+            ),
+          )
+      : withPrismaRetry(() =>
+          prisma.comparisonComment.findFirst({
+            where: {
+              projectId,
+              stageId: activeStageId,
+              createdAt: createdAtWhere,
+            },
+            select: {
+              id: true,
+            },
+          }),
+        ).finally(() =>
+          logStageChatTiming("init", "comparison activity probe", comparisonProbeStartedAt),
+        );
+
+  const [allComments, latestRevision, comparisonProbe] = await Promise.all([
+    commentsPromise,
+    latestRevisionPromise,
+    comparisonProbePromise,
+  ]);
+
+  const workflowDecisionStartedAt = performance.now();
+  const includeWorkflowCards =
+    options.includeWorkflowCards === "always" ||
+    (options.includeWorkflowCards !== "never" &&
+      (Boolean(latestRevision) || Boolean(comparisonProbe)));
+  logStageChatTiming("init", "workflow query decision", workflowDecisionStartedAt, {
+    includeWorkflowCards,
+    hasRevision: Boolean(latestRevision),
+    hasComparison: Boolean(comparisonProbe),
+    knownRevisionCount,
+    knownComparisonCount,
+  });
+
+  let allRevisions: StageHistoryQueryRecord[] = [];
+  let allComparisons: StageComparisonQueryRecord[] = [];
+  let revisionCount = 0;
+
+  if (includeWorkflowCards) {
+    const countStartedAt = performance.now();
+    const revisionCountPromise =
+      knownRevisionCount !== null
+        ? Promise.resolve(knownRevisionCount).finally(() =>
+            logStageChatTiming("init", "sidebar/count query", countStartedAt, {
+              skipped: true,
+              knownRevisionCount,
+            }),
+          )
+        : latestRevision
+          ? withPrismaRetry(() =>
+              prisma.projectRevision.count({
+                where: {
+                  projectId,
+                  stageId: activeStageId,
+                },
+              }),
+            ).finally(() =>
+              logStageChatTiming("init", "sidebar/count query", countStartedAt),
+            )
+          : Promise.resolve(0).finally(() =>
+              logStageChatTiming("init", "sidebar/count query", countStartedAt, {
+                skipped: true,
+              }),
+            );
+
+    const revisionQueryStartedAt = performance.now();
+    const revisionsPromise = latestRevision
+      ? withPrismaRetry(() =>
+          prisma.projectRevision.findMany({
+            where: {
+              projectId,
+              stageId: activeStageId,
+              createdAt: createdAtWhere,
+            },
+            orderBy: [
+              {
+                createdAt: "desc",
+              },
+              {
+                id: "desc",
+              },
+            ],
+            take,
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                  collaboratorType: true,
+                  avatarUrl: true,
+                },
+              },
+              reviewedBy: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+              attachments: {
+                orderBy: {
+                  createdAt: "asc",
+                },
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        ).finally(() =>
+          logStageChatTiming("init", "revision/history query", revisionQueryStartedAt, {
+            limit: take,
+          }),
+        )
+      : Promise.resolve([] as StageHistoryQueryRecord[]).finally(() =>
+          logStageChatTiming("init", "revision/history query", revisionQueryStartedAt, {
+            skipped: true,
+          }),
+        );
+
+    const comparisonQueryStartedAt = performance.now();
+    const comparisonsPromise = comparisonProbe
+      ? withPrismaRetry(() =>
+          prisma.comparisonComment.findMany({
+            where: {
+              projectId,
+              stageId: activeStageId,
+              createdAt: createdAtWhere,
+            },
+            orderBy: [
+              {
+                createdAt: "desc",
+              },
+              {
+                id: "desc",
+              },
+            ],
+            take,
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                  collaboratorType: true,
+                  avatarUrl: true,
+                },
+              },
+              baseAttachment: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+              compareAttachment: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        ).finally(() =>
+          logStageChatTiming("init", "comparison query", comparisonQueryStartedAt, {
+            limit: take,
+          }),
+        )
+      : Promise.resolve([] as StageComparisonQueryRecord[]).finally(() =>
+          logStageChatTiming("init", "comparison query", comparisonQueryStartedAt, {
+            skipped: true,
+          }),
+        );
+
+    [allRevisions, allComparisons, revisionCount] = await Promise.all([
+      revisionsPromise,
+      comparisonsPromise,
+      revisionCountPromise,
+    ]);
+  } else {
+    logStageChatTiming("init", "sidebar/count query", performance.now(), {
+      skipped: true,
+      reason: "no workflow activity",
+    });
+    logStageChatTiming("init", "revision/history query", performance.now(), {
+      skipped: true,
+      reason: "no workflow activity",
+    });
+    logStageChatTiming("init", "comparison query", performance.now(), {
+      skipped: true,
+      reason: "no workflow activity",
+    });
+  }
+
+  const visibilityStartedAt = performance.now();
+  const pauseWindows = await getProjectVisibilityPauseWindows(user, project);
+  const revisions = filterHistoryEntriesOutsidePauseWindows(allRevisions, pauseWindows);
+  const comments = filterHistoryEntriesOutsidePauseWindows(allComments, pauseWindows);
+  const comparisons =
+    pauseWindows.length > 0
+      ? allComparisons.filter(
+          (comparison) =>
+            !isTimestampHiddenByPauseWindows(comparison.createdAt, pauseWindows),
+        )
+      : allComparisons;
+  logStageChatTiming("init", "visibility filter", visibilityStartedAt, {
+    pauseWindows: pauseWindows.length,
+  });
+
+  const timeline: StageChatTimelineItem[] = [
+    ...revisions.map((entry) => ({
+      source: "revision" as const,
+      id: entry.id,
+      createdAt: entry.createdAt,
+      entry,
+    })),
+    ...comments.map((entry) => ({
+      source: "comment" as const,
+      id: entry.id,
+      createdAt: entry.createdAt,
+      entry,
+    })),
+    ...comparisons.map((entry) => ({
+      source: "comparison" as const,
+      id: entry.id,
+      createdAt: entry.createdAt,
+      entry,
+    })),
+  ].sort((left, right) => {
+    const timeDifference =
+      toHistoryDate(right.createdAt).getTime() - toHistoryDate(left.createdAt).getTime();
+
+    return timeDifference !== 0
+      ? timeDifference
+      : right.id.localeCompare(left.id);
+  });
+  const selectedTimelineItems = timeline.slice(0, limit);
+  const selectedCommentAndRevisionEntries = selectedTimelineItems.flatMap((item) =>
+    item.source === "comparison" ? [] : [item.entry],
+  );
+  const favoriteLookupStartedAt = performance.now();
+  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
+    user.id,
+    selectedCommentAndRevisionEntries
+      .flatMap((entry) => entry.attachments)
+      .filter((attachment) => attachment.status === AttachmentStatus.READY)
+      .map((attachment) => attachment.id),
+  );
+  logStageChatTiming("init", "favorite lookup", favoriteLookupStartedAt, {
+    attachments: selectedCommentAndRevisionEntries.flatMap((entry) => entry.attachments).length,
+  });
+
+  const mappingStartedAt = performance.now();
+  const submissionNumbers = buildStageSubmissionNumberMap(revisions, comments);
+  const entries = selectedTimelineItems
+    .slice()
+    .sort((left, right) => {
+      const timeDifference =
+        toHistoryDate(left.createdAt).getTime() - toHistoryDate(right.createdAt).getTime();
+
+      return timeDifference !== 0
+        ? timeDifference
+        : left.id.localeCompare(right.id);
+    })
+    .map((item) =>
+      mapStageChatTimelineItem(item, submissionNumbers, favoritedAttachmentIds),
+    );
+  const hasMore =
+    timeline.length > limit ||
+    allRevisions.length > limit ||
+    allComments.length > limit ||
+    allComparisons.length > limit;
+  const nextCursor = hasMore ? entries[0]?.cursor ?? null : null;
+  logStageChatTiming("init", "final data mapping", mappingStartedAt, {
+    entries: entries.length,
+    hasMore,
+  });
+  logStageChatTiming("init", "total page data", totalStartedAt, {
+    entries: entries.length,
+    hasMore,
+  });
+
+  return {
+    activeStageId,
+    latestRevisionId: latestRevision?.id ?? null,
+    entries,
+    revisionCount,
+    nextCursor,
+    hasMore,
+  };
 }
 
 export async function getProjectStageHistory(
@@ -1278,6 +2015,8 @@ export async function createStageComment(
     mentionedUserIds?: string[];
   },
 ) {
+  const totalStartedAt = performance.now();
+  const stageLookupStartedAt = performance.now();
   const stage = await withPrismaRetry(() =>
     prisma.projectStage.findFirst({
       where: {
@@ -1290,6 +2029,9 @@ export async function createStageComment(
           select: {
             createdById: true,
             executors: {
+              where: {
+                userId: user.id,
+              },
               select: {
                 userId: true,
                 role: true,
@@ -1298,7 +2040,6 @@ export async function createStageComment(
             status: {
               select: projectStatusSelect,
             },
-            archivedAt: true,
             collaborators: {
               where: {
                 userId: user.id,
@@ -1309,23 +2050,19 @@ export async function createStageComment(
             },
           },
         },
-        revisions: {
-          orderBy: {
-            revisionNumber: "desc",
-          },
-          take: 1,
-          select: {
-            id: true,
-          },
-        },
       },
     }),
   );
+  logStageChatTiming("send", "project/stage lookup", stageLookupStartedAt, {
+    projectId: input.projectId,
+    stageId: input.stageId,
+  });
 
   if (!stage) {
     throw new Error("Stage not found.");
   }
 
+  const permissionStartedAt = performance.now();
   const project = assertProjectAccessFromContext(user, stage.project);
 
   assertProjectWorkflowPermission(
@@ -1338,11 +2075,13 @@ export async function createStageComment(
   if (isProjectStatusCompleted(stage.project.status)) {
     throw new Error("This project is already completed.");
   }
+  logStageChatTiming("send", "permission/access check", permissionStartedAt);
 
   const body = input.body.trim();
   const requestedRevisionId = input.revisionId?.trim() || null;
 
   if (requestedRevisionId) {
+    const revisionLookupStartedAt = performance.now();
     const revision = await withPrismaRetry(() =>
       prisma.projectRevision.findFirst({
         where: {
@@ -1355,6 +2094,9 @@ export async function createStageComment(
         },
       }),
     );
+    logStageChatTiming("send", "revision lookup", revisionLookupStartedAt, {
+      revisionId: requestedRevisionId,
+    });
 
     if (!revision) {
       throw new Error("Revision not found.");
@@ -1381,6 +2123,7 @@ export async function createStageComment(
       "You do not have permission to mention users.",
     );
   }
+  const mentionLookupStartedAt = performance.now();
   const validMentionUserIds =
     requestedMentionUserIds.length > 0
       ? (
@@ -1395,8 +2138,13 @@ export async function createStageComment(
             requestedMentionUserIds.includes(recipientUserId),
         )
       : [];
+  logStageChatTiming("send", "mention recipient lookup", mentionLookupStartedAt, {
+    requestedMentions: requestedMentionUserIds.length,
+    validMentions: validMentionUserIds.length,
+  });
 
-  return withPrismaRetry(() =>
+  const createStartedAt = performance.now();
+  const comment = await withPrismaRetry(() =>
     prisma.projectComment.create({
       data: {
         projectId: input.projectId,
@@ -1418,6 +2166,7 @@ export async function createStageComment(
       select: {
         id: true,
         revisionId: true,
+        createdAt: true,
         mentions: {
           select: {
             mentionedUserId: true,
@@ -1426,6 +2175,226 @@ export async function createStageComment(
       },
     }),
   );
+  logStageChatTiming("send", "create comment", createStartedAt, {
+    commentId: comment.id,
+  });
+  logStageChatTiming("send", "total send action", totalStartedAt, {
+    commentId: comment.id,
+  });
+
+  return comment;
+}
+
+export async function createStageTextCommentFast(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    revisionId?: string | null;
+    body: string;
+    mentionedUserIds?: string[];
+  },
+) {
+  const totalStartedAt = performance.now();
+  const body = input.body.trim();
+
+  if (!body) {
+    throw new Error("Enter a comment before sending.");
+  }
+
+  const requestedRevisionId = input.revisionId?.trim() || null;
+  const requestedMentionUserIds = Array.from(
+    new Set(
+      (input.mentionedUserIds ?? [])
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+  logStageChatTiming("send", "mentions parsing", totalStartedAt, {
+    requestedMentions: requestedMentionUserIds.length,
+  });
+
+  const accessQueryStartedAt = performance.now();
+  const stage = await withPrismaRetry(() =>
+    prisma.projectStage.findUnique({
+      where: {
+        id: input.stageId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        project: {
+          select: {
+            createdById: true,
+            executors: {
+              where: {
+                userId: user.id,
+              },
+              select: {
+                userId: true,
+                role: true,
+              },
+            },
+            status: {
+              select: projectStatusSelect,
+            },
+            collaborators: {
+              where: {
+                userId: user.id,
+              },
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+  logStageChatTiming("send", "project access/stage query", accessQueryStartedAt, {
+    projectId: input.projectId,
+    stageId: input.stageId,
+  });
+
+  const stageLookupStartedAt = performance.now();
+  if (!stage || stage.projectId !== input.projectId) {
+    throw new Error("Stage not found.");
+  }
+  logStageChatTiming("send", "stage lookup", stageLookupStartedAt, {
+    stageId: stage.id,
+  });
+
+  const permissionStartedAt = performance.now();
+  const project = assertProjectAccessFromContext(user, stage.project);
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "chat.createComment",
+    "You do not have permission to add project comments.",
+  );
+
+  if (isProjectStatusCompleted(stage.project.status)) {
+    throw new Error("This project is already completed.");
+  }
+
+  if (requestedMentionUserIds.length > 0) {
+    assertProjectWorkflowPermission(
+      user,
+      project,
+      "chat.mentionUser",
+      "You do not have permission to mention users.",
+    );
+  }
+  logStageChatTiming("send", "permission/access check", permissionStartedAt);
+
+  if (requestedRevisionId) {
+    const revisionLookupStartedAt = performance.now();
+    const revision = await withPrismaRetry(() =>
+      prisma.projectRevision.findFirst({
+        where: {
+          id: requestedRevisionId,
+          projectId: input.projectId,
+          stageId: stage.id,
+        },
+        select: {
+          id: true,
+        },
+      }),
+    );
+    logStageChatTiming("send", "revision lookup", revisionLookupStartedAt, {
+      revisionId: requestedRevisionId,
+    });
+
+    if (!revision) {
+      throw new Error("Revision not found.");
+    }
+  } else {
+    logStageChatTiming("send", "revision lookup", performance.now(), {
+      skipped: true,
+    });
+  }
+
+  const mentionLookupStartedAt = performance.now();
+  const validMentionUserIds =
+    requestedMentionUserIds.length > 0
+      ? (
+          await getVisibleStageEventRecipientUserIds(input.projectId, new Date(), {
+            includeOwner: true,
+            includeExecutor: true,
+            includeCollaborators: true,
+          })
+        ).filter(
+          (recipientUserId) =>
+            recipientUserId !== user.id &&
+            requestedMentionUserIds.includes(recipientUserId),
+        )
+      : [];
+  logStageChatTiming("send", "mention recipient lookup", mentionLookupStartedAt, {
+    requestedMentions: requestedMentionUserIds.length,
+    validMentions: validMentionUserIds.length,
+    skipped: requestedMentionUserIds.length === 0,
+  });
+
+  const createStartedAt = performance.now();
+  const comment =
+    validMentionUserIds.length > 0
+      ? await withPrismaRetry(() =>
+          prisma.projectComment.create({
+            data: {
+              projectId: input.projectId,
+              stageId: stage.id,
+              revisionId: requestedRevisionId,
+              authorId: user.id,
+              body,
+              mentions: {
+                createMany: {
+                  data: validMentionUserIds.map((mentionedUserId) => ({
+                    mentionedUserId,
+                  })),
+                },
+              },
+            },
+            select: {
+              id: true,
+              revisionId: true,
+              createdAt: true,
+              mentions: {
+                select: {
+                  mentionedUserId: true,
+                },
+              },
+            },
+          }),
+        )
+      : {
+          ...(await withPrismaRetry(() =>
+            prisma.projectComment.create({
+              data: {
+                projectId: input.projectId,
+                stageId: stage.id,
+                revisionId: requestedRevisionId,
+                authorId: user.id,
+                body,
+              },
+              select: {
+                id: true,
+                revisionId: true,
+                createdAt: true,
+              },
+            }),
+          )),
+          mentions: [],
+        };
+  logStageChatTiming("send", "create ProjectComment insert", createStartedAt, {
+    commentId: comment.id,
+    mentions: validMentionUserIds.length,
+  });
+  logStageChatTiming("send", "total fast text comment", totalStartedAt, {
+    commentId: comment.id,
+  });
+
+  return comment;
 }
 
 export async function deleteStageComment(
