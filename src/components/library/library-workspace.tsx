@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -37,6 +37,12 @@ import {
   type LibraryQuickMenuOption,
   type LibraryTypeFilter,
 } from "@/lib/library-shared";
+import type { AssetTagRecord } from "@/lib/asset-tags";
+import {
+  getDevTimingDurationMs,
+  getDevTimingNow,
+  logDevTiming,
+} from "@/lib/dev-timing";
 import {
   showErrorToast,
   showInfoToast,
@@ -83,6 +89,70 @@ function isPreviewableLibraryFile(fileName: string, mimeType: string) {
     mimeType === "application/pdf" ||
     fileName.toLowerCase().endsWith(".pdf")
   );
+}
+
+function isLibraryItemInQuickMenu(
+  item: LibraryItemRecord,
+  quickMenu: LibraryQuickMenuOption,
+) {
+  if (quickMenu === "assets") {
+    return item.quickCategory === "Project Assets";
+  }
+
+  if (quickMenu === "finance") {
+    return item.quickCategory === "Quotations/Invoices";
+  }
+
+  if (quickMenu === "favourites") {
+    return item.isFavoritedByCurrentUser;
+  }
+
+  return true;
+}
+
+function isLibraryItemInDateFilter(
+  item: LibraryItemRecord,
+  dateFilter: LibraryDateFilter,
+) {
+  if (dateFilter === "all") {
+    return true;
+  }
+
+  const uploadedAt = new Date(item.uploadedAtValue);
+  const start = new Date();
+
+  if (dateFilter === "today") {
+    start.setHours(0, 0, 0, 0);
+  } else if (dateFilter === "last7") {
+    start.setDate(start.getDate() - 7);
+  } else if (dateFilter === "last30") {
+    start.setDate(start.getDate() - 30);
+  }
+
+  return uploadedAt >= start;
+}
+
+function doesLibraryItemMatchSearch(item: LibraryItemRecord, search: string) {
+  const normalizedSearch = search.trim().toLowerCase();
+
+  if (!normalizedSearch) {
+    return true;
+  }
+
+  return [
+    item.fileName,
+    item.projectName,
+    item.projectTag ?? "",
+    ...item.projectTags,
+    ...item.assetTags.map((tag) => tag.name),
+    item.createdBy,
+    item.createdByEmail,
+    item.type,
+    item.quickCategory,
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(normalizedSearch);
 }
 
 function QuickMenuCard({
@@ -165,6 +235,7 @@ function LibraryPreviewAction({ item }: { item: LibraryItemRecord }) {
 
 type LibraryWorkspaceProps = {
   initialData: LibraryPageData;
+  assetTagOptions: AssetTagRecord[];
   canUploadAssets: boolean;
   initialQuery?: {
     search: string;
@@ -179,9 +250,22 @@ type LibraryWorkspaceProps = {
 
 export function LibraryWorkspace({
   initialData,
+  assetTagOptions,
   canUploadAssets,
   initialQuery,
 }: LibraryWorkspaceProps) {
+  const initialLibraryUrl = buildLibraryUrl({
+    page: initialData.page,
+    pageSize: initialData.pageSize,
+    search: initialQuery?.search?.trim() ?? "",
+    projectId: initialQuery?.projectId?.trim() ?? "",
+    createdById: initialQuery?.createdById?.trim() ?? "",
+    assetTagId: initialQuery?.assetTagId?.trim() ?? "",
+    date: initialQuery?.date ?? "all",
+    type: initialQuery?.type ?? "All Types",
+    quickMenu: initialQuery?.quickMenu ?? "assets",
+  });
+  const lastLoadedUrlRef = useRef(initialLibraryUrl);
   const [activeQuickMenu, setActiveQuickMenu] =
     useState<LibraryQuickMenuOption>(initialQuery?.quickMenu ?? "assets");
   const [search, setSearch] = useState(initialQuery?.search ?? "");
@@ -203,27 +287,36 @@ export function LibraryWorkspace({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
+    const libraryUrl = buildLibraryUrl({
+      page: currentPage,
+      pageSize,
+      search: deferredSearch,
+      projectId: projectId === "all" ? "" : projectId,
+      createdById: createdById === "all" ? "" : createdById,
+      assetTagId: assetTagId === "all" ? "" : assetTagId,
+      date: dateFilter,
+      type: typeFilter,
+      quickMenu: activeQuickMenu,
+    });
+
+    if (libraryUrl === lastLoadedUrlRef.current) {
+      logDevTiming("[library:init]", "client initial fetch skipped", {
+        reason: "This Library URL is already loaded.",
+      });
+      return;
+    }
+
     let cancelled = false;
 
     async function loadLibraryPage() {
+      setLoading(true);
+      const startedAt = getDevTimingNow();
+
       try {
-        const response = await fetch(
-          buildLibraryUrl({
-            page: currentPage,
-            pageSize,
-            search: deferredSearch,
-            projectId: projectId === "all" ? "" : projectId,
-            createdById: createdById === "all" ? "" : createdById,
-            assetTagId: assetTagId === "all" ? "" : assetTagId,
-            date: dateFilter,
-            type: typeFilter,
-            quickMenu: activeQuickMenu,
-          }),
-          {
-            method: "GET",
-            cache: "no-store",
-          },
-        );
+        const response = await fetch(libraryUrl, {
+          method: "GET",
+          cache: "no-store",
+        });
 
         const payload = (await response.json()) as LibraryPageData | { error?: string };
 
@@ -243,8 +336,15 @@ export function LibraryWorkspace({
         }
 
         setData(payload as LibraryPageData);
+        lastLoadedUrlRef.current = libraryUrl;
         setError(null);
         setLoading(false);
+        logDevTiming("[library:list]", "library client fetch", {
+          durationMs: getDevTimingDurationMs(startedAt),
+          status: response.status,
+          returnedItems: (payload as LibraryPageData).items.length,
+          totalItems: (payload as LibraryPageData).total,
+        });
       } catch (nextError) {
         if (cancelled) {
           return;
@@ -256,6 +356,13 @@ export function LibraryWorkspace({
             : "Unable to load library files right now.",
         );
         setLoading(false);
+        logDevTiming("[library:list]", "library client fetch failed", {
+          durationMs: getDevTimingDurationMs(startedAt),
+          error:
+            nextError instanceof Error
+              ? nextError.message
+              : "Unable to load library files right now.",
+        });
       }
     }
 
@@ -266,27 +373,32 @@ export function LibraryWorkspace({
     };
   }, [activeQuickMenu, assetTagId, createdById, currentPage, dateFilter, deferredSearch, pageSize, projectId, typeFilter]);
 
-  async function refetchLibraryPage() {
-    setLoading(true);
+  async function refetchLibraryPage(
+    source: "manual" | "upload" | "delete" = "manual",
+    options: { background?: boolean } = {},
+  ) {
+    const isBackground = Boolean(options.background);
+    if (!isBackground) {
+      setLoading(true);
+    }
+    const startedAt = getDevTimingNow();
+    const libraryUrl = buildLibraryUrl({
+      page: currentPage,
+      pageSize,
+      search: deferredSearch,
+      projectId: projectId === "all" ? "" : projectId,
+      createdById: createdById === "all" ? "" : createdById,
+      assetTagId: assetTagId === "all" ? "" : assetTagId,
+      date: dateFilter,
+      type: typeFilter,
+      quickMenu: activeQuickMenu,
+    });
 
     try {
-      const response = await fetch(
-        buildLibraryUrl({
-          page: currentPage,
-          pageSize,
-          search: deferredSearch,
-          projectId: projectId === "all" ? "" : projectId,
-          createdById: createdById === "all" ? "" : createdById,
-          assetTagId: assetTagId === "all" ? "" : assetTagId,
-          date: dateFilter,
-          type: typeFilter,
-          quickMenu: activeQuickMenu,
-        }),
-        {
-          method: "GET",
-          cache: "no-store",
-        },
-      );
+      const response = await fetch(libraryUrl, {
+        method: "GET",
+        cache: "no-store",
+      });
 
       const payload = (await response.json()) as LibraryPageData | { error?: string };
 
@@ -302,17 +414,137 @@ export function LibraryWorkspace({
       }
 
       setData(payload as LibraryPageData);
+      lastLoadedUrlRef.current = libraryUrl;
       setError(null);
+      logDevTiming(
+        source === "upload" ? "[library:upload]" : "[library:list]",
+        source === "upload"
+          ? isBackground
+            ? "background refresh/refetch time"
+            : "refresh/refetch time"
+          : "library refetch",
+        {
+          durationMs: getDevTimingDurationMs(startedAt),
+          status: response.status,
+          returnedItems: (payload as LibraryPageData).items.length,
+          totalItems: (payload as LibraryPageData).total,
+          background: isBackground,
+        },
+      );
     } catch (nextError) {
       const message =
         nextError instanceof Error
           ? nextError.message
           : "Unable to load library files right now.";
-      setError(message);
-      showErrorToast("Unable to load library files.", message);
+      if (!isBackground) {
+        setError(message);
+        showErrorToast("Unable to load library files.", message);
+      }
+      logDevTiming(
+        source === "upload" ? "[library:upload]" : "[library:list]",
+        source === "upload"
+          ? isBackground
+            ? "background refresh/refetch failed"
+            : "refresh/refetch failed"
+          : "library refetch failed",
+        {
+          durationMs: getDevTimingDurationMs(startedAt),
+          error: message,
+          background: isBackground,
+        },
+      );
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
+  }
+
+  function doesUploadedAssetMatchCurrentView(asset: LibraryItemRecord) {
+    if (!isLibraryItemInQuickMenu(asset, activeQuickMenu)) {
+      return false;
+    }
+
+    if (!isLibraryItemInDateFilter(asset, dateFilter)) {
+      return false;
+    }
+
+    if (projectId !== "all" && asset.projectId !== projectId) {
+      return false;
+    }
+
+    if (createdById !== "all" && asset.createdById !== createdById) {
+      return false;
+    }
+
+    if (assetTagId !== "all" && !asset.assetTags.some((tag) => tag.id === assetTagId)) {
+      return false;
+    }
+
+    if (typeFilter !== "All Types" && asset.type !== typeFilter) {
+      return false;
+    }
+
+    return doesLibraryItemMatchSearch(asset, deferredSearch);
+  }
+
+  function handleUploadedAsset(asset?: LibraryItemRecord | null) {
+    if (asset) {
+      setData((current) => {
+        const existingItemIndex = current.items.findIndex((item) => item.id === asset.id);
+        const matchesCurrentView = doesUploadedAssetMatchCurrentView(asset);
+        const isNewItem = existingItemIndex < 0;
+        const nextCounts = {
+          ...current.counts,
+          projectAssets:
+            isNewItem && asset.quickCategory === "Project Assets"
+              ? current.counts.projectAssets + 1
+              : current.counts.projectAssets,
+          quotationsAndInvoices:
+            isNewItem && asset.quickCategory === "Quotations/Invoices"
+              ? current.counts.quotationsAndInvoices + 1
+              : current.counts.quotationsAndInvoices,
+        };
+
+        if (!matchesCurrentView) {
+          return {
+            ...current,
+            counts: nextCounts,
+          };
+        }
+
+        const withoutDuplicate = current.items.filter((item) => item.id !== asset.id);
+        const nextItems = [asset, ...withoutDuplicate].slice(0, current.pageSize);
+        const nextTotal = isNewItem ? current.total + 1 : current.total;
+
+        return {
+          ...current,
+          items: nextItems,
+          counts: nextCounts,
+          total: nextTotal,
+          totalPages: Math.max(1, Math.ceil(nextTotal / current.pageSize)),
+        };
+      });
+
+      lastLoadedUrlRef.current = buildLibraryUrl({
+        page: currentPage,
+        pageSize,
+        search: deferredSearch,
+        projectId: projectId === "all" ? "" : projectId,
+        createdById: createdById === "all" ? "" : createdById,
+        assetTagId: assetTagId === "all" ? "" : assetTagId,
+        date: dateFilter,
+        type: typeFilter,
+        quickMenu: activeQuickMenu,
+      });
+
+      logDevTiming("[library:upload]", "local asset insert", {
+        assetId: asset.id,
+        matchedCurrentView: doesUploadedAssetMatchCurrentView(asset),
+      });
+    }
+
+    void refetchLibraryPage("upload", { background: true });
   }
 
   async function handleDeleteFile() {
@@ -339,7 +571,7 @@ export function LibraryWorkspace({
 
       setDeleteTarget(null);
       showSuccessToast("File deleted from library.");
-      await refetchLibraryPage();
+      await refetchLibraryPage("delete");
     } catch (nextError) {
       const message =
         nextError instanceof Error
@@ -384,6 +616,10 @@ export function LibraryWorkspace({
   }
 
   function handleQuickMenuSelection(nextQuickMenu: LibraryQuickMenuOption) {
+    if (nextQuickMenu === activeQuickMenu && currentPage === 1) {
+      return;
+    }
+
     setLoading(true);
     setActiveQuickMenu(nextQuickMenu);
     setCurrentPage(1);
@@ -416,7 +652,8 @@ export function LibraryWorkspace({
           <LibraryUploadButton
             canUploadAssets={canUploadAssets}
             disabledReason="You do not have permission to upload library assets."
-            onUploaded={refetchLibraryPage}
+            assetTagOptions={assetTagOptions}
+            onUploaded={handleUploadedAsset}
           />
         </header>
       </MotionSection>
@@ -786,6 +1023,10 @@ export function LibraryWorkspace({
                         variant={pageNumber === data.page ? "default" : "secondary"}
                         className="min-w-[44px] rounded-[16px] px-3 text-[14px]"
                         onClick={() => {
+                          if (pageNumber === data.page) {
+                            return;
+                          }
+
                           setLoading(true);
                           setCurrentPage(pageNumber);
                         }}

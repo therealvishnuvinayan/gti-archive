@@ -20,6 +20,7 @@ type AssetTagSelectorProps = {
   value: string[];
   onChange: (value: string[]) => void;
   disabled?: boolean;
+  initialOptions?: AssetTagRecord[];
 };
 
 type AssetTagsResponse = {
@@ -31,10 +32,12 @@ export function AssetTagSelector({
   value,
   onChange,
   disabled,
+  initialOptions,
 }: AssetTagSelectorProps) {
-  const [options, setOptions] = useState<AssetTagRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [fetchedOptions, setFetchedOptions] = useState<AssetTagRecord[]>([]);
+  const [loading, setLoading] = useState(!initialOptions);
   const [error, setError] = useState<string>();
+  const options = initialOptions ?? fetchedOptions;
   const selectedOptions = useMemo(
     () =>
       value
@@ -44,6 +47,10 @@ export function AssetTagSelector({
   );
 
   useEffect(() => {
+    if (initialOptions) {
+      return;
+    }
+
     let cancelled = false;
 
     async function loadAssetTags() {
@@ -59,7 +66,7 @@ export function AssetTagSelector({
         }
 
         if (!cancelled) {
-          setOptions(payload.tags ?? []);
+          setFetchedOptions(payload.tags ?? []);
           setError(undefined);
         }
       } catch (nextError) {
@@ -82,7 +89,7 @@ export function AssetTagSelector({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialOptions]);
 
   function addTag(tagId: string) {
     if (!tagId) {

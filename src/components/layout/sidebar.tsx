@@ -68,6 +68,58 @@ const sidebarSections: SidebarSection[] = [
   },
 ];
 
+const PROJECT_BADGE_COUNT_CACHE_KEY = "gti:sidebar-project-badge-count";
+const PROJECT_BADGE_COUNT_CACHE_TTL_MS = 30_000;
+
+function readCachedProjectBadgeCount() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const cachedValue = window.sessionStorage.getItem(PROJECT_BADGE_COUNT_CACHE_KEY);
+
+    if (!cachedValue) {
+      return null;
+    }
+
+    const payload = JSON.parse(cachedValue) as {
+      ongoing?: unknown;
+      cachedAt?: unknown;
+    };
+
+    if (
+      typeof payload.ongoing !== "number" ||
+      typeof payload.cachedAt !== "number" ||
+      Date.now() - payload.cachedAt > PROJECT_BADGE_COUNT_CACHE_TTL_MS
+    ) {
+      return null;
+    }
+
+    return payload.ongoing;
+  } catch {
+    return null;
+  }
+}
+
+function cacheProjectBadgeCount(ongoing: number) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      PROJECT_BADGE_COUNT_CACHE_KEY,
+      JSON.stringify({
+        ongoing,
+        cachedAt: Date.now(),
+      }),
+    );
+  } catch {
+    // Ignore storage failures; the count can still load from the API.
+  }
+}
+
 type SidebarProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -97,7 +149,9 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const { unreadCount } = useNotificationCenter();
-  const [fetchedProjectBadgeCount, setFetchedProjectBadgeCount] = useState<number>();
+  const [fetchedProjectBadgeCount, setFetchedProjectBadgeCount] = useState<
+    number | undefined
+  >(undefined);
   const resolvedProjectBadgeCount =
     typeof projectBadgeCount === "number"
       ? projectBadgeCount
@@ -109,31 +163,48 @@ export function Sidebar({
     }
 
     const controller = new AbortController();
+    const cachedCount = readCachedProjectBadgeCount();
 
-    fetch("/api/projects/dashboard-count", {
-      method: "GET",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          return null;
-        }
+    if (typeof cachedCount === "number") {
+      const cacheTimeoutId = window.setTimeout(() => {
+        setFetchedProjectBadgeCount(cachedCount);
+      }, 0);
 
-        return (await response.json()) as { ongoing?: unknown };
+      return () => {
+        window.clearTimeout(cacheTimeoutId);
+      };
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      fetch("/api/projects/dashboard-count", {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
       })
-      .then((payload) => {
-        if (typeof payload?.ongoing === "number") {
-          setFetchedProjectBadgeCount(payload.ongoing);
-        }
-      })
-      .catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setFetchedProjectBadgeCount(undefined);
-        }
-      });
+        .then(async (response) => {
+          if (!response.ok) {
+            return null;
+          }
 
-    return () => controller.abort();
+          return (await response.json()) as { ongoing?: unknown };
+        })
+        .then((payload) => {
+          if (typeof payload?.ongoing === "number") {
+            setFetchedProjectBadgeCount(payload.ongoing);
+            cacheProjectBadgeCount(payload.ongoing);
+          }
+        })
+        .catch((error) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) {
+            setFetchedProjectBadgeCount(undefined);
+          }
+        });
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [projectBadgeCount, visibility.projects]);
 
   return (

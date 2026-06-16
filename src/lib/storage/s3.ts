@@ -24,7 +24,9 @@ export {
 const DEFAULT_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const PROFILE_AVATAR_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
 
-let cachedClient: S3Client | null = null;
+export type S3UploadEndpointMode = "regional" | "accelerate";
+
+const cachedClients: Partial<Record<S3UploadEndpointMode, S3Client>> = {};
 
 function getRequiredEnv(name: string) {
   const value = process.env[name];
@@ -58,8 +60,28 @@ export function getS3BucketName() {
   return getRequiredEnv("AWS_S3_BUCKET");
 }
 
+export function getS3Region() {
+  return getRequiredEnv("AWS_REGION");
+}
+
 export function isS3TransferAccelerationEnabled() {
-  return getOptionalBooleanEnv("AWS_S3_TRANSFER_ACCELERATION", false);
+  const explicitValue = process.env.S3_USE_ACCELERATE_ENDPOINT;
+
+  if (explicitValue) {
+    return getOptionalBooleanEnv("S3_USE_ACCELERATE_ENDPOINT", true);
+  }
+
+  const legacyValue = process.env.AWS_S3_TRANSFER_ACCELERATION;
+
+  if (legacyValue) {
+    return getOptionalBooleanEnv("AWS_S3_TRANSFER_ACCELERATION", true);
+  }
+
+  return true;
+}
+
+export function getDefaultS3UploadEndpointMode(): S3UploadEndpointMode {
+  return isS3TransferAccelerationEnabled() ? "accelerate" : "regional";
 }
 
 export function getMaxAssetUploadBytes() {
@@ -73,14 +95,14 @@ export function getMaxAssetUploadBytes() {
   return DEFAULT_MAX_FILE_SIZE_BYTES;
 }
 
-function getS3Client() {
-  if (cachedClient) {
-    return cachedClient;
+function getS3Client(endpointMode = getDefaultS3UploadEndpointMode()) {
+  if (cachedClients[endpointMode]) {
+    return cachedClients[endpointMode];
   }
 
-  cachedClient = new S3Client({
-    region: getRequiredEnv("AWS_REGION"),
-    useAccelerateEndpoint: isS3TransferAccelerationEnabled(),
+  const client = new S3Client({
+    region: getS3Region(),
+    useAccelerateEndpoint: endpointMode === "accelerate",
     requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: getRequiredEnv("AWS_ACCESS_KEY_ID"),
@@ -88,7 +110,9 @@ function getS3Client() {
     },
   });
 
-  return cachedClient;
+  cachedClients[endpointMode] = client;
+
+  return client;
 }
 
 export function sanitizeFileName(input: string) {
@@ -253,23 +277,54 @@ type PresignedUploadInput = {
   storageKey: string;
   mimeType: string;
   expiresInSeconds?: number;
+  endpointMode?: S3UploadEndpointMode;
 };
 
-export async function createPresignedUploadUrl({
+export type PresignedUploadTarget = {
+  uploadUrl: string;
+  uploadHost: string;
+  endpointMode: S3UploadEndpointMode;
+  region: string;
+  expiresInSeconds: number;
+  expectedHeaders: {
+    "Content-Type": string;
+  };
+};
+
+export async function createPresignedUploadTarget({
   bucket = getS3BucketName(),
   storageKey,
   mimeType,
   expiresInSeconds = 60 * 10,
-}: PresignedUploadInput) {
+  endpointMode = getDefaultS3UploadEndpointMode(),
+}: PresignedUploadInput): Promise<PresignedUploadTarget> {
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: storageKey,
     ContentType: mimeType,
   });
 
-  return getSignedUrl(getS3Client(), command, {
+  const uploadUrl = await getSignedUrl(getS3Client(endpointMode), command, {
     expiresIn: expiresInSeconds,
   });
+  const uploadHost = new URL(uploadUrl).host;
+
+  return {
+    uploadUrl,
+    uploadHost,
+    endpointMode,
+    region: getS3Region(),
+    expiresInSeconds,
+    expectedHeaders: {
+      "Content-Type": mimeType,
+    },
+  };
+}
+
+export async function createPresignedUploadUrl(input: PresignedUploadInput) {
+  const target = await createPresignedUploadTarget(input);
+
+  return target.uploadUrl;
 }
 
 type PresignedDownloadInput = {

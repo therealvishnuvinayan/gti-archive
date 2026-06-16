@@ -12,6 +12,12 @@ import {
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import { getFavoriteManualLibraryAssetIdSetForUser } from "@/lib/manual-library-asset-favorites";
 import {
+  getDevTimingDurationMs,
+  getDevTimingNow,
+  logDevTiming,
+  timeDevAsync,
+} from "@/lib/dev-timing";
+import {
   hasPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
@@ -20,11 +26,15 @@ import {
   buildManualLibraryAssetKey,
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
-  createPresignedUploadUrl,
+  createPresignedUploadTarget,
   deleteObjectIfNeeded,
   getFileExtension,
   getMaxAssetUploadBytes,
+  getDefaultS3UploadEndpointMode,
+  getObjectMetadata,
   getS3BucketName,
+  getS3Region,
+  type S3UploadEndpointMode,
 } from "@/lib/storage/s3";
 import { canUploadLibraryAssets, canViewLibrary } from "@/lib/library-access";
 import {
@@ -138,7 +148,49 @@ type RawManualLibraryAsset = {
   };
 };
 
+const manualLibraryAssetLibraryItemSelect = {
+  id: true,
+  assetName: true,
+  originalFileName: true,
+  createdByName: true,
+  category: true,
+  assetTags: {
+    include: {
+      tag: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
+        },
+      },
+    },
+  },
+  mimeType: true,
+  uploadedAt: true,
+  uploadedById: true,
+  uploadedBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+} as const;
+
 type RequestManualLibraryAssetUploadInput = {
+  assetName: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  createdByName?: string | null;
+  description?: string | null;
+  category?: string | null;
+  assetTagIds?: string[];
+  uploadEndpointMode?: S3UploadEndpointMode;
+};
+
+type CompleteManualLibraryAssetUploadInput = {
+  storageKey: string;
   assetName: string;
   originalFileName: string;
   mimeType: string;
@@ -163,7 +215,7 @@ function clampPage(value: number | undefined) {
 
 function clampPageSize(value: number | undefined) {
   if (!Number.isFinite(value) || !value || value < 1) {
-    return 10;
+    return 20;
   }
 
   return Math.min(50, Math.floor(value));
@@ -607,14 +659,17 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
             name: true,
             tags: {
               include: {
-                tag: true,
+                tag: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
             createdById: true,
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
@@ -653,34 +708,7 @@ async function getAccessibleManualLibraryAssets() {
       orderBy: {
         uploadedAt: "desc",
       },
-      select: {
-        id: true,
-        assetName: true,
-        originalFileName: true,
-        createdByName: true,
-        category: true,
-        assetTags: {
-          include: {
-            tag: {
-              select: {
-                id: true,
-                name: true,
-                color: true,
-              },
-            },
-          },
-        },
-        mimeType: true,
-        uploadedAt: true,
-        uploadedById: true,
-        uploadedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
+      select: manualLibraryAssetLibraryItemSelect,
     }),
   );
 }
@@ -689,6 +717,8 @@ export async function getLibraryPageDataForUser(
   user: LibraryUser,
   input: LibraryQueryInput = {},
 ): Promise<LibraryPageData> {
+  const totalStartedAt = getDevTimingNow();
+
   if (!hasPermission(user, "library.view")) {
     throw new Error("You do not have permission to view the library.");
   }
@@ -707,19 +737,41 @@ export async function getLibraryPageDataForUser(
 
   const pageSize = clampPageSize(input.pageSize);
   const [rawAttachments, manualAssets] = await Promise.all([
-    getAccessibleLibraryAttachments(user),
-    getAccessibleManualLibraryAssets(),
+    timeDevAsync("[library:list]", "project attachment query", () =>
+      getAccessibleLibraryAttachments(user),
+    ),
+    timeDevAsync("[library:list]", "manual library asset query", () =>
+      getAccessibleManualLibraryAssets(),
+    ),
   ]);
+  logDevTiming("[library:list]", "library list candidates", {
+    projectAttachments: rawAttachments.length,
+    manualAssets: manualAssets.length,
+  });
+
   const [favoritedAttachmentIds, favoritedManualAssetIds] = await Promise.all([
-    getFavoriteAttachmentIdSetForUser(
-      user.id,
-      rawAttachments.map((attachment) => attachment.id),
+    timeDevAsync(
+      "[library:list]",
+      "attachment favorites query",
+      () =>
+        getFavoriteAttachmentIdSetForUser(
+          user.id,
+          rawAttachments.map((attachment) => attachment.id),
+        ),
+      { candidateCount: rawAttachments.length },
     ),
-    getFavoriteManualLibraryAssetIdSetForUser(
-      user.id,
-      manualAssets.map((asset) => asset.id),
+    timeDevAsync(
+      "[library:list]",
+      "manual favorites query",
+      () =>
+        getFavoriteManualLibraryAssetIdSetForUser(
+          user.id,
+          manualAssets.map((asset) => asset.id),
+        ),
+      { candidateCount: manualAssets.length },
     ),
   ]);
+  const mapStartedAt = getDevTimingNow();
   const visibleItems = [
     ...rawAttachments.map((attachment) =>
       mapAttachmentToLibraryItem(user, attachment, favoritedAttachmentIds),
@@ -732,7 +784,12 @@ export async function getLibraryPageDataForUser(
       new Date(right.uploadedAtValue).getTime() -
       new Date(left.uploadedAtValue).getTime(),
   );
+  logDevTiming("[library:list]", "library map/sort", {
+    durationMs: getDevTimingDurationMs(mapStartedAt),
+    visibleItems: visibleItems.length,
+  });
 
+  const countsStartedAt = getDevTimingNow();
   const counts: LibraryQuickMenuCounts = {
     projectAssets: visibleItems.filter(
       (item) => item.quickCategory === "Project Assets",
@@ -743,7 +800,11 @@ export async function getLibraryPageDataForUser(
     fromUsers: new Set(visibleItems.map((item) => item.createdById)).size,
     favourites: visibleItems.filter((item) => item.isFavoritedByCurrentUser).length,
   };
+  logDevTiming("[library:list]", "library counts", {
+    durationMs: getDevTimingDurationMs(countsStartedAt),
+  });
 
+  const filtersStartedAt = getDevTimingNow();
   const filters = {
     projects: Array.from(
       new Map(
@@ -777,7 +838,14 @@ export async function getLibraryPageDataForUser(
       ).values(),
     ),
   };
+  logDevTiming("[library:list]", "library filters", {
+    durationMs: getDevTimingDurationMs(filtersStartedAt),
+    projects: filters.projects.length,
+    createdBy: filters.createdBy.length,
+    assetTags: filters.assetTags.length,
+  });
 
+  const filterStartedAt = getDevTimingNow();
   const filteredItems = applyLibraryFilters(visibleItems, {
     search: input.search?.trim() ?? "",
     projectId: input.projectId?.trim() ?? "",
@@ -787,14 +855,31 @@ export async function getLibraryPageDataForUser(
     type: input.type ?? "All Types",
     quickMenu: input.quickMenu ?? "assets",
   });
+  logDevTiming("[library:list]", "library filter apply", {
+    durationMs: getDevTimingDurationMs(filterStartedAt),
+    filteredItems: filteredItems.length,
+  });
 
   const total = filteredItems.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(clampPage(input.page), totalPages);
   const startIndex = (page - 1) * pageSize;
+  const pageItems = filteredItems.slice(startIndex, startIndex + pageSize);
+  logDevTiming("[library:list]", "recent files query", {
+    durationMs: 0,
+    page,
+    pageSize,
+    returnedItems: pageItems.length,
+  });
+  logDevTiming("[library:list]", "library data total", {
+    durationMs: getDevTimingDurationMs(totalStartedAt),
+    total,
+    page,
+    pageSize,
+  });
 
   return {
-    items: filteredItems.slice(startIndex, startIndex + pageSize),
+    items: pageItems,
     counts,
     filters,
     page,
@@ -808,6 +893,8 @@ export async function requestManualLibraryAssetUpload(
   user: LibraryUser,
   input: RequestManualLibraryAssetUploadInput,
 ) {
+  const totalStartedAt = getDevTimingNow();
+
   if (!canUploadLibraryAssets(user)) {
     return { error: "You do not have permission to upload library assets." } as const;
   }
@@ -849,7 +936,12 @@ export async function requestManualLibraryAssetUpload(
     } as const;
   }
 
-  const tagSelection = await validateActiveAssetTagIds(input.assetTagIds ?? []);
+  const tagSelection = await timeDevAsync(
+    "[library:upload-url]",
+    "tag validation query",
+    () => validateActiveAssetTagIds(input.assetTagIds ?? []),
+    { requestedTagCount: input.assetTagIds?.length ?? 0 },
+  );
 
   if (tagSelection.error) {
     return { error: tagSelection.error } as const;
@@ -858,99 +950,311 @@ export async function requestManualLibraryAssetUpload(
   const category = parseManualLibraryCategory(input.category);
   const bucket = getS3BucketName();
   const storageKey = buildManualLibraryAssetKey(user.id, input.originalFileName);
-  const uploadUrl = await createPresignedUploadUrl({
-    bucket,
-    storageKey,
-    mimeType: input.mimeType,
-  });
-
-  const asset = await withPrismaRetry(() =>
-    prisma.manualLibraryAsset.create({
-      data: {
-        assetName,
-        originalFileName: input.originalFileName.trim(),
-        createdByName: normalizeOptionalLibraryText(input.createdByName),
-        description: normalizeOptionalLibraryText(input.description),
-        category,
-        assetTags:
-          tagSelection.tagIds.length > 0
-            ? {
-                create: tagSelection.tagIds.map((tagId) => ({
-                  tag: {
-                    connect: {
-                      id: tagId,
-                    },
-                  },
-                })),
-              }
-            : undefined,
-        mimeType: input.mimeType,
-        fileSize: input.fileSize,
+  const endpointMode =
+    input.uploadEndpointMode ?? getDefaultS3UploadEndpointMode();
+  const uploadTarget = await timeDevAsync(
+    "[library:upload-url]",
+    "signed URL time",
+    () =>
+      createPresignedUploadTarget({
         bucket,
         storageKey,
-        uploadedById: user.id,
-      },
-      select: {
-        id: true,
-      },
-    }),
+        mimeType: input.mimeType,
+        endpointMode,
+      }),
+    {
+      region: getS3Region(),
+      endpointMode,
+      transferAcceleration: endpointMode === "accelerate",
+      expiresInSeconds: 60 * 10,
+    },
   );
+  logDevTiming("[library:upload-url]", "upload target", {
+    fileSize: input.fileSize,
+    contentType: input.mimeType,
+    uploadHost: uploadTarget.uploadHost,
+    region: uploadTarget.region,
+    endpointMode: uploadTarget.endpointMode,
+    transferAcceleration: uploadTarget.endpointMode === "accelerate",
+    expiresInSeconds: uploadTarget.expiresInSeconds,
+    expectedHeaders: uploadTarget.expectedHeaders,
+  });
+
+  logDevTiming("[library:upload-url]", "total", {
+    durationMs: getDevTimingDurationMs(totalStartedAt),
+    fileSize: input.fileSize,
+    assetTagCount: tagSelection.tagIds.length,
+    region: getS3Region(),
+    endpointMode: uploadTarget.endpointMode,
+    transferAcceleration: uploadTarget.endpointMode === "accelerate",
+    uploadHost: uploadTarget.uploadHost,
+  });
 
   return {
-    assetId: asset.id,
-    uploadUrl,
+    storageKey,
+    assetName,
+    originalFileName: input.originalFileName.trim(),
+    mimeType: input.mimeType,
+    fileSize: input.fileSize,
+    category,
+    uploadUrl: uploadTarget.uploadUrl,
+    uploadHost: uploadTarget.uploadHost,
+    uploadEndpointMode: uploadTarget.endpointMode,
+    uploadRegion: uploadTarget.region,
+    uploadExpiresInSeconds: uploadTarget.expiresInSeconds,
+    uploadExpectedHeaders: uploadTarget.expectedHeaders,
   };
+}
+
+export async function createCompletedManualLibraryAssetFromUpload(
+  user: LibraryUser,
+  input: CompleteManualLibraryAssetUploadInput,
+): Promise<LibraryItemRecord> {
+  const totalStartedAt = getDevTimingNow();
+
+  if (!canUploadLibraryAssets(user)) {
+    throw new Error("You do not have permission to upload library assets.");
+  }
+
+  if (!input.storageKey.startsWith(`library/manual/${user.id}/`)) {
+    throw new Error("Library upload storage key is invalid.");
+  }
+
+  if (!input.originalFileName.trim()) {
+    throw new Error("Choose a file to upload.");
+  }
+
+  if (!input.assetName.trim()) {
+    throw new Error("Asset name is required.");
+  }
+
+  if (!isAllowedAssetFile(input.originalFileName)) {
+    throw new Error("This file type is not allowed for Library uploads.");
+  }
+
+  if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
+    throw new Error("File size is invalid.");
+  }
+
+  if (input.fileSize > getMaxAssetUploadBytes()) {
+    throw new Error("This file exceeds the allowed size limit.");
+  }
+
+  const assetName = resolveManualLibraryAssetName(
+    input.assetName,
+    input.originalFileName,
+  );
+  const tagSelection = await timeDevAsync(
+    "[library:upload-complete]",
+    "tag validation query",
+    () => validateActiveAssetTagIds(input.assetTagIds ?? []),
+    { requestedTagCount: input.assetTagIds?.length ?? 0 },
+  );
+
+  if (tagSelection.error) {
+    throw new Error(tagSelection.error);
+  }
+
+  const bucket = getS3BucketName();
+  const headStartedAt = getDevTimingNow();
+  const objectMetadata = await getObjectMetadata(input.storageKey, bucket);
+  logDevTiming("[library:upload-complete]", "S3 head object time", {
+    durationMs: getDevTimingDurationMs(headStartedAt),
+    contentLength: objectMetadata.ContentLength,
+    contentType: objectMetadata.ContentType,
+  });
+
+  if (
+    typeof objectMetadata.ContentLength === "number" &&
+    objectMetadata.ContentLength !== input.fileSize
+  ) {
+    throw new Error("Uploaded file size does not match the requested upload.");
+  }
+
+  const category = parseManualLibraryCategory(input.category);
+
+  try {
+    return await withPrismaRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const existingStartedAt = getDevTimingNow();
+        const existingAsset = await tx.manualLibraryAsset.findUnique({
+          where: {
+            storageKey: input.storageKey,
+          },
+          select: manualLibraryAssetLibraryItemSelect,
+        });
+        logDevTiming("[library:upload-complete]", "existing asset lookup time", {
+          durationMs: getDevTimingDurationMs(existingStartedAt),
+        });
+
+        if (existingAsset) {
+          if (existingAsset.uploadedById !== user.id) {
+            throw new Error("Library upload storage key is already in use.");
+          }
+
+          return mapManualAssetToLibraryItem(user, existingAsset, new Set());
+        }
+
+        const assetInsertStartedAt = getDevTimingNow();
+        const createdAsset = await tx.manualLibraryAsset.create({
+          data: {
+            assetName,
+            originalFileName: input.originalFileName.trim(),
+            createdByName: normalizeOptionalLibraryText(input.createdByName),
+            description: normalizeOptionalLibraryText(input.description),
+            category,
+            mimeType: input.mimeType,
+            fileSize: input.fileSize,
+            bucket,
+            storageKey: input.storageKey,
+            status: AttachmentStatus.READY,
+            uploadedById: user.id,
+            uploadedAt: new Date(),
+          },
+          select: manualLibraryAssetLibraryItemSelect,
+        });
+        logDevTiming("[library:upload-complete]", "DB insert time", {
+          durationMs: getDevTimingDurationMs(assetInsertStartedAt),
+        });
+
+        const tagInsertStartedAt = getDevTimingNow();
+        if (tagSelection.tagIds.length > 0) {
+          await tx.manualLibraryAssetTagAssignment.createMany({
+            data: tagSelection.tagIds.map((tagId) => ({
+              assetId: createdAsset.id,
+              tagId,
+            })),
+          });
+        }
+        logDevTiming("[library:upload-complete]", "tag relation insert time", {
+          durationMs: getDevTimingDurationMs(tagInsertStartedAt),
+          tagCount: tagSelection.tagIds.length,
+        });
+
+        const createdAssetWithTags = await tx.manualLibraryAsset.findUniqueOrThrow({
+          where: {
+            id: createdAsset.id,
+          },
+          select: manualLibraryAssetLibraryItemSelect,
+        });
+
+        return mapManualAssetToLibraryItem(user, createdAssetWithTags, new Set());
+      }),
+    );
+  } finally {
+    logDevTiming("[library:upload-complete]", "create completed asset total", {
+      durationMs: getDevTimingDurationMs(totalStartedAt),
+      fileSize: input.fileSize,
+      assetTagCount: tagSelection.tagIds.length,
+    });
+  }
 }
 
 export async function completeManualLibraryAssetUpload(
   user: LibraryUser,
   assetId: string,
   failed = false,
-) {
+): Promise<LibraryItemRecord | null> {
+  const totalStartedAt = getDevTimingNow();
+
   if (!canUploadLibraryAssets(user)) {
     throw new Error("You do not have permission to upload library assets.");
   }
 
-  return withPrismaRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const asset = await tx.manualLibraryAsset.findUnique({
-        where: {
-          id: assetId,
-        },
-        select: {
-          id: true,
-          uploadedById: true,
-          status: true,
-        },
-      });
+  try {
+    return await withPrismaRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const lookupStartedAt = getDevTimingNow();
+        const asset = await tx.manualLibraryAsset.findUnique({
+          where: {
+            id: assetId,
+          },
+          select: {
+            id: true,
+            uploadedById: true,
+            status: true,
+          },
+        });
+        logDevTiming("[library:upload-complete]", "DB lookup time", {
+          durationMs: getDevTimingDurationMs(lookupStartedAt),
+        });
 
-      if (!asset) {
-        throw new Error("Library asset upload not found.");
-      }
+        if (!asset) {
+          throw new Error("Library asset upload not found.");
+        }
 
-      if (asset.uploadedById !== user.id) {
-        throw new Error("Only the uploader can complete this library upload.");
-      }
+        if (asset.uploadedById !== user.id) {
+          throw new Error("Only the uploader can complete this library upload.");
+        }
 
-      if (asset.status === AttachmentStatus.READY) {
-        return;
-      }
+        if (asset.status === AttachmentStatus.READY) {
+          logDevTiming("[library:upload-complete]", "DB update skipped", {
+            reason: "Asset is already ready.",
+          });
+          if (failed) {
+            return null;
+          }
 
-      if (asset.status !== AttachmentStatus.UPLOADING) {
-        throw new Error("Library asset upload is not active.");
-      }
+          const readyAsset = await tx.manualLibraryAsset.findUnique({
+            where: {
+              id: asset.id,
+            },
+            select: manualLibraryAssetLibraryItemSelect,
+          });
 
-      await tx.manualLibraryAsset.update({
-        where: {
-          id: asset.id,
-        },
-        data: {
-          status: failed ? AttachmentStatus.FAILED : AttachmentStatus.READY,
-          uploadedAt: failed ? undefined : new Date(),
-        },
-      });
-    }),
-  );
+          return readyAsset
+            ? mapManualAssetToLibraryItem(user, readyAsset, new Set())
+            : null;
+        }
+
+        if (asset.status !== AttachmentStatus.UPLOADING) {
+          throw new Error("Library asset upload is not active.");
+        }
+
+        const updateStartedAt = getDevTimingNow();
+        if (failed) {
+          await tx.manualLibraryAsset.update({
+            where: {
+              id: asset.id,
+            },
+            data: {
+              status: AttachmentStatus.FAILED,
+            },
+            select: {
+              id: true,
+            },
+          });
+          logDevTiming("[library:upload-complete]", "DB update time", {
+            durationMs: getDevTimingDurationMs(updateStartedAt),
+            failed,
+          });
+          return null;
+        }
+
+        const updatedAsset = await tx.manualLibraryAsset.update({
+          where: {
+            id: asset.id,
+          },
+          data: {
+            status: AttachmentStatus.READY,
+            uploadedAt: new Date(),
+          },
+          select: manualLibraryAssetLibraryItemSelect,
+        });
+        logDevTiming("[library:upload-complete]", "DB update time", {
+          durationMs: getDevTimingDurationMs(updateStartedAt),
+          failed,
+        });
+
+        return mapManualAssetToLibraryItem(user, updatedAsset, new Set());
+      }),
+    );
+  } finally {
+    logDevTiming("[library:upload-complete]", "DB complete total", {
+      durationMs: getDevTimingDurationMs(totalStartedAt),
+      failed,
+    });
+  }
 }
 
 export async function deleteLibraryAttachmentForUser(

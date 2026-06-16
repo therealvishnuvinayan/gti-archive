@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { Heart } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,19 +26,27 @@ export function AttachmentFavoriteButton({
   favoriteApiPath,
 }: AttachmentFavoriteButtonProps) {
   const [isFavorited, setIsFavorited] = useState(initialIsFavorited);
-  const [isPending, startTransition] = useTransition();
+  const latestRequestIdRef = useRef(0);
   const apiPath = favoriteApiPath ?? `/api/project-assets/${attachmentId}/favorite`;
 
   function handleToggle() {
     const nextState = !isFavorited;
+    const requestId = latestRequestIdRef.current + 1;
+    latestRequestIdRef.current = requestId;
+
     setIsFavorited(nextState);
     onChange?.(nextState);
 
-    startTransition(async () => {
-      try {
-        const response = await fetch(apiPath, {
-          method: nextState ? "POST" : "DELETE",
-        });
+    if (showToast) {
+      showSuccessToast(
+        nextState ? "Added to favourites." : "Removed from favourites.",
+      );
+    }
+
+    fetch(apiPath, {
+      method: nextState ? "POST" : "DELETE",
+    })
+      .then(async (response) => {
         const payload = (await response.json()) as {
           error?: string;
           isFavoritedByCurrentUser?: boolean;
@@ -48,24 +56,28 @@ export function AttachmentFavoriteButton({
           throw new Error(payload.error || "Unable to update favourites right now.");
         }
 
-        const confirmedState = payload.isFavoritedByCurrentUser ?? nextState;
+        return payload.isFavoritedByCurrentUser ?? nextState;
+      })
+      .then((confirmedState) => {
+        if (latestRequestIdRef.current !== requestId) {
+          return;
+        }
+
         setIsFavorited(confirmedState);
         onChange?.(confirmedState);
-
-        if (showToast) {
-          showSuccessToast(
-            confirmedState ? "Added to favourites." : "Removed from favourites.",
-          );
+      })
+      .catch((error) => {
+        if (latestRequestIdRef.current !== requestId) {
+          return;
         }
-      } catch (error) {
+
         setIsFavorited(!nextState);
         onChange?.(!nextState);
         showErrorToast(
           "Unable to update favourites.",
           error instanceof Error ? error.message : "Try again in a moment.",
         );
-      }
-    });
+      });
   }
 
   return (
@@ -74,7 +86,6 @@ export function AttachmentFavoriteButton({
       variant="ghost"
       size="icon"
       onClick={handleToggle}
-      disabled={isPending}
       className={className}
       aria-label={isFavorited ? "Remove from favourites" : "Add to favourites"}
       title={isFavorited ? "Remove from favourites" : "Add to favourites"}
