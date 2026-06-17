@@ -21,3 +21,18 @@ export function logStageChatTiming(
     ...metadata,
   });
 }
+
+export function logChatSendFastTiming(
+  label: string,
+  startedAt: number,
+  metadata?: Record<string, unknown>,
+) {
+  if (!shouldLogStageChatTimings()) {
+    return;
+  }
+
+  console.log(`[chat-send-fast] ${label}`, {
+    ms: Math.round(performance.now() - startedAt),
+    ...metadata,
+  });
+}

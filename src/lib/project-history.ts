@@ -43,7 +43,7 @@ import {
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
-import { logStageChatTiming } from "@/lib/stage-chat-timing";
+import { logChatSendFastTiming, logStageChatTiming } from "@/lib/stage-chat-timing";
 import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   buildProjectAssetKey,
@@ -133,6 +133,7 @@ type StageCommentQueryRecord = {
   deletedAt: Date | string | null;
   deletedByUserId: string | null;
   createdAt: Date;
+  updatedAt?: Date;
   author: Pick<
     User,
     "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
@@ -199,6 +200,37 @@ export type StageHistoryRecord = {
   revisionCount?: number;
   nextCursor?: string | null;
   hasMore?: boolean;
+};
+
+export type StageChatCommentEntryRecord = {
+  entry: ProjectChatEntry;
+  projectId: string;
+  stageId: string;
+  commentId: string;
+  authorId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StageChatUpdatesRecord = {
+  projectId: string;
+  stageId: string;
+  entries: ProjectChatEntry[];
+  watermark: string;
+  hasMore: boolean;
+};
+
+export type StageTextCommentFastResult = {
+  id: string;
+  projectId: string;
+  stageId: string;
+  revisionId: string | null;
+  authorId: string;
+  createdAt: Date;
+  mentions: Array<{
+    mentionedUserId: string;
+  }>;
+  entry: ProjectChatEntry;
 };
 
 type ActivePendingStageReview =
@@ -1670,6 +1702,264 @@ export async function getProjectStageChatMessages(
   };
 }
 
+async function assertStageChatRealtimeAccess(
+  user: AccessUser,
+  projectId: string,
+  stageId: string,
+) {
+  const project = await getStageChatAccessRecord(projectId, stageId, user.id);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!hasProjectPermission(user, project, "project.view")) {
+    throw new Error("You do not have access to this project.");
+  }
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    "chat.view",
+    "You do not have permission to view project chat.",
+  );
+
+  return project;
+}
+
+async function findStageChatCommentForRealtime(input: {
+  projectId: string;
+  stageId: string;
+  commentId: string;
+}) {
+  return withPrismaRetry(() =>
+    prisma.projectComment.findFirst({
+      where: {
+        id: input.commentId,
+        projectId: input.projectId,
+        stageId: input.stageId,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            collaboratorType: true,
+            avatarUrl: true,
+          },
+        },
+        mentions: {
+          select: {
+            mentionedUserId: true,
+            mentionedUser: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        attachments: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            id: true,
+            assetType: true,
+            originalFileName: true,
+            mimeType: true,
+            fileSize: true,
+            submissionReviewStatus: true,
+            createdAt: true,
+            status: true,
+            uploadedBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+}
+
+async function mapRealtimeCommentsForUser(
+  user: AccessUser,
+  project: ProjectStageChatAccessRecord,
+  comments: StageCommentQueryRecord[],
+) {
+  const pauseWindows = await getProjectVisibilityPauseWindows(user, project);
+  const visibleComments = filterHistoryEntriesOutsidePauseWindows(comments, pauseWindows);
+  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
+    user.id,
+    visibleComments
+      .flatMap((entry) => entry.attachments)
+      .filter((attachment) => attachment.status === AttachmentStatus.READY)
+      .map((attachment) => attachment.id),
+  );
+  const submissionNumbers = buildStageSubmissionNumberMap([], visibleComments);
+
+  return visibleComments.map((comment) => ({
+    comment,
+    entry: mapCommentEntry(comment, submissionNumbers, favoritedAttachmentIds),
+  }));
+}
+
+export async function getStageChatCommentEntryForUser(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    commentId: string;
+  },
+): Promise<StageChatCommentEntryRecord | null> {
+  const project = await assertStageChatRealtimeAccess(
+    user,
+    input.projectId,
+    input.stageId,
+  );
+  const comment = await findStageChatCommentForRealtime(input);
+
+  if (!comment) {
+    return null;
+  }
+
+  const [mappedComment] = await mapRealtimeCommentsForUser(user, project, [comment]);
+
+  if (!mappedComment) {
+    return null;
+  }
+
+  return {
+    entry: mappedComment.entry,
+    projectId: mappedComment.comment.projectId,
+    stageId: mappedComment.comment.stageId,
+    commentId: mappedComment.comment.id,
+    authorId: mappedComment.comment.author.id,
+    createdAt: toHistoryDate(mappedComment.comment.createdAt).toISOString(),
+    updatedAt: toHistoryDate(
+      mappedComment.comment.updatedAt ?? mappedComment.comment.createdAt,
+    ).toISOString(),
+  };
+}
+
+export async function getStageChatUpdatesForUser(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    after?: string | null;
+    limit?: number;
+  },
+): Promise<StageChatUpdatesRecord> {
+  const project = await assertStageChatRealtimeAccess(
+    user,
+    input.projectId,
+    input.stageId,
+  );
+  const parsedAfter = input.after ? new Date(input.after) : null;
+  const after =
+    parsedAfter && !Number.isNaN(parsedAfter.getTime()) ? parsedAfter : null;
+  const limit = Math.max(1, Math.min(input.limit ?? 50, 50));
+  const take = limit + 1;
+  const comments = await withPrismaRetry(() =>
+    prisma.projectComment.findMany({
+      where: {
+        projectId: input.projectId,
+        stageId: input.stageId,
+        ...(after
+          ? {
+              updatedAt: {
+                gt: after,
+              },
+            }
+          : {}),
+      },
+      orderBy: [
+        {
+          updatedAt: after ? "asc" : "desc",
+        },
+        {
+          id: after ? "asc" : "desc",
+        },
+      ],
+      take,
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            collaboratorType: true,
+            avatarUrl: true,
+          },
+        },
+        mentions: {
+          select: {
+            mentionedUserId: true,
+            mentionedUser: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        attachments: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            id: true,
+            assetType: true,
+            originalFileName: true,
+            mimeType: true,
+            fileSize: true,
+            submissionReviewStatus: true,
+            createdAt: true,
+            status: true,
+            uploadedBy: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+  const selectedComments = comments.slice(0, limit);
+  const orderedComments = after ? selectedComments : selectedComments.slice().reverse();
+  const mappedComments = await mapRealtimeCommentsForUser(
+    user,
+    project,
+    orderedComments,
+  );
+  const newestUpdatedAt = selectedComments.reduce<Date | null>((current, comment) => {
+    const updatedAt = comment.updatedAt ?? comment.createdAt;
+
+    if (!current || updatedAt.getTime() > current.getTime()) {
+      return updatedAt;
+    }
+
+    return current;
+  }, null);
+
+  return {
+    projectId: input.projectId,
+    stageId: input.stageId,
+    entries: mappedComments.map((item) => item.entry),
+    watermark: (newestUpdatedAt ?? after ?? new Date()).toISOString(),
+    hasMore: comments.length > limit,
+  };
+}
+
 export async function getProjectStageHistory(
   user: AccessUser,
   projectId: string,
@@ -2194,8 +2484,9 @@ export async function createStageTextCommentFast(
     body: string;
     mentionedUserIds?: string[];
   },
-) {
+): Promise<StageTextCommentFastResult> {
   const totalStartedAt = performance.now();
+  const mentionParseStartedAt = performance.now();
   const body = input.body.trim();
 
   if (!body) {
@@ -2210,6 +2501,9 @@ export async function createStageTextCommentFast(
         .filter(Boolean),
     ),
   );
+  logChatSendFastTiming("mention parsing", mentionParseStartedAt, {
+    requestedMentions: requestedMentionUserIds.length,
+  });
   logStageChatTiming("send", "mentions parsing", totalStartedAt, {
     requestedMentions: requestedMentionUserIds.length,
   });
@@ -2236,7 +2530,18 @@ export async function createStageTextCommentFast(
               },
             },
             status: {
-              select: projectStatusSelect,
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                group: {
+                  select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                  },
+                },
+              },
             },
             collaborators: {
               where: {
@@ -2251,6 +2556,10 @@ export async function createStageTextCommentFast(
       },
     }),
   );
+  logChatSendFastTiming("stage/access query", accessQueryStartedAt, {
+    projectId: input.projectId,
+    stageId: input.stageId,
+  });
   logStageChatTiming("send", "project access/stage query", accessQueryStartedAt, {
     projectId: input.projectId,
     stageId: input.stageId,
@@ -2260,33 +2569,45 @@ export async function createStageTextCommentFast(
   if (!stage || stage.projectId !== input.projectId) {
     throw new Error("Stage not found.");
   }
+  logChatSendFastTiming("project/stage lookup", stageLookupStartedAt, {
+    stageId: stage.id,
+  });
   logStageChatTiming("send", "stage lookup", stageLookupStartedAt, {
     stageId: stage.id,
   });
 
-  const permissionStartedAt = performance.now();
+  const projectAccessStartedAt = performance.now();
   const project = assertProjectAccessFromContext(user, stage.project);
+  logChatSendFastTiming("project access check", projectAccessStartedAt);
 
+  const createPermissionStartedAt = performance.now();
   assertProjectWorkflowPermission(
     user,
     project,
     "chat.createComment",
     "You do not have permission to add project comments.",
   );
+  logChatSendFastTiming(
+    "chat.createComment permission check",
+    createPermissionStartedAt,
+  );
 
+  const completedCheckStartedAt = performance.now();
   if (isProjectStatusCompleted(stage.project.status)) {
     throw new Error("This project is already completed.");
   }
+  logChatSendFastTiming("completed-project check", completedCheckStartedAt);
 
   if (requestedMentionUserIds.length > 0) {
+    const mentionPermissionStartedAt = performance.now();
     assertProjectWorkflowPermission(
       user,
       project,
       "chat.mentionUser",
       "You do not have permission to mention users.",
     );
+    logChatSendFastTiming("chat.mentionUser permission check", mentionPermissionStartedAt);
   }
-  logStageChatTiming("send", "permission/access check", permissionStartedAt);
 
   if (requestedRevisionId) {
     const revisionLookupStartedAt = performance.now();
@@ -2309,7 +2630,13 @@ export async function createStageTextCommentFast(
     if (!revision) {
       throw new Error("Revision not found.");
     }
+    logChatSendFastTiming("revision lookup used", revisionLookupStartedAt, {
+      revisionId: requestedRevisionId,
+    });
   } else {
+    logChatSendFastTiming("revision lookup skipped", performance.now(), {
+      skipped: true,
+    });
     logStageChatTiming("send", "revision lookup", performance.now(), {
       skipped: true,
     });
@@ -2330,6 +2657,17 @@ export async function createStageTextCommentFast(
             requestedMentionUserIds.includes(recipientUserId),
         )
       : [];
+  logChatSendFastTiming(
+    requestedMentionUserIds.length > 0
+      ? "mention user lookup used"
+      : "mention user lookup skipped",
+    mentionLookupStartedAt,
+    {
+      requestedMentions: requestedMentionUserIds.length,
+      validMentions: validMentionUserIds.length,
+      skipped: requestedMentionUserIds.length === 0,
+    },
+  );
   logStageChatTiming("send", "mention recipient lookup", mentionLookupStartedAt, {
     requestedMentions: requestedMentionUserIds.length,
     validMentions: validMentionUserIds.length,
@@ -2357,11 +2695,21 @@ export async function createStageTextCommentFast(
             },
             select: {
               id: true,
+              projectId: true,
+              stageId: true,
               revisionId: true,
+              authorId: true,
+              body: true,
               createdAt: true,
               mentions: {
                 select: {
                   mentionedUserId: true,
+                  mentionedUser: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
                 },
               },
             },
@@ -2379,22 +2727,87 @@ export async function createStageTextCommentFast(
               },
               select: {
                 id: true,
+                projectId: true,
+                stageId: true,
                 revisionId: true,
+                authorId: true,
+                body: true,
                 createdAt: true,
               },
             }),
           )),
           mentions: [],
         };
+  logChatSendFastTiming("ProjectComment insert", createStartedAt, {
+    commentId: comment.id,
+    mentions: validMentionUserIds.length,
+  });
   logStageChatTiming("send", "create ProjectComment insert", createStartedAt, {
     commentId: comment.id,
     mentions: validMentionUserIds.length,
+  });
+
+  const dtoMappingStartedAt = performance.now();
+  const commentMentions = comment.mentions.map((mention) => ({
+    mentionedUserId: mention.mentionedUserId,
+    mentionedUser:
+      "mentionedUser" in mention
+        ? mention.mentionedUser
+        : {
+            name: null,
+            email: "",
+          },
+  }));
+  const entry: ProjectChatEntry = {
+    id: comment.id,
+    revisionId: comment.revisionId ?? undefined,
+    kind: "comment",
+    authorId: user.id,
+    author: getDisplayName(user),
+    authorAvatarSrc:
+      "avatarUrl" in user &&
+      typeof user.avatarUrl === "string" &&
+      user.avatarUrl
+        ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
+        : null,
+    role: getActorRole(user),
+    body: comment.body,
+    createdAt: formatHistoryTimestamp(comment.createdAt),
+    canDeleteUntil: isDeletableStageComment({
+      body: comment.body,
+      attachments: [],
+    })
+      ? getStageChatDeleteExpiresAt(comment.createdAt).toISOString()
+      : null,
+    mentions: commentMentions.map((mention) => ({
+      userId: mention.mentionedUserId,
+      name: getDisplayName(mention.mentionedUser),
+    })),
+    attachments: [],
+  };
+  logChatSendFastTiming("returned DTO mapping", dtoMappingStartedAt, {
+    commentId: comment.id,
+    mentions: commentMentions.length,
+  });
+  logChatSendFastTiming("total", totalStartedAt, {
+    commentId: comment.id,
   });
   logStageChatTiming("send", "total fast text comment", totalStartedAt, {
     commentId: comment.id,
   });
 
-  return comment;
+  return {
+    id: comment.id,
+    projectId: comment.projectId,
+    stageId: comment.stageId,
+    revisionId: comment.revisionId,
+    authorId: comment.authorId,
+    createdAt: comment.createdAt,
+    mentions: comment.mentions.map((mention) => ({
+      mentionedUserId: mention.mentionedUserId,
+    })),
+    entry,
+  };
 }
 
 export async function deleteStageComment(
