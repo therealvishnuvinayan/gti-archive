@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useFormStatus } from "react-dom";
-import { Check, ChevronDown, Download, Loader2, Paperclip, Plus, Search, X } from "lucide-react";
+import { Check, ChevronDown, Download, Loader2, Paperclip, Plus, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
@@ -1043,6 +1043,7 @@ export function CreateProjectWorkspace({
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const [budgetConflictDialogOpen, setBudgetConflictDialogOpen] = useState(false);
+  const [stageRemovalTarget, setStageRemovalTarget] = useState<StageForm | null>(null);
   const [executorPickerOpen, setExecutorPickerOpen] = useState(false);
   const [executorSearch, setExecutorSearch] = useState("");
   const [executorRoleDraft, setExecutorRoleDraft] =
@@ -1079,6 +1080,7 @@ export function CreateProjectWorkspace({
     (Boolean(formState.projectId) &&
       (pendingProjectFiles.length > 0 || hasPendingStageAttachmentFiles));
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
+  const canManageStages = mode === "create" ? true : (initialValues?.canManageStages ?? false);
   const isInternalExecution = projectExecutionType === "INTERNAL";
   const isExternalExecution = projectExecutionType === "EXTERNAL";
   const isBudgetRequired = canViewBudget && projectBudgetRequired;
@@ -1399,6 +1401,40 @@ export function CreateProjectWorkspace({
         pendingFiles: [],
       },
     ]);
+  }
+
+  function requestStageRemoval(stage: StageForm) {
+    if (!canManageStages) {
+      showErrorToast(
+        "Stage removal unavailable.",
+        "You do not have permission to remove project stages.",
+      );
+      return;
+    }
+
+    if (stages.length <= 1) {
+      showErrorToast("At least one stage required.", "A project must include at least one stage.");
+      return;
+    }
+
+    setStageRemovalTarget(stage);
+  }
+
+  function removeStage(stageId: string) {
+    if (!canManageStages) {
+      setStageRemovalTarget(null);
+      return;
+    }
+
+    setStages((current) => {
+      if (current.length <= 1) {
+        return current;
+      }
+
+      return current.filter((stage) => stage.id !== stageId);
+    });
+    setStageRemovalTarget(null);
+    setAttachmentError(undefined);
   }
 
   function setCollaboratorFormValue<K extends keyof CollaboratorForm>(
@@ -3398,10 +3434,30 @@ export function CreateProjectWorkspace({
                 <MotionItem key={stage.id} y={8} layout className="min-w-0">
                 <Card className="min-w-0 overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(22,38,29,0.06)]">
                   <CardContent className="min-w-0 p-4">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
-                      Stage Name{" "}
-                      {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
-                    </p>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6f7d72]">
+                        Stage Name{" "}
+                        {isExternalExecution ? <span className="text-[#d3554d]">*</span> : null}
+                      </p>
+                      {canManageStages ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 shrink-0 text-[#8a948c] hover:bg-[#fff1f0] hover:text-[#c2463c]"
+                          disabled={stages.length <= 1}
+                          onClick={() => requestStageRemoval(stage)}
+                          aria-label={`Remove ${stage.name || `Stage ${index + 1}`}`}
+                          title={
+                            stages.length <= 1
+                              ? "A project must include at least one stage."
+                              : "Remove stage"
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                    </div>
                     <input type="hidden" name="stageIds" value={stage.persistedId ?? ""} />
                     {stage.attachments.map((attachment) => (
                       <input
@@ -4066,6 +4122,24 @@ export function CreateProjectWorkspace({
         onChange={(field, value) => {
           setExecutorInviteError(undefined);
           setExecutorInviteFormValue(field, value);
+        }}
+      />
+      <ConfirmationDialog
+        isOpen={stageRemovalTarget !== null}
+        title="Remove stage?"
+        description={
+          stageRemovalTarget
+            ? `${stageRemovalTarget.name.trim() || "This stage"} will be removed from the project setup. Any pending stage brief attachments for this stage will also be removed.`
+            : ""
+        }
+        confirmLabel="Remove Stage"
+        cancelLabel="Cancel"
+        tone="destructive"
+        onClose={() => setStageRemovalTarget(null)}
+        onConfirm={() => {
+          if (stageRemovalTarget) {
+            removeStage(stageRemovalTarget.id);
+          }
         }}
       />
       <ConfirmationDialog

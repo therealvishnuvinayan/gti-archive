@@ -207,6 +207,7 @@ export type ProjectEditorRecord = {
   budget: string;
   currency: string | null;
   canViewBudget: boolean;
+  canManageStages: boolean;
   statusId: string | null;
   statusName: string;
   statusColor: string;
@@ -1320,6 +1321,11 @@ function mapProjectToEditor(
   const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
+  const canManageStages = hasProjectPermission(
+    currentUser,
+    project,
+    "stage.manageDefinitions",
+  );
   const tags = getProjectTagNames(project);
   const statusDisplay = getProjectStatusDisplay(project.status);
   const projectBriefAttachments = project.attachments
@@ -1359,6 +1365,7 @@ function mapProjectToEditor(
         : "",
     currency: allowBudgetView ? project.currency : null,
     canViewBudget: allowBudgetView,
+    canManageStages,
     statusId: statusDisplay.id,
     statusName: statusDisplay.name,
     statusColor: statusDisplay.color,

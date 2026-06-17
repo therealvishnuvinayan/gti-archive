@@ -92,6 +92,7 @@ export type ProjectEditorInitialValues = {
   budget: string;
   currency: string | null;
   canViewBudget: boolean;
+  canManageStages: boolean;
   statusId: string | null;
   statusName: string;
   statusColor: string;

@@ -1438,6 +1438,15 @@ export async function updateProjectAction(
     (stage) => !submittedExistingStageIdSet.has(stage.id),
   );
 
+  if (
+    removedStages.length > 0 &&
+    !hasProjectPermission(user, existingProject, "stage.manageDefinitions")
+  ) {
+    return {
+      error: "You are not allowed to remove project stages.",
+    };
+  }
+
   if (removedStages.some(stageHasLinkedHistory)) {
     return {
       error:
