@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -88,6 +89,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useStageChatRealtime } from "@/hooks/use-stage-chat-realtime";
 import type {
   ProjectArchivePreparation,
   ProjectCompletionSummary,
@@ -95,6 +97,13 @@ import type {
 import type { ProjectCompletionWorkflowRecord } from "@/lib/project-completion";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageHistoryRecord } from "@/lib/project-history";
+import type {
+  StageChatRealtimeMessageCreatedPayload,
+  StageChatRealtimeMessageDeletedPayload,
+  StageChatRealtimeMessageFailedPayload,
+  StageChatRealtimeMessagePendingPayload,
+  StageChatRealtimeUpdatesResponse,
+} from "@/lib/realtime/events";
 import type {
   ProjectAttachmentRecord,
   ProjectChatEntry,
@@ -133,6 +142,7 @@ type PendingFile = {
 };
 
 type UploadProgressState = "pending" | "uploading" | "uploaded" | "error";
+type OptimisticMessageStatus = "sending" | "uploading" | "failed";
 
 type DisplayAttachmentRecord = ProjectAttachmentRecord & {
   uploadState?: UploadProgressState;
@@ -143,6 +153,7 @@ type DisplayAttachmentRecord = ProjectAttachmentRecord & {
 type DisplayChatEntry = ProjectChatEntry & {
   attachments?: DisplayAttachmentRecord[];
   isOptimistic?: boolean;
+  optimisticStatus?: OptimisticMessageStatus;
   localCreatedAtMs?: number;
   serverEntryId?: string;
 };
@@ -162,6 +173,12 @@ type StageChatMessagesApiResponse =
       nextCursor: string | null;
       hasMore: boolean;
     }
+  | {
+      error: string;
+    };
+
+type StageChatUpdatesApiResponse =
+  | StageChatRealtimeUpdatesResponse
   | {
       error: string;
     };
@@ -189,6 +206,8 @@ type CreateStageCommentApiResponse =
       revisionId: string | null;
       createdAt: string;
       mentionedUserIds: string[];
+      clientTempId?: string | null;
+      entry?: ProjectChatEntry;
     }
   | {
       error: string;
@@ -196,6 +215,7 @@ type CreateStageCommentApiResponse =
 
 const PROJECT_ASSET_INLINE_LIMIT = 4;
 const STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
+const STAGE_CHAT_PENDING_TIMEOUT_MS = 60 * 1000;
 const DELETED_STAGE_CHAT_MESSAGE_TEXT = "This message was deleted";
 
 type MentionToken = {
@@ -571,6 +591,46 @@ function waitForNextPaint() {
 
 function getLocalDeleteExpiresAt(createdAtMs: number) {
   return new Date(createdAtMs + STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS).toISOString();
+}
+
+function hasPendingAttachmentUpload(message: DisplayChatEntry) {
+  const attachments = message.attachments as DisplayAttachmentRecord[] | undefined;
+
+  return (
+    attachments?.some(
+      (attachment) =>
+        attachment.uploadState === "pending" ||
+        attachment.uploadState === "uploading",
+    ) ?? false
+  );
+}
+
+function hasFailedAttachmentUpload(message: DisplayChatEntry) {
+  const attachments = message.attachments as DisplayAttachmentRecord[] | undefined;
+
+  return (
+    attachments?.some((attachment) => attachment.uploadState === "error") ?? false
+  );
+}
+
+function getCommentStatusLabel(message: DisplayChatEntry) {
+  if (!message.isOptimistic) {
+    return message.createdAt;
+  }
+
+  if (message.optimisticStatus === "failed" || hasFailedAttachmentUpload(message)) {
+    return "Failed";
+  }
+
+  if (message.optimisticStatus === "uploading" || hasPendingAttachmentUpload(message)) {
+    return "Uploading…";
+  }
+
+  if (message.optimisticStatus === "sending") {
+    return "Sending…";
+  }
+
+  return message.createdAt;
 }
 
 function getArchiveFileNameError(
@@ -1992,6 +2052,7 @@ export function ProjectChatWorkspace({
   const stageInvoiceInputRef = useRef<HTMLInputElement | null>(null);
   const draftInputRef = useRef<HTMLTextAreaElement | null>(null);
   const expandedDraftInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const mentionDropdownRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -2003,6 +2064,11 @@ export function ProjectChatWorkspace({
     email: "",
     type: "GTI_INTERNAL_CLIENT",
   });
+  const [isNearChatBottom, setIsNearChatBottom] = useState(true);
+  const [newRealtimeMessageCount, setNewRealtimeMessageCount] = useState(0);
+  const [realtimeWatermark, setRealtimeWatermark] = useState<string | null>(null);
+  const confirmedClientTempIdsRef = useRef<Set<string>>(new Set());
+  const failedClientTempIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -2021,6 +2087,11 @@ export function ProjectChatWorkspace({
         history.entries.filter((entry) => entry.kind === "revision").length,
     );
     setOlderMessagesError(null);
+    setRealtimeWatermark(null);
+    setNewRealtimeMessageCount(0);
+    setIsNearChatBottom(true);
+    confirmedClientTempIdsRef.current.clear();
+    failedClientTempIdsRef.current.clear();
   }, [
     history.activeStageId,
     history.entries,
@@ -2477,6 +2548,10 @@ export function ProjectChatWorkspace({
 
     return collaborator?.name || "You";
   }, [currentUserId, project.collaborators, project.executors]);
+  const currentUserDisplayCode = useMemo(
+    () => getInitials(currentUserDisplayName),
+    [currentUserDisplayName],
+  );
   const currentUserRoleLabel = useMemo(() => {
     const executor = project.executors.find(
       (candidate) => candidate.id === currentUserId,
@@ -2496,6 +2571,350 @@ export function ProjectChatWorkspace({
 
     return collaborator.group === "external" ? "External Collaborator" : "Internal Team";
   }, [currentUserId, project.collaborators, project.executors]);
+  const getParticipantRoleLabel = useCallback(
+    (userId: string) => {
+      if (userId === currentUserId) {
+        return currentUserRoleLabel;
+      }
+
+      const executor = project.executors.find((candidate) => candidate.id === userId);
+
+      if (executor) {
+        return executor.roleLabel;
+      }
+
+      const collaborator = project.collaborators.find(
+        (candidate) => candidate.id === userId,
+      );
+
+      if (!collaborator) {
+        return "Stage Chat";
+      }
+
+      return collaborator.group === "external"
+        ? "External Collaborator"
+        : "Internal Team";
+    },
+    [currentUserId, currentUserRoleLabel, project.collaborators, project.executors],
+  );
+  const hasLocalOrConfirmedRealtimeMessage = useCallback(
+    (clientTempId: string) => {
+      if (
+        confirmedClientTempIdsRef.current.has(clientTempId) ||
+        failedClientTempIdsRef.current.has(clientTempId)
+      ) {
+        return true;
+      }
+
+      return (
+        loadedHistoryEntries.some((entry) => entry.id === clientTempId) ||
+        optimisticComments.some(
+          (entry) => entry.id === clientTempId || entry.serverEntryId === clientTempId,
+        ) ||
+        confirmedComments.some(
+          (entry) => entry.id === clientTempId || entry.serverEntryId === clientTempId,
+        )
+      );
+    },
+    [confirmedComments, loadedHistoryEntries, optimisticComments],
+  );
+  const buildPendingRealtimeEntry = useCallback(
+    (payload: StageChatRealtimeMessagePendingPayload): DisplayChatEntry => {
+      const createdAtMs = Date.parse(payload.createdAt);
+
+      return {
+        id: payload.clientTempId,
+        kind: "comment",
+        author: payload.senderDisplayName.trim() || payload.senderDisplayCode || "User",
+        authorId: payload.senderId,
+        authorAvatarSrc: null,
+        role: getParticipantRoleLabel(payload.senderId),
+        body: payload.body,
+        mentions: [],
+        createdAt: "Sending…",
+        isOptimistic: true,
+        optimisticStatus: "sending",
+        localCreatedAtMs: Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
+        attachments: [],
+      };
+    },
+    [getParticipantRoleLabel],
+  );
+  const markStalePendingTextMessages = useCallback(() => {
+    const cutoff = Date.now() - STAGE_CHAT_PENDING_TIMEOUT_MS;
+
+    setOptimisticComments((current) =>
+      current.map((entry) => {
+        const isPendingTextComment =
+          entry.kind === "comment" &&
+          entry.optimisticStatus === "sending" &&
+          !entry.serverEntryId &&
+          (entry.attachments?.length ?? 0) === 0;
+
+        if (!isPendingTextComment || (entry.localCreatedAtMs ?? Date.now()) >= cutoff) {
+          return entry;
+        }
+
+        failedClientTempIdsRef.current.add(entry.id);
+
+        return {
+          ...entry,
+          createdAt: "Failed",
+          optimisticStatus: "failed",
+        };
+      }),
+    );
+  }, []);
+  const scrollToChatBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    chatBottomRef.current?.scrollIntoView({ block: "end", behavior });
+  }, []);
+  const handleChatScroll = useCallback(() => {
+    const container = chatScrollRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const nextIsNearBottom = distanceFromBottom < 160;
+    setIsNearChatBottom(nextIsNearBottom);
+
+    if (nextIsNearBottom) {
+      setNewRealtimeMessageCount(0);
+    }
+  }, []);
+  const mergeServerChatEntry = useCallback(
+    (
+      entry: ProjectChatEntry,
+      options: { clientTempId?: string | null; countAsNew?: boolean } = {},
+    ) => {
+      if (options.clientTempId) {
+        confirmedClientTempIdsRef.current.add(options.clientTempId);
+        failedClientTempIdsRef.current.delete(options.clientTempId);
+      }
+
+      setLoadedHistoryEntries((current) => {
+        const existingIndex = current.findIndex((candidate) => candidate.id === entry.id);
+
+        if (existingIndex >= 0) {
+          const next = [...current];
+          next[existingIndex] = {
+            ...current[existingIndex],
+            ...entry,
+          };
+          return next;
+        }
+
+        return [...current, entry];
+      });
+      setOptimisticComments((current) =>
+        current.filter(
+          (candidate) =>
+            candidate.id !== options.clientTempId &&
+            candidate.serverEntryId !== entry.id,
+        ),
+      );
+      setConfirmedComments((current) =>
+        current.filter((candidate) => candidate.serverEntryId !== entry.id),
+      );
+
+      if (entry.deletedAt) {
+        setDeletedMessageOverrides((current) => ({
+          ...current,
+          [entry.id]: {
+            deletedAt: entry.deletedAt ?? new Date().toISOString(),
+            deletedByUserId: entry.deletedByUserId ?? null,
+            displayText: DELETED_STAGE_CHAT_MESSAGE_TEXT,
+          },
+        }));
+      }
+
+      if (options.countAsNew && !isNearChatBottom && entry.authorId !== currentUserId) {
+        setNewRealtimeMessageCount((current) => current + 1);
+      }
+    },
+    [currentUserId, isNearChatBottom],
+  );
+  const applyRealtimeDeletedMessage = useCallback(
+    (payload: StageChatRealtimeMessageDeletedPayload) => {
+      setDeletedMessageOverrides((current) => ({
+        ...current,
+        [payload.commentId]: {
+          deletedAt: payload.deletedAt,
+          deletedByUserId: payload.deletedByUserId,
+          displayText: DELETED_STAGE_CHAT_MESSAGE_TEXT,
+        },
+      }));
+      setLoadedHistoryEntries((current) =>
+        current.map((entry) =>
+          entry.id === payload.commentId
+            ? {
+                ...entry,
+                body: DELETED_STAGE_CHAT_MESSAGE_TEXT,
+                deletedAt: payload.deletedAt,
+                deletedByUserId: payload.deletedByUserId,
+                canDeleteUntil: null,
+                mentions: [],
+                attachments: [],
+              }
+            : entry,
+        ),
+      );
+      setOptimisticComments((current) =>
+        current.filter((entry) => entry.serverEntryId !== payload.commentId),
+      );
+      setConfirmedComments((current) =>
+        current.filter((entry) => entry.serverEntryId !== payload.commentId),
+      );
+    },
+    [],
+  );
+  const handleRealtimeMessagePending = useCallback(
+    (payload: StageChatRealtimeMessagePendingPayload) => {
+      if (payload.projectId !== project.id || payload.stageId !== activeStage?.id) {
+        return;
+      }
+
+      if (hasLocalOrConfirmedRealtimeMessage(payload.clientTempId)) {
+        return;
+      }
+
+      const pendingEntry = buildPendingRealtimeEntry(payload);
+
+      setOptimisticComments((current) => {
+        if (
+          current.some(
+            (entry) =>
+              entry.id === payload.clientTempId ||
+              entry.serverEntryId === payload.clientTempId,
+          ) ||
+          confirmedClientTempIdsRef.current.has(payload.clientTempId) ||
+          failedClientTempIdsRef.current.has(payload.clientTempId)
+        ) {
+          return current;
+        }
+
+        return [...current, pendingEntry];
+      });
+
+      if (payload.senderId !== currentUserId && !isNearChatBottom) {
+        setNewRealtimeMessageCount((current) => current + 1);
+      }
+    },
+    [
+      activeStage?.id,
+      buildPendingRealtimeEntry,
+      currentUserId,
+      hasLocalOrConfirmedRealtimeMessage,
+      isNearChatBottom,
+      project.id,
+    ],
+  );
+  const handleRealtimeMessageCreated = useCallback(
+    (payload: StageChatRealtimeMessageCreatedPayload) => {
+      if (payload.projectId !== project.id || payload.stageId !== activeStage?.id) {
+        return;
+      }
+
+      mergeServerChatEntry(payload.entry, {
+        clientTempId: payload.clientTempId,
+        countAsNew: true,
+      });
+      setRealtimeWatermark(payload.createdAt);
+    },
+    [activeStage?.id, mergeServerChatEntry, project.id],
+  );
+  const handleRealtimeMessageFailed = useCallback(
+    (payload: StageChatRealtimeMessageFailedPayload) => {
+      if (payload.projectId !== project.id || payload.stageId !== activeStage?.id) {
+        return;
+      }
+
+      if (confirmedClientTempIdsRef.current.has(payload.clientTempId)) {
+        return;
+      }
+
+      failedClientTempIdsRef.current.add(payload.clientTempId);
+
+      setOptimisticComments((current) =>
+        current.map((entry) => {
+          if (
+            entry.id !== payload.clientTempId ||
+            entry.serverEntryId ||
+            entry.authorId !== payload.senderId
+          ) {
+            return entry;
+          }
+
+          return {
+            ...entry,
+            body:
+              payload.senderId === currentUserId
+                ? entry.body
+                : "Message failed to send.",
+            createdAt: "Failed",
+            optimisticStatus: "failed",
+          };
+        }),
+      );
+    },
+    [activeStage?.id, currentUserId, project.id],
+  );
+  const handleRealtimeMessageDeleted = useCallback(
+    (payload: StageChatRealtimeMessageDeletedPayload) => {
+      if (payload.projectId !== project.id || payload.stageId !== activeStage?.id) {
+        return;
+      }
+
+      applyRealtimeDeletedMessage(payload);
+      setRealtimeWatermark(payload.deletedAt);
+    },
+    [activeStage?.id, applyRealtimeDeletedMessage, project.id],
+  );
+  const reconcileStageChat = useCallback(async () => {
+    const activeStageId = activeStage?.id;
+
+    if (!activeStageId) {
+      return;
+    }
+
+    const params = new URLSearchParams({
+      limit: "50",
+    });
+
+    if (realtimeWatermark) {
+      params.set("after", realtimeWatermark);
+    }
+
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(project.id)}/stages/${encodeURIComponent(
+        activeStageId,
+      )}/chat/updates?${params.toString()}`,
+      {
+        cache: "no-store",
+      },
+    );
+    const payload = (await response.json()) as StageChatUpdatesApiResponse;
+
+    if (!response.ok || "error" in payload) {
+      throw new Error(
+        "error" in payload ? payload.error : "Unable to load chat updates.",
+      );
+    }
+
+    payload.entries.forEach((entry) => {
+      mergeServerChatEntry(entry, { countAsNew: false });
+    });
+    markStalePendingTextMessages();
+    setRealtimeWatermark(payload.watermark);
+  }, [
+    activeStage?.id,
+    markStalePendingTextMessages,
+    mergeServerChatEntry,
+    project.id,
+    realtimeWatermark,
+  ]);
   const mentionableParticipants = useMemo<ProjectMentionParticipantRecord[]>(
     () =>
       project.mentionParticipants.filter(
@@ -2504,6 +2923,61 @@ export function ProjectChatWorkspace({
       ),
     [currentUserId, project.mentionParticipants],
   );
+  const {
+    realtimeEnabled,
+    connectionState: realtimeConnectionState,
+    onlineUsers,
+    typingUsers,
+    notifyTypingActivity,
+    publishTypingStopped,
+    publishPendingMessage,
+    publishFailedMessage,
+  } = useStageChatRealtime({
+    projectId: project.id,
+    stageId: activeStage?.id,
+    currentUserId,
+    currentUserDisplayName,
+    currentUserDisplayCode,
+    onMessagePending: handleRealtimeMessagePending,
+    onMessageCreated: handleRealtimeMessageCreated,
+    onMessageFailed: handleRealtimeMessageFailed,
+    onMessageDeleted: handleRealtimeMessageDeleted,
+    onReconcile: reconcileStageChat,
+  });
+  const typingIndicatorText = useMemo(() => {
+    if (typingUsers.length === 0) {
+      return null;
+    }
+
+    if (typingUsers.length === 1) {
+      return `${typingUsers[0].displayName} is typing...`;
+    }
+
+    if (typingUsers.length === 2) {
+      return `${typingUsers[0].displayName} and ${typingUsers[1].displayName} are typing...`;
+    }
+
+    return `${typingUsers[0].displayName} and ${typingUsers.length - 1} others are typing...`;
+  }, [typingUsers]);
+  const realtimeStatusLabel = useMemo(() => {
+    if (!realtimeEnabled) {
+      return "Realtime disabled";
+    }
+
+    if (realtimeConnectionState === "connected") {
+      return "Live";
+    }
+
+    if (
+      realtimeConnectionState === "failed" ||
+      realtimeConnectionState === "closed" ||
+      realtimeConnectionState === "suspended"
+    ) {
+      return "Live chat unavailable";
+    }
+
+    return "Connecting live chat";
+  }, [realtimeConnectionState, realtimeEnabled]);
   const mentionTriggerState = useMemo(
     () => getMentionTriggerState(draft, draftSelectionStart),
     [draft, draftSelectionStart],
@@ -2558,7 +3032,9 @@ export function ProjectChatWorkspace({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      chatBottomRef.current?.scrollIntoView({ block: "end" });
+      if (isNearChatBottom) {
+        scrollToChatBottom("auto");
+      }
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -2570,6 +3046,9 @@ export function ProjectChatWorkspace({
     replyingToRevision?.revisionId,
     composerError,
     aiStatus,
+    typingIndicatorText,
+    isNearChatBottom,
+    scrollToChatBottom,
   ]);
 
   useEffect(() => {
@@ -3040,7 +3519,6 @@ export function ProjectChatWorkspace({
       }));
       setDeleteMessageTarget(null);
       showSuccessToast("Message deleted.");
-      refreshHistory();
     } catch (error) {
       setDeletedMessageOverrides((current) => {
         const next = { ...current };
@@ -3881,6 +4359,7 @@ export function ProjectChatWorkspace({
     const optimisticCommentId = `optimistic-comment-${crypto.randomUUID()}`;
     const localCreatedAtMs = Date.now();
     const filesToUpload = [...pendingCommentFiles];
+    const hasPendingFiles = filesToUpload.length > 0;
     const startingSubmissionNumber =
       getStageSubmissionAttachments(displayedMessages).filter(
         (attachment) =>
@@ -3899,8 +4378,9 @@ export function ProjectChatWorkspace({
       mentions: selectedMentionTokens.filter((mention) =>
         mentionedUserIds.includes(mention.userId),
       ),
-      createdAt: "Uploading…",
+      createdAt: hasPendingFiles ? "Uploading…" : "Sending…",
       isOptimistic: true,
+      optimisticStatus: hasPendingFiles ? "uploading" : "sending",
       localCreatedAtMs,
       attachments: filesToUpload.map((pendingFile) => ({
         id: pendingFile.id,
@@ -3919,7 +4399,7 @@ export function ProjectChatWorkspace({
       })),
     };
 
-    if (filesToUpload.length > 0) {
+    if (hasPendingFiles) {
       flushSync(() => {
         setOptimisticComments((current) => [...current, optimisticComment]);
         setDraft("");
@@ -3930,6 +4410,7 @@ export function ProjectChatWorkspace({
         setIsSendingComment(false);
       });
       resetDraftComposerHeight();
+      publishTypingStopped();
     } else {
       flushSync(() => {
         setOptimisticComments((current) => [...current, optimisticComment]);
@@ -3940,10 +4421,22 @@ export function ProjectChatWorkspace({
         setPendingCommentFiles([]);
       });
       resetDraftComposerHeight();
+      publishTypingStopped();
+      void publishPendingMessage({
+        projectId: project.id,
+        stageId: activeStageId,
+        clientTempId: optimisticCommentId,
+        senderId: currentUserId,
+        senderDisplayName: currentUserDisplayName,
+        senderDisplayCode: currentUserDisplayCode,
+        body,
+        createdAt: new Date(localCreatedAtMs).toISOString(),
+        state: "pending",
+      });
     }
 
     try {
-      if (filesToUpload.length > 0) {
+      if (hasPendingFiles) {
         const uploadMentionTokens = selectedMentionTokens.filter((mention) =>
           mentionedUserIds.includes(mention.userId),
         );
@@ -4139,6 +4632,12 @@ export function ProjectChatWorkspace({
               return;
             }
 
+            updateOptimisticComment(optimisticCommentId, (entry) => ({
+              ...entry,
+              createdAt: "Sending…",
+              optimisticStatus: "sending",
+            }));
+
             try {
               await finalizePreparedCommentUpload({
                 commentId: preparePayload.commentId,
@@ -4248,6 +4747,7 @@ export function ProjectChatWorkspace({
             revisionId: commentRevisionId,
             body,
             mentionedUserIds,
+            clientTempId: optimisticCommentId,
           }),
         },
       );
@@ -4262,46 +4762,71 @@ export function ProjectChatWorkspace({
         );
       }
 
-      updateOptimisticComment(optimisticCommentId, (entry) => ({
-        ...entry,
-        serverEntryId: commentResult.commentId,
-      }));
-
-      setConfirmedComments((current) => [
-        ...current,
-        {
-          id: `confirmed-comment-${commentResult.commentId}`,
+      if (commentResult.entry) {
+        mergeServerChatEntry(commentResult.entry, {
+          clientTempId: commentResult.clientTempId ?? optimisticCommentId,
+          countAsNew: false,
+        });
+      } else {
+        updateOptimisticComment(optimisticCommentId, (entry) => ({
+          ...entry,
           serverEntryId: commentResult.commentId,
-          revisionId: commentResult.revisionId ?? undefined,
-          kind: "comment",
-          author: currentUserDisplayName,
-          authorId: currentUserId,
-          authorAvatarSrc: currentUserAvatarSrc,
-          role: currentUserRoleLabel,
-          body: body || "Attachment uploaded.",
-          mentions: selectedMentionTokens.filter((mention) =>
-            mentionedUserIds.includes(mention.userId),
-          ),
-          createdAt: "Just now",
-          canDeleteUntil: getLocalDeleteExpiresAt(localCreatedAtMs),
-          localCreatedAtMs,
-          attachments: [],
-        },
-      ]);
-      setOptimisticComments((current) =>
-        current.filter((entry) => entry.id !== optimisticCommentId),
-      );
+        }));
+
+        setConfirmedComments((current) => [
+          ...current,
+          {
+            id: `confirmed-comment-${commentResult.commentId}`,
+            serverEntryId: commentResult.commentId,
+            revisionId: commentResult.revisionId ?? undefined,
+            kind: "comment",
+            author: currentUserDisplayName,
+            authorId: currentUserId,
+            authorAvatarSrc: currentUserAvatarSrc,
+            role: currentUserRoleLabel,
+            body: body || "Attachment uploaded.",
+            mentions: selectedMentionTokens.filter((mention) =>
+              mentionedUserIds.includes(mention.userId),
+            ),
+            createdAt: "Just now",
+            canDeleteUntil: getLocalDeleteExpiresAt(localCreatedAtMs),
+            localCreatedAtMs,
+            attachments: [],
+          },
+        ]);
+        setOptimisticComments((current) =>
+          current.filter((entry) => entry.id !== optimisticCommentId),
+        );
+      }
       setIsSendingComment(false);
     } catch (error) {
-      setOptimisticComments((current) =>
-        current.filter((entry) => entry.id !== optimisticCommentId),
-      );
       const message =
         error instanceof Error ? error.message : "Unable to send the comment right now.";
-      setDraft(body);
-      setReplyingToRevision(revisionReplyTarget);
-      setSelectedMentionTokens(selectedMentionTokens);
-      setDraftSelectionStart(body.length);
+      if (!hasPendingFiles) {
+        failedClientTempIdsRef.current.add(optimisticCommentId);
+        updateOptimisticComment(optimisticCommentId, (entry) => ({
+          ...entry,
+          createdAt: "Failed",
+          optimisticStatus: "failed",
+        }));
+        void publishFailedMessage({
+          projectId: project.id,
+          stageId: activeStageId,
+          clientTempId: optimisticCommentId,
+          senderId: currentUserId,
+          failedAt: new Date().toISOString(),
+          state: "failed",
+          reason: "save_failed",
+        });
+      } else {
+        setOptimisticComments((current) =>
+          current.filter((entry) => entry.id !== optimisticCommentId),
+        );
+        setDraft(body);
+        setReplyingToRevision(revisionReplyTarget);
+        setSelectedMentionTokens(selectedMentionTokens);
+        setDraftSelectionStart(body.length);
+      }
       setComposerError(message);
       showErrorToast("Unable to send comment.", message);
     } finally {
@@ -4930,8 +5455,41 @@ export function ProjectChatWorkspace({
     <section className="min-h-0 xl:h-[calc(100dvh-12rem)] xl:min-h-[620px] xl:overflow-hidden">
       <div className="grid min-h-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex h-[calc(100dvh-12rem)] min-h-[520px] min-w-0 flex-col overflow-hidden xl:h-full xl:min-h-0">
-          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f4f8f3] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5">
-            <div className="mx-auto flex w-full max-w-[980px] flex-col gap-2.5 pb-2">
+          <div
+            ref={chatScrollRef}
+            onScroll={handleChatScroll}
+            className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f4f8f3] px-3 pb-6 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5"
+          >
+            <div className="mx-auto flex w-full max-w-[980px] flex-col gap-2.5 pb-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[12px] font-semibold text-[#5f6b62]">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={`size-2 rounded-full ${
+                      realtimeEnabled && realtimeConnectionState === "connected"
+                        ? "bg-[#2f8d5d]"
+                        : "bg-[#b7c0b8]"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span>{realtimeStatusLabel}</span>
+                </div>
+                {onlineUsers.length > 0 ? (
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex -space-x-2">
+                      {onlineUsers.slice(0, 4).map((user) => (
+                        <span
+                          key={user.userId}
+                          className="grid size-7 place-items-center rounded-full border-2 border-[#f4f8f3] bg-[#e8f3eb] text-[10px] font-[800] text-[#2f6f4b]"
+                          title={user.displayName}
+                        >
+                          {user.displayCode}
+                        </span>
+                      ))}
+                    </div>
+                    <span>{onlineUsers.length} online</span>
+                  </div>
+                ) : null}
+              </div>
           {isProjectCompleted ? (
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
@@ -5525,7 +6083,7 @@ export function ProjectChatWorkspace({
                               : "ml-auto text-[#7d847e]"
                           }`}
                         >
-                          {message.createdAt}
+                          {getCommentStatusLabel(message)}
                         </span>
                       </div>
                       {isDeletedMessage ? (
@@ -5591,6 +6149,34 @@ export function ProjectChatWorkspace({
                   />
                 </div>
               ) : null}
+            </div>
+          ) : null}
+          {typingIndicatorText ? (
+            <div className="mx-auto mb-2 mt-1 flex w-full max-w-[520px] items-center justify-center gap-2 rounded-full border border-[#dbe7dd] bg-white/88 px-4 py-2 text-[12px] font-semibold text-[#587062] shadow-[0_10px_24px_rgba(18,35,23,0.06)]">
+              <span className="flex items-center gap-1" aria-hidden="true">
+                <span className="size-1.5 rounded-full bg-[#6f9d7d] animate-pulse" />
+                <span className="size-1.5 rounded-full bg-[#6f9d7d] animate-pulse [animation-delay:120ms]" />
+                <span className="size-1.5 rounded-full bg-[#6f9d7d] animate-pulse [animation-delay:240ms]" />
+              </span>
+              {typingIndicatorText}
+            </div>
+          ) : null}
+          {newRealtimeMessageCount > 0 ? (
+            <div className="sticky bottom-2 z-20 flex justify-center">
+              <Button
+                type="button"
+                size="sm"
+                className="rounded-full text-[12px] shadow-[0_12px_28px_rgba(31,115,74,0.18)]"
+                onClick={() => {
+                  setNewRealtimeMessageCount(0);
+                  setIsNearChatBottom(true);
+                  scrollToChatBottom();
+                }}
+              >
+                {newRealtimeMessageCount === 1
+                  ? "New message"
+                  : `${newRealtimeMessageCount} new messages`}
+              </Button>
             </div>
           ) : null}
               <div ref={chatBottomRef} />
@@ -5775,14 +6361,21 @@ export function ProjectChatWorkspace({
                   ref={draftInputRef}
                   value={draft}
                   onChange={(event) => {
-                    setDraft(event.target.value);
+                    const nextValue = event.target.value;
+                    setDraft(nextValue);
                     setDraftSelectionStart(event.target.selectionStart ?? event.target.value.length);
+                    if (nextValue.trim()) {
+                      notifyTypingActivity();
+                    } else {
+                      publishTypingStopped();
+                    }
                   }}
                   onClick={(event) => {
                     setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
                   }}
                   onBlur={() => {
                     setDraftSelectionStart(-1);
+                    publishTypingStopped();
                   }}
                   onKeyUp={(event) => {
                     setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
@@ -6255,7 +6848,10 @@ export function ProjectChatWorkspace({
                 type="button"
                 variant="secondary"
                 size="icon"
-                onClick={() => setExpandedMessageEditorOpen(false)}
+                onClick={() => {
+                  publishTypingStopped();
+                  setExpandedMessageEditorOpen(false);
+                }}
                 disabled={isSendingComment}
                 className="shrink-0 border border-line"
                 aria-label="Close expanded message editor"
@@ -6268,11 +6864,20 @@ export function ProjectChatWorkspace({
                 ref={expandedDraftInputRef}
                 value={draft}
                 onChange={(event) => {
-                  setDraft(event.target.value);
+                  const nextValue = event.target.value;
+                  setDraft(nextValue);
                   setDraftSelectionStart(event.target.selectionStart ?? event.target.value.length);
+                  if (nextValue.trim()) {
+                    notifyTypingActivity();
+                  } else {
+                    publishTypingStopped();
+                  }
                 }}
                 onClick={(event) => {
                   setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
+                }}
+                onBlur={() => {
+                  publishTypingStopped();
                 }}
                 onKeyUp={(event) => {
                   setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
@@ -6289,7 +6894,10 @@ export function ProjectChatWorkspace({
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => setExpandedMessageEditorOpen(false)}
+                    onClick={() => {
+                      publishTypingStopped();
+                      setExpandedMessageEditorOpen(false);
+                    }}
                     disabled={isSendingComment}
                   >
                     Cancel

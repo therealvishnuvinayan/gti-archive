@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { revalidateTag } from "next/cache";
 import { after, NextResponse } from "next/server";
 
@@ -7,8 +8,15 @@ import {
   notifyCommentMentioned,
   runNotificationTaskAfterResponse,
 } from "@/lib/notification-center";
-import { finalizePreparedStageCommentUploads } from "@/lib/project-history";
+import {
+  finalizePreparedStageCommentUploads,
+  getStageChatCommentEntryForUser,
+} from "@/lib/project-history";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import {
+  publishStageChatMessageCreated,
+  runStageChatRealtimeTaskAfterResponse,
+} from "@/lib/realtime/server";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -64,6 +72,30 @@ export async function POST(request: Request) {
         mentionedUserIds: result.mentionedUserIds,
       }),
     );
+    runStageChatRealtimeTaskAfterResponse("stage-chat.message.created", async () => {
+      const realtimeEntry = await getStageChatCommentEntryForUser(user, {
+        projectId: payload.projectId!,
+        stageId: result.stageId,
+        commentId: result.commentId,
+      });
+
+      if (!realtimeEntry) {
+        return;
+      }
+
+      await publishStageChatMessageCreated({
+        eventId: randomUUID(),
+        projectId: payload.projectId!,
+        stageId: result.stageId,
+        id: realtimeEntry.entry.id,
+        commentId: result.commentId,
+        senderId: realtimeEntry.authorId,
+        entry: realtimeEntry.entry,
+        createdAt: realtimeEntry.createdAt,
+        deletedAt: null,
+        clientTempId: null,
+      });
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

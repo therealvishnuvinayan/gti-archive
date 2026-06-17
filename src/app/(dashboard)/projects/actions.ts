@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { after } from "next/server";
 
@@ -51,6 +52,10 @@ import {
 } from "@/lib/projects";
 import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { prisma } from "@/lib/prisma";
+import {
+  publishStageChatMessageDeleted,
+  runStageChatRealtimeTaskAfterResponse,
+} from "@/lib/realtime/server";
 import { logStageChatTiming } from "@/lib/stage-chat-timing";
 import { SubmissionReviewStatus } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
@@ -296,6 +301,20 @@ export async function deleteStageCommentAction(input: DeleteStageCommentInput) {
   try {
     const result = await deleteStageComment(user, input);
     revalidateProjectFlowAfterResponse();
+    runStageChatRealtimeTaskAfterResponse("stage-chat.message.deleted", () =>
+      publishStageChatMessageDeleted({
+        eventId: randomUUID(),
+        projectId: result.projectId,
+        stageId: result.stageId,
+        id: result.id,
+        commentId: result.id,
+        deletedAt: result.deletedAt.toISOString(),
+        deletedByUserId: result.deletedByUserId,
+        body: "This message was deleted",
+        attachments: [],
+        mentions: [],
+      }),
+    );
 
     return {
       id: result.id,
