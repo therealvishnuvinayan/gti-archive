@@ -98,6 +98,8 @@ import {
 } from "@/lib/upload-validation";
 
 const MAX_PROJECT_TAGS = 5;
+const UPLOAD_NAVIGATION_WARNING =
+  "Upload is in progress. Are you sure you want to leave this page?";
 
 const projectExecutionTypeOptions = [
   {
@@ -826,6 +828,79 @@ function CreateProjectSubmitButton({
   );
 }
 
+function useUploadNavigationGuard(enabled: boolean, message: string) {
+  const enabledRef = useRef(enabled);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!enabledRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = message;
+    }
+
+    function handleDocumentClick(event: MouseEvent) {
+      if (
+        !enabledRef.current ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      const anchor = event.target.closest("a[href]");
+
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+
+      if (anchor.target && anchor.target !== "_self") {
+        return;
+      }
+
+      const nextUrl = new URL(anchor.href, window.location.href);
+
+      if (nextUrl.href === window.location.href) {
+        return;
+      }
+
+      if (window.confirm(message)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", handleDocumentClick, true);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleDocumentClick, true);
+    };
+  }, [enabled, message]);
+}
+
 function getDefaultCollaboratorForm(): CollaboratorForm {
   return {
     name: "",
@@ -994,7 +1069,15 @@ export function CreateProjectWorkspace({
   const handledEditProjectIdRef = useRef<string | null>(null);
   const lastFormToastKeyRef = useRef<string | null>(null);
   const [, startRefresh] = useTransition();
+  const hasPendingStageAttachmentFiles = useMemo(
+    () => stages.some((stage) => stage.pendingFiles.length > 0),
+    [stages],
+  );
   const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
+  const isUploadNavigationGuardEnabled =
+    isUploadingAttachments ||
+    (Boolean(formState.projectId) &&
+      (pendingProjectFiles.length > 0 || hasPendingStageAttachmentFiles));
   const canViewBudget = mode === "create" ? true : (initialValues?.canViewBudget ?? true);
   const isInternalExecution = projectExecutionType === "INTERNAL";
   const isExternalExecution = projectExecutionType === "EXTERNAL";
@@ -1002,6 +1085,7 @@ export function CreateProjectWorkspace({
   const fieldErrors: ProjectFormFieldErrors = formState.fieldErrors ?? {};
   const displayedAttachmentError =
     attachmentError ?? getFieldError("attachments", fieldErrors.attachments);
+  useUploadNavigationGuard(isUploadNavigationGuardEnabled, UPLOAD_NAVIGATION_WARNING);
   const parsedProjectBudget = useMemo(() => parseBudgetInput(projectBudget), [projectBudget]);
   const parsedStageBudgets = useMemo(
     () => stages.map((stage) => parseBudgetInput(stage.budget)),

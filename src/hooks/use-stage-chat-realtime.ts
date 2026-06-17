@@ -23,6 +23,12 @@ const TYPING_STOP_DELAY_MS = 2_500;
 const TYPING_STARTED_THROTTLE_MS = 2_000;
 const FOCUS_RECONCILE_STALE_MS = 30_000;
 const BACKGROUND_RECONCILE_INTERVAL_MS = 60_000;
+const ABLY_INACTIVE_CONNECTION_STATES = new Set<Ably.ConnectionState>([
+  "closed",
+  "closing",
+  "failed",
+  "suspended",
+]);
 
 type StageChatRealtimeConnectionState =
   | "disabled"
@@ -219,6 +225,23 @@ function runAblyCleanup(label: string, task: () => unknown) {
       error: toLoggableError(error),
     });
   }
+}
+
+function canLeaveAblyPresence(client: StageChatRealtimeClient, channel: Ably.RealtimeChannel) {
+  return (
+    !ABLY_INACTIVE_CONNECTION_STATES.has(client.connection.state) &&
+    (channel.state === "attached" || channel.state === "attaching")
+  );
+}
+
+function closeAblyClient(client: StageChatRealtimeClient) {
+  if (client.connection.state === "closed" || client.connection.state === "closing") {
+    return;
+  }
+
+  window.setTimeout(() => {
+    runAblyCleanup("client close", () => client.close());
+  }, 0);
 }
 
 export function useStageChatRealtime(input: UseStageChatRealtimeInput) {
@@ -588,9 +611,11 @@ export function useStageChatRealtime(input: UseStageChatRealtimeInput) {
       runAblyCleanup("presence unsubscribe", () =>
         channel.presence.unsubscribe(handlePresence),
       );
-      runAblyCleanup("presence leave", () => channel.presence.leave());
+      if (canLeaveAblyPresence(client, channel)) {
+        runAblyCleanup("presence leave", () => channel.presence.leave());
+      }
       runAblyCleanup("connection off", () => client.connection.off(handleConnectionState));
-      runAblyCleanup("client close", () => client.close());
+      closeAblyClient(client);
       clientRef.current = null;
       channelRef.current = null;
       setOnlineUsers([]);

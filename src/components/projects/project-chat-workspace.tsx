@@ -217,6 +217,9 @@ const PROJECT_ASSET_INLINE_LIMIT = 4;
 const STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
 const STAGE_CHAT_PENDING_TIMEOUT_MS = 60 * 1000;
 const DELETED_STAGE_CHAT_MESSAGE_TEXT = "This message was deleted";
+const UPLOAD_NAVIGATION_WARNING =
+  "Your upload is still running. Stay on this page until it finishes, or leave and the upload may not complete.";
+const UPLOAD_NAVIGATION_HISTORY_GUARD_KEY = "__gtiUploadNavigationGuard";
 
 type MentionToken = {
   userId: string;
@@ -605,12 +608,214 @@ function hasPendingAttachmentUpload(message: DisplayChatEntry) {
   );
 }
 
+function hasInFlightAttachmentUpload(message: DisplayChatEntry) {
+  return (
+    message.isOptimistic === true &&
+    Boolean(message.attachments?.length) &&
+    message.optimisticStatus !== "failed" &&
+    (message.optimisticStatus === "uploading" ||
+      message.optimisticStatus === "sending" ||
+      hasPendingAttachmentUpload(message))
+  );
+}
+
 function hasFailedAttachmentUpload(message: DisplayChatEntry) {
   const attachments = message.attachments as DisplayAttachmentRecord[] | undefined;
 
   return (
     attachments?.some((attachment) => attachment.uploadState === "error") ?? false
   );
+}
+
+type PendingUploadNavigation =
+  | {
+      kind: "href";
+      href: string;
+    }
+  | {
+      kind: "history";
+      stepsBack: number;
+    };
+
+function useUploadNavigationGuard(enabled: boolean) {
+  const router = useRouter();
+  const enabledRef = useRef(enabled);
+  const currentUrlRef = useRef<string | null>(null);
+  const historyGuardIdRef = useRef<string | null>(null);
+  const historyGuardActiveRef = useRef(false);
+  const [pendingNavigation, setPendingNavigation] =
+    useState<PendingUploadNavigation | null>(null);
+
+  const pushHistoryGuard = useCallback(() => {
+    const currentUrl = currentUrlRef.current ?? window.location.href;
+    const currentState = window.history.state;
+    const baseState =
+      typeof currentState === "object" && currentState !== null
+        ? currentState
+        : {};
+    const guardId = historyGuardIdRef.current ?? crypto.randomUUID();
+
+    historyGuardIdRef.current = guardId;
+    window.history.pushState(
+      {
+        ...baseState,
+        [UPLOAD_NAVIGATION_HISTORY_GUARD_KEY]: guardId,
+      },
+      "",
+      currentUrl,
+    );
+    historyGuardActiveRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+    currentUrlRef.current = window.location.href;
+
+    if (!enabled) {
+      const clearPendingNavigationTimer = window.setTimeout(() => {
+        setPendingNavigation(null);
+
+        if (historyGuardActiveRef.current) {
+          historyGuardActiveRef.current = false;
+          window.history.back();
+        }
+      }, 0);
+
+      return () => window.clearTimeout(clearPendingNavigationTimer);
+    }
+
+    if (!historyGuardActiveRef.current) {
+      pushHistoryGuard();
+    }
+  }, [enabled, pushHistoryGuard]);
+
+  const cancelNavigation = useCallback(() => {
+    setPendingNavigation(null);
+  }, []);
+
+  const confirmNavigation = useCallback(() => {
+    const navigation = pendingNavigation;
+
+    if (!navigation) {
+      return;
+    }
+
+    enabledRef.current = false;
+    setPendingNavigation(null);
+
+    if (navigation.kind === "history") {
+      historyGuardActiveRef.current = false;
+      window.history.go(-navigation.stepsBack);
+      return;
+    }
+
+    const nextUrl = new URL(navigation.href, window.location.href);
+
+    if (nextUrl.origin === window.location.origin) {
+      router.push(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+      return;
+    }
+
+    window.location.assign(nextUrl.href);
+  }, [pendingNavigation, router]);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    function shouldConfirmNavigation() {
+      return enabledRef.current;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!shouldConfirmNavigation()) {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = UPLOAD_NAVIGATION_WARNING;
+    }
+
+    function handleDocumentClick(event: MouseEvent) {
+      if (
+        !shouldConfirmNavigation() ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      const anchor = event.target.closest("a[href]");
+
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+
+      if (anchor.target && anchor.target !== "_self") {
+        return;
+      }
+
+      const nextUrl = new URL(anchor.href, window.location.href);
+
+      if (nextUrl.href === window.location.href) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      setPendingNavigation({
+        kind: "href",
+        href: nextUrl.href,
+      });
+    }
+
+    function handlePopState(event: PopStateEvent) {
+      if (!shouldConfirmNavigation()) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      const currentUrl = currentUrlRef.current;
+
+      if (currentUrl) {
+        pushHistoryGuard();
+      }
+
+      setPendingNavigation({
+        kind: "history",
+        stepsBack: 2,
+      });
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState, true);
+    document.addEventListener("click", handleDocumentClick, true);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState, true);
+      document.removeEventListener("click", handleDocumentClick, true);
+    };
+  }, [enabled, pushHistoryGuard]);
+
+  return {
+    isNavigationDialogOpen: Boolean(pendingNavigation),
+    cancelNavigation,
+    confirmNavigation,
+  };
 }
 
 function getCommentStatusLabel(message: DisplayChatEntry) {
@@ -2190,6 +2395,14 @@ export function ProjectChatWorkspace({
       }),
     [optimisticComments, serverMessageIds],
   );
+  const isUploadNavigationGuardEnabled = useMemo(
+    () =>
+      isUploadingRevision ||
+      isUploadingStageInvoice ||
+      optimisticComments.some(hasInFlightAttachmentUpload),
+    [isUploadingRevision, isUploadingStageInvoice, optimisticComments],
+  );
+  const uploadNavigationGuard = useUploadNavigationGuard(isUploadNavigationGuardEnabled);
   const visibleConfirmedComments = useMemo(
     () =>
       confirmedComments.filter(
@@ -4229,7 +4442,7 @@ export function ProjectChatWorkspace({
 
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
-    commentAttachmentInputRef.current?.click();
+    setCommentUploadDialogOpen(true);
   }
 
   function handleCommentFilesSelected(files: File[] | FileList | null) {
@@ -6962,6 +7175,15 @@ export function ProjectChatWorkspace({
           void handleCollaboratorInvite();
         }}
         onChange={setCollaboratorFormValue}
+      />
+      <ConfirmationDialog
+        isOpen={uploadNavigationGuard.isNavigationDialogOpen}
+        title="Upload in progress"
+        description={UPLOAD_NAVIGATION_WARNING}
+        confirmLabel="Leave Page"
+        cancelLabel="Stay"
+        onClose={uploadNavigationGuard.cancelNavigation}
+        onConfirm={uploadNavigationGuard.confirmNavigation}
       />
       <ConfirmationDialog
         isOpen={acceptBriefDialogOpen}
