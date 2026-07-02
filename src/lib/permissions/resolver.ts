@@ -104,6 +104,23 @@ export function getUserPermissionSet(user: PermissionUser) {
   return getBasePermissionSet(user);
 }
 
+function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
+  return (
+    permissionKey === "project.update" ||
+    permissionKey === "project.viewBudget" ||
+    permissionKey === "project.updateBudget" ||
+    permissionKey === "project.manageCollaborators" ||
+    permissionKey === "collaborator.inviteToProject" ||
+    permissionKey === "collaborator.removeFromProject" ||
+    permissionKey === "collaborator.pauseVisibility" ||
+    permissionKey === "collaborator.changeType" ||
+    permissionKey === "collaborator.changeAccess" ||
+    permissionKey === "stage.manageDefinitions" ||
+    permissionKey === "stage.updateTimeline" ||
+    permissionKey === "stage.updateBudget"
+  );
+}
+
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   return {
     dashboard: hasPermission(user, "dashboard.view"),
@@ -159,6 +176,10 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
+  if (isProjectOwner(user, project) && isProjectOwnerManagePermission(permissionKey)) {
+    return true;
+  }
+
   if (!hasPermission(user, permissionKey)) {
     return false;
   }

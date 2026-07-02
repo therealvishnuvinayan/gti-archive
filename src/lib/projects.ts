@@ -45,7 +45,6 @@ import {
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
   getAccessibleProjectsWhere,
-  hasPermission,
   hasProjectPermission,
   isProjectAdmin,
   isProjectExecutor,
@@ -1620,9 +1619,7 @@ async function assertProjectCollaboratorManagementAccess(
   }
 
   if (
-    !hasProjectPermission(actor, project, permissionKey) ||
-    (permissionKey === "project.manageCollaborators" &&
-      !hasPermission(actor, "project.manageCollaborators"))
+    !hasProjectPermission(actor, project, permissionKey)
   ) {
     throw new Error("You are not allowed to update project collaborators.");
   }
