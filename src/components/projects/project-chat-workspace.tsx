@@ -5674,7 +5674,7 @@ export function ProjectChatWorkspace({
             className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f4f8f3] px-3 pb-6 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5"
           >
             <div className="mx-auto flex w-full max-w-[980px] flex-col gap-2.5 pb-6">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[12px] font-semibold text-[#5f6b62]">
+              <div className="sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <span
                     className={`size-2 rounded-full ${
@@ -5686,20 +5686,33 @@ export function ProjectChatWorkspace({
                   />
                   <span>{realtimeStatusLabel}</span>
                 </div>
-                {onlineUsers.length > 0 ? (
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex -space-x-2">
+                {realtimeEnabled || onlineUsers.length > 0 ? (
+                  <div
+                    className="flex min-w-0 items-center gap-2 rounded-full border border-[#cfe0d4] bg-white/88 px-2.5 py-1 text-[#2f6f4b] shadow-[0_8px_18px_rgba(18,35,23,0.06)]"
+                    aria-label={`${onlineUsers.length} ${
+                      onlineUsers.length === 1 ? "person" : "people"
+                    } online`}
+                    title={
+                      onlineUsers.length > 0
+                        ? onlineUsers.map((user) => user.displayName).join(", ")
+                        : "No users online"
+                    }
+                  >
+                    <span className="size-2 rounded-full bg-[#2f8d5d]" aria-hidden="true" />
+                    <div className="hidden -space-x-2 sm:flex">
                       {onlineUsers.slice(0, 4).map((user) => (
                         <span
                           key={user.userId}
-                          className="grid size-7 place-items-center rounded-full border-2 border-[#f4f8f3] bg-[#e8f3eb] text-[10px] font-[800] text-[#2f6f4b]"
+                          className="grid size-6 place-items-center rounded-full border-2 border-white bg-[#e8f3eb] text-[9px] font-[800] text-[#2f6f4b]"
                           title={user.displayName}
                         >
                           {user.displayCode}
                         </span>
                       ))}
                     </div>
-                    <span>{onlineUsers.length} online</span>
+                    <span className="whitespace-nowrap">
+                      {onlineUsers.length} online
+                    </span>
                   </div>
                 ) : null}
               </div>
