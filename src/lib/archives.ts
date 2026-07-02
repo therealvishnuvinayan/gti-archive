@@ -2,6 +2,7 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   ProjectRevisionStatus,
+  Prisma,
   StageStatus,
   SubmissionReviewStatus,
   type User,
@@ -182,6 +183,98 @@ type ArchiveCategoryDisplay = {
 
 function canUploadArchiveFiles(user: ArchiveAccessUser) {
   return hasPermission(user, "archive.view") && hasPermission(user, "archive.uploadFile");
+}
+
+export function canManageArchiveCategoryAccess(user: ArchiveAccessUser) {
+  return hasPermission(user, "settings.manageMasterData");
+}
+
+export function getAccessibleArchiveCategoryWhere(
+  user: ArchiveAccessUser,
+  options: { activeOnly?: boolean } = {},
+): Prisma.ArchiveCategoryWhereInput {
+  const activeWhere = options.activeOnly === false ? {} : { isActive: true };
+
+  if (canManageArchiveCategoryAccess(user)) {
+    return activeWhere;
+  }
+
+  return {
+    ...activeWhere,
+    OR: [
+      {
+        allowedUsers: {
+          none: {},
+        },
+      },
+      {
+        allowedUsers: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
+    ],
+  };
+}
+
+export function canAccessArchiveCategoryRecord(
+  user: ArchiveAccessUser,
+  category: { allowedUsers?: Array<{ userId: string }> },
+) {
+  if (!hasPermission(user, "archive.view")) {
+    return false;
+  }
+
+  if (canManageArchiveCategoryAccess(user)) {
+    return true;
+  }
+
+  const allowedUsers = category.allowedUsers ?? [];
+
+  return allowedUsers.length === 0 || allowedUsers.some((access) => access.userId === user.id);
+}
+
+export async function assertCanAccessArchiveCategory(
+  user: ArchiveAccessUser,
+  archiveCategoryId: string,
+) {
+  if (!hasPermission(user, "archive.view")) {
+    throw new Error("You do not have permission to view this archive category.");
+  }
+
+  const category = await withPrismaRetry(() =>
+    prisma.archiveCategory.findFirst({
+      where: {
+        id: archiveCategoryId,
+        ...getAccessibleArchiveCategoryWhere(user),
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (!category) {
+    throw new Error("You do not have permission to view this archive category.");
+  }
+
+  return category;
+}
+
+export async function assertCanUploadToArchiveCategory(
+  user: ArchiveAccessUser,
+  archiveCategoryId: string,
+) {
+  if (canManageArchiveCategoryAccess(user)) {
+    return assertCanAccessArchiveCategory(user, archiveCategoryId);
+  }
+
+  if (!canUploadArchiveFiles(user)) {
+    throw new Error("You do not have permission to upload to this archive category.");
+  }
+
+  return assertCanAccessArchiveCategory(user, archiveCategoryId);
 }
 
 function formatArchiveTimestamp(value: Date | string | number | null | undefined) {
@@ -850,9 +943,7 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
   const [categories, archivedFiles, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
       prisma.archiveCategory.findMany({
-        where: {
-          isActive: true,
-        },
+        where: getAccessibleArchiveCategoryWhere(user),
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         include: {
           parent: {
@@ -1038,20 +1129,13 @@ export async function requestArchiveFileUpload(
     return { error: "Choose an archive category before uploading." } as const;
   }
 
-  const category = await withPrismaRetry(() =>
-    prisma.archiveCategory.findFirst({
-      where: {
-        id: archiveCategoryId,
-        isActive: true,
-      },
-      select: {
-        id: true,
-      },
-    }),
-  );
-
-  if (!category) {
-    return { error: "Choose a valid archive category." } as const;
+  try {
+    await assertCanUploadToArchiveCategory(user, archiveCategoryId);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Choose a valid archive category.",
+    } as const;
   }
 
   const bucket = getS3BucketName();
@@ -1172,6 +1256,8 @@ export async function listArchivedFilesByCategory(
   if (!hasPermission(user, "archive.view")) {
     throw new Error("You do not have permission to view archives.");
   }
+
+  await assertCanAccessArchiveCategory(user, category.id);
 
   const [files, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
@@ -1399,7 +1485,7 @@ export async function getProjectArchivePreparation(
     throw new Error("No approved final files are available to archive.");
   }
 
-  const categories = await getActiveArchiveCategoryOptions();
+  const categories = await getActiveArchiveCategoryOptions(user);
 
   if (categories.length === 0) {
     throw new Error("Create an archive category before archiving final files.");
@@ -1596,6 +1682,8 @@ export async function completeProjectArchive(
     throw new Error("Choose a valid archive category.");
   }
 
+  await assertCanUploadToArchiveCategory(user, archiveCategory.id);
+
   const archivedAt = new Date();
 
   const archive = await withPrismaRetry(() =>
@@ -1788,6 +1876,11 @@ export async function getArchivedFileDownloadUrlForUser(
             createdById: true,
           },
         },
+        archive: {
+          select: {
+            archiveCategoryId: true,
+          },
+        },
       },
     }),
   );
@@ -1804,6 +1897,7 @@ export async function getArchivedFileDownloadUrlForUser(
           bucket: true,
           storageKey: true,
           status: true,
+          archiveCategoryId: true,
         },
       }),
     );
@@ -1815,6 +1909,12 @@ export async function getArchivedFileDownloadUrlForUser(
     if (!hasPermission(user, "archive.download")) {
       throw new Error("You do not have permission to download archive files.");
     }
+
+    if (!manualArchiveFile.archiveCategoryId) {
+      throw new Error("Archived file not found.");
+    }
+
+    await assertCanAccessArchiveCategory(user, manualArchiveFile.archiveCategoryId);
 
     return createPresignedDownloadUrl({
       bucket: manualArchiveFile.bucket,
@@ -1836,6 +1936,12 @@ export async function getArchivedFileDownloadUrlForUser(
     timestamp: archivedFile.archivedAt,
     message: "You do not have permission to access this archive file.",
   });
+
+  if (!archivedFile.archive.archiveCategoryId) {
+    throw new Error("Archived file not found.");
+  }
+
+  await assertCanAccessArchiveCategory(user, archivedFile.archive.archiveCategoryId);
 
   return createPresignedDownloadUrl({
     bucket: archivedFile.bucket,
@@ -1867,6 +1973,11 @@ export async function getArchivedFilePreviewUrlForUser(
             createdById: true,
           },
         },
+        archive: {
+          select: {
+            archiveCategoryId: true,
+          },
+        },
       },
     }),
   );
@@ -1883,6 +1994,7 @@ export async function getArchivedFilePreviewUrlForUser(
           bucket: true,
           storageKey: true,
           status: true,
+          archiveCategoryId: true,
         },
       }),
     );
@@ -1894,6 +2006,12 @@ export async function getArchivedFilePreviewUrlForUser(
     if (!hasPermission(user, "archive.view")) {
       throw new Error("You do not have permission to preview archive files.");
     }
+
+    if (!manualArchiveFile.archiveCategoryId) {
+      throw new Error("Archived file not found.");
+    }
+
+    await assertCanAccessArchiveCategory(user, manualArchiveFile.archiveCategoryId);
 
     return createPresignedPreviewUrl({
       bucket: manualArchiveFile.bucket,
@@ -1915,6 +2033,12 @@ export async function getArchivedFilePreviewUrlForUser(
     timestamp: archivedFile.archivedAt,
     message: "You do not have permission to access this archive file.",
   });
+
+  if (!archivedFile.archive.archiveCategoryId) {
+    throw new Error("Archived file not found.");
+  }
+
+  await assertCanAccessArchiveCategory(user, archivedFile.archive.archiveCategoryId);
 
   return createPresignedPreviewUrl({
     bucket: archivedFile.bucket,

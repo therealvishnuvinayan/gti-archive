@@ -24,6 +24,7 @@ export default async function ProjectMasterDataPage() {
         tags={masterData.tags}
         assetTags={masterData.assetTags}
         archiveCategories={masterData.archiveCategories}
+        archiveCategoryAccessUsers={masterData.archiveCategoryAccessUsers}
         summary={masterData.summary}
         canManageItems={hasPermission(user, "settings.manageMasterData")}
         canDeleteItems={hasPermission(user, "settings.deleteMasterData")}

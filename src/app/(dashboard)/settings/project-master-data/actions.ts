@@ -28,6 +28,7 @@ type SaveMasterDataInput = {
   groupId?: string | null;
   sortOrder?: number;
   isActive: boolean;
+  allowedUserIds?: string[];
 };
 
 type ToggleMasterDataInput = {
@@ -70,6 +71,9 @@ function normalizeMasterDataInput(input: SaveMasterDataInput) {
     groupId: input.groupId?.trim() || null,
     sortOrder: Number.isFinite(input.sortOrder) ? Math.trunc(input.sortOrder ?? 0) : 0,
     isActive: input.isActive,
+    allowedUserIds: Array.from(
+      new Set((input.allowedUserIds ?? []).map((id) => id.trim()).filter(Boolean)),
+    ),
   };
 }
 
@@ -621,7 +625,7 @@ export async function saveAssetTagAction(input: SaveMasterDataInput) {
 }
 
 export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
-  await requireAdminUser();
+  const user = await requireAdminUser();
 
   const parsed = normalizeMasterDataInput(input);
 
@@ -680,37 +684,74 @@ export async function saveArchiveCategoryAction(input: SaveMasterDataInput) {
     return { error: "An archive category with this slug already exists." };
   }
 
+  if (parsed.allowedUserIds.length > 0) {
+    const validUserCount = await withPrismaRetry(() =>
+      prisma.user.count({
+        where: {
+          id: {
+            in: parsed.allowedUserIds,
+          },
+        },
+      }),
+    );
+
+    if (validUserCount !== parsed.allowedUserIds.length) {
+      return { error: "One or more selected users could not be found." };
+    }
+  }
+
   const category = await withPrismaRetry(() =>
-    parsed.id
-      ? prisma.archiveCategory.update({
-          where: {
-            id: parsed.id,
-          },
-          data: {
-            name: parsed.name,
-            slug: parsed.slug,
-            description: parsed.description,
-            iconUrl: parsed.iconUrl,
-            iconKey: parsed.iconKey,
-            color: parsed.color,
-            parentId: parsed.parentId,
-            sortOrder: parsed.sortOrder,
-            isActive: parsed.isActive,
-          },
-        })
-      : prisma.archiveCategory.create({
-          data: {
-            name: parsed.name,
-            slug: parsed.slug,
-            description: parsed.description,
-            iconUrl: parsed.iconUrl,
-            iconKey: parsed.iconKey,
-            color: parsed.color,
-            parentId: parsed.parentId,
-            sortOrder: parsed.sortOrder,
-            isActive: parsed.isActive,
-          },
-        }),
+    prisma.$transaction(async (tx) => {
+      const savedCategory = parsed.id
+        ? await tx.archiveCategory.update({
+            where: {
+              id: parsed.id,
+            },
+            data: {
+              name: parsed.name,
+              slug: parsed.slug,
+              description: parsed.description,
+              iconUrl: parsed.iconUrl,
+              iconKey: parsed.iconKey,
+              color: parsed.color,
+              parentId: parsed.parentId,
+              sortOrder: parsed.sortOrder,
+              isActive: parsed.isActive,
+            },
+          })
+        : await tx.archiveCategory.create({
+            data: {
+              name: parsed.name,
+              slug: parsed.slug,
+              description: parsed.description,
+              iconUrl: parsed.iconUrl,
+              iconKey: parsed.iconKey,
+              color: parsed.color,
+              parentId: parsed.parentId,
+              sortOrder: parsed.sortOrder,
+              isActive: parsed.isActive,
+            },
+          });
+
+      await tx.archiveCategoryAccess.deleteMany({
+        where: {
+          archiveCategoryId: savedCategory.id,
+        },
+      });
+
+      if (parsed.allowedUserIds.length > 0) {
+        await tx.archiveCategoryAccess.createMany({
+          data: parsed.allowedUserIds.map((userId) => ({
+            archiveCategoryId: savedCategory.id,
+            userId,
+            createdById: user.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return savedCategory;
+    }),
   );
 
   await revalidateProjectMasterData();

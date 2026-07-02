@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 
 import { ArchiveCategoryWorkspace } from "@/components/archives/archive-category-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { listArchivedFilesByCategory } from "@/lib/archives";
+import {
+  canAccessArchiveCategoryRecord,
+  listArchivedFilesByCategory,
+} from "@/lib/archives";
 import { getArchiveCategoryBySlug } from "@/lib/archive-categories";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions/resolver";
@@ -48,6 +51,26 @@ export default async function ArchiveCategoryPage({
           </p>
           <p className="mt-2 text-[14px] text-[#707a72]">
             This archive category may have been removed or deactivated.
+          </p>
+        </Card>
+      </DashboardLayout>
+    );
+  }
+
+  if (!canAccessArchiveCategoryRecord(user, category)) {
+    return (
+      <DashboardLayout
+        topbarProps={{
+          searchPlaceholder: "Search archive files...",
+          leadingContent: <BackPill />,
+        }}
+      >
+        <Card className="rounded-[30px] border-0 bg-surface px-6 py-16 text-center shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
+          <p className="text-[26px] font-[700] tracking-[-0.03em] text-[#162019]">
+            Archive category unavailable.
+          </p>
+          <p className="mt-2 text-[14px] text-[#707a72]">
+            You do not have permission to access this archive category.
           </p>
         </Card>
       </DashboardLayout>

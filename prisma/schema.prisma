@@ -194,6 +194,8 @@ model User {
   copyrightContactWorkflows           ProjectCompletionWorkflow[]          @relation("ProjectCompletionCopyrightContact")
   uploadedCompletionDocuments         ProjectCompletionDocument[]          @relation("ProjectCompletionDocumentUploadedBy")
   manualArchiveFiles                  ManualArchiveFile[]                  @relation("ManualArchiveFileUploadedBy")
+  archiveCategoryAccesses             ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessUser")
+  createdArchiveCategoryAccesses      ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessCreatedBy")
   manualLibraryAssets                 ManualLibraryAsset[]                 @relation("ManualLibraryAssetUploadedBy")
   notifications                       Notification[]
   fileFavorites                       FileFavorite[]
@@ -408,6 +410,7 @@ model ArchiveCategory {
   sortOrder          Int                 @default(0)
   isActive           Boolean             @default(true)
   isSystem           Boolean             @default(false)
+  allowedUsers       ArchiveCategoryAccess[]
   projectArchives    ProjectArchive[]
   manualArchiveFiles ManualArchiveFile[]
   createdAt          DateTime            @default(now())
@@ -416,6 +419,21 @@ model ArchiveCategory {
   @@index([slug])
   @@index([parentId])
   @@index([isActive, sortOrder])
+}
+
+model ArchiveCategoryAccess {
+  archiveCategoryId String
+  userId            String
+  createdAt         DateTime        @default(now())
+  createdById       String?
+  archiveCategory   ArchiveCategory @relation(fields: [archiveCategoryId], references: [id], onDelete: Cascade)
+  user              User            @relation("ArchiveCategoryAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy         User?           @relation("ArchiveCategoryAccessCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@id([archiveCategoryId, userId])
+  @@index([userId])
+  @@index([archiveCategoryId])
+  @@index([createdById])
 }
 
 model ProjectAttachmentAssetTagAssignment {

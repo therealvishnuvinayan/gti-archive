@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const categories = await getActiveArchiveCategoryOptions();
+  const categories = await getActiveArchiveCategoryOptions(user);
 
   return NextResponse.json({ categories });
 }
