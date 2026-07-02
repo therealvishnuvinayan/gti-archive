@@ -6706,8 +6706,8 @@ export function ProjectChatWorkspace({
                     variant="ghost"
                     size="sm"
                     className="h-8 rounded-full px-2.5 text-[11px] font-[700] text-[#5083ff]"
-                    aria-label="Text Translation"
-                    title="Text Translation"
+                    aria-label="Translate"
+                    title="Translate"
                     onClick={() => {
                       void handleTranslateDraft();
                     }}
@@ -6718,7 +6718,7 @@ export function ProjectChatWorkspace({
                     ) : (
                       <Languages className="h-5 w-5" />
                     )}
-                    <span>Text Translation</span>
+                    <span>Translate</span>
                   </Button>
                   <ChatLanguagePicker
                     languages={SUPPORTED_CHAT_LANGUAGES}
