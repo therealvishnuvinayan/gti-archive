@@ -2627,6 +2627,9 @@ export function ProjectChatWorkspace({
   const stageInvoiceRequest = activeStage?.invoiceRequest ?? null;
   const stageInvoiceMissing =
     stageInvoiceRequired && !stageInvoiceAttachment && !isStageCompleted && !isProjectCompleted;
+  const hasOfficialStageSubmission =
+    stageRevisionCount > 0 ||
+    revisionMessages.some((message) => !message.id.startsWith("optimistic-revision-"));
   const isRequestedStageInvoiceUploader =
     Boolean(stageInvoiceRequest) && stageInvoiceRequest?.requestedFromId === currentUserId;
   const canUploadStageInvoice =
@@ -2636,7 +2639,8 @@ export function ProjectChatWorkspace({
     isRequestedStageInvoiceUploader &&
     !isStageCompleted &&
     !isProjectCompleted;
-  const canRequestStageInvoice = isProjectOwner && stageInvoiceMissing;
+  const canRequestStageInvoice =
+    isProjectOwner && stageInvoiceMissing && hasOfficialStageSubmission;
   const invoiceRequestCandidates = useMemo(() => {
     const candidates = [
       ...project.executors.map((executor) => ({
@@ -6959,7 +6963,9 @@ export function ProjectChatWorkspace({
                 </div>
               ) : (
                 <p className="text-[13px] leading-5 text-[#6f786f]">
-                  Stage invoice is required before completion. Waiting for invoice request.
+                  {hasOfficialStageSubmission
+                    ? "Stage invoice is required before completion. Waiting for invoice request."
+                    : "Invoice can be requested after the first submission."}
                 </p>
               )}
               {stageInvoiceError ? (
@@ -7226,6 +7232,8 @@ export function ProjectChatWorkspace({
           stageInvoiceMissing
             ? stageInvoiceRequest
               ? "Invoice is required before completing this stage. Waiting for the requested executor/vendor to upload it."
+              : !hasOfficialStageSubmission
+                ? "Invoice is required before completing this stage. Submit work first to request an invoice."
               : "Invoice is required before completing this stage. Request invoice from the executor."
             : reviewCompletionIsFinalStage
             ? "This will approve the submitted revision and complete the final stage. Project completion and final archive happen after all stages are complete."
@@ -7233,7 +7241,9 @@ export function ProjectChatWorkspace({
         }
         confirmLabel={
           stageInvoiceMissing
-            ? canRequestStageInvoice && !stageInvoiceRequest
+            ? !hasOfficialStageSubmission
+              ? "Waiting for Submission"
+              : canRequestStageInvoice && !stageInvoiceRequest
               ? "Request Invoice"
               : "Waiting for Invoice"
             : reviewCompletionIsFinalStage
@@ -7269,12 +7279,16 @@ export function ProjectChatWorkspace({
           stageInvoiceMissing
             ? stageInvoiceRequest
               ? "Invoice is required before completing this stage. Waiting for the requested executor/vendor to upload it."
+              : !hasOfficialStageSubmission
+                ? "Invoice is required before completing this stage. Submit work first to request an invoice."
               : "Invoice is required before completing this stage. Request invoice from the executor."
             : "This will mark the current stage as completed. Only the project owner can do this."
         }
         confirmLabel={
           stageInvoiceMissing
-            ? canRequestStageInvoice && !stageInvoiceRequest
+            ? !hasOfficialStageSubmission
+              ? "Waiting for Submission"
+              : canRequestStageInvoice && !stageInvoiceRequest
               ? "Request Invoice"
               : "Waiting for Invoice"
             : "Mark as Complete"
@@ -7938,7 +7952,9 @@ export function ProjectChatWorkspace({
                           ? "The stage invoice is uploaded. This submission can be completed."
                           : stageInvoiceRequest
                             ? `Waiting for invoice from ${stageInvoiceRequest.requestedFromName}.`
-                            : "This external stage requires an invoice before completion. Request the invoice from the executor/vendor who performed the work."}
+                            : hasOfficialStageSubmission
+                              ? "This external stage requires an invoice before completion. Request the invoice from the executor/vendor who performed the work."
+                              : "Invoice can be requested after the first submission."}
                       </p>
                     </div>
                     {!stageInvoiceAttachment && !stageInvoiceRequest && canRequestStageInvoice ? (

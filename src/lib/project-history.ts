@@ -3979,6 +3979,11 @@ export async function requestStageInvoice(
         name: true,
         status: true,
         invoiceRequired: true,
+        _count: {
+          select: {
+            revisions: true,
+          },
+        },
         attachments: {
           where: {
             assetType: AttachmentAssetType.STAGE_INVOICE,
@@ -4058,6 +4063,10 @@ export async function requestStageInvoice(
 
   if (!isStageInvoiceRequired(stage.project, stage)) {
     throw new Error("Invoice is not required for this stage.");
+  }
+
+  if (stage._count.revisions === 0) {
+    throw new Error("Invoice can be requested only after the first submission.");
   }
 
   if (stage.attachments.length > 0) {
