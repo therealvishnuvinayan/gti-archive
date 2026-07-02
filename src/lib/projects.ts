@@ -429,12 +429,28 @@ export type ProjectsListFilter = {
   tag?: string;
   sort?: "newest" | "oldest" | "name";
   page?: number;
+  ownerId?: string;
+  executorId?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  budgetRequired?: "true" | "false";
+  budgetMin?: string;
+  budgetMax?: string;
+  budgetCurrency?: string;
+};
+
+export type ProjectListUserFilterOption = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 export type ProjectListFilterOptions = {
   statuses: ActiveProjectStatusOption[];
   categories: string[];
   tags: string[];
+  owners: ProjectListUserFilterOption[];
+  executors: ProjectListUserFilterOption[];
 };
 
 function toProjectDate(date: Date | string | number) {
@@ -1894,6 +1910,13 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
   const query = filter.query?.trim();
   const category = filter.category?.trim();
   const tag = filter.tag?.trim();
+  const ownerId = filter.ownerId?.trim();
+  const executorId = filter.executorId?.trim();
+  const createdFrom = parseProjectListDate(filter.createdFrom, "start");
+  const createdTo = parseProjectListDate(filter.createdTo, "end");
+  const budgetMin = parseProjectBudgetFilterValue(filter.budgetMin);
+  const budgetMax = parseProjectBudgetFilterValue(filter.budgetMax);
+  const budgetCurrency = resolveProjectCurrency(filter.budgetCurrency ?? "");
   const statusWhere = buildProjectStatusWhere(filter.status);
   const clauses: Prisma.ProjectWhereInput[] = [];
 
@@ -2018,7 +2041,111 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
     });
   }
 
+  if (ownerId) {
+    clauses.push({
+      createdById: ownerId,
+    });
+  }
+
+  if (executorId) {
+    clauses.push({
+      executors: {
+        some: {
+          userId: executorId,
+        },
+      },
+    });
+  }
+
+  if (createdFrom && createdTo) {
+    if (createdFrom <= createdTo) {
+      clauses.push({
+        createdAt: {
+          gte: createdFrom,
+          lte: createdTo,
+        },
+      });
+    }
+  } else if (createdFrom) {
+    clauses.push({
+      createdAt: {
+        gte: createdFrom,
+      },
+    });
+  } else if (createdTo) {
+    clauses.push({
+      createdAt: {
+        lte: createdTo,
+      },
+    });
+  }
+
+  if (filter.budgetRequired === "true") {
+    clauses.push({
+      budgetRequired: true,
+    });
+  } else if (filter.budgetRequired === "false") {
+    clauses.push({
+      budgetRequired: false,
+    });
+  }
+
+  if (budgetMin !== null || budgetMax !== null) {
+    if (budgetMin === null || budgetMax === null || budgetMin <= budgetMax) {
+      clauses.push({
+        budget: {
+          not: null,
+          ...(budgetMin !== null ? { gte: budgetMin } : {}),
+          ...(budgetMax !== null ? { lte: budgetMax } : {}),
+        },
+      });
+    }
+  }
+
+  if (budgetCurrency) {
+    clauses.push({
+      currency: budgetCurrency,
+    });
+  }
+
   return clauses.length > 0 ? { AND: clauses } : {};
+}
+
+function parseProjectListDate(
+  value: string | null | undefined,
+  boundary: "start" | "end",
+) {
+  const normalizedValue = value?.trim();
+
+  if (!normalizedValue || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+    return null;
+  }
+
+  const [year, month, day] = normalizedValue.split("-").map(Number);
+  const parsedDate =
+    boundary === "start"
+      ? new Date(year, month - 1, day, 0, 0, 0, 0)
+      : new Date(year, month - 1, day, 23, 59, 59, 999);
+
+  return parsedDate.getFullYear() === year &&
+    parsedDate.getMonth() === month - 1 &&
+    parsedDate.getDate() === day
+    ? parsedDate
+    : null;
+}
+
+function parseProjectBudgetFilterValue(value: string | null | undefined) {
+  const normalizedValue = value?.trim();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const parsedValue = Number(normalizedValue);
+
+  return Number.isFinite(parsedValue) && parsedValue >= 0
+    ? Math.floor(parsedValue)
+    : null;
 }
 
 export async function getProjectListFilterOptions(
@@ -2037,6 +2164,24 @@ export async function getProjectListFilterOptions(
             where: accessibleWhere,
             select: {
               category: true,
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+              executors: {
+                select: {
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
               tags: {
                 select: {
                   tag: {
@@ -2066,11 +2211,27 @@ export async function getProjectListFilterOptions(
   const mappingStartedAt = performance.now();
   const categories = new Map<string, string>();
   const tags = new Map<string, string>();
+  const owners = new Map<string, ProjectListUserFilterOption>();
+  const executors = new Map<string, ProjectListUserFilterOption>();
 
   for (const project of projects) {
     const normalizedCategory = project.category.trim();
     if (normalizedCategory) {
       categories.set(normalizedCategory.toLowerCase(), normalizedCategory);
+    }
+
+    owners.set(project.createdBy.id, {
+      id: project.createdBy.id,
+      name: getCreatorName(project.createdBy),
+      email: project.createdBy.email,
+    });
+
+    for (const executor of project.executors) {
+      executors.set(executor.user.id, {
+        id: executor.user.id,
+        name: getCreatorName(executor.user),
+        email: executor.user.email,
+      });
     }
 
     for (const normalizedTag of getProjectTagNames(project)) {
@@ -2086,13 +2247,35 @@ export async function getProjectListFilterOptions(
     tags: [...tags.values()].sort((left, right) =>
       left.localeCompare(right, undefined, { sensitivity: "base" }),
     ),
+    owners: sortProjectListUserFilterOptions([...owners.values()]),
+    executors: sortProjectListUserFilterOptions([...executors.values()]),
   };
   logProjectTiming("filter options mapping", mappingStartedAt, {
     categories: categories.size,
     tags: tags.size,
+    owners: owners.size,
+    executors: executors.size,
   });
   logProjectTiming("filter options total", startedAt);
   return options;
+}
+
+function sortProjectListUserFilterOptions(
+  users: ProjectListUserFilterOption[],
+) {
+  return users.sort((left, right) => {
+    const nameComparison = left.name.localeCompare(right.name, undefined, {
+      sensitivity: "base",
+    });
+
+    if (nameComparison !== 0) {
+      return nameComparison;
+    }
+
+    return left.email.localeCompare(right.email, undefined, {
+      sensitivity: "base",
+    });
+  });
 }
 
 export async function getDashboardProjectCounts(
@@ -2326,6 +2509,14 @@ export async function getProjectsList(
       filter.query?.trim().toLowerCase() ?? "",
       filter.category?.trim().toLowerCase() ?? "",
       filter.tag?.trim().toLowerCase() ?? "",
+      filter.ownerId?.trim() ?? "",
+      filter.executorId?.trim() ?? "",
+      filter.createdFrom?.trim() ?? "",
+      filter.createdTo?.trim() ?? "",
+      filter.budgetRequired ?? "all",
+      filter.budgetMin?.trim() ?? "",
+      filter.budgetMax?.trim() ?? "",
+      resolveProjectCurrency(filter.budgetCurrency ?? "") ?? "all",
       filter.sort ?? "newest",
       String(page),
       String(PROJECT_LIST_PAGE_SIZE),

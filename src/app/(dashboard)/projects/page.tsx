@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
+import { resolveProjectCurrency } from "@/lib/project-currencies";
 import {
   getDashboardProjectCounts,
   getProjectListFilterOptions,
@@ -35,6 +36,37 @@ function logProjectsPageTiming(label: string, startedAt: number) {
   });
 }
 
+function normalizeDateSearchParam(value: string | undefined) {
+  const normalizedValue = value?.trim();
+
+  if (!normalizedValue || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+    return "";
+  }
+
+  const [year, month, day] = normalizedValue.split("-").map(Number);
+  const parsedDate = new Date(year, month - 1, day);
+
+  return parsedDate.getFullYear() === year &&
+    parsedDate.getMonth() === month - 1 &&
+    parsedDate.getDate() === day
+    ? normalizedValue
+    : "";
+}
+
+function normalizeBudgetAmountSearchParam(value: string | undefined) {
+  const normalizedValue = value?.trim();
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  const parsedValue = Number(normalizedValue);
+
+  return Number.isFinite(parsedValue) && parsedValue >= 0
+    ? String(Math.floor(parsedValue))
+    : "";
+}
+
 export default async function ProjectsPage({
   searchParams,
 }: {
@@ -54,9 +86,19 @@ export default async function ProjectsPage({
           query={data.query}
           activeCategory={data.activeCategory}
           activeTag={data.activeTag}
+          activeOwnerId={data.activeOwnerId}
+          activeExecutorId={data.activeExecutorId}
+          activeCreatedFrom={data.activeCreatedFrom}
+          activeCreatedTo={data.activeCreatedTo}
+          activeBudgetRequired={data.activeBudgetRequired}
+          activeBudgetMin={data.activeBudgetMin}
+          activeBudgetMax={data.activeBudgetMax}
+          activeBudgetCurrency={data.activeBudgetCurrency}
           categoryOptions={data.filterOptions.categories}
           statusOptions={data.filterOptions.statuses}
           tagOptions={data.filterOptions.tags}
+          ownerOptions={data.filterOptions.owners}
+          executorOptions={data.filterOptions.executors}
           filters={projectFilters}
         />
       </section>
@@ -70,6 +112,14 @@ type ProjectSearchParams = {
   sort?: string;
   category?: string;
   tag?: string;
+  ownerId?: string;
+  executorId?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  budgetRequired?: string;
+  budgetMin?: string;
+  budgetMax?: string;
+  budgetCurrency?: string;
   page?: string;
 };
 
@@ -87,6 +137,19 @@ async function loadProjectsPageData(
       : "newest";
   const activeCategory = resolvedSearchParams.category?.trim() ?? "";
   const activeTag = resolvedSearchParams.tag?.trim() ?? "";
+  const activeOwnerId = resolvedSearchParams.ownerId?.trim() ?? "";
+  const activeExecutorId = resolvedSearchParams.executorId?.trim() ?? "";
+  const activeCreatedFrom = normalizeDateSearchParam(resolvedSearchParams.createdFrom);
+  const activeCreatedTo = normalizeDateSearchParam(resolvedSearchParams.createdTo);
+  const activeBudgetRequired =
+    resolvedSearchParams.budgetRequired === "true" ||
+    resolvedSearchParams.budgetRequired === "false"
+      ? resolvedSearchParams.budgetRequired
+      : "";
+  const activeBudgetMin = normalizeBudgetAmountSearchParam(resolvedSearchParams.budgetMin);
+  const activeBudgetMax = normalizeBudgetAmountSearchParam(resolvedSearchParams.budgetMax);
+  const activeBudgetCurrency =
+    resolveProjectCurrency(resolvedSearchParams.budgetCurrency ?? "") ?? "";
   const activePage = Math.max(
     1,
     Number.parseInt(resolvedSearchParams.page ?? "1", 10) || 1,
@@ -103,6 +166,14 @@ async function loadProjectsPageData(
       query,
       category: activeCategory,
       tag: activeTag,
+      ownerId: activeOwnerId,
+      executorId: activeExecutorId,
+      createdFrom: activeCreatedFrom,
+      createdTo: activeCreatedTo,
+      budgetRequired: activeBudgetRequired || undefined,
+      budgetMin: activeBudgetMin,
+      budgetMax: activeBudgetMax,
+      budgetCurrency: activeBudgetCurrency,
       sort: activeSort,
       page: activePage,
     }, user),
@@ -122,6 +193,14 @@ async function loadProjectsPageData(
     query,
     activeCategory,
     activeTag,
+    activeOwnerId,
+    activeExecutorId,
+    activeCreatedFrom,
+    activeCreatedTo,
+    activeBudgetRequired,
+    activeBudgetMin,
+    activeBudgetMax,
+    activeBudgetCurrency,
     filterOptions,
   };
 }

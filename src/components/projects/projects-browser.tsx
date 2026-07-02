@@ -2,14 +2,19 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useRef, useTransition } from "react";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
+import { CalendarDays, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 
 import {
   MotionItem,
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
+import {
+  CalendarMonthGrid,
+  formatCalendarDateValue,
+  parseCalendarDateValue,
+} from "@/components/calendar/calendar-month-grid";
 import { ProjectCard, type ProjectCardItem } from "@/components/projects/project-card";
 import { ProjectSortDropdown } from "@/components/projects/project-sort-dropdown";
 import { Button } from "@/components/ui/button";
@@ -32,6 +37,12 @@ type ProjectFilter = {
   value: ProjectFilterValue;
 };
 
+type ProjectUserFilterOption = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 type ProjectsBrowserProps = {
   projects: ProjectCardItem[];
   hasAnyProjects: boolean;
@@ -41,6 +52,14 @@ type ProjectsBrowserProps = {
   query: string;
   activeCategory: string;
   activeTag: string;
+  activeOwnerId: string;
+  activeExecutorId: string;
+  activeCreatedFrom: string;
+  activeCreatedTo: string;
+  activeBudgetRequired: string;
+  activeBudgetMin: string;
+  activeBudgetMax: string;
+  activeBudgetCurrency: string;
   categoryOptions: string[];
   statusOptions: Array<{
     id: string;
@@ -54,6 +73,8 @@ type ProjectsBrowserProps = {
     groupIsActive: boolean;
   }>;
   tagOptions: string[];
+  ownerOptions: ProjectUserFilterOption[];
+  executorOptions: ProjectUserFilterOption[];
   filters: ProjectFilter[];
 };
 
@@ -134,6 +155,128 @@ function ProjectsGridSkeleton() {
 const ALL_CATEGORIES = "__all_categories__";
 const ALL_PROJECT_STATUSES = "__all_project_statuses__";
 const ALL_TAGS = "__all_tags__";
+const ALL_OWNERS = "__all_owners__";
+const ALL_EXECUTORS = "__all_executors__";
+const ALL_BUDGET_REQUIREMENTS = "__all_budget_requirements__";
+const ALL_BUDGET_CURRENCIES = "__all_budget_currencies__";
+const budgetCurrencyOptions = ["AED", "USD", "EUR"] as const;
+
+function getUserFilterLabel(option: ProjectUserFilterOption) {
+  return option.name === option.email ? option.name : `${option.name} (${option.email})`;
+}
+
+function getDateFilterDate(value: string) {
+  if (!value) {
+    return new Date();
+  }
+
+  const parsedDate = parseCalendarDateValue(value);
+
+  return Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+}
+
+function getDateFilterDisplay(value: string) {
+  if (!value) {
+    return "Any date";
+  }
+
+  const date = getDateFilterDate(value);
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+
+  return `${day}/${month}/${date.getFullYear()}`;
+}
+
+function DateFilterField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedDate = getDateFilterDate(value);
+  const [month, setMonth] = useState(() => selectedDate);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+
+      if (target?.closest('[data-slot="select-content"]')) {
+        return;
+      }
+
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Button
+        type="button"
+        variant="secondary"
+        className="h-[46px] w-full justify-between rounded-[14px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium text-[#18211a]"
+        onClick={() => {
+          setMonth(selectedDate);
+          setOpen((current) => !current);
+        }}
+      >
+        <span className="min-w-0 truncate">{getDateFilterDisplay(value)}</span>
+        <CalendarDays className="h-4 w-4 shrink-0 text-brand" />
+      </Button>
+
+      {open ? (
+        <Card className="absolute left-0 top-[calc(100%+10px)] z-30 w-[320px] rounded-[22px] border border-line p-4 shadow-[0_20px_50px_rgba(23,39,28,0.16)]">
+          <CalendarMonthGrid
+            month={month}
+            selectedDate={selectedDate}
+            onMonthChange={setMonth}
+            onSelect={(date) => {
+              onChange(formatCalendarDateValue(date));
+              setMonth(date);
+              setOpen(false);
+            }}
+            compact
+          />
+          <div className="mt-3 flex items-center justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-0 text-[12px] text-brand"
+              onClick={() => {
+                const today = new Date();
+                onChange(formatCalendarDateValue(today));
+                setMonth(today);
+                setOpen(false);
+              }}
+            >
+              Today
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-0 text-[12px] text-[#6a706b]"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+              }}
+            >
+              Clear
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
 
 export function ProjectsBrowser({
   projects,
@@ -144,9 +287,19 @@ export function ProjectsBrowser({
   query,
   activeCategory,
   activeTag,
+  activeOwnerId,
+  activeExecutorId,
+  activeCreatedFrom,
+  activeCreatedTo,
+  activeBudgetRequired,
+  activeBudgetMin,
+  activeBudgetMax,
+  activeBudgetCurrency,
   categoryOptions,
   statusOptions,
   tagOptions,
+  ownerOptions,
+  executorOptions,
   filters,
 }: ProjectsBrowserProps) {
   const router = useRouter();
@@ -154,9 +307,32 @@ export function ProjectsBrowser({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const budgetMinRef = useRef<HTMLInputElement>(null);
+  const budgetMaxRef = useRef<HTMLInputElement>(null);
   const activeStatusOption =
     statusOptions.find((status) => status.id === activeStatus) ?? null;
-  const hasActiveFilters = Boolean(query || activeCategory || activeTag || activeStatusOption);
+  const hasActiveAdvancedFilters = Boolean(
+    activeOwnerId ||
+      activeExecutorId ||
+      activeCreatedFrom ||
+      activeCreatedTo ||
+      activeBudgetRequired ||
+      activeBudgetMin ||
+      activeBudgetMax ||
+      activeBudgetCurrency,
+  );
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(hasActiveAdvancedFilters);
+  const activeAdvancedFilterCount = [
+    activeOwnerId,
+    activeExecutorId,
+    activeCreatedFrom || activeCreatedTo,
+    activeBudgetRequired,
+    activeBudgetMin || activeBudgetMax,
+    activeBudgetCurrency,
+  ].filter(Boolean).length;
+  const hasActiveFilters = Boolean(
+    query || activeCategory || activeTag || activeStatusOption || hasActiveAdvancedFilters,
+  );
   const currentSearch = searchParams.toString();
   const currentProjectsHref = currentSearch ? `${pathname}?${currentSearch}` : pathname;
   const emptyState = getEmptyStateCopy(
@@ -166,7 +342,7 @@ export function ProjectsBrowser({
     query,
     activeCategory,
     activeTag,
-    activeStatusOption?.name,
+    activeStatusOption?.name || (hasActiveAdvancedFilters ? "advanced filters" : undefined),
   );
 
   const navigate = ({
@@ -174,12 +350,28 @@ export function ProjectsBrowser({
     sort = activeSort,
     category = activeCategory,
     tag = activeTag,
+    ownerId = activeOwnerId,
+    executorId = activeExecutorId,
+    createdFrom = activeCreatedFrom,
+    createdTo = activeCreatedTo,
+    budgetRequired = activeBudgetRequired,
+    budgetMin = budgetMinRef.current?.value ?? activeBudgetMin,
+    budgetMax = budgetMaxRef.current?.value ?? activeBudgetMax,
+    budgetCurrency = activeBudgetCurrency,
     nextQuery,
   }: {
     status?: ProjectFilterValue;
     sort?: ProjectSortValue;
     category?: string;
     tag?: string;
+    ownerId?: string;
+    executorId?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    budgetRequired?: string;
+    budgetMin?: string;
+    budgetMax?: string;
+    budgetCurrency?: string;
     nextQuery?: string;
   }) => {
     const params = new URLSearchParams();
@@ -195,6 +387,30 @@ export function ProjectsBrowser({
     }
     if (tag) {
       params.set("tag", tag);
+    }
+    if (ownerId) {
+      params.set("ownerId", ownerId);
+    }
+    if (executorId) {
+      params.set("executorId", executorId);
+    }
+    if (createdFrom) {
+      params.set("createdFrom", createdFrom);
+    }
+    if (createdTo) {
+      params.set("createdTo", createdTo);
+    }
+    if (budgetRequired === "true" || budgetRequired === "false") {
+      params.set("budgetRequired", budgetRequired);
+    }
+    if (budgetMin) {
+      params.set("budgetMin", budgetMin);
+    }
+    if (budgetMax) {
+      params.set("budgetMax", budgetMax);
+    }
+    if (budgetCurrency) {
+      params.set("budgetCurrency", budgetCurrency);
     }
     params.set("status", status);
     params.set("sort", sort);
@@ -353,6 +569,27 @@ export function ProjectsBrowser({
                 </div>
               ) : null}
 
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAdvancedFiltersOpen((open) => !open)}
+                className="h-[42px] self-start rounded-full px-4 text-[14px] font-[700] text-[#435042]"
+                aria-expanded={advancedFiltersOpen}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                More filters
+                {activeAdvancedFilterCount > 0 ? (
+                  <span className="ml-1 rounded-full bg-[#266646] px-2 py-0.5 text-[11px] font-[800] text-white">
+                    {activeAdvancedFilterCount}
+                  </span>
+                ) : null}
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    advancedFiltersOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </Button>
+
               {hasActiveFilters ? (
                 <Button
                   type="button"
@@ -388,6 +625,207 @@ export function ProjectsBrowser({
               ) : null}
             </div>
           </div>
+
+          {advancedFiltersOpen ? (
+            <div
+              className="rounded-[20px] border border-[#dce6de] bg-white p-4 shadow-[0_12px_30px_rgba(18,34,25,0.05)]"
+            >
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <label className="space-y-2">
+                  <span className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#6d796f]">
+                    Project Owner
+                  </span>
+                  <Select
+                    value={activeOwnerId || ALL_OWNERS}
+                    onValueChange={(value) =>
+                      navigate({
+                        ownerId: value === ALL_OWNERS ? "" : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="h-[46px] w-full rounded-[14px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium">
+                      <SelectValue placeholder="All owners" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_OWNERS}>All owners</SelectItem>
+                      {ownerOptions.map((owner) => (
+                        <SelectItem key={owner.id} value={owner.id}>
+                          {getUserFilterLabel(owner)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#6d796f]">
+                    Executor
+                  </span>
+                  <Select
+                    value={activeExecutorId || ALL_EXECUTORS}
+                    onValueChange={(value) =>
+                      navigate({
+                        executorId: value === ALL_EXECUTORS ? "" : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="h-[46px] w-full rounded-[14px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium">
+                      <SelectValue placeholder="All executors" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_EXECUTORS}>All executors</SelectItem>
+                      {executorOptions.map((executor) => (
+                        <SelectItem key={executor.id} value={executor.id}>
+                          {getUserFilterLabel(executor)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#6d796f]">
+                    Date From
+                  </span>
+                  <DateFilterField
+                    value={activeCreatedFrom}
+                    onChange={(value) => navigate({ createdFrom: value })}
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#6d796f]">
+                    Date To
+                  </span>
+                  <DateFilterField
+                    value={activeCreatedTo}
+                    onChange={(value) => navigate({ createdTo: value })}
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#6d796f]">
+                    Budget Requirement
+                  </span>
+                  <Select
+                    value={activeBudgetRequired || ALL_BUDGET_REQUIREMENTS}
+                    onValueChange={(value) =>
+                      navigate({
+                        budgetRequired:
+                          value === ALL_BUDGET_REQUIREMENTS ? "" : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="h-[46px] w-full rounded-[14px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium">
+                      <SelectValue placeholder="All budgets" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_BUDGET_REQUIREMENTS}>All</SelectItem>
+                      <SelectItem value="true">Budget required</SelectItem>
+                      <SelectItem value="false">No budget required</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#6d796f]">
+                    Min Budget
+                  </span>
+                  <Input
+                    key={`budget-min-${activeBudgetMin}`}
+                    ref={budgetMinRef}
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={activeBudgetMin}
+                    placeholder="Any"
+                    onBlur={(event) => navigate({ budgetMin: event.currentTarget.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    className="h-[46px] rounded-[14px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#6d796f]">
+                    Max Budget
+                  </span>
+                  <Input
+                    key={`budget-max-${activeBudgetMax}`}
+                    ref={budgetMaxRef}
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={activeBudgetMax}
+                    placeholder="Any"
+                    onBlur={(event) => navigate({ budgetMax: event.currentTarget.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    className="h-[46px] rounded-[14px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#6d796f]">
+                    Currency
+                  </span>
+                  <Select
+                    value={activeBudgetCurrency || ALL_BUDGET_CURRENCIES}
+                    onValueChange={(value) =>
+                      navigate({
+                        budgetCurrency:
+                          value === ALL_BUDGET_CURRENCIES ? "" : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="h-[46px] w-full rounded-[14px] border border-[#dce6de] bg-white px-4 text-[14px] font-medium">
+                      <SelectValue placeholder="All currencies" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_BUDGET_CURRENCIES}>All</SelectItem>
+                      {budgetCurrencyOptions.map((currency) => (
+                        <SelectItem key={currency} value={currency}>
+                          {currency}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                {hasActiveAdvancedFilters ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() =>
+                      navigate({
+                        ownerId: "",
+                        executorId: "",
+                        createdFrom: "",
+                        createdTo: "",
+                        budgetRequired: "",
+                        budgetMin: "",
+                        budgetMax: "",
+                        budgetCurrency: "",
+                      })
+                    }
+                    disabled={isPending}
+                    className="rounded-full px-4 text-[14px] font-[700] text-[#5b675e]"
+                  >
+                    <X className="h-4 w-4" />
+                    Clear advanced
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </header>
       </MotionSection>
 
@@ -406,7 +844,7 @@ export function ProjectsBrowser({
         </MotionStaggerGroup>
       ) : (
         <MotionItem
-          key={`${activeStatus}-${activeSort}-${query || "all"}-${activeCategory || "all-categories"}-${activeTag || "all-tags"}-empty`}
+          key={`${activeStatus}-${activeSort}-${query || "all"}-${activeCategory || "all-categories"}-${activeTag || "all-tags"}-${activeOwnerId || "all-owners"}-${activeExecutorId || "all-executors"}-${activeCreatedFrom || "from-any"}-${activeCreatedTo || "to-any"}-${activeBudgetRequired || "budget-any"}-${activeBudgetMin || "min-any"}-${activeBudgetMax || "max-any"}-${activeBudgetCurrency || "currency-any"}-empty`}
           y={8}
         >
           <Card className="min-h-[280px] rounded-[24px] text-center shadow-[0_18px_42px_rgba(23,39,28,0.05)]">
