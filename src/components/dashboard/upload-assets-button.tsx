@@ -31,7 +31,6 @@ import {
 const ACCEPTED_FILE_TYPES = PROJECT_ASSET_ALLOWED_EXTENSIONS.map(
   (extension) => `.${extension}`,
 ).join(",");
-const NO_CATEGORY = "__no_archive_category__";
 
 type ArchiveCategoryOption = {
   id: string;
@@ -218,7 +217,7 @@ export function ArchiveUploadButton({
   const [categories, setCategories] = useState<ArchiveCategoryOption[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
-    defaultCategoryId ?? NO_CATEGORY,
+    defaultCategoryId ?? "",
   );
   const [assetTagIds, setAssetTagIds] = useState<string[]>([]);
   const [projectDate, setProjectDate] = useState("");
@@ -249,7 +248,18 @@ export function ArchiveUploadButton({
         }
 
         if (!cancelled) {
-          setCategories(payload.categories ?? []);
+          const nextCategories = payload.categories ?? [];
+          setCategories(nextCategories);
+          setSelectedCategoryId((current) => {
+            if (current && nextCategories.some((category) => category.id === current)) {
+              return current;
+            }
+
+            return defaultCategoryId &&
+              nextCategories.some((category) => category.id === defaultCategoryId)
+              ? defaultCategoryId
+              : "";
+          });
         }
       } catch (error) {
         if (!cancelled) {
@@ -271,14 +281,14 @@ export function ArchiveUploadButton({
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [defaultCategoryId, isOpen]);
 
   function openModal() {
     if (!canUploadAssets) {
       return;
     }
 
-    setSelectedCategoryId(defaultCategoryId ?? NO_CATEGORY);
+    setSelectedCategoryId(defaultCategoryId ?? "");
     setIsOpen(true);
   }
 
@@ -291,7 +301,7 @@ export function ArchiveUploadButton({
     setFileName("");
     setProjectName("");
     setProjectCreatedBy("");
-    setSelectedCategoryId(defaultCategoryId ?? NO_CATEGORY);
+    setSelectedCategoryId(defaultCategoryId ?? "");
     setAssetTagIds([]);
     setProjectDate("");
     setSelectedFile(null);
@@ -319,6 +329,16 @@ export function ArchiveUploadButton({
       return;
     }
 
+    if (categories.length === 0) {
+      setFormError("No archive categories available. Please create a category in Master Data first.");
+      return;
+    }
+
+    if (!selectedCategoryId) {
+      setFormError("Choose an archive category before uploading.");
+      return;
+    }
+
     setFormError(undefined);
     setIsUploading(true);
 
@@ -341,8 +361,7 @@ export function ArchiveUploadButton({
           fileSize: selectedFile.size,
           projectName,
           projectCreatedBy,
-          archiveCategoryId:
-            selectedCategoryId === NO_CATEGORY ? undefined : selectedCategoryId,
+          archiveCategoryId: selectedCategoryId,
           assetTagIds,
           projectDate,
         }),
@@ -489,24 +508,25 @@ export function ArchiveUploadButton({
 
                 <label>
                   <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
-                    Archive category
+                    Archive category <span className="text-[#d3554d]">*</span>
                   </span>
                   <Select
                     value={selectedCategoryId}
                     onValueChange={setSelectedCategoryId}
-                    disabled={isUploading || categoriesLoading}
+                    disabled={isUploading || categoriesLoading || categories.length === 0}
                   >
                     <SelectTrigger className="h-11 rounded-2xl border border-line">
                       <SelectValue
                         placeholder={
                           categoriesLoading
                             ? "Loading categories..."
+                            : categories.length === 0
+                              ? "No categories available"
                             : "Select archive category"
                         }
                       />
                     </SelectTrigger>
                     <SelectContent className="z-[120]">
-                      <SelectItem value={NO_CATEGORY}>Uncategorized</SelectItem>
                       {categories.map((category) => (
                         <SelectItem key={category.id} value={category.id}>
                           {category.parentName
@@ -516,6 +536,11 @@ export function ArchiveUploadButton({
                       ))}
                     </SelectContent>
                   </Select>
+                  {categories.length === 0 && !categoriesLoading ? (
+                    <p className="mt-2 text-[12px] font-semibold text-[#bb4d49]">
+                      No archive categories available. Please create a category in Master Data first.
+                    </p>
+                  ) : null}
                 </label>
 
                 <label>
@@ -628,7 +653,11 @@ export function ArchiveUploadButton({
                 >
                   Cancel
                 </Button>
-                <Button type="button" onClick={handleUpload} disabled={isUploading}>
+                <Button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={isUploading || categoriesLoading || categories.length === 0}
+                >
                   {isUploading ? "Uploading..." : "Upload to Archive"}
                 </Button>
               </div>

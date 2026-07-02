@@ -33,8 +33,8 @@ export function ArchiveOverview({
               Archives
             </h1>
             <p className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
-              Completed project files, completion documents, and manual archive uploads
-              are grouped by category with secure view and download links.
+              Completed project files and manual archive uploads are grouped by
+              admin-created categories with secure view and download links.
             </p>
           </div>
           <ArchiveUploadButton
@@ -122,7 +122,12 @@ export function ArchiveOverview({
           ) : (
             <div className="rounded-[22px] border border-dashed border-[#dfe7df] bg-white px-6 py-16 text-center">
               <p className="text-[22px] font-[700] tracking-[-0.03em] text-[#162019]">
-                No archive categories found.
+                No archive categories yet.
+              </p>
+              <p className="mx-auto mt-2 max-w-[520px] text-[14px] leading-6 text-[#687269]">
+                {canManageArchiveCategories
+                  ? "Create archive categories from Master Data to start organizing archive files."
+                  : "No archive categories are available yet. Please contact an administrator."}
               </p>
               {canManageArchiveCategories ? (
                 <Button asChild className="mt-5">

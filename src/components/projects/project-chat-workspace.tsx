@@ -3874,7 +3874,11 @@ export function ProjectChatWorkspace({
     setArchiveFileErrors(nextErrors);
 
     if (!archiveCategoryId) {
-      setArchiveCompletionError("Choose an archive category before continuing.");
+      setArchiveCompletionError(
+        archivePreparation.categories.length === 0
+          ? "Create an archive category before archiving final files."
+          : "Choose an archive category before continuing.",
+      );
       return;
     }
 
@@ -7424,7 +7428,7 @@ export function ProjectChatWorkspace({
                   </Select>
                   {archivePreparation.categories.length === 0 ? (
                     <p className="text-[12px] font-[600] text-[#bb4d49]">
-                      No active archive categories are available.
+                      Create an archive category before archiving final files.
                     </p>
                   ) : null}
                 </div>

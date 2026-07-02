@@ -1,7 +1,6 @@
 import {
   AttachmentAssetType,
   AttachmentStatus,
-  ProjectCompletionDocumentType,
   ProjectRevisionStatus,
   StageStatus,
   SubmissionReviewStatus,
@@ -235,8 +234,8 @@ function formatArchiveProjectTagsLabel(tags: string[]) {
 function getArchiveCategoryDisplay(category: ArchiveCategoryDisplay) {
   return {
     id: category?.id ?? null,
-    slug: category?.slug ?? "uncategorized",
-    label: category?.name ?? "Uncategorized",
+    slug: category?.slug ?? "",
+    label: category?.name ?? "No archive category",
   };
 }
 
@@ -812,22 +811,6 @@ function mapManualArchiveFileRecord(input: {
   } satisfies ArchivedProjectFileRecord;
 }
 
-function getCompletionDocumentArchiveTypeLabel(type: ProjectCompletionDocumentType) {
-  switch (type) {
-    case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
-      return "Approval Proof";
-    case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
-      return "Copyright Transfer";
-    case ProjectCompletionDocumentType.INVOICE:
-    default:
-      return "Final Invoice";
-  }
-}
-
-function buildCompletionDocumentAccessibleProjectWhere(user: ArchiveAccessUser) {
-  return buildAccessibleProjectWhere(user);
-}
-
 function isArchiveTimestampVisibleToUser(
   user: ArchiveAccessUser,
   project: {
@@ -859,56 +842,12 @@ function isArchiveTimestampVisibleToUser(
   return !isTimestampHiddenByPauseWindows(timestamp, collaborator.visibilityPauses);
 }
 
-function mapCompletionDocumentArchiveRecord(input: {
-  id: string;
-  type: ProjectCompletionDocumentType;
-  archiveFileName: string;
-  originalFileName: string;
-  mimeType: string;
-  fileSize: number;
-  uploadedAt: Date;
-  uploadedBy: Pick<User, "name" | "email">;
-  projectId: string;
-  projectName: string;
-  projectCategory: string;
-  projectTag: string | null;
-  projectTags?: string[];
-  archiveCategory: ArchiveCategoryDisplay;
-}) {
-  const projectTags = input.projectTags ?? splitProjectTagSnapshot(input.projectTag);
-
-  return {
-    id: input.id,
-    recordType: input.type,
-    recordTypeLabel: getCompletionDocumentArchiveTypeLabel(input.type),
-    finalArchiveFileName: input.archiveFileName,
-    originalFileName: input.originalFileName,
-    projectId: input.projectId,
-    projectName: input.projectName,
-    projectCategory: input.projectCategory,
-    projectTag: formatArchiveProjectTagsLabel(projectTags),
-    projectTags,
-    assetTags: [],
-    archiveCategoryId: getArchiveCategoryDisplay(input.archiveCategory).id,
-    archiveCategorySlug: getArchiveCategoryDisplay(input.archiveCategory).slug,
-    archiveCategoryLabel: getArchiveCategoryDisplay(input.archiveCategory).label,
-    sourceLabel: "Completion document",
-    fileTypeLabel: getArchiveFileTypeLabel(input.archiveFileName, input.mimeType),
-    mimeType: input.mimeType,
-    fileSizeLabel: formatArchiveFileSize(input.fileSize),
-    archivedAt: formatArchiveTimestamp(input.uploadedAt) ?? "—",
-    archivedBy: getUserDisplayName(input.uploadedBy),
-    previewPath: `/api/project-completion-documents/${input.id}/preview`,
-    downloadPath: `/api/project-completion-documents/${input.id}/download`,
-  } satisfies ArchivedProjectFileRecord;
-}
-
 export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
   if (!hasPermission(user, "archive.view")) {
     throw new Error("You do not have permission to view archives.");
   }
 
-  const [categories, archivedFiles, completionDocuments, manualArchiveFiles] = await withPrismaRetry(() =>
+  const [categories, archivedFiles, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
       prisma.archiveCategory.findMany({
         where: {
@@ -966,39 +905,6 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
           },
         },
       }),
-      prisma.projectCompletionDocument.findMany({
-        where: {
-          project: {
-            is: buildCompletionDocumentAccessibleProjectWhere(user),
-          },
-        },
-        select: {
-          uploadedAt: true,
-          projectId: true,
-          project: {
-            select: {
-              createdById: true,
-              collaborators: {
-                where: {
-                  userId: user.id,
-                },
-                select: {
-                  chatVisibilityPaused: true,
-                  visibilityPauses: {
-                    orderBy: {
-                      pausedAt: "asc",
-                    },
-                    select: {
-                      pausedAt: true,
-                      resumedAt: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      }),
       prisma.manualArchiveFile.findMany({
         where: {
           status: AttachmentStatus.READY,
@@ -1014,32 +920,22 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
   const visibleArchivedFiles = archivedFiles.filter((file) =>
     isArchiveTimestampVisibleToUser(user, file.project, file.archivedAt),
   );
-  const visibleCompletionDocuments = completionDocuments.filter((document) =>
-    isArchiveTimestampVisibleToUser(user, document.project, document.uploadedAt),
-  );
-  const completionDocumentCategory = categories.find(
-    (category) => category.slug === "documents",
-  );
 
   return categories.map<ArchiveCategorySummary>((category) => {
     const categoryFiles = visibleArchivedFiles.filter(
       (file) => file.archive.archiveCategoryId === category.id,
     );
-    const categoryCompletionDocuments =
-      completionDocumentCategory?.id === category.id ? visibleCompletionDocuments : [];
     const categoryManualFiles = manualArchiveFiles.filter(
       (file) => file.archiveCategoryId === category.id,
     );
     const uniqueProjectIds = new Set([
       ...categoryFiles.map((file) => file.projectId),
-      ...categoryCompletionDocuments.map((file) => file.projectId),
       ...categoryManualFiles
         .map((file) => file.projectName?.trim())
         .filter((projectName): projectName is string => Boolean(projectName)),
     ]);
     const latestArchivedAt = [
       ...categoryFiles.map((file) => file.archivedAt),
-      ...categoryCompletionDocuments.map((file) => file.uploadedAt),
       ...categoryManualFiles.map((file) => file.uploadedAt),
     ].sort((left, right) => right.getTime() - left.getTime())[0];
 
@@ -1056,7 +952,7 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
       parentName: category.parent?.name ?? null,
       childCount: category.children.length,
       fileCount:
-        categoryFiles.length + categoryCompletionDocuments.length + categoryManualFiles.length,
+        categoryFiles.length + categoryManualFiles.length,
       projectCount: uniqueProjectIds.size,
       latestArchivedAt: formatArchiveTimestamp(latestArchivedAt),
     };
@@ -1124,22 +1020,38 @@ export async function requestArchiveFileUpload(
 
   const archiveCategoryId = input.archiveCategoryId?.trim() || null;
 
-  if (archiveCategoryId) {
-    const category = await withPrismaRetry(() =>
-      prisma.archiveCategory.findFirst({
+  if (!archiveCategoryId) {
+    const activeCategoryCount = await withPrismaRetry(() =>
+      prisma.archiveCategory.count({
         where: {
-          id: archiveCategoryId,
           isActive: true,
-        },
-        select: {
-          id: true,
         },
       }),
     );
 
-    if (!category) {
-      return { error: "Choose a valid archive category." } as const;
+    if (activeCategoryCount === 0) {
+      return {
+        error: "No archive categories available. Please create a category in Master Data first.",
+      } as const;
     }
+
+    return { error: "Choose an archive category before uploading." } as const;
+  }
+
+  const category = await withPrismaRetry(() =>
+    prisma.archiveCategory.findFirst({
+      where: {
+        id: archiveCategoryId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    }),
+  );
+
+  if (!category) {
+    return { error: "Choose a valid archive category." } as const;
   }
 
   const bucket = getS3BucketName();
@@ -1261,7 +1173,7 @@ export async function listArchivedFilesByCategory(
     throw new Error("You do not have permission to view archives.");
   }
 
-  const [files, completionDocuments, manualArchiveFiles] = await withPrismaRetry(() =>
+  const [files, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
       prisma.archivedProjectFile.findMany({
         where: {
@@ -1359,68 +1271,6 @@ export async function listArchivedFilesByCategory(
           },
         },
       }),
-      category.slug === "documents"
-        ? prisma.projectCompletionDocument.findMany({
-            where: {
-              project: {
-                is: buildCompletionDocumentAccessibleProjectWhere(user),
-              },
-            },
-            orderBy: [
-              {
-                uploadedAt: "desc",
-              },
-              {
-                archiveFileName: "asc",
-              },
-            ],
-            select: {
-              id: true,
-              type: true,
-              archiveFileName: true,
-              originalFileName: true,
-              mimeType: true,
-              fileSize: true,
-              uploadedAt: true,
-              uploadedBy: {
-                select: {
-                  name: true,
-                  email: true,
-                },
-              },
-              projectId: true,
-              project: {
-                select: {
-                  name: true,
-                  category: true,
-                  tags: {
-                    include: {
-                      tag: true,
-                    },
-                  },
-                  createdById: true,
-                  collaborators: {
-                    where: {
-                      userId: user.id,
-                    },
-                    select: {
-                      chatVisibilityPaused: true,
-                      visibilityPauses: {
-                        orderBy: {
-                          pausedAt: "asc",
-                        },
-                        select: {
-                          pausedAt: true,
-                          resumedAt: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          })
-        : Promise.resolve([]),
       prisma.manualArchiveFile.findMany({
         where: {
           archiveCategoryId: category.id,
@@ -1477,9 +1327,6 @@ export async function listArchivedFilesByCategory(
   const visibleFiles = files.filter((file) =>
     isArchiveTimestampVisibleToUser(user, file.project, file.archivedAt),
   );
-  const visibleCompletionDocuments = completionDocuments.filter((document) =>
-    isArchiveTimestampVisibleToUser(user, document.project, document.uploadedAt),
-  );
 
   return [
     ...visibleFiles.map((file) => ({
@@ -1501,25 +1348,6 @@ export async function listArchivedFilesByCategory(
         fileSize: file.fileSize,
         archivedAt: file.archivedAt,
         archivedBy: file.archivedBy,
-      }),
-    })),
-    ...visibleCompletionDocuments.map((document) => ({
-      sortDate: document.uploadedAt,
-      record: mapCompletionDocumentArchiveRecord({
-        id: document.id,
-        type: document.type,
-        archiveFileName: document.archiveFileName,
-        originalFileName: document.originalFileName,
-        mimeType: document.mimeType,
-        fileSize: document.fileSize,
-        uploadedAt: document.uploadedAt,
-        uploadedBy: document.uploadedBy,
-        projectId: document.projectId,
-        projectName: document.project.name,
-        projectCategory: document.project.category,
-        projectTag: null,
-        projectTags: getArchiveProjectTagNames(document.project),
-        archiveCategory: category,
       }),
     })),
     ...manualArchiveFiles.map((file) => ({
@@ -1572,6 +1400,10 @@ export async function getProjectArchivePreparation(
   }
 
   const categories = await getActiveArchiveCategoryOptions();
+
+  if (categories.length === 0) {
+    throw new Error("Create an archive category before archiving final files.");
+  }
 
   return {
     projectId: project.id,
@@ -1731,6 +1563,18 @@ export async function completeProjectArchive(
   const archiveCategoryId = input.archiveCategoryId?.trim();
 
   if (!archiveCategoryId) {
+    const activeCategoryCount = await withPrismaRetry(() =>
+      prisma.archiveCategory.count({
+        where: {
+          isActive: true,
+        },
+      }),
+    );
+
+    if (activeCategoryCount === 0) {
+      throw new Error("Create an archive category before archiving final files.");
+    }
+
     throw new Error("Choose an archive category.");
   }
 

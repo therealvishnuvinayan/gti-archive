@@ -1286,22 +1286,6 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId"
 -- AddForeignKey
 ALTER TABLE "CalendarEvent" ADD CONSTRAINT "CalendarEvent_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-INSERT INTO "ArchiveCategory" ("id", "name", "slug", "iconKey", "sortOrder", "isActive", "isSystem", "createdAt", "updatedAt")
-VALUES
-  ('archive_category_artworks', 'Artworks', 'artworks', 'shapes', 10, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_promotions', 'Promotions', 'promotions', 'sparkles', 20, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_advertisements', 'Advertisements', 'advertisements', 'megaphone', 30, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_website_data', 'Website Data', 'website-data', 'panel-top', 40, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_revisions', 'Revisions', 'revisions', 'file-stack', 50, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_product_renders', 'Product Renders', 'product-renders', 'images', 60, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_3d_assets', '3D Assets', '3d-assets', 'box', 70, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_videos', 'Videos', 'videos', 'play', 80, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_documents', 'Documents', 'documents', 'scroll-text', 90, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_health_warnings', 'Health Warnings', 'health-warnings', 'shield-alert', 100, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_catalogues_flyers', 'Catalogues/Flyers', 'catalogues-flyers', 'newspaper', 110, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('archive_category_exhibition_materials', 'Exhibition Materials', 'exhibition-materials', 'badge-check', 120, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-ON CONFLICT ("slug") DO NOTHING;
-
 INSERT INTO "ProjectStatusGroupOption" ("id", "name", "slug", "color", "sortOrder", "isActive", "isSystem", "createdAt", "updatedAt")
 VALUES
   ('project_status_group_pending', 'Pending', 'pending', '#8b8f99', 10, true, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),

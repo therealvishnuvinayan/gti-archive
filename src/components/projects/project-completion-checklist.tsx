@@ -1367,7 +1367,7 @@ function ProjectCompletionChecklistBody({
           <div className="rounded-[20px] border border-[#dce6dd] bg-[#fbfcfa] p-4">
             <p className="text-[16px] font-semibold text-[#173120]">Completion Documents</p>
             <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-              These completion files are also available in the Documents archive category.
+              These completion files remain available from this completed project workflow.
             </p>
             <div className="mt-4">
               <CompletionDocumentList documents={workflowState.documents} />
