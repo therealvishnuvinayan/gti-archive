@@ -3523,6 +3523,33 @@ export async function completeProjectStage(
     };
   }
 
+  const latestRevision = await withPrismaRetry(() =>
+    prisma.projectRevision.findFirst({
+      where: {
+        projectId: input.projectId,
+        stageId: stage.id,
+      },
+      orderBy: {
+        revisionNumber: "desc",
+      },
+      select: {
+        status: true,
+      },
+    }),
+  );
+
+  if (!latestRevision) {
+    throw new Error("Submit work before completing this stage.");
+  }
+
+  if (latestRevision.status === ProjectRevisionStatus.PENDING_REVIEW) {
+    throw new Error("Approve the latest submission before completing this stage.");
+  }
+
+  if (latestRevision.status !== ProjectRevisionStatus.APPROVED) {
+    throw new Error("Submit an approved revision before completing this stage.");
+  }
+
   if (
     isStageInvoiceRequired(project, stage) &&
     !(await hasReadyStageInvoice(input.projectId, stage.id))

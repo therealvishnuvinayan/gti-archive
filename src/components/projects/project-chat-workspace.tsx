@@ -3242,7 +3242,9 @@ export function ProjectChatWorkspace({
   const canMarkLatestRevisionComplete =
     Boolean(latestRevisionMessage) &&
     isProjectOwner &&
+    latestRevisionStatus === "APPROVED" &&
     !isFinalStage &&
+    !isStageCompleted &&
     !isProjectCompleted;
   const showLatestRevisionActionBar =
     Boolean(latestRevisionMessage) && !isProjectCompleted;
