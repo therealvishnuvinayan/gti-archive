@@ -995,7 +995,7 @@ function mapStageStatusToDisplayLabel(
 
 function buildSyntheticStages(project: ProjectWithCreator): ProjectStageWithStarter[] {
   const isInternalExecution = isInternalExecutionProject(project);
-  const completed = isProjectStatusCompleted(project.status);
+  const completed = Boolean(project.completedAt || project.archivedAt);
 
   return Array.from({ length: Math.max(project.stageCount, 1) }, (_, index) => ({
     id: `${project.id}-stage-${index + 1}`,
@@ -1239,7 +1239,7 @@ function mapProjectToFlow(
   return {
     id: project.id,
     ownerId: project.createdById,
-    isCompleted: isProjectStatusCompleted(project.status),
+    isCompleted: Boolean(project.completedAt || project.archivedAt),
     executors: executorRecords,
     canViewBudget: allowBudgetView,
     title: project.name,

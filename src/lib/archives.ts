@@ -30,10 +30,7 @@ import {
   assertProjectAccess,
 } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import {
-  defaultProjectStatusGroupSlugs,
-  isProjectStatusCompleted,
-} from "@/lib/project-statuses";
+import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
@@ -657,12 +654,7 @@ function ensureProjectCanBeCompleted(
     throw new Error("Only the project owner can complete and archive this project.");
   }
 
-  if (
-    project.archive ||
-    project.archivedAt ||
-    project.completedAt ||
-    isProjectStatusCompleted(project.status)
-  ) {
+  if (project.archive || project.archivedAt || project.completedAt) {
     throw new Error("Project is already completed.");
   }
 
@@ -1610,12 +1602,7 @@ export async function getProjectCompletionSummary(
   const isSelectedStageFinal = Boolean(finalStage && stageIdToCheck === finalStage.id);
   const incompleteStages = getIncompleteProjectStages(project);
   const allStagesCompleted = incompleteStages.length === 0 && project.stages.length > 0;
-  const isCompleted = Boolean(
-    project.archive ||
-      project.archivedAt ||
-      project.completedAt ||
-      isProjectStatusCompleted(project.status),
-  );
+  const isCompleted = Boolean(project.archive || project.archivedAt || project.completedAt);
   const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
   const canViewArchivedFiles = hasPermission(user, "archive.view");
   const visibleArchivedFiles =
@@ -1822,12 +1809,7 @@ export async function completeProjectArchive(
         throw new Error("Only the project owner can complete and archive this project.");
       }
 
-      if (
-        latestProject.archive ||
-        latestProject.archivedAt ||
-        latestProject.completedAt ||
-        isProjectStatusCompleted(latestProject.status)
-      ) {
+      if (latestProject.archive || latestProject.archivedAt || latestProject.completedAt) {
         throw new Error("Project is already completed.");
       }
 

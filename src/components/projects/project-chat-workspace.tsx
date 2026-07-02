@@ -2241,7 +2241,6 @@ export function ProjectChatWorkspace({
   });
   const [isCompletionDataLoading, setIsCompletionDataLoading] =
     useState(deferCompletionData);
-  const [projectCompletionConfirmOpen, setProjectCompletionConfirmOpen] = useState(false);
   const [projectCompletionError, setProjectCompletionError] = useState<string | null>(null);
   const [isPreparingProjectCompletion, setIsPreparingProjectCompletion] = useState(false);
   const [archivePreparation, setArchivePreparation] =
@@ -3761,13 +3760,6 @@ export function ProjectChatWorkspace({
     setArchiveFileNames({});
     setArchiveFileErrors({});
     setArchiveCategoryId("");
-    setProjectCompletionConfirmOpen(false);
-  }
-
-  function openProjectCompletionConfirm() {
-    setProjectCompletionError(null);
-    setArchiveCompletionError(null);
-    setProjectCompletionConfirmOpen(true);
   }
 
   function updateArchiveFileName(sourceAttachmentId: string, nextValue: string) {
@@ -3839,7 +3831,6 @@ export function ProjectChatWorkspace({
         ),
       );
       setArchiveFileErrors({});
-      setProjectCompletionConfirmOpen(false);
     } catch (error) {
       const message =
         error instanceof Error
@@ -5781,13 +5772,24 @@ export function ProjectChatWorkspace({
                     {completionState.approvedFileCount} final file
                     {completionState.approvedFileCount === 1 ? "" : "s"} ready for final archive.
                   </p>
+                  {projectCompletionError ? (
+                    <p className="mt-2 text-[12px] font-semibold text-[#bb4d49]">
+                      {projectCompletionError}
+                    </p>
+                  ) : null}
                 </div>
                 <Button
                   type="button"
                   size="sm"
                   className="rounded-full text-[12px]"
-                  onClick={openProjectCompletionConfirm}
+                  disabled={isPreparingProjectCompletion || isCompletionDataLoading}
+                  onClick={() => {
+                    void handlePrepareProjectCompletion();
+                  }}
                 >
+                  {isPreparingProjectCompletion ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
                   Complete Project
                 </Button>
               </CardContent>
@@ -7311,25 +7313,6 @@ export function ProjectChatWorkspace({
           }
 
           void handleMarkStageComplete();
-        }}
-      />
-      <ConfirmationDialog
-        isOpen={projectCompletionConfirmOpen}
-        title="Complete Project?"
-        description="All stages must be completed first. This will archive the selected final files and stop further chat interaction. Stage invoices stay in stage history and Library."
-        confirmLabel="Continue"
-        pending={isPreparingProjectCompletion}
-        error={projectCompletionError ?? undefined}
-        onClose={() => {
-          if (isPreparingProjectCompletion) {
-            return;
-          }
-
-          setProjectCompletionError(null);
-          setProjectCompletionConfirmOpen(false);
-        }}
-        onConfirm={() => {
-          void handlePrepareProjectCompletion();
         }}
       />
       <ConfirmationDialog

@@ -173,6 +173,13 @@ function getInitialStageStatuses(
   );
 }
 
+function isArchiveCompletionStatusGroup(groupSlug: string | null | undefined) {
+  return (
+    groupSlug === defaultProjectStatusGroupSlugs.completed ||
+    groupSlug === defaultProjectStatusGroupSlugs.archived
+  );
+}
+
 function getStartOfDay(date: Date) {
   const normalizedDate = new Date(date);
   normalizedDate.setHours(0, 0, 0, 0);
@@ -741,6 +748,15 @@ async function resolveSubmittedProjectStatus(
     };
   }
 
+  if (isArchiveCompletionStatusGroup(status.group?.slug)) {
+    return {
+      error: "Please correct the highlighted fields.",
+      fieldErrors: {
+        statusId: "Use the Project Completed archive flow to complete this project.",
+      } satisfies ProjectFormFieldErrors,
+    };
+  }
+
   return {
     status,
   };
@@ -1202,6 +1218,13 @@ export async function updateProjectAction(
       budgetRequired: true,
       budget: true,
       statusId: true,
+      completedAt: true,
+      archivedAt: true,
+      archive: {
+        select: {
+          id: true,
+        },
+      },
       status: {
         select: {
           id: true,
@@ -1267,7 +1290,7 @@ export async function updateProjectAction(
     return { error: "You are not allowed to edit projects." };
   }
 
-  if (isProjectStatusCompleted(existingProject.status)) {
+  if (existingProject.archive || existingProject.archivedAt || existingProject.completedAt) {
     return { error: "Completed projects cannot be edited." };
   }
 
