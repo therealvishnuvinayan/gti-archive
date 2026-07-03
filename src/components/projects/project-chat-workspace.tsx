@@ -2608,7 +2608,7 @@ export function ProjectChatWorkspace({
   const isFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
   const canCompleteProject =
-    completionState.canCompleteProject && isProjectOwner && !isProjectCompleted;
+    completionState.canCompleteProject && !isProjectCompleted;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
   const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
   const isProjectExecutor = useMemo(
