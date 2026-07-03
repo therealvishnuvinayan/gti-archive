@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { UserRole } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
@@ -19,7 +19,9 @@ import {
   type PermissionRole,
 } from "@/lib/permissions/definitions";
 import {
+  getPermissionProfileCacheTag,
   getPermissionProfile,
+  PERMISSION_PROFILE_CACHE_TAG,
   resetPermissionProfileToDefaults,
   savePermissionProfile,
   syncPermissionDefinitions,
@@ -92,6 +94,14 @@ async function revalidatePermissionSensitiveCaches(userIds?: string[]) {
   revalidatePath("/notifications");
 
   await revalidateUserSessionCaches(userIds);
+}
+
+function updatePermissionProfileCache(
+  profileType: PermissionProfileType,
+  profileKey: string,
+) {
+  updateTag(PERMISSION_PROFILE_CACHE_TAG);
+  updateTag(getPermissionProfileCacheTag(profileType, profileKey));
 }
 
 async function requireSuperAdminPermission(permissionKey: PermissionKey) {
@@ -214,6 +224,7 @@ export async function savePermissionProfileAction(
       state: input.state,
     });
 
+    updatePermissionProfileCache(input.profileType, input.profileKey);
     await revalidatePermissionSensitiveCaches();
 
     return {
@@ -250,6 +261,7 @@ export async function resetPermissionProfileToDefaultsAction(
       input.profileKey,
     );
 
+    updatePermissionProfileCache(input.profileType, input.profileKey);
     await revalidatePermissionSensitiveCaches();
 
     return {

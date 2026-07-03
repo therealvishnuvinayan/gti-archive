@@ -55,7 +55,7 @@ type PermissionRow = {
 
 export const PERMISSION_PROFILE_CACHE_TAG = "permission-profiles";
 
-function getPermissionProfileCacheTag(
+export function getPermissionProfileCacheTag(
   profileType: PermissionProfileType,
   profileKey: string,
 ) {

@@ -104,6 +104,20 @@ export function getUserPermissionSet(user: PermissionUser) {
   return getBasePermissionSet(user);
 }
 
+function hasProjectPermissionGrant(
+  user: PermissionUser,
+  permissionKey: PermissionKey,
+) {
+  if (permissionKey === "collaborator.pauseVisibility") {
+    return (
+      hasPermission(user, permissionKey) ||
+      hasPermission(user, "project.manageCollaborators")
+    );
+  }
+
+  return hasPermission(user, permissionKey);
+}
+
 function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
   return (
     permissionKey === "project.update" ||
@@ -179,7 +193,7 @@ export function hasProjectPermission(
     return true;
   }
 
-  if (!hasPermission(user, permissionKey)) {
+  if (!hasProjectPermissionGrant(user, permissionKey)) {
     return false;
   }
 
