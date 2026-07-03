@@ -1327,20 +1327,22 @@ export function ProjectCompareWorkspace({
             </CardContent>
           </Card>
 
-          <ProjectCollaboratorsPanel
-            collaborators={collaborators}
-            currentUserId={currentUserId}
-            onRemove={
-              canManageCollaborators ? (collaboratorId) => removeCollaborator(collaboratorId) : undefined
-            }
-            onToggleChatVisibility={
-              canManageChatVisibility
-                ? (collaboratorId, paused) =>
-                    handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
-                : undefined
-            }
-            saving={collaboratorSaving}
-          />
+          {project.canViewParticipants ? (
+            <ProjectCollaboratorsPanel
+              collaborators={collaborators}
+              currentUserId={currentUserId}
+              onRemove={
+                canManageCollaborators ? (collaboratorId) => removeCollaborator(collaboratorId) : undefined
+              }
+              onToggleChatVisibility={
+                canManageChatVisibility
+                  ? (collaboratorId, paused) =>
+                      handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
+                  : undefined
+              }
+              saving={collaboratorSaving}
+            />
+          ) : null}
         </div>
       </div>
 

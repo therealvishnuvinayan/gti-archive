@@ -45,11 +45,13 @@ import {
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
   getAccessibleProjectsWhere,
+  hasPermission,
   hasProjectPermission,
   isProjectAdmin,
   isProjectExecutor,
   isMainProjectExecutor,
   isProjectOwner,
+  type ProjectPermissionContext,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import type { PermissionKey } from "@/lib/permissions/definitions";
@@ -70,7 +72,6 @@ export const PROJECT_BUDGET_REQUIRED_NOT_SET_LABEL = "Budget required - not set"
 export const MAX_PROJECT_TAGS = 5;
 const PROJECT_LIST_PAGE_SIZE = 20;
 
-type BudgetAccessUser = Pick<User, "id">;
 export type ProjectAccessUser = PermissionUser;
 type ProjectStageWithStarter = ProjectStage & {
   startedBy?: Pick<User, "name" | "email"> | null;
@@ -386,6 +387,7 @@ export type ProjectFlowRecord = {
   ownerId: string;
   isCompleted: boolean;
   executors: ProjectExecutorRecord[];
+  canViewParticipants: boolean;
   canViewBudget: boolean;
   title: string;
   category: string;
@@ -513,11 +515,19 @@ function formatProjectBudgetForRequirement(
 }
 
 export function canViewProjectBudget(
-  project: Pick<Project, "createdById"> | { ownerId: string },
-  currentUser: BudgetAccessUser,
+  project: ProjectPermissionContext | ({ ownerId: string } & Partial<ProjectPermissionContext>),
+  currentUser: ProjectAccessUser,
 ) {
-  const ownerId = "ownerId" in project ? project.ownerId : project.createdById;
-  return ownerId === currentUser.id;
+  const projectContext: ProjectPermissionContext = {
+    createdById: "ownerId" in project ? project.ownerId : project.createdById,
+    executors: project.executors,
+    collaborators: project.collaborators,
+  };
+
+  return (
+    hasProjectPermission(currentUser, projectContext, "project.viewBudget") ||
+    hasProjectPermission(currentUser, projectContext, "project.updateBudget")
+  );
 }
 
 function getCreatorName(creator: Pick<User, "name" | "email">) {
@@ -1145,7 +1155,7 @@ function mapStageToCard(
 
 function mapProjectToFlow(
   project: ProjectWithCreator,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
@@ -1154,6 +1164,11 @@ function mapProjectToFlow(
     currentUser,
     project,
     "collaborator.pauseVisibility",
+  );
+  const canViewParticipants = hasProjectPermission(
+    currentUser,
+    project,
+    "project.viewParticipants",
   );
   const executorRecords = canViewChatVisibilityState
     ? rawExecutorRecords
@@ -1241,6 +1256,7 @@ function mapProjectToFlow(
     ownerId: project.createdById,
     isCompleted: Boolean(project.completedAt || project.archivedAt),
     executors: executorRecords,
+    canViewParticipants,
     canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
@@ -1328,7 +1344,7 @@ function formatProjectInputDateTime(date: Date | string | number | null | undefi
 
 function mapProjectToEditor(
   project: ProjectWithCreator,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectEditorRecord {
   const stages = getProjectStages(project);
@@ -2148,6 +2164,16 @@ function parseProjectBudgetFilterValue(value: string | null | undefined) {
 export async function getProjectListFilterOptions(
   currentUser: ProjectAccessUser,
 ): Promise<ProjectListFilterOptions> {
+  if (!hasPermission(currentUser, "project.list")) {
+    return {
+      statuses: await getActiveProjectStatusOptions(),
+      categories: [],
+      tags: [],
+      owners: [],
+      executors: [],
+    };
+  }
+
   const startedAt = performance.now();
   const accessibleWhereStartedAt = performance.now();
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
@@ -2426,6 +2452,10 @@ export async function getProjectsList(
   filter: ProjectsListFilter,
   currentUser: ProjectAccessUser,
 ) {
+  if (!hasPermission(currentUser, "project.list")) {
+    return [];
+  }
+
   const startedAt = performance.now();
   const accessibleWhereStartedAt = performance.now();
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
@@ -2545,7 +2575,7 @@ export async function getProjectsList(
 
 export async function getProjectById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -2695,7 +2725,7 @@ export async function getProjectById(
 
 export async function getProjectShellById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -2804,7 +2834,7 @@ export async function getProjectShellById(
 
 export async function getProjectChatShellById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -2858,6 +2888,22 @@ export async function getProjectChatShellById(
                     email: true,
                   },
                 },
+                invoiceRequests: {
+                  include: {
+                    requestedBy: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                    requestedFrom: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
               },
             },
             collaborators: {
@@ -2871,6 +2917,32 @@ export async function getProjectChatShellById(
                     name: true,
                     email: true,
                     collaboratorType: true,
+                  },
+                },
+              },
+            },
+            attachments: {
+              where: {
+                assetType: "STAGE_INVOICE" as AttachmentAssetType,
+                status: "READY" as AttachmentStatus,
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+              select: {
+                id: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
+                assetType: true,
+                originalFileName: true,
+                mimeType: true,
+                fileSize: true,
+                createdAt: true,
+                uploadedBy: {
+                  select: {
+                    name: true,
+                    email: true,
                   },
                 },
               },
@@ -2893,7 +2965,6 @@ export async function getProjectChatShellById(
   return mapProjectToFlow(
     {
       ...project,
-      attachments: [],
       tags: [],
     },
     currentUser,
@@ -2902,7 +2973,7 @@ export async function getProjectChatShellById(
 
 export async function getProjectEditorById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>

@@ -739,11 +739,7 @@ function ensureProjectCanBeCompleted(
   stageId: string,
 ) {
   if (!hasProjectPermission(user, project, "project.completeArchive")) {
-    throw new Error("Only the project owner can complete and archive this project.");
-  }
-
-  if (project.createdById !== user.id) {
-    throw new Error("Only the project owner can complete and archive this project.");
+    throw new Error("You do not have permission to complete and archive this project.");
   }
 
   if (project.archive || project.archivedAt || project.completedAt) {
@@ -1551,7 +1547,7 @@ export async function getProjectCompletionSummary(
     finalStageName: finalStage?.name ?? null,
     isSelectedStageFinal,
     canCompleteProject:
-      project.createdById === user.id &&
+      canCompleteArchive &&
       Boolean(finalStage) &&
       isSelectedStageFinal &&
       allStagesCompleted &&
@@ -1715,6 +1711,17 @@ export async function completeProjectArchive(
           },
           completedAt: true,
           archivedAt: true,
+          executors: {
+            select: {
+              userId: true,
+              role: true,
+            },
+          },
+          collaborators: {
+            select: {
+              userId: true,
+            },
+          },
           archive: {
             select: {
               id: true,
@@ -1737,8 +1744,8 @@ export async function completeProjectArchive(
         throw new Error("Project not found.");
       }
 
-      if (latestProject.createdById !== user.id) {
-        throw new Error("Only the project owner can complete and archive this project.");
+      if (!hasProjectPermission(user, latestProject, "project.completeArchive")) {
+        throw new Error("You do not have permission to complete and archive this project.");
       }
 
       if (latestProject.archive || latestProject.archivedAt || latestProject.completedAt) {

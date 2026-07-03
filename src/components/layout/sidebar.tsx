@@ -165,15 +165,12 @@ export function Sidebar({
     const controller = new AbortController();
     const cachedCount = readCachedProjectBadgeCount();
 
-    if (typeof cachedCount === "number") {
-      const cacheTimeoutId = window.setTimeout(() => {
-        setFetchedProjectBadgeCount(cachedCount);
-      }, 0);
-
-      return () => {
-        window.clearTimeout(cacheTimeoutId);
-      };
-    }
+    const cacheTimeoutId =
+      typeof cachedCount === "number"
+        ? window.setTimeout(() => {
+            setFetchedProjectBadgeCount(cachedCount);
+          }, 0)
+        : null;
 
     const timeoutId = window.setTimeout(() => {
       fetch("/api/projects/dashboard-count", {
@@ -202,10 +199,14 @@ export function Sidebar({
     }, 500);
 
     return () => {
+      if (cacheTimeoutId !== null) {
+        window.clearTimeout(cacheTimeoutId);
+      }
+
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [projectBadgeCount, visibility.projects]);
+  }, [pathname, projectBadgeCount, visibility.projects]);
 
   return (
     <>

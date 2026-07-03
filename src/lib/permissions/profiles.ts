@@ -55,7 +55,7 @@ type PermissionRow = {
 
 export const PERMISSION_PROFILE_CACHE_TAG = "permission-profiles";
 
-function getPermissionProfileCacheTag(
+export function getPermissionProfileCacheTag(
   profileType: PermissionProfileType,
   profileKey: string,
 ) {
@@ -459,6 +459,37 @@ export async function savePermissionProfile(input: {
               },
               data: {
                 enabled: false,
+              },
+            });
+          }
+
+          if (role === "COLLABORATOR" && enabledPermissionKeys.length > 0) {
+            const collaboratorTypes = collaboratorTypeValues.map(
+              (collaboratorType) => collaboratorType as PrismaCollaboratorType,
+            );
+
+            await tx.collaboratorTypePermission.createMany({
+              data: collaboratorTypes.flatMap((collaboratorType) =>
+                enabledPermissionKeys.map((permissionKey) => ({
+                  collaboratorType,
+                  permissionKey,
+                  enabled: true,
+                })),
+              ),
+              skipDuplicates: true,
+            });
+
+            await tx.collaboratorTypePermission.updateMany({
+              where: {
+                collaboratorType: {
+                  in: collaboratorTypes,
+                },
+                permissionKey: {
+                  in: enabledPermissionKeys,
+                },
+              },
+              data: {
+                enabled: true,
               },
             });
           }

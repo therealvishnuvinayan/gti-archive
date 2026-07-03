@@ -104,6 +104,20 @@ export function getUserPermissionSet(user: PermissionUser) {
   return getBasePermissionSet(user);
 }
 
+function hasProjectPermissionGrant(
+  user: PermissionUser,
+  permissionKey: PermissionKey,
+) {
+  if (permissionKey === "collaborator.pauseVisibility") {
+    return (
+      hasPermission(user, permissionKey) ||
+      hasPermission(user, "project.manageCollaborators")
+    );
+  }
+
+  return hasPermission(user, permissionKey);
+}
+
 function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
   return (
     permissionKey === "project.update" ||
@@ -124,8 +138,7 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   return {
     dashboard: hasPermission(user, "dashboard.view"),
-    projects:
-      hasPermission(user, "project.list") || hasPermission(user, "project.view"),
+    projects: hasPermission(user, "project.list"),
     calendar: hasPermission(user, "calendar.view"),
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
     users:
@@ -180,7 +193,7 @@ export function hasProjectPermission(
     return true;
   }
 
-  if (!hasPermission(user, permissionKey)) {
+  if (!hasProjectPermissionGrant(user, permissionKey)) {
     return false;
   }
 
@@ -197,19 +210,22 @@ export function hasProjectPermission(
     case "project.viewBudget":
     case "project.updateBudget":
     case "stage.updateBudget":
-      return isProjectOwner(user, project);
-    case "project.update":
+      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
     case "stage.manageDefinitions":
     case "stage.updateTimeline":
       return isProjectAdmin(user) || isProjectOwner(user, project);
-    case "project.delete":
+    case "project.update":
+      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
     case "file.delete":
     case "library.deleteFile":
       return isProjectAdmin(user) || isProjectOwner(user, project);
+    case "project.delete":
+      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
     case "project.manageCollaborators":
+    case "collaborator.pauseVisibility":
+      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
     case "collaborator.inviteToProject":
     case "collaborator.removeFromProject":
-    case "collaborator.pauseVisibility":
     case "collaborator.changeType":
     case "collaborator.changeAccess":
       return isProjectAdmin(user) || isProjectOwner(user, project);
@@ -222,7 +238,6 @@ export function hasProjectPermission(
     case "stage.requestRevision":
     case "stage.markSubmissionComplete":
     case "stage.markStageComplete":
-    case "project.completeArchive":
     case "completion.setApprovalRequired":
     case "completion.prepareApproval":
     case "completion.uploadApprovalProof":
@@ -230,6 +245,8 @@ export function hasProjectPermission(
     case "completion.prepareCopyrightTransfer":
     case "completion.uploadCopyrightDocument":
       return isProjectOwner(user, project);
+    case "project.completeArchive":
+      return isProjectAdmin(user) || isProjectMember(user, project);
     case "completion.viewChecklist":
     case "completion.uploadInvoice":
       return isProjectOwner(user, project) || isProjectExecutor(user, project);
