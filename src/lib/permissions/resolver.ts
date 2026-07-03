@@ -216,10 +216,11 @@ export function hasProjectPermission(
       return isProjectAdmin(user) || isProjectOwner(user, project);
     case "project.update":
       return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
-    case "project.delete":
     case "file.delete":
     case "library.deleteFile":
       return isProjectAdmin(user) || isProjectOwner(user, project);
+    case "project.delete":
+      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
     case "project.manageCollaborators":
     case "collaborator.pauseVisibility":
       return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
