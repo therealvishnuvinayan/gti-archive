@@ -5666,9 +5666,9 @@ export function ProjectChatWorkspace({
   }
 
   return (
-    <section className="min-h-0 xl:h-[calc(100dvh-12rem)] xl:min-h-[620px] xl:overflow-hidden">
+    <section className="min-h-0 xl:h-[calc(100dvh-12rem)] xl:overflow-hidden">
       <div className="grid min-h-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex h-[calc(100dvh-12rem)] min-h-[520px] min-w-0 flex-col overflow-hidden xl:h-full xl:min-h-0">
+        <div className="flex h-[calc(100dvh-12rem)] min-h-[360px] min-w-0 flex-col overflow-hidden xl:h-full xl:min-h-0">
           <div
             ref={chatScrollRef}
             onScroll={handleChatScroll}
