@@ -156,8 +156,8 @@ async function loadProjectsPageData(
   );
   const user = await requireUser();
 
-  if (!hasPermission(user, "project.list") && !hasPermission(user, "project.view")) {
-    redirect("/");
+  if (!hasPermission(user, "project.list")) {
+    redirect("/no-access");
   }
 
   const [projects, projectCounts, filterOptions] = await Promise.all([

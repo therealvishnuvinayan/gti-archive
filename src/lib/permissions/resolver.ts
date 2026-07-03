@@ -124,8 +124,7 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   return {
     dashboard: hasPermission(user, "dashboard.view"),
-    projects:
-      hasPermission(user, "project.list") || hasPermission(user, "project.view"),
+    projects: hasPermission(user, "project.list"),
     calendar: hasPermission(user, "calendar.view"),
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
     users:

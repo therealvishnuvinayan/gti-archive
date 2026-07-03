@@ -9,7 +9,7 @@ export function getAuthenticatedDefaultRoute(user: PermissionUser) {
     return "/";
   }
 
-  if (hasPermission(user, "project.list") || hasPermission(user, "project.view")) {
+  if (hasPermission(user, "project.list")) {
     return "/projects";
   }
 

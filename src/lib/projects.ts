@@ -45,6 +45,7 @@ import {
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
   getAccessibleProjectsWhere,
+  hasPermission,
   hasProjectPermission,
   isProjectAdmin,
   isProjectExecutor,
@@ -2148,6 +2149,16 @@ function parseProjectBudgetFilterValue(value: string | null | undefined) {
 export async function getProjectListFilterOptions(
   currentUser: ProjectAccessUser,
 ): Promise<ProjectListFilterOptions> {
+  if (!hasPermission(currentUser, "project.list")) {
+    return {
+      statuses: await getActiveProjectStatusOptions(),
+      categories: [],
+      tags: [],
+      owners: [],
+      executors: [],
+    };
+  }
+
   const startedAt = performance.now();
   const accessibleWhereStartedAt = performance.now();
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
@@ -2426,6 +2437,10 @@ export async function getProjectsList(
   filter: ProjectsListFilter,
   currentUser: ProjectAccessUser,
 ) {
+  if (!hasPermission(currentUser, "project.list")) {
+    return [];
+  }
+
   const startedAt = performance.now();
   const accessibleWhereStartedAt = performance.now();
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
