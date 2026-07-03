@@ -2614,7 +2614,7 @@ export function CreateProjectWorkspace({
     <form
       action={formAction}
       onSubmit={handleProjectFormSubmit}
-      className="flex w-full min-w-0 flex-col gap-4 xl:flex-row xl:items-start"
+      className="flex w-full min-w-0 flex-col gap-4 2xl:flex-row 2xl:items-start"
     >
       <input type="hidden" name="startDate" value={startDate ? formatDateValue(startDate) : ""} />
       <input type="hidden" name="endDate" value={endDate ? formatDateValue(endDate) : ""} />
@@ -2674,7 +2674,7 @@ export function CreateProjectWorkspace({
 
         <CardContent className="space-y-6 pt-2">
           <MotionStaggerGroup
-            className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
+            className="grid items-start gap-6 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
             stagger={0.05}
           >
             <MotionItem y={8}>
@@ -3801,7 +3801,7 @@ export function CreateProjectWorkspace({
       </Card>
       </MotionSection>
 
-      <MotionStaggerGroup className="min-w-0 space-y-4 xl:w-[340px] xl:shrink-0" stagger={0.05}>
+      <MotionStaggerGroup className="min-w-0 space-y-4 2xl:w-[340px] 2xl:shrink-0" stagger={0.05}>
         <MotionItem y={10}>
         <Card className="border border-brand/40">
           <CardHeader className="pb-3">

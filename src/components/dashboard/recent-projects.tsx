@@ -24,7 +24,7 @@ const dotTone: Record<RecentProject["tone"], string> = {
 
 export function RecentProjects({ title, items, href }: RecentProjectsProps) {
   return (
-    <article className="flex h-full min-h-[300px] min-w-0 flex-col rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
+    <article className="flex min-h-[220px] min-w-0 flex-col rounded-[24px] bg-card p-5 shadow-[0_18px_45px_rgba(23,39,28,0.05)] sm:p-6">
       <div className="mb-4 flex min-w-0 items-start justify-between gap-3">
         <h2 className="min-w-0 truncate text-[17px] font-extrabold leading-none text-[#111712]">
           {title}
@@ -42,7 +42,7 @@ export function RecentProjects({ title, items, href }: RecentProjectsProps) {
       </div>
 
       {items.length > 0 ? (
-        <ul className="dashboard-scroll-thin min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        <ul className="dashboard-scroll-thin max-h-[360px] space-y-2 overflow-y-auto pr-1">
           {items.map((item) => (
             <li key={item.id}>
               <Link
@@ -70,7 +70,7 @@ export function RecentProjects({ title, items, href }: RecentProjectsProps) {
           ))}
         </ul>
       ) : (
-        <div className="grid min-h-0 flex-1 place-items-center rounded-[18px] border border-dashed border-[#dce6dd] bg-[#fbfcfa] px-4 py-6 text-center">
+        <div className="grid min-h-[120px] place-items-center rounded-[18px] border border-dashed border-[#dce6dd] bg-[#fbfcfa] px-4 py-6 text-center">
           <p className="text-[14px] leading-6 text-[#758077]">
             No recent projects.
           </p>

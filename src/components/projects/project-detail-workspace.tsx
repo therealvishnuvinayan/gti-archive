@@ -295,23 +295,23 @@ export function ProjectDetailWorkspace({
                       <div
                         className={`flex min-h-[286px] min-w-0 flex-col rounded-[16px] border border-[#dfe6df] border-l-[4px] ${statusMeta.accent} bg-[linear-gradient(135deg,#ffffff,#fbfdfb)] px-5 py-5 shadow-[0_14px_34px_rgba(18,35,23,0.045)]`}
                       >
-                        <div className="flex min-w-0 items-center justify-between gap-3">
-                          <div className="flex min-w-0 items-center gap-3">
+                        <div className="space-y-3">
+                          <div className="flex min-w-0 items-center justify-between gap-3">
                             <span
                               className={`grid size-10 shrink-0 place-items-center rounded-[12px] text-[15px] font-[800] ${statusMeta.number}`}
                             >
                               {formatStageNumber(stage.order)}
                             </span>
-                            <h3 className="truncate text-[16px] font-[800] leading-6 text-[#111712]">
-                              {stage.name}
-                            </h3>
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-[800] leading-4 ${statusMeta.statusPill}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dot}`} />
+                              {statusMeta.label}
+                            </span>
                           </div>
-                          <span
-                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-[800] leading-4 ${statusMeta.statusPill}`}
-                          >
-                            <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dot}`} />
-                            {statusMeta.label}
-                          </span>
+                          <h3 className="w-full whitespace-normal break-words text-[16px] font-[800] leading-6 text-[#111712]">
+                            {stage.name}
+                          </h3>
                         </div>
 
                         <div className="mt-5">
