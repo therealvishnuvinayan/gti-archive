@@ -1002,10 +1002,10 @@ type TimelineAlignment = "left" | "right";
 type TimelineWidth = "compact" | "medium" | "submission" | "wide";
 
 const timelineWidthClassNames: Record<TimelineWidth, string> = {
-  compact: "w-full max-w-[94%] sm:max-w-[66%]",
-  medium: "w-full max-w-[96%] sm:max-w-[70%]",
-  submission: "w-full max-w-[96%] sm:max-w-[72%] xl:max-w-[700px]",
-  wide: "w-full max-w-[98%] sm:max-w-[82%] xl:max-w-[78%]",
+  compact: "w-full max-w-[94%] sm:max-w-[72%]",
+  medium: "w-full max-w-[96%] sm:max-w-[82%] 2xl:max-w-[76%]",
+  submission: "w-full max-w-[96%] sm:max-w-[84%] 2xl:max-w-[760px]",
+  wide: "w-full max-w-[98%] sm:max-w-[94%] 2xl:max-w-[88%]",
 };
 
 function getTimelineEntryAlignment(
@@ -1293,7 +1293,7 @@ function StageBriefContextCard({
   return (
     <TimelineFrame
       alignment="left"
-      width="medium"
+      width="wide"
       gutterIcon={<FileText className="h-4 w-4" />}
     >
       <Card className="w-full overflow-hidden rounded-[20px] rounded-bl-[7px] border border-[#cfe3d2] bg-white shadow-[0_12px_30px_rgba(18,35,23,0.07)]">
@@ -1322,7 +1322,7 @@ function StageBriefContextCard({
         </div>
 
         <CardContent className="space-y-3 px-4 py-4 sm:px-5">
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-3 2xl:grid-cols-2">
             <section className="min-w-0 rounded-[16px] border border-[#dfe9e0] bg-[#fbfcfa] p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#607064]">
@@ -1445,9 +1445,7 @@ function AttachmentHistoryList({
           return (
             <div
               key={attachment.id}
-              className={`w-full min-w-0 max-w-full overflow-hidden rounded-[14px] border px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${attachmentCardClassName} ${
-                compact ? "sm:max-w-[360px]" : ""
-              }`}
+              className={`w-full min-w-0 max-w-full overflow-hidden rounded-[14px] border px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${attachmentCardClassName}`}
             >
               <div className="flex min-w-0 items-start gap-3">
                 <div
@@ -5670,15 +5668,15 @@ export function ProjectChatWorkspace({
   }
 
   return (
-    <section className="min-h-0 xl:h-[calc(100dvh-12rem)] xl:overflow-hidden">
-      <div className="grid min-h-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex h-[calc(100dvh-12rem)] min-h-[360px] min-w-0 flex-col overflow-hidden xl:h-full xl:min-h-0">
+    <section className="min-h-0 2xl:h-[calc(100dvh-12rem)] 2xl:overflow-hidden">
+      <div className="grid min-h-0 gap-4 2xl:h-full 2xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex h-[calc(100dvh-12rem)] min-h-[360px] min-w-0 flex-col overflow-hidden 2xl:h-full 2xl:min-h-0">
           <div
             ref={chatScrollRef}
             onScroll={handleChatScroll}
             className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f4f8f3] px-3 pb-6 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5"
           >
-            <div className="mx-auto flex w-full max-w-[980px] flex-col gap-2.5 pb-6">
+            <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-2.5 pb-6">
               <div className="sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <span
@@ -6811,7 +6809,7 @@ export function ProjectChatWorkspace({
           )}
         </div>
 
-        <aside className="no-scrollbar max-h-[calc(100dvh-12rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 xl:h-full xl:max-h-none xl:min-h-0">
+        <aside className="no-scrollbar max-h-[calc(100dvh-12rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 2xl:h-full 2xl:max-h-none 2xl:min-h-0">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">
