@@ -2241,7 +2241,6 @@ export function ProjectChatWorkspace({
   });
   const [isCompletionDataLoading, setIsCompletionDataLoading] =
     useState(deferCompletionData);
-  const [projectCompletionConfirmOpen, setProjectCompletionConfirmOpen] = useState(false);
   const [projectCompletionError, setProjectCompletionError] = useState<string | null>(null);
   const [isPreparingProjectCompletion, setIsPreparingProjectCompletion] = useState(false);
   const [archivePreparation, setArchivePreparation] =
@@ -2627,6 +2626,9 @@ export function ProjectChatWorkspace({
   const stageInvoiceRequest = activeStage?.invoiceRequest ?? null;
   const stageInvoiceMissing =
     stageInvoiceRequired && !stageInvoiceAttachment && !isStageCompleted && !isProjectCompleted;
+  const hasOfficialStageSubmission =
+    stageRevisionCount > 0 ||
+    revisionMessages.some((message) => !message.id.startsWith("optimistic-revision-"));
   const isRequestedStageInvoiceUploader =
     Boolean(stageInvoiceRequest) && stageInvoiceRequest?.requestedFromId === currentUserId;
   const canUploadStageInvoice =
@@ -2636,7 +2638,8 @@ export function ProjectChatWorkspace({
     isRequestedStageInvoiceUploader &&
     !isStageCompleted &&
     !isProjectCompleted;
-  const canRequestStageInvoice = isProjectOwner && stageInvoiceMissing;
+  const canRequestStageInvoice =
+    isProjectOwner && stageInvoiceMissing && hasOfficialStageSubmission;
   const invoiceRequestCandidates = useMemo(() => {
     const candidates = [
       ...project.executors.map((executor) => ({
@@ -3238,7 +3241,9 @@ export function ProjectChatWorkspace({
   const canMarkLatestRevisionComplete =
     Boolean(latestRevisionMessage) &&
     isProjectOwner &&
+    latestRevisionStatus === "APPROVED" &&
     !isFinalStage &&
+    !isStageCompleted &&
     !isProjectCompleted;
   const showLatestRevisionActionBar =
     Boolean(latestRevisionMessage) && !isProjectCompleted;
@@ -3755,13 +3760,6 @@ export function ProjectChatWorkspace({
     setArchiveFileNames({});
     setArchiveFileErrors({});
     setArchiveCategoryId("");
-    setProjectCompletionConfirmOpen(false);
-  }
-
-  function openProjectCompletionConfirm() {
-    setProjectCompletionError(null);
-    setArchiveCompletionError(null);
-    setProjectCompletionConfirmOpen(true);
   }
 
   function updateArchiveFileName(sourceAttachmentId: string, nextValue: string) {
@@ -3833,7 +3831,6 @@ export function ProjectChatWorkspace({
         ),
       );
       setArchiveFileErrors({});
-      setProjectCompletionConfirmOpen(false);
     } catch (error) {
       const message =
         error instanceof Error
@@ -3877,7 +3874,11 @@ export function ProjectChatWorkspace({
     setArchiveFileErrors(nextErrors);
 
     if (!archiveCategoryId) {
-      setArchiveCompletionError("Choose an archive category before continuing.");
+      setArchiveCompletionError(
+        archivePreparation.categories.length === 0
+          ? "Create an archive category before archiving final files."
+          : "Choose an archive category before continuing.",
+      );
       return;
     }
 
@@ -5674,7 +5675,7 @@ export function ProjectChatWorkspace({
             className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f4f8f3] px-3 pb-6 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5"
           >
             <div className="mx-auto flex w-full max-w-[980px] flex-col gap-2.5 pb-6">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[12px] font-semibold text-[#5f6b62]">
+              <div className="sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <span
                     className={`size-2 rounded-full ${
@@ -5686,20 +5687,33 @@ export function ProjectChatWorkspace({
                   />
                   <span>{realtimeStatusLabel}</span>
                 </div>
-                {onlineUsers.length > 0 ? (
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex -space-x-2">
+                {realtimeEnabled || onlineUsers.length > 0 ? (
+                  <div
+                    className="flex min-w-0 items-center gap-2 rounded-full border border-[#cfe0d4] bg-white/88 px-2.5 py-1 text-[#2f6f4b] shadow-[0_8px_18px_rgba(18,35,23,0.06)]"
+                    aria-label={`${onlineUsers.length} ${
+                      onlineUsers.length === 1 ? "person" : "people"
+                    } online`}
+                    title={
+                      onlineUsers.length > 0
+                        ? onlineUsers.map((user) => user.displayName).join(", ")
+                        : "No users online"
+                    }
+                  >
+                    <span className="size-2 rounded-full bg-[#2f8d5d]" aria-hidden="true" />
+                    <div className="hidden -space-x-2 sm:flex">
                       {onlineUsers.slice(0, 4).map((user) => (
                         <span
                           key={user.userId}
-                          className="grid size-7 place-items-center rounded-full border-2 border-[#f4f8f3] bg-[#e8f3eb] text-[10px] font-[800] text-[#2f6f4b]"
+                          className="grid size-6 place-items-center rounded-full border-2 border-white bg-[#e8f3eb] text-[9px] font-[800] text-[#2f6f4b]"
                           title={user.displayName}
                         >
                           {user.displayCode}
                         </span>
                       ))}
                     </div>
-                    <span>{onlineUsers.length} online</span>
+                    <span className="whitespace-nowrap">
+                      {onlineUsers.length} online
+                    </span>
                   </div>
                 ) : null}
               </div>
@@ -5762,13 +5776,24 @@ export function ProjectChatWorkspace({
                     {completionState.approvedFileCount} final file
                     {completionState.approvedFileCount === 1 ? "" : "s"} ready for final archive.
                   </p>
+                  {projectCompletionError ? (
+                    <p className="mt-2 text-[12px] font-semibold text-[#bb4d49]">
+                      {projectCompletionError}
+                    </p>
+                  ) : null}
                 </div>
                 <Button
                   type="button"
                   size="sm"
                   className="rounded-full text-[12px]"
-                  onClick={openProjectCompletionConfirm}
+                  disabled={isPreparingProjectCompletion || isCompletionDataLoading}
+                  onClick={() => {
+                    void handlePrepareProjectCompletion();
+                  }}
                 >
+                  {isPreparingProjectCompletion ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
                   Complete Project
                 </Button>
               </CardContent>
@@ -6693,8 +6718,8 @@ export function ProjectChatWorkspace({
                     variant="ghost"
                     size="sm"
                     className="h-8 rounded-full px-2.5 text-[11px] font-[700] text-[#5083ff]"
-                    aria-label="Text Translation"
-                    title="Text Translation"
+                    aria-label="Translate"
+                    title="Translate"
                     onClick={() => {
                       void handleTranslateDraft();
                     }}
@@ -6705,7 +6730,7 @@ export function ProjectChatWorkspace({
                     ) : (
                       <Languages className="h-5 w-5" />
                     )}
-                    <span>Text Translation</span>
+                    <span>Translate</span>
                   </Button>
                   <ChatLanguagePicker
                     languages={SUPPORTED_CHAT_LANGUAGES}
@@ -6946,7 +6971,9 @@ export function ProjectChatWorkspace({
                 </div>
               ) : (
                 <p className="text-[13px] leading-5 text-[#6f786f]">
-                  Stage invoice is required before completion. Waiting for invoice request.
+                  {hasOfficialStageSubmission
+                    ? "Stage invoice is required before completion. Waiting for invoice request."
+                    : "Invoice can be requested after the first submission."}
                 </p>
               )}
               {stageInvoiceError ? (
@@ -7213,6 +7240,8 @@ export function ProjectChatWorkspace({
           stageInvoiceMissing
             ? stageInvoiceRequest
               ? "Invoice is required before completing this stage. Waiting for the requested executor/vendor to upload it."
+              : !hasOfficialStageSubmission
+                ? "Invoice is required before completing this stage. Submit work first to request an invoice."
               : "Invoice is required before completing this stage. Request invoice from the executor."
             : reviewCompletionIsFinalStage
             ? "This will approve the submitted revision and complete the final stage. Project completion and final archive happen after all stages are complete."
@@ -7220,7 +7249,9 @@ export function ProjectChatWorkspace({
         }
         confirmLabel={
           stageInvoiceMissing
-            ? canRequestStageInvoice && !stageInvoiceRequest
+            ? !hasOfficialStageSubmission
+              ? "Waiting for Submission"
+              : canRequestStageInvoice && !stageInvoiceRequest
               ? "Request Invoice"
               : "Waiting for Invoice"
             : reviewCompletionIsFinalStage
@@ -7256,12 +7287,16 @@ export function ProjectChatWorkspace({
           stageInvoiceMissing
             ? stageInvoiceRequest
               ? "Invoice is required before completing this stage. Waiting for the requested executor/vendor to upload it."
+              : !hasOfficialStageSubmission
+                ? "Invoice is required before completing this stage. Submit work first to request an invoice."
               : "Invoice is required before completing this stage. Request invoice from the executor."
             : "This will mark the current stage as completed. Only the project owner can do this."
         }
         confirmLabel={
           stageInvoiceMissing
-            ? canRequestStageInvoice && !stageInvoiceRequest
+            ? !hasOfficialStageSubmission
+              ? "Waiting for Submission"
+              : canRequestStageInvoice && !stageInvoiceRequest
               ? "Request Invoice"
               : "Waiting for Invoice"
             : "Mark as Complete"
@@ -7282,25 +7317,6 @@ export function ProjectChatWorkspace({
           }
 
           void handleMarkStageComplete();
-        }}
-      />
-      <ConfirmationDialog
-        isOpen={projectCompletionConfirmOpen}
-        title="Complete Project?"
-        description="All stages must be completed first. This will archive the selected final files and stop further chat interaction. Stage invoices stay in stage history and Library."
-        confirmLabel="Continue"
-        pending={isPreparingProjectCompletion}
-        error={projectCompletionError ?? undefined}
-        onClose={() => {
-          if (isPreparingProjectCompletion) {
-            return;
-          }
-
-          setProjectCompletionError(null);
-          setProjectCompletionConfirmOpen(false);
-        }}
-        onConfirm={() => {
-          void handlePrepareProjectCompletion();
         }}
       />
       <ConfirmationDialog
@@ -7412,7 +7428,7 @@ export function ProjectChatWorkspace({
                   </Select>
                   {archivePreparation.categories.length === 0 ? (
                     <p className="text-[12px] font-[600] text-[#bb4d49]">
-                      No active archive categories are available.
+                      Create an archive category before archiving final files.
                     </p>
                   ) : null}
                 </div>
@@ -7925,7 +7941,9 @@ export function ProjectChatWorkspace({
                           ? "The stage invoice is uploaded. This submission can be completed."
                           : stageInvoiceRequest
                             ? `Waiting for invoice from ${stageInvoiceRequest.requestedFromName}.`
-                            : "This external stage requires an invoice before completion. Request the invoice from the executor/vendor who performed the work."}
+                            : hasOfficialStageSubmission
+                              ? "This external stage requires an invoice before completion. Request the invoice from the executor/vendor who performed the work."
+                              : "Invoice can be requested after the first submission."}
                       </p>
                     </div>
                     {!stageInvoiceAttachment && !stageInvoiceRequest && canRequestStageInvoice ? (

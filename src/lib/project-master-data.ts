@@ -29,8 +29,19 @@ export type ArchiveCategoryMasterDataRecord = {
   sortOrder: number;
   isActive: boolean;
   isSystem: boolean;
+  allowedUsers: Array<{
+    id: string;
+    name: string;
+    email: string;
+  }>;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ArchiveCategoryAccessUserOption = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 export type ProjectStatusMasterDataRecord = {
@@ -86,6 +97,7 @@ export type ProjectMasterDataRecord = {
   tags: ProjectMasterDataItemRecord[];
   assetTags: ProjectMasterDataItemRecord[];
   archiveCategories: ArchiveCategoryMasterDataRecord[];
+  archiveCategoryAccessUsers: ArchiveCategoryAccessUserOption[];
   summary: ProjectMasterDataSummary;
 };
 
@@ -169,6 +181,13 @@ function mapArchiveCategoryItem(item: {
   parentId: string | null;
   parent?: { name: string } | null;
   children?: Array<{ id: string }>;
+  allowedUsers?: Array<{
+    user: {
+      id: string;
+      name: string | null;
+      email: string;
+    };
+  }>;
   sortOrder: number;
   isActive: boolean;
   isSystem: boolean;
@@ -189,6 +208,12 @@ function mapArchiveCategoryItem(item: {
     sortOrder: item.sortOrder,
     isActive: item.isActive,
     isSystem: item.isSystem,
+    allowedUsers:
+      item.allowedUsers?.map((access) => ({
+        id: access.user.id,
+        name: access.user.name?.trim() || access.user.email,
+        email: access.user.email,
+      })) ?? [],
     createdAt: formatMasterDataTimestamp(item.createdAt),
     updatedAt: formatMasterDataTimestamp(item.updatedAt),
   } satisfies ArchiveCategoryMasterDataRecord;
@@ -294,6 +319,30 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
                   id: true,
                 },
               },
+              allowedUsers: {
+                orderBy: {
+                  user: {
+                    email: "asc",
+                  },
+                },
+                select: {
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+          prisma.user.findMany({
+            orderBy: [{ name: "asc" }, { email: "asc" }],
+            select: {
+              id: true,
+              name: true,
+              email: true,
             },
           }),
         ]),
@@ -309,6 +358,7 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     tags,
     assetTags,
     archiveCategories,
+    archiveCategoryAccessUsers,
   ] =
     await fetchMasterData();
 
@@ -319,6 +369,11 @@ export async function getProjectMasterData(): Promise<ProjectMasterDataRecord> {
     tags: tags.map(mapMasterDataItem),
     assetTags: assetTags.map(mapMasterDataItem),
     archiveCategories: archiveCategories.map(mapArchiveCategoryItem),
+    archiveCategoryAccessUsers: archiveCategoryAccessUsers.map((user) => ({
+      id: user.id,
+      name: user.name?.trim() || user.email,
+      email: user.email,
+    })),
     summary: {
       totalCategories: categories.length,
       activeCategories: categories.filter((item) => item.isActive).length,

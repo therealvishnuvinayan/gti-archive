@@ -85,6 +85,7 @@ type MasterDataFormState = {
   groupId: string;
   sortOrder: string;
   isActive: boolean;
+  allowedUserIds: string[];
 };
 
 type MasterDataFieldErrors = {
@@ -102,6 +103,11 @@ type ProjectMasterDataWorkspaceProps = {
   tags: ProjectMasterDataItemRecord[];
   assetTags: ProjectMasterDataItemRecord[];
   archiveCategories: ArchiveCategoryMasterDataRecord[];
+  archiveCategoryAccessUsers: Array<{
+    id: string;
+    name: string;
+    email: string;
+  }>;
   summary: ProjectMasterDataSummary;
   canManageItems: boolean;
   canDeleteItems: boolean;
@@ -143,6 +149,7 @@ const defaultFormState: MasterDataFormState = {
   groupId: "",
   sortOrder: "0",
   isActive: true,
+  allowedUserIds: [],
 };
 
 const NO_PARENT_CATEGORY = "__no_parent_category__";
@@ -586,6 +593,7 @@ function MasterDataDrawer({
   mode,
   form,
   archiveCategories,
+  archiveCategoryAccessUsers,
   projectStatusGroups,
   iconPreviewSrc,
   iconUploadError,
@@ -603,6 +611,11 @@ function MasterDataDrawer({
   mode: "add" | "edit";
   form: MasterDataFormState;
   archiveCategories: ArchiveCategoryMasterDataRecord[];
+  archiveCategoryAccessUsers: Array<{
+    id: string;
+    name: string;
+    email: string;
+  }>;
   projectStatusGroups: ProjectStatusGroupMasterDataRecord[];
   iconPreviewSrc: string;
   iconUploadError?: string;
@@ -628,6 +641,9 @@ function MasterDataDrawer({
   const isProjectStatus = tab === "projectStatuses";
   const descriptionLength = form.description.trim().length;
   const parentOptions = archiveCategories.filter((category) => category.id !== form.id);
+  const selectedAccessUsers = archiveCategoryAccessUsers.filter((user) =>
+    form.allowedUserIds.includes(user.id),
+  );
   const currentProjectStatusGroup = projectStatusGroups.find((group) => group.id === form.groupId);
   const projectStatusGroupOptions = [
     ...projectStatusGroups.filter((group) => group.isActive),
@@ -818,6 +834,106 @@ function MasterDataDrawer({
                         </SelectContent>
                       </Select>
                     </label>
+
+                    <div className="space-y-3 rounded-[22px] border border-line bg-[#fbfdfb] p-4">
+                      <div>
+                        <p className="text-[13px] font-[800] text-[#2b352d]">
+                          Access Restriction
+                        </p>
+                        <p className="mt-1 text-[12px] leading-5 text-[#6d776e]">
+                          If no users are selected, this category is visible to everyone with Archive access. If users are selected, only selected users and admins can access it.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant={form.allowedUserIds.length === 0 ? "default" : "secondary"}
+                          className="h-9 rounded-full text-[12px]"
+                          onClick={() => onChange("allowedUserIds", [])}
+                        >
+                          Available to everyone
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={form.allowedUserIds.length > 0 ? "default" : "secondary"}
+                          className="h-9 rounded-full text-[12px]"
+                          onClick={() => {
+                            if (form.allowedUserIds.length === 0 && archiveCategoryAccessUsers[0]) {
+                              onChange("allowedUserIds", [archiveCategoryAccessUsers[0].id]);
+                            }
+                          }}
+                        >
+                          Restricted to selected people
+                        </Button>
+                      </div>
+                      {form.allowedUserIds.length > 0 ? (
+                        <div className="space-y-3">
+                          {selectedAccessUsers.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {selectedAccessUsers.map((user) => (
+                                <span
+                                  key={user.id}
+                                  className="inline-flex items-center gap-2 rounded-full border border-[#dce7dd] bg-white px-3 py-1.5 text-[12px] font-[700] text-[#263529]"
+                                >
+                                  {user.name}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onChange(
+                                        "allowedUserIds",
+                                        form.allowedUserIds.filter((id) => id !== user.id),
+                                      )
+                                    }
+                                    aria-label={`Remove ${user.name}`}
+                                    className="text-[#748078] hover:text-[#bb4d49]"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="max-h-48 space-y-2 overflow-y-auto rounded-[16px] border border-[#e2e9e2] bg-white p-2">
+                            {archiveCategoryAccessUsers.map((user) => {
+                              const checked = form.allowedUserIds.includes(user.id);
+
+                              return (
+                                <label
+                                  key={user.id}
+                                  className="flex cursor-pointer items-center gap-3 rounded-[12px] px-3 py-2 hover:bg-[#f5faf6]"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() =>
+                                      onChange(
+                                        "allowedUserIds",
+                                        checked
+                                          ? form.allowedUserIds.filter((id) => id !== user.id)
+                                          : [...form.allowedUserIds, user.id],
+                                      )
+                                    }
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-[13px] font-[700] text-[#223126]">
+                                      {user.name}
+                                    </span>
+                                    <span className="block truncate text-[12px] text-[#6d776e]">
+                                      {user.email}
+                                    </span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                            {archiveCategoryAccessUsers.length === 0 ? (
+                              <p className="px-3 py-2 text-[12px] text-[#6d776e]">
+                                No users are available to select.
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
 
                     <label className="space-y-2">
                       <span className="block text-[13px] font-[700] text-[#2b352d]">
@@ -1067,6 +1183,7 @@ export function ProjectMasterDataWorkspace({
   tags,
   assetTags,
   archiveCategories,
+  archiveCategoryAccessUsers,
   summary,
   canManageItems,
   canDeleteItems,
@@ -1133,6 +1250,8 @@ export function ProjectMasterDataWorkspace({
       groupId: "groupId" in item ? item.groupId ?? "" : "",
       sortOrder: "sortOrder" in item ? String(item.sortOrder) : "0",
       isActive: item.isActive,
+      allowedUserIds:
+        "allowedUsers" in item ? item.allowedUsers.map((user) => user.id) : [],
     });
     setSelectedIconFile(null);
     setSelectedIconPreviewSrc("");
@@ -1299,6 +1418,7 @@ export function ProjectMasterDataWorkspace({
                     parentId: form.parentId || null,
                     sortOrder: Number(form.sortOrder || "0"),
                     isActive: form.isActive,
+                    allowedUserIds: form.allowedUserIds,
                   });
 
         if (result.error) {
@@ -1652,6 +1772,7 @@ export function ProjectMasterDataWorkspace({
         mode={dialogMode}
         form={form}
         archiveCategories={archiveCategories}
+        archiveCategoryAccessUsers={archiveCategoryAccessUsers}
         projectStatusGroups={projectStatusGroups}
         iconPreviewSrc={iconPreviewSrc}
         iconUploadError={iconUploadError}

@@ -1,4 +1,8 @@
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  hasPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 
 export type ArchiveCategorySlug = string;
 
@@ -16,6 +20,9 @@ export type ArchiveCategoryRecord = {
   sortOrder: number;
   isActive: boolean;
   isSystem: boolean;
+  allowedUsers: Array<{
+    userId: string;
+  }>;
 };
 
 export type ArchiveCategoryOption = {
@@ -51,6 +58,7 @@ function mapArchiveCategory(category: {
   parentId: string | null;
   parent?: { name: string } | null;
   children?: Array<{ id: string }>;
+  allowedUsers?: Array<{ userId: string }>;
   sortOrder: number;
   isActive: boolean;
   isSystem: boolean;
@@ -69,20 +77,61 @@ function mapArchiveCategory(category: {
     sortOrder: category.sortOrder,
     isActive: category.isActive,
     isSystem: category.isSystem,
+    allowedUsers: category.allowedUsers ?? [],
   } satisfies ArchiveCategoryRecord;
 }
 
-export async function getActiveArchiveCategoryOptions(): Promise<ArchiveCategoryOption[]> {
+function getAccessibleActiveCategoryWhere(
+  user?: ({ id: string } & PermissionUser) | null,
+) {
+  if (!user || hasPermission(user, "settings.manageMasterData")) {
+    return {
+      isActive: true,
+    };
+  }
+
+  if (!hasPermission(user, "archive.view")) {
+    return {
+      id: "__no_access__",
+      isActive: true,
+    };
+  }
+
+  return {
+    isActive: true,
+    OR: [
+      {
+        allowedUsers: {
+          none: {},
+        },
+      },
+      {
+        allowedUsers: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
+    ],
+  };
+}
+
+export async function getActiveArchiveCategoryOptions(
+  user?: ({ id: string } & PermissionUser) | null,
+): Promise<ArchiveCategoryOption[]> {
   const categories = await withPrismaRetry(() =>
     prisma.archiveCategory.findMany({
-      where: {
-        isActive: true,
-      },
+      where: getAccessibleActiveCategoryWhere(user),
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: {
         parent: {
           select: {
             name: true,
+          },
+        },
+        allowedUsers: {
+          select: {
+            userId: true,
           },
         },
       },
@@ -128,6 +177,11 @@ export async function getArchiveCategoryBySlug(slug: string) {
         children: {
           select: {
             id: true,
+          },
+        },
+        allowedUsers: {
+          select: {
+            userId: true,
           },
         },
       },
