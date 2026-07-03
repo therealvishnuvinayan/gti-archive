@@ -437,9 +437,13 @@ export function ProjectDetailWorkspace({
             </CardContent>
           </Card>
 
-          <ProjectExecutorsPanel executors={project.executors} />
+          {project.canViewParticipants ? (
+            <>
+              <ProjectExecutorsPanel executors={project.executors} />
 
-          <ProjectCollaboratorsPanel collaborators={project.collaborators} />
+              <ProjectCollaboratorsPanel collaborators={project.collaborators} />
+            </>
+          ) : null}
 
           <Card className="rounded-[24px] border border-[#e0e7df] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.055)]">
             <CardHeader className="px-5 pb-3 pt-5">

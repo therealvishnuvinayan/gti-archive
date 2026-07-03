@@ -7064,41 +7064,45 @@ export function ProjectChatWorkspace({
             </CardContent>
           </Card>
 
-          <ProjectExecutorsPanel
-            executors={executors}
-            currentUserId={currentUserId}
-            onToggleChatVisibility={
-              canManageChatVisibility && !isProjectCompleted
-                ? (executorId, paused) =>
-                    handleCollaboratorChatVisibilityToggle(executorId, paused)
-                : undefined
-            }
-            saving={collaboratorSaving}
-          />
+          {project.canViewParticipants ? (
+            <>
+              <ProjectExecutorsPanel
+                executors={executors}
+                currentUserId={currentUserId}
+                onToggleChatVisibility={
+                  canManageChatVisibility && !isProjectCompleted
+                    ? (executorId, paused) =>
+                        handleCollaboratorChatVisibilityToggle(executorId, paused)
+                    : undefined
+                }
+                saving={collaboratorSaving}
+              />
 
-          <ProjectCollaboratorsPanel
-            collaborators={collaborators}
-            currentUserId={currentUserId}
-            onRemove={
-              canManageCollaborators && !isProjectCompleted
-                ? (collaboratorId) => removeCollaborator(collaboratorId)
-                : undefined
-            }
-            onAdd={
-              canManageCollaborators && !isProjectCompleted
-                ? () => {
-                    void openCollaboratorPicker();
-                  }
-                : undefined
-            }
-            onToggleChatVisibility={
-              canManageChatVisibility && !isProjectCompleted
-                ? (collaboratorId, paused) =>
-                    handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
-                : undefined
-            }
-            saving={collaboratorSaving}
-          />
+              <ProjectCollaboratorsPanel
+                collaborators={collaborators}
+                currentUserId={currentUserId}
+                onRemove={
+                  canManageCollaborators && !isProjectCompleted
+                    ? (collaboratorId) => removeCollaborator(collaboratorId)
+                    : undefined
+                }
+                onAdd={
+                  canManageCollaborators && !isProjectCompleted
+                    ? () => {
+                        void openCollaboratorPicker();
+                      }
+                    : undefined
+                }
+                onToggleChatVisibility={
+                  canManageChatVisibility && !isProjectCompleted
+                    ? (collaboratorId, paused) =>
+                        handleCollaboratorChatVisibilityToggle(collaboratorId, paused)
+                    : undefined
+                }
+                saving={collaboratorSaving}
+              />
+            </>
+          ) : null}
         </aside>
       </div>
       {expandedMessageEditorOpen ? (

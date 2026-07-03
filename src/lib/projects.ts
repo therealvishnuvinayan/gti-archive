@@ -387,6 +387,7 @@ export type ProjectFlowRecord = {
   ownerId: string;
   isCompleted: boolean;
   executors: ProjectExecutorRecord[];
+  canViewParticipants: boolean;
   canViewBudget: boolean;
   title: string;
   category: string;
@@ -1156,6 +1157,11 @@ function mapProjectToFlow(
     project,
     "collaborator.pauseVisibility",
   );
+  const canViewParticipants = hasProjectPermission(
+    currentUser,
+    project,
+    "project.viewParticipants",
+  );
   const executorRecords = canViewChatVisibilityState
     ? rawExecutorRecords
     : rawExecutorRecords.map(maskExecutorVisibilityState);
@@ -1242,6 +1248,7 @@ function mapProjectToFlow(
     ownerId: project.createdById,
     isCompleted: Boolean(project.completedAt || project.archivedAt),
     executors: executorRecords,
+    canViewParticipants,
     canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
