@@ -1171,9 +1171,11 @@ function getSystemActivityMeta(message: DisplayChatEntry) {
 function SystemActivityCard({
   message,
   alignment = "left",
+  action,
 }: {
   message: DisplayChatEntry;
   alignment?: TimelineAlignment;
+  action?: ReactNode;
 }) {
   const meta = getSystemActivityMeta(message);
   const Icon = meta.Icon;
@@ -1215,6 +1217,7 @@ function SystemActivityCard({
                 </span>
               ) : null}
             </div>
+            {action ? <div className="mt-3">{action}</div> : null}
           </div>
         </div>
       </div>
@@ -5405,6 +5408,7 @@ export function ProjectChatWorkspace({
       return;
     }
 
+    setCommentUploadDialogOpen(false);
     stageInvoiceInputRef.current?.click();
   }
 
@@ -5971,6 +5975,24 @@ export function ProjectChatWorkspace({
                   currentUserId,
                   currentUserDisplayName,
                 )}
+                action={
+                  message.title === "Invoice requested" && canUploadStageInvoice ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={openStageInvoiceUpload}
+                      disabled={isUploadingStageInvoice}
+                      className="rounded-full text-[12px]"
+                    >
+                      {isUploadingStageInvoice ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5" />
+                      )}
+                      Upload Invoice
+                    </Button>
+                  ) : null
+                }
               />
             ) : message.kind === "revision" ? (
               (() => {
@@ -6948,11 +6970,26 @@ export function ProjectChatWorkspace({
                       {stageInvoiceRequest.note}
                     </p>
                   ) : null}
-                  {!canUploadStageInvoice ? (
+                  {canUploadStageInvoice ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={openStageInvoiceUpload}
+                      disabled={isUploadingStageInvoice}
+                      className="text-[13px]"
+                    >
+                      {isUploadingStageInvoice ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      Upload Invoice
+                    </Button>
+                  ) : (
                     <p className="text-[12px] leading-5 text-[#7b837d]">
                       Waiting for invoice upload.
                     </p>
-                  ) : null}
+                  )}
                 </div>
               ) : canRequestStageInvoice ? (
                 <div className="space-y-3">
@@ -7567,6 +7604,32 @@ export function ProjectChatWorkspace({
               </Button>
             </CardHeader>
             <CardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              {canUploadStageInvoice ? (
+                <button
+                  type="button"
+                  onClick={openStageInvoiceUpload}
+                  disabled={isUploadingStageInvoice}
+                  className="flex w-full cursor-pointer items-start justify-between gap-4 rounded-[22px] border border-[#b9d9c2] bg-[#f4fbf5] px-5 py-4 text-left shadow-[0_10px_24px_rgba(18,35,23,0.06)] transition hover:border-brand hover:bg-[#eef8ef] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[16px] font-semibold text-[#173120]">
+                      Upload Requested Invoice
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-[#52705c]">
+                      Submit the invoice requested by{" "}
+                      {stageInvoiceRequest?.requestedByName ?? "the project owner"} for this stage.
+                    </p>
+                  </div>
+                  <span className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-full bg-brand text-white">
+                    {isUploadingStageInvoice ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                  </span>
+                </button>
+              ) : null}
+
               <div className="w-full rounded-[22px] border border-brand bg-[#f4fbf5] px-5 py-4 text-left shadow-[0_10px_24px_rgba(18,35,23,0.06)]">
                 <div className="flex items-start justify-between gap-4">
                   <div>
