@@ -71,7 +71,6 @@ export const PROJECT_BUDGET_REQUIRED_NOT_SET_LABEL = "Budget required - not set"
 export const MAX_PROJECT_TAGS = 5;
 const PROJECT_LIST_PAGE_SIZE = 20;
 
-type BudgetAccessUser = Pick<User, "id">;
 export type ProjectAccessUser = PermissionUser;
 type ProjectStageWithStarter = ProjectStage & {
   startedBy?: Pick<User, "name" | "email"> | null;
@@ -516,10 +515,16 @@ function formatProjectBudgetForRequirement(
 
 export function canViewProjectBudget(
   project: Pick<Project, "createdById"> | { ownerId: string },
-  currentUser: BudgetAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
-  const ownerId = "ownerId" in project ? project.ownerId : project.createdById;
-  return ownerId === currentUser.id;
+  const projectContext = {
+    createdById: "ownerId" in project ? project.ownerId : project.createdById,
+  };
+
+  return (
+    hasProjectPermission(currentUser, projectContext, "project.viewBudget") ||
+    hasProjectPermission(currentUser, projectContext, "project.updateBudget")
+  );
 }
 
 function getCreatorName(creator: Pick<User, "name" | "email">) {
@@ -1147,7 +1152,7 @@ function mapStageToCard(
 
 function mapProjectToFlow(
   project: ProjectWithCreator,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
@@ -1336,7 +1341,7 @@ function formatProjectInputDateTime(date: Date | string | number | null | undefi
 
 function mapProjectToEditor(
   project: ProjectWithCreator,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
 ): ProjectEditorRecord {
   const stages = getProjectStages(project);
@@ -2567,7 +2572,7 @@ export async function getProjectsList(
 
 export async function getProjectById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -2717,7 +2722,7 @@ export async function getProjectById(
 
 export async function getProjectShellById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -2826,7 +2831,7 @@ export async function getProjectShellById(
 
 export async function getProjectChatShellById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
@@ -2965,7 +2970,7 @@ export async function getProjectChatShellById(
 
 export async function getProjectEditorById(
   id: string,
-  currentUser: BudgetAccessUser & ProjectAccessUser,
+  currentUser: ProjectAccessUser,
 ) {
   const project = await unstable_cache(
     async () =>
