@@ -463,6 +463,37 @@ export async function savePermissionProfile(input: {
             });
           }
 
+          if (role === "COLLABORATOR" && enabledPermissionKeys.length > 0) {
+            const collaboratorTypes = collaboratorTypeValues.map(
+              (collaboratorType) => collaboratorType as PrismaCollaboratorType,
+            );
+
+            await tx.collaboratorTypePermission.createMany({
+              data: collaboratorTypes.flatMap((collaboratorType) =>
+                enabledPermissionKeys.map((permissionKey) => ({
+                  collaboratorType,
+                  permissionKey,
+                  enabled: true,
+                })),
+              ),
+              skipDuplicates: true,
+            });
+
+            await tx.collaboratorTypePermission.updateMany({
+              where: {
+                collaboratorType: {
+                  in: collaboratorTypes,
+                },
+                permissionKey: {
+                  in: enabledPermissionKeys,
+                },
+              },
+              data: {
+                enabled: true,
+              },
+            });
+          }
+
           return;
         }
         case "collaboratorType": {
