@@ -51,6 +51,7 @@ import {
   isProjectExecutor,
   isMainProjectExecutor,
   isProjectOwner,
+  type ProjectPermissionContext,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import type { PermissionKey } from "@/lib/permissions/definitions";
@@ -514,11 +515,13 @@ function formatProjectBudgetForRequirement(
 }
 
 export function canViewProjectBudget(
-  project: Pick<Project, "createdById"> | { ownerId: string },
+  project: ProjectPermissionContext | ({ ownerId: string } & Partial<ProjectPermissionContext>),
   currentUser: ProjectAccessUser,
 ) {
-  const projectContext = {
+  const projectContext: ProjectPermissionContext = {
     createdById: "ownerId" in project ? project.ownerId : project.createdById,
+    executors: project.executors,
+    collaborators: project.collaborators,
   };
 
   return (

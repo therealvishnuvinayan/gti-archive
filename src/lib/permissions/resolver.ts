@@ -210,7 +210,7 @@ export function hasProjectPermission(
     case "project.viewBudget":
     case "project.updateBudget":
     case "stage.updateBudget":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
     case "stage.manageDefinitions":
     case "stage.updateTimeline":
       return isProjectAdmin(user) || isProjectOwner(user, project);
