@@ -211,10 +211,11 @@ export function hasProjectPermission(
     case "project.updateBudget":
     case "stage.updateBudget":
       return isProjectAdmin(user) || isProjectOwner(user, project);
-    case "project.update":
     case "stage.manageDefinitions":
     case "stage.updateTimeline":
       return isProjectAdmin(user) || isProjectOwner(user, project);
+    case "project.update":
+      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
     case "project.delete":
     case "file.delete":
     case "library.deleteFile":
