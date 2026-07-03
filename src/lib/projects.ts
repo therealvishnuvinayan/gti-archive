@@ -2858,6 +2858,22 @@ export async function getProjectChatShellById(
                     email: true,
                   },
                 },
+                invoiceRequests: {
+                  include: {
+                    requestedBy: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                    requestedFrom: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
               },
             },
             collaborators: {
@@ -2871,6 +2887,32 @@ export async function getProjectChatShellById(
                     name: true,
                     email: true,
                     collaboratorType: true,
+                  },
+                },
+              },
+            },
+            attachments: {
+              where: {
+                assetType: "STAGE_INVOICE" as AttachmentAssetType,
+                status: "READY" as AttachmentStatus,
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+              select: {
+                id: true,
+                stageId: true,
+                revisionId: true,
+                commentId: true,
+                assetType: true,
+                originalFileName: true,
+                mimeType: true,
+                fileSize: true,
+                createdAt: true,
+                uploadedBy: {
+                  select: {
+                    name: true,
+                    email: true,
                   },
                 },
               },
@@ -2893,7 +2935,6 @@ export async function getProjectChatShellById(
   return mapProjectToFlow(
     {
       ...project,
-      attachments: [],
       tags: [],
     },
     currentUser,
