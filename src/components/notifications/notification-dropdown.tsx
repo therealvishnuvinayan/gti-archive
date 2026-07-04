@@ -83,7 +83,7 @@ export function NotificationDropdown() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+14px)] z-50 w-[min(92vw,452px)] rounded-[30px] border border-[#e4ebe5] bg-white shadow-[0_30px_90px_rgba(23,39,28,0.16)]">
+        <div className="fixed left-4 right-4 top-[8.75rem] z-50 max-h-[min(72dvh,640px)] overflow-hidden rounded-[24px] border border-[#e4ebe5] bg-white shadow-[0_30px_90px_rgba(23,39,28,0.16)] md:absolute md:-right-14 md:left-auto md:top-[calc(100%+14px)] md:w-[min(calc(100vw-2rem),380px)] xl:right-0 xl:w-[420px]">
           <div className="flex items-center justify-between px-7 py-5">
             <div className="flex items-center gap-3">
               <h2 className="text-[18px] font-[700] text-[#173120]">Notifications</h2>
@@ -102,7 +102,7 @@ export function NotificationDropdown() {
             </button>
           </div>
 
-          <div className="border-t border-[#eef2ee]">
+          <div className="max-h-[min(48dvh,430px)] overflow-y-auto border-t border-[#eef2ee]">
             {isLoading ? (
               <div className="px-6 py-8 text-center text-[14px] text-[#68736a]">
                 Loading notifications...
