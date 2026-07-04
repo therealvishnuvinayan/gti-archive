@@ -266,6 +266,7 @@ type UploadAssetType =
   | "STAGE_INVOICE";
 type CommentUploadIntent = "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
 const MAX_RECORDING_DURATION_MS = 60_000;
+const AUTO_TRANSLATE_DEBOUNCE_MS = 650;
 const submissionDropzoneAccept = {
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],
@@ -2189,6 +2190,7 @@ export function ProjectChatWorkspace({
     DEFAULT_CHAT_LANGUAGE.code,
   );
   const [isTranslating, setIsTranslating] = useState(false);
+  const [autoTranslateDraft, setAutoTranslateDraft] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [aiStatus, setAiStatus] = useState<string | null>(null);
@@ -2275,6 +2277,18 @@ export function ProjectChatWorkspace({
   const [realtimeWatermark, setRealtimeWatermark] = useState<string | null>(null);
   const confirmedClientTempIdsRef = useRef<Set<string>>(new Set());
   const failedClientTempIdsRef = useRef<Set<string>>(new Set());
+  const draftRef = useRef(draft);
+  const autoTranslateTimeoutRef = useRef<number | null>(null);
+  const translationRequestIdRef = useRef(0);
+  const lastAppliedTranslationRef = useRef<{
+    sourceText: string;
+    translatedText: string;
+    targetLanguageCode: string;
+  } | null>(null);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -3988,14 +4002,21 @@ export function ProjectChatWorkspace({
     audioChunksRef.current = [];
   }
 
-  async function handleTranslateDraft() {
-    if (!draft.trim()) {
+  const translateDraftText = useCallback(async (
+    sourceText: string,
+    options: { mode: "manual" | "auto" },
+  ) => {
+    const normalizedSourceText = sourceText.trim();
+
+    if (!normalizedSourceText) {
       setComposerError("Enter a message to translate.");
       return;
     }
 
+    const requestId = translationRequestIdRef.current + 1;
+    translationRequestIdRef.current = requestId;
     setComposerError(null);
-    setAiStatus("Translating…");
+    setAiStatus(options.mode === "auto" ? "Updating translation…" : "Translating…");
     setIsTranslating(true);
 
     try {
@@ -4005,7 +4026,7 @@ export function ProjectChatWorkspace({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text: draft,
+          text: sourceText,
           targetLanguageCode: selectedOutputLanguage.code,
           targetLanguageName: selectedOutputLanguage.name,
           projectId: project.id,
@@ -4019,6 +4040,19 @@ export function ProjectChatWorkspace({
         throw new Error(payload.error || "Unable to translate the message right now.");
       }
 
+      if (
+        requestId !== translationRequestIdRef.current ||
+        draftRef.current !== sourceText
+      ) {
+        return;
+      }
+
+      lastAppliedTranslationRef.current = {
+        sourceText,
+        translatedText: payload.translatedText,
+        targetLanguageCode: selectedOutputLanguage.code,
+      };
+      setAutoTranslateDraft(true);
       setDraft(payload.translatedText);
     } catch (error) {
       setComposerError(
@@ -4027,10 +4061,68 @@ export function ProjectChatWorkspace({
           : "Unable to translate the message right now.",
       );
     } finally {
-      setIsTranslating(false);
-      setAiStatus(null);
+      if (requestId === translationRequestIdRef.current) {
+        setIsTranslating(false);
+        setAiStatus(null);
+      }
     }
+  }, [
+    activeStage?.id,
+    project.currentStageId,
+    project.id,
+    selectedOutputLanguage.code,
+    selectedOutputLanguage.name,
+  ]);
+
+  async function handleTranslateDraft() {
+    await translateDraftText(draft, { mode: "manual" });
   }
+
+  useEffect(() => {
+    if (!autoTranslateDraft || isListening || isTranscribing) {
+      return;
+    }
+
+    if (autoTranslateTimeoutRef.current) {
+      window.clearTimeout(autoTranslateTimeoutRef.current);
+      autoTranslateTimeoutRef.current = null;
+    }
+
+    const text = draft.trim();
+    const lastTranslation = lastAppliedTranslationRef.current;
+
+    if (!text) {
+      lastAppliedTranslationRef.current = null;
+      setAutoTranslateDraft(false);
+      return;
+    }
+
+    if (
+      lastTranslation &&
+      lastTranslation.targetLanguageCode === selectedOutputLanguageCode &&
+      lastTranslation.translatedText === draft
+    ) {
+      return;
+    }
+
+    autoTranslateTimeoutRef.current = window.setTimeout(() => {
+      void translateDraftText(draft, { mode: "auto" });
+    }, AUTO_TRANSLATE_DEBOUNCE_MS);
+
+    return () => {
+      if (autoTranslateTimeoutRef.current) {
+        window.clearTimeout(autoTranslateTimeoutRef.current);
+        autoTranslateTimeoutRef.current = null;
+      }
+    };
+  }, [
+    autoTranslateDraft,
+    draft,
+    isListening,
+    isTranscribing,
+    selectedOutputLanguageCode,
+    translateDraftText,
+  ]);
 
   function getRecordingMimeType() {
     if (typeof MediaRecorder === "undefined") {

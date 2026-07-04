@@ -16,9 +16,9 @@ import {
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import {
-  ProjectCollaboratorsPanel,
   ProjectExecutorsPanel,
 } from "@/components/projects/project-collaborators-panel";
+import { ProjectDetailCollaboratorsPanel } from "@/components/projects/project-detail-collaborators-panel";
 import {
   CompletedProjectArchiveSummaryCard,
   ProjectCompletionChecklist,
@@ -441,7 +441,13 @@ export function ProjectDetailWorkspace({
             <>
               <ProjectExecutorsPanel executors={project.executors} />
 
-              <ProjectCollaboratorsPanel collaborators={project.collaborators} />
+              <ProjectDetailCollaboratorsPanel
+                projectId={project.id}
+                collaborators={project.collaborators}
+                canRemoveCollaborators={
+                  project.canRemoveCollaborators && !project.isCompleted
+                }
+              />
             </>
           ) : null}
 

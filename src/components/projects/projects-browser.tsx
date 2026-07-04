@@ -599,7 +599,7 @@ export function ProjectsBrowser({
                   className="h-[42px] self-start rounded-full px-4 text-[14px] font-[700] text-[#5b675e]"
                 >
                   <X className="h-4 w-4" />
-                  Clear filters
+                  Clear all filters
                 </Button>
               ) : null}
             </div>
@@ -799,31 +799,6 @@ export function ProjectsBrowser({
                 </label>
               </div>
 
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-                {hasActiveAdvancedFilters ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() =>
-                      navigate({
-                        ownerId: "",
-                        executorId: "",
-                        createdFrom: "",
-                        createdTo: "",
-                        budgetRequired: "",
-                        budgetMin: "",
-                        budgetMax: "",
-                        budgetCurrency: "",
-                      })
-                    }
-                    disabled={isPending}
-                    className="rounded-full px-4 text-[14px] font-[700] text-[#5b675e]"
-                  >
-                    <X className="h-4 w-4" />
-                    Clear advanced
-                  </Button>
-                ) : null}
-              </div>
             </div>
           ) : null}
         </header>

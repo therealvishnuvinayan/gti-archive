@@ -388,6 +388,7 @@ export type ProjectFlowRecord = {
   isCompleted: boolean;
   executors: ProjectExecutorRecord[];
   canViewParticipants: boolean;
+  canRemoveCollaborators: boolean;
   canViewBudget: boolean;
   title: string;
   category: string;
@@ -1170,6 +1171,11 @@ function mapProjectToFlow(
     project,
     "project.viewParticipants",
   );
+  const canRemoveCollaborators = hasProjectPermission(
+    currentUser,
+    project,
+    "collaborator.removeFromProject",
+  );
   const executorRecords = canViewChatVisibilityState
     ? rawExecutorRecords
     : rawExecutorRecords.map(maskExecutorVisibilityState);
@@ -1257,6 +1263,7 @@ function mapProjectToFlow(
     isCompleted: Boolean(project.completedAt || project.archivedAt),
     executors: executorRecords,
     canViewParticipants,
+    canRemoveCollaborators,
     canViewBudget: allowBudgetView,
     title: project.name,
     category: project.category,
