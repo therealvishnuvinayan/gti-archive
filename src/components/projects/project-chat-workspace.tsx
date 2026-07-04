@@ -5678,9 +5678,9 @@ export function ProjectChatWorkspace({
   }
 
   return (
-    <section className="min-h-0 2xl:h-[calc(100dvh-12rem)] 2xl:overflow-hidden">
+    <section className="min-h-0 2xl:h-[calc(100dvh-17rem)] 2xl:overflow-hidden">
       <div className="grid min-h-0 gap-4 2xl:h-full 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex h-[calc(100dvh-12rem)] min-h-[360px] min-w-0 flex-col overflow-hidden 2xl:h-full 2xl:min-h-0">
+        <div className="flex h-[calc(100dvh-17rem)] min-h-[360px] min-w-0 flex-col overflow-hidden 2xl:h-full 2xl:min-h-0">
           <div
             ref={chatScrollRef}
             onScroll={handleChatScroll}
@@ -6819,7 +6819,7 @@ export function ProjectChatWorkspace({
           )}
         </div>
 
-        <aside className="no-scrollbar max-h-[calc(100dvh-12rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 2xl:h-full 2xl:max-h-none 2xl:min-h-0">
+        <aside className="no-scrollbar max-h-[calc(100dvh-17rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 2xl:h-full 2xl:max-h-none 2xl:min-h-0">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">
