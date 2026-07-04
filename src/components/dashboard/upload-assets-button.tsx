@@ -204,7 +204,6 @@ function ArchiveProjectDateField({
 
 export function ArchiveUploadButton({
   canUploadAssets,
-  disabledReason,
   defaultCategoryId,
   buttonLabel = "Upload to Archive",
 }: ArchiveUploadButtonProps) {
@@ -282,6 +281,10 @@ export function ArchiveUploadButton({
       cancelled = true;
     };
   }, [defaultCategoryId, isOpen]);
+
+  if (!canUploadAssets) {
+    return null;
+  }
 
   function openModal() {
     if (!canUploadAssets) {
@@ -446,12 +449,11 @@ export function ArchiveUploadButton({
 
   return (
     <>
-      <div title={!canUploadAssets ? disabledReason : buttonLabel}>
+      <div title={buttonLabel}>
         <Button
           type="button"
           size="lg"
           onClick={openModal}
-          disabled={!canUploadAssets}
           variant="secondary"
           className="min-h-[54px] rounded-full border border-brand bg-white px-8 text-[17px] font-medium text-brand transition-colors hover:bg-brand-soft"
         >
