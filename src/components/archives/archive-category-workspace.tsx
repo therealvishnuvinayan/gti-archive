@@ -315,8 +315,9 @@ export function ArchiveCategoryWorkspace({
           <MotionStaggerGroup className="mt-4 space-y-3" stagger={0.035}>
             {visibleItems.map((item) => (
                 <MotionItem key={item.id} layout className="rounded-[20px]">
-                  <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)] xl:grid-cols-[minmax(0,2.2fr)_minmax(150px,1.2fr)_minmax(120px,1fr)_minmax(120px,1.1fr)_minmax(220px,auto)]">
-                    <div className="min-w-0">
+                  <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]">
+                    <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-start gap-3">
                         <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[#ecefed] bg-white shadow-[0_8px_20px_rgba(16,26,20,0.08)]">
                           <ArchiveFileTypeIcon
@@ -331,8 +332,8 @@ export function ArchiveCategoryWorkspace({
                           <p className="mt-1 text-[12px] text-[#667168]">
                             Original: {item.originalFileName}
                           </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#6c756e]">
-                            <span className="rounded-full bg-[#edf2ff] px-2 py-0.5 font-[700] uppercase tracking-[0.08em] text-[#4760c7]">
+                          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-[#6c756e]">
+                            <span className="max-w-full rounded-full bg-[#edf2ff] px-2 py-0.5 font-[700] uppercase tracking-[0.08em] text-[#4760c7]">
                               {item.recordTypeLabel}
                             </span>
                             <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 font-[700] uppercase tracking-[0.08em] text-[#566259]">
@@ -374,48 +375,7 @@ export function ArchiveCategoryWorkspace({
                       </div>
                     </div>
 
-                    <div className="space-y-1 text-[13px] xl:self-center">
-                      <p className="font-[700] text-[#111712]">{item.projectName}</p>
-                      <p className="text-[#687269]">{item.projectCategory}</p>
-                      {item.projectTags.length > 0 ? (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[11px] font-[700] text-[#687269]">
-                            Project tags:
-                          </span>
-                          {item.projectTags.slice(0, 3).map((tag) => (
-                            <span
-                              key={tag}
-                              className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
-                              title={tag}
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                          {item.projectTags.length > 3 ? (
-                            <span
-                              className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
-                              title={item.projectTag}
-                            >
-                              +{item.projectTags.length - 3}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <p className="text-[#687269]">Project tags: —</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-1 text-[13px] xl:self-center">
-                      <p className="font-[700] text-[#111712]">{item.archivedAt}</p>
-                      <p className="text-[#687269]">Archived date</p>
-                    </div>
-
-                    <div className="space-y-1 text-[13px] xl:self-center">
-                      <p className="font-[700] text-[#111712]">{item.archivedBy}</p>
-                      <p className="text-[#687269]">Archived by</p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 xl:justify-end xl:self-start">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
                       <AssetPreviewButton
                         fileName={item.finalArchiveFileName}
                         mimeType={item.mimeType}
@@ -435,6 +395,58 @@ export function ArchiveCategoryWorkspace({
                           Download
                         </a>
                       </Button>
+                    </div>
+                    </div>
+
+                    <div className="grid gap-4 border-t border-[#edf2ec] pt-4 text-[13px] sm:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.6fr)_minmax(150px,1fr)_minmax(120px,0.8fr)]">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-[#687269]">Project</p>
+                        <p className="truncate font-[700] text-[#111712]" title={item.projectName}>
+                          {item.projectName}
+                        </p>
+                        <p className="truncate text-[#687269]" title={item.projectCategory}>
+                          {item.projectCategory}
+                        </p>
+                      </div>
+
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-[#687269]">Project tags</p>
+                        {item.projectTags.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {item.projectTags.slice(0, 3).map((tag) => (
+                              <span
+                                key={tag}
+                                className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
+                                title={tag}
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {item.projectTags.length > 3 ? (
+                              <span
+                                className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
+                                title={item.projectTag}
+                              >
+                                +{item.projectTags.length - 3}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="font-[700] text-[#111712]">—</p>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-[#687269]">Archived date</p>
+                        <p className="font-[700] text-[#111712]">{item.archivedAt}</p>
+                      </div>
+
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-[#687269]">Archived by</p>
+                        <p className="truncate font-[700] text-[#111712]" title={item.archivedBy}>
+                          {item.archivedBy}
+                        </p>
+                      </div>
                     </div>
                   </article>
                 </MotionItem>
