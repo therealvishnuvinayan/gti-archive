@@ -39,6 +39,7 @@ import {
   createStageRevision,
   deleteStageComment,
   completeProjectStage,
+  getStageChatCommentEntryForUser,
   reviewProjectRevision,
   reviewStageSubmission,
   requestStageInvoice,
@@ -53,6 +54,7 @@ import {
 import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { prisma } from "@/lib/prisma";
 import {
+  publishStageChatMessageCreated,
   publishStageChatMessageDeleted,
   runStageChatRealtimeTaskAfterResponse,
 } from "@/lib/realtime/server";
@@ -404,6 +406,30 @@ export async function requestStageInvoiceAction(input: StageInvoiceRequestInput)
         recipientUserId: request.requestedFromId,
       }),
     );
+    runStageChatRealtimeTaskAfterResponse("stage-chat.invoice-requested", async () => {
+      const realtimeEntry = await getStageChatCommentEntryForUser(user, {
+        projectId: input.projectId,
+        stageId: input.stageId,
+        commentId: request.commentId,
+      });
+
+      if (!realtimeEntry) {
+        return;
+      }
+
+      await publishStageChatMessageCreated({
+        eventId: randomUUID(),
+        projectId: input.projectId,
+        stageId: input.stageId,
+        id: realtimeEntry.entry.id,
+        commentId: request.commentId,
+        senderId: realtimeEntry.authorId,
+        entry: realtimeEntry.entry,
+        createdAt: realtimeEntry.createdAt,
+        deletedAt: null,
+        clientTempId: null,
+      });
+    });
 
     return { request };
   } catch (error) {

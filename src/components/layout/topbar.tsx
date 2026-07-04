@@ -98,7 +98,7 @@ export function Topbar({
   return (
     <header className="rounded-[30px] bg-surface px-4 py-4 shadow-[0_18px_40px_rgba(23,39,28,0.05)] sm:px-6 lg:px-8">
       <form ref={signOutFormRef} action="/sign-out" method="post" className="hidden" />
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="flex items-center gap-3">
             <button
@@ -114,7 +114,7 @@ export function Topbar({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+        <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-4 md:ml-auto">
           {showNotifications ? <NotificationDropdown /> : null}
 
           <DropdownMenu>

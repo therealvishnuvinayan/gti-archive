@@ -2253,6 +2253,7 @@ export function ProjectChatWorkspace({
   const [isCompletingProject, setIsCompletingProject] = useState(false);
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
+  const revisionDialogFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const stageInvoiceInputRef = useRef<HTMLInputElement | null>(null);
   const draftInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -3039,8 +3040,18 @@ export function ProjectChatWorkspace({
         countAsNew: true,
       });
       setRealtimeWatermark(payload.createdAt);
+
+      if (
+        payload.entry.kind === "system" &&
+        (payload.entry.title === "Invoice requested" ||
+          payload.entry.title === "Invoice uploaded")
+      ) {
+        startRefresh(() => {
+          router.refresh();
+        });
+      }
     },
-    [activeStage?.id, mergeServerChatEntry, project.id],
+    [activeStage?.id, mergeServerChatEntry, project.id, router, startRefresh],
   );
   const handleRealtimeMessageFailed = useCallback(
     (payload: StageChatRealtimeMessageFailedPayload) => {
@@ -4261,6 +4272,19 @@ export function ProjectChatWorkspace({
     if (revisionFileInputRef.current) {
       revisionFileInputRef.current.value = "";
     }
+
+    if (revisionDialogFileInputRef.current) {
+      revisionDialogFileInputRef.current.value = "";
+    }
+  }
+
+  function openRevisionFilePicker() {
+    if (revisionDialogOpen && revisionDialogFileInputRef.current) {
+      revisionDialogFileInputRef.current.click();
+      return;
+    }
+
+    revisionFileInputRef.current?.click();
   }
 
   function removePendingRevisionFile(fileId: string) {
@@ -5283,6 +5307,10 @@ export function ProjectChatWorkspace({
       if (revisionFileInputRef.current) {
         revisionFileInputRef.current.value = "";
       }
+
+      if (revisionDialogFileInputRef.current) {
+        revisionDialogFileInputRef.current.value = "";
+      }
     }
   }
 
@@ -5668,9 +5696,9 @@ export function ProjectChatWorkspace({
   }
 
   return (
-    <section className="min-h-0 2xl:h-[calc(100dvh-12rem)] 2xl:overflow-hidden">
+    <section className="min-h-0 2xl:h-[calc(100dvh-17rem)] 2xl:overflow-hidden">
       <div className="grid min-h-0 gap-4 2xl:h-full 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex h-[calc(100dvh-12rem)] min-h-[360px] min-w-0 flex-col overflow-hidden 2xl:h-full 2xl:min-h-0">
+        <div className="flex h-[calc(100dvh-17rem)] min-h-[360px] min-w-0 flex-col overflow-hidden 2xl:h-full 2xl:min-h-0">
           <div
             ref={chatScrollRef}
             onScroll={handleChatScroll}
@@ -6809,7 +6837,7 @@ export function ProjectChatWorkspace({
           )}
         </div>
 
-        <aside className="no-scrollbar max-h-[calc(100dvh-12rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 2xl:h-full 2xl:max-h-none 2xl:min-h-0">
+        <aside className="no-scrollbar max-h-[calc(100dvh-17rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 2xl:h-full 2xl:max-h-none 2xl:min-h-0">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">
@@ -7798,6 +7826,16 @@ export function ProjectChatWorkspace({
               </Button>
             </CardHeader>
             <CardContent className="px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              <input
+                ref={revisionDialogFileInputRef}
+                type="file"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  handleRevisionFilesSelected(event.target.files);
+                }}
+                disabled={isUploadingRevision}
+              />
               {revisionDialogError ? (
                 <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
                   {revisionDialogError}
@@ -7821,7 +7859,7 @@ export function ProjectChatWorkspace({
                       type="button"
                       variant="secondary"
                       size="sm"
-                      onClick={() => revisionFileInputRef.current?.click()}
+                      onClick={openRevisionFilePicker}
                       disabled={isUploadingRevision}
                     >
                       <Paperclip className="h-4 w-4" />
@@ -8028,7 +8066,7 @@ export function ProjectChatWorkspace({
                         onClick={openInvoiceRequestDialog}
                         className="shrink-0"
                       >
-                        Request Invoice
+                        Edit Request
                       </Button>
                     ) : !stageInvoiceAttachment && canUploadStageInvoice ? (
                       <Button

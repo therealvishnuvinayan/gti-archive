@@ -86,11 +86,11 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
         }`}
       >
         <CardContent className="flex h-full flex-col p-0">
-          <div className="mb-5 flex min-w-0 items-start justify-between gap-3 overflow-hidden">
-            <div className="min-w-0 flex-1 space-y-3">
+          <div className="mb-5 space-y-3 overflow-hidden">
+            <div className="flex min-w-0 items-start justify-between gap-3">
               <Badge
                 variant={project.isPinned ? "secondary" : "outline"}
-                className={`max-w-full whitespace-normal px-3 py-1.5 text-left leading-5 ${
+                className={`min-w-0 max-w-full whitespace-normal px-3 py-1.5 text-left leading-5 ${
                   project.isPinned
                     ? "border-white/15 bg-white/14 text-[#ecfff0]"
                     : "border-[#d5e3d6] bg-[#fbfdfb] text-brand"
@@ -98,88 +98,51 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
               >
                 <span className="line-clamp-2 min-w-0">{project.stage}</span>
               </Badge>
-              <p
-                className={`truncate text-[13px] font-[600] ${
-                  project.isPinned ? "text-[#dff6e3]" : "text-[#64aa76]"
-                }`}
-              >
-                {project.category}
-              </p>
-              {project.tags.length > 0 ? (
-                <div className="flex min-w-0 flex-wrap gap-1.5">
-                  {visibleTags.map((tag) => (
-                    <span
-                      key={tag}
-                      className={`max-w-[138px] truncate rounded-full px-2.5 py-1 text-[11px] font-[700] ${
-                        project.isPinned
-                          ? "bg-white/14 text-[#ecfff0]"
-                          : "bg-[#edf7ef] text-[#2d8055]"
-                      }`}
-                      title={tag}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  {hiddenTagCount > 0 ? (
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-[800] ${
-                        project.isPinned
-                          ? "bg-white/14 text-[#ecfff0]"
-                          : "bg-[#f4f7f4] text-[#5d685f]"
-                      }`}
-                      title={project.tags.join(", ")}
-                    >
-                      +{hiddenTagCount}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
 
-            {project.canPin || project.canEdit || project.canDelete ? (
-              <div className="flex shrink-0 items-center gap-2">
-                {project.canPin ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="icon"
-                    onClick={handleTogglePin}
-                    disabled={isPending}
-                    aria-pressed={project.isPinned}
-                    className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
-                      project.isPinned
-                        ? "border border-white/35 bg-white/10 text-[#a6ef9b] hover:bg-white/18"
-                        : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
-                    }`}
-                    aria-label={`${project.isPinned ? "Unpin" : "Pin"} ${project.title}`}
-                    title={project.isPinned ? "Unpin project" : "Pin project"}
-                  >
-                    {project.isPinned ? (
-                      <PinOff className="h-4 w-4" />
-                    ) : (
-                      <Pin className="h-4 w-4" />
-                    )}
-                  </Button>
-                ) : null}
-                {project.canEdit ? (
-                  <Button
-                    asChild
-                    type="button"
-                    variant="secondary"
-                    size="icon"
-                    className={`h-9 w-9 rounded-[12px] ${
-                      project.isPinned
-                        ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
-                        : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
-                    }`}
-                    aria-label={`Edit ${project.title}`}
-                    title="Edit project"
-                  >
-                    <Link href={`/projects/${project.id}/edit`}>
-                      <Pencil className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                ) : null}
+              {project.canPin || project.canEdit || project.canDelete ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  {project.canPin ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      onClick={handleTogglePin}
+                      disabled={isPending}
+                      aria-pressed={project.isPinned}
+                      className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
+                        project.isPinned
+                          ? "border border-white/35 bg-white/10 text-[#a6ef9b] hover:bg-white/18"
+                          : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
+                      }`}
+                      aria-label={`${project.isPinned ? "Unpin" : "Pin"} ${project.title}`}
+                      title={project.isPinned ? "Unpin project" : "Pin project"}
+                    >
+                      {project.isPinned ? (
+                        <PinOff className="h-4 w-4" />
+                      ) : (
+                        <Pin className="h-4 w-4" />
+                      )}
+                    </Button>
+                  ) : null}
+                  {project.canEdit ? (
+                    <Button
+                      asChild
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className={`h-9 w-9 rounded-[12px] ${
+                        project.isPinned
+                          ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
+                          : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
+                      }`}
+                      aria-label={`Edit ${project.title}`}
+                      title="Edit project"
+                    >
+                      <Link href={`/projects/${project.id}/edit`}>
+                        <Pencil className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  ) : null}
                 {project.canDelete ? (
                   <Button
                     type="button"
@@ -200,6 +163,43 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+            <p
+              className={`truncate text-[13px] font-[600] ${
+                project.isPinned ? "text-[#dff6e3]" : "text-[#64aa76]"
+              }`}
+            >
+              {project.category}
+            </p>
+            {project.tags.length > 0 ? (
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5">
+                {visibleTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className={`max-w-[138px] truncate rounded-full px-2.5 py-1 text-[11px] font-[700] ${
+                      project.isPinned
+                        ? "bg-white/14 text-[#ecfff0]"
+                        : "bg-[#edf7ef] text-[#2d8055]"
+                    }`}
+                    title={tag}
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {hiddenTagCount > 0 ? (
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-[800] ${
+                      project.isPinned
+                        ? "bg-white/14 text-[#ecfff0]"
+                        : "bg-[#f4f7f4] text-[#5d685f]"
+                    }`}
+                    title={project.tags.join(", ")}
+                  >
+                    +{hiddenTagCount}
+                  </span>
                 ) : null}
               </div>
             ) : null}
