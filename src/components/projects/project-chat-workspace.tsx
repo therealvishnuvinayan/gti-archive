@@ -2253,6 +2253,7 @@ export function ProjectChatWorkspace({
   const [isCompletingProject, setIsCompletingProject] = useState(false);
   const [, startRefresh] = useTransition();
   const revisionFileInputRef = useRef<HTMLInputElement | null>(null);
+  const revisionDialogFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const stageInvoiceInputRef = useRef<HTMLInputElement | null>(null);
   const draftInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -4271,6 +4272,19 @@ export function ProjectChatWorkspace({
     if (revisionFileInputRef.current) {
       revisionFileInputRef.current.value = "";
     }
+
+    if (revisionDialogFileInputRef.current) {
+      revisionDialogFileInputRef.current.value = "";
+    }
+  }
+
+  function openRevisionFilePicker() {
+    if (revisionDialogOpen && revisionDialogFileInputRef.current) {
+      revisionDialogFileInputRef.current.click();
+      return;
+    }
+
+    revisionFileInputRef.current?.click();
   }
 
   function removePendingRevisionFile(fileId: string) {
@@ -5292,6 +5306,10 @@ export function ProjectChatWorkspace({
 
       if (revisionFileInputRef.current) {
         revisionFileInputRef.current.value = "";
+      }
+
+      if (revisionDialogFileInputRef.current) {
+        revisionDialogFileInputRef.current.value = "";
       }
     }
   }
@@ -7808,6 +7826,16 @@ export function ProjectChatWorkspace({
               </Button>
             </CardHeader>
             <CardContent className="px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+              <input
+                ref={revisionDialogFileInputRef}
+                type="file"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  handleRevisionFilesSelected(event.target.files);
+                }}
+                disabled={isUploadingRevision}
+              />
               {revisionDialogError ? (
                 <div className="mb-5 rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
                   {revisionDialogError}
@@ -7831,7 +7859,7 @@ export function ProjectChatWorkspace({
                       type="button"
                       variant="secondary"
                       size="sm"
-                      onClick={() => revisionFileInputRef.current?.click()}
+                      onClick={openRevisionFilePicker}
                       disabled={isUploadingRevision}
                     >
                       <Paperclip className="h-4 w-4" />
