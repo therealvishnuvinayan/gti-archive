@@ -120,6 +120,18 @@ function cacheProjectBadgeCount(ongoing: number) {
   }
 }
 
+function clearCachedProjectBadgeCount() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(PROJECT_BADGE_COUNT_CACHE_KEY);
+  } catch {
+    // Ignore storage failures; the badge can remain hidden without cache access.
+  }
+}
+
 type SidebarProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -153,11 +165,18 @@ export function Sidebar({
     number | undefined
   >(undefined);
   const resolvedProjectBadgeCount =
-    typeof projectBadgeCount === "number"
+    !visibility.projectCounts
+      ? undefined
+      : typeof projectBadgeCount === "number"
       ? projectBadgeCount
       : fetchedProjectBadgeCount;
 
   useEffect(() => {
+    if (!visibility.projectCounts) {
+      clearCachedProjectBadgeCount();
+      return;
+    }
+
     if (typeof projectBadgeCount === "number" || !visibility.projects) {
       return;
     }
@@ -206,7 +225,7 @@ export function Sidebar({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [pathname, projectBadgeCount, visibility.projects]);
+  }, [pathname, projectBadgeCount, visibility.projectCounts, visibility.projects]);
 
   return (
     <>

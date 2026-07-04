@@ -29,6 +29,7 @@ export type ProjectPermissionContext = Pick<
 export type SidebarVisibility = {
   dashboard: boolean;
   projects: boolean;
+  projectCounts: boolean;
   calendar: boolean;
   collaboration: boolean;
   users: boolean;
@@ -139,6 +140,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   return {
     dashboard: hasPermission(user, "dashboard.view"),
     projects: hasPermission(user, "project.list"),
+    projectCounts: hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
     users:
