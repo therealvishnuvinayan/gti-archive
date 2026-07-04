@@ -356,6 +356,7 @@ export function useStageChatRealtime(input: UseStageChatRealtimeInput) {
           const users = members
             .map((member) => member.data)
             .filter(isPresenceData)
+            .filter((data) => data.userId !== input.currentUserId)
             .map(toRealtimeUser);
           setOnlineUsers(dedupeRealtimeUsers(users));
           logAblyChat("presence refresh success", {
