@@ -623,10 +623,10 @@ function ManagePermissionsModal({
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8">
-          <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <Card className="rounded-[24px] border border-[#e2ebe1]">
-              <CardContent className="space-y-5 p-5">
+        <div className="min-h-0 flex-1 overflow-hidden px-6 py-6 sm:px-8">
+          <div className="grid h-full min-h-0 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <Card className="min-h-0 rounded-[24px] border border-[#e2ebe1]">
+              <CardContent className="dashboard-scroll-thin h-full min-h-0 space-y-5 overflow-y-auto p-5">
                 <div>
                   <p className="text-[18px] font-[700] text-[#18201a]">Profile</p>
                   <p className="mt-1 text-[13px] leading-5 text-[#748074]">
@@ -707,9 +707,9 @@ function ManagePermissionsModal({
               </CardContent>
             </Card>
 
-            <Card className="rounded-[24px] border border-[#e2ebe1]">
-              <CardContent className="p-5">
-                <div className="flex flex-col gap-4 border-b border-[#edf2ed] pb-5 lg:flex-row lg:items-start lg:justify-between">
+            <Card className="min-h-0 rounded-[24px] border border-[#e2ebe1]">
+              <CardContent className="dashboard-scroll-thin h-full min-h-0 overflow-y-auto p-5">
+                <div className="sticky -top-5 z-10 flex flex-col gap-4 border-b border-[#edf2ed] bg-white pb-5 pt-5 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p className="text-[24px] font-[700] tracking-[-0.03em] text-[#18201a]">
                       {currentGroup.title}
