@@ -36,6 +36,7 @@ import {
 import {
   allPermissionKeys,
   collaboratorTypeValues,
+  criticalSuperAdminPermissionKeys,
   permissionProfileTypeValues,
   permissionRoleValues,
   type CollaboratorTypeValue,
@@ -77,6 +78,10 @@ type EditablePermissionProfile = {
   state: PermissionProfileFormState;
   source: "db" | "code-default";
 };
+
+const criticalSuperAdminPermissionKeySet = new Set<PermissionKey>(
+  criticalSuperAdminPermissionKeys,
+);
 
 const roleBadgeStyles: Record<PermissionRole, string> = {
   SUPER_ADMIN: "border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]",
@@ -459,6 +464,14 @@ function ManagePermissionsModal({
   }
 
   function handlePermissionToggle(permissionKey: PermissionKey, enabled: boolean) {
+    if (
+      profileType === "role" &&
+      profileKey === "SUPER_ADMIN" &&
+      criticalSuperAdminPermissionKeySet.has(permissionKey)
+    ) {
+      return;
+    }
+
     setDraftState((current) => ({
       ...current,
       [permissionKey]: enabled,
@@ -744,11 +757,19 @@ function ManagePermissionsModal({
                   <div className="mt-5 space-y-3">
                     {filteredItems.map((item) => {
                       const enabled = draftState[item.key];
+                      const isProtectedSuperAdminPermission =
+                        profileType === "role" &&
+                        profileKey === "SUPER_ADMIN" &&
+                        criticalSuperAdminPermissionKeySet.has(item.key);
 
                       return (
                         <label
                           key={item.key}
-                          className="flex items-start gap-3 rounded-[18px] border border-[#edf2ed] bg-white px-4 py-4"
+                          className={cn(
+                            "flex items-start gap-3 rounded-[18px] border border-[#edf2ed] bg-white px-4 py-4",
+                            isProtectedSuperAdminPermission &&
+                              "border-[#d6e4f4] bg-[#f8fbff]",
+                          )}
                         >
                           <input
                             type="checkbox"
@@ -756,7 +777,11 @@ function ManagePermissionsModal({
                             onChange={(event) =>
                               handlePermissionToggle(item.key, event.target.checked)
                             }
-                            disabled={isSavingProfile || isResettingProfile}
+                            disabled={
+                              isSavingProfile ||
+                              isResettingProfile ||
+                              isProtectedSuperAdminPermission
+                            }
                             className="mt-1 h-4 w-4 rounded border-[#c6d6c8] accent-[#256a45]"
                           />
                           <div className="min-w-0 flex-1">
@@ -785,6 +810,11 @@ function ManagePermissionsModal({
                                   {item.isSystem ? (
                                     <StatusBadge className="border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]">
                                       System
+                                    </StatusBadge>
+                                  ) : null}
+                                  {isProtectedSuperAdminPermission ? (
+                                    <StatusBadge className="border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]">
+                                      Protected for SUPER_ADMIN
                                     </StatusBadge>
                                   ) : null}
                                 </div>
