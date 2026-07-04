@@ -181,6 +181,26 @@ type ProjectStatusSelectOption = {
   isActive: boolean;
 };
 
+const COMPLETED_STATUS_CATEGORY_LABEL = "Completed";
+const COMPLETED_STATUS_CATEGORY_SLUGS = new Set([
+  "archived",
+  "cancelled",
+]);
+
+function getProjectStatusCategoryLabel(option: ProjectStatusSelectOption) {
+  const statusSlug = option.slug.trim().toLowerCase();
+  const groupSlug = option.groupSlug.trim().toLowerCase();
+
+  if (
+    COMPLETED_STATUS_CATEGORY_SLUGS.has(statusSlug) ||
+    COMPLETED_STATUS_CATEGORY_SLUGS.has(groupSlug)
+  ) {
+    return COMPLETED_STATUS_CATEGORY_LABEL;
+  }
+
+  return option.groupName || "No group";
+}
+
 type ExecutorOption = {
   id: string;
   name: string;
@@ -3053,7 +3073,7 @@ export function CreateProjectWorkspace({
                             <span className="text-[11px] text-[#8a938b]">(Inactive)</span>
                           ) : null}
                           <span className="text-[11px] text-[#8a938b]">
-                            {option.groupName || "No group"}
+                            {getProjectStatusCategoryLabel(option)}
                             {!option.groupIsActive ? " (Inactive)" : ""}
                           </span>
                         </span>

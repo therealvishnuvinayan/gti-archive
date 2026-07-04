@@ -3039,8 +3039,18 @@ export function ProjectChatWorkspace({
         countAsNew: true,
       });
       setRealtimeWatermark(payload.createdAt);
+
+      if (
+        payload.entry.kind === "system" &&
+        (payload.entry.title === "Invoice requested" ||
+          payload.entry.title === "Invoice uploaded")
+      ) {
+        startRefresh(() => {
+          router.refresh();
+        });
+      }
     },
-    [activeStage?.id, mergeServerChatEntry, project.id],
+    [activeStage?.id, mergeServerChatEntry, project.id, router, startRefresh],
   );
   const handleRealtimeMessageFailed = useCallback(
     (payload: StageChatRealtimeMessageFailedPayload) => {
@@ -8028,7 +8038,7 @@ export function ProjectChatWorkspace({
                         onClick={openInvoiceRequestDialog}
                         className="shrink-0"
                       >
-                        Request Invoice
+                        Edit Request
                       </Button>
                     ) : !stageInvoiceAttachment && canUploadStageInvoice ? (
                       <Button
