@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "lint": "eslint",
     "typecheck": "tsc --noEmit --project tsconfig.typecheck.json",
+    "flow:check": "node scripts/flow-regression-checks.mjs",
     "phase0:check": "node scripts/phase0-regression-checks.mjs",
     "phase3:check": "node scripts/phase3-caption-regression-checks.mjs",
     "permissions:sync": "tsc --project scripts/tsconfig.permissions-sync.json && node .tmp/permissions-sync/scripts/sync-permissions.js",

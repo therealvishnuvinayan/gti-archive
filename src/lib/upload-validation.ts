@@ -35,22 +35,6 @@ export const STAGE_SUBMISSION_ALLOWED_EXTENSIONS = ["png"] as const;
 
 export const STAGE_SUBMISSION_ALLOWED_MIME_TYPES = ["image/png"] as const;
 
-export const VIDEO_STAGE_SUBMISSION_ALLOWED_EXTENSIONS = [
-  "png",
-  "mp4",
-  "mov",
-  "m4v",
-  "webm",
-] as const;
-
-export const VIDEO_STAGE_SUBMISSION_ALLOWED_MIME_TYPES = [
-  "image/png",
-  "video/mp4",
-  "video/quicktime",
-  "video/x-m4v",
-  "video/webm",
-] as const;
-
 export const PROFILE_IMAGE_ALLOWED_EXTENSIONS = [
   "png",
   "jpg",
@@ -95,12 +79,6 @@ const stageSubmissionAllowedExtensionSet = new Set<string>(
 );
 const stageSubmissionAllowedMimeTypeSet = new Set<string>(
   STAGE_SUBMISSION_ALLOWED_MIME_TYPES,
-);
-const videoStageSubmissionAllowedExtensionSet = new Set<string>(
-  VIDEO_STAGE_SUBMISSION_ALLOWED_EXTENSIONS,
-);
-const videoStageSubmissionAllowedMimeTypeSet = new Set<string>(
-  VIDEO_STAGE_SUBMISSION_ALLOWED_MIME_TYPES,
 );
 const profileImageAllowedExtensionSet = new Set<string>(
   PROFILE_IMAGE_ALLOWED_EXTENSIONS,
@@ -163,23 +141,11 @@ export function isAllowedSubmissionImage(fileName: string, mimeType: string) {
   );
 }
 
-export function isVideoProjectCategory(category: string | null | undefined) {
-  const normalizedCategory = category?.trim().toLowerCase() ?? "";
-
-  if (!normalizedCategory) {
-    return false;
-  }
-
-  // TODO: Replace this name-based check with an explicit master-data media type.
-  return /\b(video|motion|animation|film|reel)\b/.test(normalizedCategory);
-}
-
 export function getStageSubmissionAllowedExtensions(
-  projectCategory: string | null | undefined,
+  projectCategory?: string | null,
 ) {
-  return isVideoProjectCategory(projectCategory)
-    ? VIDEO_STAGE_SUBMISSION_ALLOWED_EXTENSIONS
-    : STAGE_SUBMISSION_ALLOWED_EXTENSIONS;
+  void projectCategory;
+  return STAGE_SUBMISSION_ALLOWED_EXTENSIONS;
 }
 
 function isAllowedExtensionAndMime(
@@ -202,15 +168,6 @@ export function isAllowedStageSubmissionFile(input: {
 }) {
   const extension = getFileExtension(input.fileName);
   const mimeType = input.mimeType.toLowerCase();
-
-  if (isVideoProjectCategory(input.projectCategory)) {
-    return isAllowedExtensionAndMime(
-      extension,
-      mimeType,
-      videoStageSubmissionAllowedExtensionSet,
-      videoStageSubmissionAllowedMimeTypeSet,
-    );
-  }
 
   return isAllowedExtensionAndMime(
     extension,

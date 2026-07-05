@@ -4406,10 +4406,11 @@ export async function requestAttachmentUpload(
     return { error: "Choose a file to upload." };
   }
 
-  if (
-    input.assetType !== AttachmentAssetType.STAGE_SUBMISSION &&
-    !isAllowedAssetFile(input.originalFileName)
-  ) {
+  const isFormalStageSubmission =
+    input.assetType === AttachmentAssetType.STAGE_SUBMISSION ||
+    input.assetType === AttachmentAssetType.REVISION_ORIGINAL;
+
+  if (!isFormalStageSubmission && !isAllowedAssetFile(input.originalFileName)) {
     return buildFileTypeNotAllowedPayload({
       fileName: input.originalFileName,
       mimeType: input.mimeType,
@@ -4479,6 +4480,9 @@ export async function requestAttachmentUpload(
     if (!revision) {
       return { error: "Revision not found." };
     }
+
+    stageSubmissionProjectCategory = revision.project.category;
+
     const project = assertProjectAccessFromContext(user, revision.project);
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
@@ -4803,7 +4807,7 @@ export async function requestAttachmentUpload(
   }
 
   if (
-    input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+    isFormalStageSubmission &&
     !isAllowedStageSubmissionFile({
       fileName: input.originalFileName,
       mimeType: input.mimeType,
@@ -4816,7 +4820,7 @@ export async function requestAttachmentUpload(
       allowedExtensions: getStageSubmissionAllowedExtensions(
         stageSubmissionProjectCategory,
       ),
-      error: "Submission must be PNG unless the project category is video.",
+      error: "Formal stage submissions must be PNG.",
     });
   }
 

@@ -127,7 +127,6 @@ import {
   formatUploadFileTypeError,
   getStageSubmissionAllowedExtensions,
   getUploadErrorMessage,
-  isVideoProjectCategory,
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
 
@@ -278,17 +277,9 @@ type UploadAssetType =
 type CommentUploadIntent = "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
 const MAX_RECORDING_DURATION_MS = 60_000;
 const AUTO_TRANSLATE_DEBOUNCE_MS = 650;
-function getSubmissionDropzoneAccept(projectCategory?: string | null): Accept {
-  if (isVideoProjectCategory(projectCategory)) {
-    return {
-      "image/png": [".png"],
-      "video/mp4": [".mp4"],
-      "video/quicktime": [".mov"],
-      "video/x-m4v": [".m4v"],
-      "video/webm": [".webm"],
-    };
-  }
+const PNG_STAGE_SUBMISSION_ACCEPT = ".png,image/png";
 
+function getSubmissionDropzoneAccept(): Accept {
   return {
     "image/png": [".png"],
   };
@@ -321,10 +312,9 @@ function UploadIntentDropzone({
   onFilesSelected,
   onError,
 }: UploadIntentDropzoneProps) {
-  const videoSubmission = isVideoProjectCategory(projectCategory);
   const dropzoneAccept =
     intent === "STAGE_SUBMISSION"
-      ? getSubmissionDropzoneAccept(projectCategory)
+      ? getSubmissionDropzoneAccept()
       : undefined;
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
@@ -348,7 +338,7 @@ function UploadIntentDropzone({
               fileName: rejectedFile?.name ?? "Selected file",
               mimeType: rejectedFile?.type || "application/octet-stream",
               allowedExtensions: getStageSubmissionAllowedExtensions(projectCategory),
-              error: "Submission must be PNG unless the project category is video.",
+              error: "Formal stage submissions must be PNG.",
             }),
           ),
         );
@@ -378,9 +368,7 @@ function UploadIntentDropzone({
 
       <p className="mt-1 text-[11px] text-[#7a837b]">
         {intent === "STAGE_SUBMISSION"
-          ? videoSubmission
-            ? "PNG or video files only."
-            : "PNG only."
+          ? "PNG only."
           : "Choose one or more files to attach to the chat discussion."}
       </p>
 
@@ -4434,6 +4422,34 @@ export function ProjectChatWorkspace({
       return;
     }
 
+    const allowedExtensions = getStageSubmissionAllowedExtensions(project.category);
+    const invalidFile = selectedFiles.find((file) => {
+      const hasAllowedExtension = allowedExtensions.some((extension) =>
+        file.name.toLowerCase().endsWith(`.${extension}`),
+      );
+      const normalizedMimeType = file.type.toLowerCase();
+      const hasAllowedMimeType =
+        !normalizedMimeType ||
+        normalizedMimeType === "image/png" ||
+        normalizedMimeType === "application/octet-stream";
+
+      return !hasAllowedExtension || !hasAllowedMimeType;
+    });
+
+    if (invalidFile) {
+      setRevisionDialogError(
+        formatUploadFileTypeError(
+          buildFileTypeNotAllowedPayload({
+            fileName: invalidFile.name,
+            mimeType: invalidFile.type || "application/octet-stream",
+            allowedExtensions,
+            error: "Formal stage submissions must be PNG.",
+          }),
+        ),
+      );
+      return;
+    }
+
     setRevisionDialogError(null);
     setPendingRevisionFiles((current) => [
       ...current,
@@ -6898,6 +6914,7 @@ export function ProjectChatWorkspace({
                 ref={revisionFileInputRef}
                 type="file"
                 multiple
+                accept={PNG_STAGE_SUBMISSION_ACCEPT}
                 className="sr-only"
                 onChange={(event) => {
                   handleRevisionFilesSelected(event.target.files);
@@ -8186,6 +8203,7 @@ export function ProjectChatWorkspace({
                 ref={revisionDialogFileInputRef}
                 type="file"
                 multiple
+                accept={PNG_STAGE_SUBMISSION_ACCEPT}
                 className="sr-only"
                 onChange={(event) => {
                   handleRevisionFilesSelected(event.target.files);

@@ -247,7 +247,7 @@ const uploadValidation = read("src/lib/upload-validation.ts");
 assertIncludes(
   uploadValidation,
   "export const STAGE_SUBMISSION_ALLOWED_EXTENSIONS = [\"png\"] as const;",
-  "PNG-only non-video submission extension rule",
+  "PNG-only formal submission extension rule",
 );
 assertIncludes(
   uploadValidation,
@@ -258,6 +258,12 @@ assertIncludes(
   uploadValidation,
   "extensionSet.has(extension)",
   "submission validation extension check",
+);
+assert(
+  !/VIDEO_STAGE_SUBMISSION|isVideoProjectCategory|videoStageSubmissionAllowed/.test(
+    uploadValidation,
+  ),
+  "Formal submission validation must not keep video-category exceptions.",
 );
 
 const projectCollaboratorPermissions = read("src/lib/project-collaborator-permissions.ts");
@@ -402,7 +408,7 @@ assertIncludes(
 const helpCenter = read("src/lib/help-center.ts");
 assertIncludes(
   helpCenter,
-  "Formal stage submissions must be PNG unless the project category is video. Only valid PNG artwork submissions can be compared. Video-category projects may support the configured video submission formats.",
+  "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.",
   "PNG-only submission help text",
 );
 

@@ -29,10 +29,7 @@ import {
 } from "@/lib/project-collaborator-visibility";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import {
-  isAllowedStageSubmissionFile,
-  isVideoProjectCategory,
-} from "@/lib/upload-validation";
+import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
 
 type AccessUser = Pick<
   User,
@@ -102,16 +99,12 @@ function isCaptionableSubmissionAttachment(input: {
   );
 }
 
-function getUnsupportedComparisonSubmissionMessage(projectCategory?: string | null) {
-  return isVideoProjectCategory(projectCategory)
-    ? "Selected submissions are not valid for this video project category."
-    : "Only PNG stage submissions can be compared for artwork projects. Please upload a PNG submission.";
+function getUnsupportedComparisonSubmissionMessage() {
+  return "Only valid PNG stage submissions can be compared. Please upload a PNG submission.";
 }
 
-function getUnsupportedCaptionSubmissionMessage(projectCategory?: string | null) {
-  return isVideoProjectCategory(projectCategory)
-    ? "Captioning is currently available for PNG frame submissions. Video submission caption support is not configured yet."
-    : "Only PNG stage submissions can receive captions for artwork projects. Please upload a PNG submission.";
+function getUnsupportedCaptionSubmissionMessage() {
+  return "Only valid PNG stage submissions can be captioned. Please upload a PNG submission.";
 }
 
 function clampPercent(value: number) {
@@ -280,7 +273,7 @@ async function resolveComparableSubmissionPair(
     )
   ) {
     if (options.throwOnInvalidPair) {
-      throw new Error(getUnsupportedComparisonSubmissionMessage(project.category));
+      throw new Error(getUnsupportedComparisonSubmissionMessage());
     }
 
     return {
@@ -429,7 +422,7 @@ async function getSubmissionCaptionReadOnlyReason(
       projectCategory: project.category,
     })
   ) {
-    return getUnsupportedCaptionSubmissionMessage(project.category);
+    return getUnsupportedCaptionSubmissionMessage();
   }
 
   const latestAttachmentId = await getLatestFormalSubmissionAttachmentId({
