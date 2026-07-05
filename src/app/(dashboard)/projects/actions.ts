@@ -17,6 +17,7 @@ import {
   notifyCommentAdded,
   notifyCommentMentioned,
   notifyCopyrightTransferRequired,
+  notifyFinalInvoiceRequested,
   notifyProjectArchived,
   notifyProjectAssignmentChanges,
   notifyRevisionSubmitted,
@@ -32,6 +33,7 @@ import {
   markProjectInvoiceNotRequired,
   prepareAuthorityApprovalRequest,
   prepareCopyrightTransferRequest,
+  requestProjectFinalInvoice,
 } from "@/lib/project-completion";
 import {
   cancelStageRevisionSubmission,
@@ -643,6 +645,7 @@ export async function configureProjectCompletionWorkflowAction(input: {
   projectId: string;
   approvalRequired: boolean;
   copyrightRequired: boolean;
+  invoiceRequired: boolean;
 }) {
   const user = await requireUser();
 
@@ -665,7 +668,7 @@ export async function configureProjectCompletionWorkflowAction(input: {
 export async function prepareAuthorityApprovalRequestAction(input: {
   projectId: string;
   contactUserId: string;
-  selectedArchivedFileIds: string[];
+  selectedProjectFileIds: string[];
   note?: string;
 }) {
   const user = await requireUser();
@@ -679,6 +682,7 @@ export async function prepareAuthorityApprovalRequestAction(input: {
       notifyApprovalRequired({
         projectId: input.projectId,
         actorId: user.id,
+        recipientUserId: input.contactUserId,
       }),
     );
 
@@ -709,6 +713,7 @@ export async function prepareCopyrightTransferRequestAction(input: {
       notifyCopyrightTransferRequired({
         projectId: input.projectId,
         actorId: user.id,
+        recipientUserId: input.contactUserId,
       }),
     );
 
@@ -719,6 +724,36 @@ export async function prepareCopyrightTransferRequestAction(input: {
         error instanceof Error
           ? error.message
           : "Unable to prepare the copyright transfer request right now.",
+    };
+  }
+}
+
+export async function requestProjectFinalInvoiceAction(input: {
+  projectId: string;
+  contactUserId: string;
+  note?: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const workflow = await requestProjectFinalInvoice(user, input);
+    revalidateProjectFlow();
+    revalidateArchiveFlow(input.projectId);
+
+    await runNotificationTask("final-invoice-requested", () =>
+      notifyFinalInvoiceRequested({
+        projectId: input.projectId,
+        recipientUserId: input.contactUserId,
+      }),
+    );
+
+    return { workflow };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to request the final invoice right now.",
     };
   }
 }

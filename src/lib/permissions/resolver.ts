@@ -358,11 +358,12 @@ export function hasProjectPermission(
     case "stage.markStageComplete":
     case "completion.setApprovalRequired":
     case "completion.prepareApproval":
-    case "completion.uploadApprovalProof":
     case "completion.setCopyrightRequired":
     case "completion.prepareCopyrightTransfer":
+      return isProjectAdmin(user) || isProjectOwner(user, project);
+    case "completion.uploadApprovalProof":
     case "completion.uploadCopyrightDocument":
-      return isProjectOwner(user, project);
+      return false;
     case "project.completeArchive":
       return isProjectAdmin(user) || isProjectOwner(user, project);
     case "completion.viewChecklist":

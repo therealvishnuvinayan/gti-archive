@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  AttachmentAssetType,
+  AttachmentStatus,
   Prisma,
   ProjectCompletionDocumentType,
   ProjectCompletionStepStatus,
   ProjectExecutionType,
   ProjectExecutorRole,
+  ProjectRevisionStatus,
   SubmissionReviewStatus,
   type User,
 } from "@prisma/client";
@@ -63,6 +66,7 @@ export type ProjectCompletionContactOption = {
 
 export type ProjectCompletionArchivedFileOption = {
   id: string;
+  sourceAttachmentId: string;
   finalArchiveFileName: string;
   originalFileName: string;
   fileTypeLabel: string;
@@ -95,6 +99,8 @@ export type ProjectCompletionWorkflowRecord = {
   executionTypeLabel: string;
   isInternalExecution: boolean;
   canManage: boolean;
+  canUploadApprovalProof: boolean;
+  canUploadCopyrightDocument: boolean;
   canUploadInvoice: boolean;
   needsInitialConfiguration: boolean;
   approvalRequired: boolean | null;
@@ -105,6 +111,7 @@ export type ProjectCompletionWorkflowRecord = {
   approvalRequestedAt: string | null;
   approvalCompletedAt: string | null;
   approvalSelectedArchivedFileIds: string[];
+  approvalSelectedProjectFileIds: string[];
   copyrightRequired: boolean | null;
   copyrightStatus: ProjectCompletionStepStatus;
   copyrightContactUserId: string | null;
@@ -112,7 +119,12 @@ export type ProjectCompletionWorkflowRecord = {
   copyrightNote: string | null;
   copyrightRequestedAt: string | null;
   copyrightCompletedAt: string | null;
+  invoiceRequired: boolean | null;
   invoiceStatus: ProjectCompletionStepStatus;
+  invoiceContactUserId: string | null;
+  invoiceContactName: string | null;
+  invoiceNote: string | null;
+  invoiceRequestedAt: string | null;
   invoiceCompletedAt: string | null;
   completedAt: string | null;
   isApprovalResolved: boolean;
@@ -126,6 +138,7 @@ export type ProjectCompletionWorkflowRecord = {
   approvalProofDocument: ProjectCompletionDocumentRecord | null;
   copyrightTransferDocument: ProjectCompletionDocumentRecord | null;
   invoiceDocument: ProjectCompletionDocumentRecord | null;
+  archiveBlockers: string[];
 };
 
 export type RequestProjectCompletionDocumentUploadInput = {
@@ -164,6 +177,7 @@ function getInternalCompletionWorkflowData(completedAt = new Date()) {
     approvalContactUserId: null,
     approvalNote: null,
     approvalSelectedArchivedFileIds: [],
+    approvalSelectedProjectFileIds: [],
     approvalRequestedAt: null,
     approvalCompletedAt: null,
     copyrightRequired: false,
@@ -172,7 +186,11 @@ function getInternalCompletionWorkflowData(completedAt = new Date()) {
     copyrightNote: null,
     copyrightRequestedAt: null,
     copyrightCompletedAt: null,
+    invoiceRequired: false,
     invoiceStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+    invoiceContactUserId: null,
+    invoiceNote: null,
+    invoiceRequestedAt: null,
     invoiceCompletedAt: null,
     completedAt,
   };
@@ -249,47 +267,64 @@ function getArchivedFileSourceLabel(file: {
     : "Final archive";
 }
 
-function isProjectOwner(
-  project: Pick<ProjectCompletionProjectRecord, "createdById">,
-  userId: string,
-) {
-  return project.createdById === userId;
-}
-
 type ProjectCompletionPermissionProject = {
   createdById: string;
   executors: Array<{
     userId: string;
     role: ProjectExecutorRole;
   }>;
+  completionWorkflow?: {
+    approvalContactUserId?: string | null;
+    copyrightContactUserId?: string | null;
+    invoiceContactUserId?: string | null;
+  } | null;
 };
 
 function canViewCompletionWorkflow(
   project: ProjectCompletionPermissionProject,
   user: ProjectCompletionWorkflowUser,
 ) {
-  return hasProjectPermission(user, project, "completion.viewChecklist");
+  return (
+    hasProjectPermission(user, project, "completion.viewChecklist") ||
+    project.completionWorkflow?.approvalContactUserId === user.id ||
+    project.completionWorkflow?.copyrightContactUserId === user.id ||
+    project.completionWorkflow?.invoiceContactUserId === user.id
+  );
 }
 
 function canManageCompletionWorkflow(
-  project: Pick<ProjectCompletionProjectRecord, "createdById">,
-  user: ProjectCompletionWorkflowUser,
-) {
-  return isProjectOwner(project, user.id);
-}
-
-function canUploadInvoiceForProject(
   project: ProjectCompletionPermissionProject,
   user: ProjectCompletionWorkflowUser,
 ) {
-  return hasProjectPermission(user, project, "completion.uploadInvoice");
+  return hasProjectPermission(user, project, "completion.setApprovalRequired");
+}
+
+function canUploadApprovalProofForProject(
+  workflow: ProjectCompletionProjectRecord["completionWorkflow"] | null,
+  user: ProjectCompletionWorkflowUser,
+) {
+  return workflow?.approvalContactUserId === user.id;
+}
+
+function canUploadCopyrightDocumentForProject(
+  workflow: ProjectCompletionProjectRecord["completionWorkflow"] | null,
+  user: ProjectCompletionWorkflowUser,
+) {
+  return workflow?.copyrightContactUserId === user.id;
+}
+
+function canUploadInvoiceForProject(
+  workflow: ProjectCompletionProjectRecord["completionWorkflow"] | null,
+  user: ProjectCompletionWorkflowUser,
+) {
+  return workflow?.invoiceContactUserId === user.id;
 }
 
 function canAccessCompletionDocuments(
   project: ProjectCompletionPermissionProject,
   user: ProjectCompletionWorkflowUser,
 ) {
-  return hasProjectPermission(user, project, "completion.viewChecklist");
+  return canViewCompletionWorkflow(project, user);
 }
 
 function requireCompletionProjectPermission(
@@ -300,20 +335,6 @@ function requireCompletionProjectPermission(
 ) {
   if (!hasProjectPermission(user, project, permissionKey)) {
     throw new Error(message);
-  }
-}
-
-function getCompletionDocumentUploadPermissionKey(
-  documentType: ProjectCompletionDocumentType,
-) {
-  switch (documentType) {
-    case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
-      return "completion.uploadApprovalProof" satisfies PermissionKey;
-    case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
-      return "completion.uploadCopyrightDocument" satisfies PermissionKey;
-    case ProjectCompletionDocumentType.INVOICE:
-    default:
-      return "completion.uploadInvoice" satisfies PermissionKey;
   }
 }
 
@@ -331,6 +352,25 @@ function isCompletedProject(project: {
   );
 }
 
+function areAllStagesCompleted(project: {
+  stages?: Array<{ status: string }>;
+}) {
+  return (
+    Boolean(project.stages && project.stages.length > 0) &&
+    project.stages!.every((stage) => stage.status === "COMPLETED")
+  );
+}
+
+function canUseFinalCompletionWorkflow(project: {
+  status: Parameters<typeof isProjectStatusCompleted>[0];
+  archive: { id: string } | null;
+  archivedAt: Date | null;
+  completedAt: Date | null;
+  stages?: Array<{ status: string }>;
+}) {
+  return isCompletedProject(project) || areAllStagesCompleted(project);
+}
+
 function isStepResolved(status: ProjectCompletionStepStatus) {
   return (
     status === ProjectCompletionStepStatus.COMPLETED ||
@@ -338,22 +378,84 @@ function isStepResolved(status: ProjectCompletionStepStatus) {
   );
 }
 
-function getNextInvoiceStatus(
-  currentStatus: ProjectCompletionStepStatus,
+export function getFinalCompletionArchiveBlockers(input: {
+  executionType: ProjectExecutionType;
+  workflow:
+    | {
+        approvalRequired: boolean | null;
+        approvalStatus: ProjectCompletionStepStatus;
+        copyrightRequired: boolean | null;
+        copyrightStatus: ProjectCompletionStepStatus;
+        invoiceRequired: boolean | null;
+        invoiceStatus: ProjectCompletionStepStatus;
+      }
+    | null
+    | undefined;
+}) {
+  if (input.executionType === ProjectExecutionType.INTERNAL) {
+    return [];
+  }
+
+  const workflow = input.workflow;
+
+  if (!workflow) {
+    return ["Final completion checklist must be configured before archive."];
+  }
+
+  const blockers: string[] = [];
+
+  if (workflow.approvalRequired === null) {
+    blockers.push("Approval requirement must be confirmed.");
+  } else if (
+    workflow.approvalRequired &&
+    workflow.approvalStatus !== ProjectCompletionStepStatus.COMPLETED
+  ) {
+    blockers.push("Approval is required and still pending.");
+  }
+
+  if (workflow.copyrightRequired === null) {
+    blockers.push("Copyright transfer requirement must be confirmed.");
+  } else if (
+    workflow.copyrightRequired &&
+    workflow.copyrightStatus !== ProjectCompletionStepStatus.COMPLETED
+  ) {
+    blockers.push("Copyright transfer is required and still pending.");
+  }
+
+  if (workflow.invoiceRequired === null) {
+    blockers.push("Final invoice requirement must be confirmed.");
+  } else if (
+    workflow.invoiceRequired &&
+    workflow.invoiceStatus !== ProjectCompletionStepStatus.COMPLETED
+  ) {
+    blockers.push("Final invoice is required and still pending.");
+  }
+
+  return blockers;
+}
+
+function getNextInvoiceStatus(currentStatus: ProjectCompletionStepStatus) {
+  if (
+    currentStatus === ProjectCompletionStepStatus.COMPLETED ||
+    currentStatus === ProjectCompletionStepStatus.NOT_REQUIRED ||
+    currentStatus === ProjectCompletionStepStatus.PENDING
+  ) {
+    return currentStatus;
+  }
+
+  return ProjectCompletionStepStatus.NOT_STARTED;
+}
+
+function getWorkflowCompletedAtValue(
   approvalStatus: ProjectCompletionStepStatus,
   copyrightStatus: ProjectCompletionStepStatus,
+  invoiceStatus: ProjectCompletionStepStatus,
 ) {
-  if (currentStatus === ProjectCompletionStepStatus.COMPLETED) {
-    return ProjectCompletionStepStatus.COMPLETED;
-  }
-
-  if (currentStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
-    return ProjectCompletionStepStatus.NOT_REQUIRED;
-  }
-
-  return isStepResolved(approvalStatus) && isStepResolved(copyrightStatus)
-    ? ProjectCompletionStepStatus.PENDING
-    : ProjectCompletionStepStatus.NOT_STARTED;
+  return isStepResolved(approvalStatus) &&
+    isStepResolved(copyrightStatus) &&
+    isStepResolved(invoiceStatus)
+    ? new Date()
+    : null;
 }
 
 function ensureRequirementChangeAllowed(
@@ -441,6 +543,7 @@ function mapArchivedFileOption(
 ) {
   return {
     id: file.id,
+    sourceAttachmentId: file.sourceAttachmentId,
     finalArchiveFileName: file.finalArchiveFileName,
     originalFileName: file.originalFileName,
     fileTypeLabel: getCompletionFileTypeLabel(file.finalArchiveFileName, file.mimeType),
@@ -450,6 +553,117 @@ function mapArchivedFileOption(
     previewPath: `/api/archives/files/${file.id}/preview`,
     downloadPath: `/api/archives/files/${file.id}/download`,
   } satisfies ProjectCompletionArchivedFileOption;
+}
+
+async function getPreArchiveFinalFileOptions(project: ProjectCompletionProjectRecord) {
+  const finalStage = project.stages.at(-1) ?? null;
+
+  if (!finalStage) {
+    return [];
+  }
+
+  const latestApprovedRevision = await withPrismaRetry(() =>
+    prisma.projectRevision.findFirst({
+      where: {
+        projectId: project.id,
+        stageId: finalStage.id,
+        status: ProjectRevisionStatus.APPROVED,
+      },
+      orderBy: [
+        {
+          reviewedAt: "desc",
+        },
+        {
+          revisionNumber: "desc",
+        },
+      ],
+      select: {
+        id: true,
+        revisionNumber: true,
+      },
+    }),
+  );
+
+  const [revisionAttachments, stageSubmissions] = await withPrismaRetry(() =>
+    Promise.all([
+      latestApprovedRevision
+        ? prisma.projectAttachment.findMany({
+            where: {
+              projectId: project.id,
+              stageId: finalStage.id,
+              revisionId: latestApprovedRevision.id,
+              assetType: AttachmentAssetType.REVISION_ORIGINAL,
+              status: AttachmentStatus.READY,
+            },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: {
+              id: true,
+              revisionId: true,
+              originalFileName: true,
+              mimeType: true,
+              fileSize: true,
+            },
+          })
+        : Promise.resolve([]),
+      prisma.projectAttachment.findMany({
+        where: {
+          projectId: project.id,
+          stageId: finalStage.id,
+          assetType: AttachmentAssetType.STAGE_SUBMISSION,
+          status: AttachmentStatus.READY,
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          revisionId: true,
+          originalFileName: true,
+          mimeType: true,
+          fileSize: true,
+          submissionReviewStatus: true,
+        },
+      }),
+    ]),
+  );
+
+  const submissionNumberById = new Map(
+    stageSubmissions.map((attachment, index) => [attachment.id, index + 1] as const),
+  );
+  const approvedStageSubmissions = stageSubmissions
+    .filter(
+      (attachment) =>
+        attachment.submissionReviewStatus === SubmissionReviewStatus.APPROVED &&
+        (!latestApprovedRevision ||
+          attachment.revisionId === latestApprovedRevision.id ||
+          attachment.revisionId === null),
+    )
+    .map((attachment) => ({
+      id: attachment.id,
+      sourceAttachmentId: attachment.id,
+      finalArchiveFileName: attachment.originalFileName,
+      originalFileName: attachment.originalFileName,
+      fileTypeLabel: getCompletionFileTypeLabel(attachment.originalFileName, attachment.mimeType),
+      mimeType: attachment.mimeType,
+      fileSizeLabel: formatCompletionFileSize(attachment.fileSize),
+      sourceLabel: `Submission ${submissionNumberById.get(attachment.id) ?? "—"}`,
+      previewPath: `/api/project-assets/${attachment.id}/preview`,
+      downloadPath: `/api/project-assets/${attachment.id}/download`,
+    } satisfies ProjectCompletionArchivedFileOption));
+  const approvedRevisionAttachments = revisionAttachments.map((attachment) => ({
+    id: attachment.id,
+    sourceAttachmentId: attachment.id,
+    finalArchiveFileName: attachment.originalFileName,
+    originalFileName: attachment.originalFileName,
+    fileTypeLabel: getCompletionFileTypeLabel(attachment.originalFileName, attachment.mimeType),
+    mimeType: attachment.mimeType,
+    fileSizeLabel: formatCompletionFileSize(attachment.fileSize),
+    sourceLabel: latestApprovedRevision
+      ? `Revision ${latestApprovedRevision.revisionNumber}`
+      : "Approved revision",
+    previewPath: `/api/project-assets/${attachment.id}/preview`,
+    downloadPath: `/api/project-assets/${attachment.id}/download`,
+  } satisfies ProjectCompletionArchivedFileOption));
+
+  return [...approvedRevisionAttachments, ...approvedStageSubmissions];
 }
 
 function mapDocumentRecord(
@@ -515,6 +729,17 @@ async function getProjectCompletionProject(projectId: string) {
         },
         archivedAt: true,
         completedAt: true,
+        stages: {
+          orderBy: {
+            order: "asc",
+          },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            order: true,
+          },
+        },
         createdBy: {
           select: {
             id: true,
@@ -547,6 +772,7 @@ async function getProjectCompletionProject(projectId: string) {
               ],
               select: {
                 id: true,
+                sourceAttachmentId: true,
                 finalArchiveFileName: true,
                 originalFileName: true,
                 mimeType: true,
@@ -581,6 +807,7 @@ async function getProjectCompletionProject(projectId: string) {
             },
             approvalNote: true,
             approvalSelectedArchivedFileIds: true,
+            approvalSelectedProjectFileIds: true,
             approvalRequestedAt: true,
             approvalCompletedAt: true,
             copyrightRequired: true,
@@ -595,7 +822,17 @@ async function getProjectCompletionProject(projectId: string) {
             copyrightNote: true,
             copyrightRequestedAt: true,
             copyrightCompletedAt: true,
+            invoiceRequired: true,
             invoiceStatus: true,
+            invoiceContactUserId: true,
+            invoiceContactUser: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            invoiceNote: true,
+            invoiceRequestedAt: true,
             invoiceCompletedAt: true,
             completedAt: true,
             documents: {
@@ -644,7 +881,7 @@ async function ensureProjectCompletionViewAccess(
     throw new Error("Project not found.");
   }
 
-  if (!isCompletedProject(project)) {
+  if (!canUseFinalCompletionWorkflow(project)) {
     return null;
   }
 
@@ -667,12 +904,14 @@ async function ensureProjectCompletionManageAccess(
     throw new Error("Project not found.");
   }
 
-  if (!isCompletedProject(project)) {
-    throw new Error("Complete and archive the project before using the completion checklist.");
+  if (!canUseFinalCompletionWorkflow(project)) {
+    throw new Error(
+      "Complete the final stage before using the final completion checklist.",
+    );
   }
 
   if (!canManageCompletionWorkflow(project, user)) {
-    throw new Error("Only the project owner can manage the completion checklist.");
+    throw new Error("Only the project owner or an admin can manage the completion checklist.");
   }
 
   return project;
@@ -702,6 +941,13 @@ async function ensureProjectCompletionDocumentAccess(
               select: {
                 userId: true,
                 role: true,
+              },
+            },
+            completionWorkflow: {
+              select: {
+                approvalContactUserId: true,
+                copyrightContactUserId: true,
+                invoiceContactUserId: true,
               },
             },
           },
@@ -761,14 +1007,19 @@ async function ensureWorkflowExistsTx(tx: Prisma.TransactionClient, projectId: s
       approvalRequired: true,
       approvalStatus: true,
       approvalSelectedArchivedFileIds: true,
+      approvalSelectedProjectFileIds: true,
+      approvalContactUserId: true,
       copyrightRequired: true,
       copyrightStatus: true,
+      copyrightContactUserId: true,
+      invoiceRequired: true,
       invoiceStatus: true,
+      invoiceContactUserId: true,
     },
   });
 }
 
-function mapWorkflowRecord(
+async function mapWorkflowRecord(
   project: ProjectCompletionProjectRecord,
   user: ProjectCompletionWorkflowUser,
 ) {
@@ -776,13 +1027,22 @@ function mapWorkflowRecord(
     throw new Error("Project completion workflow is not available yet.");
   }
 
-  const finalArchivedFiles = project.archive?.files.map(mapArchivedFileOption) ?? [];
-  const approvalSelectedFileIdSet = new Set(
+  const finalArchivedFiles =
+    project.archive?.files.map(mapArchivedFileOption) ??
+    (await getPreArchiveFinalFileOptions(project));
+  const approvalSelectedProjectFileIdSet = new Set(
+    project.completionWorkflow.approvalSelectedProjectFileIds,
+  );
+  const approvalSelectedArchivedFileIdSet = new Set(
     project.completionWorkflow.approvalSelectedArchivedFileIds,
   );
-  const approvalSelectedFiles = finalArchivedFiles.filter((file) =>
-    approvalSelectedFileIdSet.has(file.id),
-  );
+  const approvalSelectedFiles = project.archive
+    ? approvalSelectedProjectFileIdSet.size > 0
+      ? finalArchivedFiles.filter((file) =>
+          approvalSelectedProjectFileIdSet.has(file.sourceAttachmentId),
+        )
+      : finalArchivedFiles.filter((file) => approvalSelectedArchivedFileIdSet.has(file.id))
+    : finalArchivedFiles.filter((file) => approvalSelectedProjectFileIdSet.has(file.id));
   const documents = project.completionWorkflow.documents.map(mapDocumentRecord);
   const documentByType = new Map(documents.map((document) => [document.type, document] as const));
   const isInternalExecution = isInternalCompletionProject(project);
@@ -795,6 +1055,9 @@ function mapWorkflowRecord(
   const approvalSelectedArchivedFileIds = isInternalExecution
     ? []
     : project.completionWorkflow.approvalSelectedArchivedFileIds;
+  const approvalSelectedProjectFileIds = isInternalExecution
+    ? []
+    : project.completionWorkflow.approvalSelectedProjectFileIds;
   const copyrightRequired = isInternalExecution
     ? false
     : project.completionWorkflow.copyrightRequired;
@@ -804,6 +1067,13 @@ function mapWorkflowRecord(
   const invoiceStatus = isInternalExecution
     ? ProjectCompletionStepStatus.NOT_REQUIRED
     : project.completionWorkflow.invoiceStatus;
+  const invoiceRequired = isInternalExecution
+    ? false
+    : project.completionWorkflow.invoiceRequired;
+  const archiveBlockers = getFinalCompletionArchiveBlockers({
+    executionType: project.executionType,
+    workflow: project.completionWorkflow,
+  });
 
   return {
     workflowId: project.completionWorkflow.id,
@@ -812,13 +1082,20 @@ function mapWorkflowRecord(
     executionTypeLabel: formatCompletionExecutionTypeLabel(project.executionType),
     isInternalExecution,
     canManage: canManageCompletionWorkflow(project, user),
+    canUploadApprovalProof: isInternalExecution
+      ? false
+      : canUploadApprovalProofForProject(project.completionWorkflow, user),
+    canUploadCopyrightDocument: isInternalExecution
+      ? false
+      : canUploadCopyrightDocumentForProject(project.completionWorkflow, user),
     canUploadInvoice: isInternalExecution
       ? false
-      : canUploadInvoiceForProject(project, user),
+      : canUploadInvoiceForProject(project.completionWorkflow, user),
     needsInitialConfiguration:
       !isInternalExecution &&
       (project.completionWorkflow.approvalRequired === null ||
-        project.completionWorkflow.copyrightRequired === null),
+        project.completionWorkflow.copyrightRequired === null ||
+        project.completionWorkflow.invoiceRequired === null),
     approvalRequired,
     approvalStatus,
     approvalContactUserId: project.completionWorkflow.approvalContactUserId ?? null,
@@ -833,6 +1110,7 @@ function mapWorkflowRecord(
       project.completionWorkflow.approvalCompletedAt,
     ),
     approvalSelectedArchivedFileIds,
+    approvalSelectedProjectFileIds,
     copyrightRequired,
     copyrightStatus,
     copyrightContactUserId: project.completionWorkflow.copyrightContactUserId ?? null,
@@ -846,7 +1124,16 @@ function mapWorkflowRecord(
     copyrightCompletedAt: formatCompletionTimestamp(
       project.completionWorkflow.copyrightCompletedAt,
     ),
+    invoiceRequired,
     invoiceStatus,
+    invoiceContactUserId: project.completionWorkflow.invoiceContactUserId ?? null,
+    invoiceContactName: project.completionWorkflow.invoiceContactUser
+      ? getUserDisplayName(project.completionWorkflow.invoiceContactUser)
+      : null,
+    invoiceNote: project.completionWorkflow.invoiceNote ?? null,
+    invoiceRequestedAt: formatCompletionTimestamp(
+      project.completionWorkflow.invoiceRequestedAt,
+    ),
     invoiceCompletedAt: formatCompletionTimestamp(project.completionWorkflow.invoiceCompletedAt),
     completedAt: formatCompletionTimestamp(project.completionWorkflow.completedAt),
     isApprovalResolved: isStepResolved(approvalStatus),
@@ -865,6 +1152,7 @@ function mapWorkflowRecord(
     copyrightTransferDocument:
       documentByType.get(ProjectCompletionDocumentType.COPYRIGHT_TRANSFER) ?? null,
     invoiceDocument: documentByType.get(ProjectCompletionDocumentType.INVOICE) ?? null,
+    archiveBlockers,
   } satisfies ProjectCompletionWorkflowRecord;
 }
 
@@ -983,13 +1271,13 @@ export async function getProjectCompletionWorkflowForUser(
       throw new Error("Unable to load the project completion workflow.");
     }
 
-    return mapWorkflowRecord(
+    return await mapWorkflowRecord(
       await filterCompletionProjectForVisibility(refreshedProject, user),
       user,
     );
   }
 
-  return mapWorkflowRecord(await filterCompletionProjectForVisibility(project, user), user);
+  return await mapWorkflowRecord(await filterCompletionProjectForVisibility(project, user), user);
 }
 
 export async function configureProjectCompletionWorkflow(
@@ -998,6 +1286,7 @@ export async function configureProjectCompletionWorkflow(
     projectId: string;
     approvalRequired: boolean;
     copyrightRequired: boolean;
+    invoiceRequired: boolean;
   },
 ) {
   const project = await ensureProjectCompletionManageAccess(user, input.projectId);
@@ -1052,9 +1341,17 @@ export async function configureProjectCompletionWorkflow(
         input.copyrightRequired,
       );
       const nextInvoiceStatus = getNextInvoiceStatus(
-        workflow.invoiceStatus,
+        ensureRequirementChangeAllowed(
+          "Final invoice",
+          workflow.invoiceRequired,
+          workflow.invoiceStatus,
+          input.invoiceRequired,
+        ),
+      );
+      const completedAt = getWorkflowCompletedAtValue(
         nextApprovalStatus,
         nextCopyrightStatus,
+        nextInvoiceStatus,
       );
 
       await tx.projectCompletionWorkflow.update({
@@ -1070,6 +1367,8 @@ export async function configureProjectCompletionWorkflow(
             nextApprovalStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? null : undefined,
           approvalSelectedArchivedFileIds:
             nextApprovalStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? [] : undefined,
+          approvalSelectedProjectFileIds:
+            nextApprovalStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? [] : undefined,
           approvalRequestedAt:
             nextApprovalStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? null : undefined,
           approvalCompletedAt:
@@ -1084,7 +1383,17 @@ export async function configureProjectCompletionWorkflow(
             nextCopyrightStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? null : undefined,
           copyrightCompletedAt:
             nextCopyrightStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? null : undefined,
+          invoiceRequired: input.invoiceRequired,
           invoiceStatus: nextInvoiceStatus,
+          invoiceContactUserId:
+            nextInvoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? null : undefined,
+          invoiceNote:
+            nextInvoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? null : undefined,
+          invoiceRequestedAt:
+            nextInvoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? null : undefined,
+          invoiceCompletedAt:
+            nextInvoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED ? null : undefined,
+          completedAt,
         },
       });
     }),
@@ -1104,7 +1413,7 @@ export async function prepareAuthorityApprovalRequest(
   input: {
     projectId: string;
     contactUserId: string;
-    selectedArchivedFileIds: string[];
+    selectedProjectFileIds: string[];
     note?: string;
   },
 ) {
@@ -1120,25 +1429,22 @@ export async function prepareAuthorityApprovalRequest(
     throw new Error("Authority approval is not required for internal execution.");
   }
 
-  if (!project.archive || project.archive.files.length === 0) {
-    throw new Error("No final archived files are available for authority approval.");
-  }
-
   const contactOptions = mapContactOptions(project);
   validateContactSelection(contactOptions, input.contactUserId, "approval");
+  const finalApprovalFiles = await getPreArchiveFinalFileOptions(project);
 
   const selectedFileIds = Array.from(
-    new Set(input.selectedArchivedFileIds.map((value) => value.trim()).filter(Boolean)),
+    new Set(input.selectedProjectFileIds.map((value) => value.trim()).filter(Boolean)),
   );
 
   if (selectedFileIds.length === 0) {
-    throw new Error("Select at least one final archived file for authority approval.");
+    throw new Error("Select at least one final file for authority approval.");
   }
 
-  const validArchivedFileIds = new Set(project.archive.files.map((file) => file.id));
+  const validFinalFileIds = new Set(finalApprovalFiles.map((file) => file.id));
 
-  if (selectedFileIds.some((fileId) => !validArchivedFileIds.has(fileId))) {
-    throw new Error("One or more selected archived files are no longer available.");
+  if (selectedFileIds.some((fileId) => !validFinalFileIds.has(fileId))) {
+    throw new Error("One or more selected final files are no longer available.");
   }
 
   await withPrismaRetry(() =>
@@ -1165,14 +1471,11 @@ export async function prepareAuthorityApprovalRequest(
           approvalStatus: ProjectCompletionStepStatus.PENDING,
           approvalContactUserId: input.contactUserId,
           approvalNote: input.note?.trim() || null,
-          approvalSelectedArchivedFileIds: selectedFileIds,
+          approvalSelectedProjectFileIds: selectedFileIds,
+          approvalSelectedArchivedFileIds: [],
           approvalRequestedAt: new Date(),
           approvalCompletedAt: null,
-          invoiceStatus: getNextInvoiceStatus(
-            workflow.invoiceStatus,
-            ProjectCompletionStepStatus.PENDING,
-            workflow.copyrightStatus,
-          ),
+          invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
         },
       });
     }),
@@ -1242,11 +1545,74 @@ export async function prepareCopyrightTransferRequest(
           copyrightNote: input.note?.trim() || null,
           copyrightRequestedAt: new Date(),
           copyrightCompletedAt: null,
-          invoiceStatus: getNextInvoiceStatus(
-            workflow.invoiceStatus,
-            workflow.approvalStatus,
-            ProjectCompletionStepStatus.PENDING,
-          ),
+          invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
+        },
+      });
+    }),
+  );
+
+  const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
+
+  if (!workflow) {
+    throw new Error("Unable to load the updated project completion workflow.");
+  }
+
+  return workflow;
+}
+
+export async function requestProjectFinalInvoice(
+  user: ProjectCompletionWorkflowUser,
+  input: {
+    projectId: string;
+    contactUserId: string;
+    note?: string;
+  },
+) {
+  const project = await ensureProjectCompletionManageAccess(user, input.projectId);
+
+  if (isInternalCompletionProject(project)) {
+    throw new Error("Final invoice is not required for internal execution.");
+  }
+
+  const contactOptions = mapContactOptions(project);
+  validateContactSelection(contactOptions, input.contactUserId, "invoice");
+
+  await withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const workflow = await ensureWorkflowExistsTx(tx, project.id);
+
+      if (
+        !isStepResolved(workflow.approvalStatus) ||
+        !isStepResolved(workflow.copyrightStatus)
+      ) {
+        throw new Error(
+          "Complete or skip authority approval and copyright transfer before requesting the final invoice.",
+        );
+      }
+
+      if (workflow.invoiceRequired === null) {
+        throw new Error("Set the project completion checklist requirements first.");
+      }
+
+      if (!workflow.invoiceRequired) {
+        throw new Error("Final invoice is marked as not required for this project.");
+      }
+
+      if (workflow.invoiceStatus === ProjectCompletionStepStatus.COMPLETED) {
+        throw new Error("Final invoice has already been completed.");
+      }
+
+      await tx.projectCompletionWorkflow.update({
+        where: {
+          projectId: project.id,
+        },
+        data: {
+          invoiceStatus: ProjectCompletionStepStatus.PENDING,
+          invoiceContactUserId: input.contactUserId,
+          invoiceNote: input.note?.trim() || null,
+          invoiceRequestedAt: new Date(),
+          invoiceCompletedAt: null,
+          completedAt: null,
         },
       });
     }),
@@ -1335,7 +1701,11 @@ export async function markProjectInvoiceNotRequired(
           projectId: project.id,
         },
         data: {
+          invoiceRequired: false,
           invoiceStatus: ProjectCompletionStepStatus.NOT_REQUIRED,
+          invoiceContactUserId: null,
+          invoiceNote: null,
+          invoiceRequestedAt: null,
           invoiceCompletedAt: null,
           completedAt,
         },
@@ -1393,13 +1763,6 @@ export async function requestProjectCompletionDocumentUpload(
     throw new Error("Completion documents are not required for internal execution.");
   }
 
-  requireCompletionProjectPermission(
-    project,
-    user,
-    getCompletionDocumentUploadPermissionKey(input.documentType),
-    "You do not have permission to upload this completion document.",
-  );
-
   const workflow = await getProjectCompletionWorkflowForUser(user, input.projectId);
 
   if (!workflow) {
@@ -1408,8 +1771,8 @@ export async function requestProjectCompletionDocumentUpload(
 
   switch (input.documentType) {
     case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
-      if (!workflow.canManage) {
-        throw new Error("Only the project owner can upload authority approval proof.");
+      if (!workflow.canUploadApprovalProof) {
+        throw new Error("Only the selected approval contact can upload authority approval proof.");
       }
 
       if (workflow.approvalStatus !== ProjectCompletionStepStatus.PENDING) {
@@ -1417,8 +1780,8 @@ export async function requestProjectCompletionDocumentUpload(
       }
       break;
     case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
-      if (!workflow.canManage) {
-        throw new Error("Only the project owner can upload copyright transfer documents.");
+      if (!workflow.canUploadCopyrightDocument) {
+        throw new Error("Only the selected copyright contact can upload copyright transfer documents.");
       }
 
       if (!workflow.isApprovalResolved) {
@@ -1433,7 +1796,7 @@ export async function requestProjectCompletionDocumentUpload(
       break;
     case ProjectCompletionDocumentType.INVOICE:
       if (!workflow.canUploadInvoice) {
-        throw new Error("Only the project owner or project executor can upload the final invoice.");
+        throw new Error("Only the selected final invoice recipient can upload the final invoice.");
       }
 
       if (!workflow.isInvoiceUnlocked) {
@@ -1442,8 +1805,8 @@ export async function requestProjectCompletionDocumentUpload(
         );
       }
 
-      if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
-        throw new Error("Final invoice is marked as not required for this project.");
+      if (workflow.invoiceStatus !== ProjectCompletionStepStatus.PENDING) {
+        throw new Error("Final invoice must be requested before upload.");
       }
       break;
   }
@@ -1543,6 +1906,11 @@ export async function finalizeProjectCompletionDocumentUpload(
               id: true,
             },
           },
+          stages: {
+            select: {
+              status: true,
+            },
+          },
         },
       });
 
@@ -1551,16 +1919,10 @@ export async function finalizeProjectCompletionDocumentUpload(
       }
 
       await assertProjectAccess(user, input.projectId);
-      requireCompletionProjectPermission(
-        project,
-        user,
-        getCompletionDocumentUploadPermissionKey(input.documentType),
-        "You do not have permission to upload this completion document.",
-      );
 
-      if (!isCompletedProject(project)) {
+      if (!canUseFinalCompletionWorkflow(project)) {
         throw new Error(
-          "Complete and archive the project before uploading completion documents.",
+          "Complete the final stage before uploading completion documents.",
         );
       }
 
@@ -1568,16 +1930,17 @@ export async function finalizeProjectCompletionDocumentUpload(
         throw new Error("Completion documents are not required for internal execution.");
       }
 
-      const canManage = canManageCompletionWorkflow(project, user);
-      const canUploadInvoice = canUploadInvoiceForProject(project, user);
       const workflow = await ensureWorkflowExistsTx(tx, project.id);
+      const canUploadApprovalProof = workflow.approvalContactUserId === user.id;
+      const canUploadCopyrightDocument = workflow.copyrightContactUserId === user.id;
+      const canUploadInvoice = workflow.invoiceContactUserId === user.id;
       const archiveFileName = input.originalFileName.trim();
       const uploadedAt = new Date();
 
       switch (input.documentType) {
         case ProjectCompletionDocumentType.AUTHORITY_APPROVAL_PROOF:
-          if (!canManage) {
-            throw new Error("Only the project owner can upload authority approval proof.");
+          if (!canUploadApprovalProof) {
+            throw new Error("Only the selected approval contact can upload authority approval proof.");
           }
 
           if (workflow.approvalStatus !== ProjectCompletionStepStatus.PENDING) {
@@ -1623,17 +1986,18 @@ export async function finalizeProjectCompletionDocumentUpload(
             data: {
               approvalStatus: ProjectCompletionStepStatus.COMPLETED,
               approvalCompletedAt: uploadedAt,
-              invoiceStatus: getNextInvoiceStatus(
-                workflow.invoiceStatus,
+              invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
+              completedAt: getWorkflowCompletedAtValue(
                 ProjectCompletionStepStatus.COMPLETED,
                 workflow.copyrightStatus,
+                getNextInvoiceStatus(workflow.invoiceStatus),
               ),
             },
           });
           break;
         case ProjectCompletionDocumentType.COPYRIGHT_TRANSFER:
-          if (!canManage) {
-            throw new Error("Only the project owner can upload copyright transfer documents.");
+          if (!canUploadCopyrightDocument) {
+            throw new Error("Only the selected copyright contact can upload copyright transfer documents.");
           }
 
           if (!isStepResolved(workflow.approvalStatus)) {
@@ -1685,17 +2049,18 @@ export async function finalizeProjectCompletionDocumentUpload(
             data: {
               copyrightStatus: ProjectCompletionStepStatus.COMPLETED,
               copyrightCompletedAt: uploadedAt,
-              invoiceStatus: getNextInvoiceStatus(
-                workflow.invoiceStatus,
+              invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
+              completedAt: getWorkflowCompletedAtValue(
                 workflow.approvalStatus,
                 ProjectCompletionStepStatus.COMPLETED,
+                getNextInvoiceStatus(workflow.invoiceStatus),
               ),
             },
           });
           break;
         case ProjectCompletionDocumentType.INVOICE:
           if (!canUploadInvoice) {
-            throw new Error("Only the project owner or project executor can upload the final invoice.");
+            throw new Error("Only the selected final invoice recipient can upload the final invoice.");
           }
 
           if (
@@ -1707,8 +2072,8 @@ export async function finalizeProjectCompletionDocumentUpload(
             );
           }
 
-          if (workflow.invoiceStatus === ProjectCompletionStepStatus.NOT_REQUIRED) {
-            throw new Error("Final invoice is marked as not required for this project.");
+          if (workflow.invoiceStatus !== ProjectCompletionStepStatus.PENDING) {
+            throw new Error("Final invoice must be requested before upload.");
           }
 
           await tx.projectCompletionDocument.upsert({

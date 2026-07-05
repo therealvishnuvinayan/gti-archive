@@ -2641,6 +2641,11 @@ export function ProjectChatWorkspace({
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
   const canCompleteProject =
     completionState.canCompleteProject && !isProjectCompleted;
+  const shouldExpectCompletionWorkflow =
+    isProjectCompleted ||
+    (!isProjectCompleted && completionState.allStagesCompleted && isFinalStage);
+  const shouldShowCompletionChecklist =
+    Boolean(effectiveCompletionWorkflow) && shouldExpectCompletionWorkflow;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
   const isChatReadOnly = isProjectCompleted || isStageCompleted;
   const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
@@ -3972,7 +3977,7 @@ export function ProjectChatWorkspace({
         canCompleteProject: false,
       }));
       resetProjectCompletionFlow();
-      showSuccessToast("Project completed and files archived.");
+      showSuccessToast("Project archived.");
       refreshHistory();
     } catch (error) {
       const message =
@@ -5933,14 +5938,14 @@ export function ProjectChatWorkspace({
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
 
-          {isProjectCompleted && effectiveCompletionWorkflow ? (
+          {shouldShowCompletionChecklist ? (
             <ProjectCompletionChecklist
               projectId={project.id}
               workflow={effectiveCompletionWorkflow}
             />
           ) : null}
 
-          {isProjectCompleted && isCompletionDataLoading ? (
+          {shouldExpectCompletionWorkflow && isCompletionDataLoading ? (
             <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
               <CardContent className="flex items-center gap-2 px-5 py-4 text-[13px] font-semibold text-[#5f6b62]">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -5949,7 +5954,7 @@ export function ProjectChatWorkspace({
             </Card>
           ) : null}
 
-          {isProjectCompleted &&
+          {shouldExpectCompletionWorkflow &&
           !effectiveCompletionWorkflow &&
           !isCompletionDataLoading &&
           (isProjectOwner || isProjectExecutor) ? (
@@ -5960,9 +5965,9 @@ export function ProjectChatWorkspace({
                     Project completion checklist is not available yet.
                   </p>
                   <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-                    This completed project should show Authority Approval, Copyright
-                    Transfer, and Final Invoice steps here. Reload the page to fetch the
-                    checklist.
+                    This project should show Authority Approval, Copyright Transfer,
+                    and Final Invoice steps here before archive. Reload the page to
+                    fetch the checklist.
                   </p>
                 </div>
                 <Button
@@ -5977,12 +5982,29 @@ export function ProjectChatWorkspace({
             </Card>
           ) : null}
 
+          {!isProjectCompleted && completionState.isFinalCompletionPending ? (
+            <Card className="rounded-[20px] border border-[#efd9af] bg-[#fffaf0] shadow-none">
+              <CardContent className="px-5 py-4">
+                <p className="text-[14px] font-semibold text-[#8a5718]">
+                  Final completion requirements must be resolved before archive.
+                </p>
+                {completionState.finalCompletionBlockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[12px] leading-5 text-[#5d4a2f]">
+                    {completionState.finalCompletionBlockers.map((blocker) => (
+                      <li key={blocker}>{blocker}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {!isProjectCompleted && canCompleteProject ? (
             <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
               <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[14px] font-semibold text-[#173120]">
-                    All stages completed. Complete the project to archive the final files.
+                    All completion requirements are resolved. Archive the final files.
                   </p>
                   <p className="mt-1 text-[12px] text-[#5f6b62]">
                     {completionState.approvedFileCount} final file
@@ -6006,7 +6028,7 @@ export function ProjectChatWorkspace({
                   {isPreparingProjectCompletion ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : null}
-                  Complete Project
+                  Archive Project
                 </Button>
               </CardContent>
             </Card>
@@ -7626,7 +7648,7 @@ export function ProjectChatWorkspace({
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
                   Review only the final files, rename them for archive storage, and choose the
-                  archive category before completing the project. Working files remain in logs,
+                  archive category before archiving the project. Working files remain in logs,
                   Library, and stage history.
                 </p>
               </div>
@@ -7789,7 +7811,7 @@ export function ProjectChatWorkspace({
                   {isCompletingProject ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : null}
-                  Complete Project
+                  Archive Project
                 </Button>
               </div>
             </CardContent>

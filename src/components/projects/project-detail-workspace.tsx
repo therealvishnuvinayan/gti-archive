@@ -213,8 +213,17 @@ export function ProjectDetailWorkspace({
   assetsLoading = false,
   completionLoading = false,
 }: ProjectDetailWorkspaceProps) {
+  const allProjectStagesCompleted =
+    project.stageCards.length > 0 &&
+    project.stageCards.every((stage) => stage.status === "completed");
+  const shouldExpectCompletionWorkflow =
+    Boolean(completionSummary?.isCompleted) ||
+    Boolean(completionSummary?.allStagesCompleted);
+  const shouldShowCompletionChecklist =
+    Boolean(completionWorkflow) && shouldExpectCompletionWorkflow;
   const shouldShowCompletionLoading =
-    completionLoading && project.statusLabel.toLowerCase() === "completed";
+    completionLoading &&
+    (project.statusLabel.toLowerCase() === "completed" || allProjectStagesCompleted);
   const finalStageArchiveHref = completionSummary?.finalStageId
     ? `/projects/${project.id}/chat?stage=${completionSummary.finalStageId}`
     : `/projects/${project.id}/chat`;
@@ -395,7 +404,7 @@ export function ProjectDetailWorkspace({
                     Ready for archive
                   </p>
                   <h2 className="mt-1 text-[20px] font-[800] leading-tight text-[#111712]">
-                    Upload completed project to Archive
+                    Archive final project files
                   </h2>
                   <p className="mt-2 text-[13px] font-[500] leading-6 text-[#536158]">
                     All stages are completed. {completionSummary.approvedFileCount} final file
@@ -403,20 +412,39 @@ export function ProjectDetailWorkspace({
                   </p>
                 </div>
                 <Button asChild className="min-h-[46px] shrink-0 rounded-full px-6 text-[13px] font-[800]">
-                  <Link href={finalStageArchiveHref}>Upload to Archive</Link>
+                  <Link href={finalStageArchiveHref}>Archive Final Files</Link>
                 </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {completionSummary?.isFinalCompletionPending ? (
+            <Card className="rounded-[24px] border border-[#efd9af] bg-[#fffaf0] shadow-none">
+              <CardContent className="px-5 py-5 sm:px-6">
+                <p className="text-[14px] font-[800] text-[#8a5718]">
+                  Final completion requirements must be resolved before archive.
+                </p>
+                {completionSummary.finalCompletionBlockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[12px] leading-5 text-[#5d4a2f]">
+                    {completionSummary.finalCompletionBlockers.map((blocker) => (
+                      <li key={blocker}>{blocker}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
 
           {shouldShowCompletionLoading ? (
             <CompletionLoadingCard />
-          ) : completionSummary?.isCompleted ? (
+          ) : completionSummary?.isCompleted || shouldShowCompletionChecklist ? (
             <MotionStaggerGroup className="space-y-4" stagger={0.04}>
-              <MotionItem y={10}>
-                <CompletedProjectArchiveSummaryCard completionSummary={completionSummary} />
-              </MotionItem>
-              {completionWorkflow ? (
+              {completionSummary?.isCompleted ? (
+                <MotionItem y={10}>
+                  <CompletedProjectArchiveSummaryCard completionSummary={completionSummary} />
+                </MotionItem>
+              ) : null}
+              {shouldShowCompletionChecklist ? (
                 <MotionItem y={10}>
                   <ProjectCompletionChecklist
                     projectId={project.id}
