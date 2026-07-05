@@ -192,6 +192,7 @@ model User {
   archivedProjectFiles                ArchivedProjectFile[]                @relation("ArchivedProjectFileArchivedBy")
   approvalContactWorkflows            ProjectCompletionWorkflow[]          @relation("ProjectCompletionApprovalContact")
   copyrightContactWorkflows           ProjectCompletionWorkflow[]          @relation("ProjectCompletionCopyrightContact")
+  invoiceContactWorkflows             ProjectCompletionWorkflow[]          @relation("ProjectCompletionInvoiceContact")
   uploadedCompletionDocuments         ProjectCompletionDocument[]          @relation("ProjectCompletionDocumentUploadedBy")
   manualArchiveFiles                  ManualArchiveFile[]                  @relation("ManualArchiveFileUploadedBy")
   archiveCategoryAccesses             ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessUser")
@@ -834,6 +835,7 @@ model ProjectCompletionWorkflow {
   approvalContactUser             User?                       @relation("ProjectCompletionApprovalContact", fields: [approvalContactUserId], references: [id], onDelete: SetNull)
   approvalNote                    String?
   approvalSelectedArchivedFileIds String[]                    @default([])
+  approvalSelectedProjectFileIds  String[]                    @default([])
   approvalRequestedAt             DateTime?
   approvalCompletedAt             DateTime?
   copyrightRequired               Boolean?
@@ -843,7 +845,12 @@ model ProjectCompletionWorkflow {
   copyrightNote                   String?
   copyrightRequestedAt            DateTime?
   copyrightCompletedAt            DateTime?
+  invoiceRequired                 Boolean?
   invoiceStatus                   ProjectCompletionStepStatus @default(NOT_STARTED)
+  invoiceContactUserId            String?
+  invoiceContactUser              User?                       @relation("ProjectCompletionInvoiceContact", fields: [invoiceContactUserId], references: [id], onDelete: SetNull)
+  invoiceNote                     String?
+  invoiceRequestedAt              DateTime?
   invoiceCompletedAt              DateTime?
   completedAt                     DateTime?
   documents                       ProjectCompletionDocument[]
@@ -855,6 +862,7 @@ model ProjectCompletionWorkflow {
   @@index([invoiceStatus])
   @@index([approvalContactUserId])
   @@index([copyrightContactUserId])
+  @@index([invoiceContactUserId])
 }
 
 model ProjectCompletionDocument {

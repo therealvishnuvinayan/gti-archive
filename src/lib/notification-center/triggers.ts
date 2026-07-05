@@ -759,6 +759,7 @@ export async function notifyProjectArchived(input: {
 export async function notifyApprovalRequired(input: {
   projectId: string;
   actorId: string;
+  recipientUserId: string;
 }) {
   const project = await getProjectNotificationContext(input.projectId);
 
@@ -766,10 +767,7 @@ export async function notifyApprovalRequired(input: {
     return;
   }
 
-  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
-    role: "main",
-    excludeUserId: input.actorId,
-  });
+  const executorRecipients = input.recipientUserId === input.actorId ? [] : [input.recipientUserId];
   const recipients = await filterRecipientsVisibleForStageEvent(
     project.id,
     executorRecipients,
@@ -826,6 +824,7 @@ export async function notifyApprovalProofUploaded(input: {
 export async function notifyCopyrightTransferRequired(input: {
   projectId: string;
   actorId: string;
+  recipientUserId: string;
 }) {
   const project = await getProjectNotificationContext(input.projectId);
 
@@ -833,10 +832,7 @@ export async function notifyCopyrightTransferRequired(input: {
     return;
   }
 
-  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
-    role: "main",
-    excludeUserId: input.actorId,
-  });
+  const executorRecipients = input.recipientUserId === input.actorId ? [] : [input.recipientUserId];
   const recipients = await filterRecipientsVisibleForStageEvent(
     project.id,
     executorRecipients,
@@ -915,6 +911,30 @@ export async function notifyStageInvoiceRequested(input: {
       kind: "project-stage",
       projectId: project.id,
       stageId: stage.id,
+    }),
+  });
+}
+
+export async function notifyFinalInvoiceRequested(input: {
+  projectId: string;
+  recipientUserId: string;
+}) {
+  const project = await getProjectNotificationContext(input.projectId);
+
+  if (!project) {
+    return;
+  }
+
+  await createNotificationsForUsers({
+    recipientUserIds: [input.recipientUserId],
+    type: "INVOICE_REQUESTED",
+    title: "Final invoice requested",
+    message: `Final invoice has been requested for ${project.name}.`,
+    entityType: "COMPLETION_WORKFLOW",
+    projectId: project.id,
+    url: buildNotificationUrl({
+      kind: "project",
+      projectId: project.id,
     }),
   });
 }

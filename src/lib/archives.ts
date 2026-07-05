@@ -15,6 +15,7 @@ import {
   type ArchiveCategorySlug,
 } from "@/lib/archive-categories";
 import { getUserDisplayName } from "@/lib/auth";
+import { getFinalCompletionArchiveBlockers } from "@/lib/project-completion";
 import {
   assertCanUseArchives,
   canUseArchives,
@@ -141,6 +142,8 @@ export type ProjectCompletionSummary = {
   isSelectedStageFinal: boolean;
   canCompleteProject: boolean;
   approvedFileCount: number;
+  finalCompletionBlockers: string[];
+  isFinalCompletionPending: boolean;
   allStagesCompleted: boolean;
   incompleteStages: Array<{
     id: string;
@@ -437,6 +440,7 @@ async function getProjectArchiveBase(projectId: string) {
         id: true,
         name: true,
         category: true,
+        executionType: true,
         tags: {
           include: {
             tag: true,
@@ -560,6 +564,16 @@ async function getProjectArchiveBase(projectId: string) {
                 },
               },
             },
+          },
+        },
+        completionWorkflow: {
+          select: {
+            approvalRequired: true,
+            approvalStatus: true,
+            copyrightRequired: true,
+            copyrightStatus: true,
+            invoiceRequired: true,
+            invoiceStatus: true,
           },
         },
       },
@@ -777,6 +791,20 @@ function ensureProjectCanBeCompleted(
 
   if (allStagesCompletionError) {
     throw new Error(allStagesCompletionError);
+  }
+
+  const finalCompletionBlockers = getFinalCompletionArchiveBlockers({
+    executionType: project.executionType,
+    workflow: project.completionWorkflow,
+  });
+
+  if (finalCompletionBlockers.length > 0) {
+    throw new Error(
+      [
+        "Final completion requirements must be resolved before archive.",
+        ...finalCompletionBlockers,
+      ].join("\n"),
+    );
   }
 
   return finalStage;
@@ -1553,6 +1581,15 @@ export async function getProjectCompletionSummary(
       ? await getFinalStageArchivableAttachments(project.id, finalStage.id)
       : [];
   const projectTags = getArchiveProjectTagNames(project);
+  const finalCompletionBlockers =
+    allStagesCompleted && !isCompleted
+      ? getFinalCompletionArchiveBlockers({
+          executionType: project.executionType,
+          workflow: project.completionWorkflow,
+        })
+      : [];
+  const isFinalCompletionPending =
+    allStagesCompleted && !isCompleted && finalCompletionBlockers.length > 0;
 
   return {
     isCompleted,
@@ -1567,8 +1604,11 @@ export async function getProjectCompletionSummary(
       isSelectedStageFinal &&
       allStagesCompleted &&
       !isCompleted &&
-      approvedFiles.length > 0,
+      approvedFiles.length > 0 &&
+      finalCompletionBlockers.length === 0,
     approvedFileCount: approvedFiles.length,
+    finalCompletionBlockers,
+    isFinalCompletionPending,
     allStagesCompleted,
     incompleteStages,
     archiveCategorySlug: project.archive?.archiveCategory?.slug ?? null,
@@ -1708,6 +1748,7 @@ export async function completeProjectArchive(
         select: {
           id: true,
           createdById: true,
+          executionType: true,
           statusId: true,
           status: {
             select: {
@@ -1744,6 +1785,16 @@ export async function completeProjectArchive(
               id: true,
             },
           },
+          completionWorkflow: {
+            select: {
+              approvalRequired: true,
+              approvalStatus: true,
+              copyrightRequired: true,
+              copyrightStatus: true,
+              invoiceRequired: true,
+              invoiceStatus: true,
+            },
+          },
           stages: {
             orderBy: {
               order: "asc",
@@ -1773,6 +1824,20 @@ export async function completeProjectArchive(
 
       if (allStagesCompletionError) {
         throw new Error(allStagesCompletionError);
+      }
+
+      const finalCompletionBlockers = getFinalCompletionArchiveBlockers({
+        executionType: latestProject.executionType,
+        workflow: latestProject.completionWorkflow,
+      });
+
+      if (finalCompletionBlockers.length > 0) {
+        throw new Error(
+          [
+            "Final completion requirements must be resolved before archive.",
+            ...finalCompletionBlockers,
+          ].join("\n"),
+        );
       }
 
       const createdArchive = await tx.projectArchive.create({

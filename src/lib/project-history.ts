@@ -4,6 +4,7 @@ import {
   ActivityLogAction,
   AttachmentAssetType,
   AttachmentStatus,
+  Prisma,
   ProjectExecutionType,
   ProjectRevisionStatus,
   StageStatus,
@@ -72,6 +73,24 @@ const STAGE_CHAT_MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
 const DELETED_STAGE_CHAT_MESSAGE_TEXT = "This message was deleted";
 const DEFAULT_STAGE_CHAT_MESSAGE_LIMIT = 30;
 const MAX_STAGE_CHAT_MESSAGE_LIMIT = 50;
+
+async function ensureFinalCompletionWorkflowExistsTx(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+) {
+  await tx.projectCompletionWorkflow.upsert({
+    where: {
+      projectId,
+    },
+    update: {},
+    create: {
+      projectId,
+    },
+    select: {
+      id: true,
+    },
+  });
+}
 
 type AccessUser = Pick<
   User,
@@ -3694,6 +3713,8 @@ export async function completeProjectStage(
             currentStageName: stage.name,
           },
         });
+
+        await ensureFinalCompletionWorkflowExistsTx(tx, input.projectId);
       }
 
       return completedStage;
@@ -4031,6 +4052,8 @@ export async function reviewProjectRevision(
               currentStageName: revision.stage.name,
             },
           });
+
+          await ensureFinalCompletionWorkflowExistsTx(tx, revision.projectId);
 
           stageCompletion = {
             id: revision.stageId,

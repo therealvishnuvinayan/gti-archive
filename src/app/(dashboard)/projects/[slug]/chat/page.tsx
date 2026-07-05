@@ -90,6 +90,8 @@ function getInitialCompletionSummary(
     isSelectedStageFinal: Boolean(finalStage && selectedStageId === finalStage.id),
     canCompleteProject: false,
     approvedFileCount: 0,
+    finalCompletionBlockers: [],
+    isFinalCompletionPending: false,
     allStagesCompleted: project.stageCards.length > 0 && incompleteStages.length === 0,
     incompleteStages,
     archiveCategorySlug: null,
