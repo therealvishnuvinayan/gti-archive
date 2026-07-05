@@ -173,6 +173,7 @@ type ProjectCardProject = Pick<
 > & {
   createdBy: Pick<User, "name" | "email">;
   status: ProjectStatusRelation;
+  stages?: Array<Pick<ProjectStage, "name" | "status" | "order">>;
   tags?: Array<{
     tag: Pick<ProjectTag, "name">;
   }>;
@@ -1043,10 +1044,19 @@ function getProjectStages(project: ProjectWithCreator) {
 }
 
 export function formatProjectStageLabel(
-  project: Pick<Project, "currentStageName"> & { status: ProjectStatusRelation },
+  project: Pick<Project, "currentStageName"> & {
+    status: ProjectStatusRelation;
+    stages?: Array<Pick<ProjectStage, "name" | "status" | "order">>;
+  },
 ) {
-  const stageName = project.currentStageName?.trim() || "Stage 1";
-  const statusLabel = getProjectStatusDisplay(project.status).name;
+  const stages = [...(project.stages ?? [])].sort((left, right) => left.order - right.order);
+  const currentStage =
+    stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
+  const fallbackStageName = project.currentStageName?.trim() || "Stage 1";
+  const stageName = currentStage?.name ?? fallbackStageName;
+  const statusLabel = currentStage
+    ? mapStageStatusToDisplayLabel(currentStage.status)
+    : getProjectStatusDisplay(project.status).name;
 
   return `${stageName} : ${statusLabel}`;
 }
@@ -2520,6 +2530,16 @@ export async function getProjectsList(
                 },
               },
             },
+            stages: {
+              select: {
+                name: true,
+                status: true,
+                order: true,
+              },
+              orderBy: {
+                order: "asc",
+              },
+            },
             tags: {
               select: {
                 tag: {
@@ -2543,6 +2563,7 @@ export async function getProjectsList(
       ),
     [
       "projects-list",
+      "stage-status-v2",
       filter.status ?? "all",
       filter.query?.trim().toLowerCase() ?? "",
       filter.category?.trim().toLowerCase() ?? "",
