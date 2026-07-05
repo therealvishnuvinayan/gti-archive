@@ -23,6 +23,7 @@ import {
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import {
   assertProjectTimestampVisibleForUser,
   canBypassCollaboratorVisibility,
@@ -467,7 +468,7 @@ async function getProjectArchiveBase(projectId: string) {
         },
         collaborators: {
           select: {
-            userId: true,
+            ...projectCollaboratorPermissionSelect,
             chatVisibilityPaused: true,
             visibilityPauses: {
               orderBy: {
@@ -1532,10 +1533,7 @@ export async function getProjectCompletionSummary(
   const allStagesCompleted = incompleteStages.length === 0 && project.stages.length > 0;
   const isCompleted = Boolean(project.archive || project.archivedAt || project.completedAt);
   const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
-  const canViewArchivedFiles =
-    canUseArchives(user) &&
-    (!project.archive?.archiveCategory ||
-      canAccessArchiveCategoryRecord(user, project.archive.archiveCategory));
+  const canViewArchivedFiles = hasProjectPermission(user, project, "archive.view");
   const visibleArchivedFiles =
     project.archive?.files.filter((file) =>
       isArchiveTimestampVisibleToUser(
@@ -1884,8 +1882,6 @@ export async function getArchivedFileDownloadUrlForUser(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ) {
-  assertCanUseArchives(user, "You do not have permission to download archive files.");
-
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {
@@ -1934,6 +1930,8 @@ export async function getArchivedFileDownloadUrlForUser(
       throw new Error("Archived file not found.");
     }
 
+    assertCanUseArchives(user, "You do not have permission to download archive files.");
+
     if (!hasPermission(user, "archive.download")) {
       throw new Error("You do not have permission to download archive files.");
     }
@@ -1969,8 +1967,6 @@ export async function getArchivedFileDownloadUrlForUser(
     throw new Error("Archived file not found.");
   }
 
-  await assertCanAccessArchiveCategory(user, archivedFile.archive.archiveCategoryId);
-
   return createPresignedDownloadUrl({
     bucket: archivedFile.bucket,
     storageKey: archivedFile.storageKey,
@@ -1983,8 +1979,6 @@ export async function getArchivedFilePreviewUrlForUser(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ) {
-  assertCanUseArchives(user, "You do not have permission to preview archive files.");
-
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {
@@ -2063,8 +2057,6 @@ export async function getArchivedFilePreviewUrlForUser(
   if (!archivedFile.archive.archiveCategoryId) {
     throw new Error("Archived file not found.");
   }
-
-  await assertCanAccessArchiveCategory(user, archivedFile.archive.archiveCategoryId);
 
   return createPresignedPreviewUrl({
     bucket: archivedFile.bucket,

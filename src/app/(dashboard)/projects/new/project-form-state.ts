@@ -1,4 +1,5 @@
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
+import type { ProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
 import type { ProjectExecutionType, ProjectExecutorRole } from "@prisma/client";
 
 export type ProjectFormFieldErrors = {
@@ -59,7 +60,7 @@ export type ProjectEditorInitialAttachment = {
   isFavoritedByCurrentUser: boolean;
 };
 
-export type ProjectEditorInitialCollaborator = {
+export type ProjectEditorInitialCollaborator = ProjectCollaboratorPermissions & {
   id: string;
   name: string;
   email?: string;

@@ -18,6 +18,7 @@ import {
   getCollaboratorRoleLabel,
   getCollaboratorTypeGroup,
 } from "@/lib/project-collaborator-participant-types";
+import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
   hasPermission,
@@ -781,9 +782,7 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
               where: {
                 userId,
               },
-              select: {
-                userId: true,
-              },
+              select: projectCollaboratorPermissionSelect,
             }
           : false,
         stages: {
@@ -851,9 +850,7 @@ async function getStageChatAccessRecord(
               where: {
                 userId,
               },
-              select: {
-                userId: true,
-              },
+              select: projectCollaboratorPermissionSelect,
             },
           },
         },
@@ -2402,9 +2399,7 @@ export async function createStageComment(
               where: {
                 userId: user.id,
               },
-              select: {
-                userId: true,
-              },
+              select: projectCollaboratorPermissionSelect,
             },
           },
         },
@@ -2616,9 +2611,7 @@ export async function createStageTextCommentFast(
               where: {
                 userId: user.id,
               },
-              select: {
-                userId: true,
-              },
+              select: projectCollaboratorPermissionSelect,
             },
           },
         },
@@ -2913,9 +2906,7 @@ export async function deleteStageComment(
               where: {
                 userId: user.id,
               },
-              select: {
-                userId: true,
-              },
+              select: projectCollaboratorPermissionSelect,
             },
           },
         },
@@ -3055,9 +3046,7 @@ export async function prepareStageCommentUploads(
               where: {
                 userId: user.id,
               },
-              select: {
-                userId: true,
-              },
+              select: projectCollaboratorPermissionSelect,
             },
           },
         },
@@ -3342,9 +3331,7 @@ export async function finalizePreparedStageCommentUploads(
                   where: {
                     userId: user.id,
                   },
-                  select: {
-                    userId: true,
-                  },
+                  select: projectCollaboratorPermissionSelect,
                 },
               },
             },
@@ -3437,9 +3424,7 @@ export async function cancelStageRevisionSubmission(
               where: {
                 userId: user.id,
               },
-              select: {
-                userId: true,
-              },
+              select: projectCollaboratorPermissionSelect,
             },
           },
         },
@@ -4373,9 +4358,7 @@ export async function requestAttachmentUpload(
                 where: {
                   userId: user.id,
                 },
-                select: {
-                  userId: true,
-                },
+                select: projectCollaboratorPermissionSelect,
               },
             },
           },
@@ -4465,9 +4448,7 @@ export async function requestAttachmentUpload(
                 where: {
                   userId: user.id,
                 },
-                select: {
-                  userId: true,
-                },
+                select: projectCollaboratorPermissionSelect,
               },
             },
           },
@@ -4557,9 +4538,7 @@ export async function requestAttachmentUpload(
                 where: {
                   userId: user.id,
                 },
-                select: {
-                  userId: true,
-                },
+                select: projectCollaboratorPermissionSelect,
               },
             },
           },
@@ -4635,9 +4614,7 @@ export async function requestAttachmentUpload(
                 where: {
                   userId: user.id,
                 },
-                select: {
-                  userId: true,
-                },
+                select: projectCollaboratorPermissionSelect,
               },
             },
           },
@@ -4847,9 +4824,7 @@ export async function completeAttachmentUpload(
               where: {
                 userId: user.id,
               },
-              select: {
-                userId: true,
-              },
+              select: projectCollaboratorPermissionSelect,
             },
             status: {
               select: projectStatusSelect,
@@ -5138,9 +5113,7 @@ export async function completePreparedChatAttachmentUpload(
                   where: {
                     userId: user.id,
                   },
-                  select: {
-                    userId: true,
-                  },
+                  select: projectCollaboratorPermissionSelect,
                 },
               },
             },

@@ -27,6 +27,14 @@ import {
   isProjectCollaboratorParticipantType,
   type ProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
+import {
+  normalizeProjectCollaboratorPermissions,
+  pickProjectCollaboratorPermissions,
+  projectCollaboratorPermissionKeys,
+  projectCollaboratorPermissionSelect,
+  type ProjectCollaboratorPermissionKey,
+  type ProjectCollaboratorPermissions,
+} from "@/lib/project-collaborator-permissions";
 import { prisma } from "@/lib/prisma";
 import { MAX_PROJECT_TAGS, PROJECTS_CACHE_TAG } from "@/lib/projects";
 import {
@@ -60,6 +68,15 @@ function parseBudget(value: string) {
 function parseBudgetRequired(value: string) {
   return ["1", "true", "on", "yes"].includes(value.trim().toLowerCase());
 }
+
+const collaboratorPermissionFormFields: Record<ProjectCollaboratorPermissionKey, string> = {
+  canInteract: "collaboratorCanInteract",
+  canAddCaptions: "collaboratorCanAddCaptions",
+  canDownloadFiles: "collaboratorCanDownloadFiles",
+  canViewBudget: "collaboratorCanViewBudget",
+  canViewVendorInfo: "collaboratorCanViewVendorInfo",
+  canAccessProjectArchives: "collaboratorCanAccessProjectArchives",
+};
 
 function formatBudgetValue(value: number, currencyCode: string) {
   const formattedNumber = new Intl.NumberFormat("en-US", {
@@ -235,15 +252,50 @@ function parseProjectFormData(formData: FormData) {
   const executorRoles = formData
     .getAll("executorRoles")
     .map((value) => String(value).trim());
-  const collaboratorIds = [...new Set(
-    formData
-      .getAll("collaboratorIds")
-      .map((value) => String(value).trim())
-      .filter(Boolean),
-  )];
+  const rawCollaboratorIds = formData
+    .getAll("collaboratorIds")
+    .map((value) => String(value).trim());
+  const collaboratorIds = [...new Set(rawCollaboratorIds.filter(Boolean))];
   const collaboratorParticipantTypes = formData
     .getAll("collaboratorParticipantTypes")
     .map((value) => String(value).trim());
+  const collaboratorPermissionValues = Object.fromEntries(
+    projectCollaboratorPermissionKeys.map((key) => [
+      key,
+      formData
+        .getAll(collaboratorPermissionFormFields[key])
+        .map((value) => parseBudgetRequired(String(value))),
+    ]),
+  ) as Record<ProjectCollaboratorPermissionKey, boolean[]>;
+  const collaboratorPermissionsById = new Map<
+    string,
+    ProjectCollaboratorPermissions | null
+  >();
+
+  rawCollaboratorIds.forEach((collaboratorId, index) => {
+    if (!collaboratorId || collaboratorPermissionsById.has(collaboratorId)) {
+      return;
+    }
+
+    const hasSubmittedPermissions = projectCollaboratorPermissionKeys.some(
+      (key) => index < collaboratorPermissionValues[key].length,
+    );
+
+    collaboratorPermissionsById.set(
+      collaboratorId,
+      hasSubmittedPermissions
+        ? pickProjectCollaboratorPermissions({
+            canInteract: collaboratorPermissionValues.canInteract[index],
+            canAddCaptions: collaboratorPermissionValues.canAddCaptions[index],
+            canDownloadFiles: collaboratorPermissionValues.canDownloadFiles[index],
+            canViewBudget: collaboratorPermissionValues.canViewBudget[index],
+            canViewVendorInfo: collaboratorPermissionValues.canViewVendorInfo[index],
+            canAccessProjectArchives:
+              collaboratorPermissionValues.canAccessProjectArchives[index],
+          })
+        : null,
+    );
+  });
   const projectAttachmentIds = [
     ...new Set(
       formData
@@ -281,6 +333,7 @@ function parseProjectFormData(formData: FormData) {
     executorRoles,
     collaboratorIds,
     collaboratorParticipantTypes,
+    collaboratorPermissionsById,
     projectAttachmentIds,
     stageAttachmentIds,
   };
@@ -978,6 +1031,7 @@ export async function createProjectAction(
     currentStageName,
     collaboratorIds,
     collaboratorParticipantTypes,
+    collaboratorPermissionsById,
   } = validated.data;
   const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
   const stageStatuses = getInitialStageStatuses(
@@ -1047,6 +1101,12 @@ export async function createProjectAction(
       ];
     }),
   );
+  const executorRoleMap = new Map(
+    resolvedExecutors.executors.map((executor) => [
+      executor.userId,
+      executor.role,
+    ] as const),
+  );
 
   let projectId: string;
   let createdStageIds: string[] = [];
@@ -1094,15 +1154,24 @@ export async function createProjectAction(
               : undefined,
           collaborators: {
             createMany: {
-                data: validCollaboratorIds.map((collaboratorId) => ({
+              data: validCollaboratorIds.map((collaboratorId) => {
+                const participantType =
+                  collaboratorParticipantTypeMap.get(collaboratorId) ??
+                  getDefaultProjectCollaboratorParticipantType(
+                    validCollaboratorTypeMap.get(collaboratorId) ?? "external",
+                  );
+
+                return {
                   userId: collaboratorId,
                   addedById: user.id,
-                  participantType:
-                    collaboratorParticipantTypeMap.get(collaboratorId) ??
-                    getDefaultProjectCollaboratorParticipantType(
-                      validCollaboratorTypeMap.get(collaboratorId) ?? "external",
-                    ),
-                })),
+                  participantType,
+                  ...normalizeProjectCollaboratorPermissions(
+                    collaboratorPermissionsById.get(collaboratorId),
+                    participantType,
+                    { executorRole: executorRoleMap.get(collaboratorId) ?? null },
+                  ),
+                };
+              }),
               skipDuplicates: true,
             },
           },
@@ -1251,7 +1320,7 @@ export async function updateProjectAction(
       },
       collaborators: {
         select: {
-          userId: true,
+          ...projectCollaboratorPermissionSelect,
           participantType: true,
         },
       },
@@ -1347,6 +1416,7 @@ export async function updateProjectAction(
     currentStageName,
     collaboratorIds,
     collaboratorParticipantTypes,
+    collaboratorPermissionsById,
     projectAttachmentIds,
     stageAttachmentIds,
   } = validated.data;
@@ -1417,6 +1487,15 @@ export async function updateProjectAction(
       collaborator.participantType as ProjectCollaboratorParticipantType | null,
     ]),
   );
+  const existingCollaboratorPermissionMap = new Map(
+    existingProject.collaborators.map((collaborator) => [
+      collaborator.userId,
+      normalizeProjectCollaboratorPermissions(
+        collaborator,
+        collaborator.participantType as ProjectCollaboratorParticipantType | null,
+      ),
+    ]),
+  );
   const addedCollaboratorIds = validCollaboratorIds.filter(
     (collaboratorId) => !existingCollaboratorIds.includes(collaboratorId),
   );
@@ -1448,6 +1527,12 @@ export async function updateProjectAction(
   const submittedExistingStageIds = stageIds.filter(Boolean);
   const submittedExistingStageIdSet = new Set(submittedExistingStageIds);
   const executionTypeChanged = existingProject.executionType !== executionType;
+  const nextExecutorRoleMap = new Map(
+    resolvedExecutors.executors.map((executor) => [
+      executor.userId,
+      executor.role,
+    ] as const),
+  );
 
   if (submittedExistingStageIdSet.size !== submittedExistingStageIds.length) {
     return { error: "Unable to update project stages. Please refresh and try again." };
@@ -1577,6 +1662,12 @@ export async function updateProjectAction(
           getDefaultProjectCollaboratorParticipantType(
             validCollaboratorTypeMap.get(collaboratorId) ?? "external",
           );
+        const permissions = normalizeProjectCollaboratorPermissions(
+          collaboratorPermissionsById.get(collaboratorId) ??
+            existingCollaboratorPermissionMap.get(collaboratorId),
+          participantType,
+          { executorRole: nextExecutorRoleMap.get(collaboratorId) ?? null },
+        );
 
         await tx.projectCollaborator.upsert({
           where: {
@@ -1587,12 +1678,14 @@ export async function updateProjectAction(
           },
           update: {
             participantType,
+            ...permissions,
           },
           create: {
             projectId,
             userId: collaboratorId,
             addedById: user.id,
             participantType,
+            ...permissions,
           },
         });
       }

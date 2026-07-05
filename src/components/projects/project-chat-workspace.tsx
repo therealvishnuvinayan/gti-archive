@@ -113,6 +113,7 @@ import type {
   ProjectStageRecord,
 } from "@/lib/projects";
 import type { CollaboratorRecord } from "@/lib/collaboration";
+import { normalizeProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
 import {
   buildFileTypeNotAllowedPayload,
   formatUploadFileTypeError,
@@ -3535,6 +3536,7 @@ export function ProjectChatWorkspace({
         role: group === "external" ? "External Collaborator" : "Collaborator",
         group,
         participantType: availableCollaborator.type,
+        ...normalizeProjectCollaboratorPermissions(null, availableCollaborator.type),
         chatVisibilityPaused: false,
         access: "view",
         removable: true,
@@ -3554,9 +3556,13 @@ export function ProjectChatWorkspace({
       const result = await saveProjectCollaboratorsAction(
         project.id,
         nextCollaborators.map((collaborator) => ({
-            id: collaborator.id,
-            participantType: collaborator.participantType,
-          })),
+          id: collaborator.id,
+          participantType: collaborator.participantType,
+          ...normalizeProjectCollaboratorPermissions(
+            collaborator,
+            collaborator.participantType,
+          ),
+        })),
       );
 
       if ("error" in result) {
@@ -3613,10 +3619,18 @@ export function ProjectChatWorkspace({
           .map((collaborator) => ({
             id: collaborator.id,
             participantType: collaborator.participantType,
+            ...normalizeProjectCollaboratorPermissions(
+              collaborator,
+              collaborator.participantType,
+            ),
           })),
         {
           id: inviteResult.collaborator.id,
           participantType: inviteResult.collaborator.type,
+          ...normalizeProjectCollaboratorPermissions(
+            null,
+            inviteResult.collaborator.type,
+          ),
         },
       ]);
 

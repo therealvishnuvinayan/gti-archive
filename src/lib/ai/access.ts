@@ -3,6 +3,7 @@ import {
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
@@ -16,14 +17,10 @@ export async function canUseChatAiTools(
     stageId?: string | null;
   },
 ) {
-  if (!hasPermission(user, "chat.createComment")) {
-    return false;
-  }
-
   const projectId = input.projectId?.trim();
 
   if (!projectId) {
-    return true;
+    return hasPermission(user, "chat.createComment");
   }
 
   const stageId = input.stageId?.trim();
@@ -58,9 +55,7 @@ export async function canUseChatAiTools(
           },
         },
         collaborators: {
-          select: {
-            userId: true,
-          },
+          select: projectCollaboratorPermissionSelect,
         },
         stages: {
           where: {
