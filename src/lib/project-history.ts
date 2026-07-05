@@ -46,6 +46,7 @@ import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { logChatSendFastTiming, logStageChatTiming } from "@/lib/stage-chat-timing";
+import { getLockedStageInfo } from "@/lib/stage-locking";
 import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   buildProjectAssetKey,
@@ -879,6 +880,13 @@ export type ProjectStageChatAccessRecord = ProjectPermissionContext & {
   id: string;
   stages: Array<{
     id: string;
+    name?: string | null;
+    order?: number | null;
+    status?: StageStatus | string | null;
+    createdAt?: Date | null;
+    budget?: Prisma.Decimal | number | null;
+    invoiceRequired?: boolean | null;
+    actualStartedAt?: Date | null;
     revisionCount?: number;
     comparisonCount?: number;
   }>;
@@ -922,6 +930,23 @@ async function getStageChatAccessRecord(
               },
               select: projectCollaboratorPermissionSelect,
             },
+            stages: {
+              orderBy: {
+                order: "asc",
+              },
+              select: {
+                id: true,
+                name: true,
+                order: true,
+                status: true,
+                _count: {
+                  select: {
+                    revisions: true,
+                    comparisonComments: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -937,13 +962,20 @@ async function getStageChatAccessRecord(
     createdById: stage.project.createdById,
     executors: stage.project.executors,
     collaborators: stage.project.collaborators,
-    stages: [
-      {
-        id: stage.id,
-        revisionCount: stage._count.revisions,
-        comparisonCount: stage._count.comparisonComments,
-      },
-    ],
+    stages: stage.project.stages.map((projectStage) => ({
+      id: projectStage.id,
+      name: projectStage.name,
+      order: projectStage.order,
+      status: projectStage.status,
+      revisionCount:
+        projectStage.id === stage.id
+          ? stage._count.revisions
+          : projectStage._count.revisions,
+      comparisonCount:
+        projectStage.id === stage.id
+          ? stage._count.comparisonComments
+          : projectStage._count.comparisonComments,
+    })),
   };
 }
 
@@ -1350,6 +1382,20 @@ export async function getProjectStageChatMessages(
 
   const stageLookupStartedAt = performance.now();
   const activeStageId = resolveStageId(project, preferredStageId);
+  const lockedStageInfo = getLockedStageInfo(
+    project.stages.map((stage) => ({
+      id: stage.id,
+      name: stage.name,
+      order: stage.order,
+      status: stage.status,
+    })),
+    activeStageId,
+  );
+
+  if (lockedStageInfo) {
+    throw new Error(lockedStageInfo.message);
+  }
+
   logStageChatTiming("init", "stage lookup", stageLookupStartedAt, {
     activeStageId,
     preferredStageId,
@@ -1873,6 +1919,11 @@ async function assertStageChatRealtimeAccess(
     "chat.view",
     "You do not have permission to view project chat.",
   );
+  const lockedStageInfo = getLockedStageInfo(project.stages, stageId);
+
+  if (lockedStageInfo) {
+    throw new Error(lockedStageInfo.message);
+  }
 
   return project;
 }
@@ -2126,6 +2177,19 @@ export async function getProjectStageHistory(
       : "You do not have permission to view project chat.",
   );
   const activeStageId = resolveStageId(project, preferredStageId);
+  const lockedStageInfo = getLockedStageInfo(
+    project.stages.map((stage) => ({
+      id: stage.id,
+      name: stage.name,
+      order: stage.order,
+      status: stage.status,
+    })),
+    activeStageId,
+  );
+
+  if (lockedStageInfo) {
+    throw new Error(lockedStageInfo.message);
+  }
 
   if (!activeStageId) {
     return {

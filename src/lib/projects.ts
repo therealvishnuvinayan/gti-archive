@@ -1601,6 +1601,20 @@ export async function updateProjectCollaborators(
       },
     }),
   );
+  const projectExecutors = await withPrismaRetry(() =>
+    prisma.projectExecutor.findMany({
+      where: {
+        projectId,
+      },
+      select: {
+        userId: true,
+        role: true,
+      },
+    }),
+  );
+  const executorRoleMap = new Map(
+    projectExecutors.map((executor) => [executor.userId, executor.role] as const),
+  );
   const existingIds = new Set(existingAssignments.map((assignment) => assignment.userId));
   const existingParticipantTypeMap = new Map(
     existingAssignments.map((assignment) => [
@@ -1614,6 +1628,7 @@ export async function updateProjectCollaborators(
       normalizeProjectCollaboratorPermissions(
         assignment,
         assignment.participantType as ProjectCollaboratorParticipantType | null,
+        { executorRole: executorRoleMap.get(assignment.userId) ?? null },
       ),
     ]),
   );
@@ -1633,6 +1648,7 @@ export async function updateProjectCollaborators(
     normalizeProjectCollaboratorPermissions(
       submittedPermissionMap.get(userId) ?? existingPermissionMap.get(userId),
       participantType,
+      { executorRole: executorRoleMap.get(userId) ?? null },
     );
 
   await withPrismaRetry(() =>

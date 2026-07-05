@@ -841,7 +841,7 @@ function MasterDataDrawer({
                           Access Restriction
                         </p>
                         <p className="mt-1 text-[12px] leading-5 text-[#6d776e]">
-                          If no users are selected, this category is visible to everyone with Archive access. If users are selected, only selected users and admins can access it.
+                          If no users are selected, this category is visible to everyone with Archive access. If users are selected, only selected users and Super Admins can access it.
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">

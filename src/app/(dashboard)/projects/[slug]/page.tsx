@@ -56,6 +56,7 @@ async function ProjectDetailDeferredContent({
   return (
     <ProjectDetailWorkspace
       project={project}
+      currentUserId={user.id}
       completionSummary={completionSummary}
       completionWorkflow={completionWorkflow}
     />
@@ -81,6 +82,7 @@ async function ProjectDetailShellContent({
       fallback={
         <ProjectDetailWorkspace
           project={project}
+          currentUserId={user.id}
           completionWorkflow={null}
           assetsLoading
           completionLoading

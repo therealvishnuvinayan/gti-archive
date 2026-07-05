@@ -38,6 +38,7 @@ export type PermissionProfileSnapshot = {
   effectivePermissions: ReadonlySet<PermissionKey>;
   rolePermissions: ReadonlySet<PermissionKey>;
   collaboratorTypePermissions: ReadonlySet<PermissionKey>;
+  archiveAccessGranted: boolean;
 };
 
 export type PermissionSyncResult = {
@@ -46,7 +47,7 @@ export type PermissionSyncResult = {
   collaboratorTypePermissionsSeeded: number;
 };
 
-type PermissionProfileUser = Pick<User, "role" | "collaboratorType">;
+type PermissionProfileUser = Pick<User, "id" | "role" | "collaboratorType">;
 
 type PermissionRow = {
   permissionKey: string;
@@ -595,9 +596,17 @@ export async function resetPermissionProfileToDefaults(
 export async function getPermissionProfileSnapshotForUser(
   user: PermissionProfileUser,
 ): Promise<PermissionProfileSnapshot> {
-  const [roleProfile, collaboratorTypeProfile] = await Promise.all([
+  const [roleProfile, collaboratorTypeProfile, archiveAccess] = await Promise.all([
     getCachedRoleProfile(user.role as PermissionRole),
     getCachedCollaboratorTypeProfile(user.collaboratorType),
+    prisma.userArchiveAccess.findUnique({
+      where: {
+        userId: user.id,
+      },
+      select: {
+        id: true,
+      },
+    }),
   ]);
 
   const rolePermissions = getEnabledPermissionSet(roleProfile.state);
@@ -640,6 +649,7 @@ export async function getPermissionProfileSnapshotForUser(
     effectivePermissions,
     rolePermissions,
     collaboratorTypePermissions,
+    archiveAccessGranted: Boolean(archiveAccess),
   };
 }
 

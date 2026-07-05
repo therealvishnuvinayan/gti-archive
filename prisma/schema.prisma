@@ -195,7 +195,9 @@ model User {
   invoiceContactWorkflows             ProjectCompletionWorkflow[]          @relation("ProjectCompletionInvoiceContact")
   uploadedCompletionDocuments         ProjectCompletionDocument[]          @relation("ProjectCompletionDocumentUploadedBy")
   manualArchiveFiles                  ManualArchiveFile[]                  @relation("ManualArchiveFileUploadedBy")
+  archiveAccess                       UserArchiveAccess?                   @relation("UserArchiveAccessUser")
   archiveCategoryAccesses             ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessUser")
+  grantedArchiveAccesses              UserArchiveAccess[]                  @relation("UserArchiveAccessGrantedBy")
   createdArchiveCategoryAccesses      ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessCreatedBy")
   manualLibraryAssets                 ManualLibraryAsset[]                 @relation("ManualLibraryAssetUploadedBy")
   notifications                       Notification[]
@@ -216,6 +218,18 @@ model User {
   addedCalendarCollaborations         CalendarCollaborator[]               @relation("CalendarCollaboratorAdder")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
+}
+
+model UserArchiveAccess {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation("UserArchiveAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedById String?
+  grantedBy   User?    @relation("UserArchiveAccessGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([grantedById])
 }
 
 model PasswordResetToken {

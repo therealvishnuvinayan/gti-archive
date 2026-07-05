@@ -592,6 +592,7 @@ function ProjectCollaboratorsModal({
   collaborators,
   currentUserId,
   saving,
+  onRequestRemoveAction,
   onRequestChatVisibilityAction,
   isOpen,
   onClose,
@@ -599,6 +600,9 @@ function ProjectCollaboratorsModal({
   collaborators: ProjectCollaboratorRecord[];
   currentUserId?: string;
   saving?: boolean;
+  onRequestRemoveAction?: (
+    action: Extract<PendingCollaboratorAction, { kind: "remove" }>,
+  ) => void;
   onRequestChatVisibilityAction?: (
     action: Exclude<PendingCollaboratorAction, { kind: "remove" }>,
   ) => void;
@@ -689,6 +693,8 @@ function ProjectCollaboratorsModal({
                     Boolean(onRequestChatVisibilityAction) &&
                     collaborator.access !== "owner" &&
                     collaborator.id !== currentUserId;
+                  const canRemoveCollaborator =
+                    Boolean(onRequestRemoveAction) && Boolean(collaborator.removable);
 
                   return (
                     <CollaboratorCompactRow
@@ -696,17 +702,40 @@ function ProjectCollaboratorsModal({
                       collaborator={collaborator}
                       variant="modal"
                       actions={
-                        canToggleChatVisibility ? (
-                          <CollaboratorVisibilityButton
-                            collaborator={collaborator}
-                            disabled={saving}
-                            onClick={() =>
-                              onRequestChatVisibilityAction?.({
-                                kind: collaborator.chatVisibilityPaused ? "resume" : "pause",
-                                collaborator,
-                              })
-                            }
-                          />
+                        canToggleChatVisibility || canRemoveCollaborator ? (
+                          <>
+                            {canToggleChatVisibility ? (
+                              <CollaboratorVisibilityButton
+                                collaborator={collaborator}
+                                disabled={saving}
+                                onClick={() =>
+                                  onRequestChatVisibilityAction?.({
+                                    kind: collaborator.chatVisibilityPaused ? "resume" : "pause",
+                                    collaborator,
+                                  })
+                                }
+                              />
+                            ) : null}
+                            {canRemoveCollaborator ? (
+                              <Button
+                                type="button"
+                                onClick={() =>
+                                  onRequestRemoveAction?.({
+                                    kind: "remove",
+                                    collaborator,
+                                  })
+                                }
+                                variant="ghost"
+                                size="icon"
+                                className="size-8 rounded-full text-[#ff6e68] hover:bg-[#fff1f0] hover:text-[#c64f48]"
+                                disabled={saving}
+                                title={`Remove ${collaborator.name}`}
+                                aria-label={`Remove ${collaborator.name}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            ) : null}
+                          </>
                         ) : undefined
                       }
                     />
@@ -913,6 +942,14 @@ export function ProjectCollaboratorsSummary({
         collaborators={collaborators}
         currentUserId={currentUserId}
         saving={saving}
+        onRequestRemoveAction={
+          onRemove
+            ? (action) => {
+                setActionError(null);
+                setPendingAction(action);
+              }
+            : undefined
+        }
         onRequestChatVisibilityAction={
           onToggleChatVisibility
             ? (action) => {

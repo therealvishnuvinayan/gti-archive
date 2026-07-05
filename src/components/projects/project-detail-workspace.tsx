@@ -15,6 +15,7 @@ import {
 
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
+import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import {
   ProjectExecutorsPanel,
 } from "@/components/projects/project-collaborators-panel";
@@ -38,6 +39,7 @@ import { getStageActivityFallback } from "@/lib/project-stage-summary";
 
 type ProjectDetailWorkspaceProps = {
   project: ProjectFlowRecord;
+  currentUserId: string;
   completionSummary?: ProjectCompletionSummary | null;
   completionWorkflow: ProjectCompletionWorkflowRecord | null;
   assetsLoading?: boolean;
@@ -208,6 +210,7 @@ function SectionHeading({
 
 export function ProjectDetailWorkspace({
   project,
+  currentUserId,
   completionSummary,
   completionWorkflow,
   assetsLoading = false,
@@ -230,6 +233,7 @@ export function ProjectDetailWorkspace({
 
   return (
     <section className="mx-auto w-full max-w-[1420px]">
+      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_410px]">
         <MotionItem y={10} className="min-w-0 space-y-5">
           <div className="relative isolate overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#123f2d_0%,#19553a_56%,#1a6845_100%)] px-5 py-5 text-white shadow-[0_22px_52px_rgba(16,49,31,0.18)] sm:px-7 sm:py-6">

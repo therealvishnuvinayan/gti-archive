@@ -430,7 +430,7 @@ export const recommendedGuides: HelpGuide[] = [
     id: "guide-user-permissions",
     title: "How to manage User Permissions",
     description:
-      "Use Users & Permissions to assign roles and maintain global permission profiles without per-user overrides.",
+      "Use Users & Permissions to assign roles, maintain global permission profiles, and grant Archive access to selected users.",
     sectionId: "user-permissions",
     keywords: [
       "user permissions",
@@ -956,7 +956,7 @@ export const helpSections: HelpSection[] = [
       },
     ],
     callout:
-      "Do not solve access problems by creating one-off per-user exceptions. Prefer role and collaborator type profiles so access stays predictable.",
+      "Use role and collaborator type profiles for broad access changes. Use the Archive Access grant only when a specific user should see Archives.",
     questions: [
       {
         question: "Why can a permission be enabled but the user still cannot perform the action?",

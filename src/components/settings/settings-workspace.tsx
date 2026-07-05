@@ -1229,7 +1229,7 @@ export function SettingsWorkspace({
                   Role and permission profiles
                 </p>
                 <p className="mt-1 text-[14px] text-[#748074]">
-                  Manage global permissions without creating per-user permission overrides.
+                  Manage global permission profiles. Archive module access can also be granted per user from Users & Permissions.
                 </p>
               </div>
             </SettingsCard>

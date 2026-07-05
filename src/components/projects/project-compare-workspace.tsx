@@ -24,6 +24,7 @@ import {
   setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import {
   SubmissionCaptionDialog,
@@ -319,6 +320,7 @@ function ComparisonViewerSurface({
   fullscreenMode?: boolean;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const panStartRef = useRef<{
     pointerX: number;
     pointerY: number;
@@ -329,6 +331,7 @@ function ComparisonViewerSurface({
   const [zoomScale, setZoomScale] = useState(1.25);
   const [toolMode, setToolMode] = useState<CompareToolMode>("view");
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const activeComment = comments.find((comment) => comment.id === activeCommentId) ?? null;
   const baseOpacity = 1 - opacity / 100;
@@ -345,19 +348,54 @@ function ComparisonViewerSurface({
         : isPresetZoom
           ? String(zoomScale)
           : `custom-${zoomScale}`;
-  const fitWidth = `min(100%, ${Math.max(18, comparisonAspectRatio * (fullscreenMode ? 72 : 64))}dvh, ${Math.max(
-    220,
-    Math.round(comparisonAspectRatio * (fullscreenMode ? 920 : 700)),
-  )}px)`;
+  const fitPadding = fullscreenMode ? 16 : 32;
+  const availableFitWidth = Math.max(0, viewportSize.width - fitPadding);
+  const availableFitHeight = Math.max(0, viewportSize.height - fitPadding);
+  const fitFrameWidth =
+    availableFitWidth > 0 && availableFitHeight > 0
+      ? Math.min(availableFitWidth, availableFitHeight * comparisonAspectRatio)
+      : 0;
+  const fitFrameHeight =
+    fitFrameWidth > 0 && comparisonAspectRatio > 0 ? fitFrameWidth / comparisonAspectRatio : 0;
   const frameWidth =
     zoomMode === "fit"
-      ? fitWidth
+      ? fitFrameWidth > 0
+        ? `${Math.round(fitFrameWidth)}px`
+        : "100%"
       : zoomMode === "width"
         ? "100%"
         : `${Math.round(100 * zoomScale)}%`;
+  const frameHeight =
+    zoomMode === "fit" && fitFrameHeight > 0 ? `${Math.round(fitFrameHeight)}px` : undefined;
   const baseLabelStrong = baseOpacity >= compareOpacity;
   const compareLabelStrong = compareOpacity >= baseOpacity;
   const panLimit = Math.max(120, Math.round(360 * zoomScale));
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const updateViewportSize = () => {
+      const rect = viewport.getBoundingClientRect();
+
+      setViewportSize({
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+
+    updateViewportSize();
+
+    const resizeObserver = new ResizeObserver(updateViewportSize);
+    resizeObserver.observe(viewport);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   function getPopoverPosition(comment: {
     xPercent: number;
@@ -473,7 +511,7 @@ function ComparisonViewerSurface({
       className={`flex min-h-0 flex-col border bg-white/95 p-4 shadow-[0_16px_36px_rgba(17,34,24,0.08)] sm:p-5 ${
         fullscreenMode
           ? "h-full rounded-none border-[#303832] bg-[#151a17] text-white shadow-none"
-          : "h-[min(82dvh,900px)] rounded-[24px] border-[#dbe4dc]"
+          : "rounded-[24px] border-[#dbe4dc]"
       }`}
     >
       <div className="mb-4 shrink-0 space-y-3">
@@ -638,10 +676,11 @@ function ComparisonViewerSurface({
       </div>
 
       <div
-        className={`min-h-0 flex-1 border p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
+        ref={viewportRef}
+        className={`min-h-0 border p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
           fullscreenMode
-            ? "rounded-none border-[#2b332e] bg-[#0f1311]"
-            : "rounded-[28px] border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)]"
+            ? "flex-1 rounded-none border-[#2b332e] bg-[#0f1311]"
+            : "h-[clamp(300px,44dvh,560px)] rounded-[28px] border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)]"
         } ${
           isFitMode || toolMode === "pan" ? "overflow-hidden" : "overflow-auto"
         }`}
@@ -669,6 +708,7 @@ function ComparisonViewerSurface({
             style={{
               aspectRatio: comparisonAspectRatio,
               width: frameWidth,
+              height: frameHeight,
               maxWidth: isFitMode ? "100%" : undefined,
               maxHeight: isFitMode ? "100%" : undefined,
               transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
@@ -1143,7 +1183,8 @@ export function ProjectCompareWorkspace({
 
   return (
     <section className="space-y-6">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]">
+      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_288px]">
         <div className="space-y-4">
           <Card className="overflow-hidden rounded-[24px] border-none bg-[linear-gradient(135deg,#2f8d5d,#46a470)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1221,7 +1262,7 @@ export function ProjectCompareWorkspace({
           ) : null}
 
           {hasEnoughSubmissions && baseSubmission && compareSubmission ? (
-            <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid min-h-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
               <ComparisonViewerSurface
                 baseSubmission={baseSubmission}
                 compareSubmission={compareSubmission}

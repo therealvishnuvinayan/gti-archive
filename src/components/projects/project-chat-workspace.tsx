@@ -61,6 +61,7 @@ import {
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
+import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import {
   CompletedProjectArchiveSummaryCard,
   ProjectCompletionChecklist,
@@ -167,6 +168,14 @@ type DisplayChatEntry = ProjectChatEntry & {
   localCreatedAtMs?: number;
   serverEntryId?: string;
 };
+
+function isInvoiceUploadedEntry(entry: ProjectChatEntry) {
+  return (
+    entry.kind === "system" &&
+    (entry.title === "Invoice uploaded" ||
+      entry.body.toLowerCase().includes("uploaded invoice for"))
+  );
+}
 
 type DeletedMessageOverride = {
   deletedAt: string;
@@ -2312,6 +2321,7 @@ export function ProjectChatWorkspace({
   const expandedDraftInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const completionWorkflowRef = useRef<HTMLDivElement | null>(null);
   const mentionDropdownRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -2674,7 +2684,7 @@ export function ProjectChatWorkspace({
     completionState.canCompleteProject && !isProjectCompleted;
   const shouldExpectCompletionWorkflow =
     isProjectCompleted ||
-    (!isProjectCompleted && completionState.allStagesCompleted && isFinalStage);
+    (!isProjectCompleted && completionState.allStagesCompleted);
   const shouldShowCompletionChecklist =
     Boolean(effectiveCompletionWorkflow) && shouldExpectCompletionWorkflow;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
@@ -2956,6 +2966,21 @@ export function ProjectChatWorkspace({
   const scrollToChatBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     chatBottomRef.current?.scrollIntoView({ block: "end", behavior });
   }, []);
+  const scrollToCompletionWorkflow = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const scrollToTarget = () => {
+        completionWorkflowRef.current?.scrollIntoView({
+          block: "start",
+          behavior,
+        });
+      };
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(scrollToTarget);
+      });
+    },
+    [],
+  );
   const handleChatScroll = useCallback(() => {
     const container = chatScrollRef.current;
 
@@ -3058,6 +3083,24 @@ export function ProjectChatWorkspace({
     },
     [],
   );
+  const releaseInvoiceStageOverride = useCallback((stageId: string) => {
+    setStageCardOverrides((current) => {
+      const override = current[stageId];
+
+      if (!override) {
+        return current;
+      }
+
+      const nextOverride = { ...override };
+      delete nextOverride.invoiceAttachment;
+      delete nextOverride.invoiceRequest;
+
+      return {
+        ...current,
+        [stageId]: nextOverride,
+      };
+    });
+  }, []);
   const handleRealtimeMessagePending = useCallback(
     (payload: StageChatRealtimeMessagePendingPayload) => {
       if (payload.projectId !== project.id || payload.stageId !== activeStage?.id) {
@@ -3111,18 +3154,32 @@ export function ProjectChatWorkspace({
       });
       setRealtimeWatermark(payload.createdAt);
 
+      if (isInvoiceUploadedEntry(payload.entry)) {
+        releaseInvoiceStageOverride(payload.stageId);
+        startRefresh(() => {
+          router.refresh();
+        });
+        return;
+      }
+
       if (
         payload.entry.kind === "system" &&
         (payload.entry.title === "Brief accepted" ||
-          payload.entry.title === "Invoice requested" ||
-          payload.entry.title === "Invoice uploaded")
+          payload.entry.title === "Invoice requested")
       ) {
         startRefresh(() => {
           router.refresh();
         });
       }
     },
-    [activeStage?.id, mergeServerChatEntry, project.id, router, startRefresh],
+    [
+      activeStage?.id,
+      mergeServerChatEntry,
+      project.id,
+      releaseInvoiceStageOverride,
+      router,
+      startRefresh,
+    ],
   );
   const handleRealtimeMessageFailed = useCallback(
     (payload: StageChatRealtimeMessageFailedPayload) => {
@@ -3202,9 +3259,17 @@ export function ProjectChatWorkspace({
       );
     }
 
+    const hasInvoiceUploadEntry = payload.entries.some(isInvoiceUploadedEntry);
+
     payload.entries.forEach((entry) => {
       mergeServerChatEntry(entry, { countAsNew: false });
     });
+    if (hasInvoiceUploadEntry) {
+      releaseInvoiceStageOverride(activeStageId);
+      startRefresh(() => {
+        router.refresh();
+      });
+    }
     markStalePendingTextMessages();
     setRealtimeWatermark(payload.watermark);
   }, [
@@ -3212,7 +3277,10 @@ export function ProjectChatWorkspace({
     markStalePendingTextMessages,
     mergeServerChatEntry,
     project.id,
+    releaseInvoiceStageOverride,
     realtimeWatermark,
+    router,
+    startRefresh,
   ]);
   const mentionableParticipants = useMemo<ProjectMentionParticipantRecord[]>(
     () =>
@@ -3895,10 +3963,10 @@ export function ProjectChatWorkspace({
   }
 
   async function handlePrepareProjectCompletion() {
-    const activeStageId = activeStage?.id;
+    const finalStageId = completionState.finalStageId;
 
-    if (!activeStageId) {
-      setProjectCompletionError("This project does not have an active stage.");
+    if (!finalStageId) {
+      setProjectCompletionError("This project does not have a final stage.");
       return;
     }
 
@@ -3909,7 +3977,7 @@ export function ProjectChatWorkspace({
     try {
       const result = await prepareProjectCompletionAction({
         projectId: project.id,
-        stageId: activeStageId,
+        stageId: finalStageId,
       });
 
       if ("error" in result) {
@@ -4485,6 +4553,7 @@ export function ProjectChatWorkspace({
     const completedStage = stageCards.find((stage) => stage.id === completedStageId);
     const stageIndex = stageCards.findIndex((stage) => stage.id === completedStageId);
     const nextStage = stageIndex >= 0 ? stageCards[stageIndex + 1] ?? null : null;
+    const allStagesCompleted = !nextStage;
 
     setStageCardOverrides((current) => ({
       ...current,
@@ -4519,11 +4588,29 @@ export function ProjectChatWorkspace({
         : {}),
     }));
 
+    if (allStagesCompleted) {
+      setCompletionOverrides((current) => ({
+        ...(current ?? {}),
+        allStagesCompleted: true,
+        incompleteStages: completionState.incompleteStages.filter(
+          (stage) => stage.id !== completedStageId,
+        ),
+        isSelectedStageFinal:
+          completionState.isSelectedStageFinal ||
+          completedStageId === completionState.finalStageId,
+      }));
+    }
+
     setCompletionPrompt({
       nextStageId: nextStage?.id ?? null,
       nextStageLabel: nextStage?.label ?? null,
-      allStagesCompleted: !nextStage,
+      allStagesCompleted,
     });
+
+    return {
+      allStagesCompleted,
+      nextStageId: nextStage?.id ?? null,
+    };
   }
 
   async function handleMarkStageComplete() {
@@ -4562,6 +4649,7 @@ export function ProjectChatWorkspace({
       applyStageCompletionLocally(activeStageId);
       setStageCompleteDialogOpen(false);
       showSuccessToast("Stage marked as complete.");
+      scrollToCompletionWorkflow();
       refreshHistory();
     } catch (error) {
       const message =
@@ -5621,8 +5709,6 @@ export function ProjectChatWorkspace({
           startedByName:
             current[activeStageId]?.startedByName ?? activeStage?.startedByName,
           status: current[activeStageId]?.status ?? activeStage?.status,
-          invoiceAttachment:
-            current[activeStageId]?.invoiceAttachment ?? activeStage?.invoiceAttachment ?? null,
           invoiceRequest: nextInvoiceRequest,
         },
       }));
@@ -5903,6 +5989,7 @@ export function ProjectChatWorkspace({
 
       if (status === "APPROVED" && result.revision.stageCompletion) {
         applyStageCompletionLocally(activeStageId);
+        scrollToCompletionWorkflow();
       }
 
       closeRevisionReviewDialog();
@@ -5932,13 +6019,14 @@ export function ProjectChatWorkspace({
   }
 
   return (
-    <section className="min-h-0 2xl:h-[calc(100dvh-17rem)] 2xl:overflow-hidden">
-      <div className="grid min-h-0 gap-4 2xl:h-full 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-h-0 min-w-0 flex-col gap-2 2xl:h-full 2xl:gap-0 2xl:overflow-hidden">
+    <section className="min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-17rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
+      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      <div className="grid min-h-0 gap-4 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-h-0 min-w-0 flex-col gap-2 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:gap-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
           <div
             ref={chatScrollRef}
             onScroll={handleChatScroll}
-            className="no-scrollbar h-[clamp(320px,55dvh,560px)] overflow-y-auto overscroll-contain rounded-[24px] border border-[#e1e9e2] bg-[#f4f8f3] px-2.5 pb-5 pt-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:rounded-[28px] sm:px-5 sm:pb-6 sm:pt-3 2xl:h-auto 2xl:min-h-0 2xl:flex-1"
+            className="no-scrollbar h-[clamp(320px,55dvh,560px)] overflow-y-auto overscroll-contain rounded-[24px] border border-[#e1e9e2] bg-[#f4f8f3] px-2.5 pb-5 pt-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:rounded-[28px] sm:px-5 sm:pb-6 sm:pt-3 [@media_(min-width:1536px)_and_(min-height:900px)]:h-auto [@media_(min-width:1536px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:flex-1"
           >
             <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-2.5 pb-6">
               <div className="sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3">
@@ -6011,169 +6099,171 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
-          {isProjectCompleted ? (
-            <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
-          ) : null}
-
-          {shouldShowCompletionChecklist ? (
-            <ProjectCompletionChecklist
-              projectId={project.id}
-              workflow={effectiveCompletionWorkflow}
-            />
-          ) : null}
-
-          {shouldExpectCompletionWorkflow && isCompletionDataLoading ? (
-            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="flex items-center gap-2 px-5 py-4 text-[13px] font-semibold text-[#5f6b62]">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading completion details...
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {shouldExpectCompletionWorkflow &&
-          !effectiveCompletionWorkflow &&
-          !isCompletionDataLoading &&
-          (isProjectOwner || isProjectExecutor) ? (
-            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[16px] font-semibold text-[#173120]">
-                    Project completion checklist is not available yet.
-                  </p>
-                  <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-                    This project should show Authority Approval, Copyright Transfer,
-                    and Final Invoice steps here before archive. Reload the page to
-                    fetch the checklist.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="rounded-full text-[12px]"
-                  onClick={refreshHistory}
-                >
-                  Reload Checklist
-                </Button>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {!isProjectCompleted && completionState.isFinalCompletionPending ? (
-            <Card className="rounded-[20px] border border-[#efd9af] bg-[#fffaf0] shadow-none">
-              <CardContent className="px-5 py-4">
-                <p className="text-[14px] font-semibold text-[#8a5718]">
-                  Final completion requirements must be resolved before archive.
-                </p>
-                {completionState.finalCompletionBlockers.length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-[12px] leading-5 text-[#5d4a2f]">
-                    {completionState.finalCompletionBlockers.map((blocker) => (
-                      <li key={blocker}>{blocker}</li>
-                    ))}
-                  </ul>
+              <div ref={completionWorkflowRef} className="space-y-2.5 scroll-mt-24">
+                {isProjectCompleted ? (
+                  <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
                 ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
 
-          {!isProjectCompleted && canCompleteProject ? (
-            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[14px] font-semibold text-[#173120]">
-                    All completion requirements are resolved. Archive the final files.
-                  </p>
-                  <p className="mt-1 text-[12px] text-[#5f6b62]">
-                    {completionState.approvedFileCount} final file
-                    {completionState.approvedFileCount === 1 ? "" : "s"} ready for final archive.
-                  </p>
-                  {projectCompletionError ? (
-                    <p className="mt-2 text-[12px] font-semibold text-[#bb4d49]">
-                      {projectCompletionError}
-                    </p>
-                  ) : null}
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="rounded-full text-[12px]"
-                  disabled={isPreparingProjectCompletion || isCompletionDataLoading}
-                  onClick={() => {
-                    void handlePrepareProjectCompletion();
-                  }}
-                >
-                  {isPreparingProjectCompletion ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : null}
-                  Archive Project
-                </Button>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {!isProjectCompleted &&
-          isProjectOwner &&
-          isFinalStage &&
-          !completionState.allStagesCompleted ? (
-            <Card className="rounded-[20px] border border-[#f0c9c7] bg-[#fff7f6] shadow-none">
-              <CardContent className="px-5 py-4">
-                <p className="text-[14px] font-semibold text-[#9f3f39]">
-                  Project cannot be completed yet.
-                </p>
-                <p className="mt-1 text-[12px] leading-5 text-[#7c514d]">
-                  Complete all stages before final project completion.
-                </p>
-                {completionState.incompleteStages.length > 0 ? (
-                  <ul className="mt-3 space-y-1 text-[12px] text-[#7c514d]">
-                    {completionState.incompleteStages.map((stage) => (
-                      <li key={stage.id}>
-                        {stage.name} — {stage.status}
-                      </li>
-                    ))}
-                  </ul>
+                {shouldShowCompletionChecklist ? (
+                  <ProjectCompletionChecklist
+                    projectId={project.id}
+                    workflow={effectiveCompletionWorkflow}
+                  />
                 ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
 
-          {completionPrompt ? (
-            <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[14px] font-semibold text-[#173120]">
-                    {completionPrompt.allStagesCompleted
-                      ? "All stages completed. Final project completion is now available."
-                      : "Stage completed. You can now move to the next stage."}
-                  </p>
-                  {completionPrompt.nextStageLabel && !completionPrompt.allStagesCompleted ? (
-                    <p className="mt-1 text-[12px] text-[#5f6b62]">
-                      Next stage: {completionPrompt.nextStageLabel}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex gap-2">
-                  {completionPrompt.nextStageId && !completionPrompt.allStagesCompleted ? (
-                    <Button asChild size="sm" className="rounded-full text-[12px]">
-                      <Link
-                        href={`/projects/${project.id}/chat?stage=${completionPrompt.nextStageId}`}
+                {shouldExpectCompletionWorkflow && isCompletionDataLoading ? (
+                  <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                    <CardContent className="flex items-center gap-2 px-5 py-4 text-[13px] font-semibold text-[#5f6b62]">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading completion details...
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {shouldExpectCompletionWorkflow &&
+                !effectiveCompletionWorkflow &&
+                !isCompletionDataLoading &&
+                (isProjectOwner || isProjectExecutor) ? (
+                  <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                    <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[16px] font-semibold text-[#173120]">
+                          Project completion checklist is not available yet.
+                        </p>
+                        <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
+                          This project should show Authority Approval, Copyright Transfer,
+                          and Final Invoice steps here before archive. Reload the page to
+                          fetch the checklist.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-full text-[12px]"
+                        onClick={refreshHistory}
                       >
-                        Go to Next Stage
-                      </Link>
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="rounded-full text-[12px]"
-                    onClick={() => setCompletionPrompt(null)}
-                  >
-                    Close
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
+                        Reload Checklist
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {!isProjectCompleted && completionState.isFinalCompletionPending ? (
+                  <Card className="rounded-[20px] border border-[#efd9af] bg-[#fffaf0] shadow-none">
+                    <CardContent className="px-5 py-4">
+                      <p className="text-[14px] font-semibold text-[#8a5718]">
+                        Final completion requirements must be resolved before archive.
+                      </p>
+                      {completionState.finalCompletionBlockers.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-[12px] leading-5 text-[#5d4a2f]">
+                          {completionState.finalCompletionBlockers.map((blocker) => (
+                            <li key={blocker}>{blocker}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {!isProjectCompleted && canCompleteProject ? (
+                  <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                    <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[14px] font-semibold text-[#173120]">
+                          All completion requirements are resolved. Archive the final files.
+                        </p>
+                        <p className="mt-1 text-[12px] text-[#5f6b62]">
+                          {completionState.approvedFileCount} final file
+                          {completionState.approvedFileCount === 1 ? "" : "s"} ready for final archive.
+                        </p>
+                        {projectCompletionError ? (
+                          <p className="mt-2 text-[12px] font-semibold text-[#bb4d49]">
+                            {projectCompletionError}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-full text-[12px]"
+                        disabled={isPreparingProjectCompletion || isCompletionDataLoading}
+                        onClick={() => {
+                          void handlePrepareProjectCompletion();
+                        }}
+                      >
+                        {isPreparingProjectCompletion ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : null}
+                        Archive Project
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {!isProjectCompleted &&
+                isProjectOwner &&
+                isFinalStage &&
+                !completionState.allStagesCompleted ? (
+                  <Card className="rounded-[20px] border border-[#f0c9c7] bg-[#fff7f6] shadow-none">
+                    <CardContent className="px-5 py-4">
+                      <p className="text-[14px] font-semibold text-[#9f3f39]">
+                        Project cannot be completed yet.
+                      </p>
+                      <p className="mt-1 text-[12px] leading-5 text-[#7c514d]">
+                        Complete all stages before final project completion.
+                      </p>
+                      {completionState.incompleteStages.length > 0 ? (
+                        <ul className="mt-3 space-y-1 text-[12px] text-[#7c514d]">
+                          {completionState.incompleteStages.map((stage) => (
+                            <li key={stage.id}>
+                              {stage.name} — {stage.status}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {completionPrompt ? (
+                  <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                    <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[14px] font-semibold text-[#173120]">
+                          {completionPrompt.allStagesCompleted
+                            ? "All stages completed. Final project completion is now available."
+                            : "Stage completed. You can now move to the next stage."}
+                        </p>
+                        {completionPrompt.nextStageLabel && !completionPrompt.allStagesCompleted ? (
+                          <p className="mt-1 text-[12px] text-[#5f6b62]">
+                            Next stage: {completionPrompt.nextStageLabel}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
+                        {completionPrompt.nextStageId && !completionPrompt.allStagesCompleted ? (
+                          <Button asChild size="sm" className="rounded-full text-[12px]">
+                            <Link
+                              href={`/projects/${project.id}/chat?stage=${completionPrompt.nextStageId}`}
+                            >
+                              Go to Next Stage
+                            </Link>
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="rounded-full text-[12px]"
+                          onClick={() => setCompletionPrompt(null)}
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </div>
 
           {hasEarlierMessages ? (
             <div className="flex justify-center py-2">
@@ -6837,7 +6927,7 @@ export function ProjectChatWorkspace({
           </div>
 
           {showLatestRevisionActionBar && latestRevisionMessage ? (
-            <Card className="mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dfe8df] bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:mt-2 2xl:rounded-[22px] 2xl:px-4 2xl:py-3">
+            <Card className="mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dfe8df] bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:px-4 [@media_(min-width:1536px)_and_(min-height:900px)]:py-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
@@ -6898,7 +6988,7 @@ export function ProjectChatWorkspace({
           ) : null}
 
           {isChatReadOnly ? (
-            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6]/96 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:static 2xl:mt-2 2xl:rounded-[22px] 2xl:bg-[#f7fbf6] 2xl:p-4 2xl:shadow-none">
+            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6]/96 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-[#f7fbf6] [@media_(min-width:1536px)_and_(min-height:900px)]:p-4 [@media_(min-width:1536px)_and_(min-height:900px)]:shadow-none">
               <p className="text-[14px] font-semibold text-[#173120]">
                 {isProjectCompleted ? "Project chat is locked." : "Stage chat is read-only."}
               </p>
@@ -6909,7 +6999,7 @@ export function ProjectChatWorkspace({
               </p>
             </Card>
           ) : (
-            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dfe8df] bg-white/96 p-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:static 2xl:mt-2 2xl:rounded-[26px] 2xl:bg-white/95 2xl:p-3">
+            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dfe8df] bg-white/96 p-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[26px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-white/95 [@media_(min-width:1536px)_and_(min-height:900px)]:p-3">
               <input
                 ref={revisionFileInputRef}
                 type="file"
@@ -7209,7 +7299,7 @@ export function ProjectChatWorkspace({
           )}
         </div>
 
-        <aside className="no-scrollbar max-h-[calc(100dvh-17rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 2xl:h-full 2xl:max-h-none 2xl:min-h-0">
+        <aside className="no-scrollbar min-w-0 space-y-4 pr-1 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-y-auto [@media_(min-width:1536px)_and_(min-height:900px)]:overscroll-contain">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">

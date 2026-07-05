@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { ArchiveCategoryWorkspace } from "@/components/archives/archive-category-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
-  canAccessArchiveCategoryRecord,
+  canAccessArchiveCategoryForUser,
+  canAccessArchivesArea,
   listArchivedFilesByCategory,
 } from "@/lib/archives";
 import { getArchiveCategoryBySlug } from "@/lib/archive-categories";
@@ -31,7 +32,7 @@ export default async function ArchiveCategoryPage({
   const { slug } = await params;
   const user = await requireUser();
 
-  if (!canUseArchives(user)) {
+  if (!(await canAccessArchivesArea(user))) {
     redirect("/");
   }
 
@@ -57,7 +58,7 @@ export default async function ArchiveCategoryPage({
     );
   }
 
-  if (!canAccessArchiveCategoryRecord(user, category)) {
+  if (!(await canAccessArchiveCategoryForUser(user, category))) {
     return (
       <DashboardLayout
         topbarProps={{
@@ -78,7 +79,7 @@ export default async function ArchiveCategoryPage({
   }
 
   const items = await listArchivedFilesByCategory(user, category);
-  const canUploadArchives = hasPermission(user, "archive.uploadFile");
+  const canUploadArchives = canUseArchives(user) && hasPermission(user, "archive.uploadFile");
 
   return (
     <DashboardLayout

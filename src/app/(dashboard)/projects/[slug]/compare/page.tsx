@@ -7,6 +7,7 @@ import { ProjectCompareWorkspace } from "@/components/projects/project-compare-w
 import {
   ProjectAccessUnavailableState,
   ProjectNotFoundState,
+  StageLockedState,
   StageNotFoundState,
 } from "@/components/projects/project-route-state";
 import { ProjectCompareLoadingShell } from "@/components/projects/project-route-loading-shells";
@@ -21,6 +22,7 @@ import {
   canAddProjectCaptions,
   hasProjectPermission,
 } from "@/lib/permissions/resolver";
+import { getLockedStageInfo } from "@/lib/stage-locking";
 import { getProjectStageHistory } from "@/lib/project-history";
 import {
   getProjectById,
@@ -92,6 +94,16 @@ async function ProjectCompareDeferredContent({
 
   if (stage && !project.stageCards.some((stageCard) => stageCard.id === stage)) {
     return <StageNotFoundState projectHref={`/projects/${slug}`} />;
+  }
+  const lockedStageInfo = getLockedStageInfo(project.stageCards, stage);
+
+  if (lockedStageInfo) {
+    return (
+      <StageLockedState
+        projectHref={`/projects/${slug}`}
+        message={lockedStageInfo.message}
+      />
+    );
   }
 
   const history = await getProjectStageHistory(user, slug, stage, "compare.view");
@@ -183,6 +195,16 @@ async function ProjectCompareShellContent({
 
   if (stage && !project.stageCards.some((stageCard) => stageCard.id === stage)) {
     return <StageNotFoundState projectHref={`/projects/${slug}`} />;
+  }
+  const lockedStageInfo = getLockedStageInfo(project.stageCards, stage);
+
+  if (lockedStageInfo) {
+    return (
+      <StageLockedState
+        projectHref={`/projects/${slug}`}
+        message={lockedStageInfo.message}
+      />
+    );
   }
 
   return (

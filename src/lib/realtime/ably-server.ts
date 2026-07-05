@@ -1,8 +1,11 @@
 import * as Ably from "ably";
 
 import {
+  PROJECT_ACCESS_REALTIME_EVENTS,
   STAGE_CHAT_REALTIME_EVENTS,
+  getProjectAccessChannelName,
   getStageChatChannelName,
+  type ProjectAccessRevokedPayload,
   type StageChatRealtimeMessageCreatedPayload,
   type StageChatRealtimeMessageDeletedPayload,
 } from "@/lib/realtime/events";
@@ -101,6 +104,26 @@ export async function createAblyStageChatTokenRequest(input: {
   return tokenRequest;
 }
 
+export async function createAblyProjectAccessTokenRequest(input: {
+  projectId: string;
+  clientId: string;
+}) {
+  const client = getAblyRestClient();
+  const channelName = getProjectAccessChannelName(input.projectId);
+
+  if (!client) {
+    return null;
+  }
+
+  return client.auth.createTokenRequest({
+    clientId: input.clientId,
+    ttl: STAGE_CHAT_TOKEN_TTL_MS,
+    capability: {
+      [channelName]: ["subscribe"],
+    },
+  });
+}
+
 async function publishStageChatEvent(
   projectId: string,
   stageId: string,
@@ -179,4 +202,19 @@ export async function publishAblyStageChatMessageDeleted(
     STAGE_CHAT_REALTIME_EVENTS.messageDeleted,
     payload,
   );
+}
+
+export async function publishAblyProjectAccessRevoked(
+  payload: ProjectAccessRevokedPayload,
+) {
+  const client = getAblyRestClient();
+  const channelName = getProjectAccessChannelName(payload.projectId);
+
+  if (!client) {
+    return false;
+  }
+
+  const channel = client.channels.get(channelName);
+  await channel.publish(PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked, payload);
+  return true;
 }
