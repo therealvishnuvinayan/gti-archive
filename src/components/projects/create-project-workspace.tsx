@@ -3811,7 +3811,7 @@ export function CreateProjectWorkspace({
           </div>
           </MotionSection>
 
-          <div className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf7] px-4 pb-4 pt-1">
+          <div className="hidden rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf7] px-4 pb-4 pt-1 2xl:block">
             <CreateProjectSubmitButton
               mode={mode}
               uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
@@ -4084,6 +4084,13 @@ export function CreateProjectWorkspace({
         />
         </MotionItem>
       </MotionStaggerGroup>
+
+      <div className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf7] px-4 pb-4 pt-1 2xl:hidden">
+        <CreateProjectSubmitButton
+          mode={mode}
+          uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
+        />
+      </div>
 
       <CollaboratorPickerDialog
         isOpen={pickerOpen}
