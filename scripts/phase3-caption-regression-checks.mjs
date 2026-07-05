@@ -95,7 +95,7 @@ for (const snippet of [
 const comparisonUtils = read("src/lib/comparison-utils.ts");
 assertIncludes(
   comparisonUtils,
-  "Formal stage submissions must be PNG unless the project category is video. Only valid PNG artwork submissions can be compared. Video-category projects may support the configured video submission formats.",
+  "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.",
   "required caption/comparison help text",
 );
 assertIncludes(

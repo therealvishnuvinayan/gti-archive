@@ -28,7 +28,7 @@ export type SubmissionCaptionRecord = {
 };
 
 export const stageSubmissionCaptionHelpText =
-  "Formal stage submissions must be PNG unless the project category is video. Only valid PNG artwork submissions can be compared. Video-category projects may support the configured video submission formats.";
+  "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.";
 
 function hasComparableSubmissionType(
   attachment: ProjectAttachmentRecord,

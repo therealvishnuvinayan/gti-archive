@@ -53,7 +53,6 @@ import {
   resolveComparisonSelection,
   stageSubmissionCaptionHelpText,
 } from "@/lib/comparison-utils";
-import { isVideoProjectCategory } from "@/lib/upload-validation";
 
 type ProjectCompareWorkspaceProps = {
   project: ProjectFlowRecord;
@@ -1135,12 +1134,9 @@ export function ProjectCompareWorkspace({
   }
 
   const hasEnoughSubmissions = submissions.length >= 2;
-  const isVideoCategory = isVideoProjectCategory(project.category);
   const insufficientSubmissionMessage =
-    submissions.length === 0 && !isVideoCategory
-      ? "Only PNG stage submissions can be compared for artwork projects. Please upload a PNG submission."
-      : submissions.length === 0
-        ? "No valid submissions available for comparison."
+    submissions.length === 0
+      ? "No valid PNG stage submissions available for comparison."
       : submissions.length === 1
         ? "Upload another valid submission to compare changes."
         : null;

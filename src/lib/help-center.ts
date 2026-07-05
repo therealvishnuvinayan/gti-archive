@@ -816,7 +816,7 @@ export const helpSections: HelpSection[] = [
         title: "Compare Submissions",
         items: [
           "Compare Submissions is used to compare stage submission images within the selected stage only.",
-          "Formal stage submissions must be PNG unless the project category is video. Only valid PNG artwork submissions can be compared. Video-category projects may support the configured video submission formats.",
+          "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.",
           "At least two image submissions are needed for comparison.",
           "If there are no image submissions, the compare page shows an empty state.",
           "If there is only one image submission, upload another image revision before comparing changes.",
