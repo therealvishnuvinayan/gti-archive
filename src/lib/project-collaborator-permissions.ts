@@ -101,6 +101,10 @@ export function normalizeProjectCollaboratorPermissions(
     permissions.canAccessProjectArchives = false;
   }
 
+  if (options.executorRole) {
+    permissions.canInteract = true;
+  }
+
   return permissions;
 }
 

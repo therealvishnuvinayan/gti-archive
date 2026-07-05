@@ -510,6 +510,7 @@ function normalizeAssignedCollaboratorRecord(
 
 function buildCollaboratorSavePayload(
   collaborators: ProjectEditorInitialCollaborator[],
+  executorRoleById: Map<string, ProjectExecutorRoleValue> = new Map(),
 ) {
   return collaborators
     .filter((collaborator) => collaborator.access !== "owner")
@@ -517,6 +518,7 @@ function buildCollaboratorSavePayload(
       const permissions = normalizeProjectCollaboratorPermissions(
         collaborator,
         collaborator.participantType,
+        { executorRole: executorRoleById.get(collaborator.id) ?? null },
       );
 
       return {
@@ -1234,12 +1236,21 @@ export function CreateProjectWorkspace({
         : assignedCollaborators.map((collaborator) => collaborator.id),
     [assignedCollaborators, draftCollaboratorIds, pickerOpen],
   );
+  const projectExecutorRoleById = useMemo(
+    () =>
+      new Map(
+        projectExecutors.map((executor) => [executor.id, executor.role] as const),
+      ),
+    [projectExecutors],
+  );
   const collaboratorSummaryRecords = useMemo<ProjectCollaboratorRecord[]>(
     () =>
       assignedCollaborators.map((collaborator) => {
+        const executorRole = projectExecutorRoleById.get(collaborator.id) ?? null;
         const permissions = normalizeProjectCollaboratorPermissions(
           collaborator,
           collaborator.participantType,
+          { executorRole },
         );
 
         return {
@@ -1252,7 +1263,7 @@ export function CreateProjectWorkspace({
               : false,
         };
       }),
-    [assignedCollaborators],
+    [assignedCollaborators, projectExecutorRoleById],
   );
   const categorySelectOptions = useMemo(
     () =>
@@ -1720,6 +1731,7 @@ export function CreateProjectWorkspace({
               [permissionKey]: checked,
             },
             collaborator.participantType,
+            { executorRole: projectExecutorRoleById.get(collaborator.id) ?? null },
           ),
         };
       }),
@@ -1768,7 +1780,7 @@ export function CreateProjectWorkspace({
     try {
       const result = await saveProjectCollaboratorsAction(
         initialValues.id,
-        buildCollaboratorSavePayload(nextCollaborators),
+        buildCollaboratorSavePayload(nextCollaborators, projectExecutorRoleById),
       );
 
       if ("error" in result) {
@@ -1822,7 +1834,10 @@ export function CreateProjectWorkspace({
       if (mode === "edit" && initialValues?.id) {
         const saveResult = await saveProjectCollaboratorsAction(
           initialValues.id,
-          buildCollaboratorSavePayload(nextAssignedCollaborators),
+          buildCollaboratorSavePayload(
+            nextAssignedCollaborators,
+            projectExecutorRoleById,
+          ),
         );
 
         if ("error" in saveResult) {
@@ -2717,9 +2732,11 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="statusId" value={projectStatusId} />
       <input type="hidden" name="priority" value={projectPriority} />
       {assignedCollaborators.map((collaborator) => {
+        const executorRole = projectExecutorRoleById.get(collaborator.id) ?? null;
         const permissions = normalizeProjectCollaboratorPermissions(
           collaborator,
           collaborator.participantType,
+          { executorRole },
         );
 
         return (
@@ -4191,13 +4208,21 @@ export function CreateProjectWorkspace({
             </div>
             <div className="space-y-3">
               {assignedCollaborators.map((collaborator) => {
+                const executorRole = projectExecutorRoleById.get(collaborator.id) ?? null;
                 const permissions = normalizeProjectCollaboratorPermissions(
                   collaborator,
                   collaborator.participantType,
+                  { executorRole },
                 );
                 const isClientOfGti = isClientOfGtiParticipantType(
                   collaborator.participantType,
                 );
+                const executorRoleLabel =
+                  executorRole === "MAIN_EXECUTOR"
+                    ? "Main Executor"
+                    : executorRole === "EXECUTOR"
+                      ? "Executor"
+                      : null;
 
                 return (
                   <div
@@ -4218,6 +4243,8 @@ export function CreateProjectWorkspace({
                       {projectCollaboratorPermissionKeys.map((permissionKey) => {
                         const archiveBlocked =
                           permissionKey === "canAccessProjectArchives" && isClientOfGti;
+                        const interactionGrantedByExecutorRole =
+                          permissionKey === "canInteract" && Boolean(executorRole);
 
                         return (
                           <label
@@ -4231,7 +4258,7 @@ export function CreateProjectWorkspace({
                                   ? false
                                   : permissions[permissionKey]
                               }
-                              disabled={archiveBlocked}
+                              disabled={archiveBlocked || interactionGrantedByExecutorRole}
                               onChange={(event) =>
                                 updateAssignedCollaboratorPermission(
                                   collaborator.id,
@@ -4249,6 +4276,11 @@ export function CreateProjectWorkspace({
                     {isClientOfGti ? (
                       <p className="mt-2 text-[12px] text-[#8a7360]">
                         Archive access is blocked for Client of GTI.
+                      </p>
+                    ) : null}
+                    {executorRoleLabel ? (
+                      <p className="mt-2 text-[12px] text-[#5e7765]">
+                        Can interact is granted by the assigned {executorRoleLabel} role.
                       </p>
                     ) : null}
                   </div>
