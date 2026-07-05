@@ -909,8 +909,6 @@ export const defaultRolePermissions: Record<PermissionRole, readonly PermissionK
     "file.uploadSubmission",
     "library.view",
     "library.filter",
-    "archive.view",
-    "archive.download",
     "completion.viewChecklist",
     "completion.uploadInvoice",
     "calendar.view",
@@ -925,16 +923,51 @@ export const defaultRolePermissions: Record<PermissionRole, readonly PermissionK
   ],
 };
 
+const defaultCollaboratorWorkflowPermissions = [
+  "dashboard.view",
+  "dashboard.viewProjectCounts",
+  "dashboard.viewRecentProjects",
+  "project.list",
+  "project.view",
+  "project.viewParticipants",
+  "stage.view",
+  "stage.acceptBrief",
+  "stage.submitWork",
+  "chat.view",
+  "chat.createComment",
+  "chat.uploadAttachment",
+  "chat.mentionUser",
+  "file.view",
+  "file.download",
+  "file.favorite",
+  "file.uploadAttachment",
+  "file.uploadSubmission",
+  "library.view",
+  "library.filter",
+  "completion.viewChecklist",
+  "completion.uploadInvoice",
+  "calendar.view",
+  "notification.view",
+  "notification.markRead",
+  "settings.viewOwnProfile",
+  "settings.updateOwnProfile",
+  "settings.changeOwnPassword",
+  "compare.view",
+  "compare.createComment",
+  "help.view",
+] as const satisfies readonly PermissionKey[];
+
 export const defaultCollaboratorTypePermissions: Record<
   CollaboratorTypeValue,
   readonly PermissionKey[]
-> = collaboratorTypeValues.reduce(
-  (profiles, collaboratorType) => ({
-    ...profiles,
-    [collaboratorType]: allPermissionKeys,
-  }),
-  {} as Record<CollaboratorTypeValue, readonly PermissionKey[]>,
-);
+> = {
+  GTI_INTERNAL_CLIENT: defaultCollaboratorWorkflowPermissions,
+  GTI_SISTER_COMPANY_INTERNAL_CLIENT: defaultCollaboratorWorkflowPermissions,
+  EXTERNAL_FREELANCER: defaultCollaboratorWorkflowPermissions,
+  EXTERNAL_AGENCY: defaultCollaboratorWorkflowPermissions,
+  EXTERNAL_VENDOR: defaultCollaboratorWorkflowPermissions,
+  CLIENT_OF_GTI: defaultCollaboratorWorkflowPermissions,
+};
 
 export const criticalSuperAdminPermissionKeys = [
   "dashboard.view",

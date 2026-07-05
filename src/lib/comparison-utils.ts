@@ -1,11 +1,5 @@
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
-
-const comparableSubmissionExtensions = new Set(["png", "jpg", "jpeg", "webp"]);
-const comparableSubmissionMimeTypes = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
+import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
 
 export type ComparisonCommentRecord = {
   id: string;
@@ -17,31 +11,35 @@ export type ComparisonCommentRecord = {
   createdAt: string;
 };
 
-function hasComparableSubmissionType(attachment: ProjectAttachmentRecord) {
-  const extension = attachment.originalFileName.split(".").at(-1)?.toLowerCase() ?? "";
-
-  return (
-    comparableSubmissionMimeTypes.has(attachment.mimeType.toLowerCase()) ||
-    comparableSubmissionExtensions.has(extension)
-  );
+function hasComparableSubmissionType(
+  attachment: ProjectAttachmentRecord,
+  projectCategory?: string | null,
+) {
+  return isAllowedStageSubmissionFile({
+    fileName: attachment.originalFileName,
+    mimeType: attachment.mimeType,
+    projectCategory,
+  });
 }
 
 export function isComparableStageSubmissionAttachment(
   attachment: ProjectAttachmentRecord,
+  projectCategory?: string | null,
 ) {
-  return attachment.isSubmission && hasComparableSubmissionType(attachment);
+  return attachment.isSubmission && hasComparableSubmissionType(attachment, projectCategory);
 }
 
 export function getStageSubmissionAttachments(
   entries: ProjectChatEntry[],
+  projectCategory?: string | null,
 ): ProjectAttachmentRecord[] {
   const submissions = entries.flatMap((entry) =>
     (entry.attachments ?? []).filter(
       (attachment) =>
-        isComparableStageSubmissionAttachment(attachment) ||
+        isComparableStageSubmissionAttachment(attachment, projectCategory) ||
         (entry.kind === "revision" &&
           Boolean(attachment.submissionNumber) &&
-          hasComparableSubmissionType(attachment)),
+          hasComparableSubmissionType(attachment, projectCategory)),
     ),
   );
 

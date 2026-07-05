@@ -9,7 +9,7 @@ import {
   getProjectListFilterOptions,
   getProjectsList,
 } from "@/lib/projects";
-import { hasPermission } from "@/lib/permissions/resolver";
+import { hasPermission, isProjectAdmin } from "@/lib/permissions/resolver";
 
 type ProjectFilter = {
   label: string;
@@ -160,6 +160,12 @@ async function loadProjectsPageData(
     redirect("/no-access");
   }
 
+  const canUseBudgetFilters = isProjectAdmin(user);
+  const budgetRequiredFilter = canUseBudgetFilters ? activeBudgetRequired : "";
+  const budgetMinFilter = canUseBudgetFilters ? activeBudgetMin : "";
+  const budgetMaxFilter = canUseBudgetFilters ? activeBudgetMax : "";
+  const budgetCurrencyFilter = canUseBudgetFilters ? activeBudgetCurrency : "";
+
   const [projects, projectCounts, filterOptions] = await Promise.all([
     getProjectsList({
       status: activeStatus,
@@ -170,10 +176,10 @@ async function loadProjectsPageData(
       executorId: activeExecutorId,
       createdFrom: activeCreatedFrom,
       createdTo: activeCreatedTo,
-      budgetRequired: activeBudgetRequired || undefined,
-      budgetMin: activeBudgetMin,
-      budgetMax: activeBudgetMax,
-      budgetCurrency: activeBudgetCurrency,
+      budgetRequired: budgetRequiredFilter || undefined,
+      budgetMin: budgetMinFilter,
+      budgetMax: budgetMaxFilter,
+      budgetCurrency: budgetCurrencyFilter,
       sort: activeSort,
       page: activePage,
     }, user),
@@ -197,10 +203,10 @@ async function loadProjectsPageData(
     activeExecutorId,
     activeCreatedFrom,
     activeCreatedTo,
-    activeBudgetRequired,
-    activeBudgetMin,
-    activeBudgetMax,
-    activeBudgetCurrency,
+    activeBudgetRequired: budgetRequiredFilter,
+    activeBudgetMin: budgetMinFilter,
+    activeBudgetMax: budgetMaxFilter,
+    activeBudgetCurrency: budgetCurrencyFilter,
     filterOptions,
   };
 }

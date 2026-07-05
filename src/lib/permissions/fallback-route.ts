@@ -1,4 +1,5 @@
 import {
+  canUseArchives,
   isProjectAdmin,
   hasPermission,
   type PermissionUser,
@@ -33,7 +34,7 @@ export function getAuthenticatedDefaultRoute(user: PermissionUser) {
     return "/library";
   }
 
-  if (hasPermission(user, "archive.view")) {
+  if (canUseArchives(user)) {
     return "/archives";
   }
 

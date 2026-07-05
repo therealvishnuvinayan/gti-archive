@@ -47,6 +47,7 @@ import {
   getStageSubmissionAttachments,
   resolveComparisonSelection,
 } from "@/lib/comparison-utils";
+import { isVideoProjectCategory } from "@/lib/upload-validation";
 
 type ProjectCompareWorkspaceProps = {
   project: ProjectFlowRecord;
@@ -900,8 +901,8 @@ export function ProjectCompareWorkspace({
     return project.stageCards.find((stage) => stage.id === stageId) ?? project.stageCards[0];
   }, [project.currentStageId, project.stageCards, stageId]);
   const submissions = useMemo(
-    () => getStageSubmissionAttachments(history.entries),
-    [history.entries],
+    () => getStageSubmissionAttachments(history.entries, project.category),
+    [history.entries, project.category],
   );
   const { baseSubmission, compareSubmission } = useMemo(
     () =>
@@ -1116,11 +1117,14 @@ export function ProjectCompareWorkspace({
   }
 
   const hasEnoughSubmissions = submissions.length >= 2;
+  const isVideoCategory = isVideoProjectCategory(project.category);
   const insufficientSubmissionMessage =
-    submissions.length === 0
-      ? "No image submissions available for comparison."
+    submissions.length === 0 && !isVideoCategory
+      ? "Only PNG stage submissions can be compared for artwork projects. Please upload a PNG submission."
+      : submissions.length === 0
+        ? "No valid submissions available for comparison."
       : submissions.length === 1
-        ? "Upload another image revision to compare changes."
+        ? "Upload another valid submission to compare changes."
         : null;
 
   return (
@@ -1171,7 +1175,9 @@ export function ProjectCompareWorkspace({
                 {insufficientSubmissionMessage}
               </CardTitle>
               <p className="mt-2 text-[13px] text-[#6f786f]">
-                Only same-stage PNG, JPG, JPEG, and WebP submissions are supported here.
+                {isVideoCategory
+                  ? "Video-category projects may support the configured video submission formats."
+                  : "Only valid PNG artwork submissions can be compared."}
               </p>
             </Card>
           ) : null}

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions/resolver";
+import {
+  canUseArchives,
+  hasPermission,
+  isClientOfGtiUser,
+} from "@/lib/permissions/resolver";
 import {
   buildArchiveCategoryIconPrefix,
   createPresignedPreviewUrl,
@@ -15,8 +19,10 @@ export async function GET(request: Request) {
   }
 
   if (
-    !hasPermission(user, "archive.view") &&
+    isClientOfGtiUser(user) ||
+    (!canUseArchives(user) &&
     !hasPermission(user, "settings.viewMasterData")
+    )
   ) {
     return NextResponse.json(
       { error: "You do not have permission to view archive category icons." },

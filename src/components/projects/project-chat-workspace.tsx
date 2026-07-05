@@ -12,7 +12,7 @@ import {
   useTransition,
 } from "react";
 import { flushSync } from "react-dom";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type Accept } from "react-dropzone";
 import {
   CheckCircle2,
   Download,
@@ -114,10 +114,11 @@ import type {
 } from "@/lib/projects";
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import {
-  SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
   buildFileTypeNotAllowedPayload,
   formatUploadFileTypeError,
+  getStageSubmissionAllowedExtensions,
   getUploadErrorMessage,
+  isVideoProjectCategory,
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
 
@@ -267,11 +268,21 @@ type UploadAssetType =
 type CommentUploadIntent = "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
 const MAX_RECORDING_DURATION_MS = 60_000;
 const AUTO_TRANSLATE_DEBOUNCE_MS = 650;
-const submissionDropzoneAccept = {
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
-  "image/webp": [".webp"],
-};
+function getSubmissionDropzoneAccept(projectCategory?: string | null): Accept {
+  if (isVideoProjectCategory(projectCategory)) {
+    return {
+      "image/png": [".png"],
+      "video/mp4": [".mp4"],
+      "video/quicktime": [".mov"],
+      "video/x-m4v": [".m4v"],
+      "video/webm": [".webm"],
+    };
+  }
+
+  return {
+    "image/png": [".png"],
+  };
+}
 
 const fileTypeStyles: Record<string, string> = {
   AI: "bg-[#2d1207] text-[#ff9d12]",
@@ -287,6 +298,7 @@ function getFileBadgeClass(label: string) {
 
 type UploadIntentDropzoneProps = {
   intent: CommentUploadIntent;
+  projectCategory?: string | null;
   disabled?: boolean;
   onFilesSelected: (files: File[]) => void;
   onError: (message: string) => void;
@@ -294,12 +306,16 @@ type UploadIntentDropzoneProps = {
 
 function UploadIntentDropzone({
   intent,
+  projectCategory,
   disabled = false,
   onFilesSelected,
   onError,
 }: UploadIntentDropzoneProps) {
+  const videoSubmission = isVideoProjectCategory(projectCategory);
   const dropzoneAccept =
-    intent === "STAGE_SUBMISSION" ? submissionDropzoneAccept : undefined;
+    intent === "STAGE_SUBMISSION"
+      ? getSubmissionDropzoneAccept(projectCategory)
+      : undefined;
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     multiple: true,
@@ -321,8 +337,8 @@ function UploadIntentDropzone({
             buildFileTypeNotAllowedPayload({
               fileName: rejectedFile?.name ?? "Selected file",
               mimeType: rejectedFile?.type || "application/octet-stream",
-              allowedExtensions: SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
-              error: "Submission file type is not allowed.",
+              allowedExtensions: getStageSubmissionAllowedExtensions(projectCategory),
+              error: "Submission must be PNG unless the project category is video.",
             }),
           ),
         );
@@ -352,7 +368,9 @@ function UploadIntentDropzone({
 
       <p className="mt-1 text-[11px] text-[#7a837b]">
         {intent === "STAGE_SUBMISSION"
-          ? "PNG, JPG, JPEG, or WebP only."
+          ? videoSubmission
+            ? "PNG or video files only."
+            : "PNG only."
           : "Choose one or more files to attach to the chat discussion."}
       </p>
 
@@ -2481,11 +2499,11 @@ export function ProjectChatWorkspace({
   );
   const stageSubmissions = useMemo(
     () =>
-      getStageSubmissionAttachments(displayedMessages).filter(
+      getStageSubmissionAttachments(displayedMessages, project.category).filter(
         (attachment) =>
           !("uploadState" in attachment) || attachment.uploadState === "uploaded",
       ),
-    [displayedMessages],
+    [displayedMessages, project.category],
   );
   const canCompareSubmissions = stageSubmissions.length >= 2;
   const canSendComment = draft.trim().length > 0 || pendingCommentFiles.length > 0;
@@ -4722,7 +4740,7 @@ export function ProjectChatWorkspace({
     const filesToUpload = [...pendingCommentFiles];
     const hasPendingFiles = filesToUpload.length > 0;
     const startingSubmissionNumber =
-      getStageSubmissionAttachments(displayedMessages).filter(
+      getStageSubmissionAttachments(displayedMessages, project.category).filter(
         (attachment) =>
           !("uploadState" in attachment) || attachment.uploadState === "uploaded",
       ).length + 1;
@@ -7836,6 +7854,7 @@ export function ProjectChatWorkspace({
                   <p className="text-[13px] font-semibold text-[#2d372f]">Choose Files</p>
                   <UploadIntentDropzone
                     intent={commentUploadIntent}
+                    projectCategory={project.category}
                     onFilesSelected={handleCommentFilesSelected}
                     onError={(message) => setComposerError(message)}
                   />

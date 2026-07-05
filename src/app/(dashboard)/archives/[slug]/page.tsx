@@ -9,7 +9,7 @@ import {
 } from "@/lib/archives";
 import { getArchiveCategoryBySlug } from "@/lib/archive-categories";
 import { requireUser } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions/resolver";
+import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
 import { Card } from "@/components/ui/card";
 
 function BackPill() {
@@ -31,7 +31,7 @@ export default async function ArchiveCategoryPage({
   const { slug } = await params;
   const user = await requireUser();
 
-  if (!hasPermission(user, "archive.view")) {
+  if (!canUseArchives(user)) {
     redirect("/");
   }
 
