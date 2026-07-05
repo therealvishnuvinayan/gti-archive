@@ -24,6 +24,7 @@ import {
   setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import {
   SubmissionCaptionDialog,
@@ -1143,6 +1144,7 @@ export function ProjectCompareWorkspace({
 
   return (
     <section className="space-y-6">
+      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]">
         <div className="space-y-4">
           <Card className="overflow-hidden rounded-[24px] border-none bg-[linear-gradient(135deg,#2f8d5d,#46a470)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">

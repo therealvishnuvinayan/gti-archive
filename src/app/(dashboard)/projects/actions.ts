@@ -56,6 +56,7 @@ import {
 import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { prisma } from "@/lib/prisma";
 import {
+  publishProjectAccessRevoked,
   publishStageChatMessageCreated,
   publishStageChatMessageDeleted,
   runStageChatRealtimeTaskAfterResponse,
@@ -79,6 +80,30 @@ type StageCommentInput = {
   allowEmptyBody?: boolean;
   mentionedUserIds?: string[];
 };
+
+function publishProjectAccessRevocation(input: {
+  projectId: string;
+  actorId: string;
+  targetUserIds: string[];
+  reason: "collaborator_removed" | "visibility_paused";
+}) {
+  const targetUserIds = [...new Set(input.targetUserIds.filter(Boolean))];
+
+  if (targetUserIds.length === 0) {
+    return;
+  }
+
+  runStageChatRealtimeTaskAfterResponse("project-access.revoked", () =>
+    publishProjectAccessRevoked({
+      eventId: randomUUID(),
+      projectId: input.projectId,
+      targetUserIds,
+      actorId: input.actorId,
+      revokedAt: new Date().toISOString(),
+      reason: input.reason,
+    }),
+  );
+}
 
 type DeleteStageCommentInput = {
   projectId: string;
@@ -841,6 +866,9 @@ export async function saveProjectCollaboratorsAction(
     revalidatePath(`/projects/${projectId}/edit`);
 
     const nextCollaboratorIds = updatedCollaborators.map((collaborator) => collaborator.id);
+    const removedCollaboratorIds = previousCollaboratorIds.filter(
+      (collaboratorId) => !nextCollaboratorIds.includes(collaboratorId),
+    );
 
     await runNotificationTask("project-collaborators-updated", () =>
       notifyProjectAssignmentChanges({
@@ -849,11 +877,15 @@ export async function saveProjectCollaboratorsAction(
         addedCollaboratorIds: nextCollaboratorIds.filter(
           (collaboratorId) => !previousCollaboratorIds.includes(collaboratorId),
         ),
-        removedCollaboratorIds: previousCollaboratorIds.filter(
-          (collaboratorId) => !nextCollaboratorIds.includes(collaboratorId),
-        ),
+        removedCollaboratorIds,
       }),
     );
+    publishProjectAccessRevocation({
+      projectId,
+      actorId: user.id,
+      targetUserIds: removedCollaboratorIds,
+      reason: "collaborator_removed",
+    });
 
     return { collaborators: updatedCollaborators };
   } catch (error) {
@@ -884,6 +916,9 @@ export async function removeProjectCollaboratorAction(
     revalidatePath(`/projects/${projectId}/edit`);
 
     const nextCollaboratorIds = updatedCollaborators.map((collaborator) => collaborator.id);
+    const removedCollaboratorIds = previousCollaboratorIds.filter(
+      (candidateId) => !nextCollaboratorIds.includes(candidateId),
+    );
 
     await runNotificationTask("project-collaborator-removed", () =>
       notifyProjectAssignmentChanges({
@@ -892,11 +927,15 @@ export async function removeProjectCollaboratorAction(
         addedCollaboratorIds: nextCollaboratorIds.filter(
           (candidateId) => !previousCollaboratorIds.includes(candidateId),
         ),
-        removedCollaboratorIds: previousCollaboratorIds.filter(
-          (candidateId) => !nextCollaboratorIds.includes(candidateId),
-        ),
+        removedCollaboratorIds,
       }),
     );
+    publishProjectAccessRevocation({
+      projectId,
+      actorId: user.id,
+      targetUserIds: removedCollaboratorIds.length > 0 ? removedCollaboratorIds : [collaboratorId],
+      reason: "collaborator_removed",
+    });
 
     return { collaborators: updatedCollaborators };
   } catch (error) {
@@ -921,6 +960,15 @@ export async function setProjectCollaboratorChatVisibilityAction(input: {
 
     revalidateProjectFlow();
     revalidatePath(`/projects/${input.projectId}/edit`);
+
+    if (input.paused) {
+      publishProjectAccessRevocation({
+        projectId: input.projectId,
+        actorId: user.id,
+        targetUserIds: [input.collaboratorId],
+        reason: "visibility_paused",
+      });
+    }
 
     return { collaborators: updatedCollaborators };
   } catch (error) {

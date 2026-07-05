@@ -61,6 +61,7 @@ import {
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
+import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import {
   CompletedProjectArchiveSummaryCard,
   ProjectCompletionChecklist,
@@ -5982,6 +5983,7 @@ export function ProjectChatWorkspace({
 
   return (
     <section className="min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-17rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
+      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <div className="grid min-h-0 gap-4 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-h-0 min-w-0 flex-col gap-2 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:gap-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
           <div

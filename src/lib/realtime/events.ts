@@ -11,12 +11,29 @@ export const STAGE_CHAT_REALTIME_EVENTS = {
   presenceLeave: "stage-chat.presence.leave",
 } as const;
 
+export const PROJECT_ACCESS_REALTIME_EVENTS = {
+  accessRevoked: "project-access.revoked",
+} as const;
+
 export type StageChatRealtimeEventName =
   (typeof STAGE_CHAT_REALTIME_EVENTS)[keyof typeof STAGE_CHAT_REALTIME_EVENTS];
 
 export function getStageChatChannelName(projectId: string, stageId: string) {
   return `private:project:${projectId}:stage:${stageId}:chat`;
 }
+
+export function getProjectAccessChannelName(projectId: string) {
+  return `private:project:${projectId}:access`;
+}
+
+export type ProjectAccessRevokedPayload = {
+  eventId: string;
+  projectId: string;
+  targetUserIds: string[];
+  actorId: string;
+  revokedAt: string;
+  reason: "collaborator_removed" | "visibility_paused";
+};
 
 export type StageChatRealtimeMessagePendingPayload = {
   projectId: string;

@@ -108,6 +108,57 @@ export function createStageChatRealtimeClient(input: {
   });
 }
 
+export function createProjectAccessRealtimeClient(input: {
+  projectId: string;
+}) {
+  const authParams = new URLSearchParams({
+    projectId: input.projectId,
+    scope: "project-access",
+  });
+  const authUrl = `/api/realtime/ably/token?${authParams.toString()}`;
+
+  logAblyClient("create project access realtime client", {
+    projectId: input.projectId,
+    authUrl,
+  });
+
+  return new Ably.Realtime({
+    authCallback: (_tokenParams, callback) => {
+      fetch(authUrl, {
+        cache: "no-store",
+      })
+        .then(async (response) => {
+          const payload = (await response.json().catch(() => null)) as
+            | Ably.TokenRequest
+            | { error?: string }
+            | null;
+
+          if (!response.ok || !isAblyTokenRequest(payload)) {
+            const message =
+              payload && "error" in payload && payload.error
+                ? payload.error
+                : "Unable to obtain Ably token.";
+            callback(message, null);
+            return;
+          }
+
+          callback(null, payload);
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : "Unable to obtain Ably token.";
+          callback(message, null);
+        });
+    },
+    useTokenAuth: true,
+    autoConnect: true,
+  });
+}
+
 export type StageChatRealtimeClient = ReturnType<
   typeof createStageChatRealtimeClient
+>;
+
+export type ProjectAccessRealtimeClient = ReturnType<
+  typeof createProjectAccessRealtimeClient
 >;

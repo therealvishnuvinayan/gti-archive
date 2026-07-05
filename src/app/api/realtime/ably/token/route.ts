@@ -8,7 +8,9 @@ import {
 import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
+  createProjectAccessRealtimeTokenRequest,
   createStageChatRealtimeTokenRequest,
+  getProjectAccessChannelName,
   getStageChatChannelName,
   getRealtimeProvider,
   isStageChatRealtimeConfigured,
@@ -41,14 +43,21 @@ export async function GET(request: Request) {
   const searchParams = new URL(request.url).searchParams;
   const projectId = searchParams.get("projectId")?.trim();
   const stageId = searchParams.get("stageId")?.trim();
+  const scope = searchParams.get("scope")?.trim();
+  const isProjectAccessScope = scope === "project-access";
   const channelName =
-    projectId && stageId ? getStageChatChannelName(projectId, stageId) : null;
+    projectId && isProjectAccessScope
+      ? getProjectAccessChannelName(projectId)
+      : projectId && stageId
+        ? getStageChatChannelName(projectId, stageId)
+        : null;
 
   logAblyToken("endpoint called", {
     provider: getRealtimeProvider(),
     hasAblyApiKey: Boolean(process.env.ABLY_API_KEY?.trim()),
     projectId: projectId ?? null,
     stageId: stageId ?? null,
+    scope: scope ?? null,
     channelName,
   });
 
@@ -79,14 +88,97 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!projectId || !stageId) {
+  if (!projectId || (!isProjectAccessScope && !stageId)) {
     logAblyToken("token denied", {
-      reason: "Project and stage are required.",
+      reason: isProjectAccessScope
+        ? "Project is required."
+        : "Project and stage are required.",
       userId: user.id,
       projectId: projectId ?? null,
       stageId: stageId ?? null,
       channelName,
     });
+    return NextResponse.json(
+      {
+        error: isProjectAccessScope
+          ? "Project is required."
+          : "Project and stage are required.",
+      },
+      { status: 400 },
+    );
+  }
+
+  if (isProjectAccessScope) {
+    const project = await withPrismaRetry(() =>
+      prisma.project.findUnique({
+        where: {
+          id: projectId,
+        },
+        select: {
+          createdById: true,
+          executors: {
+            select: {
+              userId: true,
+              role: true,
+            },
+          },
+          collaborators: {
+            select: {
+              userId: true,
+            },
+          },
+        },
+      }),
+    );
+
+    if (!project) {
+      return NextResponse.json({ error: "Project not found." }, { status: 404 });
+    }
+
+    if (!hasProjectPermission(user, project, "project.view")) {
+      return NextResponse.json(
+        { error: "You do not have permission to view this project." },
+        { status: 403 },
+      );
+    }
+
+    if (!canBypassCollaboratorVisibility(user, project.createdById)) {
+      const visibilityState = await getProjectCollaboratorVisibilityState(
+        projectId,
+        user.id,
+      );
+
+      if (visibilityState?.chatVisibilityPaused) {
+        return NextResponse.json(
+          { error: "You do not have permission to view this project." },
+          { status: 403 },
+        );
+      }
+    }
+
+    const tokenRequest = await createProjectAccessRealtimeTokenRequest({
+      projectId,
+      clientId: buildRealtimeClientId(user.id),
+    });
+
+    if (!tokenRequest) {
+      return NextResponse.json(
+        { error: "Realtime is not configured." },
+        { status: 503 },
+      );
+    }
+
+    return NextResponse.json(tokenRequest, {
+      headers: {
+        "Cache-Control": "no-store",
+        "X-Realtime-User": getUserDisplayName(user),
+      },
+    });
+  }
+
+  const activeStageId = stageId;
+
+  if (!activeStageId) {
     return NextResponse.json(
       { error: "Project and stage are required." },
       { status: 400 },
@@ -96,7 +188,7 @@ export async function GET(request: Request) {
   const stage = await withPrismaRetry(() =>
     prisma.projectStage.findUnique({
       where: {
-        id: stageId,
+        id: activeStageId,
       },
       select: {
         id: true,
@@ -172,7 +264,7 @@ export async function GET(request: Request) {
 
   const tokenRequest = await createStageChatRealtimeTokenRequest({
     projectId,
-    stageId,
+    stageId: activeStageId,
     clientId: buildRealtimeClientId(user.id),
   });
 

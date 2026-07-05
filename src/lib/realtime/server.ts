@@ -1,20 +1,24 @@
 import { after } from "next/server";
 
 import {
+  getProjectAccessChannelName,
   getStageChatChannelName,
+  type ProjectAccessRevokedPayload,
   type StageChatRealtimeMessageCreatedPayload,
   type StageChatRealtimeMessageDeletedPayload,
 } from "@/lib/realtime/events";
 
 import {
   createAblyStageChatTokenRequest,
+  createAblyProjectAccessTokenRequest,
   isAblyServerConfigured,
+  publishAblyProjectAccessRevoked,
   publishAblyStageChatMessageCreated,
   publishAblyStageChatMessageDeleted,
   warnAblyNotConfigured,
 } from "./ably-server";
 
-export { getStageChatChannelName };
+export { getProjectAccessChannelName, getStageChatChannelName };
 
 export function getRealtimeProvider() {
   return process.env.NEXT_PUBLIC_REALTIME_PROVIDER === "ably" ? "ably" : "none";
@@ -47,6 +51,17 @@ export async function createStageChatRealtimeTokenRequest(input: {
   }
 
   return createAblyStageChatTokenRequest(input);
+}
+
+export async function createProjectAccessRealtimeTokenRequest(input: {
+  projectId: string;
+  clientId: string;
+}) {
+  if (getRealtimeProvider() !== "ably") {
+    return null;
+  }
+
+  return createAblyProjectAccessTokenRequest(input);
 }
 
 async function runStageChatRealtimeTask(
@@ -95,4 +110,10 @@ export async function publishStageChatMessageDeleted(
   payload: StageChatRealtimeMessageDeletedPayload,
 ) {
   return publishAblyStageChatMessageDeleted(payload);
+}
+
+export async function publishProjectAccessRevoked(
+  payload: ProjectAccessRevokedPayload,
+) {
+  return publishAblyProjectAccessRevoked(payload);
 }
