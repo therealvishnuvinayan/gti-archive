@@ -41,9 +41,9 @@ function UserAvatar({ user }: { user: DashboardUserView }) {
         key={user.avatarSrc}
         src={user.avatarSrc}
         alt={`${user.name} avatar`}
-        className="h-[56px] w-[56px]"
+        className="h-11 w-11 sm:h-[56px] sm:w-[56px]"
         fallback={
-          <div className="grid h-[56px] w-[56px] place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd7c5,#d88f6c_55%,#7c4a34)] text-[20px] font-bold text-white">
+          <div className="grid h-11 w-11 place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd7c5,#d88f6c_55%,#7c4a34)] text-[17px] font-bold text-white sm:h-[56px] sm:w-[56px] sm:text-[20px]">
             {user.initials}
           </div>
         }
@@ -52,7 +52,7 @@ function UserAvatar({ user }: { user: DashboardUserView }) {
   }
 
   return (
-    <div className="grid h-[56px] w-[56px] place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd7c5,#d88f6c_55%,#7c4a34)] text-[20px] font-bold text-white">
+    <div className="grid h-11 w-11 place-items-center rounded-full bg-[radial-gradient(circle_at_top,#ffd7c5,#d88f6c_55%,#7c4a34)] text-[17px] font-bold text-white sm:h-[56px] sm:w-[56px] sm:text-[20px]">
       {user.initials}
     </div>
   );
@@ -96,15 +96,15 @@ export function Topbar({
   const [signOutPending, setSignOutPending] = useState(false);
 
   return (
-    <header className="rounded-[30px] bg-surface px-4 py-4 shadow-[0_18px_40px_rgba(23,39,28,0.05)] sm:px-6 lg:px-8">
+    <header className="rounded-[24px] bg-surface px-3 py-3 shadow-[0_18px_40px_rgba(23,39,28,0.05)] sm:rounded-[30px] sm:px-6 sm:py-4 lg:px-8">
       <form ref={signOutFormRef} action="/sign-out" method="post" className="hidden" />
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onOpenSidebar}
-              className="grid h-12 w-12 place-items-center rounded-2xl border border-line bg-white text-[#263129] shadow-[0_8px_24px_rgba(15,26,20,0.06)] lg:hidden"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-line bg-white text-[#263129] shadow-[0_8px_24px_rgba(15,26,20,0.06)] sm:h-12 sm:w-12 lg:hidden"
               aria-label="Open sidebar"
             >
               <Menu className="h-5 w-5" />
@@ -114,22 +114,22 @@ export function Topbar({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-4 md:ml-auto">
+        <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-4">
           {showNotifications ? <NotificationDropdown /> : null}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex min-w-[250px] cursor-pointer items-center gap-3 rounded-full bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,26,20,0.05)] outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-brand/35"
+                className="flex min-w-0 max-w-[250px] cursor-pointer items-center gap-2 rounded-full bg-white px-2 py-1.5 shadow-[0_10px_24px_rgba(15,26,20,0.05)] outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-brand/35 sm:min-w-[250px] sm:gap-3 sm:px-3 sm:py-2"
                 aria-label="Open user menu"
               >
                 <UserAvatar user={user} />
                 <div className="min-w-0 flex-1 text-left">
-                  <p className="truncate text-[17px] font-extrabold leading-tight text-[#18211a]">
+                  <p className="truncate text-[14px] font-extrabold leading-tight text-[#18211a] sm:text-[17px]">
                     {user.name}
                   </p>
-                  <p className="truncate text-[13px] text-muted">
+                  <p className="truncate text-[11px] text-muted sm:text-[13px]">
                     {user.email}
                   </p>
                 </div>

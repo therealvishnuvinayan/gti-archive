@@ -20,7 +20,7 @@ type DashboardAppFrameProps = {
 
 function BackPill({ href }: { href: string }) {
   return (
-    <Button asChild size="lg" variant="secondary" className="min-w-[132px]">
+    <Button asChild size="lg" variant="secondary" className="h-11 min-w-[120px] sm:h-12 sm:min-w-[132px]">
       <Link href={href}>
         <ChevronLeft className="h-4 w-4" />
         Back
