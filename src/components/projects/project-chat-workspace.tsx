@@ -5840,6 +5840,34 @@ export function ProjectChatWorkspace({
                   </div>
                 ) : null}
               </div>
+              {canAcceptCurrentStageBrief ? (
+                <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#acd9bd] bg-[linear-gradient(135deg,#f5fff6,#e6f7ea)] p-3 shadow-[0_18px_42px_rgba(22,93,56,0.16)]">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                        Action required
+                      </p>
+                      <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
+                        Accept the brief to start work on {activeStage?.label ?? "this stage"}.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      className="min-h-[44px] shrink-0 rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
+                      onClick={() => {
+                        setAcceptBriefError(null);
+                        setAcceptBriefDialogOpen(true);
+                      }}
+                      disabled={isAcceptingBrief}
+                    >
+                      {isAcceptingBrief ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      Accept Brief
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
           {isProjectCompleted ? (
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
