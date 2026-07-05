@@ -22,6 +22,7 @@ import {
   getAccessibleProjectsWhere,
   hasPermission,
   hasProjectPermission,
+  isClientOfGtiUser,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
@@ -247,6 +248,102 @@ export function canAccessArchiveCategoryRecord(
   const allowedUsers = category.allowedUsers ?? [];
 
   return allowedUsers.length === 0 || allowedUsers.some((access) => access.userId === user.id);
+}
+
+function buildProjectArchiveGrantProjectWhere(
+  user: ArchiveAccessUser,
+): Prisma.ProjectWhereInput {
+  if (isClientOfGtiUser(user)) {
+    return {
+      id: "__no_project_archive_access__",
+    };
+  }
+
+  return {
+    collaborators: {
+      some: {
+        userId: user.id,
+        canAccessProjectArchives: true,
+      },
+    },
+  };
+}
+
+function buildArchivedProjectFileProjectWhere(
+  user: ArchiveAccessUser,
+): Prisma.ProjectWhereInput {
+  if (canUseArchives(user)) {
+    return buildAccessibleProjectWhere(user);
+  }
+
+  return buildProjectArchiveGrantProjectWhere(user);
+}
+
+function getArchivedProjectCategoryWhere(
+  user: ArchiveAccessUser,
+): Prisma.ArchiveCategoryWhereInput {
+  if (canUseArchives(user)) {
+    return getAccessibleArchiveCategoryWhere(user);
+  }
+
+  return {
+    isActive: true,
+    projectArchives: {
+      some: {
+        project: buildProjectArchiveGrantProjectWhere(user),
+      },
+    },
+  };
+}
+
+async function hasProjectArchiveGrant(user: ArchiveAccessUser) {
+  if (isClientOfGtiUser(user)) {
+    return false;
+  }
+
+  const count = await withPrismaRetry(() =>
+    prisma.projectCollaborator.count({
+      where: {
+        userId: user.id,
+        canAccessProjectArchives: true,
+        project: {
+          archive: {
+            isNot: null,
+          },
+        },
+      },
+    }),
+  );
+
+  return count > 0;
+}
+
+export async function canAccessArchivesArea(user: ArchiveAccessUser) {
+  return canUseArchives(user) || hasProjectArchiveGrant(user);
+}
+
+export async function canAccessArchiveCategoryForUser(
+  user: ArchiveAccessUser,
+  category: { id: string; allowedUsers?: Array<{ userId: string }> },
+) {
+  if (canAccessArchiveCategoryRecord(user, category)) {
+    return true;
+  }
+
+  if (isClientOfGtiUser(user)) {
+    return false;
+  }
+
+  const count = await withPrismaRetry(() =>
+    prisma.projectArchive.count({
+      where: {
+        archiveCategoryId: category.id,
+        project: buildProjectArchiveGrantProjectWhere(user),
+      },
+    }),
+  );
+
+  return count > 0;
 }
 
 export async function assertCanAccessArchiveCategory(
@@ -977,12 +1074,16 @@ function isArchiveTimestampVisibleToUser(
 }
 
 export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
-  assertCanUseArchives(user);
+  if (!(await canAccessArchivesArea(user))) {
+    throw new Error("You do not have permission to view archives.");
+  }
+
+  const canAccessManualArchiveFiles = canUseArchives(user);
 
   const [categories, archivedFiles, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
       prisma.archiveCategory.findMany({
-        where: getAccessibleArchiveCategoryWhere(user),
+        where: getArchivedProjectCategoryWhere(user),
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         include: {
           parent: {
@@ -1000,7 +1101,7 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
       prisma.archivedProjectFile.findMany({
         where: {
           project: {
-            is: buildAccessibleProjectWhere(user),
+            is: buildArchivedProjectFileProjectWhere(user),
           },
         },
         select: {
@@ -1035,16 +1136,18 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
           },
         },
       }),
-      prisma.manualArchiveFile.findMany({
-        where: {
-          status: AttachmentStatus.READY,
-        },
-        select: {
-          archiveCategoryId: true,
-          uploadedAt: true,
-          projectName: true,
-        },
-      }),
+      canAccessManualArchiveFiles
+        ? prisma.manualArchiveFile.findMany({
+            where: {
+              status: AttachmentStatus.READY,
+            },
+            select: {
+              archiveCategoryId: true,
+              uploadedAt: true,
+              projectName: true,
+            },
+          })
+        : Promise.resolve([]),
     ]),
   );
   const visibleArchivedFiles = archivedFiles.filter((file) =>
@@ -1292,9 +1395,15 @@ export async function listArchivedFilesByCategory(
   user: ArchiveAccessUser,
   category: ArchiveCategoryRecord,
 ) {
-  assertCanUseArchives(user);
+  if (!(await canAccessArchivesArea(user))) {
+    throw new Error("You do not have permission to view archives.");
+  }
 
-  await assertCanAccessArchiveCategory(user, category.id);
+  if (!(await canAccessArchiveCategoryForUser(user, category))) {
+    throw new Error("You do not have permission to view this archive category.");
+  }
+
+  const canAccessManualArchiveFiles = canUseArchives(user);
 
   const [files, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
@@ -1306,7 +1415,7 @@ export async function listArchivedFilesByCategory(
             },
           },
           project: {
-            is: buildAccessibleProjectWhere(user),
+            is: buildArchivedProjectFileProjectWhere(user),
           },
         },
         orderBy: [
@@ -1394,57 +1503,59 @@ export async function listArchivedFilesByCategory(
           },
         },
       }),
-      prisma.manualArchiveFile.findMany({
-        where: {
-          archiveCategoryId: category.id,
-          status: AttachmentStatus.READY,
-        },
-        orderBy: [
-          {
-            uploadedAt: "desc",
-          },
-          {
-            fileName: "asc",
-          },
-        ],
-        select: {
-          id: true,
-          fileName: true,
-          originalFileName: true,
-          projectName: true,
-          projectCreatedBy: true,
-          assetTags: {
-            include: {
-              tag: {
+      canAccessManualArchiveFiles
+        ? prisma.manualArchiveFile.findMany({
+            where: {
+              archiveCategoryId: category.id,
+              status: AttachmentStatus.READY,
+            },
+            orderBy: [
+              {
+                uploadedAt: "desc",
+              },
+              {
+                fileName: "asc",
+              },
+            ],
+            select: {
+              id: true,
+              fileName: true,
+              originalFileName: true,
+              projectName: true,
+              projectCreatedBy: true,
+              assetTags: {
+                include: {
+                  tag: {
+                    select: {
+                      id: true,
+                      name: true,
+                      color: true,
+                    },
+                  },
+                },
+              },
+              archiveCategory: {
                 select: {
                   id: true,
                   name: true,
+                  slug: true,
+                  iconUrl: true,
+                  iconKey: true,
                   color: true,
                 },
               },
+              mimeType: true,
+              fileSize: true,
+              uploadedAt: true,
+              uploadedBy: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
             },
-          },
-          archiveCategory: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              iconUrl: true,
-              iconKey: true,
-              color: true,
-            },
-          },
-          mimeType: true,
-          fileSize: true,
-          uploadedAt: true,
-          uploadedBy: {
-            select: {
-              name: true,
-              email: true,
-            },
-          },
-        },
-      }),
+          })
+        : Promise.resolve([]),
     ]),
   );
   const visibleFiles = files.filter((file) =>

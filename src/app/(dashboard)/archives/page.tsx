@@ -2,19 +2,19 @@ import { redirect } from "next/navigation";
 
 import { ArchiveOverview } from "@/components/archives/archive-overview";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { listArchiveCategorySummaries } from "@/lib/archives";
+import { canAccessArchivesArea, listArchiveCategorySummaries } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
 import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
 
 export default async function ArchivesPage() {
   const user = await requireUser();
 
-  if (!canUseArchives(user)) {
+  if (!(await canAccessArchivesArea(user))) {
     redirect("/");
   }
 
   const summaries = await listArchiveCategorySummaries(user);
-  const canUploadArchives = hasPermission(user, "archive.uploadFile");
+  const canUploadArchives = canUseArchives(user) && hasPermission(user, "archive.uploadFile");
   const canManageArchiveCategories = hasPermission(user, "settings.manageMasterData");
 
   return (
