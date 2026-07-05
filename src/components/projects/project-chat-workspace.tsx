@@ -2321,6 +2321,7 @@ export function ProjectChatWorkspace({
   const expandedDraftInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const completionWorkflowRef = useRef<HTMLDivElement | null>(null);
   const mentionDropdownRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -2965,6 +2966,21 @@ export function ProjectChatWorkspace({
   const scrollToChatBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     chatBottomRef.current?.scrollIntoView({ block: "end", behavior });
   }, []);
+  const scrollToCompletionWorkflow = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const scrollToTarget = () => {
+        completionWorkflowRef.current?.scrollIntoView({
+          block: "start",
+          behavior,
+        });
+      };
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(scrollToTarget);
+      });
+    },
+    [],
+  );
   const handleChatScroll = useCallback(() => {
     const container = chatScrollRef.current;
 
@@ -4537,6 +4553,7 @@ export function ProjectChatWorkspace({
     const completedStage = stageCards.find((stage) => stage.id === completedStageId);
     const stageIndex = stageCards.findIndex((stage) => stage.id === completedStageId);
     const nextStage = stageIndex >= 0 ? stageCards[stageIndex + 1] ?? null : null;
+    const allStagesCompleted = !nextStage;
 
     setStageCardOverrides((current) => ({
       ...current,
@@ -4571,11 +4588,29 @@ export function ProjectChatWorkspace({
         : {}),
     }));
 
+    if (allStagesCompleted) {
+      setCompletionOverrides((current) => ({
+        ...(current ?? {}),
+        allStagesCompleted: true,
+        incompleteStages: completionState.incompleteStages.filter(
+          (stage) => stage.id !== completedStageId,
+        ),
+        isSelectedStageFinal:
+          completionState.isSelectedStageFinal ||
+          completedStageId === completionState.finalStageId,
+      }));
+    }
+
     setCompletionPrompt({
       nextStageId: nextStage?.id ?? null,
       nextStageLabel: nextStage?.label ?? null,
-      allStagesCompleted: !nextStage,
+      allStagesCompleted,
     });
+
+    return {
+      allStagesCompleted,
+      nextStageId: nextStage?.id ?? null,
+    };
   }
 
   async function handleMarkStageComplete() {
@@ -4614,6 +4649,7 @@ export function ProjectChatWorkspace({
       applyStageCompletionLocally(activeStageId);
       setStageCompleteDialogOpen(false);
       showSuccessToast("Stage marked as complete.");
+      scrollToCompletionWorkflow();
       refreshHistory();
     } catch (error) {
       const message =
@@ -5953,6 +5989,7 @@ export function ProjectChatWorkspace({
 
       if (status === "APPROVED" && result.revision.stageCompletion) {
         applyStageCompletionLocally(activeStageId);
+        scrollToCompletionWorkflow();
       }
 
       closeRevisionReviewDialog();
@@ -6062,169 +6099,171 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
-          {isProjectCompleted ? (
-            <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
-          ) : null}
-
-          {shouldShowCompletionChecklist ? (
-            <ProjectCompletionChecklist
-              projectId={project.id}
-              workflow={effectiveCompletionWorkflow}
-            />
-          ) : null}
-
-          {shouldExpectCompletionWorkflow && isCompletionDataLoading ? (
-            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="flex items-center gap-2 px-5 py-4 text-[13px] font-semibold text-[#5f6b62]">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading completion details...
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {shouldExpectCompletionWorkflow &&
-          !effectiveCompletionWorkflow &&
-          !isCompletionDataLoading &&
-          (isProjectOwner || isProjectExecutor) ? (
-            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[16px] font-semibold text-[#173120]">
-                    Project completion checklist is not available yet.
-                  </p>
-                  <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-                    This project should show Authority Approval, Copyright Transfer,
-                    and Final Invoice steps here before archive. Reload the page to
-                    fetch the checklist.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="rounded-full text-[12px]"
-                  onClick={refreshHistory}
-                >
-                  Reload Checklist
-                </Button>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {!isProjectCompleted && completionState.isFinalCompletionPending ? (
-            <Card className="rounded-[20px] border border-[#efd9af] bg-[#fffaf0] shadow-none">
-              <CardContent className="px-5 py-4">
-                <p className="text-[14px] font-semibold text-[#8a5718]">
-                  Final completion requirements must be resolved before archive.
-                </p>
-                {completionState.finalCompletionBlockers.length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-[12px] leading-5 text-[#5d4a2f]">
-                    {completionState.finalCompletionBlockers.map((blocker) => (
-                      <li key={blocker}>{blocker}</li>
-                    ))}
-                  </ul>
+              <div ref={completionWorkflowRef} className="space-y-2.5 scroll-mt-24">
+                {isProjectCompleted ? (
+                  <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
                 ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
 
-          {!isProjectCompleted && canCompleteProject ? (
-            <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[14px] font-semibold text-[#173120]">
-                    All completion requirements are resolved. Archive the final files.
-                  </p>
-                  <p className="mt-1 text-[12px] text-[#5f6b62]">
-                    {completionState.approvedFileCount} final file
-                    {completionState.approvedFileCount === 1 ? "" : "s"} ready for final archive.
-                  </p>
-                  {projectCompletionError ? (
-                    <p className="mt-2 text-[12px] font-semibold text-[#bb4d49]">
-                      {projectCompletionError}
-                    </p>
-                  ) : null}
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="rounded-full text-[12px]"
-                  disabled={isPreparingProjectCompletion || isCompletionDataLoading}
-                  onClick={() => {
-                    void handlePrepareProjectCompletion();
-                  }}
-                >
-                  {isPreparingProjectCompletion ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : null}
-                  Archive Project
-                </Button>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {!isProjectCompleted &&
-          isProjectOwner &&
-          isFinalStage &&
-          !completionState.allStagesCompleted ? (
-            <Card className="rounded-[20px] border border-[#f0c9c7] bg-[#fff7f6] shadow-none">
-              <CardContent className="px-5 py-4">
-                <p className="text-[14px] font-semibold text-[#9f3f39]">
-                  Project cannot be completed yet.
-                </p>
-                <p className="mt-1 text-[12px] leading-5 text-[#7c514d]">
-                  Complete all stages before final project completion.
-                </p>
-                {completionState.incompleteStages.length > 0 ? (
-                  <ul className="mt-3 space-y-1 text-[12px] text-[#7c514d]">
-                    {completionState.incompleteStages.map((stage) => (
-                      <li key={stage.id}>
-                        {stage.name} — {stage.status}
-                      </li>
-                    ))}
-                  </ul>
+                {shouldShowCompletionChecklist ? (
+                  <ProjectCompletionChecklist
+                    projectId={project.id}
+                    workflow={effectiveCompletionWorkflow}
+                  />
                 ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
 
-          {completionPrompt ? (
-            <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-              <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[14px] font-semibold text-[#173120]">
-                    {completionPrompt.allStagesCompleted
-                      ? "All stages completed. Final project completion is now available."
-                      : "Stage completed. You can now move to the next stage."}
-                  </p>
-                  {completionPrompt.nextStageLabel && !completionPrompt.allStagesCompleted ? (
-                    <p className="mt-1 text-[12px] text-[#5f6b62]">
-                      Next stage: {completionPrompt.nextStageLabel}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex gap-2">
-                  {completionPrompt.nextStageId && !completionPrompt.allStagesCompleted ? (
-                    <Button asChild size="sm" className="rounded-full text-[12px]">
-                      <Link
-                        href={`/projects/${project.id}/chat?stage=${completionPrompt.nextStageId}`}
+                {shouldExpectCompletionWorkflow && isCompletionDataLoading ? (
+                  <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                    <CardContent className="flex items-center gap-2 px-5 py-4 text-[13px] font-semibold text-[#5f6b62]">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading completion details...
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {shouldExpectCompletionWorkflow &&
+                !effectiveCompletionWorkflow &&
+                !isCompletionDataLoading &&
+                (isProjectOwner || isProjectExecutor) ? (
+                  <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                    <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[16px] font-semibold text-[#173120]">
+                          Project completion checklist is not available yet.
+                        </p>
+                        <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
+                          This project should show Authority Approval, Copyright Transfer,
+                          and Final Invoice steps here before archive. Reload the page to
+                          fetch the checklist.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-full text-[12px]"
+                        onClick={refreshHistory}
                       >
-                        Go to Next Stage
-                      </Link>
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="rounded-full text-[12px]"
-                    onClick={() => setCompletionPrompt(null)}
-                  >
-                    Close
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
+                        Reload Checklist
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {!isProjectCompleted && completionState.isFinalCompletionPending ? (
+                  <Card className="rounded-[20px] border border-[#efd9af] bg-[#fffaf0] shadow-none">
+                    <CardContent className="px-5 py-4">
+                      <p className="text-[14px] font-semibold text-[#8a5718]">
+                        Final completion requirements must be resolved before archive.
+                      </p>
+                      {completionState.finalCompletionBlockers.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-[12px] leading-5 text-[#5d4a2f]">
+                          {completionState.finalCompletionBlockers.map((blocker) => (
+                            <li key={blocker}>{blocker}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {!isProjectCompleted && canCompleteProject ? (
+                  <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                    <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[14px] font-semibold text-[#173120]">
+                          All completion requirements are resolved. Archive the final files.
+                        </p>
+                        <p className="mt-1 text-[12px] text-[#5f6b62]">
+                          {completionState.approvedFileCount} final file
+                          {completionState.approvedFileCount === 1 ? "" : "s"} ready for final archive.
+                        </p>
+                        {projectCompletionError ? (
+                          <p className="mt-2 text-[12px] font-semibold text-[#bb4d49]">
+                            {projectCompletionError}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-full text-[12px]"
+                        disabled={isPreparingProjectCompletion || isCompletionDataLoading}
+                        onClick={() => {
+                          void handlePrepareProjectCompletion();
+                        }}
+                      >
+                        {isPreparingProjectCompletion ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : null}
+                        Archive Project
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {!isProjectCompleted &&
+                isProjectOwner &&
+                isFinalStage &&
+                !completionState.allStagesCompleted ? (
+                  <Card className="rounded-[20px] border border-[#f0c9c7] bg-[#fff7f6] shadow-none">
+                    <CardContent className="px-5 py-4">
+                      <p className="text-[14px] font-semibold text-[#9f3f39]">
+                        Project cannot be completed yet.
+                      </p>
+                      <p className="mt-1 text-[12px] leading-5 text-[#7c514d]">
+                        Complete all stages before final project completion.
+                      </p>
+                      {completionState.incompleteStages.length > 0 ? (
+                        <ul className="mt-3 space-y-1 text-[12px] text-[#7c514d]">
+                          {completionState.incompleteStages.map((stage) => (
+                            <li key={stage.id}>
+                              {stage.name} — {stage.status}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {completionPrompt ? (
+                  <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                    <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[14px] font-semibold text-[#173120]">
+                          {completionPrompt.allStagesCompleted
+                            ? "All stages completed. Final project completion is now available."
+                            : "Stage completed. You can now move to the next stage."}
+                        </p>
+                        {completionPrompt.nextStageLabel && !completionPrompt.allStagesCompleted ? (
+                          <p className="mt-1 text-[12px] text-[#5f6b62]">
+                            Next stage: {completionPrompt.nextStageLabel}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
+                        {completionPrompt.nextStageId && !completionPrompt.allStagesCompleted ? (
+                          <Button asChild size="sm" className="rounded-full text-[12px]">
+                            <Link
+                              href={`/projects/${project.id}/chat?stage=${completionPrompt.nextStageId}`}
+                            >
+                              Go to Next Stage
+                            </Link>
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="rounded-full text-[12px]"
+                          onClick={() => setCompletionPrompt(null)}
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </div>
 
           {hasEarlierMessages ? (
             <div className="flex justify-center py-2">
