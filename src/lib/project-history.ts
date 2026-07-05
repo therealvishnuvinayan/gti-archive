@@ -2315,6 +2315,7 @@ export async function createStageComment(
       },
       select: {
         id: true,
+        status: true,
         project: {
           select: {
             createdById: true,
@@ -2364,6 +2365,10 @@ export async function createStageComment(
 
   if (isProjectStatusCompleted(stage.project.status)) {
     throw new Error("This project is already completed.");
+  }
+
+  if (stage.status === StageStatus.COMPLETED) {
+    throw new Error("This stage is already completed. Chat is read-only.");
   }
   logStageChatTiming("send", "permission/access check", permissionStartedAt);
 

@@ -2623,6 +2623,7 @@ export function ProjectChatWorkspace({
   const canCompleteProject =
     completionState.canCompleteProject && !isProjectCompleted;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
+  const isChatReadOnly = isProjectCompleted || isStageCompleted;
   const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
   const isProjectExecutor = useMemo(
     () =>
@@ -4559,6 +4560,13 @@ export function ProjectChatWorkspace({
       return;
     }
 
+    if (isStageCompleted) {
+      const message = "This stage has already been completed. Chat is read-only.";
+      setComposerError(message);
+      showErrorToast("Unable to upload files.", message);
+      return;
+    }
+
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
     setCommentUploadDialogOpen(true);
@@ -4573,6 +4581,13 @@ export function ProjectChatWorkspace({
 
     if (isProjectCompleted) {
       const message = "This project has already been completed.";
+      setComposerError(message);
+      showErrorToast("Unable to upload files.", message);
+      return;
+    }
+
+    if (isStageCompleted) {
+      const message = "This stage has already been completed. Chat is read-only.";
       setComposerError(message);
       showErrorToast("Unable to upload files.", message);
       return;
@@ -4597,6 +4612,15 @@ export function ProjectChatWorkspace({
   }
 
   function startRevisionReply(message: DisplayChatEntry) {
+    if (isChatReadOnly) {
+      setComposerError(
+        isProjectCompleted
+          ? "This project has already been completed."
+          : "This stage has already been completed. Chat is read-only.",
+      );
+      return;
+    }
+
     const revisionId = message.revisionId ?? getRevisionEntryId(message);
     const label = getRevisionLabel(message);
 
@@ -4683,6 +4707,11 @@ export function ProjectChatWorkspace({
 
     if (isProjectCompleted) {
       setComposerError("This project has already been completed.");
+      return;
+    }
+
+    if (isStageCompleted) {
+      setComposerError("This stage has already been completed. Chat is read-only.");
       return;
     }
 
@@ -6642,6 +6671,7 @@ export function ProjectChatWorkspace({
                     size="sm"
                     variant="secondary"
                     className="rounded-full text-[12px]"
+                    disabled={isChatReadOnly}
                   >
                     Add Comments
                   </Button>
@@ -6650,12 +6680,15 @@ export function ProjectChatWorkspace({
             </Card>
           ) : null}
 
-          {isProjectCompleted ? (
+          {isChatReadOnly ? (
             <Card className="mx-auto mt-2 w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
-              <p className="text-[14px] font-semibold text-[#173120]">Project chat is locked.</p>
+              <p className="text-[14px] font-semibold text-[#173120]">
+                {isProjectCompleted ? "Project chat is locked." : "Stage chat is read-only."}
+              </p>
               <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
-                This project has been completed. Only final archived files and
-                completion documents remain available for viewing or download.
+                {isProjectCompleted
+                  ? "This project has been completed. Only final archived files and completion documents remain available for viewing or download."
+                  : "This stage has been completed. Existing conversations remain available for reference, but new comments and attachments are disabled."}
               </p>
             </Card>
           ) : (
@@ -7312,7 +7345,7 @@ export function ProjectChatWorkspace({
                 }}
                 placeholder="Add a comment or upload files for this stage revision history."
                 className="box-border min-h-[340px] flex-1 resize-none rounded-[22px] border border-[#dfe8df] bg-[#fbfcfa] px-4 py-4 text-[15px] leading-6 text-[#29322c] shadow-inner outline-none placeholder:text-[#9aa39b] focus-visible:ring-3 focus-visible:ring-brand/15"
-                disabled={isSendingComment}
+                disabled={isSendingComment || isChatReadOnly}
               />
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[12px] font-semibold text-[#7a847c]">
@@ -7336,7 +7369,7 @@ export function ProjectChatWorkspace({
                       await handleSendComment();
                       setExpandedMessageEditorOpen(false);
                     }}
-                    disabled={isSendingComment || !canSendComment}
+                    disabled={isSendingComment || isChatReadOnly || !canSendComment}
                   >
                     {isSendingComment ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
