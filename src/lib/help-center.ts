@@ -380,7 +380,7 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-compare-submissions",
     title: "How to compare submissions",
-    description: "Compare image revisions from the same stage with opacity controls and comparison comments.",
+    description: "Compare image revisions from the same stage with opacity controls and pinned captions.",
     sectionId: "submissions-revisions",
     keywords: ["compare submissions", "comparison", "opacity", "image revision", "png"],
   },

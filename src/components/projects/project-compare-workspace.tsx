@@ -25,6 +25,10 @@ import {
 } from "@/app/(dashboard)/projects/actions";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
+import {
+  SubmissionCaptionDialog,
+  type CaptionDialogAttachment,
+} from "@/components/projects/submission-caption-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -45,7 +49,9 @@ import type {
 import {
   type ComparisonCommentRecord,
   getStageSubmissionAttachments,
+  isCaptionableStageSubmissionAttachment,
   resolveComparisonSelection,
+  stageSubmissionCaptionHelpText,
 } from "@/lib/comparison-utils";
 import { isVideoProjectCategory } from "@/lib/upload-validation";
 
@@ -58,6 +64,7 @@ type ProjectCompareWorkspaceProps = {
   initialComments: ComparisonCommentRecord[];
   canManageCollaborators: boolean;
   canManageChatVisibility: boolean;
+  canAddCaptions: boolean;
   currentUserId: string;
 };
 
@@ -218,7 +225,7 @@ function ComparisonCommentsPanel({
   return (
     <Card className="flex min-h-0 flex-col rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
       <CardTitle className="shrink-0 text-[22px] font-semibold tracking-tight text-brand">
-        Comments
+        Captions
       </CardTitle>
       {comments.length > 0 ? (
         <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
@@ -256,7 +263,7 @@ function ComparisonCommentsPanel({
         </div>
       ) : (
         <p className="mt-3 text-[13px] text-[#6f786f]">
-          No comparison comments yet. Use Comment mode, then double-click the artwork to add a pinned note.
+          No captions yet.
         </p>
       )}
     </Card>
@@ -285,6 +292,7 @@ function ComparisonViewerSurface({
   onToggleFullscreen,
   commentsVisible,
   onToggleCommentsVisible,
+  canAddCaptions,
   fullscreenMode = false,
 }: {
   baseSubmission: ProjectAttachmentRecord;
@@ -308,6 +316,7 @@ function ComparisonViewerSurface({
   onToggleFullscreen: () => void;
   commentsVisible: boolean;
   onToggleCommentsVisible: () => void;
+  canAddCaptions: boolean;
   fullscreenMode?: boolean;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -366,7 +375,7 @@ function ComparisonViewerSurface({
       return;
     }
 
-    if (toolMode !== "comment") {
+    if (toolMode !== "comment" || !canAddCaptions) {
       return;
     }
 
@@ -520,9 +529,10 @@ function ComparisonViewerSurface({
                 size="sm"
                 className="h-8 rounded-full px-3 text-[12px]"
                 onClick={() => setToolMode("comment")}
+                disabled={!canAddCaptions}
               >
                 <MessageSquarePlus className="h-3.5 w-3.5" />
-                Comment
+                Caption
               </Button>
             </div>
           </div>
@@ -727,7 +737,7 @@ function ComparisonViewerSurface({
                     onCancelComment();
                     onActiveCommentChange(isActive ? null : comment.id);
                   }}
-                  aria-label={`Open comment ${index + 1}`}
+                  aria-label={`Open caption ${index + 1}`}
                 >
                   {index + 1}
                 </button>
@@ -752,7 +762,7 @@ function ComparisonViewerSurface({
                     type="button"
                     className="text-[#7d847e] transition hover:text-[#27322b]"
                     onClick={() => onActiveCommentChange(null)}
-                    aria-label="Close comment"
+                    aria-label="Close caption"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -772,12 +782,12 @@ function ComparisonViewerSurface({
                 onClick={(event) => event.stopPropagation()}
               >
                 <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58]">
-                  New Message
+                  New Caption
                 </p>
                 <Textarea
                   value={commentDraft}
                   onChange={(event) => onCommentDraftChange(event.target.value)}
-                  placeholder="Type your comparison message"
+                  placeholder="Caption"
                   className="mt-3 min-h-[90px] rounded-[16px] border border-[#dce6de] bg-[#f8fbf8] text-[13px]"
                 />
                 {commentError ? (
@@ -806,7 +816,7 @@ function ComparisonViewerSurface({
                     ) : (
                       <Send className="h-4 w-4" />
                     )}
-                    Send Message
+                    Save Caption
                   </Button>
                 </div>
               </div>
@@ -867,6 +877,7 @@ export function ProjectCompareWorkspace({
   initialComments,
   canManageCollaborators,
   canManageChatVisibility,
+  canAddCaptions,
   currentUserId,
 }: ProjectCompareWorkspaceProps) {
   const router = useRouter();
@@ -885,6 +896,8 @@ export function ProjectCompareWorkspace({
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [viewerFullscreen, setViewerFullscreen] = useState(false);
   const [commentsVisible, setCommentsVisible] = useState(true);
+  const [captionDialogAttachment, setCaptionDialogAttachment] =
+    useState<CaptionDialogAttachment | null>(null);
   const [opacity, setOpacity] = useState(100);
   const [baseImageDimensions, setBaseImageDimensions] = useState<ImageDimensions | null>(null);
   const [compareImageDimensions, setCompareImageDimensions] = useState<ImageDimensions | null>(
@@ -1066,12 +1079,12 @@ export function ProjectCompareWorkspace({
     const body = commentDraft.trim();
 
     if (!body) {
-      setCommentError("Enter a message before sending.");
+      setCommentError("Enter a caption before sending.");
       return;
     }
 
     if (!stageId) {
-      setCommentError("This stage could not be resolved for comparison comments.");
+      setCommentError("This stage could not be resolved for captions.");
       return;
     }
 
@@ -1087,6 +1100,7 @@ export function ProjectCompareWorkspace({
         xPercent: pendingComment.xPercent,
         yPercent: pendingComment.yPercent,
         body,
+        opacity,
       });
 
       if ("error" in result) {
@@ -1102,7 +1116,7 @@ export function ProjectCompareWorkspace({
       setCommentError(
         error instanceof Error
           ? error.message
-          : "Unable to send the comparison message right now.",
+          : "Unable to save the caption right now.",
       );
     } finally {
       setIsSavingComment(false);
@@ -1114,6 +1128,10 @@ export function ProjectCompareWorkspace({
     setCommentDraft("");
     setCommentError(null);
     setActiveCommentId(commentId);
+  }
+
+  function openCaptionDialog(attachment: CaptionDialogAttachment) {
+    setCaptionDialogAttachment(attachment);
   }
 
   const hasEnoughSubmissions = submissions.length >= 2;
@@ -1139,7 +1157,7 @@ export function ProjectCompareWorkspace({
                 </h1>
                 <p className="mt-2 max-w-[620px] text-[14px] text-white/82">
                   Overlay any two submission images from this stage, review changes with live
-                  opacity, and pin proofing comments directly on the artwork.
+                  opacity, and pin captions directly on the artwork.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-6 text-[13px]">
                   <div>
@@ -1175,9 +1193,7 @@ export function ProjectCompareWorkspace({
                 {insufficientSubmissionMessage}
               </CardTitle>
               <p className="mt-2 text-[13px] text-[#6f786f]">
-                {isVideoCategory
-                  ? "Video-category projects may support the configured video submission formats."
-                  : "Only valid PNG artwork submissions can be compared."}
+                {stageSubmissionCaptionHelpText}
               </p>
             </Card>
           ) : null}
@@ -1236,6 +1252,7 @@ export function ProjectCompareWorkspace({
                 onToggleFullscreen={() => setViewerFullscreen(true)}
                 commentsVisible={commentsVisible}
                 onToggleCommentsVisible={() => setCommentsVisible((current) => !current)}
+                canAddCaptions={canAddCaptions}
               />
 
               <ComparisonCommentsPanel
@@ -1292,6 +1309,22 @@ export function ProjectCompareWorkspace({
                           Download
                         </a>
                       </Button>
+                      {canAddCaptions &&
+                      isCaptionableStageSubmissionAttachment(
+                        submission,
+                        project.category,
+                      ) ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="rounded-full"
+                          onClick={() => openCaptionDialog(submission)}
+                        >
+                          <MessageSquarePlus className="h-4 w-4" />
+                          Captions
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -1402,6 +1435,7 @@ export function ProjectCompareWorkspace({
                   onToggleFullscreen={() => setViewerFullscreen(false)}
                   commentsVisible={commentsVisible}
                   onToggleCommentsVisible={() => setCommentsVisible((current) => !current)}
+                  canAddCaptions={canAddCaptions}
                   fullscreenMode
                 />
 
@@ -1415,6 +1449,13 @@ export function ProjectCompareWorkspace({
           </div>
         </div>
       ) : null}
+
+      <SubmissionCaptionDialog
+        open={Boolean(captionDialogAttachment)}
+        attachment={captionDialogAttachment}
+        onClose={() => setCaptionDialogAttachment(null)}
+        onCaptionCreated={() => router.refresh()}
+      />
     </section>
   );
 }

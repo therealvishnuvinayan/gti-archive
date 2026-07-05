@@ -290,13 +290,14 @@ export function hasProjectPermission(
     case "chat.uploadAttachment":
     case "chat.mentionUser":
     case "file.uploadAttachment":
-    case "compare.createComment":
       return (
         isProjectAdmin(user) ||
         isProjectOwner(user, project) ||
         isMainProjectExecutor(user, project) ||
         hasProjectCollaboratorGrant(user, project, "canInteract")
       );
+    case "compare.createComment":
+      return canAddProjectCaptions(user, project);
     case "archive.view":
       return (
         isProjectAdmin(user) ||

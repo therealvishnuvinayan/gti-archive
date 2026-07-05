@@ -19,7 +19,10 @@ import {
   getProjectChatShellById,
   getProjectRouteAvailability,
 } from "@/lib/projects";
-import { hasProjectPermission } from "@/lib/permissions/resolver";
+import {
+  canAddProjectCaptions,
+  hasProjectPermission,
+} from "@/lib/permissions/resolver";
 import {
   getStageChatTimingStart,
   logStageChatTiming,
@@ -40,6 +43,12 @@ function getProjectPermissionContext(project: ProjectChatShellProject) {
     })),
     collaborators: project.collaborators.map((collaborator) => ({
       userId: collaborator.id,
+      canInteract: collaborator.canInteract,
+      canAddCaptions: collaborator.canAddCaptions,
+      canDownloadFiles: collaborator.canDownloadFiles,
+      canViewBudget: collaborator.canViewBudget,
+      canViewVendorInfo: collaborator.canViewVendorInfo,
+      canAccessProjectArchives: collaborator.canAccessProjectArchives,
     })),
   };
 }
@@ -58,6 +67,12 @@ function getProjectStageChatAccessRecord(
       .filter((collaborator) => collaborator.id !== project.ownerId)
       .map((collaborator) => ({
         userId: collaborator.id,
+        canInteract: collaborator.canInteract,
+        canAddCaptions: collaborator.canAddCaptions,
+        canDownloadFiles: collaborator.canDownloadFiles,
+        canViewBudget: collaborator.canViewBudget,
+        canViewVendorInfo: collaborator.canViewVendorInfo,
+        canAccessProjectArchives: collaborator.canAccessProjectArchives,
       })),
     stages: project.stageCards.map((stageCard) => ({
       id: stageCard.id,
@@ -167,6 +182,7 @@ async function ProjectChatDeferredContent({
     projectContext,
     "collaborator.pauseVisibility",
   );
+  const canAddCaptions = canAddProjectCaptions(user, projectContext);
   const currentUserAvatarSrc = user.avatarUrl
     ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
     : null;
@@ -185,6 +201,7 @@ async function ProjectChatDeferredContent({
       currentUserAvatarSrc={currentUserAvatarSrc}
       canManageCollaborators={canManageCollaborators}
       canManageChatVisibility={canManageChatVisibility}
+      canAddCaptions={canAddCaptions}
       completionSummary={completionSummary}
       completionWorkflow={null}
       deferCompletionData

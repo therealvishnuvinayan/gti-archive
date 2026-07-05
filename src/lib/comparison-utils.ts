@@ -3,6 +3,9 @@ import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
 
 export type ComparisonCommentRecord = {
   id: string;
+  isCaption: boolean;
+  captionAttachmentId: string | null;
+  comparisonOpacity: number | null;
   xPercent: number;
   yPercent: number;
   body: string;
@@ -10,6 +13,22 @@ export type ComparisonCommentRecord = {
   role: string;
   createdAt: string;
 };
+
+export type SubmissionCaptionRecord = {
+  id: string;
+  attachmentId: string;
+  attachmentFileName: string;
+  isReadOnly: boolean;
+  xPercent: number;
+  yPercent: number;
+  body: string;
+  author: string;
+  role: string;
+  createdAt: string;
+};
+
+export const stageSubmissionCaptionHelpText =
+  "Formal stage submissions must be PNG unless the project category is video. Only valid PNG artwork submissions can be compared. Video-category projects may support the configured video submission formats.";
 
 function hasComparableSubmissionType(
   attachment: ProjectAttachmentRecord,
@@ -26,7 +45,21 @@ export function isComparableStageSubmissionAttachment(
   attachment: ProjectAttachmentRecord,
   projectCategory?: string | null,
 ) {
-  return attachment.isSubmission && hasComparableSubmissionType(attachment, projectCategory);
+  return (
+    (attachment.assetType === "STAGE_SUBMISSION" ||
+      attachment.assetType === "REVISION_ORIGINAL") &&
+    hasComparableSubmissionType(attachment, projectCategory)
+  );
+}
+
+export function isCaptionableStageSubmissionAttachment(
+  attachment: ProjectAttachmentRecord,
+  projectCategory?: string | null,
+) {
+  return (
+    isComparableStageSubmissionAttachment(attachment, projectCategory) &&
+    attachment.mimeType.toLowerCase() === "image/png"
+  );
 }
 
 export function getStageSubmissionAttachments(
