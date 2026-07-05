@@ -6,6 +6,7 @@ import { ProjectChatWorkspace } from "@/components/projects/project-chat-workspa
 import {
   ProjectAccessUnavailableState,
   ProjectNotFoundState,
+  StageLockedState,
   StageNotFoundState,
 } from "@/components/projects/project-route-state";
 import { ProjectChatLoadingShell } from "@/components/projects/project-route-loading-shells";
@@ -28,6 +29,7 @@ import {
   logStageChatTiming,
   shouldLogStageChatTimings,
 } from "@/lib/stage-chat-timing";
+import { getLockedStageInfo } from "@/lib/stage-locking";
 
 type ProjectChatPageUser = Awaited<ReturnType<typeof requireUser>>;
 type ProjectChatShellProject = NonNullable<
@@ -76,6 +78,9 @@ function getProjectStageChatAccessRecord(
       })),
     stages: project.stageCards.map((stageCard) => ({
       id: stageCard.id,
+      name: stageCard.name,
+      order: stageCard.order,
+      status: stageCard.status,
       revisionCount: stageCard.revisionCount,
       comparisonCount: stageCard.comparisonCount,
     })),
@@ -243,6 +248,16 @@ async function ProjectChatShellContent({
   const stageLookupStartedAt = getStageChatTimingStart();
   if (stage && !project.stageCards.some((stageCard) => stageCard.id === stage)) {
     return <StageNotFoundState projectHref={`/projects/${slug}`} />;
+  }
+  const lockedStageInfo = getLockedStageInfo(project.stageCards, stage);
+
+  if (lockedStageInfo) {
+    return (
+      <StageLockedState
+        projectHref={`/projects/${slug}`}
+        message={lockedStageInfo.message}
+      />
+    );
   }
   logStageChatTiming("init", "route stage lookup", stageLookupStartedAt, {
     stageId: stage,

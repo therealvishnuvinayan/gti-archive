@@ -69,3 +69,20 @@ export function StageNotFoundState({ projectHref }: { projectHref: string }) {
     />
   );
 }
+
+export function StageLockedState({
+  projectHref,
+  message,
+}: {
+  projectHref: string;
+  message: string;
+}) {
+  return (
+    <ProjectRouteState
+      title="Stage locked"
+      message={message}
+      primaryHref={projectHref}
+      primaryLabel="Back to Project"
+    />
+  );
+}

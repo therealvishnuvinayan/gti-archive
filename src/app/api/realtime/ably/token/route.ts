@@ -15,6 +15,7 @@ import {
   getRealtimeProvider,
   isStageChatRealtimeConfigured,
 } from "@/lib/realtime/server";
+import { getLockedStageInfo } from "@/lib/stage-locking";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -207,6 +208,17 @@ export async function GET(request: Request) {
                 userId: true,
               },
             },
+            stages: {
+              orderBy: {
+                order: "asc",
+              },
+              select: {
+                id: true,
+                name: true,
+                order: true,
+                status: true,
+              },
+            },
           },
         },
       },
@@ -239,6 +251,18 @@ export async function GET(request: Request) {
       { error: "You do not have permission to view this stage chat." },
       { status: 403 },
     );
+  }
+  const lockedStageInfo = getLockedStageInfo(stage.project.stages, activeStageId);
+
+  if (lockedStageInfo) {
+    logAblyToken("token denied", {
+      reason: lockedStageInfo.message,
+      userId: user.id,
+      projectId,
+      stageId,
+      channelName,
+    });
+    return NextResponse.json({ error: lockedStageInfo.message }, { status: 403 });
   }
 
   if (!canBypassCollaboratorVisibility(user, stage.project.createdById)) {
