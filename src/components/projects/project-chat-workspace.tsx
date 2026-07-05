@@ -3057,7 +3057,8 @@ export function ProjectChatWorkspace({
 
       if (
         payload.entry.kind === "system" &&
-        (payload.entry.title === "Invoice requested" ||
+        (payload.entry.title === "Brief accepted" ||
+          payload.entry.title === "Invoice requested" ||
           payload.entry.title === "Invoice uploaded")
       ) {
         startRefresh(() => {
