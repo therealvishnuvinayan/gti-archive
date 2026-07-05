@@ -168,6 +168,14 @@ type DisplayChatEntry = ProjectChatEntry & {
   serverEntryId?: string;
 };
 
+function isInvoiceUploadedEntry(entry: ProjectChatEntry) {
+  return (
+    entry.kind === "system" &&
+    (entry.title === "Invoice uploaded" ||
+      entry.body.toLowerCase().includes("uploaded invoice for"))
+  );
+}
+
 type DeletedMessageOverride = {
   deletedAt: string;
   deletedByUserId: string | null;
@@ -3058,6 +3066,24 @@ export function ProjectChatWorkspace({
     },
     [],
   );
+  const releaseInvoiceStageOverride = useCallback((stageId: string) => {
+    setStageCardOverrides((current) => {
+      const override = current[stageId];
+
+      if (!override) {
+        return current;
+      }
+
+      const nextOverride = { ...override };
+      delete nextOverride.invoiceAttachment;
+      delete nextOverride.invoiceRequest;
+
+      return {
+        ...current,
+        [stageId]: nextOverride,
+      };
+    });
+  }, []);
   const handleRealtimeMessagePending = useCallback(
     (payload: StageChatRealtimeMessagePendingPayload) => {
       if (payload.projectId !== project.id || payload.stageId !== activeStage?.id) {
@@ -3111,18 +3137,32 @@ export function ProjectChatWorkspace({
       });
       setRealtimeWatermark(payload.createdAt);
 
+      if (isInvoiceUploadedEntry(payload.entry)) {
+        releaseInvoiceStageOverride(payload.stageId);
+        startRefresh(() => {
+          router.refresh();
+        });
+        return;
+      }
+
       if (
         payload.entry.kind === "system" &&
         (payload.entry.title === "Brief accepted" ||
-          payload.entry.title === "Invoice requested" ||
-          payload.entry.title === "Invoice uploaded")
+          payload.entry.title === "Invoice requested")
       ) {
         startRefresh(() => {
           router.refresh();
         });
       }
     },
-    [activeStage?.id, mergeServerChatEntry, project.id, router, startRefresh],
+    [
+      activeStage?.id,
+      mergeServerChatEntry,
+      project.id,
+      releaseInvoiceStageOverride,
+      router,
+      startRefresh,
+    ],
   );
   const handleRealtimeMessageFailed = useCallback(
     (payload: StageChatRealtimeMessageFailedPayload) => {
@@ -3202,9 +3242,17 @@ export function ProjectChatWorkspace({
       );
     }
 
+    const hasInvoiceUploadEntry = payload.entries.some(isInvoiceUploadedEntry);
+
     payload.entries.forEach((entry) => {
       mergeServerChatEntry(entry, { countAsNew: false });
     });
+    if (hasInvoiceUploadEntry) {
+      releaseInvoiceStageOverride(activeStageId);
+      startRefresh(() => {
+        router.refresh();
+      });
+    }
     markStalePendingTextMessages();
     setRealtimeWatermark(payload.watermark);
   }, [
@@ -3212,7 +3260,10 @@ export function ProjectChatWorkspace({
     markStalePendingTextMessages,
     mergeServerChatEntry,
     project.id,
+    releaseInvoiceStageOverride,
     realtimeWatermark,
+    router,
+    startRefresh,
   ]);
   const mentionableParticipants = useMemo<ProjectMentionParticipantRecord[]>(
     () =>
@@ -5621,8 +5672,6 @@ export function ProjectChatWorkspace({
           startedByName:
             current[activeStageId]?.startedByName ?? activeStage?.startedByName,
           status: current[activeStageId]?.status ?? activeStage?.status,
-          invoiceAttachment:
-            current[activeStageId]?.invoiceAttachment ?? activeStage?.invoiceAttachment ?? null,
           invoiceRequest: nextInvoiceRequest,
         },
       }));
