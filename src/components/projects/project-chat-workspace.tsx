@@ -2674,7 +2674,7 @@ export function ProjectChatWorkspace({
     completionState.canCompleteProject && !isProjectCompleted;
   const shouldExpectCompletionWorkflow =
     isProjectCompleted ||
-    (!isProjectCompleted && completionState.allStagesCompleted && isFinalStage);
+    (!isProjectCompleted && completionState.allStagesCompleted);
   const shouldShowCompletionChecklist =
     Boolean(effectiveCompletionWorkflow) && shouldExpectCompletionWorkflow;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
@@ -3895,10 +3895,10 @@ export function ProjectChatWorkspace({
   }
 
   async function handlePrepareProjectCompletion() {
-    const activeStageId = activeStage?.id;
+    const finalStageId = completionState.finalStageId;
 
-    if (!activeStageId) {
-      setProjectCompletionError("This project does not have an active stage.");
+    if (!finalStageId) {
+      setProjectCompletionError("This project does not have a final stage.");
       return;
     }
 
@@ -3909,7 +3909,7 @@ export function ProjectChatWorkspace({
     try {
       const result = await prepareProjectCompletionAction({
         projectId: project.id,
-        stageId: activeStageId,
+        stageId: finalStageId,
       });
 
       if ("error" in result) {

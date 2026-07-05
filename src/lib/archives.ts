@@ -1601,7 +1601,6 @@ export async function getProjectCompletionSummary(
     canCompleteProject:
       canCompleteArchive &&
       Boolean(finalStage) &&
-      isSelectedStageFinal &&
       allStagesCompleted &&
       !isCompleted &&
       approvedFiles.length > 0 &&
