@@ -49,7 +49,7 @@ async function ProjectDetailDeferredContent({
   }
 
   const [completionSummary, completionWorkflow] = await Promise.all([
-    getProjectCompletionSummary(user, slug, project.currentStageId),
+    getProjectCompletionSummary(user, slug),
     getProjectCompletionWorkflowForUser(user, slug),
   ]);
 
