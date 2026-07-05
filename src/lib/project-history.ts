@@ -2315,6 +2315,7 @@ export async function createStageComment(
       },
       select: {
         id: true,
+        status: true,
         project: {
           select: {
             createdById: true,
@@ -2364,6 +2365,10 @@ export async function createStageComment(
 
   if (isProjectStatusCompleted(stage.project.status)) {
     throw new Error("This project is already completed.");
+  }
+
+  if (stage.status === StageStatus.COMPLETED) {
+    throw new Error("This stage is already completed. Chat is read-only.");
   }
   logStageChatTiming("send", "permission/access check", permissionStartedAt);
 
@@ -4836,7 +4841,7 @@ export async function completeAttachmentUpload(
     throw new Error("You do not have permission to upload assets to the library.");
   }
 
-  await withPrismaRetry(() =>
+  const transactionResults = await withPrismaRetry(() =>
     prisma.$transaction([
       prisma.projectAttachment.update({
         where: {
@@ -4906,6 +4911,10 @@ export async function completeAttachmentUpload(
         : []),
     ]),
   );
+  const invoiceComment =
+    attachment.assetType === AttachmentAssetType.STAGE_INVOICE && attachment.stage
+      ? (transactionResults[3] as { id: string } | undefined)
+      : null;
 
   runNotificationTaskAfterResponse("file-uploaded", () =>
     notifyFileUploaded({
@@ -4929,6 +4938,13 @@ export async function completeAttachmentUpload(
       }),
     );
   }
+
+  return {
+    projectId: attachment.projectId,
+    stageId: attachment.stageId,
+    assetType: attachment.assetType,
+    invoiceCommentId: invoiceComment?.id ?? null,
+  };
 }
 
 export async function completePreparedChatAttachmentUpload(

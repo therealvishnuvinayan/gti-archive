@@ -2623,6 +2623,7 @@ export function ProjectChatWorkspace({
   const canCompleteProject =
     completionState.canCompleteProject && !isProjectCompleted;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
+  const isChatReadOnly = isProjectCompleted || isStageCompleted;
   const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
   const isProjectExecutor = useMemo(
     () =>
@@ -3057,7 +3058,8 @@ export function ProjectChatWorkspace({
 
       if (
         payload.entry.kind === "system" &&
-        (payload.entry.title === "Invoice requested" ||
+        (payload.entry.title === "Brief accepted" ||
+          payload.entry.title === "Invoice requested" ||
           payload.entry.title === "Invoice uploaded")
       ) {
         startRefresh(() => {
@@ -4558,6 +4560,13 @@ export function ProjectChatWorkspace({
       return;
     }
 
+    if (isStageCompleted) {
+      const message = "This stage has already been completed. Chat is read-only.";
+      setComposerError(message);
+      showErrorToast("Unable to upload files.", message);
+      return;
+    }
+
     setComposerError(null);
     setCommentUploadIntent("COMMENT_ATTACHMENT");
     setCommentUploadDialogOpen(true);
@@ -4572,6 +4581,13 @@ export function ProjectChatWorkspace({
 
     if (isProjectCompleted) {
       const message = "This project has already been completed.";
+      setComposerError(message);
+      showErrorToast("Unable to upload files.", message);
+      return;
+    }
+
+    if (isStageCompleted) {
+      const message = "This stage has already been completed. Chat is read-only.";
       setComposerError(message);
       showErrorToast("Unable to upload files.", message);
       return;
@@ -4596,6 +4612,15 @@ export function ProjectChatWorkspace({
   }
 
   function startRevisionReply(message: DisplayChatEntry) {
+    if (isChatReadOnly) {
+      setComposerError(
+        isProjectCompleted
+          ? "This project has already been completed."
+          : "This stage has already been completed. Chat is read-only.",
+      );
+      return;
+    }
+
     const revisionId = message.revisionId ?? getRevisionEntryId(message);
     const label = getRevisionLabel(message);
 
@@ -4682,6 +4707,11 @@ export function ProjectChatWorkspace({
 
     if (isProjectCompleted) {
       setComposerError("This project has already been completed.");
+      return;
+    }
+
+    if (isStageCompleted) {
+      setComposerError("This stage has already been completed. Chat is read-only.");
       return;
     }
 
@@ -5790,11 +5820,11 @@ export function ProjectChatWorkspace({
   return (
     <section className="min-h-0 2xl:h-[calc(100dvh-17rem)] 2xl:overflow-hidden">
       <div className="grid min-h-0 gap-4 2xl:h-full 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex h-[calc(100dvh-17rem)] min-h-[360px] min-w-0 flex-col overflow-hidden 2xl:h-full 2xl:min-h-0">
+        <div className="flex min-h-0 min-w-0 flex-col gap-2 2xl:h-full 2xl:gap-0 2xl:overflow-hidden">
           <div
             ref={chatScrollRef}
             onScroll={handleChatScroll}
-            className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[28px] border border-[#e1e9e2] bg-[#f4f8f3] px-3 pb-6 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:px-5"
+            className="no-scrollbar h-[clamp(320px,55dvh,560px)] overflow-y-auto overscroll-contain rounded-[24px] border border-[#e1e9e2] bg-[#f4f8f3] px-2.5 pb-5 pt-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:rounded-[28px] sm:px-5 sm:pb-6 sm:pt-3 2xl:h-auto 2xl:min-h-0 2xl:flex-1"
           >
             <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-2.5 pb-6">
               <div className="sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3">
@@ -5839,6 +5869,34 @@ export function ProjectChatWorkspace({
                   </div>
                 ) : null}
               </div>
+              {canAcceptCurrentStageBrief ? (
+                <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#acd9bd] bg-[linear-gradient(135deg,#f5fff6,#e6f7ea)] p-3 shadow-[0_18px_42px_rgba(22,93,56,0.16)]">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                        Action required
+                      </p>
+                      <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
+                        Accept the brief to start work on {activeStage?.label ?? "this stage"}.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      className="min-h-[44px] shrink-0 rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
+                      onClick={() => {
+                        setAcceptBriefError(null);
+                        setAcceptBriefDialogOpen(true);
+                      }}
+                      disabled={isAcceptingBrief}
+                    >
+                      {isAcceptingBrief ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      Accept Brief
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
           {isProjectCompleted ? (
             <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
           ) : null}
@@ -6562,8 +6620,8 @@ export function ProjectChatWorkspace({
           </div>
 
           {showLatestRevisionActionBar && latestRevisionMessage ? (
-            <Card className="mx-auto mt-2 w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dfe8df] bg-white/95 px-4 py-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Card className="mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dfe8df] bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:mt-2 2xl:rounded-[22px] 2xl:px-4 2xl:py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
                     Latest revision actions
@@ -6613,6 +6671,7 @@ export function ProjectChatWorkspace({
                     size="sm"
                     variant="secondary"
                     className="rounded-full text-[12px]"
+                    disabled={isChatReadOnly}
                   >
                     Add Comments
                   </Button>
@@ -6621,16 +6680,19 @@ export function ProjectChatWorkspace({
             </Card>
           ) : null}
 
-          {isProjectCompleted ? (
-            <Card className="mx-auto mt-2 w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dbe7dd] bg-[#f7fbf6] p-4 backdrop-blur">
-              <p className="text-[14px] font-semibold text-[#173120]">Project chat is locked.</p>
-              <p className="mt-1 text-[12px] leading-6 text-[#5f6b62]">
-                This project has been completed. Only final archived files and
-                completion documents remain available for viewing or download.
+          {isChatReadOnly ? (
+            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6]/96 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:static 2xl:mt-2 2xl:rounded-[22px] 2xl:bg-[#f7fbf6] 2xl:p-4 2xl:shadow-none">
+              <p className="text-[14px] font-semibold text-[#173120]">
+                {isProjectCompleted ? "Project chat is locked." : "Stage chat is read-only."}
+              </p>
+              <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
+                {isProjectCompleted
+                  ? "This project has been completed. Only final archived files and completion documents remain available for viewing or download."
+                  : "This stage has been completed. Existing conversations remain available for reference, but new comments and attachments are disabled."}
               </p>
             </Card>
           ) : (
-            <Card className="mx-auto mt-2 w-full max-w-[980px] shrink-0 rounded-[26px] border border-[#dfe8df] bg-white/95 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur">
+            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dfe8df] bg-white/96 p-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:static 2xl:mt-2 2xl:rounded-[26px] 2xl:bg-white/95 2xl:p-3">
               <input
                 ref={revisionFileInputRef}
                 type="file"
@@ -6733,7 +6795,7 @@ export function ProjectChatWorkspace({
 
               <div
                 ref={mentionDropdownRef}
-                className="relative flex min-w-0 flex-col gap-2.5 rounded-[22px] border border-[#dde6dd] bg-[#fbfcfa] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] sm:px-4"
+                className="relative flex min-w-0 flex-col gap-1.5 rounded-[18px] border border-[#dde6dd] bg-[#fbfcfa] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] sm:gap-2.5 sm:rounded-[22px] sm:px-4 sm:py-3"
               >
                 <Textarea
                   ref={draftInputRef}
@@ -6798,7 +6860,7 @@ export function ProjectChatWorkspace({
                   }}
                   placeholder="Add a comment or upload files for this stage revision history."
                   rows={1}
-                  className="box-border max-h-[168px] min-h-[58px] w-full resize-none overflow-y-hidden rounded-[16px] border border-transparent bg-white/70 px-3.5 py-3.5 text-[14px] leading-[22px] text-[#29322c] shadow-none outline-none placeholder:text-[#9aa39b] focus-visible:ring-0"
+                  className="box-border max-h-[120px] min-h-[42px] w-full resize-none overflow-y-hidden rounded-[14px] border border-transparent bg-white/70 px-3 py-2 text-[13px] leading-[20px] text-[#29322c] shadow-none outline-none placeholder:text-[#9aa39b] focus-visible:ring-0 sm:max-h-[168px] sm:min-h-[58px] sm:rounded-[16px] sm:px-3.5 sm:py-3.5 sm:text-[14px] sm:leading-[22px]"
                 />
                 {mentionDropdownOpen ? (
                   <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 z-20 overflow-hidden rounded-[22px] border border-[#dbe7dd] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.12)]">
@@ -6841,12 +6903,12 @@ export function ProjectChatWorkspace({
                     </div>
                   </div>
                 ) : null}
-                <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-1.5 border-t border-[#e5ece5] pt-2 sm:gap-2">
+                <div className="flex w-full min-w-0 flex-nowrap items-center justify-end gap-1 overflow-x-auto border-t border-[#e5ece5] pt-1 sm:flex-wrap sm:gap-2 sm:overflow-visible sm:pt-2">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-8 text-[#607064]"
+                    className="size-7 text-[#607064] sm:size-8"
                     aria-label="Expand message editor"
                     title="Expand message editor"
                     onClick={() => setExpandedMessageEditorOpen(true)}
@@ -6857,7 +6919,7 @@ export function ProjectChatWorkspace({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 rounded-full px-2.5 text-[11px] font-[700] text-[#5083ff]"
+                    className="h-7 rounded-full px-2 text-[11px] font-[700] text-[#5083ff] sm:h-8 sm:px-2.5"
                     aria-label="Translate"
                     title="Translate"
                     onClick={() => {
@@ -6870,7 +6932,7 @@ export function ProjectChatWorkspace({
                     ) : (
                       <Languages className="h-5 w-5" />
                     )}
-                    <span>Translate</span>
+                    <span className="hidden sm:inline">Translate</span>
                   </Button>
                   <ChatLanguagePicker
                     languages={SUPPORTED_CHAT_LANGUAGES}
@@ -6882,7 +6944,7 @@ export function ProjectChatWorkspace({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className={`size-8 ${isListening ? "bg-[#fff1ef] text-[#d9645b] hover:bg-[#ffe7e3]" : "text-brand"}`}
+                    className={`size-7 sm:size-8 ${isListening ? "bg-[#fff1ef] text-[#d9645b] hover:bg-[#ffe7e3]" : "text-brand"}`}
                     aria-label={isListening ? "Stop recording" : "Start voice input"}
                     onClick={() => {
                       void handleMicrophoneToggle();
@@ -6901,7 +6963,7 @@ export function ProjectChatWorkspace({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-8 text-brand"
+                    className="size-7 text-brand sm:size-8"
                     aria-label="Attach file"
                     onClick={openCommentUploadDialog}
                   >
@@ -6913,7 +6975,7 @@ export function ProjectChatWorkspace({
                       void handleSendComment();
                     }}
                     size="sm"
-                    className="rounded-full px-4 text-[12px]"
+                    className="h-8 rounded-full px-3 text-[12px] sm:px-4"
                     disabled={isSendingComment || !canSendComment}
                   >
                     {isSendingComment ? (
@@ -7283,7 +7345,7 @@ export function ProjectChatWorkspace({
                 }}
                 placeholder="Add a comment or upload files for this stage revision history."
                 className="box-border min-h-[340px] flex-1 resize-none rounded-[22px] border border-[#dfe8df] bg-[#fbfcfa] px-4 py-4 text-[15px] leading-6 text-[#29322c] shadow-inner outline-none placeholder:text-[#9aa39b] focus-visible:ring-3 focus-visible:ring-brand/15"
-                disabled={isSendingComment}
+                disabled={isSendingComment || isChatReadOnly}
               />
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[12px] font-semibold text-[#7a847c]">
@@ -7307,7 +7369,7 @@ export function ProjectChatWorkspace({
                       await handleSendComment();
                       setExpandedMessageEditorOpen(false);
                     }}
-                    disabled={isSendingComment || !canSendComment}
+                    disabled={isSendingComment || isChatReadOnly || !canSendComment}
                   >
                     {isSendingComment ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

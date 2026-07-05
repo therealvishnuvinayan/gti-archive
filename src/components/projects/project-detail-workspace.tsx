@@ -215,6 +215,9 @@ export function ProjectDetailWorkspace({
 }: ProjectDetailWorkspaceProps) {
   const shouldShowCompletionLoading =
     completionLoading && project.statusLabel.toLowerCase() === "completed";
+  const finalStageArchiveHref = completionSummary?.finalStageId
+    ? `/projects/${project.id}/chat?stage=${completionSummary.finalStageId}`
+    : `/projects/${project.id}/chat`;
 
   return (
     <section className="mx-auto w-full max-w-[1420px]">
@@ -383,6 +386,28 @@ export function ProjectDetailWorkspace({
               </div>
             )}
           </div>
+
+          {completionSummary?.canCompleteProject ? (
+            <Card className="rounded-[24px] border border-[#bddfc7] bg-[linear-gradient(135deg,#f6fff7,#eaf8ee)] shadow-[0_18px_45px_rgba(23,39,28,0.06)]">
+              <CardContent className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="min-w-0">
+                  <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                    Ready for archive
+                  </p>
+                  <h2 className="mt-1 text-[20px] font-[800] leading-tight text-[#111712]">
+                    Upload completed project to Archive
+                  </h2>
+                  <p className="mt-2 text-[13px] font-[500] leading-6 text-[#536158]">
+                    All stages are completed. {completionSummary.approvedFileCount} final file
+                    {completionSummary.approvedFileCount === 1 ? "" : "s"} ready for archive.
+                  </p>
+                </div>
+                <Button asChild className="min-h-[46px] shrink-0 rounded-full px-6 text-[13px] font-[800]">
+                  <Link href={finalStageArchiveHref}>Upload to Archive</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {shouldShowCompletionLoading ? (
             <CompletionLoadingCard />

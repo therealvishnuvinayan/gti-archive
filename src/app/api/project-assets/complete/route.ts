@@ -1,10 +1,18 @@
+import { randomUUID } from "node:crypto";
 import { revalidateTag } from "next/cache";
 import { after, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { completeAttachmentUpload } from "@/lib/project-history";
+import {
+  completeAttachmentUpload,
+  getStageChatCommentEntryForUser,
+} from "@/lib/project-history";
 import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import {
+  publishStageChatMessageCreated,
+  runStageChatRealtimeTaskAfterResponse,
+} from "@/lib/realtime/server";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -31,7 +39,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await completeAttachmentUpload(
+    const result = await completeAttachmentUpload(
       user,
       payload.attachmentId,
       Boolean(payload.failed),
@@ -40,6 +48,32 @@ export async function POST(request: Request) {
     after(() => {
       revalidateTag(PROJECTS_CACHE_TAG, "max");
     });
+    if (result?.invoiceCommentId && result.stageId && !payload.failed) {
+      runStageChatRealtimeTaskAfterResponse("stage-chat.invoice-uploaded", async () => {
+        const realtimeEntry = await getStageChatCommentEntryForUser(user, {
+          projectId: result.projectId,
+          stageId: result.stageId ?? "",
+          commentId: result.invoiceCommentId ?? "",
+        });
+
+        if (!realtimeEntry) {
+          return;
+        }
+
+        await publishStageChatMessageCreated({
+          eventId: randomUUID(),
+          projectId: result.projectId,
+          stageId: result.stageId ?? "",
+          id: realtimeEntry.entry.id,
+          commentId: result.invoiceCommentId ?? "",
+          senderId: realtimeEntry.authorId,
+          entry: realtimeEntry.entry,
+          createdAt: realtimeEntry.createdAt,
+          deletedAt: null,
+          clientTempId: null,
+        });
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

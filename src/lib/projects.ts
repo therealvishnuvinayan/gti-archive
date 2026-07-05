@@ -173,6 +173,7 @@ type ProjectCardProject = Pick<
 > & {
   createdBy: Pick<User, "name" | "email">;
   status: ProjectStatusRelation;
+  stages?: Array<Pick<ProjectStage, "name" | "status" | "order">>;
   tags?: Array<{
     tag: Pick<ProjectTag, "name">;
   }>;
@@ -1043,10 +1044,19 @@ function getProjectStages(project: ProjectWithCreator) {
 }
 
 export function formatProjectStageLabel(
-  project: Pick<Project, "currentStageName"> & { status: ProjectStatusRelation },
+  project: Pick<Project, "currentStageName"> & {
+    status: ProjectStatusRelation;
+    stages?: Array<Pick<ProjectStage, "name" | "status" | "order">>;
+  },
 ) {
-  const stageName = project.currentStageName?.trim() || "Stage 1";
-  const statusLabel = getProjectStatusDisplay(project.status).name;
+  const stages = [...(project.stages ?? [])].sort((left, right) => left.order - right.order);
+  const currentStage =
+    stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
+  const fallbackStageName = project.currentStageName?.trim() || "Stage 1";
+  const stageName = currentStage?.name ?? fallbackStageName;
+  const statusLabel = currentStage
+    ? mapStageStatusToDisplayLabel(currentStage.status)
+    : getProjectStatusDisplay(project.status).name;
 
   return `${stageName} : ${statusLabel}`;
 }
@@ -1183,6 +1193,8 @@ function mapProjectToFlow(
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
   const stages = getProjectStages(project);
+  const allStagesCompleted =
+    stages.length > 0 && stages.every((stage) => stage.status === StageStatus.COMPLETED);
   const currentStage =
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
   const projectBriefAttachments = project.attachments
@@ -1275,7 +1287,9 @@ function mapProjectToFlow(
       ? formatProjectBudgetForRequirement(project, project.budget)
       : "Restricted",
     currency: allowBudgetView ? project.currency : null,
-    statusLabel: getProjectStatusDisplay(project.status).name,
+    statusLabel: allStagesCompleted
+      ? "Completed"
+      : getProjectStatusDisplay(project.status).name,
     currentStageName: currentStage?.name ?? project.currentStageName?.trim() ?? "Stage 1",
     currentStageId: currentStage?.id ?? null,
     stageCount: stages.length,
@@ -2516,6 +2530,16 @@ export async function getProjectsList(
                 },
               },
             },
+            stages: {
+              select: {
+                name: true,
+                status: true,
+                order: true,
+              },
+              orderBy: {
+                order: "asc",
+              },
+            },
             tags: {
               select: {
                 tag: {
@@ -2539,6 +2563,7 @@ export async function getProjectsList(
       ),
     [
       "projects-list",
+      "stage-status-v2",
       filter.status ?? "all",
       filter.query?.trim().toLowerCase() ?? "",
       filter.category?.trim().toLowerCase() ?? "",

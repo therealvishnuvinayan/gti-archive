@@ -45,14 +45,14 @@ export function DashboardShell({
           visibility={sidebarVisibility}
         />
 
-        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden sm:gap-4">
           <Topbar
             onOpenSidebar={() => setSidebarOpen(true)}
             user={user}
             {...topbarProps}
             showNotifications={sidebarVisibility.notifications}
           />
-          <main className="dashboard-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-[32px] bg-surface p-5 shadow-[0_24px_80px_rgba(23,39,28,0.06)] sm:p-6 lg:p-8">
+          <main className="dashboard-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-[28px] bg-surface p-3 shadow-[0_24px_80px_rgba(23,39,28,0.06)] sm:rounded-[32px] sm:p-6 lg:p-8">
             <MotionPage key={pathname} y={12} className="min-w-0">
               {children}
             </MotionPage>

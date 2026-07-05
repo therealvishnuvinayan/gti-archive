@@ -380,6 +380,30 @@ export async function acceptStageBriefAction(input: {
         stageId: input.stageId,
       }),
     );
+    runStageChatRealtimeTaskAfterResponse("stage-chat.brief-accepted", async () => {
+      const realtimeEntry = await getStageChatCommentEntryForUser(user, {
+        projectId: input.projectId,
+        stageId: input.stageId,
+        commentId: result.activityComment.id,
+      });
+
+      if (!realtimeEntry) {
+        return;
+      }
+
+      await publishStageChatMessageCreated({
+        eventId: randomUUID(),
+        projectId: input.projectId,
+        stageId: input.stageId,
+        id: realtimeEntry.entry.id,
+        commentId: result.activityComment.id,
+        senderId: realtimeEntry.authorId,
+        entry: realtimeEntry.entry,
+        createdAt: realtimeEntry.createdAt,
+        deletedAt: null,
+        clientTempId: null,
+      });
+    });
 
     return { result };
   } catch (error) {
