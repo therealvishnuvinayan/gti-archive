@@ -511,7 +511,7 @@ function ComparisonViewerSurface({
       className={`flex min-h-0 flex-col border bg-white/95 p-4 shadow-[0_16px_36px_rgba(17,34,24,0.08)] sm:p-5 ${
         fullscreenMode
           ? "h-full rounded-none border-[#303832] bg-[#151a17] text-white shadow-none"
-          : "h-[min(82dvh,900px)] rounded-[24px] border-[#dbe4dc]"
+          : "rounded-[24px] border-[#dbe4dc]"
       }`}
     >
       <div className="mb-4 shrink-0 space-y-3">
@@ -677,10 +677,10 @@ function ComparisonViewerSurface({
 
       <div
         ref={viewportRef}
-        className={`min-h-0 flex-1 border p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
+        className={`min-h-0 border p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
           fullscreenMode
-            ? "rounded-none border-[#2b332e] bg-[#0f1311]"
-            : "rounded-[28px] border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)]"
+            ? "flex-1 rounded-none border-[#2b332e] bg-[#0f1311]"
+            : "h-[clamp(300px,44dvh,560px)] rounded-[28px] border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)]"
         } ${
           isFitMode || toolMode === "pan" ? "overflow-hidden" : "overflow-auto"
         }`}
@@ -1184,7 +1184,7 @@ export function ProjectCompareWorkspace({
   return (
     <section className="space-y-6">
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_288px]">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_288px]">
         <div className="space-y-4">
           <Card className="overflow-hidden rounded-[24px] border-none bg-[linear-gradient(135deg,#2f8d5d,#46a470)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1262,7 +1262,7 @@ export function ProjectCompareWorkspace({
           ) : null}
 
           {hasEnoughSubmissions && baseSubmission && compareSubmission ? (
-            <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid min-h-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
               <ComparisonViewerSurface
                 baseSubmission={baseSubmission}
                 compareSubmission={compareSubmission}
