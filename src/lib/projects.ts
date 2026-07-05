@@ -1183,6 +1183,8 @@ function mapProjectToFlow(
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
   const stages = getProjectStages(project);
+  const allStagesCompleted =
+    stages.length > 0 && stages.every((stage) => stage.status === StageStatus.COMPLETED);
   const currentStage =
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
   const projectBriefAttachments = project.attachments
@@ -1275,7 +1277,9 @@ function mapProjectToFlow(
       ? formatProjectBudgetForRequirement(project, project.budget)
       : "Restricted",
     currency: allowBudgetView ? project.currency : null,
-    statusLabel: getProjectStatusDisplay(project.status).name,
+    statusLabel: allStagesCompleted
+      ? "Completed"
+      : getProjectStatusDisplay(project.status).name,
     currentStageName: currentStage?.name ?? project.currentStageName?.trim() ?? "Stage 1",
     currentStageId: currentStage?.id ?? null,
     stageCount: stages.length,
