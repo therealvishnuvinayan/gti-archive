@@ -382,7 +382,7 @@ export const recommendedGuides: HelpGuide[] = [
     title: "How to compare submissions",
     description: "Compare image revisions from the same stage with opacity controls and comparison comments.",
     sectionId: "submissions-revisions",
-    keywords: ["compare submissions", "comparison", "opacity", "image revision", "png", "jpg", "jpeg", "webp"],
+    keywords: ["compare submissions", "comparison", "opacity", "image revision", "png"],
   },
   {
     id: "guide-final-archive",
@@ -816,7 +816,7 @@ export const helpSections: HelpSection[] = [
         title: "Compare Submissions",
         items: [
           "Compare Submissions is used to compare stage submission images within the selected stage only.",
-          "Supported image submissions are PNG, JPG, JPEG, and WebP. PDF and document comparison is not supported yet.",
+          "Formal stage submissions must be PNG unless the project category is video. Only valid PNG artwork submissions can be compared. Video-category projects may support the configured video submission formats.",
           "At least two image submissions are needed for comparison.",
           "If there are no image submissions, the compare page shows an empty state.",
           "If there is only one image submission, upload another image revision before comparing changes.",

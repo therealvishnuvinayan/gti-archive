@@ -1940,7 +1940,10 @@ export async function setProjectCollaboratorChatVisibility(
   return getProjectCollaboratorAssignments(input.projectId);
 }
 
-function buildProjectsWhere(filter: ProjectsListFilter) {
+function buildProjectsWhere(
+  filter: ProjectsListFilter,
+  options: { canUseBudgetFilters?: boolean } = {},
+) {
   const query = filter.query?.trim();
   const category = filter.category?.trim();
   const tag = filter.tag?.trim();
@@ -1948,9 +1951,16 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
   const executorId = filter.executorId?.trim();
   const createdFrom = parseProjectListDate(filter.createdFrom, "start");
   const createdTo = parseProjectListDate(filter.createdTo, "end");
-  const budgetMin = parseProjectBudgetFilterValue(filter.budgetMin);
-  const budgetMax = parseProjectBudgetFilterValue(filter.budgetMax);
-  const budgetCurrency = resolveProjectCurrency(filter.budgetCurrency ?? "");
+  const canUseBudgetFilters = options.canUseBudgetFilters === true;
+  const budgetMin = canUseBudgetFilters
+    ? parseProjectBudgetFilterValue(filter.budgetMin)
+    : null;
+  const budgetMax = canUseBudgetFilters
+    ? parseProjectBudgetFilterValue(filter.budgetMax)
+    : null;
+  const budgetCurrency = canUseBudgetFilters
+    ? resolveProjectCurrency(filter.budgetCurrency ?? "")
+    : null;
   const statusWhere = buildProjectStatusWhere(filter.status);
   const clauses: Prisma.ProjectWhereInput[] = [];
 
@@ -2114,14 +2124,16 @@ function buildProjectsWhere(filter: ProjectsListFilter) {
     });
   }
 
-  if (filter.budgetRequired === "true") {
-    clauses.push({
-      budgetRequired: true,
-    });
-  } else if (filter.budgetRequired === "false") {
-    clauses.push({
-      budgetRequired: false,
-    });
+  if (canUseBudgetFilters) {
+    if (filter.budgetRequired === "true") {
+      clauses.push({
+        budgetRequired: true,
+      });
+    } else if (filter.budgetRequired === "false") {
+      clauses.push({
+        budgetRequired: false,
+      });
+    }
   }
 
   if (budgetMin !== null || budgetMax !== null) {
@@ -2483,7 +2495,8 @@ export async function getProjectsList(
   logProjectTiming("accessible where", accessibleWhereStartedAt);
 
   const filterWhereStartedAt = performance.now();
-  const filterWhere = buildProjectsWhere(filter);
+  const canUseBudgetFilters = isProjectAdmin(currentUser);
+  const filterWhere = buildProjectsWhere(filter, { canUseBudgetFilters });
   logProjectTiming("filter where", filterWhereStartedAt);
 
   const page = Math.max(1, Math.floor(filter.page ?? 1));
@@ -2573,9 +2586,11 @@ export async function getProjectsList(
       filter.createdFrom?.trim() ?? "",
       filter.createdTo?.trim() ?? "",
       filter.budgetRequired ?? "all",
-      filter.budgetMin?.trim() ?? "",
-      filter.budgetMax?.trim() ?? "",
-      resolveProjectCurrency(filter.budgetCurrency ?? "") ?? "all",
+      canUseBudgetFilters ? filter.budgetMin?.trim() ?? "" : "",
+      canUseBudgetFilters ? filter.budgetMax?.trim() ?? "" : "",
+      canUseBudgetFilters
+        ? resolveProjectCurrency(filter.budgetCurrency ?? "") ?? "all"
+        : "all",
       filter.sort ?? "newest",
       String(page),
       String(PROJECT_LIST_PAGE_SIZE),

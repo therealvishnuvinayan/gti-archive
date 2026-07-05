@@ -60,8 +60,9 @@ import {
 } from "@/lib/storage/s3";
 import {
   PROJECT_ASSET_ALLOWED_EXTENSIONS,
-  SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
   buildFileTypeNotAllowedPayload,
+  getStageSubmissionAllowedExtensions,
+  isAllowedStageSubmissionFile,
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
 import { validateActiveAssetTagIds } from "@/lib/asset-tags";
@@ -752,6 +753,7 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
       where: { id: projectId },
       select: {
         id: true,
+        category: true,
         createdById: true,
         executors: {
           ...(userId
@@ -931,6 +933,69 @@ function assertProjectWorkflowPermission(
   if (!hasProjectPermission(user, project, permissionKey)) {
     throw new Error(message);
   }
+}
+
+type StageChatWriteProjectContext = ProjectPermissionContext & {
+  createdById: string;
+  archivedAt?: Date | null;
+  status: Parameters<typeof isProjectStatusCompleted>[0];
+};
+
+type StageChatWriteStageContext = {
+  id: string;
+  actualStartedAt: Date | null;
+  status: StageStatus;
+  project: StageChatWriteProjectContext;
+};
+
+export async function assertStageChatWriteAccess(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stage: StageChatWriteStageContext;
+    permissionKey?: PermissionKey;
+    permissionMessage?: string;
+    requireBriefAccepted?: boolean;
+  },
+) {
+  const permissionKey = input.permissionKey ?? "chat.createComment";
+  const project = assertProjectAccessFromContext(user, input.stage.project);
+
+  assertProjectWorkflowPermission(
+    user,
+    project,
+    permissionKey,
+    input.permissionMessage ?? "You do not have permission to add project comments.",
+  );
+
+  if (isProjectStatusCompleted(input.stage.project.status)) {
+    throw new Error("This project is already completed.");
+  }
+
+  if (input.stage.project.archivedAt) {
+    throw new Error("This project has already been archived.");
+  }
+
+  if (input.stage.status === StageStatus.COMPLETED) {
+    throw new Error("This stage is already completed. Chat is read-only.");
+  }
+
+  if (input.requireBriefAccepted !== false && !input.stage.actualStartedAt) {
+    throw new Error("Please accept the brief before adding stage chat.");
+  }
+
+  if (!canBypassCollaboratorVisibility(user, input.stage.project.createdById)) {
+    const visibilityState = await getProjectCollaboratorVisibilityState(
+      input.projectId,
+      user.id,
+    );
+
+    if (visibilityState?.chatVisibilityPaused) {
+      throw new Error("Your chat access is currently paused for this project.");
+    }
+  }
+
+  return project;
 }
 
 function getUploadPermissionKey(assetType: AttachmentAssetType): PermissionKey {
@@ -2315,6 +2380,7 @@ export async function createStageComment(
       },
       select: {
         id: true,
+        actualStartedAt: true,
         status: true,
         project: {
           select: {
@@ -2331,6 +2397,7 @@ export async function createStageComment(
             status: {
               select: projectStatusSelect,
             },
+            archivedAt: true,
             collaborators: {
               where: {
                 userId: user.id,
@@ -2354,22 +2421,13 @@ export async function createStageComment(
   }
 
   const permissionStartedAt = performance.now();
-  const project = assertProjectAccessFromContext(user, stage.project);
-
-  assertProjectWorkflowPermission(
-    user,
-    project,
-    "chat.createComment",
-    "You do not have permission to add project comments.",
-  );
-
-  if (isProjectStatusCompleted(stage.project.status)) {
-    throw new Error("This project is already completed.");
-  }
-
-  if (stage.status === StageStatus.COMPLETED) {
-    throw new Error("This stage is already completed. Chat is read-only.");
-  }
+  const project = await assertStageChatWriteAccess(user, {
+    projectId: input.projectId,
+    stage,
+    permissionKey: "chat.createComment",
+    permissionMessage:
+      "You do not have permission to add project comments.",
+  });
   logStageChatTiming("send", "permission/access check", permissionStartedAt);
 
   const body = input.body.trim();
@@ -2522,6 +2580,8 @@ export async function createStageTextCommentFast(
       select: {
         id: true,
         projectId: true,
+        actualStartedAt: true,
+        status: true,
         project: {
           select: {
             createdById: true,
@@ -2539,15 +2599,19 @@ export async function createStageTextCommentFast(
                 id: true,
                 name: true,
                 slug: true,
+                color: true,
                 group: {
                   select: {
                     id: true,
                     name: true,
                     slug: true,
+                    color: true,
+                    isActive: true,
                   },
                 },
               },
             },
+            archivedAt: true,
             collaborators: {
               where: {
                 userId: user.id,
@@ -2582,26 +2646,14 @@ export async function createStageTextCommentFast(
   });
 
   const projectAccessStartedAt = performance.now();
-  const project = assertProjectAccessFromContext(user, stage.project);
+  const project = await assertStageChatWriteAccess(user, {
+    projectId: input.projectId,
+    stage,
+    permissionKey: "chat.createComment",
+    permissionMessage:
+      "You do not have permission to add project comments.",
+  });
   logChatSendFastTiming("project access check", projectAccessStartedAt);
-
-  const createPermissionStartedAt = performance.now();
-  assertProjectWorkflowPermission(
-    user,
-    project,
-    "chat.createComment",
-    "You do not have permission to add project comments.",
-  );
-  logChatSendFastTiming(
-    "chat.createComment permission check",
-    createPermissionStartedAt,
-  );
-
-  const completedCheckStartedAt = performance.now();
-  if (isProjectStatusCompleted(stage.project.status)) {
-    throw new Error("This project is already completed.");
-  }
-  logChatSendFastTiming("completed-project check", completedCheckStartedAt);
 
   if (requestedMentionUserIds.length > 0) {
     const mentionPermissionStartedAt = performance.now();
@@ -3026,21 +3078,23 @@ export async function prepareStageCommentUploads(
     return { error: "Stage not found." };
   }
 
-  const project = assertProjectAccessFromContext(user, stage.project);
+  let project: ProjectPermissionContext;
 
-  assertProjectWorkflowPermission(
-    user,
-    project,
-    "chat.createComment",
-    "You do not have permission to add project comments.",
-  );
-
-  if (isProjectStatusCompleted(stage.project.status)) {
-    return { error: "This project is already completed." };
-  }
-
-  if (stage.project.archivedAt) {
-    return { error: "This project has already been archived." };
+  try {
+    project = await assertStageChatWriteAccess(user, {
+      projectId: input.projectId,
+      stage,
+      permissionKey: "chat.createComment",
+      permissionMessage:
+        "You do not have permission to add project comments.",
+    });
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "You do not have permission to add project comments.",
+    };
   }
 
   if (
@@ -3263,6 +3317,39 @@ export async function finalizePreparedStageCommentUploads(
       select: {
         id: true,
         stageId: true,
+        stage: {
+          select: {
+            id: true,
+            actualStartedAt: true,
+            status: true,
+            project: {
+              select: {
+                createdById: true,
+                executors: {
+                  where: {
+                    userId: user.id,
+                  },
+                  select: {
+                    userId: true,
+                    role: true,
+                  },
+                },
+                status: {
+                  select: projectStatusSelect,
+                },
+                archivedAt: true,
+                collaborators: {
+                  where: {
+                    userId: user.id,
+                  },
+                  select: {
+                    userId: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         attachments: {
           where: {
             assetType: {
@@ -3289,6 +3376,18 @@ export async function finalizePreparedStageCommentUploads(
   if (!comment) {
     throw new Error("Comment not found.");
   }
+
+  if (!comment.stage) {
+    throw new Error("Stage not found.");
+  }
+
+  await assertStageChatWriteAccess(user, {
+    projectId: input.projectId,
+    stage: comment.stage,
+    permissionKey: "chat.createComment",
+    permissionMessage:
+      "You do not have permission to add project comments.",
+  });
 
   if (
     comment.attachments.length === 0 ||
@@ -4212,7 +4311,10 @@ export async function requestAttachmentUpload(
     return { error: "Choose a file to upload." };
   }
 
-  if (!isAllowedAssetFile(input.originalFileName)) {
+  if (
+    input.assetType !== AttachmentAssetType.STAGE_SUBMISSION &&
+    !isAllowedAssetFile(input.originalFileName)
+  ) {
     return buildFileTypeNotAllowedPayload({
       fileName: input.originalFileName,
       mimeType: input.mimeType,
@@ -4227,6 +4329,8 @@ export async function requestAttachmentUpload(
   if (input.fileSize > getMaxAssetUploadBytes()) {
     return { error: "This file exceeds the allowed size limit." };
   }
+
+  let stageSubmissionProjectCategory: string | null = null;
 
   if (input.assetType === AttachmentAssetType.REVISION_ORIGINAL) {
     if (!input.revisionId || !input.stageId) {
@@ -4253,6 +4357,7 @@ export async function requestAttachmentUpload(
           },
           project: {
             select: {
+              category: true,
               createdById: true,
               executors: {
                 select: {
@@ -4263,6 +4368,7 @@ export async function requestAttachmentUpload(
               status: {
                 select: projectStatusSelect,
               },
+              archivedAt: true,
               collaborators: {
                 where: {
                   userId: user.id,
@@ -4292,6 +4398,10 @@ export async function requestAttachmentUpload(
 
     if (isProjectStatusCompleted(revision.project.status)) {
       return { error: "This project is already completed." };
+    }
+
+    if (revision.project.archivedAt) {
+      return { error: "This project has already been archived." };
     }
 
     if (!revision.stage.actualStartedAt) {
@@ -4338,6 +4448,7 @@ export async function requestAttachmentUpload(
           },
           project: {
             select: {
+              category: true,
               createdById: true,
               executors: {
                 select: {
@@ -4430,6 +4541,7 @@ export async function requestAttachmentUpload(
           },
           project: {
             select: {
+              category: true,
               createdById: true,
               executors: {
                 select: {
@@ -4440,6 +4552,7 @@ export async function requestAttachmentUpload(
               status: {
                 select: projectStatusSelect,
               },
+              archivedAt: true,
               collaborators: {
                 where: {
                   userId: user.id,
@@ -4457,6 +4570,8 @@ export async function requestAttachmentUpload(
     if (!revision) {
       return { error: "Revision not found." };
     }
+
+    stageSubmissionProjectCategory = revision.project.category;
 
     const project = assertProjectAccessFromContext(user, revision.project);
 
@@ -4515,6 +4630,7 @@ export async function requestAttachmentUpload(
               status: {
                 select: projectStatusSelect,
               },
+              archivedAt: true,
               collaborators: {
                 where: {
                   userId: user.id,
@@ -4533,14 +4649,26 @@ export async function requestAttachmentUpload(
       return { error: "Comment not found." };
     }
 
-    const project = assertProjectAccessFromContext(user, comment.project);
-
-    if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
-      return { error: "You do not have permission to upload chat attachments." };
-    }
-
-    if (isProjectStatusCompleted(comment.project.status)) {
-      return { error: "This project is already completed." };
+    try {
+      await assertStageChatWriteAccess(user, {
+        projectId: input.projectId,
+        stage: {
+          id: stageId,
+          actualStartedAt: comment.stage.actualStartedAt,
+          status: comment.stage.status,
+          project: comment.project,
+        },
+        permissionKey: getUploadPermissionKey(input.assetType),
+        permissionMessage:
+          "You do not have permission to upload chat attachments.",
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "You do not have permission to upload chat attachments.",
+      };
     }
 
     if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {
@@ -4589,13 +4717,19 @@ export async function requestAttachmentUpload(
 
   if (
     input.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-    !isAllowedSubmissionImage(input.originalFileName, input.mimeType)
+    !isAllowedStageSubmissionFile({
+      fileName: input.originalFileName,
+      mimeType: input.mimeType,
+      projectCategory: stageSubmissionProjectCategory,
+    })
   ) {
     return buildFileTypeNotAllowedPayload({
       fileName: input.originalFileName,
       mimeType: input.mimeType,
-      allowedExtensions: SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
-      error: "Submission file type is not allowed.",
+      allowedExtensions: getStageSubmissionAllowedExtensions(
+        stageSubmissionProjectCategory,
+      ),
+      error: "Submission must be PNG unless the project category is video.",
     });
   }
 
@@ -4979,6 +5113,39 @@ export async function completePreparedChatAttachmentUpload(
         submissionReviewStatus: true,
         originalFileName: true,
         storageKey: true,
+        stage: {
+          select: {
+            id: true,
+            actualStartedAt: true,
+            status: true,
+            project: {
+              select: {
+                createdById: true,
+                executors: {
+                  where: {
+                    userId: user.id,
+                  },
+                  select: {
+                    userId: true,
+                    role: true,
+                  },
+                },
+                status: {
+                  select: projectStatusSelect,
+                },
+                archivedAt: true,
+                collaborators: {
+                  where: {
+                    userId: user.id,
+                  },
+                  select: {
+                    userId: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     }),
   );
@@ -5008,6 +5175,30 @@ export async function completePreparedChatAttachmentUpload(
     );
 
     return;
+  }
+
+  if (!attachment.stage) {
+    throw new Error("Stage not found.");
+  }
+
+  await assertStageChatWriteAccess(user, {
+    projectId: attachment.projectId,
+    stage: attachment.stage,
+    permissionKey:
+      attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION
+        ? "file.uploadSubmission"
+        : "chat.uploadAttachment",
+    permissionMessage:
+      attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION
+        ? "Only a Main Executor can upload submissions for review."
+        : "You do not have permission to upload chat attachments.",
+  });
+
+  if (
+    attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
+    !isMainProjectExecutorUser(attachment.stage.project, user.id)
+  ) {
+    throw new Error("Only a Main Executor can upload submissions for review.");
   }
 
   await withPrismaRetry(() =>

@@ -112,7 +112,7 @@ async function ProjectCompareDeferredContent({
     "collaborator.pauseVisibility",
   );
 
-  const submissions = getStageSubmissionAttachments(history.entries);
+  const submissions = getStageSubmissionAttachments(history.entries, project.category);
   const { baseSubmission, compareSubmission } = resolveComparisonSelection(
     submissions,
     base,

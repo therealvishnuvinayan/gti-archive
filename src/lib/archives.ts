@@ -16,6 +16,8 @@ import {
 } from "@/lib/archive-categories";
 import { getUserDisplayName } from "@/lib/auth";
 import {
+  assertCanUseArchives,
+  canUseArchives,
   getAccessibleProjectsWhere,
   hasPermission,
   hasProjectPermission,
@@ -179,14 +181,15 @@ type ArchiveCategoryDisplay = {
   iconUrl?: string | null;
   iconKey?: string | null;
   color?: string | null;
+  allowedUsers?: Array<{ userId: string }>;
 } | null;
 
 function canUploadArchiveFiles(user: ArchiveAccessUser) {
-  return hasPermission(user, "archive.view") && hasPermission(user, "archive.uploadFile");
+  return canUseArchives(user) && hasPermission(user, "archive.uploadFile");
 }
 
 export function canManageArchiveCategoryAccess(user: ArchiveAccessUser) {
-  return hasPermission(user, "settings.manageMasterData");
+  return canUseArchives(user) && hasPermission(user, "settings.manageMasterData");
 }
 
 export function getAccessibleArchiveCategoryWhere(
@@ -197,6 +200,13 @@ export function getAccessibleArchiveCategoryWhere(
 
   if (canManageArchiveCategoryAccess(user)) {
     return activeWhere;
+  }
+
+  if (!canUseArchives(user)) {
+    return {
+      ...activeWhere,
+      id: "__no_access__",
+    };
   }
 
   return {
@@ -222,7 +232,7 @@ export function canAccessArchiveCategoryRecord(
   user: ArchiveAccessUser,
   category: { allowedUsers?: Array<{ userId: string }> },
 ) {
-  if (!hasPermission(user, "archive.view")) {
+  if (!canUseArchives(user)) {
     return false;
   }
 
@@ -239,9 +249,10 @@ export async function assertCanAccessArchiveCategory(
   user: ArchiveAccessUser,
   archiveCategoryId: string,
 ) {
-  if (!hasPermission(user, "archive.view")) {
-    throw new Error("You do not have permission to view this archive category.");
-  }
+  assertCanUseArchives(
+    user,
+    "You do not have permission to view this archive category.",
+  );
 
   const category = await withPrismaRetry(() =>
     prisma.archiveCategory.findFirst({
@@ -494,6 +505,11 @@ async function getProjectArchiveBase(projectId: string) {
                 iconUrl: true,
                 iconKey: true,
                 color: true,
+                allowedUsers: {
+                  select: {
+                    userId: true,
+                  },
+                },
               },
             },
             archivedAt: true,
@@ -932,9 +948,7 @@ function isArchiveTimestampVisibleToUser(
 }
 
 export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
-  if (!hasPermission(user, "archive.view")) {
-    throw new Error("You do not have permission to view archives.");
-  }
+  assertCanUseArchives(user);
 
   const [categories, archivedFiles, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
@@ -1249,9 +1263,7 @@ export async function listArchivedFilesByCategory(
   user: ArchiveAccessUser,
   category: ArchiveCategoryRecord,
 ) {
-  if (!hasPermission(user, "archive.view")) {
-    throw new Error("You do not have permission to view archives.");
-  }
+  assertCanUseArchives(user);
 
   await assertCanAccessArchiveCategory(user, category.id);
 
@@ -1466,6 +1478,8 @@ export async function getProjectArchivePreparation(
     stageId: string;
   },
 ) {
+  assertCanUseArchives(user);
+
   const project = await getProjectArchiveBase(input.projectId);
 
   if (!project) {
@@ -1518,7 +1532,10 @@ export async function getProjectCompletionSummary(
   const allStagesCompleted = incompleteStages.length === 0 && project.stages.length > 0;
   const isCompleted = Boolean(project.archive || project.archivedAt || project.completedAt);
   const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
-  const canViewArchivedFiles = hasPermission(user, "archive.view");
+  const canViewArchivedFiles =
+    canUseArchives(user) &&
+    (!project.archive?.archiveCategory ||
+      canAccessArchiveCategoryRecord(user, project.archive.archiveCategory));
   const visibleArchivedFiles =
     project.archive?.files.filter((file) =>
       isArchiveTimestampVisibleToUser(
@@ -1596,6 +1613,8 @@ export async function completeProjectArchive(
     }>;
   },
 ) {
+  assertCanUseArchives(user);
+
   const project = await getProjectArchiveBase(input.projectId);
 
   if (!project) {
@@ -1865,6 +1884,8 @@ export async function getArchivedFileDownloadUrlForUser(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ) {
+  assertCanUseArchives(user, "You do not have permission to download archive files.");
+
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {
@@ -1962,6 +1983,8 @@ export async function getArchivedFilePreviewUrlForUser(
   user: ArchiveAccessUser,
   archivedFileId: string,
 ) {
+  assertCanUseArchives(user, "You do not have permission to preview archive files.");
+
   const archivedFile = await withPrismaRetry(() =>
     prisma.archivedProjectFile.findUnique({
       where: {
@@ -2008,10 +2031,6 @@ export async function getArchivedFilePreviewUrlForUser(
 
     if (!manualArchiveFile || manualArchiveFile.status !== AttachmentStatus.READY) {
       throw new Error("Archived file not found.");
-    }
-
-    if (!hasPermission(user, "archive.view")) {
-      throw new Error("You do not have permission to preview archive files.");
     }
 
     if (!manualArchiveFile.archiveCategoryId) {

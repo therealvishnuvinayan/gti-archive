@@ -6,6 +6,7 @@ import {
 } from "@/lib/comparison-utils";
 import {
   assertProjectAccess,
+  assertStageChatWriteAccess,
   assertProjectAttachmentVisibilityForUser,
 } from "@/lib/project-history";
 import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/resolver";
@@ -16,7 +17,10 @@ import {
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { isProjectStatusCompleted } from "@/lib/project-statuses";
+import {
+  isAllowedStageSubmissionFile,
+  isVideoProjectCategory,
+} from "@/lib/upload-validation";
 
 type AccessUser = Pick<
   User,
@@ -52,13 +56,22 @@ function formatComparisonTimestamp(date: Date | string | number) {
   }).format(normalizedDate);
 }
 
-function isComparableImageAttachment(fileName: string, mimeType: string) {
-  const extension = fileName.split(".").at(-1)?.toLowerCase() ?? "";
+function isComparableSubmissionAttachment(input: {
+  fileName: string;
+  mimeType: string;
+  projectCategory?: string | null;
+}) {
+  return isAllowedStageSubmissionFile({
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    projectCategory: input.projectCategory,
+  });
+}
 
-  return (
-    ["image/png", "image/jpeg", "image/webp"].includes(mimeType.toLowerCase()) ||
-    ["png", "jpg", "jpeg", "webp"].includes(extension)
-  );
+function getUnsupportedComparisonSubmissionMessage(projectCategory?: string | null) {
+  return isVideoProjectCategory(projectCategory)
+    ? "Selected submissions are not valid for this video project category."
+    : "Only PNG stage submissions can be compared for artwork projects. Please upload a PNG submission.";
 }
 
 function mapComparisonCommentRecord(comment: {
@@ -151,11 +164,15 @@ async function resolveComparableSubmissionPair(
 
   if (
     attachments.some((attachment) =>
-      !isComparableImageAttachment(attachment.originalFileName, attachment.mimeType),
+      !isComparableSubmissionAttachment({
+        fileName: attachment.originalFileName,
+        mimeType: attachment.mimeType,
+        projectCategory: project.category,
+      }),
     )
   ) {
     if (options.throwOnInvalidPair) {
-      throw new Error("Only PNG, JPG, JPEG, and WebP submissions can be compared right now.");
+      throw new Error(getUnsupportedComparisonSubmissionMessage(project.category));
     }
 
     return {
@@ -281,14 +298,23 @@ export async function createComparisonComment(
   }
 
   const project = await assertProjectAccess(user, input.projectId);
+  const stage = project.stages.find((item) => item.id === input.stageId);
 
-  if (!hasProjectPermission(user, project, "compare.createComment")) {
-    throw new Error("You do not have permission to comment in compare.");
+  if (!stage) {
+    throw new Error("Stage not found.");
   }
 
-  if (isProjectStatusCompleted(project.status)) {
-    throw new Error("This project is already completed.");
-  }
+  await assertStageChatWriteAccess(user, {
+    projectId: input.projectId,
+    stage: {
+      id: stage.id,
+      actualStartedAt: stage.actualStartedAt,
+      status: stage.status,
+      project,
+    },
+    permissionKey: "compare.createComment",
+    permissionMessage: "You do not have permission to comment in compare.",
+  });
 
   const pair = await resolveComparableSubmissionPair(user, input, {
     throwOnInvalidPair: true,

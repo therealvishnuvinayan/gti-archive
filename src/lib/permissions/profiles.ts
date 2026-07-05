@@ -55,6 +55,24 @@ type PermissionRow = {
 
 export const PERMISSION_PROFILE_CACHE_TAG = "permission-profiles";
 
+const collaboratorTypePropagatablePermissionKeys = new Set<PermissionKey>(
+  collaboratorTypeValues.flatMap(
+    (collaboratorType) => defaultCollaboratorTypePermissions[collaboratorType],
+  ),
+);
+
+const clientOfGtiDeniedEffectivePermissionKeys = [
+  "archive.view",
+  "archive.uploadFile",
+  "archive.download",
+  "project.completeArchive",
+  "project.viewBudget",
+  "project.updateBudget",
+  "project.update",
+  "project.delete",
+  "project.manageCollaborators",
+] as const satisfies PermissionKey[];
+
 export function getPermissionProfileCacheTag(
   profileType: PermissionProfileType,
   profileKey: string,
@@ -464,13 +482,22 @@ export async function savePermissionProfile(input: {
           }
 
           if (role === "COLLABORATOR" && enabledPermissionKeys.length > 0) {
+            const propagatedPermissionKeys = enabledPermissionKeys.filter(
+              (permissionKey) =>
+                collaboratorTypePropagatablePermissionKeys.has(permissionKey),
+            );
+
+            if (propagatedPermissionKeys.length === 0) {
+              return;
+            }
+
             const collaboratorTypes = collaboratorTypeValues.map(
               (collaboratorType) => collaboratorType as PrismaCollaboratorType,
             );
 
             await tx.collaboratorTypePermission.createMany({
               data: collaboratorTypes.flatMap((collaboratorType) =>
-                enabledPermissionKeys.map((permissionKey) => ({
+                propagatedPermissionKeys.map((permissionKey) => ({
                   collaboratorType,
                   permissionKey,
                   enabled: true,
@@ -485,7 +512,7 @@ export async function savePermissionProfile(input: {
                   in: collaboratorTypes,
                 },
                 permissionKey: {
-                  in: enabledPermissionKeys,
+                  in: propagatedPermissionKeys,
                 },
               },
               data: {
@@ -597,6 +624,15 @@ export async function getPermissionProfileSnapshotForUser(
   if (user.role === UserRole.SUPER_ADMIN) {
     for (const permissionKey of criticalSuperAdminPermissionKeys) {
       effectivePermissions.add(permissionKey);
+    }
+  }
+
+  if (
+    user.role === UserRole.COLLABORATOR &&
+    user.collaboratorType === "CLIENT_OF_GTI"
+  ) {
+    for (const permissionKey of clientOfGtiDeniedEffectivePermissionKeys) {
+      effectivePermissions.delete(permissionKey);
     }
   }
 

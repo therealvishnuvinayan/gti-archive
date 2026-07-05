@@ -31,6 +31,26 @@ export const SUBMISSION_IMAGE_ALLOWED_MIME_TYPES = [
   "image/webp",
 ] as const;
 
+export const STAGE_SUBMISSION_ALLOWED_EXTENSIONS = ["png"] as const;
+
+export const STAGE_SUBMISSION_ALLOWED_MIME_TYPES = ["image/png"] as const;
+
+export const VIDEO_STAGE_SUBMISSION_ALLOWED_EXTENSIONS = [
+  "png",
+  "mp4",
+  "mov",
+  "m4v",
+  "webm",
+] as const;
+
+export const VIDEO_STAGE_SUBMISSION_ALLOWED_MIME_TYPES = [
+  "image/png",
+  "video/mp4",
+  "video/quicktime",
+  "video/x-m4v",
+  "video/webm",
+] as const;
+
 export const PROFILE_IMAGE_ALLOWED_EXTENSIONS = [
   "png",
   "jpg",
@@ -69,6 +89,18 @@ const submissionImageAllowedExtensionSet = new Set<string>(
 );
 const submissionImageAllowedMimeTypeSet = new Set<string>(
   SUBMISSION_IMAGE_ALLOWED_MIME_TYPES,
+);
+const stageSubmissionAllowedExtensionSet = new Set<string>(
+  STAGE_SUBMISSION_ALLOWED_EXTENSIONS,
+);
+const stageSubmissionAllowedMimeTypeSet = new Set<string>(
+  STAGE_SUBMISSION_ALLOWED_MIME_TYPES,
+);
+const videoStageSubmissionAllowedExtensionSet = new Set<string>(
+  VIDEO_STAGE_SUBMISSION_ALLOWED_EXTENSIONS,
+);
+const videoStageSubmissionAllowedMimeTypeSet = new Set<string>(
+  VIDEO_STAGE_SUBMISSION_ALLOWED_MIME_TYPES,
 );
 const profileImageAllowedExtensionSet = new Set<string>(
   PROFILE_IMAGE_ALLOWED_EXTENSIONS,
@@ -128,6 +160,63 @@ export function isAllowedSubmissionImage(fileName: string, mimeType: string) {
   return (
     (!!extension && submissionImageAllowedExtensionSet.has(extension)) ||
     submissionImageAllowedMimeTypeSet.has(mimeType.toLowerCase())
+  );
+}
+
+export function isVideoProjectCategory(category: string | null | undefined) {
+  const normalizedCategory = category?.trim().toLowerCase() ?? "";
+
+  if (!normalizedCategory) {
+    return false;
+  }
+
+  // TODO: Replace this name-based check with an explicit master-data media type.
+  return /\b(video|motion|animation|film|reel)\b/.test(normalizedCategory);
+}
+
+export function getStageSubmissionAllowedExtensions(
+  projectCategory: string | null | undefined,
+) {
+  return isVideoProjectCategory(projectCategory)
+    ? VIDEO_STAGE_SUBMISSION_ALLOWED_EXTENSIONS
+    : STAGE_SUBMISSION_ALLOWED_EXTENSIONS;
+}
+
+function isAllowedExtensionAndMime(
+  extension: string,
+  mimeType: string,
+  extensionSet: ReadonlySet<string>,
+  mimeTypeSet: ReadonlySet<string>,
+) {
+  return (
+    !!extension &&
+    extensionSet.has(extension) &&
+    (mimeTypeSet.has(mimeType) || mimeType === "application/octet-stream")
+  );
+}
+
+export function isAllowedStageSubmissionFile(input: {
+  fileName: string;
+  mimeType: string;
+  projectCategory?: string | null;
+}) {
+  const extension = getFileExtension(input.fileName);
+  const mimeType = input.mimeType.toLowerCase();
+
+  if (isVideoProjectCategory(input.projectCategory)) {
+    return isAllowedExtensionAndMime(
+      extension,
+      mimeType,
+      videoStageSubmissionAllowedExtensionSet,
+      videoStageSubmissionAllowedMimeTypeSet,
+    );
+  }
+
+  return isAllowedExtensionAndMime(
+    extension,
+    mimeType,
+    stageSubmissionAllowedExtensionSet,
+    stageSubmissionAllowedMimeTypeSet,
   );
 }
 

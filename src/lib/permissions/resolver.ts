@@ -15,6 +15,7 @@ import {
 import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
 
 export type PermissionUser = Pick<User, "id" | "role"> & {
+  collaboratorType?: User["collaboratorType"] | null;
   permissionProfileSnapshot?: PermissionProfileSnapshot | null;
 };
 
@@ -101,8 +102,41 @@ export function hasPermission(user: PermissionUser, permissionKey: PermissionKey
   return getBasePermissionSet(user).has(permissionKey);
 }
 
+export function isClientOfGtiUser(
+  user: Pick<PermissionUser, "role"> & {
+    collaboratorType?: PermissionUser["collaboratorType"];
+  },
+) {
+  return (
+    user.role === UserRole.COLLABORATOR &&
+    user.collaboratorType === "CLIENT_OF_GTI"
+  );
+}
+
+export function canUseArchives(user: PermissionUser) {
+  return !isClientOfGtiUser(user) && hasPermission(user, "archive.view");
+}
+
+export function assertCanUseArchives(
+  user: PermissionUser,
+  message = "You do not have permission to view archives.",
+) {
+  if (!canUseArchives(user)) {
+    throw new Error(message);
+  }
+}
+
 export function getUserPermissionSet(user: PermissionUser) {
   return getBasePermissionSet(user);
+}
+
+function isArchiveSensitivePermission(permissionKey: PermissionKey) {
+  return (
+    permissionKey === "archive.view" ||
+    permissionKey === "archive.download" ||
+    permissionKey === "archive.uploadFile" ||
+    permissionKey === "project.completeArchive"
+  );
 }
 
 function hasProjectPermissionGrant(
@@ -147,7 +181,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
       user.role === UserRole.SUPER_ADMIN && hasPermission(user, "users.view"),
     notifications: hasPermission(user, "notification.view"),
     library: hasPermission(user, "library.view"),
-    archives: hasPermission(user, "archive.view"),
+    archives: canUseArchives(user),
     settings: hasPermission(user, "settings.viewOwnProfile"),
     help: hasPermission(user, "help.view"),
   };
@@ -191,6 +225,10 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
+  if (isArchiveSensitivePermission(permissionKey) && isClientOfGtiUser(user)) {
+    return false;
+  }
+
   if (isProjectOwner(user, project) && isProjectOwnerManagePermission(permissionKey)) {
     return true;
   }
@@ -212,20 +250,20 @@ export function hasProjectPermission(
     case "project.viewBudget":
     case "project.updateBudget":
     case "stage.updateBudget":
-      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
+      return isProjectAdmin(user) || isProjectOwner(user, project);
     case "stage.manageDefinitions":
     case "stage.updateTimeline":
       return isProjectAdmin(user) || isProjectOwner(user, project);
     case "project.update":
-      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
+      return isProjectAdmin(user) || isProjectOwner(user, project);
     case "file.delete":
     case "library.deleteFile":
       return isProjectAdmin(user) || isProjectOwner(user, project);
     case "project.delete":
-      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
+      return isProjectAdmin(user) || isProjectOwner(user, project);
     case "project.manageCollaborators":
     case "collaborator.pauseVisibility":
-      return isProjectAdmin(user) || isProjectOwner(user, project) || isProjectMember(user, project);
+      return isProjectAdmin(user) || isProjectOwner(user, project);
     case "collaborator.inviteToProject":
     case "collaborator.removeFromProject":
     case "collaborator.changeType":
@@ -248,7 +286,11 @@ export function hasProjectPermission(
     case "completion.uploadCopyrightDocument":
       return isProjectOwner(user, project);
     case "project.completeArchive":
-      return isProjectAdmin(user) || isProjectMember(user, project);
+      return isProjectAdmin(user) || isProjectOwner(user, project);
+    case "archive.view":
+    case "archive.download":
+    case "archive.uploadFile":
+      return canUseArchives(user) && (isProjectAdmin(user) || isProjectOwner(user, project));
     case "completion.viewChecklist":
     case "completion.uploadInvoice":
       return isProjectOwner(user, project) || isProjectExecutor(user, project);
