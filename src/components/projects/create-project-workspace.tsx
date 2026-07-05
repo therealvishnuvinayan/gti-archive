@@ -49,6 +49,13 @@ import {
   projectCollaboratorParticipantTypes,
 } from "@/lib/project-collaborator-participant-types";
 import {
+  isClientOfGtiParticipantType,
+  normalizeProjectCollaboratorPermissions,
+  projectCollaboratorPermissionKeys,
+  projectCollaboratorPermissionLabels,
+  type ProjectCollaboratorPermissionKey,
+} from "@/lib/project-collaborator-permissions";
+import {
   MotionItem,
   MotionSection,
   MotionStaggerGroup,
@@ -448,6 +455,7 @@ function buildAssignedCollaboratorRecord(
   collaborator: CollaboratorRecord,
 ): ProjectEditorInitialCollaborator {
   const group = collaborator.typeGroup;
+  const permissions = normalizeProjectCollaboratorPermissions(null, collaborator.type);
 
   return {
     id: collaborator.id,
@@ -456,6 +464,7 @@ function buildAssignedCollaboratorRecord(
     role: group === "external" ? "External Collaborator" : "Collaborator",
     group,
     participantType: collaborator.type,
+    ...permissions,
     access: "view",
     removable: true,
   };
@@ -485,6 +494,37 @@ function upsertAssignedCollaboratorRecord(
   }
 
   return [...collaborators, buildAssignedCollaboratorRecord(collaborator)];
+}
+
+function normalizeAssignedCollaboratorRecord(
+  collaborator: ProjectEditorInitialCollaborator,
+) {
+  return {
+    ...collaborator,
+    ...normalizeProjectCollaboratorPermissions(
+      collaborator,
+      collaborator.participantType,
+    ),
+  };
+}
+
+function buildCollaboratorSavePayload(
+  collaborators: ProjectEditorInitialCollaborator[],
+) {
+  return collaborators
+    .filter((collaborator) => collaborator.access !== "owner")
+    .map((collaborator) => {
+      const permissions = normalizeProjectCollaboratorPermissions(
+        collaborator,
+        collaborator.participantType,
+      );
+
+      return {
+        id: collaborator.id,
+        participantType: collaborator.participantType,
+        ...permissions,
+      };
+    });
 }
 
 function mergeUniqueTextOptions(current: string[], incoming: string[]) {
@@ -1042,7 +1082,7 @@ export function CreateProjectWorkspace({
   const [availableCollaboratorRecords, setAvailableCollaboratorRecords] =
     useState<CollaboratorRecord[]>(availableCollaborators);
   const [assignedCollaborators, setAssignedCollaborators] = useState<ProjectEditorInitialCollaborator[]>(
-    initialValues?.collaborators ?? [],
+    () => (initialValues?.collaborators ?? []).map(normalizeAssignedCollaboratorRecord),
   );
   const [projectExecutors, setProjectExecutors] = useState<ProjectEditorInitialExecutor[]>(
     () => initialValues?.executors ?? [],
@@ -1196,14 +1236,22 @@ export function CreateProjectWorkspace({
   );
   const collaboratorSummaryRecords = useMemo<ProjectCollaboratorRecord[]>(
     () =>
-      assignedCollaborators.map((collaborator) => ({
-        ...collaborator,
-        chatVisibilityPaused:
-          "chatVisibilityPaused" in collaborator &&
-          typeof collaborator.chatVisibilityPaused === "boolean"
-            ? collaborator.chatVisibilityPaused
-            : false,
-      })),
+      assignedCollaborators.map((collaborator) => {
+        const permissions = normalizeProjectCollaboratorPermissions(
+          collaborator,
+          collaborator.participantType,
+        );
+
+        return {
+          ...collaborator,
+          ...permissions,
+          chatVisibilityPaused:
+            "chatVisibilityPaused" in collaborator &&
+            typeof collaborator.chatVisibilityPaused === "boolean"
+              ? collaborator.chatVisibilityPaused
+              : false,
+        };
+      }),
     [assignedCollaborators],
   );
   const categorySelectOptions = useMemo(
@@ -1653,6 +1701,31 @@ export function CreateProjectWorkspace({
     });
   }
 
+  function updateAssignedCollaboratorPermission(
+    collaboratorId: string,
+    permissionKey: ProjectCollaboratorPermissionKey,
+    checked: boolean,
+  ) {
+    setAssignedCollaborators((current) =>
+      current.map((collaborator) => {
+        if (collaborator.id !== collaboratorId) {
+          return collaborator;
+        }
+
+        return {
+          ...collaborator,
+          ...normalizeProjectCollaboratorPermissions(
+            {
+              ...collaborator,
+              [permissionKey]: checked,
+            },
+            collaborator.participantType,
+          ),
+        };
+      }),
+    );
+  }
+
   function buildAssignedCollaboratorSelection(selectedIds: string[]) {
     const assignedCollaboratorMap = new Map(
       assignedCollaborators.map((collaborator) => [collaborator.id, collaborator] as const),
@@ -1695,12 +1768,7 @@ export function CreateProjectWorkspace({
     try {
       const result = await saveProjectCollaboratorsAction(
         initialValues.id,
-        nextCollaborators
-          .filter((collaborator) => collaborator.access !== "owner")
-          .map((collaborator) => ({
-            id: collaborator.id,
-            participantType: collaborator.participantType,
-          })),
+        buildCollaboratorSavePayload(nextCollaborators),
       );
 
       if ("error" in result) {
@@ -1754,12 +1822,7 @@ export function CreateProjectWorkspace({
       if (mode === "edit" && initialValues?.id) {
         const saveResult = await saveProjectCollaboratorsAction(
           initialValues.id,
-          nextAssignedCollaborators
-            .filter((collaborator) => collaborator.access !== "owner")
-            .map((collaborator) => ({
-              id: collaborator.id,
-              participantType: collaborator.participantType,
-            })),
+          buildCollaboratorSavePayload(nextAssignedCollaborators),
         );
 
         if ("error" in saveResult) {
@@ -2653,16 +2716,53 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="currency" value={projectCurrency} />
       <input type="hidden" name="statusId" value={projectStatusId} />
       <input type="hidden" name="priority" value={projectPriority} />
-      {assignedCollaborators.map((collaborator) => (
-        <div key={collaborator.id}>
-          <input type="hidden" name="collaboratorIds" value={collaborator.id} />
-          <input
-            type="hidden"
-            name="collaboratorParticipantTypes"
-            value={collaborator.participantType ?? ""}
-          />
-        </div>
-      ))}
+      {assignedCollaborators.map((collaborator) => {
+        const permissions = normalizeProjectCollaboratorPermissions(
+          collaborator,
+          collaborator.participantType,
+        );
+
+        return (
+          <div key={collaborator.id}>
+            <input type="hidden" name="collaboratorIds" value={collaborator.id} />
+            <input
+              type="hidden"
+              name="collaboratorParticipantTypes"
+              value={collaborator.participantType ?? ""}
+            />
+            <input
+              type="hidden"
+              name="collaboratorCanInteract"
+              value={permissions.canInteract ? "true" : "false"}
+            />
+            <input
+              type="hidden"
+              name="collaboratorCanAddCaptions"
+              value={permissions.canAddCaptions ? "true" : "false"}
+            />
+            <input
+              type="hidden"
+              name="collaboratorCanDownloadFiles"
+              value={permissions.canDownloadFiles ? "true" : "false"}
+            />
+            <input
+              type="hidden"
+              name="collaboratorCanViewBudget"
+              value={permissions.canViewBudget ? "true" : "false"}
+            />
+            <input
+              type="hidden"
+              name="collaboratorCanViewVendorInfo"
+              value={permissions.canViewVendorInfo ? "true" : "false"}
+            />
+            <input
+              type="hidden"
+              name="collaboratorCanAccessProjectArchives"
+              value={permissions.canAccessProjectArchives ? "true" : "false"}
+            />
+          </div>
+        );
+      })}
       {projectAttachments.map((attachment) => (
         <input key={attachment.id} type="hidden" name="projectAttachmentIds" value={attachment.id} />
       ))}
@@ -4082,6 +4182,81 @@ export function CreateProjectWorkspace({
           addLabel="Add Collaborator"
           saving={collaboratorSaving}
         />
+        {assignedCollaborators.length > 0 ? (
+          <div className="mt-3 rounded-[16px] border border-[#dfe7df] bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-[13px] font-semibold text-[#252b27]">
+                Project collaborator permissions
+              </h3>
+            </div>
+            <div className="space-y-3">
+              {assignedCollaborators.map((collaborator) => {
+                const permissions = normalizeProjectCollaboratorPermissions(
+                  collaborator,
+                  collaborator.participantType,
+                );
+                const isClientOfGti = isClientOfGtiParticipantType(
+                  collaborator.participantType,
+                );
+
+                return (
+                  <div
+                    key={collaborator.id}
+                    className="rounded-[12px] border border-[#edf1ed] bg-[#fbfcfb] p-3"
+                  >
+                    <div className="mb-3 min-w-0">
+                      <p className="truncate text-[13px] font-semibold text-[#253028]">
+                        {collaborator.name}
+                      </p>
+                      {collaborator.email ? (
+                        <p className="truncate text-[12px] text-[#78837c]">
+                          {collaborator.email}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {projectCollaboratorPermissionKeys.map((permissionKey) => {
+                        const archiveBlocked =
+                          permissionKey === "canAccessProjectArchives" && isClientOfGti;
+
+                        return (
+                          <label
+                            key={permissionKey}
+                            className="flex min-h-9 items-center gap-2 rounded-[10px] border border-[#e7ede8] bg-white px-3 py-2 text-[12px] font-medium text-[#354039]"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={
+                                archiveBlocked
+                                  ? false
+                                  : permissions[permissionKey]
+                              }
+                              disabled={archiveBlocked}
+                              onChange={(event) =>
+                                updateAssignedCollaboratorPermission(
+                                  collaborator.id,
+                                  permissionKey,
+                                  event.currentTarget.checked,
+                                )
+                              }
+                              className="size-4 accent-[#ff6e68]"
+                            />
+                            <span>{projectCollaboratorPermissionLabels[permissionKey]}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {isClientOfGti ? (
+                      <p className="mt-2 text-[12px] text-[#8a7360]">
+                        Archive access is blocked for Client of GTI.
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         </MotionItem>
       </MotionStaggerGroup>
 

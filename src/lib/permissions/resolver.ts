@@ -12,6 +12,10 @@ import {
   defaultRolePermissions,
   type PermissionKey,
 } from "@/lib/permissions/definitions";
+import type {
+  ProjectCollaboratorPermissionKey,
+  ProjectCollaboratorPermissions,
+} from "@/lib/project-collaborator-permissions";
 import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
 
 export type PermissionUser = Pick<User, "id" | "role"> & {
@@ -24,7 +28,10 @@ export type ProjectPermissionContext = Pick<
   "createdById"
 > & {
   executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
-  collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
+  collaborators?: Array<
+    Pick<ProjectCollaborator, "userId"> &
+      Partial<Pick<ProjectCollaborator, ProjectCollaboratorPermissionKey>>
+  >;
 };
 
 export type SidebarVisibility = {
@@ -64,6 +71,31 @@ function isProjectMember(
   return (
     project.collaborators?.some((collaborator) => collaborator.userId === user.id) ??
     false
+  );
+}
+
+function getProjectCollaboratorGrant(
+  user: PermissionUser,
+  project: ProjectPermissionContext,
+) {
+  return project.collaborators?.find((collaborator) => collaborator.userId === user.id) ?? null;
+}
+
+function hasProjectCollaboratorGrant(
+  user: PermissionUser,
+  project: ProjectPermissionContext,
+  grantKey: keyof ProjectCollaboratorPermissions,
+) {
+  return getProjectCollaboratorGrant(user, project)?.[grantKey] === true;
+}
+
+function hasProjectArchiveAccessGrant(
+  user: PermissionUser,
+  project: ProjectPermissionContext,
+) {
+  return (
+    !isClientOfGtiUser(user) &&
+    hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives")
   );
 }
 
@@ -156,9 +188,11 @@ function hasProjectPermissionGrant(
 function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
   return (
     permissionKey === "project.update" ||
+    permissionKey === "project.delete" ||
     permissionKey === "project.viewBudget" ||
     permissionKey === "project.updateBudget" ||
     permissionKey === "project.manageCollaborators" ||
+    permissionKey === "project.completeArchive" ||
     permissionKey === "collaborator.inviteToProject" ||
     permissionKey === "collaborator.removeFromProject" ||
     permissionKey === "collaborator.pauseVisibility" ||
@@ -233,23 +267,67 @@ export function hasProjectPermission(
     return true;
   }
 
+  switch (permissionKey) {
+    case "project.viewBudget":
+      return (
+        isProjectAdmin(user) ||
+        isProjectOwner(user, project) ||
+        hasProjectCollaboratorGrant(user, project, "canViewBudget")
+      );
+    case "project.viewParticipants":
+      return (
+        isProjectAdmin(user) ||
+        isProjectOwner(user, project) ||
+        hasProjectCollaboratorGrant(user, project, "canViewVendorInfo")
+      );
+    case "file.download":
+      return (
+        isProjectAdmin(user) ||
+        isProjectOwner(user, project) ||
+        hasProjectCollaboratorGrant(user, project, "canDownloadFiles")
+      );
+    case "chat.createComment":
+    case "chat.uploadAttachment":
+    case "chat.mentionUser":
+    case "file.uploadAttachment":
+    case "compare.createComment":
+      return (
+        isProjectAdmin(user) ||
+        isProjectOwner(user, project) ||
+        isMainProjectExecutor(user, project) ||
+        hasProjectCollaboratorGrant(user, project, "canInteract")
+      );
+    case "archive.view":
+      return (
+        isProjectAdmin(user) ||
+        isProjectOwner(user, project) ||
+        hasProjectArchiveAccessGrant(user, project)
+      );
+    case "archive.download":
+      return (
+        isProjectAdmin(user) ||
+        isProjectOwner(user, project) ||
+        (hasProjectArchiveAccessGrant(user, project) &&
+          hasProjectCollaboratorGrant(user, project, "canDownloadFiles"))
+      );
+    case "archive.uploadFile":
+      return isProjectAdmin(user) || isProjectOwner(user, project);
+  }
+
   if (!hasProjectPermissionGrant(user, permissionKey)) {
     return false;
   }
 
   switch (permissionKey) {
     case "project.view":
-    case "project.viewParticipants":
     case "stage.view":
     case "chat.view":
     case "file.view":
-    case "file.download":
     case "file.favorite":
     case "compare.view":
       return isProjectAdmin(user) || isProjectMember(user, project);
-    case "project.viewBudget":
-    case "project.updateBudget":
     case "stage.updateBudget":
+    case "project.updateBudget":
       return isProjectAdmin(user) || isProjectOwner(user, project);
     case "stage.manageDefinitions":
     case "stage.updateTimeline":
@@ -287,22 +365,23 @@ export function hasProjectPermission(
       return isProjectOwner(user, project);
     case "project.completeArchive":
       return isProjectAdmin(user) || isProjectOwner(user, project);
-    case "archive.view":
-    case "archive.download":
-    case "archive.uploadFile":
-      return canUseArchives(user) && (isProjectAdmin(user) || isProjectOwner(user, project));
     case "completion.viewChecklist":
     case "completion.uploadInvoice":
       return isProjectOwner(user, project) || isProjectExecutor(user, project);
-    case "chat.createComment":
-    case "chat.uploadAttachment":
-    case "chat.mentionUser":
-    case "file.uploadAttachment":
-    case "compare.createComment":
-      return isProjectAdmin(user) || isProjectMember(user, project);
     case "library.uploadAsset":
       return isProjectAdmin(user) || isProjectMember(user, project);
     default:
       return isProjectAdmin(user) || isProjectMember(user, project);
   }
+}
+
+export function canAddProjectCaptions(
+  user: PermissionUser,
+  project: ProjectPermissionContext,
+) {
+  return (
+    isProjectAdmin(user) ||
+    isProjectOwner(user, project) ||
+    hasProjectCollaboratorGrant(user, project, "canAddCaptions")
+  );
 }

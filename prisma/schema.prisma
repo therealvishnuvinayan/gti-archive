@@ -470,16 +470,22 @@ model ManualLibraryAssetTagAssignment {
 }
 
 model ProjectCollaborator {
-  projectId            String
-  project              Project                              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userId               String
-  user                 User                                 @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
-  participantType      ProjectCollaboratorParticipantType?
-  chatVisibilityPaused Boolean                              @default(false)
-  addedById            String?
-  addedBy              User?                                @relation("ProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
-  visibilityPauses     ProjectCollaboratorVisibilityPause[]
-  createdAt            DateTime                             @default(now())
+  projectId                String
+  project                  Project                              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId                   String
+  user                     User                                 @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  participantType          ProjectCollaboratorParticipantType?
+  canInteract              Boolean                              @default(false)
+  canAddCaptions           Boolean                              @default(false)
+  canDownloadFiles         Boolean                              @default(false)
+  canViewBudget            Boolean                              @default(false)
+  canViewVendorInfo        Boolean                              @default(false)
+  canAccessProjectArchives Boolean                              @default(false)
+  chatVisibilityPaused     Boolean                              @default(false)
+  addedById                String?
+  addedBy                  User?                                @relation("ProjectCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  visibilityPauses         ProjectCollaboratorVisibilityPause[]
+  createdAt                DateTime                             @default(now())
 
   @@id([projectId, userId])
   @@index([userId])

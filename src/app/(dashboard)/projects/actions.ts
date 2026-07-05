@@ -61,6 +61,7 @@ import {
 import { logStageChatTiming } from "@/lib/stage-chat-timing";
 import { SubmissionReviewStatus } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
+import type { ProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
 
 type StageRevisionInput = {
   projectId: string;
@@ -788,7 +789,7 @@ export async function saveProjectCollaboratorsAction(
     id?: string;
     userId?: string;
     participantType?: ProjectCollaboratorParticipantType | null;
-  }>,
+  } & Partial<ProjectCollaboratorPermissions>>,
 ) {
   const user = await requireUser();
 

@@ -42,6 +42,12 @@ import {
   getProjectCollaboratorVisibilityState,
   isTimestampHiddenByPauseWindows,
 } from "@/lib/project-collaborator-visibility";
+import {
+  normalizeProjectCollaboratorPermissions,
+  pickProjectCollaboratorPermissions,
+  projectCollaboratorPermissionSelect,
+  type ProjectCollaboratorPermissions,
+} from "@/lib/project-collaborator-permissions";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
   getAccessibleProjectsWhere,
@@ -288,7 +294,7 @@ function toProjectIsoString(
   return Number.isNaN(normalizedDate.getTime()) ? null : normalizedDate.toISOString();
 }
 
-export type ProjectCollaboratorRecord = {
+export type ProjectCollaboratorRecord = ProjectCollaboratorPermissions & {
   id: string;
   name: string;
   email?: string;
@@ -669,6 +675,10 @@ function mapProjectCollaboratorAssignmentToRecord(
   const participantType =
     (assignment.participantType as ProjectCollaboratorParticipantType | null) ??
     getDefaultProjectCollaboratorParticipantType(fallbackGroup);
+  const permissions = normalizeProjectCollaboratorPermissions(
+    assignment,
+    participantType,
+  );
 
   return {
     id: assignment.user.id,
@@ -677,6 +687,7 @@ function mapProjectCollaboratorAssignmentToRecord(
     role: getCollaboratorRoleLabel(assignment.user.collaboratorType),
     group: getProjectCollaboratorTypeMeta(participantType).group,
     participantType,
+    ...permissions,
     chatVisibilityPaused: assignment.chatVisibilityPaused,
     access: "view",
     removable: true,
@@ -1189,7 +1200,14 @@ function mapProjectToFlow(
   const executorRecords = canViewChatVisibilityState
     ? rawExecutorRecords
     : rawExecutorRecords.map(maskExecutorVisibilityState);
-  const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
+  const visibleExecutorRecords = canViewParticipants
+    ? executorRecords
+    : executorRecords.filter((executor) => executor.id === currentUser.id);
+  const executorDisplayName = canViewParticipants
+    ? getProjectExecutorDisplayName(executorRecords)
+    : visibleExecutorRecords.length > 0
+      ? getProjectExecutorDisplayName(visibleExecutorRecords)
+      : "Restricted";
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
   const stages = getProjectStages(project);
@@ -1239,6 +1257,9 @@ function mapProjectToFlow(
   const collaboratorRecords = canViewChatVisibilityState
     ? rawCollaboratorRecords
     : rawCollaboratorRecords.map(maskCollaboratorVisibilityState);
+  const visibleCollaboratorRecords = canViewParticipants
+    ? collaboratorRecords
+    : collaboratorRecords.filter((collaborator) => collaborator.id === currentUser.id);
   const mentionParticipants = [
     {
       id: project.createdById,
@@ -1248,7 +1269,7 @@ function mapProjectToFlow(
       group: "internal" as const,
       chatVisibilityPaused: false,
     },
-    ...executorRecords.map((executor) => ({
+    ...visibleExecutorRecords.map((executor) => ({
       id: executor.id,
       name: executor.name,
       email: executor.email,
@@ -1256,7 +1277,7 @@ function mapProjectToFlow(
       group: executor.group,
       chatVisibilityPaused: executor.chatVisibilityPaused,
     })),
-    ...collaboratorRecords.map((collaborator) => ({
+    ...visibleCollaboratorRecords.map((collaborator) => ({
       id: collaborator.id,
       name: collaborator.name,
       email: collaborator.email,
@@ -1273,7 +1294,7 @@ function mapProjectToFlow(
     id: project.id,
     ownerId: project.createdById,
     isCompleted: Boolean(project.completedAt || project.archivedAt),
-    executors: executorRecords,
+    executors: visibleExecutorRecords,
     canViewParticipants,
     canRemoveCollaborators,
     canViewBudget: allowBudgetView,
@@ -1317,10 +1338,16 @@ function mapProjectToFlow(
         role: "Project Owner",
         group: "internal",
         participantType: "GTI_INTERNAL_CLIENT",
+        canInteract: true,
+        canAddCaptions: true,
+        canDownloadFiles: true,
+        canViewBudget: true,
+        canViewVendorInfo: true,
+        canAccessProjectArchives: true,
         chatVisibilityPaused: false,
         access: "owner",
       },
-      ...collaboratorRecords,
+      ...visibleCollaboratorRecords,
     ],
     mentionParticipants,
     attachments: allowBriefView ? projectBriefAttachments : [],
@@ -1459,7 +1486,7 @@ export async function updateProjectCollaborators(
     id?: string;
     userId?: string;
     participantType?: ProjectCollaboratorParticipantType | null;
-  }>,
+  } & Partial<ProjectCollaboratorPermissions>>,
   actor: ProjectAccessUser,
 ) {
   await assertProjectCollaboratorManagementAccess(
@@ -1473,7 +1500,11 @@ export async function updateProjectCollaborators(
   }
 
   const normalizedCollaborators = collaborators.reduce<
-    Array<{ id: string; participantType: ProjectCollaboratorParticipantType | null }>
+    Array<{
+      id: string;
+      participantType: ProjectCollaboratorParticipantType | null;
+      permissions: ProjectCollaboratorPermissions | null;
+    }>
   >((current, collaborator) => {
     const id = (collaborator.userId ?? collaborator.id ?? "").trim();
 
@@ -1486,10 +1517,16 @@ export async function updateProjectCollaborators(
       isProjectCollaboratorParticipantType(collaborator.participantType)
         ? collaborator.participantType
         : null;
+    const hasSubmittedPermissions = Object.keys(
+      pickProjectCollaboratorPermissions(collaborator),
+    ).some((key) => typeof collaborator[key as keyof ProjectCollaboratorPermissions] === "boolean");
 
     current.push({
       id,
       participantType,
+      permissions: hasSubmittedPermissions
+        ? pickProjectCollaboratorPermissions(collaborator)
+        : null,
     });
     return current;
   }, []);
@@ -1529,6 +1566,11 @@ export async function updateProjectCollaborators(
       .filter((collaborator) => validIds.includes(collaborator.id))
       .map((collaborator) => [collaborator.id, collaborator.participantType] as const),
   );
+  const submittedPermissionMap = new Map(
+    normalizedCollaborators
+      .filter((collaborator) => validIds.includes(collaborator.id))
+      .map((collaborator) => [collaborator.id, collaborator.permissions] as const),
+  );
 
   const existingAssignments = await withPrismaRetry(() =>
     prisma.projectCollaborator.findMany({
@@ -1538,6 +1580,12 @@ export async function updateProjectCollaborators(
       select: {
         userId: true,
         participantType: true,
+        canInteract: true,
+        canAddCaptions: true,
+        canDownloadFiles: true,
+        canViewBudget: true,
+        canViewVendorInfo: true,
+        canAccessProjectArchives: true,
       },
     }),
   );
@@ -1546,6 +1594,15 @@ export async function updateProjectCollaborators(
     existingAssignments.map((assignment) => [
       assignment.userId,
       assignment.participantType as ProjectCollaboratorParticipantType | null,
+    ]),
+  );
+  const existingPermissionMap = new Map(
+    existingAssignments.map((assignment) => [
+      assignment.userId,
+      normalizeProjectCollaboratorPermissions(
+        assignment,
+        assignment.participantType as ProjectCollaboratorParticipantType | null,
+      ),
     ]),
   );
   const nextIds = new Set(validIds);
@@ -1559,6 +1616,11 @@ export async function updateProjectCollaborators(
     existingParticipantTypeMap.get(userId) ??
     getDefaultProjectCollaboratorParticipantType(
       validCollaboratorTypeMap.get(userId) ?? "external",
+    );
+  const resolvePermissions = (userId: string, participantType: ProjectCollaboratorParticipantType) =>
+    normalizeProjectCollaboratorPermissions(
+      submittedPermissionMap.get(userId) ?? existingPermissionMap.get(userId),
+      participantType,
     );
 
   await withPrismaRetry(() =>
@@ -1575,8 +1637,10 @@ export async function updateProjectCollaborators(
             }),
           ]
         : []),
-      ...idsToUpdate.map((userId) =>
-        prisma.projectCollaborator.update({
+      ...idsToUpdate.map((userId) => {
+        const participantType = resolveParticipantType(userId);
+
+        return prisma.projectCollaborator.update({
           where: {
             projectId_userId: {
               projectId,
@@ -1584,19 +1648,25 @@ export async function updateProjectCollaborators(
             },
           },
           data: {
-            participantType: resolveParticipantType(userId),
+            participantType,
+            ...resolvePermissions(userId, participantType),
           },
-        }),
-      ),
+        });
+      }),
       ...(idsToCreate.length > 0
         ? [
             prisma.projectCollaborator.createMany({
-              data: idsToCreate.map((userId) => ({
-                projectId,
-                userId,
-                addedById: actor.id,
-                participantType: resolveParticipantType(userId),
-              })),
+              data: idsToCreate.map((userId) => {
+                const participantType = resolveParticipantType(userId);
+
+                return {
+                  projectId,
+                  userId,
+                  addedById: actor.id,
+                  participantType,
+                  ...resolvePermissions(userId, participantType),
+                };
+              }),
               skipDuplicates: true,
             }),
           ]
@@ -1762,9 +1832,7 @@ export async function removeProjectCollaborator(
           userId: collaboratorId,
         },
       },
-      select: {
-        userId: true,
-      },
+      select: projectCollaboratorPermissionSelect,
     }),
   );
 
@@ -1811,6 +1879,9 @@ export async function setProjectCollaboratorChatVisibility(
   const isExecutorTarget = project.executors.some(
     (executor) => executor.userId === input.collaboratorId,
   );
+  const executorTargetRole =
+    project.executors.find((executor) => executor.userId === input.collaboratorId)?.role ??
+    null;
 
   let assignment = await withPrismaRetry(() =>
     prisma.projectCollaborator.findUnique({
@@ -1848,14 +1919,21 @@ export async function setProjectCollaboratorChatVisibility(
       throw new Error("Collaborator not found.");
     }
 
+    const participantType = getDefaultProjectCollaboratorParticipantType(
+      mapCollaboratorTypeToGroup(targetUser.collaboratorType),
+    );
+
     assignment = await withPrismaRetry(() =>
       prisma.projectCollaborator.create({
         data: {
           projectId: input.projectId,
           userId: input.collaboratorId,
           addedById: actor.id,
-          participantType: getDefaultProjectCollaboratorParticipantType(
-            mapCollaboratorTypeToGroup(targetUser.collaboratorType),
+          participantType,
+          ...normalizeProjectCollaboratorPermissions(
+            null,
+            participantType,
+            { executorRole: executorTargetRole },
           ),
         },
         select: {
@@ -3185,9 +3263,7 @@ export async function getProjectEditAccessById(
           },
         },
         collaborators: {
-          select: {
-            userId: true,
-          },
+          select: projectCollaboratorPermissionSelect,
         },
       },
     }),
@@ -3220,9 +3296,7 @@ export async function getProjectRouteAvailability(
           },
         },
         collaborators: {
-          select: {
-            userId: true,
-          },
+          select: projectCollaboratorPermissionSelect,
         },
       },
     }),

@@ -55,12 +55,22 @@ assertIncludes(archives, "assertCanUseArchives(user);", "archive list guard");
 assertIncludes(
   archives,
   "assertCanUseArchives(user, \"You do not have permission to download archive files.\")",
-  "archive download guard",
+  "manual archive download guard",
 );
 assertIncludes(
   archives,
-  "assertCanUseArchives(user, \"You do not have permission to preview archive files.\")",
-  "archive preview guard",
+  "const canViewArchivedFiles = hasProjectPermission(user, project, \"archive.view\");",
+  "project archive summary per-project view guard",
+);
+assertIncludes(
+  archives,
+  "if (!hasProjectPermission(user, project, \"archive.download\"))",
+  "project archive download per-project guard",
+);
+assertIncludes(
+  archives,
+  "if (!hasProjectPermission(user, project, \"archive.view\"))",
+  "project archive preview per-project guard",
 );
 
 const projects = read("src/lib/projects.ts");
@@ -69,6 +79,42 @@ assertIncludes(
   projects,
   "const canUseBudgetFilters = isProjectAdmin(currentUser);",
   "budget filters restricted to admin list queries",
+);
+assertIncludes(
+  projects,
+  "visibleCollaboratorRecords",
+  "participant directory response filtering",
+);
+assertIncludes(
+  projects,
+  "normalizeProjectCollaboratorPermissions(",
+  "project collaborator permission normalization",
+);
+
+const schema = read("prisma/schema.prisma");
+for (const field of [
+  "canInteract",
+  "canAddCaptions",
+  "canDownloadFiles",
+  "canViewBudget",
+  "canViewVendorInfo",
+  "canAccessProjectArchives",
+]) {
+  assertIncludes(schema, `${field}`, `ProjectCollaborator.${field} schema field`);
+}
+
+const phase1Migration = read(
+  "prisma/migrations/20260705000100_add_project_collaborator_permissions/migration.sql",
+);
+assertIncludes(
+  phase1Migration,
+  "ADD COLUMN \"canInteract\" BOOLEAN NOT NULL DEFAULT false",
+  "per-project permission migration",
+);
+assertIncludes(
+  phase1Migration,
+  "SET \"canInteract\" = true",
+  "executor interaction backfill",
 );
 
 const history = read("src/lib/project-history.ts");
@@ -146,4 +192,80 @@ assertIncludes(
   "submission validation extension check",
 );
 
-console.log("Phase 0 regression checks passed.");
+const projectCollaboratorPermissions = read("src/lib/project-collaborator-permissions.ts");
+assertIncludes(
+  projectCollaboratorPermissions,
+  "canAccessProjectArchives: false",
+  "conservative archive default",
+);
+assertIncludes(
+  projectCollaboratorPermissions,
+  "permissions.canAccessProjectArchives = false",
+  "CLIENT_OF_GTI archive hard override",
+);
+assertIncludes(
+  projectCollaboratorPermissions,
+  "canInteract",
+  "canInteract per-project grant",
+);
+
+for (const resolverCheck of [
+  "hasProjectCollaboratorGrant(user, project, \"canViewBudget\")",
+  "hasProjectCollaboratorGrant(user, project, \"canViewVendorInfo\")",
+  "hasProjectCollaboratorGrant(user, project, \"canDownloadFiles\")",
+  "hasProjectCollaboratorGrant(user, project, \"canInteract\")",
+  "hasProjectArchiveAccessGrant(user, project)",
+  "hasProjectCollaboratorGrant(user, project, \"canAddCaptions\")",
+]) {
+  assertIncludes(resolver, resolverCheck, `resolver grant ${resolverCheck}`);
+}
+
+const newProjectActions = read("src/app/(dashboard)/projects/new/actions.ts");
+for (const field of [
+  "collaboratorCanInteract",
+  "collaboratorCanAddCaptions",
+  "collaboratorCanDownloadFiles",
+  "collaboratorCanViewBudget",
+  "collaboratorCanViewVendorInfo",
+  "collaboratorCanAccessProjectArchives",
+]) {
+  assertIncludes(newProjectActions, field, `project form action field ${field}`);
+}
+assertIncludes(
+  newProjectActions,
+  "normalizeProjectCollaboratorPermissions(",
+  "project create/edit permission persistence",
+);
+
+const createWorkspace = read("src/components/projects/create-project-workspace.tsx");
+assertIncludes(
+  createWorkspace,
+  "projectCollaboratorPermissionLabels",
+  "project collaborator permission labels",
+);
+assertIncludes(
+  createWorkspace,
+  "isClientOfGtiParticipantType",
+  "CLIENT_OF_GTI archive checkbox disable",
+);
+assertIncludes(
+  createWorkspace,
+  "buildCollaboratorSavePayload",
+  "collaborator quick-save permission payload",
+);
+
+const aiAccess = read("src/lib/ai/access.ts");
+assertIncludes(
+  aiAccess,
+  "projectCollaboratorPermissionSelect",
+  "AI chat project grant select",
+);
+
+const helpCenter = read("src/lib/help-center.ts");
+assertIncludes(
+  helpCenter,
+  "Formal stage submissions must be PNG unless the project category is video. Only valid PNG artwork submissions can be compared. Video-category projects may support the configured video submission formats.",
+  "PNG-only submission help text",
+);
+
+console.log("Phase 0/1 regression checks passed.");
