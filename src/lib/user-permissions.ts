@@ -17,6 +17,7 @@ export type ManagedUserRecord = {
   email: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
+  canAccessArchives: boolean;
   status: ManagedUserStatus;
 };
 
@@ -24,6 +25,8 @@ export type ManagedUserUpdateInput = {
   userId: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
+  canAccessArchives: boolean;
+  updatedById?: string | null;
 };
 
 function getFallbackName(email: string) {
@@ -61,6 +64,7 @@ function mapManagedUser(user: {
   inviteToken: string | null;
   inviteExpiresAt: Date | null;
   inviteAcceptedAt: Date | null;
+  archiveAccess?: { id: string } | null;
 }): ManagedUserRecord {
   return {
     id: user.id,
@@ -68,6 +72,7 @@ function mapManagedUser(user: {
     email: user.email,
     role: user.role,
     collaboratorType: user.collaboratorType,
+    canAccessArchives: user.role === UserRole.SUPER_ADMIN || Boolean(user.archiveAccess),
     status: getManagedUserStatus(user),
   };
 }
@@ -89,6 +94,11 @@ export async function listUsersForPermissionManagement() {
         inviteToken: true,
         inviteExpiresAt: true,
         inviteAcceptedAt: true,
+        archiveAccess: {
+          select: {
+            id: true,
+          },
+        },
       },
     }),
   );
@@ -111,6 +121,11 @@ export async function getManagedUserPermissionRecord(userId: string) {
         inviteToken: true,
         inviteExpiresAt: true,
         inviteAcceptedAt: true,
+        archiveAccess: {
+          select: {
+            id: true,
+          },
+        },
       },
     }),
   );
@@ -136,24 +151,61 @@ export async function updateManagedUserPermissions(
   }
 
   const updatedUser = await withPrismaRetry(() =>
-    prisma.user.update({
-      where: {
-        id: input.userId,
-      },
-      data: {
-        role: input.role,
-        collaboratorType: input.collaboratorType as CollaboratorType,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        collaboratorType: true,
-        inviteToken: true,
-        inviteExpiresAt: true,
-        inviteAcceptedAt: true,
-      },
+    prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: {
+          id: input.userId,
+        },
+        data: {
+          role: input.role,
+          collaboratorType: input.collaboratorType as CollaboratorType,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (input.role === UserRole.SUPER_ADMIN || input.canAccessArchives) {
+        await tx.userArchiveAccess.upsert({
+          where: {
+            userId: input.userId,
+          },
+          update: {
+            grantedById: input.updatedById ?? undefined,
+          },
+          create: {
+            userId: input.userId,
+            grantedById: input.updatedById ?? undefined,
+          },
+        });
+      } else {
+        await tx.userArchiveAccess.deleteMany({
+          where: {
+            userId: input.userId,
+          },
+        });
+      }
+
+      return tx.user.findUniqueOrThrow({
+        where: {
+          id: input.userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          collaboratorType: true,
+          inviteToken: true,
+          inviteExpiresAt: true,
+          inviteAcceptedAt: true,
+          archiveAccess: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
     }),
   );
 

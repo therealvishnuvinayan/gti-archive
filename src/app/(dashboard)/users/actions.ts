@@ -39,6 +39,7 @@ type SaveUserAccessInput = {
   userId: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
+  canAccessArchives: boolean;
 };
 
 type PermissionProfileInput = {
@@ -164,6 +165,8 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     userId,
     role: input.role,
     collaboratorType: input.collaboratorType,
+    canAccessArchives: Boolean(input.canAccessArchives),
+    updatedById: currentUser.id,
   });
 
   await revalidatePermissionSensitiveCaches([userId, currentUser.id]);

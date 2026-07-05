@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
   CheckCircle2,
   LockKeyhole,
   PencilLine,
@@ -10,7 +11,6 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
-  UserRound,
   UsersRound,
   X,
 } from "lucide-react";
@@ -68,6 +68,7 @@ type UserEditForm = {
   userId: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
+  canAccessArchives: boolean;
 };
 
 type PermissionProfileFormState = Record<PermissionKey, boolean>;
@@ -141,6 +142,7 @@ function getDefaultForm(user: ManagedUserRecord): UserEditForm {
     userId: user.id,
     role: user.role,
     collaboratorType: user.collaboratorType,
+    canAccessArchives: user.canAccessArchives,
   };
 }
 
@@ -312,6 +314,35 @@ function EditUserModal({
                   ))}
                 </SelectContent>
               </Select>
+            </label>
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
+            <p className="text-[16px] font-[700] text-[#18201a]">Archive Access</p>
+            <p className="mt-1 text-[13px] leading-5 text-[#748074]">
+              Grant this user access to the Archives module when their permission profile also allows Archive permissions.
+            </p>
+            <label
+              className={cn(
+                "mt-4 flex items-start gap-3 rounded-[18px] border border-[#edf2ed] bg-white px-4 py-4",
+                form.role === "SUPER_ADMIN" && "bg-[#f8fbff]",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={form.role === "SUPER_ADMIN" || form.canAccessArchives}
+                onChange={(event) => onChange("canAccessArchives", event.target.checked)}
+                disabled={saving || form.role === "SUPER_ADMIN"}
+                className="mt-1 h-4 w-4 rounded border-[#c6d6c8] accent-[#256a45]"
+              />
+              <div className="min-w-0">
+                <p className="text-[14px] font-[700] text-[#1a221c]">
+                  Allow Archive module access
+                </p>
+                <p className="mt-1 text-[12px] leading-5 text-[#6f796f]">
+                  Super Admins always retain Archive access. Other users must be selected here before Archives appears in navigation.
+                </p>
+              </div>
             </label>
           </div>
         </div>
@@ -857,8 +888,8 @@ function ManagePermissionsModal({
                 text={profile?.source === "db" ? "Saved profile" : "Using defaults"}
               />
               <FilterBadge
-                icon={<LockKeyhole className="h-4 w-4 text-brand" />}
-                text="No per-user overrides"
+                icon={<Archive className="h-4 w-4 text-brand" />}
+                text="Archive access is per user"
               />
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -944,6 +975,7 @@ export function UsersWorkspace({
         user.email,
         user.role,
         getCollaboratorTypeLabel(user.collaboratorType),
+        user.canAccessArchives ? "archive access" : "no archive access",
         statusLabels[user.status],
       ]
         .join(" ")
@@ -1050,7 +1082,7 @@ export function UsersWorkspace({
                   User Directory
                 </h2>
                 <p className="mt-1 text-[14px] text-[#748074]">
-                  Assign roles and collaborator types. Individual permission overrides are intentionally not used.
+                  Assign roles, collaborator types, and per-user Archive module access.
                 </p>
               </div>
               <FilterBadge
@@ -1076,8 +1108,8 @@ export function UsersWorkspace({
                   text={`${filteredUsers.length} of ${users.length} users`}
                 />
                 <FilterBadge
-                  icon={<UserRound className="h-4 w-4 text-brand" />}
-                  text="Role-based profiles"
+                  icon={<Archive className="h-4 w-4 text-brand" />}
+                  text="Archive access per user"
                 />
               </div>
             </div>
@@ -1091,6 +1123,7 @@ export function UsersWorkspace({
                       "Email",
                       "Role",
                       "Collaborator Type",
+                      "Archive Access",
                       "Status",
                       "Actions",
                     ].map((heading) => (
@@ -1130,6 +1163,17 @@ export function UsersWorkspace({
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
                         <StatusBadge className="border-[#e1eadf] bg-[#f8fbf8] text-[#4d6552]">
                           {getCollaboratorTypeLabel(user.collaboratorType)}
+                        </StatusBadge>
+                      </td>
+                      <td className="border-b border-[#f1f4f0] px-4 py-4">
+                        <StatusBadge
+                          className={
+                            user.canAccessArchives
+                              ? "border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]"
+                              : "border-[#f3d1cf] bg-[#fff0ef] text-[#d6544d]"
+                          }
+                        >
+                          {user.canAccessArchives ? "Allowed" : "Not Allowed"}
                         </StatusBadge>
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
@@ -1186,7 +1230,7 @@ export function UsersWorkspace({
                 Permission model
               </p>
               <p className="mt-1 text-[14px] leading-6 text-[#748074]">
-                Effective access is role permissions intersected with collaborator type permissions for collaborator users. Project ownership and membership hard rules are still enforced.
+                Effective access is role permissions intersected with collaborator type permissions for collaborator users. Archive module access also requires the per-user Archive Access grant.
               </p>
             </div>
             {canManagePermissions ? (

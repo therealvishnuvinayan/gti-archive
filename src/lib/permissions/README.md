@@ -20,7 +20,7 @@ The database stores editable profile assignments for:
 - global roles
 - collaborator types
 
-Users are assigned to a role and collaborator type. Per-user permission overrides and project-specific permission overrides are not implemented.
+Users are assigned to a role and collaborator type. Archive module access also requires a per-user grant for non-Super Admin users. Generic per-user permission overrides and project-specific permission overrides are not implemented.
 
 Run `pnpm permissions:sync` after schema changes to upsert permission definitions and seed missing profile rows.
 

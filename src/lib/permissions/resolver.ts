@@ -146,7 +146,12 @@ export function isClientOfGtiUser(
 }
 
 export function canUseArchives(user: PermissionUser) {
-  return !isClientOfGtiUser(user) && hasPermission(user, "archive.view");
+  return (
+    !isClientOfGtiUser(user) &&
+    hasPermission(user, "archive.view") &&
+    (user.role === UserRole.SUPER_ADMIN ||
+      Boolean(user.permissionProfileSnapshot?.archiveAccessGranted))
+  );
 }
 
 export function assertCanUseArchives(
