@@ -320,6 +320,7 @@ function ComparisonViewerSurface({
   fullscreenMode?: boolean;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const panStartRef = useRef<{
     pointerX: number;
     pointerY: number;
@@ -330,6 +331,7 @@ function ComparisonViewerSurface({
   const [zoomScale, setZoomScale] = useState(1.25);
   const [toolMode, setToolMode] = useState<CompareToolMode>("view");
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const activeComment = comments.find((comment) => comment.id === activeCommentId) ?? null;
   const baseOpacity = 1 - opacity / 100;
@@ -346,19 +348,54 @@ function ComparisonViewerSurface({
         : isPresetZoom
           ? String(zoomScale)
           : `custom-${zoomScale}`;
-  const fitWidth = `min(100%, ${Math.max(18, comparisonAspectRatio * (fullscreenMode ? 72 : 64))}dvh, ${Math.max(
-    220,
-    Math.round(comparisonAspectRatio * (fullscreenMode ? 920 : 700)),
-  )}px)`;
+  const fitPadding = fullscreenMode ? 16 : 32;
+  const availableFitWidth = Math.max(0, viewportSize.width - fitPadding);
+  const availableFitHeight = Math.max(0, viewportSize.height - fitPadding);
+  const fitFrameWidth =
+    availableFitWidth > 0 && availableFitHeight > 0
+      ? Math.min(availableFitWidth, availableFitHeight * comparisonAspectRatio)
+      : 0;
+  const fitFrameHeight =
+    fitFrameWidth > 0 && comparisonAspectRatio > 0 ? fitFrameWidth / comparisonAspectRatio : 0;
   const frameWidth =
     zoomMode === "fit"
-      ? fitWidth
+      ? fitFrameWidth > 0
+        ? `${Math.round(fitFrameWidth)}px`
+        : "100%"
       : zoomMode === "width"
         ? "100%"
         : `${Math.round(100 * zoomScale)}%`;
+  const frameHeight =
+    zoomMode === "fit" && fitFrameHeight > 0 ? `${Math.round(fitFrameHeight)}px` : undefined;
   const baseLabelStrong = baseOpacity >= compareOpacity;
   const compareLabelStrong = compareOpacity >= baseOpacity;
   const panLimit = Math.max(120, Math.round(360 * zoomScale));
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const updateViewportSize = () => {
+      const rect = viewport.getBoundingClientRect();
+
+      setViewportSize({
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+
+    updateViewportSize();
+
+    const resizeObserver = new ResizeObserver(updateViewportSize);
+    resizeObserver.observe(viewport);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   function getPopoverPosition(comment: {
     xPercent: number;
@@ -639,6 +676,7 @@ function ComparisonViewerSurface({
       </div>
 
       <div
+        ref={viewportRef}
         className={`min-h-0 flex-1 border p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
           fullscreenMode
             ? "rounded-none border-[#2b332e] bg-[#0f1311]"
@@ -670,6 +708,7 @@ function ComparisonViewerSurface({
             style={{
               aspectRatio: comparisonAspectRatio,
               width: frameWidth,
+              height: frameHeight,
               maxWidth: isFitMode ? "100%" : undefined,
               maxHeight: isFitMode ? "100%" : undefined,
               transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
