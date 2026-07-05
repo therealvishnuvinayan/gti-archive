@@ -327,6 +327,7 @@ export type ProjectMentionParticipantRecord = {
 
 export type ProjectAttachmentRecord = {
   id: string;
+  assetType: AttachmentAssetType;
   isSubmission: boolean;
   submissionNumber?: number;
   submissionReviewStatus?: SubmissionReviewStatus | null;
@@ -343,7 +344,7 @@ export type ProjectAttachmentRecord = {
 
 export type ProjectChatEntry = {
   id: string;
-  kind: "revision" | "comment" | "system" | "comparison";
+  kind: "revision" | "comment" | "system" | "comparison" | "caption";
   cursor?: string;
   revisionId?: string;
   revisionNumber?: number;
@@ -375,6 +376,16 @@ export type ProjectChatEntry = {
     compareSubmissionLabel: string;
     xPercent: number;
     yPercent: number;
+  };
+  caption?: {
+    id: string;
+    attachmentId: string;
+    fileName: string;
+    submissionLabel: string;
+    xPercent: number;
+    yPercent: number;
+    body: string;
+    isReadOnly: boolean;
   };
 };
 
@@ -971,6 +982,7 @@ function mapAttachmentToRecord(
 ): ProjectAttachmentRecord {
   return {
     id: attachment.id,
+    assetType: attachment.assetType,
     isSubmission: attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION,
     submissionReviewStatus: attachment.submissionReviewStatus ?? null,
     originalFileName: attachment.originalFileName,

@@ -232,7 +232,7 @@ export const permissionGroupDefinitions: readonly PermissionGroupDefinition[] = 
   {
     id: "compare",
     title: "Compare",
-    description: "Artwork comparison and comparison comments.",
+    description: "Artwork comparison and pinned captions.",
   },
   {
     id: "help",
@@ -696,8 +696,8 @@ const permissionMetadata: Record<
     hardRule: true,
   },
   "compare.createComment": {
-    label: "Create compare comments",
-    description: "Create comments in the compare workflow.",
+    label: "Create compare captions",
+    description: "Create pinned captions in the compare workflow.",
     moduleGated: true,
     hardRule: true,
   },

@@ -652,6 +652,7 @@ model ProjectAttachment {
   reviewedBy                User?                                 @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   baseComparisonComments    ComparisonComment[]                   @relation("ComparisonCommentBaseAttachment")
   compareComparisonComments ComparisonComment[]                   @relation("ComparisonCommentCompareAttachment")
+  captionComparisonComments ComparisonComment[]                   @relation("ComparisonCommentCaptionAttachment")
   fileFavorites             FileFavorite[]
   fileName                  String
   originalFileName          String
@@ -739,6 +740,10 @@ model ComparisonComment {
   baseAttachment      ProjectAttachment @relation("ComparisonCommentBaseAttachment", fields: [baseAttachmentId], references: [id], onDelete: Cascade)
   compareAttachmentId String
   compareAttachment   ProjectAttachment @relation("ComparisonCommentCompareAttachment", fields: [compareAttachmentId], references: [id], onDelete: Cascade)
+  captionAttachmentId String?
+  captionAttachment   ProjectAttachment? @relation("ComparisonCommentCaptionAttachment", fields: [captionAttachmentId], references: [id], onDelete: SetNull)
+  isCaption           Boolean           @default(false)
+  comparisonOpacity   Float?
   xPercent            Float
   yPercent            Float
   body                String
@@ -749,6 +754,8 @@ model ComparisonComment {
 
   @@index([projectId, stageId, createdAt])
   @@index([baseAttachmentId, compareAttachmentId, createdAt])
+  @@index([captionAttachmentId, createdAt])
+  @@index([projectId, stageId, isCaption, createdAt])
   @@index([createdById])
 }
 

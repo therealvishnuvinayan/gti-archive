@@ -17,7 +17,10 @@ import {
   getStageSubmissionAttachments,
   resolveComparisonSelection,
 } from "@/lib/comparison-utils";
-import { hasProjectPermission } from "@/lib/permissions/resolver";
+import {
+  canAddProjectCaptions,
+  hasProjectPermission,
+} from "@/lib/permissions/resolver";
 import { getProjectStageHistory } from "@/lib/project-history";
 import {
   getProjectById,
@@ -36,6 +39,12 @@ function getProjectPermissionContext(project: NonNullable<Awaited<ReturnType<typ
     })),
     collaborators: project.collaborators.map((collaborator) => ({
       userId: collaborator.id,
+      canInteract: collaborator.canInteract,
+      canAddCaptions: collaborator.canAddCaptions,
+      canDownloadFiles: collaborator.canDownloadFiles,
+      canViewBudget: collaborator.canViewBudget,
+      canViewVendorInfo: collaborator.canViewVendorInfo,
+      canAccessProjectArchives: collaborator.canAccessProjectArchives,
     })),
   };
 }
@@ -111,6 +120,7 @@ async function ProjectCompareDeferredContent({
     projectContext,
     "collaborator.pauseVisibility",
   );
+  const canAddCaptions = canAddProjectCaptions(user, projectContext);
 
   const submissions = getStageSubmissionAttachments(history.entries, project.category);
   const { baseSubmission, compareSubmission } = resolveComparisonSelection(
@@ -139,6 +149,7 @@ async function ProjectCompareDeferredContent({
       initialComments={comparisonComments}
       canManageCollaborators={canManageCollaborators}
       canManageChatVisibility={canManageChatVisibility}
+      canAddCaptions={canAddCaptions}
       currentUserId={user.id}
     />
   );

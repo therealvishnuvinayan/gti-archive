@@ -101,6 +101,7 @@ type ComparisonCommentInput = {
   xPercent: number;
   yPercent: number;
   body: string;
+  opacity?: number | null;
 };
 
 function revalidateProjectFlow() {
@@ -482,7 +483,7 @@ export async function createComparisonCommentAction(input: ComparisonCommentInpu
       error:
         error instanceof Error
           ? error.message
-          : "Unable to send the comparison message right now.",
+          : "Unable to save the caption right now.",
     };
   }
 }

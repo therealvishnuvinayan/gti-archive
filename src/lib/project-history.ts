@@ -182,6 +182,9 @@ type StageComparisonQueryRecord = {
   stageId: string;
   baseAttachmentId: string;
   compareAttachmentId: string;
+  captionAttachmentId: string | null;
+  isCaption: boolean;
+  comparisonOpacity: number | null;
   xPercent: number;
   yPercent: number;
   body: string;
@@ -212,6 +215,17 @@ type StageComparisonQueryRecord = {
     status: AttachmentStatus;
     uploadedBy: Pick<User, "name" | "email">;
   };
+  captionAttachment: {
+    id: string;
+    assetType: AttachmentAssetType;
+    originalFileName: string;
+    mimeType: string;
+    fileSize: number;
+    submissionReviewStatus: SubmissionReviewStatus | null;
+    createdAt: Date;
+    status: AttachmentStatus;
+    uploadedBy: Pick<User, "name" | "email">;
+  } | null;
 };
 
 export type StageHistoryRecord = {
@@ -437,6 +451,7 @@ function mapAttachmentRecord(
 
   return {
     id: attachment.id,
+    assetType: attachment.assetType,
     isSubmission: submissionNumber !== undefined,
     submissionNumber,
     submissionReviewStatus: attachment.submissionReviewStatus ?? null,
@@ -737,6 +752,42 @@ function mapComparisonEntry(
   comparison: StageComparisonQueryRecord,
   submissionNumbers: ReadonlyMap<string, number>,
 ): ProjectChatEntry {
+  if (comparison.isCaption) {
+    const captionAttachment = comparison.captionAttachment ?? comparison.compareAttachment;
+    const captionFileName = getComparisonFileName(captionAttachment);
+    const captionSubmissionLabel = getComparisonSubmissionLabel(
+      captionAttachment,
+      submissionNumbers,
+    );
+    const authorName = getDisplayName(comparison.createdBy);
+
+    return {
+      id: `caption-${comparison.id}`,
+      kind: "caption",
+      title: "Caption added",
+      authorId: comparison.createdBy.id,
+      author: authorName,
+      authorAvatarSrc: getProfileAvatarSrc(comparison.createdBy),
+      role: getActorRole(comparison.createdBy),
+      body: `${authorName} added a caption on ${captionFileName}.`,
+      createdAt: formatHistoryTimestamp(comparison.createdAt),
+      attachments: [],
+      caption: {
+        id: comparison.id,
+        attachmentId:
+          comparison.captionAttachmentId ??
+          comparison.captionAttachment?.id ??
+          comparison.compareAttachmentId,
+        fileName: captionFileName,
+        submissionLabel: captionSubmissionLabel,
+        xPercent: comparison.xPercent,
+        yPercent: comparison.yPercent,
+        body: comparison.body,
+        isReadOnly: true,
+      },
+    };
+  }
+
   return {
     id: `comparison-${comparison.id}`,
     kind: "comparison",
@@ -1652,6 +1703,24 @@ export async function getProjectStageChatMessages(
                   },
                 },
               },
+              captionAttachment: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
             },
           }),
         ).finally(() =>
@@ -2209,6 +2278,24 @@ export async function getProjectStageHistory(
                 },
               },
               compareAttachment: {
+                select: {
+                  id: true,
+                  assetType: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                  submissionReviewStatus: true,
+                  createdAt: true,
+                  status: true,
+                  uploadedBy: {
+                    select: {
+                      name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+              captionAttachment: {
                 select: {
                   id: true,
                   assetType: true,

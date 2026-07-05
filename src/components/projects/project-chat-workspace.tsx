@@ -22,6 +22,7 @@ import {
   Languages,
   Loader2,
   Maximize2,
+  MessageSquarePlus,
   Mic,
   MoreVertical,
   Paperclip,
@@ -53,7 +54,10 @@ import {
   SUPPORTED_CHAT_LANGUAGES,
   getSupportedLanguageByCode,
 } from "@/lib/ai/languages";
-import { getStageSubmissionAttachments } from "@/lib/comparison-utils";
+import {
+  getStageSubmissionAttachments,
+  isCaptionableStageSubmissionAttachment,
+} from "@/lib/comparison-utils";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
@@ -71,6 +75,10 @@ import {
   ProjectExecutorsPanel,
 } from "@/components/projects/project-collaborators-panel";
 import { StageTimeRemainingCard } from "@/components/projects/stage-time-remaining-card";
+import {
+  SubmissionCaptionDialog,
+  type CaptionDialogAttachment,
+} from "@/components/projects/submission-caption-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -132,6 +140,7 @@ type ProjectChatWorkspaceProps = {
   currentUserAvatarSrc?: string | null;
   canManageCollaborators: boolean;
   canManageChatVisibility: boolean;
+  canAddCaptions: boolean;
   completionSummary: ProjectCompletionSummary;
   completionWorkflow: ProjectCompletionWorkflowRecord | null;
   deferCompletionData?: boolean;
@@ -1437,11 +1446,17 @@ function AttachmentHistoryList({
   compact = false,
   actionsDisabled = false,
   tone = "workflow",
+  projectCategory,
+  onOpenCaptions,
+  showCaptionAction = true,
 }: {
   attachments: DisplayAttachmentRecord[];
   compact?: boolean;
   actionsDisabled?: boolean;
   tone?: "sent" | "received" | "workflow";
+  projectCategory?: string | null;
+  onOpenCaptions?: (attachment: DisplayAttachmentRecord) => void;
+  showCaptionAction?: boolean;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -1461,6 +1476,16 @@ function AttachmentHistoryList({
           const effectiveSubmissionStatus = attachment.isSubmission
             ? (attachment.submissionReviewStatus ?? "PENDING_REVIEW")
             : null;
+          const canShowFileActions =
+            !actionsDisabled &&
+            !attachment.uploadState &&
+            Boolean(attachment.previewPath && attachment.downloadPath);
+          const canShowCaptionAction =
+            !attachment.uploadState &&
+            Boolean(attachment.previewPath) &&
+            showCaptionAction &&
+            Boolean(onOpenCaptions) &&
+            isCaptionableStageSubmissionAttachment(attachment, projectCategory);
 
           return (
             <div
@@ -1547,38 +1572,51 @@ function AttachmentHistoryList({
                     </div>
                   ) : null}
                 </div>
-                {!actionsDisabled &&
-                !attachment.uploadState &&
-                attachment.previewPath &&
-                attachment.downloadPath ? (
+                {canShowFileActions || canShowCaptionAction ? (
                   <div className="flex shrink-0 items-center gap-1">
-                    <AssetPreviewButton
-                      fileName={attachment.originalFileName}
-                      mimeType={attachment.mimeType}
-                      previewPath={attachment.previewPath}
-                      downloadPath={attachment.downloadPath}
-                      triggerClassName="size-8 rounded-full text-brand"
-                    />
-                    <AttachmentFavoriteButton
-                      attachmentId={attachment.id}
-                      initialIsFavorited={attachment.isFavoritedByCurrentUser}
-                      className="size-8 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
-                    />
-                    <Button
-                      asChild
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 rounded-full text-brand"
-                    >
-                      <a
-                        href={attachment.downloadPath}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Download ${attachment.originalFileName}`}
+                    {canShowCaptionAction ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 rounded-full text-brand"
+                        onClick={() => onOpenCaptions?.(attachment)}
+                        aria-label={`Open captions for ${attachment.originalFileName}`}
                       >
-                        <Download className="h-4 w-4" />
-                      </a>
-                    </Button>
+                        <MessageSquarePlus className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                    {canShowFileActions ? (
+                      <>
+                        <AssetPreviewButton
+                          fileName={attachment.originalFileName}
+                          mimeType={attachment.mimeType}
+                          previewPath={attachment.previewPath}
+                          downloadPath={attachment.downloadPath}
+                          triggerClassName="size-8 rounded-full text-brand"
+                        />
+                        <AttachmentFavoriteButton
+                          attachmentId={attachment.id}
+                          initialIsFavorited={attachment.isFavoritedByCurrentUser}
+                          className="size-8 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
+                        />
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 rounded-full text-brand"
+                        >
+                          <a
+                            href={attachment.downloadPath}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`Download ${attachment.originalFileName}`}
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -2130,6 +2168,7 @@ export function ProjectChatWorkspace({
   currentUserAvatarSrc,
   canManageCollaborators,
   canManageChatVisibility,
+  canAddCaptions,
   completionSummary,
   completionWorkflow,
   deferCompletionData = false,
@@ -2223,6 +2262,10 @@ export function ProjectChatWorkspace({
   const [projectBriefDialogOpen, setProjectBriefDialogOpen] = useState(false);
   const [stageBriefDialogOpen, setStageBriefDialogOpen] = useState(false);
   const [projectAssetsModalOpen, setProjectAssetsModalOpen] = useState(false);
+  const [captionDialogAttachment, setCaptionDialogAttachment] =
+    useState<CaptionDialogAttachment | null>(null);
+  const [captionDialogInitialCaptionId, setCaptionDialogInitialCaptionId] =
+    useState<string | null>(null);
   const [projectAssetFavoriteOverrides, setProjectAssetFavoriteOverrides] = useState<
     Record<string, boolean>
   >({});
@@ -4609,6 +4652,19 @@ export function ProjectChatWorkspace({
     setCommentUploadDialogOpen(true);
   }
 
+  function openCaptionDialog(
+    attachment: CaptionDialogAttachment,
+    captionId?: string | null,
+  ) {
+    setCaptionDialogAttachment(attachment);
+    setCaptionDialogInitialCaptionId(captionId ?? null);
+  }
+
+  function closeCaptionDialog() {
+    setCaptionDialogAttachment(null);
+    setCaptionDialogInitialCaptionId(null);
+  }
+
   function handleCommentFilesSelected(files: File[] | FileList | null) {
     const selectedFiles = Array.isArray(files) ? files : Array.from(files ?? []);
 
@@ -4782,6 +4838,7 @@ export function ProjectChatWorkspace({
       localCreatedAtMs,
       attachments: filesToUpload.map((pendingFile) => ({
         id: pendingFile.id,
+        assetType: pendingFile.assetType ?? "COMMENT_ATTACHMENT",
         isSubmission: pendingFile.assetType === "STAGE_SUBMISSION",
         originalFileName: pendingFile.file.name,
         fileTypeLabel: getLocalFileTypeLabel(pendingFile.file.name),
@@ -5077,6 +5134,7 @@ export function ProjectChatWorkspace({
                 localCreatedAtMs,
                 attachments: successfulUploads.map((result) => ({
                   id: result.attachmentId,
+                  assetType: result.pendingFile.assetType ?? "COMMENT_ATTACHMENT",
                   isSubmission: result.pendingFile.assetType === "STAGE_SUBMISSION",
                   submissionNumber: result.submissionNumber,
                   originalFileName: result.uploadedFile.name,
@@ -5296,6 +5354,7 @@ export function ProjectChatWorkspace({
         localCreatedAtMs,
         attachments: filesToUpload.map((pendingFile) => ({
           id: pendingFile.id,
+          assetType: "REVISION_ORIGINAL",
           isSubmission: false,
           originalFileName: pendingFile.file.name,
           fileTypeLabel: getLocalFileTypeLabel(pendingFile.file.name),
@@ -5430,6 +5489,7 @@ export function ProjectChatWorkspace({
           localCreatedAtMs,
           attachments: successfulUploads.map((result) => ({
             id: result.attachmentId,
+            assetType: "REVISION_ORIGINAL",
             isSubmission: false,
             originalFileName: result.uploadedFile.name,
             fileTypeLabel: getLocalFileTypeLabel(result.uploadedFile.name),
@@ -5637,6 +5697,7 @@ export function ProjectChatWorkspace({
       });
       const invoiceAttachment: ProjectAttachmentRecord = {
         id: result.attachmentId,
+        assetType: "STAGE_INVOICE",
         isSubmission: false,
         originalFileName: result.uploadedFile.name,
         fileTypeLabel: getLocalFileTypeLabel(result.uploadedFile.name),
@@ -6334,9 +6395,92 @@ export function ProjectChatWorkspace({
                               attachments={message.attachments}
                               actionsDisabled={isProjectCompleted}
                               tone={revisionAlignment === "right" ? "sent" : "received"}
+                              projectCategory={project.category}
+                              showCaptionAction={canAddCaptions}
+                              onOpenCaptions={(attachment) => openCaptionDialog(attachment)}
                             />
                           </div>
                         ) : null}
+                      </div>
+                    </Card>
+                  </TimelineFrame>
+                );
+              })()
+            ) : message.kind === "caption" ? (
+              (() => {
+                const caption = message.caption;
+
+                if (!caption) {
+                  return null;
+                }
+
+                const captionAlignment = getTimelineEntryAlignment(
+                  message,
+                  currentUserId,
+                  currentUserDisplayName,
+                );
+
+                return (
+                  <TimelineFrame
+                    key={message.id}
+                    alignment={captionAlignment}
+                    width="medium"
+                    avatarName={message.author}
+                    avatarSrc={message.authorAvatarSrc}
+                  >
+                    <Card
+                      className={`w-full overflow-hidden rounded-[22px] border border-[#d8e7dc] bg-[linear-gradient(135deg,#f7fbf7,#ffffff)] p-4 shadow-[0_12px_30px_rgba(18,35,23,0.06)] ${
+                        captionAlignment === "right" ? "rounded-br-[8px]" : "rounded-bl-[8px]"
+                      }`}
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#edf7ef] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
+                              <MessageSquarePlus className="h-3.5 w-3.5" />
+                              Caption added
+                            </span>
+                            <span className="text-[11px] font-[600] text-[#7a837b]">
+                              {message.createdAt}
+                            </span>
+                          </div>
+                          <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-[#253029]">
+                            {message.body}
+                          </p>
+                          <div className="mt-4 rounded-[16px] border border-[#dce9df] bg-white px-3 py-2.5">
+                            <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#66806d]">
+                              {caption.submissionLabel}
+                            </p>
+                            <p className="mt-1 truncate text-[12px] font-[700] text-[#1b241e]">
+                              {caption.fileName}
+                            </p>
+                          </div>
+                          <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-[#253029]">
+                            {caption.body}
+                          </p>
+                          <p className="mt-3 text-[10px] font-[600] uppercase tracking-[0.08em] text-[#7a837b]">
+                            Pinned at {caption.xPercent.toFixed(1)}%,{" "}
+                            {caption.yPercent.toFixed(1)}%
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="shrink-0 rounded-full text-[12px]"
+                          onClick={() =>
+                            openCaptionDialog(
+                              {
+                                id: caption.attachmentId,
+                                originalFileName: caption.fileName,
+                                mimeType: "image/png",
+                                previewPath: `/api/project-assets/${caption.attachmentId}/preview`,
+                              },
+                              caption.id,
+                            )
+                          }
+                        >
+                          View Caption
+                        </Button>
                       </div>
                     </Card>
                   </TimelineFrame>
@@ -6596,6 +6740,9 @@ export function ProjectChatWorkspace({
                           compact
                           actionsDisabled={isProjectCompleted}
                           tone={isCurrentUserMessage ? "sent" : "received"}
+                          projectCategory={project.category}
+                          showCaptionAction={canAddCaptions}
+                          onOpenCaptions={(attachment) => openCaptionDialog(attachment)}
                         />
                       ) : null}
                     </Card>
@@ -8220,6 +8367,9 @@ export function ProjectChatWorkspace({
                   <AttachmentHistoryList
                     attachments={reviewRevisionMessage.attachments}
                     actionsDisabled={isProjectCompleted}
+                    projectCategory={project.category}
+                    showCaptionAction={canAddCaptions}
+                    onOpenCaptions={(attachment) => openCaptionDialog(attachment)}
                   />
                 </div>
               ) : null}
@@ -8396,6 +8546,14 @@ export function ProjectChatWorkspace({
           </Card>
         </div>
       ) : null}
+
+      <SubmissionCaptionDialog
+        open={Boolean(captionDialogAttachment)}
+        attachment={captionDialogAttachment}
+        initialCaptionId={captionDialogInitialCaptionId}
+        onClose={closeCaptionDialog}
+        onCaptionCreated={refreshHistory}
+      />
     </section>
   );
 }

@@ -85,6 +85,9 @@ function buildEntryLine(entry: ProjectChatEntry) {
     entry.comparison
       ? `Compared ${entry.comparison.baseFileName} with ${entry.comparison.compareFileName}.`
       : "",
+    entry.caption
+      ? `Caption on ${entry.caption.fileName}: ${normalizeInlineText(entry.caption.body)}.`
+      : "",
   ].filter(Boolean);
 
   return `- ${entry.createdAt}: ${details.join(" | ")}`;
@@ -116,6 +119,12 @@ function buildHistorySignature(entries: ProjectChatEntry[]) {
           baseAttachmentId: entry.comparison.baseAttachmentId,
           compareAttachmentId: entry.comparison.compareAttachmentId,
           body: entry.body,
+        }
+      : null,
+    caption: entry.caption
+      ? {
+          attachmentId: entry.caption.attachmentId,
+          body: entry.caption.body,
         }
       : null,
   }));
