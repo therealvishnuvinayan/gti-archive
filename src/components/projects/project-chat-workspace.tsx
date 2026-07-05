@@ -5981,13 +5981,13 @@ export function ProjectChatWorkspace({
   }
 
   return (
-    <section className="min-h-0 2xl:h-[calc(100dvh-17rem)] 2xl:overflow-hidden">
-      <div className="grid min-h-0 gap-4 2xl:h-full 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-h-0 min-w-0 flex-col gap-2 2xl:h-full 2xl:gap-0 2xl:overflow-hidden">
+    <section className="min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-17rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
+      <div className="grid min-h-0 gap-4 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-h-0 min-w-0 flex-col gap-2 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:gap-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
           <div
             ref={chatScrollRef}
             onScroll={handleChatScroll}
-            className="no-scrollbar h-[clamp(320px,55dvh,560px)] overflow-y-auto overscroll-contain rounded-[24px] border border-[#e1e9e2] bg-[#f4f8f3] px-2.5 pb-5 pt-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:rounded-[28px] sm:px-5 sm:pb-6 sm:pt-3 2xl:h-auto 2xl:min-h-0 2xl:flex-1"
+            className="no-scrollbar h-[clamp(320px,55dvh,560px)] overflow-y-auto overscroll-contain rounded-[24px] border border-[#e1e9e2] bg-[#f4f8f3] px-2.5 pb-5 pt-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:rounded-[28px] sm:px-5 sm:pb-6 sm:pt-3 [@media_(min-width:1536px)_and_(min-height:900px)]:h-auto [@media_(min-width:1536px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:flex-1"
           >
             <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-2.5 pb-6">
               <div className="sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3">
@@ -6886,7 +6886,7 @@ export function ProjectChatWorkspace({
           </div>
 
           {showLatestRevisionActionBar && latestRevisionMessage ? (
-            <Card className="mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dfe8df] bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:mt-2 2xl:rounded-[22px] 2xl:px-4 2xl:py-3">
+            <Card className="mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dfe8df] bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:px-4 [@media_(min-width:1536px)_and_(min-height:900px)]:py-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
@@ -6947,7 +6947,7 @@ export function ProjectChatWorkspace({
           ) : null}
 
           {isChatReadOnly ? (
-            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6]/96 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:static 2xl:mt-2 2xl:rounded-[22px] 2xl:bg-[#f7fbf6] 2xl:p-4 2xl:shadow-none">
+            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6]/96 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-[#f7fbf6] [@media_(min-width:1536px)_and_(min-height:900px)]:p-4 [@media_(min-width:1536px)_and_(min-height:900px)]:shadow-none">
               <p className="text-[14px] font-semibold text-[#173120]">
                 {isProjectCompleted ? "Project chat is locked." : "Stage chat is read-only."}
               </p>
@@ -6958,7 +6958,7 @@ export function ProjectChatWorkspace({
               </p>
             </Card>
           ) : (
-            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dfe8df] bg-white/96 p-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur 2xl:static 2xl:mt-2 2xl:rounded-[26px] 2xl:bg-white/95 2xl:p-3">
+            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dfe8df] bg-white/96 p-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[26px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-white/95 [@media_(min-width:1536px)_and_(min-height:900px)]:p-3">
               <input
                 ref={revisionFileInputRef}
                 type="file"
@@ -7258,7 +7258,7 @@ export function ProjectChatWorkspace({
           )}
         </div>
 
-        <aside className="no-scrollbar max-h-[calc(100dvh-17rem)] min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-1 2xl:h-full 2xl:max-h-none 2xl:min-h-0">
+        <aside className="no-scrollbar min-w-0 space-y-4 pr-1 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-y-auto [@media_(min-width:1536px)_and_(min-height:900px)]:overscroll-contain">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">
