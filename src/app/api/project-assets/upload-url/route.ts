@@ -11,6 +11,10 @@ function isAttachmentAssetType(value: unknown): value is AttachmentAssetType {
   return Object.values(AttachmentAssetType).includes(value as AttachmentAssetType);
 }
 
+function isUploadEndpointMode(value: unknown): value is RequestUploadInput["uploadEndpointMode"] {
+  return value === "regional" || value === "accelerate";
+}
+
 export async function POST(request: Request) {
   const user = await getCurrentUser();
 
@@ -46,6 +50,9 @@ export async function POST(request: Request) {
     fileSize: payload.fileSize,
     assetType: payload.assetType,
     assetTagIds: Array.isArray(payload.assetTagIds) ? payload.assetTagIds : [],
+    uploadEndpointMode: isUploadEndpointMode(payload.uploadEndpointMode)
+      ? payload.uploadEndpointMode
+      : undefined,
   });
 
   if ("error" in result) {

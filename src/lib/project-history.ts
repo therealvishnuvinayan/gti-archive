@@ -22,7 +22,6 @@ import {
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
-  hasPermission,
   hasProjectPermission,
   isMainProjectExecutor,
   type PermissionUser,
@@ -52,14 +51,17 @@ import {
   buildProjectAssetKey,
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
+  createPresignedUploadTarget,
   createPresignedUploadUrl,
   deleteObjectIfNeeded,
+  getDefaultS3UploadEndpointMode,
   getFileExtension,
   getMaxAssetUploadBytes,
   getS3BucketName,
   isAllowedAssetFile,
   isAllowedSubmissionImage,
   sanitizeFileName,
+  type S3UploadEndpointMode,
 } from "@/lib/storage/s3";
 import {
   PROJECT_ASSET_ALLOWED_EXTENSIONS,
@@ -285,6 +287,7 @@ export type RequestUploadInput = {
   fileSize: number;
   assetType: AttachmentAssetType;
   assetTagIds?: string[];
+  uploadEndpointMode?: S3UploadEndpointMode;
 };
 
 type UploadRequestErrorResult = { error: string } | UploadFileTypeErrorPayload;
@@ -295,6 +298,13 @@ export type RequestUploadResult =
       attachmentId: string;
       fileName: string;
       uploadUrl: string;
+      uploadHost: string;
+      uploadEndpointMode: S3UploadEndpointMode;
+      uploadRegion: string;
+      uploadExpiresInSeconds: number;
+      uploadExpectedHeaders: {
+        "Content-Type": string;
+      };
       storageKey: string;
     };
 
@@ -994,10 +1004,6 @@ function isMainProjectExecutorUser(
   );
 }
 
-function canUserUploadLibraryAssets(user: AccessUser) {
-  return hasPermission(user, "library.uploadAsset");
-}
-
 export async function assertProjectAccess(user: AccessUser, projectId: string) {
   const project = await getProjectAccessRecord(projectId, user.id);
 
@@ -1108,8 +1114,14 @@ function getUploadPermissionKey(assetType: AttachmentAssetType): PermissionKey {
       return "chat.uploadAttachment";
     case AttachmentAssetType.GENERAL_PROJECT_ASSET:
     default:
-      return "library.uploadAsset";
+      return "file.uploadAttachment";
   }
+}
+
+function getUploadPermissionErrorMessage(assetType: AttachmentAssetType) {
+  return assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET
+    ? "You do not have permission to upload project attachments."
+    : "You do not have permission to upload assets to the library.";
 }
 
 function isStageInvoiceRequired(
@@ -4852,14 +4864,7 @@ export async function requestAttachmentUpload(
     const accessProject = await assertProjectAccess(user, input.projectId);
 
     if (!hasProjectPermission(user, accessProject, getUploadPermissionKey(input.assetType))) {
-      return { error: "You do not have permission to upload assets to the library." };
-    }
-
-    if (
-      input.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
-      !canUserUploadLibraryAssets(user)
-    ) {
-      return { error: "You do not have permission to upload assets to the library." };
+      return { error: getUploadPermissionErrorMessage(input.assetType) };
     }
 
     if (
@@ -4950,15 +4955,23 @@ export async function requestAttachmentUpload(
     }),
   );
 
-  const uploadUrl = await createPresignedUploadUrl({
+  const uploadEndpointMode =
+    input.uploadEndpointMode ?? getDefaultS3UploadEndpointMode();
+  const uploadTarget = await createPresignedUploadTarget({
     storageKey: attachment.storageKey,
     mimeType: input.mimeType,
+    endpointMode: uploadEndpointMode,
   });
 
   return {
     attachmentId: attachment.id,
     fileName: attachment.fileName,
-    uploadUrl,
+    uploadUrl: uploadTarget.uploadUrl,
+    uploadHost: uploadTarget.uploadHost,
+    uploadEndpointMode: uploadTarget.endpointMode,
+    uploadRegion: uploadTarget.region,
+    uploadExpiresInSeconds: uploadTarget.expiresInSeconds,
+    uploadExpectedHeaders: uploadTarget.expectedHeaders,
     storageKey: attachment.storageKey,
   };
 }
@@ -5119,13 +5132,6 @@ export async function completeAttachmentUpload(
     );
 
     return;
-  }
-
-  if (
-    attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
-    !canUserUploadLibraryAssets(user)
-  ) {
-    throw new Error("You do not have permission to upload assets to the library.");
   }
 
   const transactionResults = await withPrismaRetry(() =>
