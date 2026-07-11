@@ -140,6 +140,7 @@ type ProjectChatWorkspaceProps = {
   currentUserAvatarSrc?: string | null;
   canManageCollaborators: boolean;
   canManageChatVisibility: boolean;
+  canViewCompareSubmissions: boolean;
   canAddCaptions: boolean;
   completionSummary: ProjectCompletionSummary;
   completionWorkflow: ProjectCompletionWorkflowRecord | null;
@@ -2165,6 +2166,7 @@ export function ProjectChatWorkspace({
   currentUserAvatarSrc,
   canManageCollaborators,
   canManageChatVisibility,
+  canViewCompareSubmissions,
   canAddCaptions,
   completionSummary,
   completionWorkflow,
@@ -2547,7 +2549,8 @@ export function ProjectChatWorkspace({
       ),
     [displayedMessages, project.category],
   );
-  const canCompareSubmissions = stageSubmissions.length >= 2;
+  const hasComparableSubmissions = stageSubmissions.length >= 2;
+  const canCompareSubmissions = canViewCompareSubmissions && hasComparableSubmissions;
   const canSendComment = draft.trim().length > 0 || pendingCommentFiles.length > 0;
   const revisionMessages = useMemo(
     () => displayedMessages.filter((entry) => entry.kind === "revision"),
@@ -2703,7 +2706,7 @@ export function ProjectChatWorkspace({
       ),
     [currentUserId, project.executors],
   );
-  const canSubmitWorkAsMainExecutor = isMainProjectExecutor && !isProjectOwner;
+  const canSubmitWorkAsMainExecutor = isMainProjectExecutor;
   const stageInvoiceRequired = Boolean(activeStage?.invoiceRequired);
   const stageInvoiceRequest = activeStage?.invoiceRequest ?? null;
   const stageInvoiceMissing =
@@ -6099,6 +6102,35 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
+              {showSubmitWorkAction &&
+              hasAcceptedBrief &&
+              (canSubmitNewRevision || isUploadingRevision) ? (
+                <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#acd9bd] bg-white/96 p-3 shadow-[0_18px_42px_rgba(22,93,56,0.14)] backdrop-blur">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                        Ready for review
+                      </p>
+                      <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
+                        Submit your work for {activeStage?.label ?? "this stage"}.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      className="min-h-[44px] shrink-0 rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
+                      onClick={openRevisionDialog}
+                      disabled={!canSubmitNewRevision || isUploadingRevision}
+                    >
+                      {isUploadingRevision ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      Submit Work
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               <div ref={completionWorkflowRef} className="space-y-2.5 scroll-mt-24">
                 {isProjectCompleted ? (
                   <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
@@ -7388,7 +7420,7 @@ export function ProjectChatWorkspace({
                       Compare Submissions
                     </Link>
                   </Button>
-                ) : !isProjectCompleted ? (
+                ) : !isProjectCompleted && canViewCompareSubmissions ? (
                   <div className="space-y-1.5">
                     <Button type="button" size="sm" disabled className="min-w-[170px] text-[13px]">
                       Compare Submissions

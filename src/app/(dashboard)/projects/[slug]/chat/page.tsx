@@ -187,6 +187,11 @@ async function ProjectChatDeferredContent({
     projectContext,
     "collaborator.pauseVisibility",
   );
+  const canViewCompareSubmissions = hasProjectPermission(
+    user,
+    projectContext,
+    "compare.view",
+  );
   const canAddCaptions = canAddProjectCaptions(user, projectContext);
   const currentUserAvatarSrc = user.avatarUrl
     ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
@@ -206,6 +211,7 @@ async function ProjectChatDeferredContent({
       currentUserAvatarSrc={currentUserAvatarSrc}
       canManageCollaborators={canManageCollaborators}
       canManageChatVisibility={canManageChatVisibility}
+      canViewCompareSubmissions={canViewCompareSubmissions}
       canAddCaptions={canAddCaptions}
       completionSummary={completionSummary}
       completionWorkflow={null}

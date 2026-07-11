@@ -318,6 +318,12 @@ export function hasProjectPermission(
       );
     case "archive.uploadFile":
       return isProjectAdmin(user) || isProjectOwner(user, project);
+    case "compare.view":
+      return (
+        isProjectAdmin(user) ||
+        isProjectOwner(user, project) ||
+        hasProjectArchiveAccessGrant(user, project)
+      );
   }
 
   if (!hasProjectPermissionGrant(user, permissionKey)) {
@@ -330,7 +336,6 @@ export function hasProjectPermission(
     case "chat.view":
     case "file.view":
     case "file.favorite":
-    case "compare.view":
       return isProjectAdmin(user) || isProjectMember(user, project);
     case "stage.updateBudget":
     case "project.updateBudget":
@@ -357,7 +362,7 @@ export function hasProjectPermission(
       return isMainProjectExecutor(user, project);
     case "stage.submitWork":
     case "file.uploadSubmission":
-      return !isProjectOwner(user, project) && isMainProjectExecutor(user, project);
+      return isMainProjectExecutor(user, project);
     case "stage.reviewSubmission":
     case "stage.requestRevision":
     case "stage.markSubmissionComplete":
