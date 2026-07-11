@@ -221,8 +221,282 @@ type ProjectExecutorRoleValue = ProjectEditorInitialExecutor["role"];
 type UploadAssetResponse = {
   attachmentId?: string;
   uploadUrl?: string;
+  uploadHost?: string;
+  uploadEndpointMode?: UploadEndpointMode;
+  uploadRegion?: string;
+  uploadExpiresInSeconds?: number;
+  uploadExpectedHeaders?: {
+    "Content-Type"?: string;
+  };
   error?: string;
 } & Partial<UploadFileTypeErrorPayload>;
+
+type UploadEndpointMode = "regional" | "accelerate";
+type ProjectUploadProgress = {
+  totalFiles: number;
+  completedFiles: number;
+  failedFiles: number;
+  totalBytes: number;
+  uploadedBytes: number;
+  percent: number;
+};
+type UploadProgressTracker = {
+  totalFiles: number;
+  totalBytes: number;
+  loadedByKey: Map<string, number>;
+  completedKeys: Set<string>;
+  failedKeys: Set<string>;
+};
+type ConcurrentFailure<T> = {
+  item: T;
+  index: number;
+  error: unknown;
+};
+type ProjectUploadProgressFile = {
+  key: string;
+  file: File;
+};
+
+const SMALL_UPLOAD_RETRY_MAX_BYTES = 5 * 1024 * 1024;
+const MAX_PROJECT_ASSET_UPLOAD_RETRIES = 2;
+const PROJECT_ASSET_UPLOAD_CONCURRENCY = 6;
+
+class UploadZeroProgressStallError extends Error {
+  readonly stalledDurationMs: number;
+
+  constructor(stalledDurationMs: number) {
+    super("Upload stalled before any data was sent.");
+    this.name = "UploadZeroProgressStallError";
+    this.stalledDurationMs = stalledDurationMs;
+  }
+}
+
+function isUploadZeroProgressStallError(
+  error: unknown,
+): error is UploadZeroProgressStallError {
+  return error instanceof UploadZeroProgressStallError;
+}
+
+function getUploadEndpointModeOverride(): UploadEndpointMode | undefined {
+  const value = window.localStorage.getItem("gti:s3-upload-endpoint-mode");
+
+  return value === "regional" || value === "accelerate" ? value : undefined;
+}
+
+function getAlternateEndpointMode(endpointMode?: UploadEndpointMode): UploadEndpointMode {
+  return endpointMode === "regional" ? "accelerate" : "regional";
+}
+
+function getUploadTimeoutMs(fileSize: number) {
+  if (fileSize < SMALL_UPLOAD_RETRY_MAX_BYTES) {
+    return 60_000;
+  }
+
+  const fileSizeMb = Math.ceil(fileSize / (1024 * 1024));
+
+  return Math.max(60_000, fileSizeMb * 15_000);
+}
+
+function getZeroProgressRetryMs(fileSize: number) {
+  if (fileSize < 1024 * 1024) {
+    return 6_000;
+  }
+
+  if (fileSize < SMALL_UPLOAD_RETRY_MAX_BYTES) {
+    return 12_000;
+  }
+
+  const fileSizeMb = Math.ceil(fileSize / (1024 * 1024));
+
+  return Math.max(30_000, fileSizeMb * 8_000);
+}
+
+function uploadFileToSignedUrl({
+  uploadUrl,
+  file,
+  mimeType,
+  onProgress,
+}: {
+  uploadUrl: string;
+  file: File;
+  mimeType: string;
+  onProgress?: (uploadedBytes: number) => void;
+}) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    const startedAt = Date.now();
+    let settled = false;
+    let abortingForRetry = false;
+    let uploadedBytes = 0;
+    let zeroProgressRetryTimerId: number | null = null;
+
+    function clearZeroProgressRetryTimer() {
+      if (zeroProgressRetryTimerId) {
+        window.clearTimeout(zeroProgressRetryTimerId);
+        zeroProgressRetryTimerId = null;
+      }
+    }
+
+    function settle(error?: Error) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearZeroProgressRetryTimer();
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    }
+
+    zeroProgressRetryTimerId = window.setTimeout(() => {
+      if (settled || uploadedBytes > 0) {
+        return;
+      }
+
+      abortingForRetry = true;
+      request.abort();
+      settle(new UploadZeroProgressStallError(Date.now() - startedAt));
+    }, getZeroProgressRetryMs(file.size));
+
+    request.open("PUT", uploadUrl);
+    request.timeout = getUploadTimeoutMs(file.size);
+    request.setRequestHeader("Content-Type", mimeType);
+    request.upload.onprogress = (event) => {
+      uploadedBytes = event.loaded;
+      onProgress?.(Math.min(file.size, event.loaded));
+      if (uploadedBytes > 0) {
+        clearZeroProgressRetryTimer();
+      }
+    };
+    request.upload.onload = () => {
+      uploadedBytes = file.size;
+      onProgress?.(file.size);
+      clearZeroProgressRetryTimer();
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        settle();
+        return;
+      }
+
+      settle(new Error(`Upload failed for ${file.name}.`));
+    };
+    request.onerror = () => {
+      settle(new Error(`Upload failed for ${file.name}.`));
+    };
+    request.onabort = () => {
+      if (abortingForRetry) {
+        return;
+      }
+
+      settle(new Error(`Upload cancelled for ${file.name}.`));
+    };
+    request.ontimeout = () => {
+      settle(
+        new Error(
+          `Upload timed out for ${file.name} after ${Math.round(request.timeout / 1000)} seconds.`,
+        ),
+      );
+    };
+    request.send(file);
+  });
+}
+
+async function markProjectAssetUploadFailed(attachmentId: string, projectId: string) {
+  await fetch("/api/project-assets/complete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      attachmentId,
+      failed: true,
+      projectId,
+    }),
+  }).catch(() => undefined);
+}
+
+function getAttachmentUploadErrorMessage(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "Unable to upload the attachment right now.";
+}
+
+function getBatchUploadErrorMessage(
+  failures: Array<{ error: unknown }>,
+  totalFiles: number,
+) {
+  const firstError = getAttachmentUploadErrorMessage(failures[0]?.error);
+
+  if (failures.length <= 1) {
+    return firstError;
+  }
+
+  return `${failures.length} of ${totalFiles} files failed to upload. First error: ${firstError}`;
+}
+
+function getProjectUploadNow() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function getProjectUploadDurationMs(startedAt: number) {
+  return Math.round(getProjectUploadNow() - startedAt);
+}
+
+function logProjectUploadTiming(
+  label: string,
+  metadata?: Record<string, string | number | boolean | null | undefined>,
+) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.info("[project:create-upload]", label, metadata ?? {});
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<ConcurrentFailure<T>[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  let nextIndex = 0;
+  const failures: ConcurrentFailure<T>[] = [];
+  const workerCount = Math.min(concurrency, items.length);
+
+  async function runWorker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+
+      if (index >= items.length) {
+        return;
+      }
+
+      try {
+        await worker(items[index], index);
+      } catch (error) {
+        failures.push({
+          item: items[index],
+          index,
+          error,
+        });
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, runWorker));
+
+  return failures;
+}
 
 type QuickAddMasterDataKind = "category" | "tag";
 
@@ -248,20 +522,6 @@ function formatDateValue(date: Date) {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function formatDateTimeInputValue(date: Date | null) {
-  if (!date || Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  const hours = `${date.getHours()}`.padStart(2, "0");
-  const minutes = `${date.getMinutes()}`.padStart(2, "0");
-
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function normalizeBudgetInput(value: string) {
@@ -850,21 +1110,25 @@ function InviteExecutorDialog({
 function CreateProjectSubmitButton({
   mode,
   uploadPhase,
+  uploadProgress,
 }: {
   mode: "create" | "edit";
   uploadPhase?: "uploading-assets" | null;
+  uploadProgress?: ProjectUploadProgress | null;
 }) {
   const { pending } = useFormStatus();
   const isBusy = pending || uploadPhase === "uploading-assets";
+  const uploadPercent = uploadProgress?.percent ?? 0;
 
   const busyLabel =
     uploadPhase === "uploading-assets"
-      ? "Uploading Assets..."
+      ? `Uploading Assets... ${uploadPercent}%`
       : mode === "edit"
         ? "Saving..."
         : "Creating Project...";
 
   return (
+    <>
     <Button
       type="submit"
       disabled={isBusy}
@@ -881,12 +1145,32 @@ function CreateProjectSubmitButton({
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white [animation-delay:-0.1s]" />
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white" />
           </span>
-          {busyLabel}
+          <span>{busyLabel}</span>
+          {uploadPhase === "uploading-assets" && uploadProgress ? (
+            <span className="text-[12px] font-medium text-white/85">
+              {uploadProgress.completedFiles}/{uploadProgress.totalFiles} files
+            </span>
+          ) : null}
         </>
       ) : (
         mode === "edit" ? "Save Changes" : "Create Project"
       )}
     </Button>
+    {uploadPhase === "uploading-assets" && uploadProgress ? (
+      <div className="mt-3 space-y-1">
+        <div className="h-2 overflow-hidden rounded-full bg-[#d8eadf]">
+          <div
+            className="h-full rounded-full bg-brand transition-[width] duration-200"
+            style={{ width: `${uploadPercent}%` }}
+          />
+        </div>
+        <p className="text-center text-[12px] font-medium text-[#607064]">
+          {formatLocalFileSize(uploadProgress.uploadedBytes)} /{" "}
+          {formatLocalFileSize(uploadProgress.totalBytes)}
+        </p>
+      </div>
+    ) : null}
+    </>
   );
 }
 
@@ -1103,6 +1387,7 @@ export function CreateProjectWorkspace({
   const [collaboratorSaving, setCollaboratorSaving] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string>();
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<ProjectUploadProgress | null>(null);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const [budgetConflictDialogOpen, setBudgetConflictDialogOpen] = useState(false);
   const [stageRemovalTarget, setStageRemovalTarget] = useState<StageForm | null>(null);
@@ -1128,6 +1413,9 @@ export function CreateProjectWorkspace({
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const stageAttachmentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const executorPickerRef = useRef<HTMLDivElement | null>(null);
+  const stagesRef = useRef(stages);
+  const pendingProjectFilesRef = useRef(pendingProjectFiles);
+  const uploadProgressTrackerRef = useRef<UploadProgressTracker | null>(null);
   const handledCreatedProjectIdRef = useRef<string | null>(null);
   const handledEditProjectIdRef = useRef<string | null>(null);
   const lastFormToastKeyRef = useRef<string | null>(null);
@@ -1136,7 +1424,7 @@ export function CreateProjectWorkspace({
     () => stages.some((stage) => stage.pendingFiles.length > 0),
     [stages],
   );
-  const isCreateUploadPhase = mode === "create" && Boolean(formState.projectId) && isUploadingAttachments;
+  const isFormUploadPhase = Boolean(formState.projectId) && isUploadingAttachments;
   const isUploadNavigationGuardEnabled =
     isUploadingAttachments ||
     (Boolean(formState.projectId) &&
@@ -1150,6 +1438,12 @@ export function CreateProjectWorkspace({
   const displayedAttachmentError =
     attachmentError ?? getFieldError("attachments", fieldErrors.attachments);
   useUploadNavigationGuard(isUploadNavigationGuardEnabled, UPLOAD_NAVIGATION_WARNING);
+  useEffect(() => {
+    stagesRef.current = stages;
+  }, [stages]);
+  useEffect(() => {
+    pendingProjectFilesRef.current = pendingProjectFiles;
+  }, [pendingProjectFiles]);
   const parsedProjectBudget = useMemo(() => parseBudgetInput(projectBudget), [projectBudget]);
   const parsedStageBudgets = useMemo(
     () => stages.map((stage) => parseBudgetInput(stage.budget)),
@@ -1474,8 +1768,8 @@ export function CreateProjectWorkspace({
         budget: "",
         description: "",
         invoiceRequired: isExternalExecution,
-        plannedStartAt: formatDateTimeInputValue(startDate),
-        plannedDueAt: formatDateTimeInputValue(endDate),
+        plannedStartAt: "",
+        plannedDueAt: "",
         attachments: [],
         pendingFiles: [],
       },
@@ -2100,100 +2394,270 @@ export function CreateProjectWorkspace({
     });
   }
 
+  const publishUploadProgress = useCallback(() => {
+    const tracker = uploadProgressTrackerRef.current;
+
+    if (!tracker) {
+      setUploadProgress(null);
+      return;
+    }
+
+    const uploadedBytes = [...tracker.loadedByKey.values()].reduce(
+      (total, loadedBytes) => total + loadedBytes,
+      0,
+    );
+    const percent =
+      tracker.totalBytes > 0
+        ? Math.min(100, Math.round((uploadedBytes / tracker.totalBytes) * 100))
+        : 100;
+
+    setUploadProgress({
+      totalFiles: tracker.totalFiles,
+      completedFiles: tracker.completedKeys.size,
+      failedFiles: tracker.failedKeys.size,
+      totalBytes: tracker.totalBytes,
+      uploadedBytes,
+      percent,
+    });
+  }, []);
+
+  const beginUploadProgress = useCallback((
+    files: ProjectUploadProgressFile[],
+  ) => {
+    const loadedByKey = new Map<string, number>();
+
+    files.forEach(({ key }) => {
+      loadedByKey.set(key, 0);
+    });
+
+    uploadProgressTrackerRef.current = {
+      totalFiles: files.length,
+      totalBytes: files.reduce((total, { file }) => total + file.size, 0),
+      loadedByKey,
+      completedKeys: new Set(),
+      failedKeys: new Set(),
+    };
+    publishUploadProgress();
+  }, [publishUploadProgress]);
+
+  const updateUploadProgress = useCallback((
+    key: string,
+    uploadedBytes: number,
+  ) => {
+    const tracker = uploadProgressTrackerRef.current;
+
+    if (!tracker || !tracker.loadedByKey.has(key)) {
+      return;
+    }
+
+    tracker.loadedByKey.set(key, Math.max(0, uploadedBytes));
+    publishUploadProgress();
+  }, [publishUploadProgress]);
+
+  const completeUploadProgress = useCallback((
+    key: string,
+    file: File,
+  ) => {
+    const tracker = uploadProgressTrackerRef.current;
+
+    if (!tracker || !tracker.loadedByKey.has(key)) {
+      return;
+    }
+
+    tracker.loadedByKey.set(key, file.size);
+    tracker.completedKeys.add(key);
+    publishUploadProgress();
+  }, [publishUploadProgress]);
+
+  const failUploadProgress = useCallback((key: string) => {
+    const tracker = uploadProgressTrackerRef.current;
+
+    if (!tracker || !tracker.loadedByKey.has(key)) {
+      return;
+    }
+
+    tracker.failedKeys.add(key);
+    publishUploadProgress();
+  }, [publishUploadProgress]);
+
+  const resetUploadProgress = useCallback(() => {
+    uploadProgressTrackerRef.current = null;
+    setUploadProgress(null);
+  }, []);
+
   const uploadProjectAsset = useCallback(async (
     file: File,
     projectId: string,
     options?: {
       stageId?: string | null;
       commentId?: string | null;
+      progressKey?: string;
     },
   ): Promise<ProjectEditorInitialAttachment> => {
     if (!projectId) {
       throw new Error("Save the project first before uploading attachments.");
     }
 
-    const uploadRequest = await fetch("/api/project-assets/upload-url", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        projectId,
-        stageId: options?.stageId ?? null,
-        commentId: options?.commentId ?? null,
-        originalFileName: file.name,
-        mimeType: file.type || "application/octet-stream",
-        fileSize: file.size,
-        assetType: "GENERAL_PROJECT_ASSET",
-      }),
+    const totalStartedAt = getProjectUploadNow();
+    const uploadEndpointModeOverride = getUploadEndpointModeOverride();
+    let requestedEndpointMode = uploadEndpointModeOverride;
+    let lastError: unknown;
+    const stageId = options?.stageId ?? null;
+
+    logProjectUploadTiming("file started", {
+      fileName: file.name,
+      fileSize: file.size,
+      projectId,
+      stageId,
     });
 
-    const uploadPayload = (await uploadRequest.json()) as UploadAssetResponse;
-
-    if (!uploadRequest.ok || !uploadPayload.attachmentId || !uploadPayload.uploadUrl) {
-      throw new Error(
-        getUploadErrorMessage(uploadPayload, "Unable to prepare the attachment upload."),
-      );
-    }
-
-    try {
-      const putResponse = await fetch(uploadPayload.uploadUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
-        body: file,
-      });
-
-      if (!putResponse.ok) {
-        throw new Error(`Upload failed for ${file.name}.`);
-      }
-
-      const completeResponse = await fetch("/api/project-assets/complete", {
+    for (
+      let attemptNumber = 1;
+      attemptNumber <= MAX_PROJECT_ASSET_UPLOAD_RETRIES + 1;
+      attemptNumber += 1
+    ) {
+      const uploadUrlStartedAt = getProjectUploadNow();
+      const uploadRequest = await fetch("/api/project-assets/upload-url", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          attachmentId: uploadPayload.attachmentId,
           projectId,
+          stageId: options?.stageId ?? null,
+          commentId: options?.commentId ?? null,
+          originalFileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          fileSize: file.size,
+          assetType: "GENERAL_PROJECT_ASSET",
+          uploadEndpointMode: requestedEndpointMode,
         }),
       });
+      const uploadUrlDurationMs = getProjectUploadDurationMs(uploadUrlStartedAt);
 
-      const completePayload = (await completeResponse.json()) as { error?: string };
+      const uploadPayload = (await uploadRequest.json()) as UploadAssetResponse;
 
-      if (!completeResponse.ok) {
-        throw new Error(completePayload.error || "Unable to complete the attachment upload.");
+      logProjectUploadTiming("upload-url completed", {
+        fileName: file.name,
+        fileSize: file.size,
+        status: uploadRequest.status,
+        attemptNumber,
+        durationMs: uploadUrlDurationMs,
+        requestedEndpointMode,
+        uploadEndpointMode: uploadPayload.uploadEndpointMode,
+        uploadHost: uploadPayload.uploadHost,
+      });
+
+      if (!uploadRequest.ok || !uploadPayload.attachmentId || !uploadPayload.uploadUrl) {
+        throw new Error(
+          getUploadErrorMessage(uploadPayload, "Unable to prepare the attachment upload."),
+        );
       }
 
-      return {
-        id: uploadPayload.attachmentId,
-        originalFileName: file.name,
-        fileTypeLabel: getLocalFileTypeLabel(file.name),
-        mimeType: file.type || "application/octet-stream",
-        fileSizeLabel: formatLocalFileSize(file.size),
-        uploadedBy: "You",
-        uploadedAt: "Just now",
-        previewPath: `/api/project-assets/${uploadPayload.attachmentId}/preview`,
-        downloadPath: `/api/project-assets/${uploadPayload.attachmentId}/download`,
-        isFavoritedByCurrentUser: false,
-      };
-    } catch (error) {
-      await fetch("/api/project-assets/complete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          attachmentId: uploadPayload.attachmentId,
-          failed: true,
-          projectId,
-        }),
-      }).catch(() => undefined);
+      const endpointMode = uploadPayload.uploadEndpointMode ?? requestedEndpointMode;
+      const expectedContentType =
+        uploadPayload.uploadExpectedHeaders?.["Content-Type"] ||
+        file.type ||
+        "application/octet-stream";
 
-      throw error;
+      try {
+        const storageUploadStartedAt = getProjectUploadNow();
+        await uploadFileToSignedUrl({
+          uploadUrl: uploadPayload.uploadUrl,
+          file,
+          mimeType: expectedContentType,
+          onProgress: options?.progressKey
+            ? (uploadedBytes) => updateUploadProgress(options.progressKey!, uploadedBytes)
+            : undefined,
+        });
+        logProjectUploadTiming("s3-put completed", {
+          fileName: file.name,
+          fileSize: file.size,
+          attachmentId: uploadPayload.attachmentId,
+          attemptNumber,
+          durationMs: getProjectUploadDurationMs(storageUploadStartedAt),
+          endpointMode,
+          uploadHost: uploadPayload.uploadHost,
+        });
+
+        const completeStartedAt = getProjectUploadNow();
+        const completeResponse = await fetch("/api/project-assets/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            attachmentId: uploadPayload.attachmentId,
+            projectId,
+          }),
+        });
+
+        const completePayload = (await completeResponse.json()) as { error?: string };
+        logProjectUploadTiming("complete completed", {
+          fileName: file.name,
+          fileSize: file.size,
+          attachmentId: uploadPayload.attachmentId,
+          status: completeResponse.status,
+          durationMs: getProjectUploadDurationMs(completeStartedAt),
+        });
+
+        if (!completeResponse.ok) {
+          throw new Error(completePayload.error || "Unable to complete the attachment upload.");
+        }
+
+        logProjectUploadTiming("file completed", {
+          fileName: file.name,
+          fileSize: file.size,
+          attachmentId: uploadPayload.attachmentId,
+          durationMs: getProjectUploadDurationMs(totalStartedAt),
+        });
+
+        return {
+          id: uploadPayload.attachmentId,
+          originalFileName: file.name,
+          fileTypeLabel: getLocalFileTypeLabel(file.name),
+          mimeType: file.type || "application/octet-stream",
+          fileSizeLabel: formatLocalFileSize(file.size),
+          uploadedBy: "You",
+          uploadedAt: "Just now",
+          previewPath: `/api/project-assets/${uploadPayload.attachmentId}/preview`,
+          downloadPath: `/api/project-assets/${uploadPayload.attachmentId}/download`,
+          isFavoritedByCurrentUser: false,
+        };
+      } catch (error) {
+        await markProjectAssetUploadFailed(uploadPayload.attachmentId, projectId);
+        lastError = error;
+
+        if (
+          isUploadZeroProgressStallError(error) &&
+          attemptNumber <= MAX_PROJECT_ASSET_UPLOAD_RETRIES
+        ) {
+          requestedEndpointMode = getAlternateEndpointMode(endpointMode);
+          logProjectUploadTiming("retry scheduled", {
+            fileName: file.name,
+            fileSize: file.size,
+            attemptNumber,
+            nextEndpointMode: requestedEndpointMode,
+            stalledDurationMs: error.stalledDurationMs,
+          });
+          continue;
+        }
+
+        logProjectUploadTiming("file failed", {
+          fileName: file.name,
+          fileSize: file.size,
+          attemptNumber,
+          durationMs: getProjectUploadDurationMs(totalStartedAt),
+          error: error instanceof Error ? error.message : "Unknown upload error",
+        });
+        throw error;
+      }
     }
-  }, []);
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Upload failed due to a slow storage connection. Please try again.");
+  }, [updateUploadProgress]);
 
   async function handleAttachmentSelection(files: FileList | null) {
     const selectedFiles = Array.from(files ?? []);
@@ -2225,27 +2689,59 @@ export function CreateProjectWorkspace({
     setPendingProjectFiles((current) => [...current, ...selectedFiles]);
 
     try {
-      for (const file of selectedFiles) {
-        const attachment = await uploadProjectAsset(file, initialValues.id);
-        setProjectAttachments((current) =>
-          current.some((item) => item.id === attachment.id)
-            ? current
-            : [...current, attachment],
-        );
-        setPendingProjectFiles((current) =>
-          current.filter((pendingFile) => pendingFile !== file),
-        );
+      const progressFiles = selectedFiles.map((file, index) => ({
+        key: `project-edit-${Date.now()}-${index}-${file.name}-${file.size}`,
+        file,
+      }));
+      const batchStartedAt = getProjectUploadNow();
+      beginUploadProgress(progressFiles);
+      logProjectUploadTiming("project file batch started", {
+        fileCount: selectedFiles.length,
+        concurrency: PROJECT_ASSET_UPLOAD_CONCURRENCY,
+        mode,
+      });
+      const failures = await runWithConcurrency(
+        progressFiles,
+        PROJECT_ASSET_UPLOAD_CONCURRENCY,
+        async ({ file, key }) => {
+          try {
+          const attachment = await uploadProjectAsset(file, initialValues.id, {
+            progressKey: key,
+          });
+          setProjectAttachments((current) =>
+            current.some((item) => item.id === attachment.id)
+              ? current
+              : [...current, attachment],
+          );
+          setPendingProjectFiles((current) =>
+            current.filter((pendingFile) => pendingFile !== file),
+          );
+          completeUploadProgress(key, file);
+          } catch (error) {
+            failUploadProgress(key);
+            throw error;
+          }
+        },
+      );
+      if (failures.length > 0) {
+        throw new Error(getBatchUploadErrorMessage(failures, progressFiles.length));
       }
+      logProjectUploadTiming("project file batch completed", {
+        fileCount: selectedFiles.length,
+        durationMs: getProjectUploadDurationMs(batchStartedAt),
+        mode,
+      });
       refreshProjectData();
     } catch (error) {
-      setAttachmentError(
-        error instanceof Error ? error.message : "Unable to upload the project attachments right now.",
-      );
+      const message = getAttachmentUploadErrorMessage(error);
+      setAttachmentError(message);
+      showErrorToast("Unable to upload project attachments.", message);
       setPendingProjectFiles((current) =>
         current.filter((pendingFile) => !selectedFiles.includes(pendingFile)),
       );
     } finally {
       setIsUploadingAttachments(false);
+      resetUploadProgress();
 
       if (attachmentInputRef.current) {
         attachmentInputRef.current.value = "";
@@ -2288,33 +2784,63 @@ export function CreateProjectWorkspace({
     setIsUploadingAttachments(true);
 
     try {
-      for (const file of selectedFiles) {
-        const attachment = await uploadProjectAsset(file, initialValues.id, {
-          stageId: stage.persistedId,
-        });
-        setStages((current) =>
-          current.map((item) =>
-            item.id === stageId
-              ? {
-                  ...item,
-                  attachments: item.attachments.some(
-                    (existingAttachment) => existingAttachment.id === attachment.id,
-                  )
-                    ? item.attachments
-                    : [...item.attachments, attachment],
-                  pendingFiles: item.pendingFiles.filter((pendingFile) => pendingFile !== file),
-                }
-              : item,
-          ),
-        );
+      const progressFiles = selectedFiles.map((file, index) => ({
+        key: `stage-edit-${stageId}-${Date.now()}-${index}-${file.name}-${file.size}`,
+        file,
+      }));
+      const batchStartedAt = getProjectUploadNow();
+      beginUploadProgress(progressFiles);
+      logProjectUploadTiming("stage file batch started", {
+        fileCount: selectedFiles.length,
+        concurrency: PROJECT_ASSET_UPLOAD_CONCURRENCY,
+        mode,
+        stageId: stage.persistedId,
+      });
+      const failures = await runWithConcurrency(
+        progressFiles,
+        PROJECT_ASSET_UPLOAD_CONCURRENCY,
+        async ({ file, key }) => {
+          try {
+          const attachment = await uploadProjectAsset(file, initialValues.id, {
+            stageId: stage.persistedId,
+            progressKey: key,
+          });
+          setStages((current) =>
+            current.map((item) =>
+              item.id === stageId
+                ? {
+                    ...item,
+                    attachments: item.attachments.some(
+                      (existingAttachment) => existingAttachment.id === attachment.id,
+                    )
+                      ? item.attachments
+                      : [...item.attachments, attachment],
+                    pendingFiles: item.pendingFiles.filter((pendingFile) => pendingFile !== file),
+                  }
+                : item,
+            ),
+          );
+          completeUploadProgress(key, file);
+          } catch (error) {
+            failUploadProgress(key);
+            throw error;
+          }
+        },
+      );
+      if (failures.length > 0) {
+        throw new Error(getBatchUploadErrorMessage(failures, progressFiles.length));
       }
+      logProjectUploadTiming("stage file batch completed", {
+        fileCount: selectedFiles.length,
+        durationMs: getProjectUploadDurationMs(batchStartedAt),
+        mode,
+        stageId: stage.persistedId,
+      });
       refreshProjectData();
     } catch (error) {
-      setAttachmentError(
-        error instanceof Error
-          ? error.message
-          : "Unable to upload the stage brief attachments right now.",
-      );
+      const message = getAttachmentUploadErrorMessage(error);
+      setAttachmentError(message);
+      showErrorToast("Unable to upload stage attachments.", message);
       setStages((current) =>
         current.map((item) =>
           item.id === stageId
@@ -2329,27 +2855,90 @@ export function CreateProjectWorkspace({
       );
     } finally {
       setIsUploadingAttachments(false);
+      resetUploadProgress();
     }
   }
 
-  const uploadQueuedStageAttachments = useCallback(async (
-    projectId: string,
-    orderedStageIds: string[],
-  ) => {
-    for (const [index, stage] of stages.entries()) {
+  const uploadQueuedAttachments = useCallback(async ({
+    projectId,
+    orderedStageIds,
+    projectFiles,
+    stageSnapshot,
+  }: {
+    projectId: string;
+    orderedStageIds: string[];
+    projectFiles: File[];
+    stageSnapshot: StageForm[];
+  }) => {
+    const batchKey = `${projectId}-${Date.now()}`;
+    const projectTasks = projectFiles.map((file, index) => ({
+      file,
+      progressKey: `${batchKey}-project-${index}-${file.name}-${file.size}`,
+      stageFormId: null as string | null,
+      stageId: null as string | null,
+    }));
+    const stageTasks = stageSnapshot.flatMap((stage, index) => {
       const persistedStageId = stage.persistedId ?? orderedStageIds[index];
 
-      if (!persistedStageId || stage.pendingFiles.length === 0) {
-        continue;
+      if (!persistedStageId) {
+        return [];
       }
 
-      for (const file of stage.pendingFiles) {
-        const attachment = await uploadProjectAsset(file, projectId, {
-          stageId: persistedStageId,
-        });
+      return stage.pendingFiles.map((file, fileIndex) => ({
+        file,
+        progressKey: `${batchKey}-stage-${index}-${fileIndex}-${file.name}-${file.size}`,
+        stageFormId: stage.id,
+        stageId: persistedStageId,
+      }));
+    });
+    const uploadTasks = [...projectTasks, ...stageTasks];
+
+    if (uploadTasks.length === 0) {
+      return;
+    }
+
+    const batchStartedAt = getProjectUploadNow();
+    beginUploadProgress(uploadTasks.map((task) => ({
+      key: task.progressKey,
+      file: task.file,
+    })));
+    logProjectUploadTiming("queued batch started", {
+      fileCount: uploadTasks.length,
+      projectFileCount: projectTasks.length,
+      stageFileCount: stageTasks.length,
+      concurrency: PROJECT_ASSET_UPLOAD_CONCURRENCY,
+    });
+
+    const failures = await runWithConcurrency(
+      uploadTasks,
+      PROJECT_ASSET_UPLOAD_CONCURRENCY,
+      async (task) => {
+        try {
+        const attachment = await uploadProjectAsset(
+          task.file,
+          projectId,
+          task.stageId
+            ? { stageId: task.stageId, progressKey: task.progressKey }
+            : { progressKey: task.progressKey },
+        );
+
+        if (!task.stageFormId || !task.stageId) {
+          setProjectAttachments((current) =>
+            current.some((item) => item.id === attachment.id)
+              ? current
+              : [...current, attachment],
+          );
+          setPendingProjectFiles((current) =>
+            current.filter((pendingFile) => pendingFile !== task.file),
+          );
+          completeUploadProgress(task.progressKey, task.file);
+          return;
+        }
+
+        const persistedStageId = task.stageId;
         setStages((current) =>
           current.map((item) =>
-            item.id === stage.id
+            item.id === task.stageFormId
               ? {
                   ...item,
                   persistedId: persistedStageId,
@@ -2358,14 +2947,36 @@ export function CreateProjectWorkspace({
                   )
                     ? item.attachments
                     : [...item.attachments, attachment],
-                  pendingFiles: item.pendingFiles.filter((pendingFile) => pendingFile !== file),
+                  pendingFiles: item.pendingFiles.filter(
+                    (pendingFile) => pendingFile !== task.file,
+                  ),
                 }
               : item,
           ),
         );
-      }
+        completeUploadProgress(task.progressKey, task.file);
+        } catch (error) {
+          failUploadProgress(task.progressKey);
+          throw error;
+        }
+      },
+    );
+    if (failures.length > 0) {
+      throw new Error(getBatchUploadErrorMessage(failures, uploadTasks.length));
     }
-  }, [stages, uploadProjectAsset]);
+
+    logProjectUploadTiming("queued batch completed", {
+      fileCount: uploadTasks.length,
+      projectFileCount: projectTasks.length,
+      stageFileCount: stageTasks.length,
+      durationMs: getProjectUploadDurationMs(batchStartedAt),
+    });
+  }, [
+    beginUploadProgress,
+    completeUploadProgress,
+    failUploadProgress,
+    uploadProjectAsset,
+  ]);
 
   function removePendingProjectFile(index: number) {
     clearFieldError("attachments");
@@ -2514,9 +3125,11 @@ export function CreateProjectWorkspace({
 
     const projectId = formState.projectId;
     const createdStageIds = formState.createdStageIds ?? [];
-    const hasPendingStageFiles = stages.some((stage) => stage.pendingFiles.length > 0);
+    const projectFilesSnapshot = pendingProjectFilesRef.current;
+    const stageSnapshot = stagesRef.current;
+    const hasPendingStageFiles = stageSnapshot.some((stage) => stage.pendingFiles.length > 0);
 
-    if (pendingProjectFiles.length === 0 && !hasPendingStageFiles) {
+    if (projectFilesSnapshot.length === 0 && !hasPendingStageFiles) {
       showSuccessToast("Project created successfully.");
       router.replace(`/projects/${projectId}`);
       return;
@@ -2529,11 +3142,12 @@ export function CreateProjectWorkspace({
       setAttachmentError(undefined);
 
       try {
-        for (const file of pendingProjectFiles) {
-          await uploadProjectAsset(file, projectId);
-        }
-
-        await uploadQueuedStageAttachments(projectId, createdStageIds);
+        await uploadQueuedAttachments({
+          projectId,
+          orderedStageIds: createdStageIds,
+          projectFiles: projectFilesSnapshot,
+          stageSnapshot,
+        });
 
         if (cancelled) {
           return;
@@ -2554,19 +3168,19 @@ export function CreateProjectWorkspace({
           return;
         }
 
+        const message = getAttachmentUploadErrorMessage(error);
         setAttachmentError(
-          error instanceof Error
-            ? `${error.message} The project was created, but the attachment upload did not finish. You can retry from edit mode.`
-            : "The project was created, but the attachment upload did not finish. You can retry from edit mode.",
+          `${message} The project was created, but the attachment upload did not finish. You can retry from edit mode.`,
         );
         showErrorToast(
           "Project created, but attachment upload failed.",
-          "You can retry the attachment upload from edit mode.",
+          message,
         );
         router.replace(`/projects/${projectId}/edit`);
       } finally {
         if (!cancelled) {
           setIsUploadingAttachments(false);
+          resetUploadProgress();
         }
       }
     }
@@ -2580,11 +3194,9 @@ export function CreateProjectWorkspace({
     formState.createdStageIds,
     formState.projectId,
     mode,
-    pendingProjectFiles,
     router,
-    stages,
-    uploadQueuedStageAttachments,
-    uploadProjectAsset,
+    uploadQueuedAttachments,
+    resetUploadProgress,
   ]);
 
   useEffect(() => {
@@ -2599,9 +3211,11 @@ export function CreateProjectWorkspace({
     handledEditProjectIdRef.current = formState.projectId;
     const projectId = formState.projectId;
     const updatedStageIds = formState.createdStageIds ?? [];
-    const hasPendingStageFiles = stages.some((stage) => stage.pendingFiles.length > 0);
+    const projectFilesSnapshot = pendingProjectFilesRef.current;
+    const stageSnapshot = stagesRef.current;
+    const hasPendingStageFiles = stageSnapshot.some((stage) => stage.pendingFiles.length > 0);
 
-    if (pendingProjectFiles.length === 0 && !hasPendingStageFiles) {
+    if (projectFilesSnapshot.length === 0 && !hasPendingStageFiles) {
       showSuccessToast("Project updated successfully.");
       router.replace(`/projects/${projectId}`);
       return;
@@ -2614,11 +3228,12 @@ export function CreateProjectWorkspace({
       setAttachmentError(undefined);
 
       try {
-        for (const file of pendingProjectFiles) {
-          await uploadProjectAsset(file, projectId);
-        }
-
-        await uploadQueuedStageAttachments(projectId, updatedStageIds);
+        await uploadQueuedAttachments({
+          projectId,
+          orderedStageIds: updatedStageIds,
+          projectFiles: projectFilesSnapshot,
+          stageSnapshot,
+        });
 
         if (cancelled) {
           return;
@@ -2639,18 +3254,18 @@ export function CreateProjectWorkspace({
           return;
         }
 
+        const message = getAttachmentUploadErrorMessage(error);
         setAttachmentError(
-          error instanceof Error
-            ? `${error.message} The project was saved, but one attachment upload did not finish.`
-            : "The project was saved, but one attachment upload did not finish.",
+          `${message} The project was saved, but one attachment upload did not finish.`,
         );
         showErrorToast(
           "Project saved, but attachment upload failed.",
-          "You can retry the attachment upload from edit mode.",
+          message,
         );
       } finally {
         if (!cancelled) {
           setIsUploadingAttachments(false);
+          resetUploadProgress();
         }
       }
     }
@@ -2664,11 +3279,9 @@ export function CreateProjectWorkspace({
     formState.createdStageIds,
     formState.projectId,
     mode,
-    pendingProjectFiles,
     router,
-    stages,
-    uploadQueuedStageAttachments,
-    uploadProjectAsset,
+    resetUploadProgress,
+    uploadQueuedAttachments,
   ]);
 
   async function removeProjectAttachment(attachmentId: string) {
@@ -3931,7 +4544,8 @@ export function CreateProjectWorkspace({
           <div className="hidden rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf7] px-4 pb-4 pt-1 2xl:block">
             <CreateProjectSubmitButton
               mode={mode}
-              uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
+              uploadPhase={isFormUploadPhase ? "uploading-assets" : null}
+              uploadProgress={uploadProgress}
             />
           </div>
         </CardContent>
@@ -4295,7 +4909,8 @@ export function CreateProjectWorkspace({
       <div className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf7] px-4 pb-4 pt-1 2xl:hidden">
         <CreateProjectSubmitButton
           mode={mode}
-          uploadPhase={isCreateUploadPhase ? "uploading-assets" : null}
+          uploadPhase={isFormUploadPhase ? "uploading-assets" : null}
+          uploadProgress={uploadProgress}
         />
       </div>
 
