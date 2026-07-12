@@ -1,7 +1,18 @@
+import { redirect } from "next/navigation";
+
 import { FluxAiWorkspace } from "@/components/flux-ai/flux-ai-workspace";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { requireUser } from "@/lib/auth";
+import { getRestrictedAreaFallbackRoute } from "@/lib/permissions/fallback-route";
+import { hasPermission } from "@/lib/permissions/resolver";
 
-export default function FluxAiPage() {
+export default async function FluxAiPage() {
+  const user = await requireUser();
+
+  if (!hasPermission(user, "fluxAi.view")) {
+    redirect(getRestrictedAreaFallbackRoute(user));
+  }
+
   return (
     <DashboardLayout>
       <FluxAiWorkspace />

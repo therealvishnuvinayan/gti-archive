@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Settings2,
   ShieldCheck,
+  Sparkles,
   UserRoundPlus,
   Users,
   Workflow,
@@ -82,6 +83,14 @@ export const quickStartItems: HelpQuickStartItem[] = [
     sectionId: "projects",
     icon: FolderKanban,
     keywords: ["project", "create", "brief", "budget", "priority", "category"],
+  },
+  {
+    id: "quick-flux-ai",
+    title: "Ask Flux AI",
+    description: "Use the AI assistant to search accessible projects, summarize status, and prepare draft projects.",
+    sectionId: "flux-ai",
+    icon: Sparkles,
+    keywords: ["flux ai", "ai assistant", "project search", "project draft", "create project with ai"],
   },
   {
     id: "quick-stage-budget",
@@ -157,6 +166,14 @@ export const helpTopics: HelpTopic[] = [
     sectionId: "projects",
     icon: FolderKanban,
     keywords: ["projects", "budget", "executor", "priority", "project overview"],
+  },
+  {
+    id: "topic-flux-ai",
+    title: "Flux AI",
+    description: "Use the permission-controlled AI assistant for project search, status summaries, blockers, and project drafts.",
+    sectionId: "flux-ai",
+    icon: Sparkles,
+    keywords: ["flux ai", "ai assistant", "project search", "project draft", "create project with ai"],
   },
   {
     id: "topic-stages",
@@ -264,6 +281,13 @@ export const recommendedGuides: HelpGuide[] = [
     description: "Create the project record, brief, category, executors, dates, and priority.",
     sectionId: "projects",
     keywords: ["create project", "brief", "executor", "main executor", "priority"],
+  },
+  {
+    id: "guide-flux-ai",
+    title: "How Flux AI works",
+    description: "Understand what Flux AI can help with, what it cannot do, and how permission-controlled access works.",
+    sectionId: "flux-ai",
+    keywords: ["flux ai", "ai assistant", "project search", "project draft", "create project with ai"],
   },
   {
     id: "guide-stage-budgets",
@@ -514,6 +538,84 @@ export const helpSections: HelpSection[] = [
     ],
     callout:
       "The core lifecycle is: create project, assign Main Executors and Executors, accept brief, discuss stage work, submit work, review or revise, complete stages, archive final files, and finish post-project documents.",
+  },
+  {
+    id: "flux-ai",
+    eyebrow: "AI Assistant",
+    title: "Flux AI",
+    summary:
+      "Flux AI is an AI assistant inside GTI Archive that helps permitted users find projects, summarize project status, understand blockers, and prepare project drafts.",
+    keywords: [
+      "flux ai",
+      "ai assistant",
+      "project search",
+      "project summary",
+      "project draft",
+      "create project with ai",
+      "approval blockers",
+      "archive readiness",
+    ],
+    blocks: [
+      {
+        title: "What Flux AI is",
+        items: [
+          "Flux AI is an AI assistant inside GTI Archive for project-focused questions and guided draft preparation.",
+          "It uses the current user's permissions, so answers should only include projects and fields the user is allowed to access.",
+          "It can restore recent Flux AI conversations for the same signed-in user when conversation persistence is enabled.",
+        ],
+      },
+      {
+        title: "What Flux AI can do now",
+        items: [
+          "Search accessible projects.",
+          "Count and summarize accessible projects.",
+          "Find projects by category, tag, owner, executor, or collaborator.",
+          "Find projects waiting for approval, copyright, invoice, or archive.",
+          "Explain what is blocking a project from archive where the user is allowed to see that information.",
+          "Prepare a project draft from natural language.",
+          "Ask for missing fields before creation.",
+          "Create a project only after explicit confirmation from the user.",
+          "Users with the required Flux AI permission can delete their own Flux AI chats from conversation history. Deleting a chat removes it from their history and does not affect projects created through Flux AI.",
+        ],
+      },
+      {
+        title: "What Flux AI cannot do",
+        items: [
+          "It cannot bypass permissions.",
+          "It cannot access Archives for CLIENT_OF_GTI accounts.",
+          "It cannot show hidden budget, vendor, participant, or archive data.",
+          "It cannot create a project without confirmation.",
+          "It cannot delete projects.",
+          "It cannot approve submissions.",
+          "It cannot upload files.",
+          "It cannot perform destructive actions.",
+        ],
+      },
+      {
+        title: "Access rules",
+        items: [
+          "Flux AI is controlled by the View Flux AI permission.",
+          "By default, only SUPER_ADMIN users can access Flux AI.",
+          "ADMIN and COLLABORATOR users need the Flux AI permission explicitly granted before they can see or use it.",
+          "All collaborator types are denied Flux AI access by default.",
+          "Hiding the sidebar item is not the only protection; the page and APIs are also permission-protected server-side.",
+        ],
+      },
+    ],
+    callout:
+      "Flux AI may make mistakes. Always review project drafts and important information before confirming actions.",
+    questions: [
+      {
+        question: "Can Flux AI show information I cannot normally access?",
+        answer:
+          "No. Flux AI must respect the same project, budget, participant, archive, and CLIENT_OF_GTI restrictions as the rest of GTI Archive.",
+      },
+      {
+        question: "Can Flux AI create a project from a prompt?",
+        answer:
+          "Flux AI can prepare a draft and show missing fields, but the project is created only after the user explicitly clicks Create Project.",
+      },
+    ],
   },
   {
     id: "project-lifecycle",
@@ -1397,9 +1499,18 @@ export const helpKeyTerms = [
     term: "Upload Assets",
     description: "A Dashboard flow for adding general project files into Library.",
   },
+  {
+    term: "Flux AI",
+    description: "A permission-controlled AI assistant for project search, status summaries, blockers, and draft project preparation.",
+  },
 ];
 
 export const helpSearchKeywords = [
+  "flux ai",
+  "ai assistant",
+  "project search",
+  "project draft",
+  "create project with ai",
   "create project",
   "project brief",
   "stage brief",

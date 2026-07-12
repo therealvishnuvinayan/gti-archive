@@ -1,22 +1,52 @@
+"use client";
+
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
-  ArrowRight,
-  Bot,
   Briefcase,
   CalendarDays,
-  CircleDollarSign,
   ClipboardCheck,
   FileText,
+  Languages,
+  Loader2,
+  Mic,
   MoreVertical,
   Paperclip,
+  Plus,
   Send,
   Sparkles,
-  UserRound,
-  UsersRound,
+  Square,
+  Trash2,
+  X,
 } from "lucide-react";
 
+import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  DEFAULT_CHAT_LANGUAGE,
+  SUPPORTED_CHAT_LANGUAGES,
+  getSupportedLanguageByCode,
+} from "@/lib/ai/languages";
+import type {
+  FluxAIChatResponse,
+  FluxAIConversationDetail,
+  FluxAIConversationSummary,
+  FluxAIDraftProject,
+  FluxAIProjectResult,
+  FluxAIProjectStatusSummary,
+} from "@/lib/flux-ai/types";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 const promptChips = [
@@ -24,74 +54,442 @@ const promptChips = [
   "View projects waiting for approval",
   "Find projects ready for archive",
 ];
+const COLLAPSED_MESSAGE_LINE_LIMIT = 6;
+const COLLAPSED_MESSAGE_CHARACTER_LIMIT = 760;
+const MAX_RECORDING_DURATION_MS = 60_000;
 
-const projectMatches = [
+type ChatEntry = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  time: string;
+};
+
+type ProjectCardView = {
+  name: string;
+  status: string;
+  statusClass: string;
+  stage: string;
+  stageClass: string;
+  stageDotClass: string;
+  owner: string;
+  ownerInitials: string;
+  ownerAvatarClass: string;
+  executor: string;
+  deadline: string;
+  href: string;
+  meta?: string[];
+};
+
+type TranslateApiResponse = {
+  sourceLanguageCode: string;
+  sourceLanguageName: string;
+  targetLanguageCode: string;
+  translatedText: string;
+  error?: string;
+};
+
+type TranscribeApiResponse = {
+  detectedSourceLanguage: string;
+  detectedSourceLanguageCode: string;
+  transcriptOriginal: string;
+  translatedText: string;
+  targetLanguageCode: string;
+  error?: string;
+};
+
+type ConversationsListApiResponse = {
+  conversations: FluxAIConversationSummary[];
+  latestConversationId: string | null;
+};
+
+type CreateConversationApiResponse = {
+  conversation: FluxAIConversationSummary;
+};
+
+const initialChatMessages: ChatEntry[] = [
   {
-    name: "Milano Ramadan Campaign 2026",
-    status: "Active",
+    id: "flux-ai-welcome",
+    role: "assistant",
+    content: "Welcome to Flux AI. Ask me to find projects, summarize status, or prepare a project draft.",
+    time: "Now",
+  },
+];
+
+function cloneDraftProject(draftProject: FluxAIDraftProject) {
+  return {
+    ...draftProject,
+    tags: [...draftProject.tags],
+    collaborators: [...draftProject.collaborators],
+    stages: draftProject.stages.map((stage) => ({ ...stage })),
+    collaboratorMatches: draftProject.collaboratorMatches?.map((match) => ({
+      ...match,
+      candidates: match.candidates.map((candidate) => ({ ...candidate })),
+    })),
+    mainExecutorMatch: draftProject.mainExecutorMatch
+      ? {
+          ...draftProject.mainExecutorMatch,
+          candidates: draftProject.mainExecutorMatch.candidates.map((candidate) => ({
+            ...candidate,
+          })),
+        }
+      : draftProject.mainExecutorMatch,
+    missingFields: draftProject.missingFields ? [...draftProject.missingFields] : undefined,
+    warnings: draftProject.warnings ? [...draftProject.warnings] : undefined,
+  } satisfies FluxAIDraftProject;
+}
+
+function splitCommaList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function joinCommaList(value: string[]) {
+  return value.join(", ");
+}
+
+function parseOptionalNumber(value: string) {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const parsedValue = Number(normalizedValue.replace(/,/g, ""));
+
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+}
+
+function formatOptionalNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
+function toDateInputValue(value: string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  return value.includes("T") ? value.slice(0, 10) : value;
+}
+
+function isLongChatContent(content: string) {
+  return (
+    content.length > COLLAPSED_MESSAGE_CHARACTER_LIMIT ||
+    content.split(/\r?\n/).length > COLLAPSED_MESSAGE_LINE_LIMIT
+  );
+}
+
+function getCollapsedChatContent(content: string) {
+  const lines = content.split(/\r?\n/);
+  const previewByLines = lines.slice(0, COLLAPSED_MESSAGE_LINE_LIMIT).join("\n");
+
+  if (lines.length > COLLAPSED_MESSAGE_LINE_LIMIT) {
+    return previewByLines;
+  }
+
+  if (content.length > COLLAPSED_MESSAGE_CHARACTER_LIMIT) {
+    return `${content.slice(0, COLLAPSED_MESSAGE_CHARACTER_LIMIT).trimEnd()}...`;
+  }
+
+  return content;
+}
+
+function formatChatTime() {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date());
+}
+
+function formatConversationTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatPersistedChatTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function createMessageId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function mapConversationMessagesToChatEntries(
+  detail: FluxAIConversationDetail,
+): ChatEntry[] {
+  const entries = detail.messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      id: message.id,
+      role: message.role === "user" ? "user" : "assistant",
+      content: message.content,
+      time: formatPersistedChatTime(message.createdAt),
+    }) satisfies ChatEntry);
+
+  return entries.length > 0 ? entries : initialChatMessages;
+}
+
+function getConversationIdFromUrl() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return new URL(window.location.href).searchParams.get("conversation");
+}
+
+function replaceConversationUrl(conversationId: string | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+
+  if (conversationId) {
+    url.searchParams.set("conversation", conversationId);
+  } else {
+    url.searchParams.delete("conversation");
+  }
+
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function getInitials(value: string) {
+  const words = value
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return "AI";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function getStatusTone(status: string, statusGroup: string | null) {
+  const statusValue = `${status} ${statusGroup ?? ""}`.toLowerCase();
+
+  if (statusValue.includes("hold")) {
+    return {
+      statusClass: "bg-[#fff1da] text-[#b66b14]",
+      stageClass: "text-[#5d4826]",
+      stageDotClass: "bg-[#f0a23b]",
+    };
+  }
+
+  if (statusValue.includes("pending") || statusValue.includes("approval")) {
+    return {
+      statusClass: "bg-[#e0f0fb] text-[#166cae]",
+      stageClass: "text-[#176dab]",
+      stageDotClass: "bg-[#69b9ef]",
+    };
+  }
+
+  if (statusValue.includes("completed") || statusValue.includes("archive")) {
+    return {
+      statusClass: "bg-[#eef0ef] text-[#506057]",
+      stageClass: "text-[#506057]",
+      stageDotClass: "bg-[#a8b2aa]",
+    };
+  }
+
+  return {
     statusClass: "bg-[#e4f6e9] text-[#1f7a4c]",
-    stage: "Design Development",
     stageClass: "text-[#236c49]",
     stageDotClass: "bg-[#36a767]",
-    owner: "Sara Malik",
-    ownerInitials: "SM",
-    ownerAvatarClass: "bg-[#f3d7c9] text-[#7c3f28]",
-    executor: "QA Agency 01",
-    deadline: "28 Jun 2026",
-  },
-  {
-    name: "GTI Premium Blend Packaging",
-    status: "On Hold",
-    statusClass: "bg-[#fff1da] text-[#b66b14]",
-    stage: "Artwork Review",
-    stageClass: "text-[#5d4826]",
-    stageDotClass: "bg-[#f0a23b]",
-    owner: "Yasir Khan",
-    ownerInitials: "YK",
-    ownerAvatarClass: "bg-[#e6d7c9] text-[#5a3925]",
-    executor: "QA Agency 01",
-    deadline: "12 Jul 2026",
-  },
-  {
-    name: "Heritage Series Rebrand",
-    status: "Pending Approval",
-    statusClass: "bg-[#e0f0fb] text-[#166cae]",
-    stage: "Client Review",
-    stageClass: "text-[#176dab]",
-    stageDotClass: "bg-[#69b9ef]",
-    owner: "Ayesha Noor",
-    ownerInitials: "AN",
-    ownerAvatarClass: "bg-[#f2dfb9] text-[#6f501a]",
-    executor: "QA Agency 01",
-    deadline: "03 Aug 2026",
-  },
-];
+  };
+}
 
-const extractedDetails = [
-  { label: "Project Name", value: "Milano Ramadan Campaign", icon: FileText },
-  { label: "Category", value: "Packaging", icon: Briefcase },
-  { label: "Budget", value: "150,000", icon: CircleDollarSign },
-  { label: "Currency", value: "AED", icon: CircleDollarSign },
-  { label: "Main Executor", value: "QA Agency 01", icon: UserRound },
-];
+function mapProjectResultToCard(
+  project: FluxAIProjectResult,
+  index: number,
+): ProjectCardView {
+  const tone = getStatusTone(project.status, project.statusGroup);
+  const meta = [
+    project.budgetLabel ? `Budget ${project.budgetLabel}` : null,
+    project.readyForArchive ? "Ready for archive" : null,
+    project.overdueStages?.length
+      ? `${project.overdueStages.length} overdue stage${project.overdueStages.length === 1 ? "" : "s"}`
+      : null,
+    project.blockersSummary
+      ? project.blockersSummary
+      : project.archiveBlockers?.length
+        ? `${project.archiveBlockers.length} archive blocker${project.archiveBlockers.length === 1 ? "" : "s"}`
+      : null,
+  ].filter((item): item is string => Boolean(item));
 
-const suggestions = [
-  {
-    title: "View projects waiting for approval",
-    meta: "4 projects need your review",
-    icon: ClipboardCheck,
-  },
-  {
-    title: "Find projects ready for archive",
-    meta: "6 projects are ready",
-    icon: Briefcase,
-  },
-  {
-    title: "Show overdue stages",
-    meta: "3 stages are overdue",
-    icon: CalendarDays,
-  },
-];
+  return {
+    name: project.name,
+    status: project.status,
+    owner: project.owner,
+    ownerInitials: getInitials(project.owner),
+    ownerAvatarClass:
+      index % 3 === 0
+        ? "bg-[#f3d7c9] text-[#7c3f28]"
+        : index % 3 === 1
+          ? "bg-[#e6d7c9] text-[#5a3925]"
+          : "bg-[#f2dfb9] text-[#6f501a]",
+    executor: project.executor,
+    deadline: project.deadline,
+    stage: project.currentStage,
+    href: project.href,
+    meta,
+    ...tone,
+  };
+}
+
+function getDraftCollaboratorLabels(draftProject: FluxAIDraftProject | null | undefined) {
+  if (!draftProject?.collaboratorMatches?.length) {
+    return draftProject?.collaborators ?? [];
+  }
+
+  return draftProject.collaboratorMatches.map(
+    (match) => match.selectedName || match.requestedName || "Unresolved collaborator",
+  );
+}
+
+function getDraftWarnings(response: FluxAIChatResponse | null) {
+  return [
+    ...(response?.warnings ?? []),
+    ...(response?.draftProject?.warnings ?? []),
+  ].filter((warning, index, warnings) => warnings.indexOf(warning) === index);
+}
+
+function getProjectStageParts(project: FluxAIProjectResult) {
+  const [stageName, ...statusParts] = project.currentStage.split(/\s+:\s+/);
+
+  return {
+    stageName: stageName?.trim() || project.currentStage,
+    stageStatus: statusParts.join(" : ").trim() || project.status,
+  };
+}
+
+function hasFluxResultContent(response: FluxAIChatResponse | null) {
+  if (!response) {
+    return false;
+  }
+
+  return Boolean(
+    shouldShowProjectMatches(response) ||
+      response.projectStatus ||
+      response.type === "created_project" ||
+      response.draftProject ||
+      response.blockers?.length,
+  );
+}
+
+function shouldShowProjectMatches(response: FluxAIChatResponse | null) {
+  if (!response || response.intent === "project_count_summary") {
+    return false;
+  }
+
+  return (
+    response.type === "project_results" ||
+    response.intent === "project_search" ||
+    response.intent === "ready_for_archive" ||
+    response.intent === "overdue_stages" ||
+    response.intent === "archive_blockers"
+  );
+}
+
+function ProjectResultDetailCard({
+  project,
+}: {
+  project: FluxAIProjectResult;
+}) {
+  const tone = getStatusTone(project.status, project.statusGroup);
+  const stage = getProjectStageParts(project);
+  const blockerSummary =
+    project.blockersSummary ||
+    (project.archiveBlockers?.length
+      ? project.archiveBlockers.slice(0, 2).join(" ")
+      : null);
+
+  const details: Array<[string, string]> = [
+    ["Category", project.category],
+    ["Current Stage", stage.stageName],
+    ["Stage Status", stage.stageStatus],
+    ["Owner", project.owner],
+    ["Executor", project.executor],
+    ["Deadline", project.deadline],
+    ...(project.budgetLabel ? ([["Budget", project.budgetLabel]] as Array<[string, string]>) : []),
+  ];
+
+  return (
+    <article className="rounded-[22px] border border-[#dfe8dd] bg-white p-5 shadow-[0_16px_36px_rgba(23,39,28,0.045)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[12px] font-extrabold uppercase text-[#6f7a72]">
+            Project Result Detail
+          </p>
+          <h3 className="mt-2 text-[20px] font-extrabold leading-6 text-[#111712]">
+            {project.name}
+          </h3>
+        </div>
+        <span
+          className={cn(
+            "inline-flex shrink-0 rounded-full px-3 py-1 text-[12px] font-extrabold",
+            tone.statusClass,
+          )}
+        >
+          {project.status}
+        </span>
+      </div>
+
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2">
+        {details.map(([label, value]) => (
+          <div
+            key={label}
+            className="min-w-0 rounded-[16px] border border-[#e2e9e0] bg-[#f9fbf8] p-4"
+          >
+            <dt className="text-[12px] font-semibold text-[#7a847c]">{label}</dt>
+            <dd
+              className={cn(
+                "mt-1 min-w-0 text-[14px] font-extrabold leading-5 text-[#17211a]",
+                label === "Stage Status" ? tone.stageClass : "",
+              )}
+            >
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {blockerSummary || project.readyForArchive || project.overdueStages?.length ? (
+        <div className="mt-4 rounded-[18px] bg-[#f7faf6] p-4 text-[13px] font-semibold leading-5 text-[#536057]">
+          {project.readyForArchive ? <p>Ready for archive.</p> : null}
+          {project.overdueStages?.length ? (
+            <p>
+              {project.overdueStages.length} overdue stage
+              {project.overdueStages.length === 1 ? "" : "s"} returned.
+            </p>
+          ) : null}
+          {blockerSummary ? <p>{blockerSummary}</p> : null}
+        </div>
+      ) : null}
+
+      <Button asChild size="sm" className="mt-5 min-h-11 w-full text-[13px]">
+        <Link href={project.href}>View Project</Link>
+      </Button>
+    </article>
+  );
+}
 
 function Panel({
   children,
@@ -122,14 +520,18 @@ function PanelIcon({ children }: { children: React.ReactNode }) {
 
 function ChatMessage({
   role,
-  children,
+  content,
   time,
 }: {
   role: "user" | "assistant";
-  children: React.ReactNode;
+  content: string;
   time: string;
 }) {
   const isUser = role === "user";
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isLongMessage = isLongChatContent(content);
+  const displayContent =
+    isLongMessage && !isExpanded ? getCollapsedChatContent(content) : content;
 
   return (
     <div
@@ -152,7 +554,16 @@ function ChatMessage({
             : "border-[#e4e9e2] bg-white text-[#4d5850]",
         )}
       >
-        <p>{children}</p>
+        <p className="whitespace-pre-line break-words">{displayContent}</p>
+        {isLongMessage ? (
+          <button
+            type="button"
+            onClick={() => setIsExpanded((current) => !current)}
+            className="mt-3 text-[12px] font-extrabold text-brand transition-colors hover:text-[#123f2d]"
+          >
+            {isExpanded ? "Show less" : "Show full message"}
+          </button>
+        ) : null}
         <div
           className={cn(
             "mt-2 flex items-center gap-1.5 text-[11px]",
@@ -170,7 +581,7 @@ function ChatMessage({
 function ProjectMatchCard({
   project,
 }: {
-  project: (typeof projectMatches)[number];
+  project: ProjectCardView;
 }) {
   return (
     <article className="flex min-h-[286px] min-w-0 flex-col rounded-[18px] border border-[#e1e7df] bg-white p-4 shadow-[0_12px_28px_rgba(23,39,28,0.035)]">
@@ -231,17 +642,1601 @@ function ProjectMatchCard({
         </div>
       </dl>
 
+      {project.meta?.length ? (
+        <div className="mt-4 space-y-1.5 rounded-[14px] bg-[#f7faf6] p-3 text-[11px] font-semibold text-[#667168]">
+          {project.meta.slice(0, 2).map((item) => (
+            <p key={item}>{item}</p>
+          ))}
+        </div>
+      ) : null}
+
       <Button asChild size="sm" className="mt-auto min-h-10 w-full text-[13px]">
-        <Link href="#">View Project</Link>
+        <Link href={project.href}>View Project</Link>
       </Button>
     </article>
   );
 }
 
-export function FluxAiWorkspace() {
+function StatusSummaryPanel({
+  status,
+  blockers,
+}: {
+  status: FluxAIProjectStatusSummary;
+  blockers: string[];
+}) {
+  const readinessLabel: Record<FluxAIProjectStatusSummary["archiveReadiness"], string> = {
+    ready: "Ready for archive",
+    blocked: "Blocked",
+    completed: "Completed",
+    restricted: "Restricted",
+    not_ready: "Not ready",
+  };
+
+  return (
+    <Panel className="p-5">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <PanelIcon>
+            <ClipboardCheck className="h-5 w-5" />
+          </PanelIcon>
+          <div className="min-w-0">
+            <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
+              Status Summary
+            </h2>
+            <p className="truncate text-[13px] font-medium text-[#667168]">
+              {status.projectName}
+            </p>
+          </div>
+        </div>
+        <Button asChild size="sm" variant="outline" className="min-h-10 shrink-0">
+          <Link href={status.href}>View Project</Link>
+        </Button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[
+          ["Current Stage", status.currentStage],
+          ["Stage Status", status.stageStatus],
+          ["Pending Review", status.pendingReviewLabel],
+          ["Archive", readinessLabel[status.archiveReadiness]],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-[16px] border border-[#e2e9e0] bg-[#f9fbf8] p-4">
+            <p className="text-[12px] font-semibold text-[#7a847c]">{label}</p>
+            <p className="mt-1 text-[14px] font-extrabold text-[#17211a]">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+        {[
+          ["Approval", status.approvalStatus],
+          ["Copyright", status.copyrightStatus],
+          ["Invoice", status.invoiceStatus],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-[16px] border border-[#e2e9e0] bg-white p-4">
+            <p className="text-[12px] font-semibold text-[#7a847c]">{label}</p>
+            <p className="mt-1 text-[14px] font-extrabold text-[#17211a]">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-[16px] border border-[#dfe8dd] bg-[#fbfcfa] p-4">
+        <p className="text-[12px] font-semibold text-[#7a847c]">Next Action</p>
+        <p className="mt-1 text-[14px] font-bold leading-6 text-[#263129]">
+          {status.nextRecommendedAction}
+        </p>
+      </div>
+
+      {blockers.length > 0 ? (
+        <div className="mt-4 rounded-[18px] bg-[#fff4f4] p-4">
+          <h3 className="text-[13px] font-extrabold text-[#bd4d45]">Blockers</h3>
+          <ul className="mt-3 space-y-2 text-[12px] font-semibold text-[#5b403d]">
+            {blockers.map((blocker) => (
+              <li key={blocker} className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#d45e55]" />
+                <span>{blocker}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </Panel>
+  );
+}
+
+function CreatedProjectPanel({
+  href,
+}: {
+  href: string | undefined;
+}) {
+  return (
+    <Panel className="p-5">
+      <div className="flex items-start gap-3">
+        <PanelIcon>
+          <ClipboardCheck className="h-5 w-5" />
+        </PanelIcon>
+        <div className="min-w-0">
+          <h2 className="text-[18px] font-extrabold leading-tight text-[#111712]">
+            Project Created
+          </h2>
+          <p className="mt-1 text-[13px] font-medium leading-5 text-[#667168]">
+            The project was created after confirmation.
+          </p>
+        </div>
+      </div>
+
+      {href ? (
+        <Button asChild size="sm" className="mt-5 min-h-11 w-full">
+          <Link href={href}>View Project</Link>
+        </Button>
+      ) : null}
+    </Panel>
+  );
+}
+
+function DraftSection({
+  title,
+  children,
+  missingFields = [],
+}: {
+  title: string;
+  children: React.ReactNode;
+  missingFields?: string[];
+}) {
+  return (
+    <section className="rounded-[20px] border border-[#e3eae1] bg-[#fbfcfa] p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[14px] font-extrabold text-[#17211a]">{title}</h3>
+        {missingFields.length ? (
+          <span className="rounded-full bg-[#fff0ef] px-2.5 py-1 text-[11px] font-extrabold text-[#bd4d45]">
+            Missing {missingFields.length}
+          </span>
+        ) : null}
+      </div>
+      {children}
+      {missingFields.length ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {missingFields.map((field) => (
+            <span
+              key={field}
+              className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-[#bd4d45]"
+            >
+              {field}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function DraftDetail({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="min-w-0">
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(430px,1.05fr)]">
+      <p className="text-[12px] font-semibold text-[#7a847c]">{label}</p>
+      <div className="mt-1 break-words text-[13px] font-extrabold leading-5 text-[#202922]">
+        {value || "Not set"}
+      </div>
+    </div>
+  );
+}
+
+function getSectionMissingFields(missingFields: string[], patterns: RegExp[]) {
+  return missingFields.filter((field) => patterns.some((pattern) => pattern.test(field)));
+}
+
+function DraftProjectPreviewPanel({
+  draftProject,
+  missingFields,
+  warnings,
+  createError,
+  canCreateDraftProject,
+  isCreatingProject,
+  onCreate,
+  onEdit,
+  onCancel,
+}: {
+  draftProject: FluxAIDraftProject;
+  missingFields: string[];
+  warnings: string[];
+  createError: string | null;
+  canCreateDraftProject: boolean;
+  isCreatingProject: boolean;
+  onCreate: () => void;
+  onEdit: () => void;
+  onCancel: () => void;
+}) {
+  const collaboratorLabels = getDraftCollaboratorLabels(draftProject);
+  const statusIsReady = Boolean(draftProject.canCreate) && missingFields.length === 0;
+  const projectMissing = getSectionMissingFields(missingFields, [
+    /Project Name/i,
+    /Category/i,
+    /Tags?/i,
+    /Brief/i,
+    /Execution/i,
+  ]);
+  const timelineMissing = getSectionMissingFields(missingFields, [
+    /Start Date/i,
+    /End Date/i,
+    /Timeline/i,
+    /Budget/i,
+    /Currency/i,
+  ]);
+  const executorMissing = getSectionMissingFields(missingFields, [/Executor/i]);
+  const collaboratorMissing = getSectionMissingFields(missingFields, [/Collaborator/i]);
+  const stageMissing = getSectionMissingFields(missingFields, [/Stage/i]);
+
+  return (
+    <Panel className="p-5">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <PanelIcon>
+            <FileText className="h-5 w-5" />
+          </PanelIcon>
+          <div className="min-w-0">
+            <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
+              Draft Project Preview
+            </h2>
+            <p className="text-[13px] font-medium text-[#667168]">
+              Review extracted details before creating.
+            </p>
+          </div>
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-3 py-1 text-[12px] font-extrabold",
+            statusIsReady ? "bg-[#e4f6e9] text-[#1f7a4c]" : "bg-[#fff0ef] text-[#bd4d45]",
+          )}
+        >
+          {statusIsReady
+            ? "Ready to create"
+            : `Missing ${missingFields.length} field${missingFields.length === 1 ? "" : "s"}`}
+        </span>
+      </div>
+
+      {missingFields.length ? (
+        <div className="mb-4 rounded-[18px] border border-[#f2d2d0] bg-[#fff6f5] p-4">
+          <h3 className="text-[13px] font-extrabold text-[#bd4d45]">Missing Fields</h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {missingFields.map((field) => (
+              <span
+                key={field}
+                className="rounded-full bg-white px-3 py-1 text-[12px] font-bold text-[#bd4d45]"
+              >
+                {field}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-4">
+        <DraftSection title="Project Details" missingFields={projectMissing}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DraftDetail label="Project Name" value={draftProject.projectName} />
+            <DraftDetail label="Category" value={draftProject.category} />
+            <DraftDetail
+              label="Execution"
+              value={
+                draftProject.executionType === "INTERNAL"
+                  ? "Internal"
+                  : draftProject.executionType === "EXTERNAL"
+                    ? "External"
+                    : "Not set"
+              }
+            />
+            <DraftDetail
+              label="Tags"
+              value={draftProject.tags.length ? draftProject.tags.join(", ") : "Not set"}
+            />
+          </div>
+          <div className="mt-3">
+            <DraftDetail label="Project Brief" value={draftProject.projectBrief} />
+          </div>
+        </DraftSection>
+
+        <DraftSection title="Timeline & Budget" missingFields={timelineMissing}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DraftDetail label="Start Date" value={draftProject.startDate} />
+            <DraftDetail label="End Date" value={draftProject.endDate} />
+            <DraftDetail
+              label="Budget Required"
+              value={draftProject.budgetRequired === false ? "No" : "Yes"}
+            />
+            <DraftDetail
+              label="Budget"
+              value={
+                draftProject.budgetRequired
+                  ? `${draftProject.budget?.toLocaleString("en-US") ?? "Not set"} ${draftProject.currency ?? ""}`.trim()
+                  : "Not required"
+              }
+            />
+          </div>
+        </DraftSection>
+
+        <DraftSection title="Main Executor" missingFields={executorMissing}>
+          <DraftDetail
+            label="Executor"
+            value={
+              draftProject.mainExecutorMatch?.selectedName ||
+              draftProject.mainExecutor ||
+              "Not set"
+            }
+          />
+          {draftProject.mainExecutorMatch?.status &&
+          draftProject.mainExecutorMatch.status !== "matched" ? (
+            <p className="mt-2 text-[12px] font-semibold text-[#9a681b]">
+              Match status: {draftProject.mainExecutorMatch.status.replace("_", " ")}
+            </p>
+          ) : null}
+        </DraftSection>
+
+        <DraftSection title="Collaborators" missingFields={collaboratorMissing}>
+          {collaboratorLabels.length ? (
+            <div className="flex flex-wrap gap-2">
+              {collaboratorLabels.map((collaborator) => (
+                <span
+                  key={collaborator}
+                  className="rounded-full border border-brand/15 bg-white px-3 py-1.5 text-[12px] font-extrabold text-[#236c49]"
+                >
+                  {collaborator}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[13px] font-semibold text-[#6f7a72]">
+              No collaborators extracted.
+            </p>
+          )}
+        </DraftSection>
+
+        <DraftSection title="Stages" missingFields={stageMissing}>
+          {draftProject.stages.length ? (
+            <ol className="space-y-3">
+              {draftProject.stages.map((stage, index) => (
+                <li
+                  key={`${stage.name || "stage"}-${index}`}
+                  className="rounded-[16px] border border-[#e1e8df] bg-white p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#e4f4e8] text-[12px] font-extrabold text-brand">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-[14px] font-extrabold text-[#202922]">
+                        {stage.name || `Stage ${index + 1}`}
+                      </p>
+                      {stage.brief ? (
+                        <p className="mt-1 break-words text-[12px] font-semibold leading-5 text-[#667168]">
+                          {stage.brief}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-[12px] font-semibold text-[#7a847c]">
+                        {[stage.startDate && stage.dueDate
+                          ? `${stage.startDate} to ${stage.dueDate}`
+                          : null,
+                        stage.budget
+                          ? `${stage.budget.toLocaleString("en-US")} ${draftProject.currency ?? ""}`.trim()
+                          : null,
+                        stage.invoiceRequired === false ? "Invoice not required" : "Invoice required",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-[13px] font-semibold text-[#6f7a72]">
+              No stages extracted.
+            </p>
+          )}
+        </DraftSection>
+
+        {warnings.length ? (
+          <DraftSection title="Warnings">
+            <ul className="space-y-2 text-[12px] font-semibold text-[#6a4d22]">
+              {warnings.slice(0, 6).map((warning) => (
+                <li key={warning} className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#c98523]" />
+                  <span>{warning}</span>
+                </li>
+              ))}
+            </ul>
+          </DraftSection>
+        ) : null}
+      </div>
+
+      {createError ? (
+        <p className="mt-4 rounded-[14px] bg-[#fff4f4] px-4 py-3 text-[12px] font-semibold text-[#bd4d45]">
+          {createError}
+        </p>
+      ) : null}
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <Button
+          type="button"
+          size="sm"
+          className="min-h-11"
+          disabled={!canCreateDraftProject}
+          onClick={onCreate}
+        >
+          {isCreatingProject ? "Creating..." : "Create Project"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="min-h-11"
+          onClick={onEdit}
+        >
+          Edit Details
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="min-h-11"
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+      </div>
+    </Panel>
+  );
+}
+
+function DraftProjectEditorPanel({
+  draftProject,
+  error,
+  isSaving,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  draftProject: FluxAIDraftProject;
+  error: string | null;
+  isSaving: boolean;
+  onChange: (draftProject: FluxAIDraftProject) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  function updateDraft(patch: Partial<FluxAIDraftProject>) {
+    onChange({ ...draftProject, ...patch });
+  }
+
+  function updateStage(index: number, patch: Partial<FluxAIDraftProject["stages"][number]>) {
+    updateDraft({
+      stages: draftProject.stages.map((stage, stageIndex) =>
+        stageIndex === index ? { ...stage, ...patch } : stage,
+      ),
+    });
+  }
+
+  function addStage() {
+    updateDraft({
+      stages: [
+        ...draftProject.stages,
+        {
+          name: "",
+          brief: "",
+          budget: null,
+          startDate: null,
+          dueDate: null,
+          invoiceRequired: draftProject.executionType === "EXTERNAL",
+        },
+      ],
+    });
+  }
+
+  function removeStage(index: number) {
+    updateDraft({
+      stages: draftProject.stages.filter((_, stageIndex) => stageIndex !== index),
+    });
+  }
+
+  return (
+    <Panel className="p-5">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <PanelIcon>
+            <FileText className="h-5 w-5" />
+          </PanelIcon>
+          <div className="min-w-0">
+            <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
+              Edit Draft Details
+            </h2>
+            <p className="text-[13px] font-medium text-[#667168]">
+              Update the draft preview. This does not create a project.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {error ? (
+        <p className="mb-4 rounded-[14px] bg-[#fff4f4] px-4 py-3 text-[12px] font-semibold text-[#bd4d45]">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="space-y-4">
+        <DraftSection title="Project Details">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Project name
+              <Input
+                value={draftProject.projectName}
+                onChange={(event) => updateDraft({ projectName: event.target.value })}
+                disabled={isSaving}
+              />
+            </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Category
+              <Input
+                value={draftProject.category}
+                onChange={(event) => updateDraft({ category: event.target.value })}
+                disabled={isSaving}
+              />
+            </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Execution type
+              <Select
+                value={draftProject.executionType ?? "EXTERNAL"}
+                disabled={isSaving}
+                onValueChange={(value) =>
+                  updateDraft({
+                    executionType: value === "INTERNAL" ? "INTERNAL" : "EXTERNAL",
+                  })
+                }
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EXTERNAL">External</SelectItem>
+                  <SelectItem value="INTERNAL">Internal</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Tags
+              <Input
+                value={joinCommaList(draftProject.tags)}
+                onChange={(event) => updateDraft({ tags: splitCommaList(event.target.value) })}
+                disabled={isSaving}
+                placeholder="Packaging, Ramadan"
+              />
+            </label>
+          </div>
+          <label className="mt-3 block space-y-1.5 text-[12px] font-bold text-[#667168]">
+            Project brief
+            <Textarea
+              value={draftProject.projectBrief}
+              onChange={(event) => updateDraft({ projectBrief: event.target.value })}
+              disabled={isSaving}
+              className="min-h-28 bg-white"
+            />
+          </label>
+        </DraftSection>
+
+        <DraftSection title="Timeline & Budget">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Start date
+              <Input
+                type="date"
+                value={toDateInputValue(draftProject.startDate)}
+                onChange={(event) => updateDraft({ startDate: event.target.value || null })}
+                disabled={isSaving}
+              />
+            </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              End date
+              <Input
+                type="date"
+                value={toDateInputValue(draftProject.endDate)}
+                onChange={(event) => updateDraft({ endDate: event.target.value || null })}
+                disabled={isSaving}
+              />
+            </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Budget required
+              <Select
+                value={draftProject.budgetRequired === false ? "false" : "true"}
+                disabled={isSaving}
+                onValueChange={(value) =>
+                  updateDraft({ budgetRequired: value === "true" })
+                }
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Yes</SelectItem>
+                  <SelectItem value="false">No</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Budget
+              <Input
+                inputMode="numeric"
+                value={formatOptionalNumber(draftProject.budget)}
+                onChange={(event) => updateDraft({ budget: parseOptionalNumber(event.target.value) })}
+                disabled={isSaving || draftProject.budgetRequired === false}
+              />
+            </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Currency
+              <Input
+                value={draftProject.currency ?? ""}
+                onChange={(event) => updateDraft({ currency: event.target.value.toUpperCase() || null })}
+                disabled={isSaving || draftProject.budgetRequired === false}
+                placeholder="AED"
+              />
+            </label>
+          </div>
+        </DraftSection>
+
+        <DraftSection title="Executor & Collaborators">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Main executor
+              <Input
+                value={draftProject.mainExecutor ?? ""}
+                onChange={(event) => updateDraft({ mainExecutor: event.target.value || null })}
+                disabled={isSaving}
+              />
+            </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Collaborators
+              <Input
+                value={joinCommaList(draftProject.collaborators)}
+                onChange={(event) =>
+                  updateDraft({ collaborators: splitCommaList(event.target.value) })
+                }
+                disabled={isSaving}
+                placeholder="Sara, Yasir"
+              />
+            </label>
+          </div>
+        </DraftSection>
+
+        <DraftSection title="Stages">
+          <div className="space-y-3">
+            {draftProject.stages.map((stage, index) => (
+              <div
+                key={`${stage.name || "stage"}-${index}`}
+                className="rounded-[18px] border border-[#e1e8df] bg-white p-4"
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h4 className="text-[13px] font-extrabold text-[#17211a]">
+                    Stage {index + 1}
+                  </h4>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-[#bd4d45]"
+                    onClick={() => removeStage(index)}
+                    disabled={isSaving || draftProject.stages.length === 1}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove
+                  </Button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+                    Stage name
+                    <Input
+                      value={stage.name}
+                      onChange={(event) => updateStage(index, { name: event.target.value })}
+                      disabled={isSaving}
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+                    Stage budget
+                    <Input
+                      inputMode="numeric"
+                      value={formatOptionalNumber(stage.budget)}
+                      onChange={(event) =>
+                        updateStage(index, { budget: parseOptionalNumber(event.target.value) })
+                      }
+                      disabled={isSaving || draftProject.budgetRequired === false}
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+                    Start date
+                    <Input
+                      type="date"
+                      value={toDateInputValue(stage.startDate)}
+                      onChange={(event) =>
+                        updateStage(index, { startDate: event.target.value || null })
+                      }
+                      disabled={isSaving}
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+                    Due date
+                    <Input
+                      type="date"
+                      value={toDateInputValue(stage.dueDate)}
+                      onChange={(event) =>
+                        updateStage(index, { dueDate: event.target.value || null })
+                      }
+                      disabled={isSaving}
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+                    Invoice required
+                    <Select
+                      value={stage.invoiceRequired === false ? "false" : "true"}
+                      disabled={isSaving || draftProject.executionType === "INTERNAL"}
+                      onValueChange={(value) =>
+                        updateStage(index, { invoiceRequired: value === "true" })
+                      }
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="true">Yes</SelectItem>
+                        <SelectItem value="false">No</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </label>
+                </div>
+                <label className="mt-3 block space-y-1.5 text-[12px] font-bold text-[#667168]">
+                  Stage brief
+                  <Textarea
+                    value={stage.brief}
+                    onChange={(event) => updateStage(index, { brief: event.target.value })}
+                    disabled={isSaving}
+                    className="min-h-24 bg-white"
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 min-h-10 w-full"
+            onClick={addStage}
+            disabled={isSaving}
+          >
+            <Plus className="h-4 w-4" />
+            Add Stage
+          </Button>
+        </DraftSection>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <Button type="button" size="sm" className="min-h-11" onClick={onSave} disabled={isSaving}>
+          {isSaving ? "Saving..." : "Save Details"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="min-h-11"
+          onClick={onCancel}
+          disabled={isSaving}
+        >
+          Cancel Edit
+        </Button>
+      </div>
+    </Panel>
+  );
+}
+
+export function FluxAiWorkspace() {
+  const [messages, setMessages] = useState<ChatEntry[]>(initialChatMessages);
+  const [conversations, setConversations] = useState<FluxAIConversationSummary[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversationTitle, setActiveConversationTitle] =
+    useState("New Flux AI Chat");
+  const [isLoadingConversation, setIsLoadingConversation] = useState(true);
+  const [conversationError, setConversationError] = useState<string | null>(null);
+  const [conversationPendingDelete, setConversationPendingDelete] =
+    useState<FluxAIConversationSummary | null>(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  const [deleteConversationError, setDeleteConversationError] =
+    useState<string | null>(null);
+  const [composerValue, setComposerValue] = useState("");
+  const [fluxResponse, setFluxResponse] = useState<FluxAIChatResponse | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [isResultPanelOpen, setIsResultPanelOpen] = useState(false);
+  const [draftEditValue, setDraftEditValue] = useState<FluxAIDraftProject | null>(null);
+  const [draftEditError, setDraftEditError] = useState<string | null>(null);
+  const [isValidatingDraftEdit, setIsValidatingDraftEdit] = useState(false);
+  const [composerError, setComposerError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [selectedOutputLanguageCode, setSelectedOutputLanguageCode] = useState(
+    DEFAULT_CHAT_LANGUAGE.code,
+  );
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimeoutRef = useRef<number | null>(null);
+  const composerValueRef = useRef(composerValue);
+  const draftProject = fluxResponse?.draftProject ?? null;
+  const projectCards = useMemo(
+    () => (fluxResponse?.projects ?? []).map(mapProjectResultToCard),
+    [fluxResponse],
+  );
+  const missingFields =
+    draftProject
+      ? fluxResponse?.missingFields ?? draftProject.missingFields ?? []
+      : [];
+  const draftWarnings = getDraftWarnings(fluxResponse);
+  const blockers = useMemo(
+    () =>
+      fluxResponse?.blockers?.length
+        ? fluxResponse.blockers
+        : fluxResponse?.projects
+            ?.flatMap((project) => project.archiveBlockers ?? [])
+            .filter(Boolean) ?? [],
+    [fluxResponse],
+  );
+  const shouldShowProjectMatchesPanel = shouldShowProjectMatches(fluxResponse);
+  const shouldShowStatusSummaryPanel = Boolean(fluxResponse?.projectStatus);
+  const shouldShowCreatedProjectPanel = fluxResponse?.type === "created_project";
+  const shouldShowDraftPanel =
+    Boolean(draftProject) && !shouldShowCreatedProjectPanel;
+  const shouldShowStandaloneBlockersPanel =
+    blockers.length > 0 && !shouldShowStatusSummaryPanel && !shouldShowDraftPanel;
+  const hasResultContent = hasFluxResultContent(fluxResponse);
+  const shouldShowResultPanel = hasResultContent && isResultPanelOpen;
+  const hasSubmittedQuery = Boolean(fluxResponse);
+  const hasUserStartedConversation = messages.some((message) => message.role === "user");
+  const canCreateDraftProject =
+    Boolean(draftProject?.canCreate) && missingFields.length === 0 && !isCreatingProject;
+  const selectedOutputLanguage =
+    getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
+
+  useEffect(() => {
+    composerValueRef.current = composerValue;
+  }, [composerValue]);
+
+  useEffect(() => {
+    return () => {
+      clearRecorderResources();
+    };
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      block: "end",
+      behavior: "smooth",
+    });
+  }, [messages]);
+
+  useEffect(() => {
+    void loadInitialConversation();
+    // Restore the URL-selected/latest conversation once on page mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function resetToWelcomeState() {
+    setMessages(initialChatMessages);
+    setFluxResponse(null);
+    setIsResultPanelOpen(false);
+    setDraftEditValue(null);
+    setDraftEditError(null);
+    setCreateError(null);
+    setComposerError(null);
+  }
+
+  async function refreshConversationList() {
+    const response = await fetch("/api/flux-ai/conversations", {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to load Flux AI conversations.");
+    }
+
+    const payload = (await response.json()) as ConversationsListApiResponse;
+    setConversations(payload.conversations);
+
+    return payload;
+  }
+
+  async function loadConversation(
+    conversationId: string,
+    options: { updateUrl?: boolean; manageLoading?: boolean } = {},
+  ) {
+    if (options.manageLoading ?? true) {
+      setIsLoadingConversation(true);
+    }
+
+    setConversationError(null);
+
+    try {
+      const response = await fetch(
+        `/api/flux-ai/conversations/${encodeURIComponent(conversationId)}`,
+        {
+          cache: "no-store",
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          response.status === 404
+            ? "Flux AI conversation not found."
+            : "Unable to load Flux AI conversation.",
+        );
+      }
+
+      const detail = (await response.json()) as FluxAIConversationDetail;
+
+      setActiveConversationId(detail.conversation.id);
+      setActiveConversationTitle(detail.conversation.title);
+      setMessages(mapConversationMessagesToChatEntries(detail));
+      setFluxResponse(detail.latestResponse);
+      setIsResultPanelOpen(hasFluxResultContent(detail.latestResponse));
+      setDraftEditValue(null);
+      setDraftEditError(null);
+      setCreateError(null);
+      setComposerError(null);
+
+      if (options.updateUrl ?? true) {
+        replaceConversationUrl(detail.conversation.id);
+      }
+    } catch (error) {
+      resetToWelcomeState();
+      setActiveConversationId(null);
+      setActiveConversationTitle("New Flux AI Chat");
+      replaceConversationUrl(null);
+      setConversationError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load Flux AI conversation.",
+      );
+    } finally {
+      if (options.manageLoading ?? true) {
+        setIsLoadingConversation(false);
+      }
+    }
+  }
+
+  async function loadInitialConversation() {
+    setIsLoadingConversation(true);
+    setConversationError(null);
+
+    try {
+      const payload = await refreshConversationList();
+      const requestedConversationId = getConversationIdFromUrl();
+      const targetConversationId =
+        requestedConversationId ?? payload.latestConversationId;
+
+      if (!targetConversationId) {
+        resetToWelcomeState();
+        setActiveConversationId(null);
+        setActiveConversationTitle("New Flux AI Chat");
+        replaceConversationUrl(null);
+        return;
+      }
+
+      await loadConversation(targetConversationId, {
+        updateUrl: true,
+        manageLoading: false,
+      });
+    } catch (error) {
+      resetToWelcomeState();
+      setActiveConversationId(null);
+      setActiveConversationTitle("New Flux AI Chat");
+      setConversationError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load Flux AI conversations.",
+      );
+    } finally {
+      setIsLoadingConversation(false);
+    }
+  }
+
+  async function startNewConversation() {
+    if (isSubmitting || isCreatingProject) {
+      return;
+    }
+
+    setIsLoadingConversation(true);
+    setConversationError(null);
+
+    try {
+      const response = await fetch("/api/flux-ai/conversations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to start a new Flux AI chat.");
+      }
+
+      const payload = (await response.json()) as CreateConversationApiResponse;
+
+      setConversations((current) => [
+        payload.conversation,
+        ...current.filter((conversation) => conversation.id !== payload.conversation.id),
+      ]);
+      setActiveConversationId(payload.conversation.id);
+      setActiveConversationTitle(payload.conversation.title);
+      replaceConversationUrl(payload.conversation.id);
+      resetToWelcomeState();
+    } catch (error) {
+      setConversationError(
+        error instanceof Error
+          ? error.message
+          : "Unable to start a new Flux AI chat.",
+      );
+    } finally {
+      setIsLoadingConversation(false);
+    }
+  }
+
+  async function clearPersistedConversationState() {
+    if (!activeConversationId) {
+      return;
+    }
+
+    await fetch(
+      `/api/flux-ai/conversations/${encodeURIComponent(activeConversationId)}/clear-state`,
+      {
+        method: "POST",
+      },
+    ).catch(() => undefined);
+    void refreshConversationList().catch(() => undefined);
+  }
+
+  async function confirmDeleteConversation() {
+    if (!conversationPendingDelete || isDeletingConversation) {
+      return;
+    }
+
+    const conversationToDelete = conversationPendingDelete;
+
+    setIsDeletingConversation(true);
+    setDeleteConversationError(null);
+
+    try {
+      const response = await fetch(
+        `/api/flux-ai/conversations/${encodeURIComponent(conversationToDelete.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to delete Flux AI chat.");
+      }
+
+      const remainingConversations = conversations.filter(
+        (conversation) => conversation.id !== conversationToDelete.id,
+      );
+
+      setConversations(remainingConversations);
+      setConversationPendingDelete(null);
+      showSuccessToast("Flux AI chat deleted.");
+
+      if (conversationToDelete.id !== activeConversationId) {
+        return;
+      }
+
+      const nextConversation = remainingConversations[0] ?? null;
+
+      if (nextConversation) {
+        await loadConversation(nextConversation.id, {
+          updateUrl: true,
+          manageLoading: true,
+        });
+        return;
+      }
+
+      resetToWelcomeState();
+      setActiveConversationId(null);
+      setActiveConversationTitle("New Flux AI Chat");
+      replaceConversationUrl(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to delete Flux AI chat.";
+
+      setDeleteConversationError(message);
+      showErrorToast("Unable to delete Flux AI chat.", message);
+    } finally {
+      setIsDeletingConversation(false);
+    }
+  }
+
+  function clearRecorderResources() {
+    if (recordingTimeoutRef.current) {
+      window.clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+
+    mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+    mediaRecorderRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    audioChunksRef.current = [];
+  }
+
+  const translateComposerText = useCallback(async () => {
+    const sourceText = composerValueRef.current.trim();
+
+    if (!sourceText) {
+      setComposerError("Enter a message to translate.");
+      return;
+    }
+
+    setComposerError(null);
+    setAiStatus("Translating...");
+    setIsTranslating(true);
+
+    try {
+      const response = await fetch("/api/ai/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: sourceText,
+          targetLanguageCode: selectedOutputLanguage.code,
+          targetLanguageName: selectedOutputLanguage.name,
+        }),
+      });
+      const payload = (await response.json()) as TranslateApiResponse;
+
+      if (!response.ok || !payload.translatedText) {
+        throw new Error(payload.error || "Unable to translate the message right now.");
+      }
+
+      if (composerValueRef.current.trim() === sourceText) {
+        setComposerValue(payload.translatedText);
+      }
+    } catch (error) {
+      setComposerError(
+        error instanceof Error
+          ? error.message
+          : "Unable to translate the message right now.",
+      );
+    } finally {
+      setIsTranslating(false);
+      setAiStatus(null);
+    }
+  }, [selectedOutputLanguage.code, selectedOutputLanguage.name]);
+
+  function getRecordingMimeType() {
+    if (typeof MediaRecorder === "undefined") {
+      return "";
+    }
+
+    const preferredTypes = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ];
+
+    return (
+      preferredTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? ""
+    );
+  }
+
+  async function handleRecordedAudio(blob: Blob) {
+    const extension = blob.type.includes("mp4")
+      ? "m4a"
+      : blob.type.includes("ogg")
+        ? "ogg"
+        : "webm";
+    const audioFile = new File([blob], `flux-ai-${Date.now()}.${extension}`, {
+      type: blob.type || "audio/webm",
+    });
+
+    setIsTranscribing(true);
+    setAiStatus("Transcribing...");
+    setComposerError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("audio", audioFile);
+      formData.append("targetLanguageCode", selectedOutputLanguage.code);
+      formData.append("targetLanguageName", selectedOutputLanguage.name);
+
+      const response = await fetch("/api/ai/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as TranscribeApiResponse;
+
+      if (!response.ok || !payload.translatedText) {
+        throw new Error(payload.error || "Unable to transcribe the recording right now.");
+      }
+
+      setComposerValue((current) =>
+        current.trim() ? `${current.trim()}\n${payload.translatedText}` : payload.translatedText,
+      );
+    } catch (error) {
+      setComposerError(
+        error instanceof Error
+          ? error.message
+          : "Unable to transcribe the recording right now.",
+      );
+    } finally {
+      setIsTranscribing(false);
+      setAiStatus(null);
+    }
+  }
+
+  async function handleMicrophoneToggle() {
+    if (isTranscribing || isTranslating) {
+      return;
+    }
+
+    if (isListening) {
+      setAiStatus("Transcribing...");
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    if (
+      typeof window === "undefined" ||
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setComposerError(
+        "Voice input is not supported in this browser. Try Chrome, Edge, or Safari with microphone access enabled.",
+      );
+      return;
+    }
+
+    try {
+      setComposerError(null);
+      setAiStatus("Requesting microphone...");
+
+      if ("permissions" in navigator && navigator.permissions?.query) {
+        try {
+          const permissionStatus = await navigator.permissions.query({
+            name: "microphone" as PermissionName,
+          });
+
+          if (permissionStatus.state === "denied") {
+            setAiStatus(null);
+            setComposerError(
+              "Microphone permission is blocked in the browser. Allow microphone access in site settings and try again.",
+            );
+            return;
+          }
+        } catch {
+          // Browser support for querying microphone permission varies.
+        }
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getRecordingMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+      setAiStatus("Listening...");
+      setIsListening(true);
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      });
+
+      recorder.addEventListener("stop", () => {
+        setIsListening(false);
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        clearRecorderResources();
+
+        if (!audioBlob.size) {
+          setAiStatus(null);
+          setComposerError("No speech was captured. Please try again.");
+          return;
+        }
+
+        void handleRecordedAudio(audioBlob);
+      });
+
+      recorder.start();
+      recordingTimeoutRef.current = window.setTimeout(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          setAiStatus("Transcribing...");
+          mediaRecorderRef.current.stop();
+        }
+      }, MAX_RECORDING_DURATION_MS);
+    } catch (error) {
+      setIsListening(false);
+      setAiStatus(null);
+      clearRecorderResources();
+      setComposerError(
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "Microphone permission was denied."
+          : error instanceof DOMException && error.name === "NotFoundError"
+            ? "No microphone was found on this device."
+            : error instanceof DOMException && error.name === "NotReadableError"
+              ? "The microphone is already being used by another application."
+              : "Unable to access the microphone right now.",
+      );
+    }
+  }
+
+  function openDraftEditor() {
+    if (!draftProject) {
+      return;
+    }
+
+    setDraftEditError(null);
+    setDraftEditValue(cloneDraftProject(draftProject));
+  }
+
+  function cancelDraftEdit() {
+    setDraftEditValue(null);
+    setDraftEditError(null);
+  }
+
+  async function saveDraftEdit() {
+    if (!draftEditValue || isValidatingDraftEdit) {
+      return;
+    }
+
+    setIsValidatingDraftEdit(true);
+    setDraftEditError(null);
+    setCreateError(null);
+
+    try {
+      const response = await fetch("/api/flux-ai/validate-draft", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          draftProject: draftEditValue,
+          conversationId: activeConversationId,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | FluxAIChatResponse
+        | null;
+
+      if (!payload) {
+        throw new Error("Flux AI returned an invalid draft validation response.");
+      }
+
+      if (!response.ok || !payload.draftProject) {
+        throw new Error(payload.assistantMessage || "Unable to validate the draft.");
+      }
+
+      setFluxResponse(payload);
+      setIsResultPanelOpen(hasFluxResultContent(payload));
+      setDraftEditValue(null);
+      void refreshConversationList().catch(() => undefined);
+    } catch (error) {
+      setDraftEditError(
+        error instanceof Error
+          ? error.message
+          : "Unable to validate the draft right now.",
+      );
+    } finally {
+      setIsValidatingDraftEdit(false);
+    }
+  }
+
+  async function submitPrompt(nextPrompt?: string) {
+    const prompt = (nextPrompt ?? composerValue).trim();
+
+    if (!prompt || isSubmitting || isLoadingConversation) {
+      return;
+    }
+
+    const userMessage: ChatEntry = {
+      id: createMessageId(),
+      role: "user",
+      content: prompt,
+      time: formatChatTime(),
+    };
+    const nextMessages = [...messages, userMessage];
+    const thinkingMessage: ChatEntry = {
+      id: createMessageId(),
+      role: "assistant",
+      content: "Flux AI is thinking...",
+      time: formatChatTime(),
+    };
+
+    setMessages([...nextMessages, thinkingMessage]);
+    setComposerValue("");
+    setComposerError(null);
+    setCreateError(null);
+    setFluxResponse(null);
+    setIsResultPanelOpen(false);
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/flux-ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: prompt,
+          conversationId: activeConversationId,
+          conversation: messages.map((message) => ({
+            role: message.role,
+            content: message.content,
+          })),
+          draftProject,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | FluxAIChatResponse
+        | null;
+
+      if (!payload) {
+        throw new Error("Flux AI returned an invalid response.");
+      }
+
+      if (payload.conversationId) {
+        setActiveConversationId(payload.conversationId);
+        replaceConversationUrl(payload.conversationId);
+      }
+
+      if (payload.conversationTitle) {
+        setActiveConversationTitle(payload.conversationTitle);
+      }
+
+      setFluxResponse(payload);
+      setIsResultPanelOpen(hasFluxResultContent(payload));
+      setMessages([
+        ...nextMessages,
+        {
+          id: createMessageId(),
+          role: "assistant",
+          content: payload.assistantMessage,
+          time: formatChatTime(),
+        },
+      ]);
+
+      if (!response.ok) {
+        setComposerError(payload.assistantMessage);
+      }
+
+      void refreshConversationList().catch(() => undefined);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Flux AI could not process the request right now.";
+
+      setComposerError(message);
+      setFluxResponse(null);
+      setIsResultPanelOpen(false);
+      setMessages([
+        ...nextMessages,
+        {
+          id: createMessageId(),
+          role: "assistant",
+          content: message,
+          time: formatChatTime(),
+        },
+      ]);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function createDraftProject() {
+    if (!draftProject || !canCreateDraftProject) {
+      return;
+    }
+
+    setIsCreatingProject(true);
+    setCreateError(null);
+    setComposerError(null);
+
+    try {
+      const response = await fetch("/api/flux-ai/create-project", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          draftProject,
+          conversationId: activeConversationId,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | FluxAIChatResponse
+        | null;
+
+      if (!payload) {
+        throw new Error("Flux AI returned an invalid project creation response.");
+      }
+
+      if (payload.conversationId) {
+        setActiveConversationId(payload.conversationId);
+        replaceConversationUrl(payload.conversationId);
+      }
+
+      setFluxResponse(payload);
+      setIsResultPanelOpen(hasFluxResultContent(payload));
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: createMessageId(),
+          role: "assistant",
+          content: payload.assistantMessage,
+          time: formatChatTime(),
+        },
+      ]);
+
+      if (!response.ok) {
+        setCreateError(payload.assistantMessage);
+      }
+
+      void refreshConversationList().catch(() => undefined);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Flux AI could not create the project right now.";
+
+      setCreateError(message);
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: createMessageId(),
+          role: "assistant",
+          content: message,
+          time: formatChatTime(),
+        },
+      ]);
+    } finally {
+      setIsCreatingProject(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="min-w-0">
+        <div
+        className={cn(
+          "grid min-w-0 gap-4",
+          shouldShowResultPanel
+            ? "xl:grid-cols-[minmax(0,1fr)_minmax(420px,560px)]"
+            : "xl:grid-cols-1",
+        )}
+      >
         <Panel className="flex min-h-[760px] flex-col p-5 sm:p-7 lg:p-8">
           <header className="mb-8">
             <div className="flex flex-wrap items-center gap-3">
@@ -253,60 +2248,274 @@ export function FluxAiWorkspace() {
             <p className="mt-3 max-w-[620px] text-[15px] leading-6 text-[#4f5a52]">
               Ask, find, create, and manage projects with AI.
             </p>
+
+            <div className="mt-6 rounded-[22px] border border-[#e2e9e0] bg-[#fbfcfa] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-extrabold uppercase text-[#78837b]">
+                    Current Chat
+                  </p>
+                  <p className="mt-1 truncate text-[14px] font-extrabold text-[#1f2a23]">
+                    {activeConversationTitle}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="min-h-10 shrink-0"
+                  onClick={() => {
+                    void startNewConversation();
+                  }}
+                  disabled={isLoadingConversation || isSubmitting || isCreatingProject}
+                >
+                  <Plus className="h-4 w-4" />
+                  New Chat
+                </Button>
+              </div>
+
+              {conversations.length ? (
+                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                  {conversations.slice(0, 8).map((conversation) => (
+                    <div
+                      key={conversation.id}
+                      className={cn(
+                        "group flex min-w-[230px] items-center gap-2 rounded-[16px] border p-2 transition-colors",
+                        conversation.id === activeConversationId
+                          ? "border-brand/25 bg-[#edf8ef]"
+                          : "border-[#e0e7de] bg-white hover:bg-[#f5f8f4]",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        disabled={
+                          isLoadingConversation ||
+                          isDeletingConversation ||
+                          conversation.id === activeConversationId
+                        }
+                        onClick={() => {
+                          void loadConversation(conversation.id);
+                        }}
+                        className="min-w-0 flex-1 rounded-[12px] px-1 py-0.5 text-left disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        <span className="block truncate text-[12px] font-extrabold text-[#263129]">
+                          {conversation.title}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] font-semibold text-[#7a847c]">
+                          {formatConversationTime(conversation.lastMessageAt)}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="grid size-8 shrink-0 place-items-center rounded-full text-[#8b5a55] opacity-100 transition-colors hover:bg-[#fff1f0] hover:text-[#b83d36] disabled:cursor-not-allowed disabled:opacity-45 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                        aria-label={`Delete Flux AI chat ${conversation.title}`}
+                        disabled={
+                          isLoadingConversation ||
+                          isSubmitting ||
+                          isCreatingProject ||
+                          isDeletingConversation
+                        }
+                        onClick={() => {
+                          setDeleteConversationError(null);
+                          setConversationPendingDelete(conversation);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {conversationError ? (
+                <p className="mt-3 rounded-[14px] border border-[#f0d4d2] bg-[#fff5f4] px-3 py-2 text-[12px] font-semibold text-[#bd4d45]">
+                  {conversationError}
+                </p>
+              ) : null}
+            </div>
           </header>
 
-          <div className="flex flex-1 flex-col justify-end gap-5">
-            <div className="space-y-5">
-              <ChatMessage role="user" time="10:24 AM">
-                Find projects assigned to QA Agency 01
-              </ChatMessage>
-              <ChatMessage role="assistant" time="10:24 AM">
-                Here are the projects assigned to QA Agency 01.
-              </ChatMessage>
-              <ChatMessage role="user" time="10:26 AM">
-                Create a packaging project for Milano Ramadan Campaign with 2 stages.
-              </ChatMessage>
-              <ChatMessage role="assistant" time="10:26 AM">
-                I&apos;ve prepared a draft project based on your request. Review the
-                details on the right and confirm to create it.
-              </ChatMessage>
-            </div>
-
-            <div className="flex flex-wrap justify-center gap-3 pt-5">
-              {promptChips.map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  className="min-h-10 rounded-full border border-brand/25 bg-white px-4 text-[12px] font-extrabold text-[#1f704a] shadow-[0_10px_24px_rgba(43,128,85,0.05)] transition-colors hover:bg-[#f2faf4]"
-                >
-                  {chip}
-                </button>
+          <div className="flex min-h-0 flex-1 flex-col justify-end gap-5">
+            <div className="max-h-[min(58vh,640px)] space-y-5 overflow-y-auto pr-1">
+              {isLoadingConversation ? (
+                <ChatMessage
+                  role="assistant"
+                  content="Loading Flux AI conversation..."
+                  time="Now"
+                />
+              ) : null}
+              {messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
+                  role={message.role}
+                  content={message.content}
+                  time={message.time}
+                />
               ))}
+              <div ref={messagesEndRef} />
             </div>
 
-            <div className="rounded-[24px] border border-brand/25 bg-white p-4 shadow-[0_14px_34px_rgba(23,39,28,0.04)]">
-              <div className="flex min-h-[92px] items-end gap-3">
-                <button
-                  type="button"
-                  className="grid size-10 shrink-0 place-items-center rounded-full text-[#5d6860] transition-colors hover:bg-[#f1f5f1] hover:text-brand"
-                  aria-label="Attach file"
-                >
-                  <Paperclip className="h-5 w-5" />
-                </button>
-                <textarea
+            {!hasUserStartedConversation ? (
+              <div className="flex flex-wrap justify-center gap-3 pt-5">
+                {promptChips.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    disabled={isSubmitting || isLoadingConversation}
+                    onClick={() => {
+                      void submitPrompt(chip);
+                    }}
+                    className="min-h-10 rounded-full border border-brand/25 bg-white px-4 text-[12px] font-extrabold text-[#1f704a] shadow-[0_10px_24px_rgba(43,128,85,0.05)] transition-colors hover:bg-[#f2faf4] disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <form
+              className="rounded-[24px] border border-brand/25 bg-white p-4 shadow-[0_14px_34px_rgba(23,39,28,0.04)]"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitPrompt();
+              }}
+            >
+              {aiStatus ? (
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#dbe6da] bg-[#f7fbf6] px-3 py-1.5 text-[12px] font-semibold text-[#31523f]">
+                  {isListening ? (
+                    <span className="relative flex size-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#d9645b] opacity-70" />
+                      <span className="relative inline-flex size-2.5 rounded-full bg-[#d9645b]" />
+                    </span>
+                  ) : (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  )}
+                  {aiStatus}
+                </div>
+              ) : null}
+
+              {composerError ? (
+                <p className="mb-3 rounded-[16px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-[12px] font-semibold text-[#bd4d45]">
+                  {composerError}
+                </p>
+              ) : null}
+
+              <div className="rounded-[20px] border border-[#dde6dd] bg-[#fbfcfa] p-3">
+                <Textarea
                   aria-label="Ask Flux AI"
                   placeholder="Ask Flux AI anything about projects, stages, approvals, invoices, or archives..."
-                  className="min-h-[78px] flex-1 resize-none border-0 bg-transparent px-1 py-2 text-[14px] leading-6 text-[#202922] outline-none placeholder:text-[#8c948d]"
+                  value={composerValue}
+                  onChange={(event) => {
+                    setComposerValue(event.target.value);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void submitPrompt();
+                    }
+                  }}
+                  disabled={isLoadingConversation || isSubmitting}
+                  className="max-h-[220px] min-h-[84px] resize-y border-0 bg-transparent px-1 py-2 text-[14px] leading-6 text-[#202922] shadow-none placeholder:text-[#8c948d] focus-visible:ring-0"
                 />
-                <button
-                  type="button"
-                  className="grid size-12 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#2f8d5d,#123f2d)] text-white shadow-[0_16px_34px_rgba(34,102,70,0.22)] transition-transform hover:-translate-y-0.5"
-                  aria-label="Send message"
-                >
-                  <Send className="h-5 w-5" />
-                </button>
+
+                <div className="mt-2 flex w-full min-w-0 flex-nowrap items-center justify-end gap-1 overflow-x-auto border-t border-[#e5ece5] pt-2 sm:flex-wrap sm:gap-2 sm:overflow-visible">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 rounded-full px-2 text-[11px] font-[700] text-[#5083ff] sm:px-2.5"
+                    aria-label="Translate"
+                    title="Translate"
+                    onClick={() => {
+                      void translateComposerText();
+                    }}
+                    disabled={
+                      isLoadingConversation ||
+                      isSubmitting ||
+                      isTranslating ||
+                      isListening ||
+                      isTranscribing
+                    }
+                  >
+                    {isTranslating ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Languages className="h-5 w-5" />
+                    )}
+                    <span className="hidden sm:inline">Translate</span>
+                  </Button>
+                  <ChatLanguagePicker
+                    languages={SUPPORTED_CHAT_LANGUAGES}
+                    selectedLanguage={selectedOutputLanguage}
+                    disabled={
+                      isLoadingConversation ||
+                      isSubmitting ||
+                      isTranslating ||
+                      isListening ||
+                      isTranscribing
+                    }
+                    onSelect={(language) => setSelectedOutputLanguageCode(language.code)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      "size-8",
+                      isListening
+                        ? "bg-[#fff1ef] text-[#d9645b] hover:bg-[#ffe7e3]"
+                        : "text-brand",
+                    )}
+                    aria-label={isListening ? "Stop recording" : "Start voice input"}
+                    onClick={() => {
+                      void handleMicrophoneToggle();
+                    }}
+                    disabled={
+                      isLoadingConversation ||
+                      isSubmitting ||
+                      isTranscribing ||
+                      isTranslating
+                    }
+                  >
+                    {isTranscribing ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : isListening ? (
+                      <Square className="h-4 w-4 fill-current" />
+                    ) : (
+                      <Mic className="h-5 w-5" />
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-brand"
+                    aria-label="Attach file"
+                    title="Attachment support is not enabled for Flux AI yet."
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="h-8 rounded-full px-3 text-[12px] sm:px-4"
+                    disabled={
+                      isLoadingConversation ||
+                      isSubmitting ||
+                      isListening ||
+                      isTranscribing ||
+                      !composerValue.trim()
+                    }
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    Send
+                  </Button>
+                </div>
               </div>
-            </div>
+            </form>
 
             <p className="text-center text-[11px] text-[#9aa199]">
               Flux AI can make mistakes. Always review important information.
@@ -314,7 +2523,22 @@ export function FluxAiWorkspace() {
           </div>
         </Panel>
 
-        <aside className="grid min-w-0 content-start gap-4">
+        {shouldShowResultPanel ? (
+        <aside className="min-w-0 xl:sticky xl:top-6 xl:self-start">
+          <div className="mb-3 flex justify-end">
+            <button
+              type="button"
+              aria-label="Close results panel"
+              onClick={() => {
+                setIsResultPanelOpen(false);
+              }}
+              className="grid size-10 place-items-center rounded-full border border-[#dfe7dd] bg-white text-[#5f6a62] shadow-[0_12px_24px_rgba(23,39,28,0.04)] transition-colors hover:bg-[#f5f8f4] hover:text-[#173f2d]"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid min-w-0 content-start gap-4">
+          {shouldShowProjectMatchesPanel ? (
           <Panel className="p-5">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
@@ -323,190 +2547,138 @@ export function FluxAiWorkspace() {
                 </PanelIcon>
                 <div className="min-w-0">
                   <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
-                    Project Matches
-                  </h2>
-                  <p className="text-[13px] font-medium text-[#667168]">3 projects found</p>
-                </div>
-              </div>
-              <Link
-                href="#"
-                className="inline-flex shrink-0 items-center gap-2 text-[13px] font-extrabold text-brand"
-              >
-                View all
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {projectMatches.map((project) => (
-                <ProjectMatchCard key={project.name} project={project} />
-              ))}
-            </div>
-          </Panel>
-
-          <Panel className="p-5">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <PanelIcon>
-                  <FileText className="h-5 w-5" />
-                </PanelIcon>
-                <div className="min-w-0">
-                  <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
-                    Draft Project Preview
+                    {projectCards.length === 1 ? "Project Match" : "Project Matches"}
                   </h2>
                   <p className="text-[13px] font-medium text-[#667168]">
-                    Review extracted details before creating.
+                    {isSubmitting
+                      ? "Searching real project data"
+                      : `${projectCards.length} project${projectCards.length === 1 ? "" : "s"} found`}
                   </p>
                 </div>
               </div>
-              <span className="shrink-0 rounded-full bg-[#fff0ef] px-3 py-1 text-[12px] font-extrabold text-[#bd4d45]">
-                Missing 3 fields
-              </span>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(230px,0.85fr)]">
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.95fr)]">
-                <dl className="space-y-3">
-                  {extractedDetails.map((detail) => {
-                    const Icon = detail.icon;
-
-                    return (
-                      <div
-                        key={detail.label}
-                        className="grid grid-cols-[18px_minmax(90px,0.68fr)_minmax(0,1fr)] items-center gap-2 text-[12px]"
-                      >
-                        <Icon className="h-4 w-4 text-[#848e86]" />
-                        <dt className="text-[#7a847c]">{detail.label}</dt>
-                        <dd className="min-w-0 truncate font-bold text-[#202922]">
-                          {detail.value}
-                        </dd>
-                      </div>
-                    );
-                  })}
-                </dl>
-
-                <div className="rounded-[16px] border border-[#e5ebe3] bg-[#fbfcfa] p-4">
-                  <div>
-                    <p className="text-[12px] font-semibold text-[#8a928b]">
-                      Collaborators
-                    </p>
-                    <div className="mt-2 flex items-center gap-2">
-                      {["SM", "YK", "AN"].map((initials) => (
-                        <span
-                          key={initials}
-                          className="grid size-8 place-items-center rounded-full border border-brand/15 bg-[#edf8ef] text-[10px] font-extrabold text-brand"
-                        >
-                          {initials}
-                        </span>
-                      ))}
-                      <span className="grid size-8 place-items-center rounded-full border border-[#dce5dc] bg-white text-[10px] font-extrabold text-[#6e786f]">
-                        +2
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="flex items-center gap-2 text-[12px] font-semibold text-[#8a928b]">
-                      <UsersRound className="h-4 w-4" />
-                      Stages (2)
-                    </div>
-                    <ol className="mt-2 space-y-2 text-[12px] font-bold text-[#263129]">
-                      <li className="flex items-center gap-2">
-                        <span className="grid size-7 place-items-center rounded-full bg-[#e4f4e8] text-[11px] text-brand">
-                          1
-                        </span>
-                        Concept &amp; Design
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <span className="grid size-7 place-items-center rounded-full bg-[#e4f4e8] text-[11px] text-brand">
-                          2
-                        </span>
-                        Production &amp; Delivery
-                      </li>
-                    </ol>
-                  </div>
-                </div>
+            {fluxResponse?.projects?.length === 1 ? (
+              <ProjectResultDetailCard project={fluxResponse.projects[0]} />
+            ) : projectCards.length > 1 ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                {projectCards.map((project) => (
+                  <ProjectMatchCard key={project.name} project={project} />
+                ))}
               </div>
-
-              <div className="rounded-[18px] bg-[#fff4f4] p-4">
-                <h3 className="text-[13px] font-extrabold text-[#bd4d45]">
-                  Missing Fields
-                </h3>
-                <ul className="mt-3 space-y-3 text-[12px] font-semibold text-[#5b403d]">
-                  {["Start Date", "Client Name", "Budget Category"].map((field) => (
-                    <li key={field} className="flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-[#d45e55]" />
-                      {field}
-                    </li>
-                  ))}
-                </ul>
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-[#d9e4d9] bg-[#fbfcfa] px-5 py-8 text-center">
+                <p className="text-[14px] font-extrabold text-[#263129]">
+                  {isSubmitting
+                    ? "Searching projects..."
+                    : hasSubmittedQuery
+                      ? "No projects found."
+                      : "No project query yet."}
+                </p>
+                <p className="mt-2 text-[13px] font-medium text-[#758078]">
+                  {hasSubmittedQuery
+                    ? "Try searching by project name, executor, category, tag, or status."
+                    : "Ask Flux AI to find projects and real matches will appear here."}
+                </p>
               </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <Button type="button" size="sm" className="min-h-11">
-                Create Project
-              </Button>
-              <Button type="button" size="sm" variant="outline" className="min-h-11">
-                Edit Details
-              </Button>
-              <Button type="button" size="sm" variant="secondary" className="min-h-11">
-                Cancel
-              </Button>
-            </div>
+            )}
           </Panel>
+          ) : null}
 
-          <Panel className="p-5">
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-3">
+          {shouldShowStatusSummaryPanel && fluxResponse?.projectStatus ? (
+            <StatusSummaryPanel status={fluxResponse.projectStatus} blockers={blockers} />
+          ) : null}
+
+          {shouldShowCreatedProjectPanel ? (
+            <CreatedProjectPanel href={fluxResponse?.createdProjectHref} />
+          ) : null}
+
+          {shouldShowDraftPanel && draftProject ? (
+            draftEditValue ? (
+              <DraftProjectEditorPanel
+                draftProject={draftEditValue}
+                error={draftEditError}
+                isSaving={isValidatingDraftEdit}
+                onChange={setDraftEditValue}
+                onSave={() => {
+                  void saveDraftEdit();
+                }}
+                onCancel={cancelDraftEdit}
+              />
+            ) : (
+              <DraftProjectPreviewPanel
+                draftProject={draftProject}
+                missingFields={missingFields}
+                warnings={draftWarnings}
+                createError={createError}
+                canCreateDraftProject={canCreateDraftProject}
+                isCreatingProject={isCreatingProject}
+                onCreate={() => {
+                  void createDraftProject();
+                }}
+                onEdit={openDraftEditor}
+                onCancel={() => {
+                  void clearPersistedConversationState();
+                  setFluxResponse(null);
+                  setIsResultPanelOpen(false);
+                  setCreateError(null);
+                  setComposerError(null);
+                  setDraftEditValue(null);
+                  setDraftEditError(null);
+                }}
+              />
+            )
+          ) : shouldShowStandaloneBlockersPanel ? (
+            <Panel className="p-5">
+              <div className="mb-4 flex items-center gap-3">
                 <PanelIcon>
-                  <Bot className="h-5 w-5" />
+                  <AlertTriangle className="h-5 w-5" />
                 </PanelIcon>
-                <div className="min-w-0">
-                  <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
-                    AI Suggestions
+                <div>
+                  <h2 className="text-[18px] font-extrabold leading-tight text-[#111712]">
+                    Blockers
                   </h2>
                   <p className="text-[13px] font-medium text-[#667168]">
-                    Smart recommendations based on your activity
+                    Read-only blocker summary
                   </p>
                 </div>
               </div>
-              <Link
-                href="#"
-                className="inline-flex shrink-0 items-center gap-2 text-[13px] font-extrabold text-brand"
-              >
-                View all
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              {suggestions.map((suggestion) => {
-                const Icon = suggestion.icon;
-
-                return (
-                  <button
-                    key={suggestion.title}
-                    type="button"
-                    className="flex min-h-[88px] min-w-0 items-center gap-3 rounded-[16px] border border-[#e3e9e1] bg-white p-4 text-left shadow-[0_12px_26px_rgba(23,39,28,0.035)] transition-colors hover:bg-[#f8fbf7]"
-                  >
-                    <span className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-[#eaf6ed] text-brand">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[13px] font-extrabold leading-4 text-[#111712]">
-                        {suggestion.title}
-                      </span>
-                      <span className="mt-1 block text-[12px] font-medium text-[#7a837b]">
-                        {suggestion.meta}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </Panel>
+              <ul className="space-y-2 text-[13px] font-semibold text-[#5b403d]">
+                {blockers.slice(0, 8).map((blocker) => (
+                  <li key={blocker} className="flex items-start gap-2 rounded-[14px] bg-[#fff4f4] p-3">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#d45e55]" />
+                    <span>{blocker}</span>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          ) : null}
+          </div>
         </aside>
+        ) : null}
+        </div>
       </div>
-    </div>
+      <ConfirmationDialog
+        isOpen={Boolean(conversationPendingDelete)}
+        title="Delete this Flux AI chat?"
+        description="This will remove the conversation from your Flux AI history."
+        confirmLabel="Delete Chat"
+        cancelLabel="Cancel"
+        tone="destructive"
+        pending={isDeletingConversation}
+        error={deleteConversationError ?? undefined}
+        onConfirm={() => {
+          void confirmDeleteConversation();
+        }}
+        onClose={() => {
+          if (isDeletingConversation) {
+            return;
+          }
+
+          setConversationPendingDelete(null);
+          setDeleteConversationError(null);
+        }}
+      />
+    </>
   );
 }
