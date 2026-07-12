@@ -36,6 +36,7 @@ export type ProjectPermissionContext = Pick<
 
 export type SidebarVisibility = {
   dashboard: boolean;
+  fluxAi: boolean;
   projects: boolean;
   projectCounts: boolean;
   calendar: boolean;
@@ -212,6 +213,7 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   return {
     dashboard: hasPermission(user, "dashboard.view"),
+    fluxAi: hasPermission(user, "dashboard.view"),
     projects: hasPermission(user, "project.list"),
     projectCounts: hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),
