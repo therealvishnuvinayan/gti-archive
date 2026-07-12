@@ -4,6 +4,7 @@ const OPENAI_API_BASE_URL = "https://api.openai.com/v1";
 const TRANSLATION_MODEL = process.env.OPENAI_TRANSLATION_MODEL ?? "gpt-4.1-mini";
 const STAGE_SUMMARY_MODEL =
   process.env.OPENAI_STAGE_SUMMARY_MODEL ?? "gpt-4.1-mini";
+const FLUX_AI_MODEL = process.env.OPENAI_FLUX_AI_MODEL ?? "gpt-4.1-mini";
 const TRANSCRIPTION_MODEL =
   process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe";
 export const MAX_TRANSLATION_CHARACTERS = 4000;
@@ -22,6 +23,10 @@ type OpenAiErrorPayload = {
     message?: string;
   };
 };
+
+export function isOpenAIConfigured() {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
 
 function getOpenAiApiKey() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -99,6 +104,109 @@ async function createStructuredChatCompletion<T>(input: {
 
   if (!content) {
     throw new Error("OpenAI returned an empty translation response.");
+  }
+
+  return JSON.parse(content) as T;
+}
+
+function getResponseOutputText(payload: {
+  output_text?: unknown;
+  output?: unknown;
+}) {
+  if (typeof payload.output_text === "string") {
+    return payload.output_text;
+  }
+
+  if (!Array.isArray(payload.output)) {
+    return null;
+  }
+
+  for (const item of payload.output) {
+    if (!item || typeof item !== "object" || !("content" in item)) {
+      continue;
+    }
+
+    const content = (item as { content?: unknown }).content;
+
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const contentItem of content) {
+      if (
+        contentItem &&
+        typeof contentItem === "object" &&
+        "type" in contentItem &&
+        (contentItem as { type?: unknown }).type === "output_text" &&
+        "text" in contentItem &&
+        typeof (contentItem as { text?: unknown }).text === "string"
+      ) {
+        return (contentItem as { text: string }).text;
+      }
+    }
+  }
+
+  return null;
+}
+
+export async function createStructuredResponseWithOpenAI<T>(input: {
+  model?: string;
+  schemaName: string;
+  schema: Record<string, unknown>;
+  systemPrompt: string;
+  userPrompt: string;
+  fallbackErrorMessage?: string;
+  timeoutMs?: number;
+}) {
+  const response = await fetch(`${OPENAI_API_BASE_URL}/responses`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getOpenAiApiKey()}`,
+    },
+    body: JSON.stringify({
+      model: input.model ?? FLUX_AI_MODEL,
+      temperature: 0.2,
+      input: [
+        {
+          role: "system",
+          content: input.systemPrompt,
+        },
+        {
+          role: "user",
+          content: input.userPrompt,
+        },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: input.schemaName,
+          strict: true,
+          schema: input.schema,
+        },
+      },
+    }),
+    signal: AbortSignal.timeout(input.timeoutMs ?? 30000),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as OpenAiErrorPayload | null;
+    throw new Error(
+      getOpenAiErrorMessage(
+        payload,
+        input.fallbackErrorMessage ?? "OpenAI Responses request failed.",
+      ),
+    );
+  }
+
+  const payload = (await response.json()) as {
+    output_text?: unknown;
+    output?: unknown;
+  };
+  const content = getResponseOutputText(payload);
+
+  if (!content) {
+    throw new Error("OpenAI returned an empty structured response.");
   }
 
   return JSON.parse(content) as T;

@@ -162,6 +162,17 @@ enum NotificationEntityType {
   COMPLETION_DOCUMENT
 }
 
+enum FluxAiConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum FluxAiMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM_EVENT
+}
+
 model User {
   id                                  String                               @id @default(cuid())
   email                               String                               @unique
@@ -199,6 +210,7 @@ model User {
   archiveCategoryAccesses             ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessUser")
   grantedArchiveAccesses              UserArchiveAccess[]                  @relation("UserArchiveAccessGrantedBy")
   createdArchiveCategoryAccesses      ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessCreatedBy")
+  fluxAiConversations                 FluxAiConversation[]
   manualLibraryAssets                 ManualLibraryAsset[]                 @relation("ManualLibraryAssetUploadedBy")
   notifications                       Notification[]
   fileFavorites                       FileFavorite[]
@@ -648,6 +660,36 @@ model ProjectCommentMention {
   @@unique([commentId, mentionedUserId])
   @@index([mentionedUserId, createdAt])
   @@index([commentId, createdAt])
+}
+
+model FluxAiConversation {
+  id            String                   @id @default(cuid())
+  userId        String
+  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  status        FluxAiConversationStatus @default(ACTIVE)
+  lastMessageAt DateTime                 @default(now())
+  archivedAt    DateTime?
+  messages      FluxAiMessage[]
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  @@index([userId, status, lastMessageAt])
+  @@index([userId, createdAt])
+}
+
+model FluxAiMessage {
+  id                String             @id @default(cuid())
+  conversationId    String
+  conversation      FluxAiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role              FluxAiMessageRole
+  content           String
+  responseType      String?
+  structuredPayload Json?
+  createdAt         DateTime           @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId, role, createdAt])
 }
 
 model ProjectAttachment {

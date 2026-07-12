@@ -25,6 +25,10 @@ export const permissionCatalog = {
     "dashboard.viewProjectCounts",
     "dashboard.viewRecentProjects",
   ],
+  fluxAi: [
+    "fluxAi.view",
+    "fluxAi.deleteOwnConversation",
+  ],
   project: [
     "project.list",
     "project.view",
@@ -135,6 +139,7 @@ export type PermissionKey = (typeof permissionCatalog)[PermissionGroup][number];
 
 export type ModuleName =
   | "dashboard"
+  | "fluxAi"
   | "project"
   | "calendar"
   | "collaboration"
@@ -168,6 +173,11 @@ export const permissionGroupDefinitions: readonly PermissionGroupDefinition[] = 
     id: "dashboard",
     title: "Dashboard",
     description: "Dashboard page visibility, project counts, and recent project summaries.",
+  },
+  {
+    id: "fluxAi",
+    title: "Flux AI",
+    description: "Flux AI assistant page and project assistant API access.",
   },
   {
     id: "project",
@@ -262,6 +272,20 @@ const permissionMetadata: Record<
     description: "See recent project cards for accessible projects.",
     moduleGated: true,
     hardRule: false,
+  },
+  "fluxAi.view": {
+    label: "View Flux AI",
+    description:
+      "Allows access to the Flux AI assistant page and Flux AI chat/project assistant APIs.",
+    moduleGated: false,
+    hardRule: true,
+  },
+  "fluxAi.deleteOwnConversation": {
+    label: "Delete own Flux AI chats",
+    description:
+      "Allows users with Flux AI access to delete their own Flux AI conversation history.",
+    moduleGated: false,
+    hardRule: true,
   },
   "project.list": {
     label: "List projects",
@@ -737,6 +761,8 @@ export const permissionModuleMap: Record<PermissionKey, ModuleName> = {
   "dashboard.view": "dashboard",
   "dashboard.viewProjectCounts": "project",
   "dashboard.viewRecentProjects": "project",
+  "fluxAi.view": "fluxAi",
+  "fluxAi.deleteOwnConversation": "fluxAi",
   "project.list": "project",
   "project.view": "project",
   "project.create": "project",

@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   Settings,
   ShieldUser,
+  Sparkles,
   X,
 } from "lucide-react";
 
@@ -40,6 +41,7 @@ const sidebarSections: SidebarSection[] = [
     title: "Menu",
     items: [
       { label: "Dashboard", href: "/", icon: LayoutDashboard, visibilityKey: "dashboard" },
+      { label: "Flux AI", href: "/flux-ai", icon: Sparkles, visibilityKey: "fluxAi" },
       { label: "Projects", href: "/projects", icon: Folder, visibilityKey: "projects" },
       { label: "Calendar", href: "/calendar", icon: CalendarDays, visibilityKey: "calendar" },
       {
