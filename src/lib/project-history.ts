@@ -4294,14 +4294,11 @@ export async function reviewProjectRevision(
     throw new Error("Revision reason is required.");
   }
 
-  if (
+  const canCompleteStageOnApproval =
     input.status === "APPROVED" &&
     revision.stage.status !== StageStatus.COMPLETED &&
-    isStageInvoiceRequired(revision.project, revision.stage) &&
-    !(await hasReadyStageInvoice(input.projectId, revision.stageId))
-  ) {
-    throw new Error("Invoice is required before completing this stage.");
-  }
+    (!isStageInvoiceRequired(revision.project, revision.stage) ||
+      (await hasReadyStageInvoice(input.projectId, revision.stageId)));
 
   const reviewedAt = new Date();
   const attachmentReviewStatus =
@@ -4369,7 +4366,7 @@ export async function reviewProjectRevision(
           }
         | null = null;
 
-      if (input.status === "APPROVED" && revision.stage.status !== StageStatus.COMPLETED) {
+      if (canCompleteStageOnApproval) {
         const orderedStages = await tx.projectStage.findMany({
           where: {
             projectId: revision.projectId,
@@ -4509,10 +4506,14 @@ export async function requestStageInvoice(
         name: true,
         status: true,
         invoiceRequired: true,
-        _count: {
-          select: {
-            revisions: true,
+        revisions: {
+          orderBy: {
+            revisionNumber: "desc",
           },
+          select: {
+            status: true,
+          },
+          take: 1,
         },
         attachments: {
           where: {
@@ -4595,8 +4596,14 @@ export async function requestStageInvoice(
     throw new Error("Invoice is not required for this stage.");
   }
 
-  if (stage._count.revisions === 0) {
-    throw new Error("Invoice can be requested only after the first submission.");
+  const latestRevision = stage.revisions[0] ?? null;
+
+  if (!latestRevision) {
+    throw new Error("Invoice can be requested only after submission approval.");
+  }
+
+  if (latestRevision.status !== ProjectRevisionStatus.APPROVED) {
+    throw new Error("Invoice can be requested only after the submitted work is approved.");
   }
 
   if (stage.attachments.length > 0) {

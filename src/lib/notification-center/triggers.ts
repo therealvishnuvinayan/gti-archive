@@ -392,11 +392,11 @@ export async function notifySubmissionWorkflowDecision(input: {
         : "SUBMISSION_REVISION_REQUESTED",
     title:
       input.status === "COMPLETED"
-        ? "Submission completed"
+        ? "Submission approved"
         : "Revision requested",
     message:
       input.status === "COMPLETED"
-        ? `Your submission for ${stage.name} was marked complete.`
+        ? `Your submission for ${stage.name} was approved.`
         : `Changes were requested for ${stage.name}.`,
     entityType: "STAGE",
     entityId: stage.id,
