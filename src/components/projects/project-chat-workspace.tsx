@@ -2856,7 +2856,10 @@ export function ProjectChatWorkspace({
                 ? pendingRevisionReviewMessage
                 : null;
   const showSubmitWorkAction =
-    canSubmitWorkAsMainExecutor && Boolean(activeStage) && !isProjectCompleted;
+    canSubmitWorkAsMainExecutor &&
+    Boolean(activeStage) &&
+    !isStageCompleted &&
+    !isProjectCompleted;
   const projectBriefText = project.description.trim();
   const stageBriefText = activeStage?.description.trim() ?? "";
   const projectBriefAttachments = project.attachments;
@@ -4919,6 +4922,14 @@ export function ProjectChatWorkspace({
     setPendingCommentFiles((current) => current.filter((file) => file.id !== fileId));
   }
 
+  function openRevisionReview(revisionEntryId: string) {
+    setReviewDialogError(null);
+    setReviewRejectMode(false);
+    setReviewCompleteDialogOpen(false);
+    setReviewRejectReason("");
+    setReviewRevisionId(revisionEntryId);
+  }
+
   function startRevisionReply(message: DisplayChatEntry) {
     if (isChatReadOnly) {
       setComposerError(
@@ -6210,6 +6221,39 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
+              {canReviewLatestRevision && latestRevisionMessage && latestRevisionEntryId ? (
+                <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#b8dec5] bg-white/96 p-3 shadow-[0_18px_42px_rgba(22,93,56,0.14)] backdrop-blur">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                        Pending review
+                      </p>
+                      <p className="mt-1 truncate text-[14px] font-[800] leading-5 text-[#173120]">
+                        {latestRevisionLabel} · Pending Review
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        className="min-h-[44px] shrink-0 rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
+                        onClick={() => openRevisionReview(latestRevisionEntryId)}
+                        disabled={pendingRevisionReviewId === latestRevisionEntryId}
+                      >
+                        Review Submission
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="min-h-[44px] shrink-0 rounded-full border border-[#cfe0d4] bg-white px-5 text-[14px] font-[800] text-[#24573d]"
+                        onClick={() => startRevisionReply(latestRevisionMessage)}
+                        disabled={isChatReadOnly}
+                      >
+                        Add Comment
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {showSubmitWorkAction &&
               hasAcceptedBrief &&
               (canSubmitNewRevision || isUploadingRevision) ? (
@@ -6336,31 +6380,6 @@ export function ProjectChatWorkspace({
                         ) : null}
                         Archive Project
                       </Button>
-                    </CardContent>
-                  </Card>
-                ) : null}
-
-                {!isProjectCompleted &&
-                isProjectOwner &&
-                isFinalStage &&
-                !completionState.allStagesCompleted ? (
-                  <Card className="rounded-[20px] border border-[#f0c9c7] bg-[#fff7f6] shadow-none">
-                    <CardContent className="px-5 py-4">
-                      <p className="text-[14px] font-semibold text-[#9f3f39]">
-                        Project cannot be completed yet.
-                      </p>
-                      <p className="mt-1 text-[12px] leading-5 text-[#7c514d]">
-                        Complete all stages before final project completion.
-                      </p>
-                      {completionState.incompleteStages.length > 0 ? (
-                        <ul className="mt-3 space-y-1 text-[12px] text-[#7c514d]">
-                          {completionState.incompleteStages.map((stage) => (
-                            <li key={stage.id}>
-                              {stage.name} — {stage.status}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
                     </CardContent>
                   </Card>
                 ) : null}
@@ -7066,13 +7085,7 @@ export function ProjectChatWorkspace({
                       variant="secondary"
                       className="rounded-full text-[12px]"
                       disabled={pendingRevisionReviewId === latestRevisionEntryId}
-                      onClick={() => {
-                        setReviewDialogError(null);
-                        setReviewRejectMode(false);
-                        setReviewCompleteDialogOpen(false);
-                        setReviewRejectReason("");
-                        setReviewRevisionId(latestRevisionEntryId);
-                      }}
+                      onClick={() => openRevisionReview(latestRevisionEntryId)}
                     >
                       Review Submission
                     </Button>
@@ -7458,6 +7471,17 @@ export function ProjectChatWorkspace({
                 </div>
               </dl>
               <div className="mt-5 space-y-2.5">
+                {isStageCompleted ? (
+                  <div className="rounded-[16px] border border-[#cfe6d5] bg-[#f3fbf5] px-3.5 py-3 text-[#1f6f46]">
+                    <div className="flex items-center gap-2 text-[13px] font-[800]">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Stage Completed
+                    </div>
+                    <p className="mt-1 text-[11px] leading-4 text-[#5f6b62]">
+                      Work for this stage has already been submitted and completed.
+                    </p>
+                  </div>
+                ) : null}
                 {canUploadStageInvoice ? (
                   <div className="space-y-1.5">
                     <Button
