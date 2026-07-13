@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,12 @@ type ChatLanguagePickerProps = {
   onSelect: (language: SupportedLanguage) => void;
 };
 
+type PickerPosition = {
+  top: number;
+  left: number;
+  width: number;
+};
+
 export function ChatLanguagePicker({
   languages,
   selectedLanguage,
@@ -24,7 +31,9 @@ export function ChatLanguagePicker({
 }: ChatLanguagePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [position, setPosition] = useState<PickerPosition | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -32,7 +41,10 @@ export function ChatLanguagePicker({
     }
 
     function handlePointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
+      if (
+        !containerRef.current?.contains(event.target as Node) &&
+        !panelRef.current?.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     }
@@ -41,6 +53,50 @@ export function ChatLanguagePicker({
 
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function updatePosition() {
+      const trigger = containerRef.current;
+
+      if (!trigger) {
+        return;
+      }
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const desiredWidth = Math.min(280, viewportWidth - 32);
+      const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 360;
+      const spaceBelow = viewportHeight - triggerRect.bottom - 12;
+      const spaceAbove = triggerRect.top - 12;
+      const openUpward = spaceBelow < panelHeight && spaceAbove > spaceBelow;
+      const maxLeft = Math.max(16, viewportWidth - desiredWidth - 16);
+      const left = Math.min(Math.max(16, triggerRect.right - desiredWidth), maxLeft);
+      const top = openUpward
+        ? Math.max(16, triggerRect.top - panelHeight - 10)
+        : Math.max(16, Math.min(viewportHeight - panelHeight - 16, triggerRect.bottom + 10));
+
+      setPosition({
+        top,
+        left,
+        width: desiredWidth,
+      });
+    }
+
+    updatePosition();
+
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
     };
   }, [isOpen]);
 
@@ -57,6 +113,69 @@ export function ChatLanguagePicker({
         .includes(normalizedQuery),
     );
   }, [languages, query]);
+
+  const pickerPanel =
+    isOpen && typeof document !== "undefined" && position
+      ? createPortal(
+          <Card
+            ref={panelRef}
+            className="fixed z-[160] rounded-[22px] border border-[#e3e8e2] p-3 shadow-[0_22px_60px_rgba(16,32,22,0.16)]"
+            style={{
+              top: position.top,
+              left: position.left,
+              width: position.width,
+              maxHeight: "calc(100vh - 32px)",
+            }}
+          >
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90a090]" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search languages..."
+                className="h-10 rounded-full border-[#e0e6e0] pl-10 pr-4 text-[13px]"
+              />
+            </div>
+            <div className="mt-3 max-h-[260px] space-y-1 overflow-y-auto pr-1">
+              {filteredLanguages.map((language) => {
+                const isSelected = language.code === selectedLanguage.code;
+
+                return (
+                  <button
+                    key={language.code}
+                    type="button"
+                    className={cn(
+                      "flex w-full cursor-pointer items-center gap-3 rounded-[16px] px-3 py-2.5 text-left transition-colors hover:bg-[#f3f7f2]",
+                      isSelected && "bg-[#eef8f0]",
+                    )}
+                    onClick={() => {
+                      onSelect(language);
+                      setIsOpen(false);
+                      setQuery("");
+                    }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-[700] text-[#16211a]">{language.name}</p>
+                      <p className="text-[11px] text-[#6d766f]">
+                        {language.nativeName} · {language.shortCode}
+                      </p>
+                    </div>
+                    {isSelected ? (
+                      <Check className="h-4 w-4 text-brand" />
+                    ) : null}
+                  </button>
+                );
+              })}
+              {filteredLanguages.length === 0 ? (
+                <div className="rounded-[16px] border border-dashed border-[#d7e1d7] px-3 py-5 text-center text-[12px] text-[#707a72]">
+                  No languages found.
+                </div>
+              ) : null}
+            </div>
+          </Card>,
+          document.body,
+        )
+      : null;
 
   return (
     <div ref={containerRef} className="relative">
@@ -76,55 +195,7 @@ export function ChatLanguagePicker({
         <ChevronDown className="h-3.5 w-3.5" />
       </Button>
 
-      {isOpen ? (
-        <Card className="absolute bottom-[calc(100%+10px)] right-0 z-50 w-[280px] rounded-[22px] border border-[#e3e8e2] p-3 shadow-[0_22px_60px_rgba(16,32,22,0.16)]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90a090]" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search languages..."
-              className="h-10 rounded-full border-[#e0e6e0] pl-10 pr-4 text-[13px]"
-            />
-          </div>
-          <div className="mt-3 max-h-[260px] space-y-1 overflow-y-auto pr-1">
-            {filteredLanguages.map((language) => {
-              const isSelected = language.code === selectedLanguage.code;
-
-              return (
-                <button
-                  key={language.code}
-                  type="button"
-                  className={cn(
-                    "flex w-full cursor-pointer items-center gap-3 rounded-[16px] px-3 py-2.5 text-left transition-colors hover:bg-[#f3f7f2]",
-                    isSelected && "bg-[#eef8f0]",
-                  )}
-                  onClick={() => {
-                    onSelect(language);
-                    setIsOpen(false);
-                    setQuery("");
-                  }}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-[700] text-[#16211a]">{language.name}</p>
-                    <p className="text-[11px] text-[#6d766f]">
-                      {language.nativeName} · {language.shortCode}
-                    </p>
-                  </div>
-                  {isSelected ? (
-                    <Check className="h-4 w-4 text-brand" />
-                  ) : null}
-                </button>
-              );
-            })}
-            {filteredLanguages.length === 0 ? (
-              <div className="rounded-[16px] border border-dashed border-[#d7e1d7] px-3 py-5 text-center text-[12px] text-[#707a72]">
-                No languages found.
-              </div>
-            ) : null}
-          </div>
-        </Card>
-      ) : null}
+      {pickerPanel}
     </div>
   );
 }

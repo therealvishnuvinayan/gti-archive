@@ -8,6 +8,8 @@ const FLUX_AI_MODEL = process.env.OPENAI_FLUX_AI_MODEL ?? "gpt-4.1-mini";
 const TRANSCRIPTION_MODEL =
   process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe";
 export const MAX_TRANSLATION_CHARACTERS = 4000;
+export const MAX_TRANSLATION_BATCH_ITEMS = 60;
+export const MAX_TRANSLATION_BATCH_CHARACTERS = 12000;
 export const MAX_TRANSCRIPTION_BYTES = 10 * 1024 * 1024;
 export const MAX_STAGE_SUMMARY_CONTEXT_CHARACTERS = 5000;
 
@@ -16,6 +18,16 @@ type TranslationResponse = {
   sourceLanguageName: string;
   targetLanguageCode: string;
   translatedText: string;
+};
+
+type TranslationBatchResponse = {
+  translations: Array<{
+    id: string;
+    sourceLanguageCode: string;
+    sourceLanguageName: string;
+    targetLanguageCode: string;
+    translatedText: string;
+  }>;
 };
 
 type OpenAiErrorPayload = {
@@ -268,6 +280,101 @@ export async function translateTextWithOpenAI(input: {
     sourceLanguageName: result.sourceLanguageName,
     targetLanguageCode: result.targetLanguageCode.toLowerCase(),
     translatedText: result.translatedText.trim(),
+  };
+}
+
+export async function translateTextsWithOpenAI(input: {
+  items: Array<{
+    id: string;
+    text: string;
+  }>;
+  targetLanguageCode: string;
+  targetLanguageName: string;
+}) {
+  const items = input.items
+    .map((item) => ({
+      id: item.id.trim(),
+      text: item.text.trim(),
+    }))
+    .filter((item) => item.id && item.text);
+
+  if (items.length === 0) {
+    throw new Error("Enter text to translate.");
+  }
+
+  if (items.length > MAX_TRANSLATION_BATCH_ITEMS) {
+    throw new Error(
+      `Too many messages to translate at once. Keep it under ${MAX_TRANSLATION_BATCH_ITEMS} text blocks.`,
+    );
+  }
+
+  const totalCharacters = items.reduce((total, item) => total + item.text.length, 0);
+
+  if (totalCharacters > MAX_TRANSLATION_BATCH_CHARACTERS) {
+    throw new Error(
+      `Conversation text is too long to translate at once. Keep it under ${MAX_TRANSLATION_BATCH_CHARACTERS} characters.`,
+    );
+  }
+
+  const targetLanguage =
+    getSupportedLanguageByCode(input.targetLanguageCode) ??
+    ({
+      code: input.targetLanguageCode,
+      name: input.targetLanguageName,
+    } as const);
+
+  const result = await createStructuredChatCompletion<TranslationBatchResponse>({
+    schemaName: "chat_translation_batch_result",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        translations: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              sourceLanguageCode: { type: "string" },
+              sourceLanguageName: { type: "string" },
+              targetLanguageCode: { type: "string" },
+              translatedText: { type: "string" },
+            },
+            required: [
+              "id",
+              "sourceLanguageCode",
+              "sourceLanguageName",
+              "targetLanguageCode",
+              "translatedText",
+            ],
+          },
+        },
+      },
+      required: ["translations"],
+    },
+    systemPrompt:
+      "You are a professional translator for an internal project management chat. Translate each provided text into the requested target language. Preserve line breaks, punctuation, numbering, URLs, file names, IDs, @mentions, and technical terms where possible. Return strict JSON only. Keep each output item id exactly unchanged. Use ISO 639-1 lowercase codes when possible.",
+    userPrompt: JSON.stringify({
+      targetLanguageCode: targetLanguage.code,
+      targetLanguageName: targetLanguage.name,
+      items,
+    }),
+    timeoutMs: 45000,
+  });
+
+  const requestedIds = new Set(items.map((item) => item.id));
+
+  return {
+    translations: result.translations
+      .filter((translation) => requestedIds.has(translation.id))
+      .map((translation) => ({
+        id: translation.id,
+        sourceLanguageCode: translation.sourceLanguageCode.toLowerCase(),
+        sourceLanguageName: translation.sourceLanguageName,
+        targetLanguageCode: translation.targetLanguageCode.toLowerCase(),
+        translatedText: translation.translatedText.trim(),
+      })),
   };
 }
 

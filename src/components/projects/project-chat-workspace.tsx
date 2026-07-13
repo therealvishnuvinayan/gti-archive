@@ -274,6 +274,27 @@ type TranslateApiResponse = {
   error?: string;
 };
 
+type TranslateBatchApiResponse = {
+  translations?: Array<{
+    id: string;
+    sourceLanguageCode: string;
+    sourceLanguageName: string;
+    targetLanguageCode: string;
+    translatedText: string;
+  }>;
+  error?: string;
+};
+
+type StageChatTranslation = {
+  targetLanguageCode: string;
+  translatedText: string;
+};
+
+type StageChatTranslationSegment = {
+  id: string;
+  text: string;
+};
+
 type TranscribeApiResponse = {
   detectedSourceLanguage: string;
   detectedSourceLanguageCode: string;
@@ -552,6 +573,31 @@ function renderCommentBodyWithMentions(
   }
 
   return segments;
+}
+
+function buildStageChatTranslationSegmentId(entryId: string, field: string) {
+  return `${entryId}:${field}`;
+}
+
+function normalizeStageChatTranslationSource(value: string | null | undefined) {
+  return value?.trim() ?? "";
+}
+
+function buildStageChatTranslationSegment(
+  entryId: string,
+  field: string,
+  text: string | null | undefined,
+): StageChatTranslationSegment | null {
+  const normalizedText = normalizeStageChatTranslationSource(text);
+
+  if (!normalizedText) {
+    return null;
+  }
+
+  return {
+    id: buildStageChatTranslationSegmentId(entryId, field),
+    text: normalizedText,
+  };
 }
 
 function isLegacyBriefContextMessage(entry: Pick<DisplayChatEntry, "kind" | "body">) {
@@ -1339,12 +1385,14 @@ function SystemActivityCard({
   alignment = "left",
   action,
   currentUserDisplayName,
+  titleOverride,
   bodyOverride,
 }: {
   message: DisplayChatEntry;
   alignment?: TimelineAlignment;
   action?: ReactNode;
   currentUserDisplayName: string;
+  titleOverride?: string | null;
   bodyOverride?: string | null;
 }) {
   const meta = getSystemActivityMeta(message);
@@ -1385,7 +1433,7 @@ function SystemActivityCard({
               </span>
             </div>
             <p className={`mt-1 text-[13px] font-[800] ${meta.titleClassName}`}>
-              {message.title ?? "Project activity"}
+              {titleOverride ?? message.title ?? "Project activity"}
             </p>
             <p className={`mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 ${meta.bodyClassName}`}>
               {displayBody}
@@ -2420,6 +2468,12 @@ export function ProjectChatWorkspace({
     DEFAULT_CHAT_LANGUAGE.code,
   );
   const [isTranslating, setIsTranslating] = useState(false);
+  const [translateAllEnabled, setTranslateAllEnabled] = useState(false);
+  const [isTranslatingAll, setIsTranslatingAll] = useState(false);
+  const [translateAllError, setTranslateAllError] = useState<string | null>(null);
+  const [stageChatTranslations, setStageChatTranslations] = useState<
+    Record<string, StageChatTranslation>
+  >({});
   const [autoTranslateDraft, setAutoTranslateDraft] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -2520,6 +2574,8 @@ export function ProjectChatWorkspace({
   const draftRef = useRef(draft);
   const autoTranslateTimeoutRef = useRef<number | null>(null);
   const translationRequestIdRef = useRef(0);
+  const translateAllRequestIdRef = useRef(0);
+  const pendingTranslateAllSegmentIdsRef = useRef<Set<string>>(new Set());
   const lastAppliedTranslationRef = useRef<{
     sourceText: string;
     translatedText: string;
@@ -3234,6 +3290,275 @@ export function ProjectChatWorkspace({
       isProjectOwner,
     ],
   );
+
+  const getVisibleSystemBody = useCallback(
+    (message: DisplayChatEntry) => {
+      if (message.title === "Invoice requested") {
+        return getInvoiceRequestTimelineBody() ?? message.body;
+      }
+
+      if (message.title === "Invoice uploaded") {
+        return getInvoiceUploadedTimelineBody(message);
+      }
+
+      return replaceCurrentUserNameInText(
+        message.body,
+        message.author,
+        currentUserDisplayName,
+      );
+    },
+    [
+      currentUserDisplayName,
+      getInvoiceRequestTimelineBody,
+      getInvoiceUploadedTimelineBody,
+    ],
+  );
+
+  const getStageChatTranslationSegments = useCallback(
+    (message: DisplayChatEntry) => {
+      if (message.deletedAt) {
+        return [];
+      }
+
+      const segments: StageChatTranslationSegment[] = [];
+      const addSegment = (field: string, text: string | null | undefined) => {
+        const segment = buildStageChatTranslationSegment(message.id, field, text);
+
+        if (segment) {
+          segments.push(segment);
+        }
+      };
+
+      if (message.kind === "system") {
+        addSegment("title", message.title ?? "Project activity");
+        addSegment("body", getVisibleSystemBody(message));
+        return segments;
+      }
+
+      if (message.kind === "revision") {
+        const revisionEntryId = getRevisionEntryId(message);
+        const reviewOverride = revisionReviewOverrides[revisionEntryId];
+        const revisionStatus =
+          reviewOverride?.status ??
+          message.revisionStatus ??
+          "PENDING_REVIEW";
+        const revisionStatusMeta = getRevisionStatusMeta(revisionStatus);
+
+        addSegment("workSubmittedLabel", "Work submitted");
+        addSegment("statusLabel", revisionStatusMeta.label);
+        addSegment("revisionLabel", getRevisionLabel(message));
+        addSegment(
+          "submittedByLine",
+          `Submitted by ${getActorDisplayName(message.author, currentUserDisplayName)} · ${
+            message.role
+          }`,
+        );
+        addSegment("revisionNoteLabel", "Revision note");
+        addSegment("body", message.body);
+        addSegment("submittedFilesLabel", "Submitted files");
+        addSegment(
+          "rejectionReason",
+          reviewOverride?.rejectionReason ?? message.rejectionReason,
+        );
+        return segments;
+      }
+
+      if (message.kind === "caption") {
+        addSegment("captionAddedLabel", "Caption added");
+        addSegment("body", message.body);
+        addSegment("submissionLabel", message.caption?.submissionLabel);
+        addSegment("captionBody", message.caption?.body);
+        addSegment(
+          "pinnedAtLabel",
+          `Pinned at ${message.caption?.xPercent.toFixed(1) ?? "0.0"}%, ${
+            message.caption?.yPercent.toFixed(1) ?? "0.0"
+          }%`,
+        );
+        addSegment("viewCaptionLabel", "View Caption");
+        return segments;
+      }
+
+      if (message.kind === "comparison") {
+        addSegment("comparisonSubmittedLabel", "Comparison submitted");
+        addSegment("body", message.body);
+        addSegment("baseLabel", "Base");
+        addSegment("compareLabel", "Compare");
+        addSegment(
+          "pinnedAtLabel",
+          `Pinned at ${message.comparison?.xPercent.toFixed(1) ?? "0.0"}%, ${
+            message.comparison?.yPercent.toFixed(1) ?? "0.0"
+          }%`,
+        );
+        addSegment("viewComparisonLabel", "View Comparison");
+        return segments;
+      }
+
+      if (message.revisionId) {
+        addSegment("commentOnRevisionLabel", "Comment on revision");
+      }
+
+      if (message.attachments?.length) {
+        const hasSubmissionAttachment =
+          message.attachments.some((attachment) => attachment.isSubmission) ?? false;
+
+        addSegment(
+          "attachmentLabel",
+          hasSubmissionAttachment ? "Submission uploaded" : "Attachment uploaded",
+        );
+      }
+
+      addSegment("body", message.body);
+      return segments;
+    },
+    [currentUserDisplayName, getVisibleSystemBody, revisionReviewOverrides],
+  );
+
+  const getTranslatedStageChatText = useCallback(
+    (entryId: string, field: string, sourceText: string) => {
+      if (!translateAllEnabled) {
+        return sourceText;
+      }
+
+      const translation =
+        stageChatTranslations[buildStageChatTranslationSegmentId(entryId, field)];
+
+      return translation?.targetLanguageCode === selectedOutputLanguage.code
+        ? translation.translatedText
+        : sourceText;
+    },
+    [
+      selectedOutputLanguage.code,
+      stageChatTranslations,
+      translateAllEnabled,
+    ],
+  );
+
+  const requestStageChatTranslations = useCallback(
+    async (segments: StageChatTranslationSegment[]) => {
+      const uniqueSegments = Array.from(
+        new Map(
+          segments
+            .filter((segment) => {
+              const cached = stageChatTranslations[segment.id];
+
+              return (
+                !pendingTranslateAllSegmentIdsRef.current.has(segment.id) &&
+                cached?.targetLanguageCode !== selectedOutputLanguage.code
+              );
+            })
+            .map((segment) => [segment.id, segment]),
+        ).values(),
+      );
+
+      if (uniqueSegments.length === 0) {
+        return;
+      }
+
+      uniqueSegments.forEach((segment) => {
+        pendingTranslateAllSegmentIdsRef.current.add(segment.id);
+      });
+
+      const requestId = translateAllRequestIdRef.current + 1;
+      translateAllRequestIdRef.current = requestId;
+      setTranslateAllError(null);
+      setIsTranslatingAll(true);
+
+      try {
+        const response = await fetch("/api/ai/translate-batch", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            items: uniqueSegments,
+            targetLanguageCode: selectedOutputLanguage.code,
+            targetLanguageName: selectedOutputLanguage.name,
+            projectId: project.id,
+            stageId: activeStage?.id ?? project.currentStageId ?? undefined,
+          }),
+        });
+
+        const payload = (await response.json()) as TranslateBatchApiResponse;
+
+        if (!response.ok || !payload.translations) {
+          throw new Error(payload.error || "Unable to translate the conversation right now.");
+        }
+
+        setStageChatTranslations((current) => {
+          const next = { ...current };
+
+          for (const translation of payload.translations ?? []) {
+            next[translation.id] = {
+              targetLanguageCode: translation.targetLanguageCode,
+              translatedText: translation.translatedText,
+            };
+          }
+
+          return next;
+        });
+      } catch (error) {
+        setTranslateAllError(
+          error instanceof Error
+            ? error.message
+            : "Unable to translate the conversation right now.",
+        );
+      } finally {
+        uniqueSegments.forEach((segment) => {
+          pendingTranslateAllSegmentIdsRef.current.delete(segment.id);
+        });
+
+        if (requestId === translateAllRequestIdRef.current) {
+          setIsTranslatingAll(false);
+        }
+      }
+    },
+    [
+      activeStage?.id,
+      project.currentStageId,
+      project.id,
+      selectedOutputLanguage.code,
+      selectedOutputLanguage.name,
+      stageChatTranslations,
+    ],
+  );
+
+  const translateAllLoadedMessages = useCallback(() => {
+    const segments = displayedMessages.flatMap((message) =>
+      getStageChatTranslationSegments(message),
+    );
+
+    void requestStageChatTranslations(segments);
+  }, [
+    displayedMessages,
+    getStageChatTranslationSegments,
+    requestStageChatTranslations,
+  ]);
+
+  function handleTranslateAllToggle() {
+    if (translateAllEnabled) {
+      setTranslateAllEnabled(false);
+      setTranslateAllError(null);
+      return;
+    }
+
+    setTranslateAllEnabled(true);
+    setTranslateAllError(null);
+    void loadAllEarlierMessagesForTranslateAll();
+    translateAllLoadedMessages();
+  }
+
+  useEffect(() => {
+    if (!translateAllEnabled) {
+      return;
+    }
+
+    translateAllLoadedMessages();
+  }, [
+    displayedMessages,
+    selectedOutputLanguage.code,
+    translateAllEnabled,
+    translateAllLoadedMessages,
+  ]);
   const stageStartSystemMessage = useMemo<DisplayChatEntry | null>(() => {
     if (!activeStage?.actualStartedAtValue || hasBriefAcceptedSystemMessage) {
       return null;
@@ -4205,6 +4530,84 @@ export function ProjectChatWorkspace({
       const message =
         error instanceof Error ? error.message : "Unable to load earlier messages.";
       setOlderMessagesError(message);
+    } finally {
+      setIsLoadingEarlierMessages(false);
+    }
+  }
+
+  async function loadAllEarlierMessagesForTranslateAll() {
+    const activeStageId = activeStage?.id;
+
+    if (!activeStageId || !olderMessagesCursor || isLoadingEarlierMessages) {
+      return;
+    }
+
+    setIsLoadingEarlierMessages(true);
+    setOlderMessagesError(null);
+
+    try {
+      let cursor: string | null = olderMessagesCursor;
+      let hasMorePages = true;
+      let pageCount = 0;
+      const allEarlierEntries: ProjectChatEntry[] = [];
+      let nextRevisionCount: number | null = null;
+
+      while (cursor && hasMorePages && pageCount < 20) {
+        pageCount += 1;
+        const params = new URLSearchParams({
+          cursor,
+          limit: "50",
+        });
+        const response = await fetch(
+          `/api/projects/${encodeURIComponent(project.id)}/stages/${encodeURIComponent(
+            activeStageId,
+          )}/chat/messages?${params.toString()}`,
+          {
+            cache: "no-store",
+          },
+        );
+        const payload = (await response.json()) as StageChatMessagesApiResponse;
+
+        if (!response.ok || "error" in payload) {
+          throw new Error(
+            "error" in payload ? payload.error : "Unable to load earlier messages.",
+          );
+        }
+
+        allEarlierEntries.push(...payload.entries);
+        cursor = payload.nextCursor;
+        hasMorePages = Boolean(payload.hasMore && payload.nextCursor);
+
+        if (typeof payload.revisionCount === "number") {
+          nextRevisionCount = payload.revisionCount;
+        }
+      }
+
+      setLoadedHistoryEntries((current) => {
+        const currentIds = new Set(current.map((entry) => entry.id));
+        const earlierEntries = allEarlierEntries.filter(
+          (entry) => !currentIds.has(entry.id),
+        );
+
+        return [...earlierEntries, ...current];
+      });
+      setOlderMessagesCursor(cursor);
+      setHasEarlierMessages(Boolean(hasMorePages && cursor));
+
+      if (nextRevisionCount !== null) {
+        setStageRevisionCount(nextRevisionCount);
+      }
+
+      if (hasMorePages && cursor) {
+        setTranslateAllError(
+          "Some older messages were not loaded yet. Click Translate All again to continue.",
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to load earlier messages.";
+      setOlderMessagesError(message);
+      setTranslateAllError(message);
     } finally {
       setIsLoadingEarlierMessages(false);
     }
@@ -6743,36 +7146,73 @@ export function ProjectChatWorkspace({
                   />
                   <span>{realtimeStatusLabel}</span>
                 </div>
-                {realtimeEnabled || onlineUsers.length > 0 ? (
-                  <div
-                    className="flex min-w-0 items-center gap-2 rounded-full border border-[#cfe0d4] bg-white/88 px-2.5 py-1 text-[#2f6f4b] shadow-[0_8px_18px_rgba(18,35,23,0.06)]"
-                    aria-label={`${onlineUsers.length} ${
-                      onlineUsers.length === 1 ? "person" : "people"
-                    } online`}
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant={translateAllEnabled ? "default" : "secondary"}
+                    size="sm"
+                    className={`h-8 rounded-full px-3 text-[11px] font-[800] ${
+                      translateAllEnabled
+                        ? "shadow-[0_10px_20px_rgba(34,102,70,0.16)]"
+                        : "border border-[#cfe0d4] bg-white/88 text-[#24573d] shadow-[0_8px_18px_rgba(18,35,23,0.06)]"
+                    }`}
+                    onClick={handleTranslateAllToggle}
+                    disabled={isTranslatingAll || isLoadingEarlierMessages}
                     title={
-                      onlineUsers.length > 0
-                        ? onlineUsers.map((user) => user.displayName).join(", ")
-                        : "No users online"
+                      translateAllEnabled
+                        ? "Show original conversation text"
+                        : "Translate loaded stage chat messages"
                     }
                   >
-                    <span className="size-2 rounded-full bg-[#2f8d5d]" aria-hidden="true" />
-                    <div className="hidden -space-x-2 sm:flex">
-                      {onlineUsers.slice(0, 4).map((user) => (
-                        <span
-                          key={user.userId}
-                          className="grid size-6 place-items-center rounded-full border-2 border-white bg-[#e8f3eb] text-[9px] font-[800] text-[#2f6f4b]"
-                          title={user.displayName}
-                        >
-                          {user.displayCode}
-                        </span>
-                      ))}
+                    {isTranslatingAll || isLoadingEarlierMessages ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Languages className="h-3.5 w-3.5" />
+                    )}
+                    {translateAllEnabled ? "Original" : "Translate All"}
+                  </Button>
+                  <ChatLanguagePicker
+                    languages={SUPPORTED_CHAT_LANGUAGES}
+                    selectedLanguage={selectedOutputLanguage}
+                    disabled={isTranslatingAll || isLoadingEarlierMessages}
+                    onSelect={(language) => setSelectedOutputLanguageCode(language.code)}
+                  />
+                  {realtimeEnabled || onlineUsers.length > 0 ? (
+                    <div
+                      className="flex min-w-0 items-center gap-2 rounded-full border border-[#cfe0d4] bg-white/88 px-2.5 py-1 text-[#2f6f4b] shadow-[0_8px_18px_rgba(18,35,23,0.06)]"
+                      aria-label={`${onlineUsers.length} ${
+                        onlineUsers.length === 1 ? "person" : "people"
+                      } online`}
+                      title={
+                        onlineUsers.length > 0
+                          ? onlineUsers.map((user) => user.displayName).join(", ")
+                          : "No users online"
+                      }
+                    >
+                      <span className="size-2 rounded-full bg-[#2f8d5d]" aria-hidden="true" />
+                      <div className="hidden -space-x-2 sm:flex">
+                        {onlineUsers.slice(0, 4).map((user) => (
+                          <span
+                            key={user.userId}
+                            className="grid size-6 place-items-center rounded-full border-2 border-white bg-[#e8f3eb] text-[9px] font-[800] text-[#2f6f4b]"
+                            title={user.displayName}
+                          >
+                            {user.displayCode}
+                          </span>
+                        ))}
+                      </div>
+                      <span className="whitespace-nowrap">
+                        {onlineUsers.length} online
+                      </span>
                     </div>
-                    <span className="whitespace-nowrap">
-                      {onlineUsers.length} online
-                    </span>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
+              {translateAllError ? (
+                <div className="mb-2 rounded-[16px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-left text-[12px] font-semibold text-[#a64038]">
+                  {translateAllError}
+                </div>
+              ) : null}
               {canAcceptCurrentStageBrief ? (
                 <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#acd9bd] bg-[linear-gradient(135deg,#f5fff6,#e6f7ea)] p-3 shadow-[0_18px_42px_rgba(22,93,56,0.16)]">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -7207,6 +7647,23 @@ export function ProjectChatWorkspace({
                     : isInvoiceUploadedMessage
                       ? getInvoiceUploadedTimelineBody(message)
                       : null;
+                const systemTitle = message.title ?? "Project activity";
+                const systemBody = bodyOverride ??
+                  replaceCurrentUserNameInText(
+                    message.body,
+                    message.author,
+                    currentUserDisplayName,
+                  );
+                const translatedSystemTitle = getTranslatedStageChatText(
+                  message.id,
+                  "title",
+                  systemTitle,
+                );
+                const translatedSystemBody = getTranslatedStageChatText(
+                  message.id,
+                  "body",
+                  systemBody,
+                );
                 const action = isInvoiceUploadedMessage && !showInvoiceUploadedNextAction
                   ? renderStageInvoiceActions({
                       includeCompleteAction: isProjectOwner || canReviewSubmissions,
@@ -7222,7 +7679,8 @@ export function ProjectChatWorkspace({
                       currentUserId,
                       currentUserDisplayName,
                     )}
-                    bodyOverride={bodyOverride}
+                    titleOverride={translatedSystemTitle}
+                    bodyOverride={translatedSystemBody}
                     action={action}
                     currentUserDisplayName={currentUserDisplayName}
                   />
@@ -7249,8 +7707,54 @@ export function ProjectChatWorkspace({
                   reviewOverride?.reviewedBy ?? message.reviewedBy ?? null;
                 const effectiveReviewedAt =
                   reviewOverride?.reviewedAt ?? message.reviewedAt ?? null;
+                const translatedRevisionBody = getTranslatedStageChatText(
+                  message.id,
+                  "body",
+                  message.body,
+                );
+                const translatedRejectionReason = effectiveRejectionReason
+                  ? getTranslatedStageChatText(
+                      message.id,
+                      "rejectionReason",
+                      effectiveRejectionReason,
+                    )
+                  : null;
                 const revisionStatusMeta = getRevisionStatusMeta(effectiveRevisionStatus);
                 const revisionLabel = getRevisionLabel(message);
+                const translatedWorkSubmittedLabel = getTranslatedStageChatText(
+                  message.id,
+                  "workSubmittedLabel",
+                  "Work submitted",
+                );
+                const translatedRevisionStatusLabel = getTranslatedStageChatText(
+                  message.id,
+                  "statusLabel",
+                  revisionStatusMeta.label,
+                );
+                const translatedRevisionLabel = getTranslatedStageChatText(
+                  message.id,
+                  "revisionLabel",
+                  revisionLabel,
+                );
+                const submittedByLine = `Submitted by ${getActorDisplayName(
+                  message.author,
+                  currentUserDisplayName,
+                )} · ${message.role}`;
+                const translatedSubmittedByLine = getTranslatedStageChatText(
+                  message.id,
+                  "submittedByLine",
+                  submittedByLine,
+                );
+                const translatedRevisionNoteLabel = getTranslatedStageChatText(
+                  message.id,
+                  "revisionNoteLabel",
+                  "Revision note",
+                );
+                const translatedSubmittedFilesLabel = getTranslatedStageChatText(
+                  message.id,
+                  "submittedFilesLabel",
+                  "Submitted files",
+                );
 
                 return (
                   <TimelineFrame
@@ -7273,36 +7777,32 @@ export function ProjectChatWorkspace({
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
                               <span className="rounded-full bg-[#edf7ef] px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] text-brand">
-                                Work submitted
+                                {translatedWorkSubmittedLabel}
                               </span>
                               <span
                                 className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide ${revisionStatusMeta.badgeClassName}`}
                               >
-                                {revisionStatusMeta.label}
+                                {translatedRevisionStatusLabel}
                               </span>
                               <span className="ml-auto min-w-fit text-[11px] font-semibold text-[#7a837b]">
                                 {message.createdAt}
                               </span>
                             </div>
                             <h2 className="mt-2 text-[16px] font-[800] tracking-tight text-[#173120]">
-                              {revisionLabel}
+                              {translatedRevisionLabel}
                             </h2>
                             <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-[#6f786f]">
-                              <span>
-                                Submitted by {getActorDisplayName(message.author, currentUserDisplayName)}
-                              </span>
-                              <span aria-hidden="true">·</span>
-                              <span>{message.role}</span>
+                              <span>{translatedSubmittedByLine}</span>
                             </div>
                           </div>
                         </div>
 
                         <div className="min-w-0 rounded-[16px] border border-[#e3ece4] bg-white/78 px-3.5 py-3">
                           <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
-                            Revision note
+                            {translatedRevisionNoteLabel}
                           </p>
                           <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-5 text-[#253028]">
-                            {message.body}
+                            {translatedRevisionBody}
                           </p>
                         </div>
 
@@ -7319,7 +7819,7 @@ export function ProjectChatWorkspace({
                                 : "Requested by Project Owner"}
                             </p>
                             <p className="mt-2 whitespace-pre-wrap break-words text-[12px] font-semibold leading-5">
-                              {effectiveRejectionReason}
+                              {translatedRejectionReason}
                             </p>
                           </div>
                         ) : null}
@@ -7328,7 +7828,7 @@ export function ProjectChatWorkspace({
                           <div className="min-w-0 rounded-[16px] border border-[#e1e9e2] bg-[#f8fbf8] p-3">
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
-                                Submitted files
+                                {translatedSubmittedFilesLabel}
                               </p>
                               <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-[#6f786f]">
                                 {message.attachments.length}
@@ -7363,6 +7863,37 @@ export function ProjectChatWorkspace({
                   currentUserId,
                   currentUserDisplayName,
                 );
+                const translatedCaptionMessageBody = getTranslatedStageChatText(
+                  message.id,
+                  "body",
+                  message.body,
+                );
+                const translatedCaptionBody = getTranslatedStageChatText(
+                  message.id,
+                  "captionBody",
+                  caption.body,
+                );
+                const translatedCaptionAddedLabel = getTranslatedStageChatText(
+                  message.id,
+                  "captionAddedLabel",
+                  "Caption added",
+                );
+                const translatedSubmissionLabel = getTranslatedStageChatText(
+                  message.id,
+                  "submissionLabel",
+                  caption.submissionLabel,
+                );
+                const pinnedAtLabel = `Pinned at ${caption.xPercent.toFixed(1)}%, ${caption.yPercent.toFixed(1)}%`;
+                const translatedPinnedAtLabel = getTranslatedStageChatText(
+                  message.id,
+                  "pinnedAtLabel",
+                  pinnedAtLabel,
+                );
+                const translatedViewCaptionLabel = getTranslatedStageChatText(
+                  message.id,
+                  "viewCaptionLabel",
+                  "View Caption",
+                );
 
                 return (
                   <TimelineFrame
@@ -7382,29 +7913,28 @@ export function ProjectChatWorkspace({
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#edf7ef] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#2b8b56]">
                               <MessageSquarePlus className="h-3.5 w-3.5" />
-                              Caption added
+                              {translatedCaptionAddedLabel}
                             </span>
                             <span className="text-[11px] font-[600] text-[#7a837b]">
                               {message.createdAt}
                             </span>
                           </div>
                           <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-[#253029]">
-                            {message.body}
+                            {translatedCaptionMessageBody}
                           </p>
                           <div className="mt-4 rounded-[16px] border border-[#dce9df] bg-white px-3 py-2.5">
                             <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#66806d]">
-                              {caption.submissionLabel}
+                              {translatedSubmissionLabel}
                             </p>
                             <p className="mt-1 truncate text-[12px] font-[700] text-[#1b241e]">
                               {caption.fileName}
                             </p>
                           </div>
                           <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-[#253029]">
-                            {caption.body}
+                            {translatedCaptionBody}
                           </p>
                           <p className="mt-3 text-[10px] font-[600] uppercase tracking-[0.08em] text-[#7a837b]">
-                            Pinned at {caption.xPercent.toFixed(1)}%,{" "}
-                            {caption.yPercent.toFixed(1)}%
+                            {translatedPinnedAtLabel}
                           </p>
                         </div>
                         <Button
@@ -7423,7 +7953,7 @@ export function ProjectChatWorkspace({
                             )
                           }
                         >
-                          View Caption
+                          {translatedViewCaptionLabel}
                         </Button>
                       </div>
                     </Card>
@@ -7449,6 +7979,37 @@ export function ProjectChatWorkspace({
                   comparison.baseAttachmentId,
                   comparison.compareAttachmentId,
                 );
+                const translatedComparisonBody = getTranslatedStageChatText(
+                  message.id,
+                  "body",
+                  message.body,
+                );
+                const translatedComparisonSubmittedLabel = getTranslatedStageChatText(
+                  message.id,
+                  "comparisonSubmittedLabel",
+                  "Comparison submitted",
+                );
+                const translatedBaseLabel = getTranslatedStageChatText(
+                  message.id,
+                  "baseLabel",
+                  "Base",
+                );
+                const translatedCompareLabel = getTranslatedStageChatText(
+                  message.id,
+                  "compareLabel",
+                  "Compare",
+                );
+                const comparisonPinnedAtLabel = `Pinned at ${comparison.xPercent.toFixed(1)}%, ${comparison.yPercent.toFixed(1)}%`;
+                const translatedComparisonPinnedAtLabel = getTranslatedStageChatText(
+                  message.id,
+                  "pinnedAtLabel",
+                  comparisonPinnedAtLabel,
+                );
+                const translatedViewComparisonLabel = getTranslatedStageChatText(
+                  message.id,
+                  "viewComparisonLabel",
+                  "View Comparison",
+                );
 
                 return (
                   <TimelineFrame
@@ -7468,7 +8029,7 @@ export function ProjectChatWorkspace({
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f3fb] px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#3e78a6]">
                               <GitCompare className="h-3.5 w-3.5" />
-                              Comparison submitted
+                              {translatedComparisonSubmittedLabel}
                             </span>
                             <span className="text-[11px] font-[600] text-[#7a837b]">
                               {message.createdAt}
@@ -7488,17 +8049,17 @@ export function ProjectChatWorkspace({
                             </div>
                           </div>
                           <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-[#253029]">
-                            {message.body}
+                            {translatedComparisonBody}
                           </p>
                           <div className="mt-4 grid gap-2 lg:grid-cols-2">
                             {[
                               {
-                                label: "Base",
+                                label: translatedBaseLabel,
                                 submission: comparison.baseSubmissionLabel,
                                 fileName: comparison.baseFileName,
                               },
                               {
-                                label: "Compare",
+                                label: translatedCompareLabel,
                                 submission: comparison.compareSubmissionLabel,
                                 fileName: comparison.compareFileName,
                               },
@@ -7517,8 +8078,7 @@ export function ProjectChatWorkspace({
                             ))}
                           </div>
                           <p className="mt-3 text-[10px] font-[600] uppercase tracking-[0.08em] text-[#7a837b]">
-                            Pinned at {comparison.xPercent.toFixed(1)}%,{" "}
-                            {comparison.yPercent.toFixed(1)}%
+                            {translatedComparisonPinnedAtLabel}
                           </p>
                         </div>
                         <Button
@@ -7527,7 +8087,7 @@ export function ProjectChatWorkspace({
                           size="sm"
                           className="shrink-0 rounded-full text-[12px]"
                         >
-                          <Link href={comparisonHref}>View Comparison</Link>
+                          <Link href={comparisonHref}>{translatedViewComparisonLabel}</Link>
                         </Button>
                       </div>
                     </Card>
@@ -7568,6 +8128,23 @@ export function ProjectChatWorkspace({
                 const attachmentLabel = hasSubmissionAttachment
                   ? "Submission uploaded"
                   : "Attachment uploaded";
+                const translatedCommentOnRevisionLabel = getTranslatedStageChatText(
+                  message.id,
+                  "commentOnRevisionLabel",
+                  "Comment on revision",
+                );
+                const translatedAttachmentLabel = getTranslatedStageChatText(
+                  message.id,
+                  "attachmentLabel",
+                  attachmentLabel,
+                );
+                const translatedCommentBody = getTranslatedStageChatText(
+                  message.id,
+                  "body",
+                  message.body,
+                );
+                const isTranslatedCommentBody =
+                  translateAllEnabled && translatedCommentBody !== message.body;
                 const bubbleClassName = linkedRevisionLabel
                   ? isCurrentUserMessage
                     ? "rounded-[18px] rounded-br-[6px] border border-[#abd7b6] bg-[#f1fbf3] p-2.5 shadow-[0_10px_24px_rgba(19,28,22,0.06)]"
@@ -7628,14 +8205,14 @@ export function ProjectChatWorkspace({
                             {linkedRevisionLabel}
                           </span>
                           <span className="text-[11px] font-[800] text-[#253028]">
-                            Comment on revision
+                            {translatedCommentOnRevisionLabel}
                           </span>
                         </div>
                       ) : null}
                       {hasAttachments && !linkedRevisionLabel ? (
                         <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/75 px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-brand">
                           <Paperclip className="h-3.5 w-3.5" />
-                          {attachmentLabel}
+                          {translatedAttachmentLabel}
                         </div>
                       ) : null}
                       <div
@@ -7681,7 +8258,9 @@ export function ProjectChatWorkspace({
                             isCurrentUserMessage ? "text-[#173120]" : "text-[#111712]"
                           }`}
                         >
-                          {renderCommentBodyWithMentions(message.body, message.mentions)}
+                          {isTranslatedCommentBody
+                            ? translatedCommentBody
+                            : renderCommentBodyWithMentions(message.body, message.mentions)}
                         </p>
                       )}
                       {!isDeletedMessage && message.attachments?.length ? (
