@@ -5,6 +5,7 @@ export const STAGE_CHAT_REALTIME_EVENTS = {
   messageCreated: "stage-chat.message.created",
   messageFailed: "stage-chat.message.failed",
   messageDeleted: "stage-chat.message.deleted",
+  timelineUpdated: "stage-chat.timeline.updated",
   typingStarted: "stage-chat.typing.started",
   typingStopped: "stage-chat.typing.stopped",
   presenceEnter: "stage-chat.presence.enter",
@@ -81,6 +82,30 @@ export type StageChatRealtimeMessageDeletedPayload = {
   body: "This message was deleted";
   attachments: [];
   mentions: [];
+};
+
+export type StageChatRealtimeTimelineUpdatedPayload = {
+  eventId: string;
+  projectId: string;
+  stageId: string;
+  eventType:
+    | "message_created"
+    | "message_deleted"
+    | "attachment_uploaded"
+    | "revision_created"
+    | "revision_reviewed"
+    | "stage_status_changed"
+    | "brief_accepted"
+    | "caption_created"
+    | "comparison_created"
+    | "invoice_requested"
+    | "invoice_uploaded"
+    | "participant_access_changed"
+    | "completion_updated"
+    | "timeline_updated";
+  changedEntityId?: string | null;
+  actorId?: string | null;
+  updatedAt: string;
 };
 
 export type StageChatRealtimeTypingPayload = {

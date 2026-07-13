@@ -7,6 +7,7 @@ import {
   getSubmissionCaptionsForAttachment,
 } from "@/lib/comparison";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import { publishStageChatTimelineUpdatedAfterResponse } from "@/lib/realtime/server";
 
 type CaptionRouteParams = {
   params: Promise<{
@@ -79,6 +80,13 @@ export async function POST(request: NextRequest, { params }: CaptionRouteParams)
     });
 
     revalidateTag(PROJECTS_CACHE_TAG, "max");
+    publishStageChatTimelineUpdatedAfterResponse({
+      projectId: caption.projectId,
+      stageId: caption.stageId,
+      actorId: user.id,
+      eventType: "caption_created",
+      changedEntityId: caption.id,
+    });
 
     return NextResponse.json({ caption });
   } catch (error) {

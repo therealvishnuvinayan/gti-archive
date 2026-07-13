@@ -15,6 +15,7 @@ import {
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import {
   publishStageChatMessageCreated,
+  publishStageChatTimelineUpdatedAfterResponse,
   runStageChatRealtimeTaskAfterResponse,
 } from "@/lib/realtime/server";
 
@@ -95,6 +96,13 @@ export async function POST(request: Request) {
         deletedAt: null,
         clientTempId: null,
       });
+    });
+    publishStageChatTimelineUpdatedAfterResponse({
+      projectId: payload.projectId,
+      stageId: result.stageId,
+      actorId: user.id,
+      eventType: "attachment_uploaded",
+      changedEntityId: result.commentId,
     });
 
     return NextResponse.json({ success: true });

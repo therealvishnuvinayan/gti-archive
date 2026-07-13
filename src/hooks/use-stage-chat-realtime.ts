@@ -11,6 +11,7 @@ import {
   type StageChatRealtimeMessageFailedPayload,
   type StageChatRealtimeMessagePendingPayload,
   type StageChatRealtimePresenceData,
+  type StageChatRealtimeTimelineUpdatedPayload,
   type StageChatRealtimeTypingPayload,
 } from "@/lib/realtime/events";
 import {
@@ -56,6 +57,7 @@ type UseStageChatRealtimeInput = {
   onMessageCreated: (payload: StageChatRealtimeMessageCreatedPayload) => void;
   onMessageFailed: (payload: StageChatRealtimeMessageFailedPayload) => void;
   onMessageDeleted: (payload: StageChatRealtimeMessageDeletedPayload) => void;
+  onTimelineUpdated: (payload: StageChatRealtimeTimelineUpdatedPayload) => void;
   onReconcile: () => Promise<void>;
 };
 
@@ -116,6 +118,19 @@ function isMessageDeletedPayload(
     typeof value.stageId === "string" &&
     typeof value.commentId === "string" &&
     typeof value.deletedAt === "string"
+  );
+}
+
+function isTimelineUpdatedPayload(
+  value: unknown,
+): value is StageChatRealtimeTimelineUpdatedPayload {
+  return (
+    isRecord(value) &&
+    typeof value.eventId === "string" &&
+    typeof value.projectId === "string" &&
+    typeof value.stageId === "string" &&
+    typeof value.eventType === "string" &&
+    typeof value.updatedAt === "string"
   );
 }
 
@@ -262,6 +277,7 @@ export function useStageChatRealtime(input: UseStageChatRealtimeInput) {
   const onMessageCreatedRef = useRef(input.onMessageCreated);
   const onMessageFailedRef = useRef(input.onMessageFailed);
   const onMessageDeletedRef = useRef(input.onMessageDeleted);
+  const onTimelineUpdatedRef = useRef(input.onTimelineUpdated);
   const onReconcileRef = useRef(input.onReconcile);
 
   useEffect(() => {
@@ -269,12 +285,14 @@ export function useStageChatRealtime(input: UseStageChatRealtimeInput) {
     onMessageCreatedRef.current = input.onMessageCreated;
     onMessageFailedRef.current = input.onMessageFailed;
     onMessageDeletedRef.current = input.onMessageDeleted;
+    onTimelineUpdatedRef.current = input.onTimelineUpdated;
     onReconcileRef.current = input.onReconcile;
   }, [
     input.onMessageCreated,
     input.onMessageDeleted,
     input.onMessageFailed,
     input.onMessagePending,
+    input.onTimelineUpdated,
     input.onReconcile,
   ]);
 
@@ -467,6 +485,25 @@ export function useStageChatRealtime(input: UseStageChatRealtimeInput) {
       onMessageDeletedRef.current(message.data);
     };
 
+    const handleTimelineUpdated = (message: Ably.InboundMessage) => {
+      if (message.clientId || !isTimelineUpdatedPayload(message.data)) {
+        logAblyChat("received timeline.updated ignored", {
+          channelName,
+          eventName: message.name,
+          clientId: message.clientId ?? null,
+          hasValidPayload: isTimelineUpdatedPayload(message.data),
+        });
+        return;
+      }
+
+      logAblyChat("received timeline.updated", {
+        channelName,
+        eventType: message.data.eventType,
+        changedEntityId: message.data.changedEntityId ?? null,
+      });
+      onTimelineUpdatedRef.current(message.data);
+    };
+
     const handleTypingStarted = (message: Ably.InboundMessage) => {
       if (!isTypingPayload(message.data) || message.data.userId === input.currentUserId) {
         logAblyChat("received typing.started ignored", {
@@ -551,6 +588,7 @@ export function useStageChatRealtime(input: UseStageChatRealtimeInput) {
     subscribeToEvent(STAGE_CHAT_REALTIME_EVENTS.messageCreated, handleCreated);
     subscribeToEvent(STAGE_CHAT_REALTIME_EVENTS.messageFailed, handleFailed);
     subscribeToEvent(STAGE_CHAT_REALTIME_EVENTS.messageDeleted, handleDeleted);
+    subscribeToEvent(STAGE_CHAT_REALTIME_EVENTS.timelineUpdated, handleTimelineUpdated);
     subscribeToEvent(STAGE_CHAT_REALTIME_EVENTS.typingStarted, handleTypingStarted);
     subscribeToEvent(STAGE_CHAT_REALTIME_EVENTS.typingStopped, handleTypingStopped);
     logAblyChat("presence subscribe start", {
@@ -602,6 +640,9 @@ export function useStageChatRealtime(input: UseStageChatRealtimeInput) {
       );
       runAblyCleanup("unsubscribe message.deleted", () =>
         channel.unsubscribe(STAGE_CHAT_REALTIME_EVENTS.messageDeleted, handleDeleted),
+      );
+      runAblyCleanup("unsubscribe timeline.updated", () =>
+        channel.unsubscribe(STAGE_CHAT_REALTIME_EVENTS.timelineUpdated, handleTimelineUpdated),
       );
       runAblyCleanup("unsubscribe typing.started", () =>
         channel.unsubscribe(STAGE_CHAT_REALTIME_EVENTS.typingStarted, handleTypingStarted),

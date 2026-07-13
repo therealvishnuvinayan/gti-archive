@@ -8,6 +8,7 @@ import {
   type ProjectAccessRevokedPayload,
   type StageChatRealtimeMessageCreatedPayload,
   type StageChatRealtimeMessageDeletedPayload,
+  type StageChatRealtimeTimelineUpdatedPayload,
 } from "@/lib/realtime/events";
 
 const STAGE_CHAT_TOKEN_TTL_MS = 10 * 60 * 1000;
@@ -130,16 +131,19 @@ async function publishStageChatEvent(
   eventName: string,
   payload:
     | StageChatRealtimeMessageCreatedPayload
-    | StageChatRealtimeMessageDeletedPayload,
+    | StageChatRealtimeMessageDeletedPayload
+    | StageChatRealtimeTimelineUpdatedPayload,
 ) {
   const client = getAblyRestClient();
   const channelName = getStageChatChannelName(projectId, stageId);
+  const commentId =
+    "commentId" in payload ? payload.commentId : payload.changedEntityId ?? null;
 
   logAblyServer(`publish ${eventName} start`, {
     projectId,
     stageId,
     channelName,
-    commentId: payload.commentId,
+    commentId,
     eventId: payload.eventId,
   });
 
@@ -148,7 +152,7 @@ async function publishStageChatEvent(
       projectId,
       stageId,
       channelName,
-      commentId: payload.commentId,
+      commentId,
       eventId: payload.eventId,
       reason: "ABLY_API_KEY missing",
     });
@@ -164,7 +168,7 @@ async function publishStageChatEvent(
       projectId,
       stageId,
       channelName,
-      commentId: payload.commentId,
+      commentId,
       eventId: payload.eventId,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -175,7 +179,7 @@ async function publishStageChatEvent(
     projectId,
     stageId,
     channelName,
-    commentId: payload.commentId,
+    commentId,
     eventId: payload.eventId,
   });
 
@@ -200,6 +204,17 @@ export async function publishAblyStageChatMessageDeleted(
     payload.projectId,
     payload.stageId,
     STAGE_CHAT_REALTIME_EVENTS.messageDeleted,
+    payload,
+  );
+}
+
+export async function publishAblyStageChatTimelineUpdated(
+  payload: StageChatRealtimeTimelineUpdatedPayload,
+) {
+  return publishStageChatEvent(
+    payload.projectId,
+    payload.stageId,
+    STAGE_CHAT_REALTIME_EVENTS.timelineUpdated,
     payload,
   );
 }

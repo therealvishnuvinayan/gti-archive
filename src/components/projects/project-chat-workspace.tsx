@@ -111,6 +111,7 @@ import type {
   StageChatRealtimeMessageDeletedPayload,
   StageChatRealtimeMessageFailedPayload,
   StageChatRealtimeMessagePendingPayload,
+  StageChatRealtimeTimelineUpdatedPayload,
   StageChatRealtimeUpdatesResponse,
 } from "@/lib/realtime/events";
 import type {
@@ -362,7 +363,7 @@ function UploadIntentDropzone({
   return (
     <div
       {...getRootProps()}
-      className={`min-h-[112px] rounded-[18px] border border-dashed px-4 py-6 text-center transition ${
+      className={`min-h-[112px] rounded-[18px] border border-dashed px-4 py-6 text-left transition ${
         isDragActive
           ? "border-brand bg-[#eef7ef]"
           : "border-[#bfcbbf] bg-[#fbfdfb] hover:border-brand hover:bg-[#f4fbf5]"
@@ -370,7 +371,7 @@ function UploadIntentDropzone({
     >
       <input {...getInputProps()} />
 
-      <Upload className="mx-auto h-5 w-5 text-brand" />
+      <Upload className="h-5 w-5 text-brand" />
 
       <p className="mt-3 text-[14px] font-semibold text-brand">
         {isDragActive ? "Drop files here" : "Drag files here"}
@@ -1047,6 +1048,57 @@ function getTimelineEntryAlignment(
   return entry.author.trim() === currentUserDisplayName.trim() ? "right" : "left";
 }
 
+function normalizeDisplayName(value?: string | null) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function isCurrentUserDisplayName(value: string | null | undefined, currentUserDisplayName: string) {
+  const normalizedValue = normalizeDisplayName(value);
+
+  return (
+    normalizedValue.length > 0 &&
+    (normalizedValue === "you" ||
+      normalizedValue === normalizeDisplayName(currentUserDisplayName))
+  );
+}
+
+function getActorDisplayName(value: string | null | undefined, currentUserDisplayName: string) {
+  if (!value?.trim()) {
+    return "Unknown user";
+  }
+
+  return isCurrentUserDisplayName(value, currentUserDisplayName) ? "You" : value.trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function replaceCurrentUserNameInText(
+  text: string,
+  actorName: string | null | undefined,
+  currentUserDisplayName: string,
+) {
+  const normalizedActorName = actorName?.trim();
+  let nextText = text;
+
+  if (currentUserDisplayName.trim() && currentUserDisplayName.trim().toLowerCase() !== "you") {
+    nextText = nextText.replace(
+      new RegExp(`\\b${escapeRegExp(currentUserDisplayName.trim())}\\b`, "g"),
+      "You",
+    );
+  }
+
+  if (normalizedActorName && isCurrentUserDisplayName(actorName, currentUserDisplayName)) {
+    nextText = nextText.replace(
+      new RegExp(`\\b${escapeRegExp(normalizedActorName)}\\b`, "g"),
+      "You",
+    );
+  }
+
+  return nextText;
+}
+
 function getTimelineActorKey(entry: Pick<DisplayChatEntry, "authorId" | "author">) {
   return entry.authorId ?? entry.author.trim().toLowerCase();
 }
@@ -1199,13 +1251,24 @@ function SystemActivityCard({
   message,
   alignment = "left",
   action,
+  currentUserDisplayName,
 }: {
   message: DisplayChatEntry;
   alignment?: TimelineAlignment;
   action?: ReactNode;
+  currentUserDisplayName: string;
 }) {
   const meta = getSystemActivityMeta(message);
   const Icon = meta.Icon;
+  const isCurrentUserActivity = alignment === "right";
+  const displayAuthor = isCurrentUserActivity
+    ? "You"
+    : getActorDisplayName(message.author, currentUserDisplayName);
+  const displayBody = replaceCurrentUserNameInText(
+    message.body,
+    message.author,
+    currentUserDisplayName,
+  );
 
   return (
     <TimelineFrame
@@ -1234,15 +1297,10 @@ function SystemActivityCard({
               {message.title ?? "Project activity"}
             </p>
             <p className={`mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 ${meta.bodyClassName}`}>
-              {message.body}
+              {displayBody}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-wide text-[#6c776e]">
-              <span>{alignment === "right" ? "You" : message.author}</span>
-              {alignment === "right" && message.author !== "You" ? (
-                <span className="normal-case tracking-normal text-[#7a837b]">
-                  {message.author}
-                </span>
-              ) : null}
+              <span>{displayAuthor}</span>
             </div>
             {action ? <div className="mt-3">{action}</div> : null}
           </div>
@@ -1294,6 +1352,9 @@ function StageBriefContextCard({
   createdAt,
   stageLabel,
   canAcceptBrief,
+  showAcceptBriefAction = true,
+  waitingTitle,
+  waitingBody,
   isAcceptingBrief,
   onAcceptBrief,
   onOpenProjectBrief,
@@ -1307,6 +1368,9 @@ function StageBriefContextCard({
   createdAt: string;
   stageLabel: string;
   canAcceptBrief: boolean;
+  showAcceptBriefAction?: boolean;
+  waitingTitle: string;
+  waitingBody: string;
   isAcceptingBrief: boolean;
   onAcceptBrief: () => void;
   onOpenProjectBrief: () => void;
@@ -1413,9 +1477,9 @@ function StageBriefContextCard({
 
           <div className="flex flex-col gap-3 rounded-[16px] border border-[#d8e5d9] bg-[#f7fbf6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[12px] leading-5 text-[#516058]">
-              Main Executor must accept the brief before submitting work for this stage.
+              {waitingBody}
             </p>
-            {canAcceptBrief ? (
+            {canAcceptBrief && showAcceptBriefAction ? (
               <Button
                 type="button"
                 className="shrink-0 rounded-full text-[12px]"
@@ -1429,7 +1493,7 @@ function StageBriefContextCard({
               </Button>
             ) : (
               <span className="shrink-0 rounded-full bg-[#fff3d6] px-3 py-2 text-[11px] font-[700] text-[#8a5718]">
-                Waiting for Main Executor
+                {waitingTitle}
               </span>
             )}
           </div>
@@ -1447,6 +1511,7 @@ function AttachmentHistoryList({
   projectCategory,
   onOpenCaptions,
   showCaptionAction = true,
+  currentUserDisplayName,
 }: {
   attachments: DisplayAttachmentRecord[];
   compact?: boolean;
@@ -1455,6 +1520,7 @@ function AttachmentHistoryList({
   projectCategory?: string | null;
   onOpenCaptions?: (attachment: DisplayAttachmentRecord) => void;
   showCaptionAction?: boolean;
+  currentUserDisplayName?: string;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -1484,6 +1550,10 @@ function AttachmentHistoryList({
             showCaptionAction &&
             Boolean(onOpenCaptions) &&
             isCaptionableStageSubmissionAttachment(attachment, projectCategory);
+
+          const uploadedBy = currentUserDisplayName
+            ? getActorDisplayName(attachment.uploadedBy, currentUserDisplayName)
+            : attachment.uploadedBy;
 
           return (
             <div
@@ -1546,16 +1616,16 @@ function AttachmentHistoryList({
                     ) : null}
                   </div>
                   <p className="mt-0.5 text-[10px] leading-4 text-[#6c756e]">
-                    {attachment.uploadState
-                      ? attachment.uploadState === "error"
+	                    {attachment.uploadState
+	                      ? attachment.uploadState === "error"
                         ? attachment.errorMessage || "Upload failed."
                         : attachment.uploadState === "uploaded"
                           ? `${attachment.fileSizeLabel} · Uploaded`
                           : attachment.uploadState === "pending"
                             ? `${attachment.fileSizeLabel} · Waiting to upload`
                             : `${attachment.fileSizeLabel} · ${attachment.progress ?? 0}% uploaded`
-                      : `${attachment.fileSizeLabel} · Uploaded by ${attachment.uploadedBy}`}
-                  </p>
+	                      : `${attachment.fileSizeLabel} · Uploaded by ${uploadedBy}`}
+	                  </p>
                   {!attachment.uploadState ? (
                     <p className="text-[10px] leading-4 text-[#89928b]">
                       {attachment.uploadedAt}
@@ -1742,14 +1812,18 @@ function ProjectAssetCard({
   actionsDisabled = false,
   favoriteOverrides,
   onFavoriteChange,
+  currentUserDisplayName,
 }: {
   attachment: DisplayAttachmentRecord;
   actionsDisabled?: boolean;
   favoriteOverrides?: Record<string, boolean>;
   onFavoriteChange?: (attachmentId: string, isFavorited: boolean) => void;
+  currentUserDisplayName?: string;
 }) {
   const { stem, extension } = getFileNameDisplayParts(attachment.originalFileName);
-  const uploadedBy = attachment.uploadedBy.trim() || "Unknown user";
+  const uploadedBy = currentUserDisplayName
+    ? getActorDisplayName(attachment.uploadedBy, currentUserDisplayName)
+    : attachment.uploadedBy.trim() || "Unknown user";
   const canShowActions =
     !actionsDisabled && Boolean(attachment.previewPath && attachment.downloadPath);
   const isFavorited =
@@ -1831,12 +1905,14 @@ function ProjectAssetGrid({
   variant = "inline",
   favoriteOverrides,
   onFavoriteChange,
+  currentUserDisplayName,
 }: {
   attachments: DisplayAttachmentRecord[];
   actionsDisabled?: boolean;
   variant?: "inline" | "modal";
   favoriteOverrides?: Record<string, boolean>;
   onFavoriteChange?: (attachmentId: string, isFavorited: boolean) => void;
+  currentUserDisplayName?: string;
 }) {
   const gridClassName =
     variant === "modal"
@@ -1852,6 +1928,7 @@ function ProjectAssetGrid({
           actionsDisabled={actionsDisabled}
           favoriteOverrides={favoriteOverrides}
           onFavoriteChange={onFavoriteChange}
+          currentUserDisplayName={currentUserDisplayName}
         />
       ))}
     </div>
@@ -1865,6 +1942,7 @@ function ProjectAssetsModal({
   favoriteOverrides,
   onFavoriteChange,
   onClose,
+  currentUserDisplayName,
 }: {
   isOpen: boolean;
   attachments: DisplayAttachmentRecord[];
@@ -1872,6 +1950,7 @@ function ProjectAssetsModal({
   favoriteOverrides?: Record<string, boolean>;
   onFavoriteChange?: (attachmentId: string, isFavorited: boolean) => void;
   onClose: () => void;
+  currentUserDisplayName?: string;
 }) {
   useEffect(() => {
     if (!isOpen) {
@@ -1942,6 +2021,7 @@ function ProjectAssetsModal({
             variant="modal"
             favoriteOverrides={favoriteOverrides}
             onFavoriteChange={onFavoriteChange}
+            currentUserDisplayName={currentUserDisplayName}
           />
         </CardContent>
       </Card>
@@ -2771,7 +2851,7 @@ export function ProjectChatWorkspace({
           : activeStage.status === "pending"
             ? "Stage is pending."
             : !hasAcceptedBrief
-              ? "Waiting for main executor to accept brief."
+              ? "Accept the brief before submitting work."
               : hasPendingRevisionReview
                 ? pendingRevisionReviewMessage
                 : null;
@@ -2814,24 +2894,15 @@ export function ProjectChatWorkspace({
     ? "Completed"
     : hasAcceptedBriefInTimeline
       ? "In progress"
-      : "Waiting for Main Executor to accept brief";
-  const stageStartSystemMessage = useMemo<DisplayChatEntry | null>(() => {
-    if (!activeStage?.actualStartedAtValue || hasBriefAcceptedSystemMessage) {
-      return null;
-    }
-
-    const actorName = activeStage.startedByName ?? "Main Executor";
-
-    return {
-      id: `stage-started-${activeStage.id}`,
-      kind: "system",
-      title: "Brief accepted",
-      author: actorName,
-      role: "Main Executor",
-      body: `${actorName} accepted the project and stage brief and started work on this stage.`,
-      createdAt: activeStage.actualStartedAt,
-    };
-  }, [activeStage, hasBriefAcceptedSystemMessage]);
+      : isMainProjectExecutor
+        ? "Brief acceptance required"
+        : "Waiting for Main Executor to accept brief";
+  const briefAcceptanceWaitingTitle = isMainProjectExecutor
+    ? "Brief acceptance required"
+    : "Waiting for Main Executor";
+  const briefAcceptanceWaitingBody = isMainProjectExecutor
+    ? "You need to accept the brief before submitting work for this stage."
+    : "Waiting for Main Executor to accept brief.";
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
   const currentUserDisplayName = useMemo(() => {
@@ -2872,6 +2943,28 @@ export function ProjectChatWorkspace({
 
     return collaborator.group === "external" ? "External Collaborator" : "Internal Team";
   }, [currentUserId, project.collaborators, project.executors]);
+  const stageStartSystemMessage = useMemo<DisplayChatEntry | null>(() => {
+    if (!activeStage?.actualStartedAtValue || hasBriefAcceptedSystemMessage) {
+      return null;
+    }
+
+    const actorName = activeStage.startedByName ?? "Main Executor";
+    const displayActorName = getActorDisplayName(actorName, currentUserDisplayName);
+
+    return {
+      id: `stage-started-${activeStage.id}`,
+      kind: "system",
+      title: "Brief accepted",
+      author: actorName,
+      role: "Main Executor",
+      body: `${displayActorName} accepted the project and stage brief and started work on this stage.`,
+      createdAt: activeStage.actualStartedAt,
+    };
+  }, [
+    activeStage,
+    currentUserDisplayName,
+    hasBriefAcceptedSystemMessage,
+  ]);
   const getParticipantRoleLabel = useCallback(
     (userId: string) => {
       if (userId === currentUserId) {
@@ -3231,6 +3324,7 @@ export function ProjectChatWorkspace({
     },
     [activeStage?.id, applyRealtimeDeletedMessage, project.id],
   );
+
   const reconcileStageChat = useCallback(async () => {
     const activeStageId = activeStage?.id;
 
@@ -3285,6 +3379,19 @@ export function ProjectChatWorkspace({
     router,
     startRefresh,
   ]);
+  const handleRealtimeTimelineUpdated = useCallback(
+    (payload: StageChatRealtimeTimelineUpdatedPayload) => {
+      if (payload.projectId !== project.id || payload.stageId !== activeStage?.id) {
+        return;
+      }
+
+      void reconcileStageChat();
+      startRefresh(() => {
+        router.refresh();
+      });
+    },
+    [activeStage?.id, project.id, reconcileStageChat, router, startRefresh],
+  );
   const mentionableParticipants = useMemo<ProjectMentionParticipantRecord[]>(
     () =>
       project.mentionParticipants.filter(
@@ -3312,6 +3419,7 @@ export function ProjectChatWorkspace({
     onMessageCreated: handleRealtimeMessageCreated,
     onMessageFailed: handleRealtimeMessageFailed,
     onMessageDeleted: handleRealtimeMessageDeleted,
+    onTimelineUpdated: handleRealtimeTimelineUpdated,
     onReconcile: reconcileStageChat,
   });
   const typingIndicatorText = useMemo(() => {
@@ -6318,7 +6426,7 @@ export function ProjectChatWorkspace({
           ) : null}
 
           {olderMessagesError ? (
-            <div className="mx-auto max-w-[520px] rounded-[16px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-center text-[12px] font-semibold text-[#a64038]">
+            <div className="mx-auto max-w-[520px] rounded-[16px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-left text-[12px] font-semibold text-[#a64038]">
               {olderMessagesError}
             </div>
           ) : null}
@@ -6331,6 +6439,7 @@ export function ProjectChatWorkspace({
                 currentUserId,
                 currentUserDisplayName,
               )}
+              currentUserDisplayName={currentUserDisplayName}
             />
           ) : null}
 
@@ -6344,6 +6453,9 @@ export function ProjectChatWorkspace({
               createdAt={project.createdOn}
               stageLabel={activeStage.label}
               canAcceptBrief={canAcceptCurrentStageBrief}
+              showAcceptBriefAction={!canAcceptCurrentStageBrief}
+              waitingTitle={briefAcceptanceWaitingTitle}
+              waitingBody={briefAcceptanceWaitingBody}
               isAcceptingBrief={isAcceptingBrief}
               onAcceptBrief={() => {
                 setAcceptBriefError(null);
@@ -6355,7 +6467,7 @@ export function ProjectChatWorkspace({
           ) : null}
 
           {displayedMessages.length === 0 ? (
-            <Card className="border border-dashed border-[#d8e1d8] px-6 py-10 text-center">
+            <Card className="border border-dashed border-[#d8e1d8] px-6 py-10 text-left">
               <CardTitle className="text-[20px] font-semibold tracking-tight">
                 {activeStage?.label ?? "Stage"} History
               </CardTitle>
@@ -6364,30 +6476,16 @@ export function ProjectChatWorkspace({
               </p>
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 {showBriefContextCard
-                  ? "Accept the brief above before submitting the first revision."
-                  : "Upload the first revision to start the proof and archive trail."}
+                  ? "Accept the brief from the action panel before submitting the first revision."
+                  : canAcceptCurrentStageBrief
+                    ? "Accept the brief from the action panel before submitting the first revision."
+                    : "Upload the first revision to start the proof and archive trail."}
               </p>
-              {!showBriefContextCard &&
-                !isProjectCompleted &&
-                !isStageCompleted &&
-                isMainProjectExecutor &&
-                showBriefAcceptancePrompt ? (
-                <div className="mt-5 flex justify-center">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setAcceptBriefError(null);
-                      setAcceptBriefDialogOpen(true);
-                    }}
-                  >
-                    Accept Brief
-                  </Button>
-                </div>
-              ) : !isProjectCompleted && showBriefAcceptancePrompt ? (
+              {!isProjectCompleted && showBriefAcceptancePrompt ? (
                 <div className="mt-5">
                   <WorkflowNoticeCard
-                    title="Waiting for Main Executor"
-                    body="Waiting for Main Executor to accept brief."
+                    title={briefAcceptanceWaitingTitle}
+                    body={briefAcceptanceWaitingBody}
                   />
                 </div>
               ) : null}
@@ -6422,6 +6520,7 @@ export function ProjectChatWorkspace({
                     </Button>
                   ) : null
                 }
+                currentUserDisplayName={currentUserDisplayName}
               />
             ) : message.kind === "revision" ? (
               (() => {
@@ -6484,7 +6583,7 @@ export function ProjectChatWorkspace({
                             </h2>
                             <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-[#6f786f]">
                               <span>
-                                Submitted by {revisionAlignment === "right" ? "You" : message.author}
+                                Submitted by {getActorDisplayName(message.author, currentUserDisplayName)}
                               </span>
                               <span aria-hidden="true">·</span>
                               <span>{message.role}</span>
@@ -6508,7 +6607,7 @@ export function ProjectChatWorkspace({
                             </p>
                             <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#b7655d]">
                               {effectiveReviewedBy
-                                ? `Requested by ${effectiveReviewedBy}${
+                                ? `Requested by ${getActorDisplayName(effectiveReviewedBy, currentUserDisplayName)}${
                                     effectiveReviewedAt ? ` · ${effectiveReviewedAt}` : ""
                                   }`
                                 : "Requested by Project Owner"}
@@ -6536,6 +6635,7 @@ export function ProjectChatWorkspace({
                               projectCategory={project.category}
                               showCaptionAction={canAddCaptions}
                               onOpenCaptions={(attachment) => openCaptionDialog(attachment)}
+                              currentUserDisplayName={currentUserDisplayName}
                             />
                           </div>
                         ) : null}
@@ -6670,9 +6770,12 @@ export function ProjectChatWorkspace({
                           </div>
                           <div className="mt-3 flex items-center gap-2">
                             <div className="min-w-0">
-                              <p className="truncate text-[13px] font-[700] text-[#111712]">
-                                {comparisonAlignment === "right" ? "You" : message.author}
-                              </p>
+	                              <p className="truncate text-[13px] font-[700] text-[#111712]">
+	                                {getActorDisplayName(
+                                  message.author,
+                                  currentUserDisplayName,
+                                )}
+	                              </p>
                               <p className="truncate text-[10px] text-[#7a837b]">
                                 {message.role}
                               </p>
@@ -6838,11 +6941,14 @@ export function ProjectChatWorkspace({
                           <span className="text-[10px] font-semibold text-[#5d7463]">
                             You
                           </span>
-                        ) : (
-                          <div className="min-w-0">
-                            <p className="truncate text-[12px] font-semibold text-[#111712]">
-                              {message.author}
-                            </p>
+	                        ) : (
+	                          <div className="min-w-0">
+	                            <p className="truncate text-[12px] font-semibold text-[#111712]">
+	                              {getActorDisplayName(
+                                message.author,
+                                currentUserDisplayName,
+                              )}
+	                            </p>
                             <p className="truncate text-[10px] text-[#8acb74]">
                               {message.role}
                             </p>
@@ -6881,6 +6987,7 @@ export function ProjectChatWorkspace({
                           projectCategory={project.category}
                           showCaptionAction={canAddCaptions}
                           onOpenCaptions={(attachment) => openCaptionDialog(attachment)}
+                          currentUserDisplayName={currentUserDisplayName}
                         />
                       ) : null}
                     </Card>
@@ -6897,30 +7004,11 @@ export function ProjectChatWorkspace({
           showBriefAcceptancePrompt &&
           !showBriefContextCard ? (
             <div className="flex flex-wrap gap-2">
-              {isMainProjectExecutor ? (
-                <>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="rounded-full text-[12px]"
-                    onClick={() => {
-                      setAcceptBriefError(null);
-                      setAcceptBriefDialogOpen(true);
-                    }}
-                    disabled={isAcceptingBrief}
-                  >
-                    {isAcceptingBrief ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : null}
-                    Accept Brief
-                  </Button>
-                </>
-              ) : null}
-              {!isMainProjectExecutor ? (
+              {showBriefAcceptancePrompt ? (
                 <div className="w-full">
                   <WorkflowNoticeCard
-                    title="Waiting for Main Executor"
-                    body="Waiting for Main Executor to accept brief."
+                    title={briefAcceptanceWaitingTitle}
+                    body={briefAcceptanceWaitingBody}
                   />
                 </div>
               ) : null}
@@ -7387,7 +7475,12 @@ export function ProjectChatWorkspace({
                       Upload Invoice
                     </Button>
                     <p className="text-[11px] leading-4 text-[#6f786f]">
-                      Invoice requested by {stageInvoiceRequest?.requestedByName ?? "Project Owner"}.
+                      Invoice requested by{" "}
+                      {getActorDisplayName(
+                        stageInvoiceRequest?.requestedByName ?? "Project Owner",
+                        currentUserDisplayName,
+                      )}
+                      .
                     </p>
                   </div>
                 ) : null}
@@ -7473,18 +7566,25 @@ export function ProjectChatWorkspace({
                 <AttachmentHistoryList
                   attachments={[stageInvoiceAttachment]}
                   compact
+                  currentUserDisplayName={currentUserDisplayName}
                 />
               ) : stageInvoiceRequest ? (
-                <div className="space-y-3">
-                  <p className="text-[13px] leading-5 text-[#6f786f]">
+	                <div className="space-y-3">
+	                  <p className="text-[13px] leading-5 text-[#6f786f]">
                     {canUploadStageInvoice ? "Invoice requested by " : "Invoice requested from "}
                     <span className="font-semibold text-[#26342c]">
                       {canUploadStageInvoice
-                        ? stageInvoiceRequest.requestedByName
-                        : stageInvoiceRequest.requestedFromName}
+                        ? getActorDisplayName(
+                            stageInvoiceRequest.requestedByName,
+                            currentUserDisplayName,
+                          )
+                        : getActorDisplayName(
+                            stageInvoiceRequest.requestedFromName,
+                            currentUserDisplayName,
+                          )}
                     </span>
                     .
-                  </p>
+	                  </p>
                   {stageInvoiceRequest.note ? (
                     <p className="rounded-[14px] border border-[#dfe8df] bg-[#fbfcfa] px-3 py-2 text-[12px] leading-5 text-[#5f6b62]">
                       {stageInvoiceRequest.note}
@@ -7560,6 +7660,7 @@ export function ProjectChatWorkspace({
                     actionsDisabled={isProjectCompleted}
                     favoriteOverrides={projectAssetFavoriteOverrides}
                     onFavoriteChange={handleProjectAssetFavoriteChange}
+                    currentUserDisplayName={currentUserDisplayName}
                   />
                   {hasMoreProjectAssets ? (
                     <Button
@@ -7577,7 +7678,7 @@ export function ProjectChatWorkspace({
                   ) : null}
                 </div>
               ) : (
-                <div className="rounded-[16px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-5 text-center text-[13px] text-[#6e776f]">
+                <div className="rounded-[16px] border border-dashed border-[#d7ded7] bg-[#fbfcfa] px-4 py-5 text-left text-[13px] text-[#6e776f]">
                   No project assets uploaded yet.
                 </div>
               )}
@@ -7731,6 +7832,7 @@ export function ProjectChatWorkspace({
         favoriteOverrides={projectAssetFavoriteOverrides}
         onFavoriteChange={handleProjectAssetFavoriteChange}
         onClose={() => setProjectAssetsModalOpen(false)}
+        currentUserDisplayName={currentUserDisplayName}
       />
       <CollaboratorPickerDialog
         isOpen={collaboratorPickerOpen}
@@ -8140,8 +8242,12 @@ export function ProjectChatWorkspace({
                       Upload Requested Invoice
                     </p>
                     <p className="mt-1 text-[13px] leading-5 text-[#52705c]">
-                      Submit the invoice requested by{" "}
-                      {stageInvoiceRequest?.requestedByName ?? "the project owner"} for this stage.
+	                      Submit the invoice requested by{" "}
+	                      {getActorDisplayName(
+                        stageInvoiceRequest?.requestedByName ?? "the project owner",
+                        currentUserDisplayName,
+                      )}{" "}
+                      for this stage.
                     </p>
                   </div>
                   <span className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-full bg-brand text-white">
@@ -8489,7 +8595,10 @@ export function ProjectChatWorkspace({
                     Submitted By
                   </p>
                   <p className="mt-1 text-[14px] text-[#27322b]">
-                    {reviewRevisionMessage.author}
+                    {getActorDisplayName(
+                      reviewRevisionMessage.author,
+                      currentUserDisplayName,
+                    )}
                   </p>
                 </div>
                 <div>
@@ -8510,6 +8619,7 @@ export function ProjectChatWorkspace({
                     projectCategory={project.category}
                     showCaptionAction={canAddCaptions}
                     onOpenCaptions={(attachment) => openCaptionDialog(attachment)}
+                    currentUserDisplayName={currentUserDisplayName}
                   />
                 </div>
               ) : null}
@@ -8541,8 +8651,11 @@ export function ProjectChatWorkspace({
                       <p className="mt-2 text-[13px] leading-5 text-[#5f6b62]">
                         {stageInvoiceAttachment
                           ? "The stage invoice is uploaded. This submission can be completed."
-                          : stageInvoiceRequest
-                            ? `Waiting for invoice from ${stageInvoiceRequest.requestedFromName}.`
+	                          : stageInvoiceRequest
+                            ? `Waiting for invoice from ${getActorDisplayName(
+                                stageInvoiceRequest.requestedFromName,
+                                currentUserDisplayName,
+                              )}.`
                             : hasOfficialStageSubmission
                               ? "This external stage requires an invoice before completion. Request the invoice from the executor/vendor who performed the work."
                               : "Invoice can be requested after the first submission."}
@@ -8585,9 +8698,14 @@ export function ProjectChatWorkspace({
                     ) : null}
                   </div>
                   {stageInvoiceRequest && !stageInvoiceAttachment ? (
-                    <div className="mt-3 rounded-[14px] border border-[#d9e6ef] bg-[#f6fbff] px-3 py-2 text-[12px] leading-5 text-[#3e5e73]">
-                      <p>
-                        Requested by {stageInvoiceRequest.requestedByName} on{" "}
+	                    <div className="mt-3 rounded-[14px] border border-[#d9e6ef] bg-[#f6fbff] px-3 py-2 text-[12px] leading-5 text-[#3e5e73]">
+	                      <p>
+                        Requested by{" "}
+                        {getActorDisplayName(
+                          stageInvoiceRequest.requestedByName,
+                          currentUserDisplayName,
+                        )}{" "}
+                        on{" "}
                         {stageInvoiceRequest.requestedAt}.
                       </p>
                       {stageInvoiceRequest.note ? (
@@ -8601,6 +8719,7 @@ export function ProjectChatWorkspace({
                         attachments={[stageInvoiceAttachment]}
                         compact
                         actionsDisabled={isProjectCompleted}
+                        currentUserDisplayName={currentUserDisplayName}
                       />
                     </div>
                   ) : !canUploadStageInvoice ? (

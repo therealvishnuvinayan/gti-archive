@@ -10,6 +10,7 @@ import {
 import { createStageTextCommentFast } from "@/lib/project-history";
 import {
   publishStageChatMessageCreated,
+  publishStageChatTimelineUpdatedAfterResponse,
   runStageChatRealtimeTaskAfterResponse,
 } from "@/lib/realtime/server";
 import {
@@ -159,6 +160,13 @@ export async function POST(
         });
         throw error;
       }
+    });
+    publishStageChatTimelineUpdatedAfterResponse({
+      projectId,
+      stageId,
+      actorId: user.id,
+      eventType: "message_created",
+      changedEntityId: comment.id,
     });
 
     if (shouldLogStageChatTimings()) {

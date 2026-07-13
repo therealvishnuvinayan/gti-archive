@@ -660,9 +660,13 @@ export async function createSubmissionCaption(
     }),
   );
 
-  return mapSubmissionCaptionRecord(comment, context.attachment, {
-    isReadOnly: false,
-  });
+  return {
+    ...mapSubmissionCaptionRecord(comment, context.attachment, {
+      isReadOnly: false,
+    }),
+    projectId: context.attachment.projectId,
+    stageId: context.stage.id,
+  };
 }
 
 export async function createComparisonComment(

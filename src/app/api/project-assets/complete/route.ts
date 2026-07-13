@@ -11,6 +11,7 @@ import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import {
   publishStageChatMessageCreated,
+  publishStageChatTimelineUpdatedAfterResponse,
   runStageChatRealtimeTaskAfterResponse,
 } from "@/lib/realtime/server";
 
@@ -72,6 +73,22 @@ export async function POST(request: Request) {
           deletedAt: null,
           clientTempId: null,
         });
+      });
+      publishStageChatTimelineUpdatedAfterResponse({
+        projectId: result.projectId,
+        stageId: result.stageId,
+        actorId: user.id,
+        eventType: "invoice_uploaded",
+        changedEntityId: result.invoiceCommentId,
+      });
+    }
+    if (result?.stageId && !payload.failed && !result.invoiceCommentId) {
+      publishStageChatTimelineUpdatedAfterResponse({
+        projectId: result.projectId,
+        stageId: result.stageId,
+        actorId: user.id,
+        eventType: "attachment_uploaded",
+        changedEntityId: payload.attachmentId,
       });
     }
 

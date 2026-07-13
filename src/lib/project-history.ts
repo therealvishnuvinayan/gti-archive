@@ -131,6 +131,7 @@ type StageHistoryQueryRecord = {
   reviewedAt: Date | null;
   reviewedBy: Pick<User, "name" | "email"> | null;
   createdAt: Date;
+  updatedAt?: Date;
   createdBy: Pick<
     User,
     "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
@@ -192,6 +193,7 @@ type StageComparisonQueryRecord = {
   yPercent: number;
   body: string;
   createdAt: Date;
+  updatedAt?: Date;
   createdBy: Pick<
     User,
     "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
@@ -2079,86 +2081,308 @@ export async function getStageChatUpdatesForUser(
     parsedAfter && !Number.isNaN(parsedAfter.getTime()) ? parsedAfter : null;
   const limit = Math.max(1, Math.min(input.limit ?? 50, 50));
   const take = limit + 1;
-  const comments = await withPrismaRetry(() =>
-    prisma.projectComment.findMany({
-      where: {
-        projectId: input.projectId,
-        stageId: input.stageId,
-        ...(after
-          ? {
-              updatedAt: {
-                gt: after,
-              },
-            }
-          : {}),
-      },
-      orderBy: [
-        {
-          updatedAt: after ? "asc" : "desc",
+  const updatedAtWhere = after
+    ? {
+        gt: after,
+      }
+    : undefined;
+  const [comments, revisions, comparisons] = await Promise.all([
+    withPrismaRetry(() =>
+      prisma.projectComment.findMany({
+        where: {
+          projectId: input.projectId,
+          stageId: input.stageId,
+          updatedAt: updatedAtWhere,
         },
-        {
-          id: after ? "asc" : "desc",
-        },
-      ],
-      take,
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            collaboratorType: true,
-            avatarUrl: true,
+        orderBy: [
+          {
+            updatedAt: after ? "asc" : "desc",
           },
-        },
-        mentions: {
-          select: {
-            mentionedUserId: true,
-            mentionedUser: {
-              select: {
-                name: true,
-                email: true,
+          {
+            id: after ? "asc" : "desc",
+          },
+        ],
+        take,
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              collaboratorType: true,
+              avatarUrl: true,
+            },
+          },
+          mentions: {
+            select: {
+              mentionedUserId: true,
+              mentionedUser: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          attachments: {
+            orderBy: {
+              createdAt: "asc",
+            },
+            select: {
+              id: true,
+              assetType: true,
+              originalFileName: true,
+              mimeType: true,
+              fileSize: true,
+              submissionReviewStatus: true,
+              createdAt: true,
+              status: true,
+              uploadedBy: {
+                select: {
+                  name: true,
+                  email: true,
+                },
               },
             },
           },
         },
-        attachments: {
-          orderBy: {
-            createdAt: "asc",
+      }),
+    ),
+    withPrismaRetry(() =>
+      prisma.projectRevision.findMany({
+        where: {
+          projectId: input.projectId,
+          stageId: input.stageId,
+          updatedAt: updatedAtWhere,
+        },
+        orderBy: [
+          {
+            updatedAt: after ? "asc" : "desc",
           },
-          select: {
-            id: true,
-            assetType: true,
-            originalFileName: true,
-            mimeType: true,
-            fileSize: true,
-            submissionReviewStatus: true,
-            createdAt: true,
-            status: true,
-            uploadedBy: {
-              select: {
-                name: true,
-                email: true,
+          {
+            id: after ? "asc" : "desc",
+          },
+        ],
+        take,
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              collaboratorType: true,
+              avatarUrl: true,
+            },
+          },
+          reviewedBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+          attachments: {
+            orderBy: {
+              createdAt: "asc",
+            },
+            select: {
+              id: true,
+              assetType: true,
+              originalFileName: true,
+              mimeType: true,
+              fileSize: true,
+              submissionReviewStatus: true,
+              createdAt: true,
+              status: true,
+              uploadedBy: {
+                select: {
+                  name: true,
+                  email: true,
+                },
               },
             },
           },
         },
-      },
-    }),
-  );
-  const selectedComments = comments.slice(0, limit);
-  const orderedComments = after ? selectedComments : selectedComments.slice().reverse();
-  const mappedComments = await mapRealtimeCommentsForUser(
-    user,
-    project,
-    orderedComments,
-  );
-  const newestUpdatedAt = selectedComments.reduce<Date | null>((current, comment) => {
-    const updatedAt = comment.updatedAt ?? comment.createdAt;
+      }),
+    ),
+    withPrismaRetry(() =>
+      prisma.comparisonComment.findMany({
+        where: {
+          projectId: input.projectId,
+          stageId: input.stageId,
+          updatedAt: updatedAtWhere,
+        },
+        orderBy: [
+          {
+            updatedAt: after ? "asc" : "desc",
+          },
+          {
+            id: after ? "asc" : "desc",
+          },
+        ],
+        take,
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              collaboratorType: true,
+              avatarUrl: true,
+            },
+          },
+          baseAttachment: {
+            select: {
+              id: true,
+              assetType: true,
+              originalFileName: true,
+              mimeType: true,
+              fileSize: true,
+              submissionReviewStatus: true,
+              createdAt: true,
+              status: true,
+              uploadedBy: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          compareAttachment: {
+            select: {
+              id: true,
+              assetType: true,
+              originalFileName: true,
+              mimeType: true,
+              fileSize: true,
+              submissionReviewStatus: true,
+              createdAt: true,
+              status: true,
+              uploadedBy: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          captionAttachment: {
+            select: {
+              id: true,
+              assetType: true,
+              originalFileName: true,
+              mimeType: true,
+              fileSize: true,
+              submissionReviewStatus: true,
+              createdAt: true,
+              status: true,
+              uploadedBy: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ),
+  ]);
+  const changes = [
+    ...comments.map((comment) => ({
+      source: "comment" as const,
+      id: comment.id,
+      updatedAt: comment.updatedAt ?? comment.createdAt,
+      createdAt: comment.createdAt,
+      entry: comment,
+    })),
+    ...revisions.map((revision) => ({
+      source: "revision" as const,
+      id: revision.id,
+      updatedAt: revision.updatedAt ?? revision.createdAt,
+      createdAt: revision.createdAt,
+      entry: revision,
+    })),
+    ...comparisons.map((comparison) => ({
+      source: "comparison" as const,
+      id: comparison.id,
+      updatedAt: comparison.updatedAt ?? comparison.createdAt,
+      createdAt: comparison.createdAt,
+      entry: comparison,
+    })),
+  ].sort((left, right) => {
+    const timeDifference =
+      after
+        ? left.updatedAt.getTime() - right.updatedAt.getTime()
+        : right.updatedAt.getTime() - left.updatedAt.getTime();
 
-    if (!current || updatedAt.getTime() > current.getTime()) {
-      return updatedAt;
+    return timeDifference !== 0 ? timeDifference : left.id.localeCompare(right.id);
+  });
+  const selectedChanges = changes.slice(0, limit);
+  const pauseWindows = await getProjectVisibilityPauseWindows(user, project);
+  const selectedRevisions = selectedChanges
+    .filter((item): item is Extract<typeof item, { source: "revision" }> => item.source === "revision")
+    .map((item) => item.entry);
+  const selectedComments = selectedChanges
+    .filter((item): item is Extract<typeof item, { source: "comment" }> => item.source === "comment")
+    .map((item) => item.entry);
+  const selectedComparisons = selectedChanges
+    .filter((item): item is Extract<typeof item, { source: "comparison" }> => item.source === "comparison")
+    .map((item) => item.entry);
+  const visibleRevisions = filterHistoryEntriesOutsidePauseWindows(
+    selectedRevisions,
+    pauseWindows,
+  );
+  const visibleComments = filterHistoryEntriesOutsidePauseWindows(
+    selectedComments,
+    pauseWindows,
+  );
+  const visibleComparisons =
+    pauseWindows.length > 0
+      ? selectedComparisons.filter(
+          (comparison) =>
+            !isTimestampHiddenByPauseWindows(comparison.createdAt, pauseWindows),
+        )
+      : selectedComparisons;
+  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
+    user.id,
+    [...visibleRevisions, ...visibleComments]
+      .flatMap((entry) => entry.attachments)
+      .filter((attachment) => attachment.status === AttachmentStatus.READY)
+      .map((attachment) => attachment.id),
+  );
+  const submissionNumbers = buildStageSubmissionNumberMap(
+    visibleRevisions,
+    visibleComments,
+  );
+  const mappedEntries = [
+    ...visibleRevisions.map((revision) => ({
+      createdAt: toHistoryDate(revision.createdAt).getTime(),
+      entry: mapRevisionEntry(revision, submissionNumbers, favoritedAttachmentIds),
+    })),
+    ...visibleComments.map((comment) => ({
+      createdAt: toHistoryDate(comment.createdAt).getTime(),
+      entry: mapCommentEntry(comment, submissionNumbers, favoritedAttachmentIds),
+    })),
+    ...visibleComparisons.map((comparison) => ({
+      createdAt: toHistoryDate(comparison.createdAt).getTime(),
+      entry: mapComparisonEntry(comparison, submissionNumbers),
+    })),
+  ]
+    .sort((left, right) => {
+      const timeDifference = left.createdAt - right.createdAt;
+
+      return timeDifference !== 0
+        ? timeDifference
+        : left.entry.id.localeCompare(right.entry.id);
+    })
+    .map((item) => item.entry);
+  const newestUpdatedAt = selectedChanges.reduce<Date | null>((current, item) => {
+    if (!current || item.updatedAt.getTime() > current.getTime()) {
+      return item.updatedAt;
     }
 
     return current;
@@ -2167,9 +2391,13 @@ export async function getStageChatUpdatesForUser(
   return {
     projectId: input.projectId,
     stageId: input.stageId,
-    entries: mappedComments.map((item) => item.entry),
+    entries: mappedEntries,
     watermark: (newestUpdatedAt ?? after ?? new Date()).toISOString(),
-    hasMore: comments.length > limit,
+    hasMore:
+      changes.length > selectedChanges.length ||
+      comments.length > limit ||
+      revisions.length > limit ||
+      comparisons.length > limit,
   };
 }
 

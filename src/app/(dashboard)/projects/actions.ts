@@ -59,8 +59,11 @@ import {
   publishProjectAccessRevoked,
   publishStageChatMessageCreated,
   publishStageChatMessageDeleted,
+  publishStageChatTimelineUpdated,
+  publishStageChatTimelineUpdatedAfterResponse,
   runStageChatRealtimeTaskAfterResponse,
 } from "@/lib/realtime/server";
+import type { StageChatRealtimeTimelineUpdatedPayload } from "@/lib/realtime/events";
 import { logStageChatTiming } from "@/lib/stage-chat-timing";
 import { SubmissionReviewStatus } from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
@@ -102,6 +105,51 @@ function publishProjectAccessRevocation(input: {
       revokedAt: new Date().toISOString(),
       reason: input.reason,
     }),
+  );
+}
+
+function publishStageChatTimelineInvalidation(input: {
+  projectId: string;
+  stageId: string;
+  actorId?: string | null;
+  eventType: StageChatRealtimeTimelineUpdatedPayload["eventType"];
+  changedEntityId?: string | null;
+}) {
+  publishStageChatTimelineUpdatedAfterResponse(input);
+}
+
+function publishProjectStageTimelineInvalidation(input: {
+  projectId: string;
+  actorId?: string | null;
+  eventType: StageChatRealtimeTimelineUpdatedPayload["eventType"];
+  changedEntityId?: string | null;
+}) {
+  runStageChatRealtimeTaskAfterResponse(
+    `stage-chat.timeline.updated:${input.eventType}`,
+    async () => {
+      const stages = await prisma.projectStage.findMany({
+        where: {
+          projectId: input.projectId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      await Promise.all(
+        stages.map((stage) =>
+          publishStageChatTimelineUpdated({
+            eventId: randomUUID(),
+            projectId: input.projectId,
+            stageId: stage.id,
+            eventType: input.eventType,
+            changedEntityId: input.changedEntityId ?? null,
+            actorId: input.actorId ?? null,
+            updatedAt: new Date().toISOString(),
+          }),
+        ),
+      );
+    },
   );
 }
 
@@ -198,6 +246,13 @@ export async function createStageRevisionAction(input: StageRevisionInput) {
   try {
     const revision = await createStageRevision(user, input);
     revalidateProjectFlow();
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "revision_created",
+      changedEntityId: revision.id,
+    });
 
     await runNotificationTask("revision-submitted", () =>
       notifyRevisionSubmitted({
@@ -231,6 +286,13 @@ export async function cancelStageRevisionSubmissionAction(input: {
   try {
     await cancelStageRevisionSubmission(user, input);
     revalidateProjectFlow();
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "timeline_updated",
+      changedEntityId: input.revisionId,
+    });
 
     return { success: true };
   } catch (error) {
@@ -296,6 +358,13 @@ async function createStageCommentActionResult(
     logStageChatTiming("send", "notification scheduling", notificationScheduleStartedAt, {
       mentionedUsers: comment.mentions.length,
     });
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "message_created",
+      changedEntityId: comment.id,
+    });
     logStageChatTiming("send", "total send action response", totalStartedAt, {
       commentId: comment.id,
       revalidated: options.revalidateProjectFlow,
@@ -346,6 +415,13 @@ export async function deleteStageCommentAction(input: DeleteStageCommentInput) {
         mentions: [],
       }),
     );
+    publishStageChatTimelineInvalidation({
+      projectId: result.projectId,
+      stageId: result.stageId,
+      actorId: user.id,
+      eventType: "message_deleted",
+      changedEntityId: result.id,
+    });
 
     return {
       id: result.id,
@@ -370,6 +446,30 @@ export async function markStageCompleteAction(input: {
   try {
     const stage = await completeProjectStage(user, input);
     revalidateProjectFlow();
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "stage_status_changed",
+      changedEntityId: stage.id,
+    });
+    if (stage.nextStage?.id) {
+      publishStageChatTimelineInvalidation({
+        projectId: input.projectId,
+        stageId: stage.nextStage.id,
+        actorId: user.id,
+        eventType: "stage_status_changed",
+        changedEntityId: stage.nextStage.id,
+      });
+    }
+    if (stage.allStagesCompleted) {
+      publishProjectStageTimelineInvalidation({
+        projectId: input.projectId,
+        actorId: user.id,
+        eventType: "completion_updated",
+        changedEntityId: input.projectId,
+      });
+    }
 
     await runNotificationTask("stage-transition", () =>
       notifyStageTransition({
@@ -433,6 +533,13 @@ export async function acceptStageBriefAction(input: {
         clientTempId: null,
       });
     });
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "brief_accepted",
+      changedEntityId: result.activityComment.id,
+    });
 
     return { result };
   } catch (error) {
@@ -483,6 +590,13 @@ export async function requestStageInvoiceAction(input: StageInvoiceRequestInput)
         clientTempId: null,
       });
     });
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "invoice_requested",
+      changedEntityId: request.commentId,
+    });
 
     return { request };
   } catch (error) {
@@ -501,6 +615,13 @@ export async function createComparisonCommentAction(input: ComparisonCommentInpu
   try {
     const comment = await createComparisonComment(user, input);
     revalidateProjectFlow();
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "comparison_created",
+      changedEntityId: comment.id,
+    });
 
     return { comment };
   } catch (error) {
@@ -522,6 +643,24 @@ export async function approveSubmissionAction(attachmentId: string) {
       status: SubmissionReviewStatus.APPROVED,
     });
     revalidateProjectFlow();
+    const reviewedAttachment = await prisma.projectAttachment.findUnique({
+      where: {
+        id: attachmentId,
+      },
+      select: {
+        projectId: true,
+        stageId: true,
+      },
+    });
+    if (reviewedAttachment?.stageId) {
+      publishStageChatTimelineInvalidation({
+        projectId: reviewedAttachment.projectId,
+        stageId: reviewedAttachment.stageId,
+        actorId: user.id,
+        eventType: "revision_reviewed",
+        changedEntityId: attachmentId,
+      });
+    }
 
     await runNotificationTask("submission-approved", () =>
       notifyStageSubmissionReviewDecision({
@@ -551,6 +690,24 @@ export async function rejectSubmissionAction(attachmentId: string, note?: string
       note,
     });
     revalidateProjectFlow();
+    const reviewedAttachment = await prisma.projectAttachment.findUnique({
+      where: {
+        id: attachmentId,
+      },
+      select: {
+        projectId: true,
+        stageId: true,
+      },
+    });
+    if (reviewedAttachment?.stageId) {
+      publishStageChatTimelineInvalidation({
+        projectId: reviewedAttachment.projectId,
+        stageId: reviewedAttachment.stageId,
+        actorId: user.id,
+        eventType: "revision_reviewed",
+        changedEntityId: attachmentId,
+      });
+    }
 
     await runNotificationTask("submission-rejected", () =>
       notifyStageSubmissionReviewDecision({
@@ -583,6 +740,39 @@ export async function markSubmissionCompleteAction(input: {
       status: "APPROVED",
     });
     revalidateProjectFlow();
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "revision_reviewed",
+      changedEntityId: input.revisionId,
+    });
+    if (revision.stageCompletion) {
+      publishStageChatTimelineInvalidation({
+        projectId: input.projectId,
+        stageId: input.stageId,
+        actorId: user.id,
+        eventType: "stage_status_changed",
+        changedEntityId: revision.stageCompletion.id,
+      });
+      if (revision.stageCompletion.nextStage?.id) {
+        publishStageChatTimelineInvalidation({
+          projectId: input.projectId,
+          stageId: revision.stageCompletion.nextStage.id,
+          actorId: user.id,
+          eventType: "stage_status_changed",
+          changedEntityId: revision.stageCompletion.nextStage.id,
+        });
+      }
+      if (revision.stageCompletion.allStagesCompleted) {
+        publishProjectStageTimelineInvalidation({
+          projectId: input.projectId,
+          actorId: user.id,
+          eventType: "completion_updated",
+          changedEntityId: input.projectId,
+        });
+      }
+    }
 
     await runNotificationTask("submission-completed", async () => {
       await notifySubmissionWorkflowDecision({
@@ -647,6 +837,13 @@ export async function completeProjectArchiveAction(input: {
     const archive = await completeProjectArchive(user, input);
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId, archive.archiveCategorySlug);
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "completion_updated",
+      changedEntityId: archive.archiveId,
+    });
 
     await runNotificationTask("project-archived", () =>
       notifyProjectArchived({
@@ -679,6 +876,12 @@ export async function configureProjectCompletionWorkflowAction(input: {
     const workflow = await configureProjectCompletionWorkflow(user, input);
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId);
+    publishProjectStageTimelineInvalidation({
+      projectId: input.projectId,
+      actorId: user.id,
+      eventType: "completion_updated",
+      changedEntityId: input.projectId,
+    });
 
     return { workflow };
   } catch (error) {
@@ -703,6 +906,12 @@ export async function prepareAuthorityApprovalRequestAction(input: {
     const workflow = await prepareAuthorityApprovalRequest(user, input);
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId);
+    publishProjectStageTimelineInvalidation({
+      projectId: input.projectId,
+      actorId: user.id,
+      eventType: "completion_updated",
+      changedEntityId: input.projectId,
+    });
 
     await runNotificationTask("approval-required", () =>
       notifyApprovalRequired({
@@ -734,6 +943,12 @@ export async function prepareCopyrightTransferRequestAction(input: {
     const workflow = await prepareCopyrightTransferRequest(user, input);
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId);
+    publishProjectStageTimelineInvalidation({
+      projectId: input.projectId,
+      actorId: user.id,
+      eventType: "completion_updated",
+      changedEntityId: input.projectId,
+    });
 
     await runNotificationTask("copyright-required", () =>
       notifyCopyrightTransferRequired({
@@ -765,6 +980,12 @@ export async function requestProjectFinalInvoiceAction(input: {
     const workflow = await requestProjectFinalInvoice(user, input);
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId);
+    publishProjectStageTimelineInvalidation({
+      projectId: input.projectId,
+      actorId: user.id,
+      eventType: "completion_updated",
+      changedEntityId: input.projectId,
+    });
 
     await runNotificationTask("final-invoice-requested", () =>
       notifyFinalInvoiceRequested({
@@ -793,6 +1014,12 @@ export async function markProjectInvoiceNotRequiredAction(input: {
     const workflow = await markProjectInvoiceNotRequired(user, input);
     revalidateProjectFlow();
     revalidateArchiveFlow(input.projectId);
+    publishProjectStageTimelineInvalidation({
+      projectId: input.projectId,
+      actorId: user.id,
+      eventType: "completion_updated",
+      changedEntityId: input.projectId,
+    });
 
     return { workflow };
   } catch (error) {
@@ -820,6 +1047,13 @@ export async function requestSubmissionRevisionAction(input: {
       reason: input.reason,
     });
     revalidateProjectFlow();
+    publishStageChatTimelineInvalidation({
+      projectId: input.projectId,
+      stageId: input.stageId,
+      actorId: user.id,
+      eventType: "revision_reviewed",
+      changedEntityId: input.revisionId,
+    });
 
     await runNotificationTask("revision-requested", () =>
       notifySubmissionWorkflowDecision({
@@ -886,6 +1120,12 @@ export async function saveProjectCollaboratorsAction(
       targetUserIds: removedCollaboratorIds,
       reason: "collaborator_removed",
     });
+    publishProjectStageTimelineInvalidation({
+      projectId,
+      actorId: user.id,
+      eventType: "participant_access_changed",
+      changedEntityId: projectId,
+    });
 
     return { collaborators: updatedCollaborators };
   } catch (error) {
@@ -936,6 +1176,12 @@ export async function removeProjectCollaboratorAction(
       targetUserIds: removedCollaboratorIds.length > 0 ? removedCollaboratorIds : [collaboratorId],
       reason: "collaborator_removed",
     });
+    publishProjectStageTimelineInvalidation({
+      projectId,
+      actorId: user.id,
+      eventType: "participant_access_changed",
+      changedEntityId: collaboratorId,
+    });
 
     return { collaborators: updatedCollaborators };
   } catch (error) {
@@ -969,6 +1215,12 @@ export async function setProjectCollaboratorChatVisibilityAction(input: {
         reason: "visibility_paused",
       });
     }
+    publishProjectStageTimelineInvalidation({
+      projectId: input.projectId,
+      actorId: user.id,
+      eventType: "participant_access_changed",
+      changedEntityId: input.collaboratorId,
+    });
 
     return { collaborators: updatedCollaborators };
   } catch (error) {

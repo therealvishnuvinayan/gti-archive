@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 
 import {
@@ -6,6 +7,7 @@ import {
   type ProjectAccessRevokedPayload,
   type StageChatRealtimeMessageCreatedPayload,
   type StageChatRealtimeMessageDeletedPayload,
+  type StageChatRealtimeTimelineUpdatedPayload,
 } from "@/lib/realtime/events";
 
 import {
@@ -15,6 +17,7 @@ import {
   publishAblyProjectAccessRevoked,
   publishAblyStageChatMessageCreated,
   publishAblyStageChatMessageDeleted,
+  publishAblyStageChatTimelineUpdated,
   warnAblyNotConfigured,
 } from "./ably-server";
 
@@ -110,6 +113,35 @@ export async function publishStageChatMessageDeleted(
   payload: StageChatRealtimeMessageDeletedPayload,
 ) {
   return publishAblyStageChatMessageDeleted(payload);
+}
+
+export async function publishStageChatTimelineUpdated(
+  payload: StageChatRealtimeTimelineUpdatedPayload,
+) {
+  return publishAblyStageChatTimelineUpdated(payload);
+}
+
+export function publishStageChatTimelineUpdatedAfterResponse(input: {
+  projectId: string;
+  stageId: string;
+  eventType: StageChatRealtimeTimelineUpdatedPayload["eventType"];
+  changedEntityId?: string | null;
+  actorId?: string | null;
+  label?: string;
+}) {
+  runStageChatRealtimeTaskAfterResponse(
+    input.label ?? `stage-chat.timeline.updated:${input.eventType}`,
+    () =>
+      publishStageChatTimelineUpdated({
+        eventId: randomUUID(),
+        projectId: input.projectId,
+        stageId: input.stageId,
+        eventType: input.eventType,
+        changedEntityId: input.changedEntityId ?? null,
+        actorId: input.actorId ?? null,
+        updatedAt: new Date().toISOString(),
+      }),
+  );
 }
 
 export async function publishProjectAccessRevoked(
