@@ -1,8 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ProjectCompletionDocumentType } from "@prisma/client";
 
 import { getCurrentUser } from "@/lib/auth";
-import { finalizeProjectCompletionDocumentUpload } from "@/lib/project-completion";
+import { prisma } from "@/lib/prisma";
+import {
+  finalizeProjectCompletionDocumentUpload,
+  getProjectCompletionWorkflowForUser,
+} from "@/lib/project-completion";
+import {
+  publishStageChatTimelineUpdated,
+  runStageChatRealtimeTaskAfterResponse,
+} from "@/lib/realtime/server";
 import { UploadFileTypeError } from "@/lib/upload-validation";
 
 function isProjectCompletionDocumentType(
@@ -48,8 +57,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    const projectId = payload.projectId;
+
     await finalizeProjectCompletionDocumentUpload(user, {
-      projectId: payload.projectId,
+      projectId,
       documentType: payload.documentType,
       originalFileName: payload.originalFileName,
       mimeType: payload.mimeType,
@@ -57,8 +68,40 @@ export async function POST(request: Request) {
       storageKey: payload.storageKey,
       failed: payload.failed,
     });
+    const workflow = payload.failed
+      ? null
+      : await getProjectCompletionWorkflowForUser(user, projectId);
+    if (!payload.failed) {
+      runStageChatRealtimeTaskAfterResponse(
+        "stage-chat.completion-document-uploaded",
+        async () => {
+          const stages = await prisma.projectStage.findMany({
+            where: {
+              projectId,
+            },
+            select: {
+              id: true,
+            },
+          });
 
-    return NextResponse.json({ ok: true });
+          await Promise.all(
+            stages.map((stage) =>
+              publishStageChatTimelineUpdated({
+                eventId: randomUUID(),
+                projectId,
+                stageId: stage.id,
+                eventType: "completion_updated",
+                changedEntityId: projectId,
+                actorId: user.id,
+                updatedAt: new Date().toISOString(),
+              }),
+            ),
+          );
+        },
+      );
+    }
+
+    return NextResponse.json({ ok: true, workflow });
   } catch (error) {
     if (error instanceof UploadFileTypeError) {
       return NextResponse.json(error.payload, { status: 400 });

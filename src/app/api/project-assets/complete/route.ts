@@ -92,7 +92,10 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      invoiceCommentId: result?.invoiceCommentId ?? null,
+    });
   } catch (error) {
     return NextResponse.json(
       {

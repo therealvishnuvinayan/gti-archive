@@ -15,6 +15,7 @@ type AssetPreviewButtonProps = {
   downloadPath: string;
   triggerClassName?: string;
   iconOnly?: boolean;
+  label?: string;
 };
 
 function isPreviewableAsset(fileName: string, mimeType: string) {
@@ -84,6 +85,7 @@ export function AssetPreviewButton({
   downloadPath,
   triggerClassName,
   iconOnly = true,
+  label = "View",
 }: AssetPreviewButtonProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -168,10 +170,10 @@ export function AssetPreviewButton({
           setLoading(true);
           setOpen(true);
         }}
-        aria-label={`View ${fileName}`}
+        aria-label={`${label} ${fileName}`}
       >
         <Eye className="h-4 w-4" />
-        {iconOnly ? null : <span>View</span>}
+        {iconOnly ? null : <span>{label}</span>}
       </Button>
 
       {previewDialog && typeof document !== "undefined"

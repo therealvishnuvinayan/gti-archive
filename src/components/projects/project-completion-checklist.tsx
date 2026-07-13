@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Download, Loader2, Lock, Upload } from "lucide-react";
 
 import {
@@ -50,6 +49,7 @@ type CompletedProjectArchiveSummaryCardProps = {
 type ProjectCompletionChecklistProps = {
   projectId: string;
   workflow: ProjectCompletionWorkflowRecord | null;
+  surface?: "card" | "plain";
 };
 
 function getFileBadgeClass(label: string) {
@@ -126,7 +126,7 @@ async function uploadCompletionDocument(input: {
   file: File;
   projectId: string;
   documentType: CompletionDocumentTypeValue;
-}) {
+}): Promise<ProjectCompletionWorkflowRecord | null> {
   const uploadRequest = await fetch("/api/project-completion-documents/upload-url", {
     method: "POST",
     headers: {
@@ -186,6 +186,7 @@ async function uploadCompletionDocument(input: {
 
     const completionPayload = (await completionResponse.json()) as {
       error?: string;
+      workflow?: ProjectCompletionWorkflowRecord | null;
     } & Partial<UploadFileTypeErrorPayload>;
 
     if (!completionResponse.ok) {
@@ -193,6 +194,8 @@ async function uploadCompletionDocument(input: {
         getUploadErrorMessage(completionPayload, "Unable to finalise the uploaded file."),
       );
     }
+
+    return completionPayload.workflow ?? null;
   } catch (error) {
     await fetch("/api/project-completion-documents/complete", {
       method: "POST",
@@ -505,6 +508,7 @@ export function CompletedProjectArchiveSummaryCard({
 export function ProjectCompletionChecklist({
   projectId,
   workflow,
+  surface = "card",
 }: ProjectCompletionChecklistProps) {
   if (!workflow) {
     return null;
@@ -533,6 +537,7 @@ export function ProjectCompletionChecklist({
       key={workflowKey}
       projectId={projectId}
       workflow={workflow}
+      surface={surface}
     />
   );
 }
@@ -568,11 +573,12 @@ function getInitialInvoiceContactUserId(workflow: ProjectCompletionWorkflowRecor
 function ProjectCompletionChecklistBody({
   projectId,
   workflow,
+  surface,
 }: {
   projectId: string;
   workflow: ProjectCompletionWorkflowRecord;
+  surface: "card" | "plain";
 }) {
-  const router = useRouter();
   const [workflowState, setWorkflowState] = useState<ProjectCompletionWorkflowRecord>(workflow);
   const [approvalRequired, setApprovalRequired] = useState<boolean>(
     workflow.approvalRequired ?? false,
@@ -604,7 +610,6 @@ function ProjectCompletionChecklistBody({
   const [uploadingDocumentType, setUploadingDocumentType] =
     useState<CompletionDocumentTypeValue | null>(null);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
-  const [, startRefresh] = useTransition();
   const approvalProofInputRef = useRef<HTMLInputElement | null>(null);
   const copyrightInputRef = useRef<HTMLInputElement | null>(null);
   const invoiceInputRef = useRef<HTMLInputElement | null>(null);
@@ -612,12 +617,32 @@ function ProjectCompletionChecklistBody({
   const approvalStatusMeta = getStepStatusMeta("approval", workflowState);
   const copyrightStatusMeta = getStepStatusMeta("copyright", workflowState);
   const invoiceStatusMeta = getStepStatusMeta("invoice", workflowState);
-
-  function refreshPage() {
-    startRefresh(() => {
-      router.refresh();
-    });
-  }
+  const finalChecksResolved =
+    !workflowState.needsInitialConfiguration &&
+    workflowState.archiveBlockers.length === 0;
+  const guidedSteps = [
+    { title: "Authority / Client Approval", meta: approvalStatusMeta },
+    { title: "Copyright Transfer", meta: copyrightStatusMeta },
+    { title: "Final Invoice", meta: invoiceStatusMeta },
+    {
+      title: "Review & Complete Project",
+      meta: {
+        label: finalChecksResolved ? "Ready" : "Blocked",
+        className: finalChecksResolved
+          ? "bg-[#edf7ef] text-[#2b8b56]"
+          : "bg-[#fff7ea] text-[#b77420]",
+      },
+    },
+    {
+      title: "Archive Project",
+      meta: {
+        label: finalChecksResolved ? "Ready" : "Locked",
+        className: finalChecksResolved
+          ? "bg-[#edf7ef] text-[#2b8b56]"
+          : "bg-[#f4f7f4] text-[#5f6b62]",
+      },
+    },
+  ];
 
   function applyWorkflowUpdate(nextWorkflow: ProjectCompletionWorkflowRecord) {
     setWorkflowError(null);
@@ -632,7 +657,6 @@ function ProjectCompletionChecklistBody({
     setCopyrightNote(nextWorkflow.copyrightNote ?? "");
     setInvoiceContactUserId(getInitialInvoiceContactUserId(nextWorkflow));
     setInvoiceNote(nextWorkflow.invoiceNote ?? "");
-    refreshPage();
   }
 
   function toggleApprovalSelectedFile(fileId: string) {
@@ -830,13 +854,14 @@ function ProjectCompletionChecklistBody({
     setUploadingDocumentType(documentType);
 
     try {
-      await uploadCompletionDocument({
+      const nextWorkflow = await uploadCompletionDocument({
         file,
         projectId,
         documentType,
       });
-
-      refreshPage();
+      if (nextWorkflow) {
+        applyWorkflowUpdate(nextWorkflow);
+      }
 
       const label =
         documentType === COMPLETION_DOCUMENT_TYPES.approval
@@ -870,8 +895,8 @@ function ProjectCompletionChecklistBody({
     }
   }
 
-  return (
-    <Card className="rounded-[20px] border border-[#dbe7dd] bg-white shadow-none">
+  const checklistContent = (
+    <>
       <input
         ref={approvalProofInputRef}
         type="file"
@@ -914,17 +939,18 @@ function ProjectCompletionChecklistBody({
             {workflowState.executionTypeLabel}
           </div>
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          {[
-            { title: "Authority Approval", meta: approvalStatusMeta },
-            { title: "Copyright Transfer", meta: copyrightStatusMeta },
-            { title: "Final Invoice", meta: invoiceStatusMeta },
-          ].map((item) => (
+        <div className="grid gap-2 md:grid-cols-5">
+          {guidedSteps.map((item, index) => (
             <div
               key={item.title}
-              className="rounded-[18px] border border-[#dce6dd] bg-[#fbfcfa] px-4 py-3"
+              className="rounded-[18px] border border-[#dce6dd] bg-[#fbfcfa] px-3 py-3"
             >
-              <p className="text-[13px] font-[700] text-[#173120]">{item.title}</p>
+              <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#8a968d]">
+                Step {index + 1}
+              </p>
+              <p className="mt-1 text-[12px] font-[800] leading-4 text-[#173120]">
+                {item.title}
+              </p>
               <span
                 className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${item.meta.className}`}
               >
@@ -1192,7 +1218,23 @@ function ProjectCompletionChecklistBody({
                     Upload Approval Proof
                   </Button>
                 </div>
-              ) : null}
+              ) : (
+                <div className="rounded-[16px] border border-[#dce6dd] bg-white px-4 py-3 text-[12px] leading-5 text-[#5f6b62]">
+                  <p className="font-[800] text-[#173120]">Waiting for approval proof</p>
+                  <p className="mt-1">
+                    Authority approval is completed when{" "}
+                    {workflowState.approvalContactName ?? "the selected approval contact"}{" "}
+                    uploads the approval proof from their account.
+                  </p>
+                  {workflowState.canManage ? (
+                    <p className="mt-1">
+                      The upload action is only shown to the selected approval contact, so
+                      the project owner can track this step but cannot approve it on their
+                      behalf.
+                    </p>
+                  ) : null}
+                </div>
+              )}
             </div>
           ) : workflowState.approvalStatus === "COMPLETED" &&
             workflowState.approvalProofDocument ? (
@@ -1548,6 +1590,20 @@ function ProjectCompletionChecklistBody({
           </div>
         ) : null}
       </CardContent>
+    </>
+  );
+
+  if (surface === "plain") {
+    return (
+      <section className="rounded-[24px] border border-[#dbe7dd] bg-white shadow-none">
+        {checklistContent}
+      </section>
+    );
+  }
+
+  return (
+    <Card className="rounded-[20px] border border-[#dbe7dd] bg-white shadow-none">
+      {checklistContent}
     </Card>
   );
 }

@@ -5,20 +5,17 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
+  ProjectExecutorRole,
   ProjectExecutionType,
   ProjectRevisionStatus,
   StageStatus,
   SubmissionReviewStatus,
   UserRole,
-  type ProjectExecutorRole,
   type User,
 } from "@prisma/client";
 
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
-import {
-  getCollaboratorRoleLabel,
-  getCollaboratorTypeGroup,
-} from "@/lib/project-collaborator-participant-types";
+import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
@@ -4610,22 +4607,15 @@ export async function requestStageInvoice(
     throw new Error("An invoice has already been uploaded for this stage.");
   }
 
-  if (requestedFromId === stage.project.createdById) {
-    throw new Error("Invoice must be requested from an executor or vendor, not the project owner.");
-  }
-
   const executorCandidate = stage.project.executors.find(
-    (executor) => executor.userId === requestedFromId,
+    (executor) =>
+      executor.userId === requestedFromId &&
+      executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
   );
-  const externalCollaboratorCandidate = stage.project.collaborators.find(
-    (collaborator) =>
-      collaborator.userId === requestedFromId &&
-      getCollaboratorTypeGroup(collaborator.participantType) === "external",
-  );
-  const candidate = executorCandidate?.user ?? externalCollaboratorCandidate?.user ?? null;
+  const candidate = executorCandidate?.user ?? null;
 
   if (!candidate) {
-    throw new Error("Invoice can only be requested from a project executor or external collaborator.");
+    throw new Error("Invoice can only be requested from a project main executor.");
   }
 
   const note = input.note?.trim() || null;

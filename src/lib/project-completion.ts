@@ -1866,6 +1866,8 @@ export async function finalizeProjectCompletionDocumentUpload(
     throw new Error("Completion document storage key is invalid.");
   }
 
+  await assertProjectAccess(user, input.projectId);
+
   await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const project = await tx.project.findUnique({
@@ -1917,8 +1919,6 @@ export async function finalizeProjectCompletionDocumentUpload(
       if (!project) {
         throw new Error("Project not found.");
       }
-
-      await assertProjectAccess(user, input.projectId);
 
       if (!canUseFinalCompletionWorkflow(project)) {
         throw new Error(

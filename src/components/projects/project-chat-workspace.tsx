@@ -1252,11 +1252,13 @@ function SystemActivityCard({
   alignment = "left",
   action,
   currentUserDisplayName,
+  bodyOverride,
 }: {
   message: DisplayChatEntry;
   alignment?: TimelineAlignment;
   action?: ReactNode;
   currentUserDisplayName: string;
+  bodyOverride?: string | null;
 }) {
   const meta = getSystemActivityMeta(message);
   const Icon = meta.Icon;
@@ -1264,11 +1266,13 @@ function SystemActivityCard({
   const displayAuthor = isCurrentUserActivity
     ? "You"
     : getActorDisplayName(message.author, currentUserDisplayName);
-  const displayBody = replaceCurrentUserNameInText(
-    message.body,
-    message.author,
-    currentUserDisplayName,
-  );
+  const displayBody =
+    bodyOverride ??
+    replaceCurrentUserNameInText(
+      message.body,
+      message.author,
+      currentUserDisplayName,
+    );
 
   return (
     <TimelineFrame
@@ -2040,7 +2044,7 @@ async function uploadAssetFile(input: {
   fileCount?: number;
   onProgress?: (progress: number) => void;
   onUploadStart?: (file: File) => void;
-}): Promise<{ attachmentId: string; uploadedFile: File }> {
+}): Promise<{ attachmentId: string; uploadedFile: File; invoiceCommentId?: string | null }> {
   const uploadFile = input.file;
 
   input.onUploadStart?.(uploadFile);
@@ -2113,6 +2117,7 @@ async function uploadAssetFile(input: {
 
     const completionPayload = (await completionResponse.json()) as {
       error?: string;
+      invoiceCommentId?: string | null;
     } & Partial<UploadFileTypeErrorPayload>;
 
     if (!completionResponse.ok) {
@@ -2124,6 +2129,7 @@ async function uploadAssetFile(input: {
     return {
       attachmentId: uploadPayload.attachmentId,
       uploadedFile: uploadFile,
+      invoiceCommentId: completionPayload.invoiceCommentId ?? null,
     };
   } catch (error) {
     await fetch("/api/project-assets/complete", {
@@ -2386,6 +2392,7 @@ export function ProjectChatWorkspace({
   const [isCompletionDataLoading, setIsCompletionDataLoading] =
     useState(deferCompletionData);
   const [projectCompletionError, setProjectCompletionError] = useState<string | null>(null);
+  const [completionChecklistOpen, setCompletionChecklistOpen] = useState(false);
   const [isPreparingProjectCompletion, setIsPreparingProjectCompletion] = useState(false);
   const [archivePreparation, setArchivePreparation] =
     useState<ProjectArchivePreparation | null>(null);
@@ -2431,6 +2438,11 @@ export function ProjectChatWorkspace({
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  useEffect(() => {
+    setCollaborators(project.collaborators);
+    setExecutors(project.executors);
+  }, [project.collaborators, project.executors]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -2675,31 +2687,24 @@ export function ProjectChatWorkspace({
     return stageCards.find((stage) => stage.id === stageId) ?? stageCards[0];
   }, [project.currentStageId, stageCards, stageId]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
+  const loadCompletionData = useCallback(
+    async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
+      if (options?.showLoading) {
+        setIsCompletionDataLoading(true);
+      }
 
-    setCompletionData({
-      summary: completionSummary,
-      workflow: completionWorkflow,
-    });
+      const query = activeStage?.id
+        ? `?stage=${encodeURIComponent(activeStage.id)}`
+        : "";
 
-    if (!deferCompletionData) {
-      setIsCompletionDataLoading(false);
-      return () => controller.abort();
-    }
-
-    setIsCompletionDataLoading(true);
-
-    const query = activeStage?.id
-      ? `?stage=${encodeURIComponent(activeStage.id)}`
-      : "";
-
-    fetch(`/api/projects/${encodeURIComponent(project.id)}/completion${query}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
+      try {
+        const response = await fetch(
+          `/api/projects/${encodeURIComponent(project.id)}/completion${query}`,
+          {
+            cache: "no-store",
+            signal: options?.signal,
+          },
+        );
         const payload = (await response.json()) as ProjectCompletionApiResponse;
 
         if (!response.ok || "error" in payload) {
@@ -2710,24 +2715,46 @@ export function ProjectChatWorkspace({
           );
         }
 
-        if (!cancelled) {
-          setCompletionData({
-            summary: payload.completionSummary,
-            workflow: payload.completionWorkflow,
-          });
+        if (options?.signal?.aborted) {
+          return;
         }
-      })
+
+        setCompletionData({
+          summary: payload.completionSummary,
+          workflow: payload.completionWorkflow,
+        });
+      } finally {
+        if (!options?.signal?.aborted) {
+          setIsCompletionDataLoading(false);
+        }
+      }
+    },
+    [activeStage?.id, project.id],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    if (!deferCompletionData) {
+      setCompletionData({
+        summary: completionSummary,
+        workflow: completionWorkflow,
+      });
+      setIsCompletionDataLoading(false);
+      return () => controller.abort();
+    }
+
+    void loadCompletionData({
+      signal: controller.signal,
+      showLoading: false,
+    })
       .catch((error) => {
         if (
           cancelled ||
           (error instanceof DOMException && error.name === "AbortError")
         ) {
           return;
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsCompletionDataLoading(false);
         }
       });
 
@@ -2740,7 +2767,7 @@ export function ProjectChatWorkspace({
     completionSummary,
     completionWorkflow,
     deferCompletionData,
-    project.id,
+    loadCompletionData,
   ]);
 
   const committedCollaboratorIds = useMemo(
@@ -2753,6 +2780,21 @@ export function ProjectChatWorkspace({
   const selectedCollaboratorIds = collaboratorPickerOpen
     ? draftCollaboratorIds
     : committedCollaboratorIds;
+  const currentUserDisplayName = useMemo(() => {
+    const executor = project.executors.find(
+      (candidate) => candidate.id === currentUserId,
+    );
+
+    if (executor) {
+      return executor.name;
+    }
+
+    const collaborator = project.collaborators.find(
+      (candidate) => candidate.id === currentUserId,
+    );
+
+    return collaborator?.name || "You";
+  }, [currentUserId, project.collaborators, project.executors]);
   const isProjectOwner = useMemo(
     () =>
       project.collaborators.some(
@@ -2761,6 +2803,7 @@ export function ProjectChatWorkspace({
       ),
     [currentUserId, project.collaborators],
   );
+  const canReviewSubmissions = project.ownerId === currentUserId;
   const isProjectCompleted = completionState.isCompleted;
   const isFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
@@ -2771,6 +2814,77 @@ export function ProjectChatWorkspace({
     (!isProjectCompleted && completionState.allStagesCompleted);
   const shouldShowCompletionChecklist =
     Boolean(effectiveCompletionWorkflow) && shouldExpectCompletionWorkflow;
+  const canUseProjectCompletionWorkflow =
+    Boolean(effectiveCompletionWorkflow) &&
+    !isProjectCompleted &&
+    completionState.allStagesCompleted &&
+    (effectiveCompletionWorkflow?.canManage ||
+      effectiveCompletionWorkflow?.canUploadApprovalProof ||
+      effectiveCompletionWorkflow?.canUploadCopyrightDocument ||
+      effectiveCompletionWorkflow?.canUploadInvoice);
+  const completionResolvedStepCount = effectiveCompletionWorkflow
+    ? [
+        effectiveCompletionWorkflow.approvalStatus,
+        effectiveCompletionWorkflow.copyrightStatus,
+        effectiveCompletionWorkflow.invoiceStatus,
+      ].filter((status) => status === "COMPLETED" || status === "NOT_REQUIRED").length
+    : 0;
+  const completionVisibleBlockers = completionState.allStagesCompleted
+    ? completionState.finalCompletionBlockers
+    : completionState.incompleteStages.map(
+        (stage) => `${stage.name} is ${stage.status.toLowerCase()}.`,
+      );
+  const showProjectCompletionStickyAction =
+    canUseProjectCompletionWorkflow && Boolean(effectiveCompletionWorkflow);
+  const projectCompletionStickyAction = (() => {
+    if (
+      effectiveCompletionWorkflow?.canUploadApprovalProof &&
+      effectiveCompletionWorkflow.approvalStatus === "PENDING"
+    ) {
+      return {
+        eyebrow: "Authority approval pending",
+        title: "Upload the authority approval proof for this project.",
+        detail: "Project Completion · Authority approval proof required",
+        buttonLabel: "Upload Approval Proof",
+      };
+    }
+
+    if (
+      effectiveCompletionWorkflow?.canUploadCopyrightDocument &&
+      effectiveCompletionWorkflow.copyrightStatus === "PENDING"
+    ) {
+      return {
+        eyebrow: "Copyright transfer pending",
+        title: "Upload the signed copyright transfer document.",
+        detail: "Project Completion · Copyright transfer required",
+        buttonLabel: "Upload Copyright",
+      };
+    }
+
+    if (
+      effectiveCompletionWorkflow?.canUploadInvoice &&
+      effectiveCompletionWorkflow.invoiceStatus === "PENDING"
+    ) {
+      return {
+        eyebrow: "Final invoice pending",
+        title: "Upload the final invoice for this project.",
+        detail: "Project Completion · Final invoice required",
+        buttonLabel: "Upload Final Invoice",
+      };
+    }
+
+    return {
+      eyebrow: "Project ready for completion",
+      title: "Complete the final checks before archiving this project.",
+      detail: `Project Completion · ${completionResolvedStepCount} of 3 checks completed`,
+      buttonLabel: "Start Completion Checklist",
+    };
+  })();
+  const showProjectCompletionLockedNotice =
+    !isProjectCompleted &&
+    !completionState.allStagesCompleted &&
+    completionState.incompleteStages.length > 0 &&
+    isProjectOwner;
   const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
   const isChatReadOnly = isProjectCompleted || isStageCompleted;
   const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
@@ -2804,41 +2918,82 @@ export function ProjectChatWorkspace({
     isRequestedStageInvoiceUploader &&
     !isStageCompleted &&
     !isProjectCompleted;
+  const isStageInvoiceUploader =
+    Boolean(stageInvoiceAttachment) &&
+    isCurrentUserDisplayName(
+      stageInvoiceAttachment?.uploadedBy ?? "",
+      currentUserDisplayName,
+    );
+  const canUseStageInvoiceFileActions =
+    Boolean(stageInvoiceAttachment) &&
+    (isProjectOwner ||
+      canReviewSubmissions ||
+      isRequestedStageInvoiceUploader ||
+      isStageInvoiceUploader);
   const canRequestStageInvoice =
     isProjectOwner && stageInvoiceMissing && hasApprovedStageSubmission;
   const showPostApprovalInvoiceAction =
     canRequestStageInvoice && !stageInvoiceRequest && !isStageCompleted;
+  const canCompleteStageAfterInvoice =
+    isProjectOwner &&
+    hasApprovedStageSubmission &&
+    Boolean(stageInvoiceAttachment) &&
+    !isStageCompleted &&
+    !isProjectCompleted;
+  const showInvoiceUploadedNextAction =
+    Boolean(stageInvoiceAttachment) &&
+    (isProjectOwner || canReviewSubmissions) &&
+    !completionState.allStagesCompleted &&
+    !isStageCompleted &&
+    !isProjectCompleted;
   const invoiceRequestCandidates = useMemo(() => {
-    const candidates = [
-      ...project.executors.map((executor) => ({
-        id: executor.id,
-        name: executor.name,
-        email: executor.email,
-        role: executor.role === "MAIN_EXECUTOR" ? "Main Executor" : "Executor",
-        rank: executor.role === "MAIN_EXECUTOR" ? 0 : 1,
-      })),
-      ...project.collaborators
-        .filter((collaborator) => collaborator.group === "external")
-        .map((collaborator) => ({
-          id: collaborator.id,
-          name: collaborator.name,
-          email: collaborator.email,
-          role: collaborator.role || "External Collaborator",
-          rank: 2,
-        })),
-    ].filter((candidate) => candidate.id !== project.ownerId);
+    const candidateByUserId = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        email?: string;
+        role: string;
+        rank: number;
+      }
+    >();
+    const addCandidate = (candidate: {
+      id: string;
+      name: string;
+      email?: string;
+      role: string;
+      rank: number;
+    }) => {
+      const existing = candidateByUserId.get(candidate.id);
 
-    return candidates
-      .filter(
-        (candidate, index, current) =>
-          current.findIndex((item) => item.id === candidate.id) === index,
-      )
-      .sort((left, right) => left.rank - right.rank || left.name.localeCompare(right.name));
-  }, [project.collaborators, project.executors, project.ownerId]);
+      if (!existing || candidate.rank < existing.rank) {
+        candidateByUserId.set(candidate.id, candidate);
+      }
+    };
+
+    executors
+      .filter((executor) => executor.role === "MAIN_EXECUTOR")
+      .forEach((executor) => {
+        addCandidate({
+          id: executor.id,
+          name: executor.name,
+          email: executor.email,
+          role: "Main Executor",
+          rank: 0,
+        });
+      });
+
+    return [...candidateByUserId.values()].sort(
+      (left, right) => left.rank - right.rank || left.name.localeCompare(right.name),
+    );
+  }, [executors]);
   const hasAcceptedBrief = Boolean(activeStage?.actualStartedAtValue);
+  const latestRevisionAllowsNewSubmission =
+    !latestRevisionMessage || latestRevisionStatus === "REJECTED";
   const canSubmitNewRevision =
     canSubmitWorkAsMainExecutor &&
     hasAcceptedBrief &&
+    latestRevisionAllowsNewSubmission &&
     activeStage?.status !== "pending" &&
     !isStageCompleted &&
     !isProjectCompleted &&
@@ -2867,7 +3022,6 @@ export function ProjectChatWorkspace({
   const stageBriefText = activeStage?.description.trim() ?? "";
   const projectBriefAttachments = project.attachments;
   const stageBriefAttachments = activeStage?.briefAttachments ?? [];
-  const canReviewSubmissions = project.ownerId === currentUserId;
   const hasRevisionEntries = displayedMessages.some((message) => message.kind === "revision");
   const hasBriefAcceptedSystemMessage = displayedMessages.some(
     (message) =>
@@ -2911,21 +3065,6 @@ export function ProjectChatWorkspace({
     : "Waiting for Main Executor to accept brief.";
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
-  const currentUserDisplayName = useMemo(() => {
-    const executor = project.executors.find(
-      (candidate) => candidate.id === currentUserId,
-    );
-
-    if (executor) {
-      return executor.name;
-    }
-
-    const collaborator = project.collaborators.find(
-      (candidate) => candidate.id === currentUserId,
-    );
-
-    return collaborator?.name || "You";
-  }, [currentUserId, project.collaborators, project.executors]);
   const currentUserDisplayCode = useMemo(
     () => getInitials(currentUserDisplayName),
     [currentUserDisplayName],
@@ -2949,6 +3088,61 @@ export function ProjectChatWorkspace({
 
     return collaborator.group === "external" ? "External Collaborator" : "Internal Team";
   }, [currentUserId, project.collaborators, project.executors]);
+  const getInvoiceRequestTimelineBody = useCallback(() => {
+    if (!stageInvoiceRequest) {
+      return null;
+    }
+
+    if (stageInvoiceRequest.requestedFromId === currentUserId) {
+      return "Invoice requested from you. Please upload the invoice for this completed stage.";
+    }
+
+    const recipientName = getActorDisplayName(
+      stageInvoiceRequest.requestedFromName,
+      currentUserDisplayName,
+    );
+    const isRequesterOrPrivilegedViewer =
+      stageInvoiceRequest.requestedById === currentUserId ||
+      isProjectOwner ||
+      currentUserRoleLabel.toLowerCase().includes("admin");
+
+    return isRequesterOrPrivilegedViewer
+      ? `Invoice requested from ${recipientName}. Waiting for invoice upload.`
+      : `Invoice requested from ${recipientName}.`;
+  }, [
+    currentUserDisplayName,
+    currentUserId,
+    currentUserRoleLabel,
+    isProjectOwner,
+    stageInvoiceRequest,
+  ]);
+  const getInvoiceUploadedTimelineBody = useCallback(
+    (message: DisplayChatEntry) => {
+      const stageName = activeStage?.label ?? "this stage";
+
+      if (
+        message.authorId === currentUserId ||
+        isCurrentUserDisplayName(message.author, currentUserDisplayName)
+      ) {
+        return `You uploaded invoice for ${stageName}.`;
+      }
+
+      const actorName = getActorDisplayName(message.author, currentUserDisplayName);
+      const canSeeNamedActor =
+        isProjectOwner || currentUserRoleLabel.toLowerCase().includes("admin");
+
+      return canSeeNamedActor
+        ? `${actorName} uploaded invoice for ${stageName}.`
+        : `Invoice uploaded by ${actorName}.`;
+    },
+    [
+      activeStage?.label,
+      currentUserDisplayName,
+      currentUserId,
+      currentUserRoleLabel,
+      isProjectOwner,
+    ],
+  );
   const stageStartSystemMessage = useMemo<DisplayChatEntry | null>(() => {
     if (!activeStage?.actualStartedAtValue || hasBriefAcceptedSystemMessage) {
       return null;
@@ -3185,24 +3379,6 @@ export function ProjectChatWorkspace({
     },
     [],
   );
-  const releaseInvoiceStageOverride = useCallback((stageId: string) => {
-    setStageCardOverrides((current) => {
-      const override = current[stageId];
-
-      if (!override) {
-        return current;
-      }
-
-      const nextOverride = { ...override };
-      delete nextOverride.invoiceAttachment;
-      delete nextOverride.invoiceRequest;
-
-      return {
-        ...current,
-        [stageId]: nextOverride,
-      };
-    });
-  }, []);
   const handleRealtimeMessagePending = useCallback(
     (payload: StageChatRealtimeMessagePendingPayload) => {
       if (payload.projectId !== project.id || payload.stageId !== activeStage?.id) {
@@ -3257,7 +3433,6 @@ export function ProjectChatWorkspace({
       setRealtimeWatermark(payload.createdAt);
 
       if (isInvoiceUploadedEntry(payload.entry)) {
-        releaseInvoiceStageOverride(payload.stageId);
         startRefresh(() => {
           router.refresh();
         });
@@ -3278,7 +3453,6 @@ export function ProjectChatWorkspace({
       activeStage?.id,
       mergeServerChatEntry,
       project.id,
-      releaseInvoiceStageOverride,
       router,
       startRefresh,
     ],
@@ -3368,7 +3542,6 @@ export function ProjectChatWorkspace({
       mergeServerChatEntry(entry, { countAsNew: false });
     });
     if (hasInvoiceUploadEntry) {
-      releaseInvoiceStageOverride(activeStageId);
       startRefresh(() => {
         router.refresh();
       });
@@ -3380,7 +3553,6 @@ export function ProjectChatWorkspace({
     markStalePendingTextMessages,
     mergeServerChatEntry,
     project.id,
-    releaseInvoiceStageOverride,
     realtimeWatermark,
     router,
     startRefresh,
@@ -3392,11 +3564,23 @@ export function ProjectChatWorkspace({
       }
 
       void reconcileStageChat();
+      if (payload.eventType === "completion_updated") {
+        void loadCompletionData({ showLoading: false });
+        return;
+      }
+
       startRefresh(() => {
         router.refresh();
       });
     },
-    [activeStage?.id, project.id, reconcileStageChat, router, startRefresh],
+    [
+      activeStage?.id,
+      loadCompletionData,
+      project.id,
+      reconcileStageChat,
+      router,
+      startRefresh,
+    ],
   );
   const mentionableParticipants = useMemo<ProjectMentionParticipantRecord[]>(
     () =>
@@ -3514,7 +3698,7 @@ export function ProjectChatWorkspace({
     !isStageCompleted &&
     !isProjectCompleted;
   const showLatestRevisionActionBar =
-    Boolean(latestRevisionMessage) && !isProjectCompleted;
+    Boolean(latestRevisionMessage) && !isStageCompleted && !isProjectCompleted;
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -4112,6 +4296,7 @@ export function ProjectChatWorkspace({
         ),
       );
       setArchiveFileErrors({});
+      setCompletionChecklistOpen(false);
     } catch (error) {
       const message =
         error instanceof Error
@@ -5766,7 +5951,9 @@ export function ProjectChatWorkspace({
     setInvoiceRequestError(null);
     setStageInvoiceError(null);
     setInvoiceRequestRecipientId(
-      stageInvoiceRequest?.requestedFromId ?? invoiceRequestCandidates[0]?.id ?? "",
+      stageInvoiceRequest?.requestedFromId ??
+        (invoiceRequestCandidates.length === 1 ? invoiceRequestCandidates[0]?.id : "") ??
+        "",
     );
     setInvoiceRequestNote(
       stageInvoiceRequest?.note ?? "Please upload the invoice for this completed stage.",
@@ -5969,7 +6156,8 @@ export function ProjectChatWorkspace({
       setConfirmedComments((current) => [
         ...current,
         {
-          id: `confirmed-invoice-${result.attachmentId}`,
+          id: result.invoiceCommentId ?? `confirmed-invoice-${result.attachmentId}`,
+          serverEntryId: result.invoiceCommentId ?? undefined,
           kind: "system",
           title: "Invoice uploaded",
           author: currentUserDisplayName,
@@ -6145,6 +6333,69 @@ export function ProjectChatWorkspace({
     }
   }
 
+  function renderStageInvoiceActions(options?: { includeCompleteAction?: boolean }) {
+    if (!stageInvoiceAttachment || !canUseStageInvoiceFileActions) {
+      return null;
+    }
+
+    const showCompleteAction =
+      Boolean(options?.includeCompleteAction) && canCompleteStageAfterInvoice;
+    const hasViewAction = Boolean(
+      stageInvoiceAttachment.previewPath && stageInvoiceAttachment.downloadPath,
+    );
+    const hasDownloadAction = Boolean(stageInvoiceAttachment.downloadPath);
+
+    if (!showCompleteAction && !hasViewAction && !hasDownloadAction) {
+      return null;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        {showCompleteAction ? (
+          <Button
+            type="button"
+            size="sm"
+            className="rounded-full text-[12px]"
+            onClick={() => {
+              setStageCompleteError(null);
+              setStageCompleteDialogOpen(true);
+            }}
+          >
+            Complete Stage
+          </Button>
+        ) : null}
+        {hasViewAction ? (
+          <AssetPreviewButton
+            fileName={stageInvoiceAttachment.originalFileName}
+            mimeType={stageInvoiceAttachment.mimeType}
+            previewPath={stageInvoiceAttachment.previewPath}
+            downloadPath={stageInvoiceAttachment.downloadPath}
+            iconOnly={false}
+            label="View Invoice"
+            triggerClassName={
+              showCompleteAction
+                ? "rounded-full border border-[#dfe8df] bg-white px-4 text-[12px] font-[800] text-[#173120] shadow-[0_10px_22px_rgba(23,39,28,0.05)] hover:bg-[#f4fbf5]"
+                : "rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-4 text-[12px] font-[800] text-white shadow-[0_12px_24px_rgba(34,102,70,0.18)] hover:bg-brand"
+            }
+          />
+        ) : null}
+        {hasDownloadAction ? (
+          <Button
+            asChild
+            size="sm"
+            variant="secondary"
+            className="rounded-full text-[12px]"
+          >
+            <Link href={stageInvoiceAttachment.downloadPath ?? "#"}>
+              <Download className="h-3.5 w-3.5" />
+              Download
+            </Link>
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <section className="min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-17rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
@@ -6283,6 +6534,80 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
+              {canUploadStageInvoice ? (
+                <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#b8dec5] bg-white/96 p-3 shadow-[0_18px_42px_rgba(22,93,56,0.14)] backdrop-blur">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                        Invoice requested
+                      </p>
+                      <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
+                        Please upload the invoice for this completed stage.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      className="min-h-[44px] shrink-0 rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
+                      onClick={openStageInvoiceUpload}
+                      disabled={isUploadingStageInvoice}
+                    >
+                      {isUploadingStageInvoice ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      Upload Invoice
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              {showInvoiceUploadedNextAction ? (
+                <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#b8dec5] bg-white/96 p-3 shadow-[0_18px_42px_rgba(22,93,56,0.14)] backdrop-blur">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                        Invoice uploaded
+                      </p>
+                      <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
+                        {getActorDisplayName(
+                          stageInvoiceAttachment?.uploadedBy ?? "Executor",
+                          currentUserDisplayName,
+                        )}{" "}
+                        uploaded the invoice for this stage.
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      {renderStageInvoiceActions({ includeCompleteAction: true })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {showProjectCompletionStickyAction ? (
+                <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#b8dec5] bg-white/96 p-3 shadow-[0_18px_42px_rgba(22,93,56,0.14)] backdrop-blur">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                        {projectCompletionStickyAction.eyebrow}
+                      </p>
+                      <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
+                        {projectCompletionStickyAction.title}
+                      </p>
+                      <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
+                        {projectCompletionStickyAction.detail}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        className="min-h-[44px] rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
+                        onClick={() => setCompletionChecklistOpen(true)}
+                      >
+                        {projectCompletionStickyAction.buttonLabel}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {showSubmitWorkAction &&
               hasAcceptedBrief &&
               (canSubmitNewRevision || isUploadingRevision) ? (
@@ -6317,18 +6642,26 @@ export function ProjectChatWorkspace({
                   <CompletedProjectArchiveSummaryCard completionSummary={completionState} />
                 ) : null}
 
-                {shouldShowCompletionChecklist ? (
-                  <ProjectCompletionChecklist
-                    projectId={project.id}
-                    workflow={effectiveCompletionWorkflow}
-                  />
-                ) : null}
-
                 {shouldExpectCompletionWorkflow && isCompletionDataLoading ? (
                   <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
                     <CardContent className="flex items-center gap-2 px-5 py-4 text-[13px] font-semibold text-[#5f6b62]">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Loading completion details...
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {showProjectCompletionLockedNotice ? (
+                  <Card className="rounded-[18px] border border-[#efd9af] bg-[#fffaf0] shadow-none">
+                    <CardContent className="px-5 py-4">
+                      <p className="text-[14px] font-[800] text-[#8a5718]">
+                        Project completion is locked until all stages are completed.
+                      </p>
+                      <ul className="mt-2 space-y-1 text-[12px] leading-5 text-[#5d4a2f]">
+                        {completionVisibleBlockers.slice(0, 3).map((blocker) => (
+                          <li key={blocker}>{blocker}</li>
+                        ))}
+                      </ul>
                     </CardContent>
                   </Card>
                 ) : null}
@@ -6361,7 +6694,9 @@ export function ProjectChatWorkspace({
                   </Card>
                 ) : null}
 
-                {!isProjectCompleted && completionState.isFinalCompletionPending ? (
+                {!isProjectCompleted &&
+                completionState.isFinalCompletionPending &&
+                !showProjectCompletionStickyAction ? (
                   <Card className="rounded-[20px] border border-[#efd9af] bg-[#fffaf0] shadow-none">
                     <CardContent className="px-5 py-4">
                       <p className="text-[14px] font-semibold text-[#8a5718]">
@@ -6378,16 +6713,19 @@ export function ProjectChatWorkspace({
                   </Card>
                 ) : null}
 
-                {!isProjectCompleted && canCompleteProject ? (
-                  <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
+                {!isProjectCompleted && shouldShowCompletionChecklist ? (
+                  <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
                     <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-[14px] font-semibold text-[#173120]">
-                          All completion requirements are resolved. Archive the final files.
+                        <p className="text-[14px] font-[800] text-[#173120]">
+                          Project Completion · {completionResolvedStepCount} of 3 checks completed
                         </p>
                         <p className="mt-1 text-[12px] text-[#5f6b62]">
-                          {completionState.approvedFileCount} final file
-                          {completionState.approvedFileCount === 1 ? "" : "s"} ready for final archive.
+                          {canCompleteProject
+                            ? `${completionState.approvedFileCount} final file${
+                                completionState.approvedFileCount === 1 ? "" : "s"
+                              } ready for final archive.`
+                            : "Open the guided checklist to resolve final completion blockers."}
                         </p>
                         {projectCompletionError ? (
                           <p className="mt-2 text-[12px] font-semibold text-[#bb4d49]">
@@ -6399,15 +6737,9 @@ export function ProjectChatWorkspace({
                         type="button"
                         size="sm"
                         className="rounded-full text-[12px]"
-                        disabled={isPreparingProjectCompletion || isCompletionDataLoading}
-                        onClick={() => {
-                          void handlePrepareProjectCompletion();
-                        }}
+                        onClick={() => setCompletionChecklistOpen(true)}
                       >
-                        {isPreparingProjectCompletion ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : null}
-                        Archive Project
+                        Open Checklist
                       </Button>
                     </CardContent>
                   </Card>
@@ -6542,34 +6874,36 @@ export function ProjectChatWorkspace({
 
           {displayedMessages.map((message) =>
             message.kind === "system" ? (
-              <SystemActivityCard
-                key={message.id}
-                message={message}
-                alignment={getTimelineEntryAlignment(
-                  message,
-                  currentUserId,
-                  currentUserDisplayName,
-                )}
-                action={
-                  message.title === "Invoice requested" && canUploadStageInvoice ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={openStageInvoiceUpload}
-                      disabled={isUploadingStageInvoice}
-                      className="rounded-full text-[12px]"
-                    >
-                      {isUploadingStageInvoice ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Upload className="h-3.5 w-3.5" />
-                      )}
-                      Upload Invoice
-                    </Button>
-                  ) : null
-                }
-                currentUserDisplayName={currentUserDisplayName}
-              />
+              (() => {
+                const isInvoiceUploadedMessage =
+                  message.title === "Invoice uploaded";
+                const bodyOverride =
+                  message.title === "Invoice requested"
+                    ? getInvoiceRequestTimelineBody()
+                    : isInvoiceUploadedMessage
+                      ? getInvoiceUploadedTimelineBody(message)
+                      : null;
+                const action = isInvoiceUploadedMessage && !showInvoiceUploadedNextAction
+                  ? renderStageInvoiceActions({
+                      includeCompleteAction: isProjectOwner || canReviewSubmissions,
+                    })
+                  : null;
+
+                return (
+                  <SystemActivityCard
+                    key={message.id}
+                    message={message}
+                    alignment={getTimelineEntryAlignment(
+                      message,
+                      currentUserId,
+                      currentUserDisplayName,
+                    )}
+                    bodyOverride={bodyOverride}
+                    action={action}
+                    currentUserDisplayName={currentUserDisplayName}
+                  />
+                );
+              })()
             ) : message.kind === "revision" ? (
               (() => {
                 const revisionAlignment = getTimelineEntryAlignment(
@@ -8053,6 +8387,131 @@ export function ProjectChatWorkspace({
         attachments={stageBriefAttachments}
         onClose={() => setStageBriefDialogOpen(false)}
       />
+      {completionChecklistOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+          <Card className="flex h-full max-h-[90vh] w-full max-w-[1120px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 border-b border-[#e7ede7] p-6 sm:p-7">
+              <div className="min-w-0">
+                <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                  Guided final workflow
+                </p>
+                <CardTitle className="mt-1 text-[24px] font-semibold tracking-tight text-[#111712]">
+                  Project Completion
+                </CardTitle>
+                <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
+                  Complete the final checks before archiving this project.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => setCompletionChecklistOpen(false)}
+                className="shrink-0 border border-line"
+                aria-label="Close project completion checklist"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+
+            <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-7 sm:py-5">
+              {effectiveCompletionWorkflow ? (
+                <>
+                  <div className="mb-4 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] px-4 py-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-[14px] font-[800] text-[#173120]">
+                          Project Completion · {completionResolvedStepCount} of 3 checks completed
+                        </p>
+                        <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
+                          {canCompleteProject
+                            ? "All final completion checks are resolved. Archive can proceed."
+                            : "Resolve the blockers below before archiving."}
+                        </p>
+                      </div>
+                      <span
+                        className={`inline-flex w-fit rounded-full px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+                          canCompleteProject
+                            ? "bg-[#edf7ef] text-[#2b8b56]"
+                            : "bg-[#fff7ea] text-[#b77420]"
+                        }`}
+                      >
+                        {canCompleteProject ? "Ready to archive" : "Blocked"}
+                      </span>
+                    </div>
+
+                    {completionVisibleBlockers.length > 0 ? (
+                      <ul className="mt-3 space-y-1 text-[12px] leading-5 text-[#5d4a2f]">
+                        {completionVisibleBlockers.map((blocker) => (
+                          <li key={blocker}>{blocker}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+
+                  <ProjectCompletionChecklist
+                    projectId={project.id}
+                    workflow={effectiveCompletionWorkflow}
+                    surface="plain"
+                  />
+                </>
+              ) : (
+                <div className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] px-5 py-5">
+                  <div className="flex items-center gap-2 text-[13px] font-[800] text-[#5f6b62]">
+                    {isCompletionDataLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    {isCompletionDataLoading
+                      ? "Loading completion details..."
+                      : "Project completion checklist is not available yet."}
+                  </div>
+                  {!isCompletionDataLoading ? (
+                    <p className="mt-2 text-[12px] leading-5 text-[#6a706b]">
+                      Complete all stages first, then reopen the guided checklist.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </CardContent>
+
+            <div className="flex flex-col gap-3 border-t border-[#e7ede7] px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+              <p className="text-[12px] leading-5 text-[#6a706b]">
+                Archive remains locked until authority approval, copyright transfer,
+                and final invoice are completed or marked not required.
+              </p>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-full text-[12px]"
+                  onClick={() => setCompletionChecklistOpen(false)}
+                  disabled={isPreparingProjectCompletion}
+                >
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  className="rounded-full text-[12px]"
+                  disabled={
+                    !effectiveCompletionWorkflow ||
+                    !canCompleteProject ||
+                    isPreparingProjectCompletion ||
+                    isCompletionDataLoading
+                  }
+                  onClick={() => {
+                    void handlePrepareProjectCompletion();
+                  }}
+                >
+                  {isPreparingProjectCompletion ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : null}
+                  Archive Project
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : null}
       {archivePreparation ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="flex h-full max-h-[88vh] w-full max-w-[920px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
@@ -8335,7 +8794,7 @@ export function ProjectChatWorkspace({
                   Request Invoice
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  Send an in-app request to the executor or vendor responsible for this stage.
+                  Send an in-app request to the main executor responsible for this stage.
                 </p>
               </div>
               <Button
@@ -8369,9 +8828,9 @@ export function ProjectChatWorkspace({
                   disabled={isRequestingStageInvoice}
                 >
                   <SelectTrigger className="h-12 rounded-[16px] border border-line">
-                    <SelectValue placeholder="Choose executor or vendor" />
+                    <SelectValue placeholder="Select main executor" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[120]">
                     {invoiceRequestCandidates.map((candidate) => (
                       <SelectItem key={candidate.id} value={candidate.id}>
                         {candidate.name} · {candidate.role}
@@ -8381,7 +8840,7 @@ export function ProjectChatWorkspace({
                 </Select>
                 {invoiceRequestCandidates.length === 0 ? (
                   <p className="text-[12px] leading-5 text-[#a64038]">
-                    Add an executor or external collaborator before requesting an invoice.
+                    No eligible main executor found for invoice request. Add a main executor to this project first.
                   </p>
                 ) : null}
               </div>
