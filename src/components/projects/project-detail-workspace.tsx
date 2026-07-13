@@ -244,7 +244,7 @@ export function ProjectDetailWorkspace({
             </div>
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(123,214,105,0.18),transparent_30%),radial-gradient(circle_at_100%_100%,rgba(255,255,255,0.09),transparent_34%)]" />
 
-            <div className="relative flex min-w-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative flex min-w-0 flex-col gap-6 2xl:flex-row 2xl:items-center 2xl:justify-between">
               <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
                 <div className="grid size-[86px] shrink-0 place-items-center rounded-[22px] bg-white text-brand shadow-[0_18px_42px_rgba(0,0,0,0.16)]">
                   <FolderKanban className="h-11 w-11" strokeWidth={1.8} />
@@ -274,15 +274,15 @@ export function ProjectDetailWorkspace({
                 </div>
               </div>
 
-              <div className="flex shrink-0 flex-wrap items-center justify-start gap-3 lg:justify-end">
-                <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#78d47d]/55 bg-white/12 px-4 py-2 text-[13px] font-[800] leading-5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] backdrop-blur">
-                  <span className="truncate">{project.currentStageName}</span>
-                  <span className="text-[#83db71]">· {project.statusLabel}</span>
+              <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-3 2xl:w-auto 2xl:shrink-0 2xl:justify-end">
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[#78d47d]/55 bg-white/12 px-4 py-2 text-[13px] font-[800] leading-5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] backdrop-blur">
+                  <span className="min-w-0 truncate">{project.currentStageName}</span>
+                  <span className="shrink-0 text-[#83db71]">· {project.statusLabel}</span>
                 </span>
                 {project.canEdit ? (
                   <Link
                     href={`/projects/${project.id}/edit`}
-                    className="inline-flex h-11 items-center justify-center rounded-full border border-white bg-white px-5 text-[13px] font-[900] leading-5 text-[#145232] shadow-[0_14px_30px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#f6fff7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                    className="inline-flex h-11 shrink-0 items-center justify-center rounded-full border border-white bg-white px-5 text-[13px] font-[900] leading-5 text-[#145232] shadow-[0_14px_30px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#f6fff7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                   >
                     <Pencil className="mr-2 h-4 w-4" />
                     Edit Project
