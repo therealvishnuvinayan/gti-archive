@@ -114,6 +114,9 @@ for (const snippet of [
   "Show less",
   "DraftProjectPreviewPanel",
   "DraftProjectEditorPanel",
+  "draftMissingFieldOrder",
+  "sortDraftMissingFields",
+  "orderedMissingFields.map((field) =>",
   "/api/flux-ai/validate-draft",
   "ChatLanguagePicker",
   "/api/ai/translate",
@@ -147,6 +150,28 @@ assert(
     workspace,
   ),
   "Empty project results must show the guided empty state.",
+);
+assert(
+  /draftMissingFieldOrder[\s\S]*\^Project Name\$[\s\S]*\^Category\$[\s\S]*\^Project Brief\$[\s\S]*\^Start Date\$[\s\S]*\^Main Executor\$[\s\S]*\^Resolve Collaborators\$[\s\S]*\^Stages\$/.test(
+    workspace,
+  ),
+  "Draft missing-field chips must follow the same order as the draft preview sections.",
+);
+assert(
+  /const projectMissing = getSectionMissingFields\(orderedMissingFields, \[[\s\S]*\^Project Brief\$[\s\S]*\]\);/.test(
+    workspace,
+  ),
+  "Project detail missing-field chips must use exact project-detail labels.",
+);
+assert(
+  /const stageMissing = getSectionMissingFields\(orderedMissingFields, \[[\s\S]*\^Stages\$[\s\S]*\^Stage \\d\+ /.test(
+    workspace,
+  ),
+  "Stage missing-field chips must stay scoped to the Stages section.",
+);
+assert(
+  !/function DraftSection[\s\S]*Missing \{missingFields\.length\}/.test(workspace),
+  "Draft sections must not show local missing-count badges that conflict with the total missing count.",
 );
 assert(
   /function hasFluxResultContent[\s\S]*shouldShowProjectMatches\(response\)[\s\S]*response\.projectStatus[\s\S]*response\.type === "created_project"[\s\S]*response\.draftProject/.test(

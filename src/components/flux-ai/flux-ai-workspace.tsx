@@ -956,11 +956,6 @@ function DraftSection({
     <section className="rounded-[20px] border border-[#e3eae1] bg-[#fbfcfa] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-[14px] font-extrabold text-[#17211a]">{title}</h3>
-        {missingFields.length ? (
-          <span className="rounded-full bg-[#fff0ef] px-2.5 py-1 text-[11px] font-extrabold text-[#bd4d45]">
-            Missing {missingFields.length}
-          </span>
-        ) : null}
       </div>
       {children}
       {missingFields.length ? (
@@ -996,8 +991,61 @@ function DraftDetail({
   );
 }
 
+const draftMissingFieldOrder: RegExp[] = [
+  /^Project Name$/i,
+  /^Category$/i,
+  /^Valid Category$/i,
+  /^Execution Type$/i,
+  /^Valid Project Status$/i,
+  /^Project Tags$/i,
+  /^Valid Project Tags$/i,
+  /^Project Brief$/i,
+  /^Start Date$/i,
+  /^Valid Start Date$/i,
+  /^End Date$/i,
+  /^Valid End Date$/i,
+  /^Valid Project Timeline$/i,
+  /^Budget$/i,
+  /^Valid Budget$/i,
+  /^Currency$/i,
+  /^Valid Currency$/i,
+  /^Stage Budgets$/i,
+  /^Stage Budget Allocation$/i,
+  /^Main Executor$/i,
+  /^Choose Main Executor$/i,
+  /^Valid Main Executor$/i,
+  /^Resolve Collaborators$/i,
+  /^Stages$/i,
+  /^Stage \d+ Name$/i,
+  /^Stage \d+ Brief$/i,
+  /^Stage \d+ Start Date$/i,
+  /^Valid Stage \d+ Start Date$/i,
+  /^Stage \d+ Due Date$/i,
+  /^Valid Stage \d+ Due Date$/i,
+  /^Stage \d+ Timeline$/i,
+  /^Valid Stage \d+ Timeline$/i,
+  /^Stage \d+ Timeline Within Project$/i,
+];
+
+function getDraftMissingFieldOrderIndex(field: string) {
+  const index = draftMissingFieldOrder.findIndex((pattern) => pattern.test(field));
+
+  return index === -1 ? draftMissingFieldOrder.length : index;
+}
+
+function sortDraftMissingFields(missingFields: string[]) {
+  return [...missingFields].sort((leftField, rightField) => {
+    const orderDelta =
+      getDraftMissingFieldOrderIndex(leftField) - getDraftMissingFieldOrderIndex(rightField);
+
+    return orderDelta || leftField.localeCompare(rightField);
+  });
+}
+
 function getSectionMissingFields(missingFields: string[], patterns: RegExp[]) {
-  return missingFields.filter((field) => patterns.some((pattern) => pattern.test(field)));
+  return sortDraftMissingFields(
+    missingFields.filter((field) => patterns.some((pattern) => pattern.test(field))),
+  );
 }
 
 function DraftProjectPreviewPanel({
@@ -1022,24 +1070,43 @@ function DraftProjectPreviewPanel({
   onCancel: () => void;
 }) {
   const collaboratorLabels = getDraftCollaboratorLabels(draftProject);
+  const orderedMissingFields = sortDraftMissingFields(missingFields);
   const statusIsReady = Boolean(draftProject.canCreate) && missingFields.length === 0;
-  const projectMissing = getSectionMissingFields(missingFields, [
-    /Project Name/i,
-    /Category/i,
-    /Tags?/i,
-    /Brief/i,
-    /Execution/i,
+  const projectMissing = getSectionMissingFields(orderedMissingFields, [
+    /^Project Name$/i,
+    /^Category$/i,
+    /^Valid Category$/i,
+    /^Project Tags$/i,
+    /^Valid Project Tags$/i,
+    /^Execution Type$/i,
+    /^Valid Project Status$/i,
+    /^Project Brief$/i,
   ]);
-  const timelineMissing = getSectionMissingFields(missingFields, [
-    /Start Date/i,
-    /End Date/i,
-    /Timeline/i,
-    /Budget/i,
-    /Currency/i,
+  const timelineMissing = getSectionMissingFields(orderedMissingFields, [
+    /^Start Date$/i,
+    /^Valid Start Date$/i,
+    /^End Date$/i,
+    /^Valid End Date$/i,
+    /^Valid Project Timeline$/i,
+    /^Budget$/i,
+    /^Valid Budget$/i,
+    /^Currency$/i,
+    /^Valid Currency$/i,
+    /^Stage Budgets$/i,
+    /^Stage Budget Allocation$/i,
   ]);
-  const executorMissing = getSectionMissingFields(missingFields, [/Executor/i]);
-  const collaboratorMissing = getSectionMissingFields(missingFields, [/Collaborator/i]);
-  const stageMissing = getSectionMissingFields(missingFields, [/Stage/i]);
+  const executorMissing = getSectionMissingFields(orderedMissingFields, [
+    /^Main Executor$/i,
+    /^Choose Main Executor$/i,
+    /^Valid Main Executor$/i,
+  ]);
+  const collaboratorMissing = getSectionMissingFields(orderedMissingFields, [
+    /^Resolve Collaborators$/i,
+  ]);
+  const stageMissing = getSectionMissingFields(orderedMissingFields, [
+    /^Stages$/i,
+    /^Stage \d+ /i,
+  ]);
 
   return (
     <Panel className="p-5">
@@ -1073,7 +1140,7 @@ function DraftProjectPreviewPanel({
         <div className="mb-4 rounded-[18px] border border-[#f2d2d0] bg-[#fff6f5] p-4">
           <h3 className="text-[13px] font-extrabold text-[#bd4d45]">Missing Fields</h3>
           <div className="mt-3 flex flex-wrap gap-2">
-            {missingFields.map((field) => (
+            {orderedMissingFields.map((field) => (
               <span
                 key={field}
                 className="rounded-full bg-white px-3 py-1 text-[12px] font-bold text-[#bd4d45]"
