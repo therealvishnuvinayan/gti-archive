@@ -1577,7 +1577,142 @@ function inferTags(message: string) {
   return match?.[1] ? splitDraftNames(match[1]) : [];
 }
 
-function normalizeDraftDate(value: string | null | undefined) {
+const draftDateMonthMap: ReadonlyMap<string, number> = new Map([
+  ["jan", 1],
+  ["january", 1],
+  ["feb", 2],
+  ["february", 2],
+  ["mar", 3],
+  ["march", 3],
+  ["apr", 4],
+  ["april", 4],
+  ["may", 5],
+  ["jun", 6],
+  ["june", 6],
+  ["jul", 7],
+  ["july", 7],
+  ["aug", 8],
+  ["august", 8],
+  ["sep", 9],
+  ["sept", 9],
+  ["september", 9],
+  ["oct", 10],
+  ["october", 10],
+  ["nov", 11],
+  ["november", 11],
+  ["dec", 12],
+  ["december", 12],
+]);
+
+function padDraftDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function buildDraftIsoDate(year: number, month: number, day: number) {
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    year < 1900 ||
+    year > 2100 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return null;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${year}-${padDraftDatePart(month)}-${padDraftDatePart(day)}`;
+}
+
+function getDefaultDraftDateYear() {
+  return new Date().getFullYear();
+}
+
+function getDraftDateContextYear(values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const yearMatch = normalizeDraftText(value).match(/\b(20\d{2}|19\d{2})\b/);
+
+    if (yearMatch?.[1]) {
+      return Number.parseInt(yearMatch[1], 10);
+    }
+  }
+
+  return getDefaultDraftDateYear();
+}
+
+function parseDraftNaturalDate(
+  value: string,
+  options: {
+    defaultYear?: number;
+  } = {},
+) {
+  const normalizedValue = normalizeDraftText(value).replace(/\b(\d+)(st|nd|rd|th)\b/gi, "$1");
+  const defaultYear = options.defaultYear ?? getDefaultDraftDateYear();
+  const monthNamePattern =
+    "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+  const monthFirstMatch = normalizedValue.match(
+    new RegExp(`\\b${monthNamePattern}\\s+(\\d{1,2})(?:\\s*,?\\s*(\\d{4}))?\\b`, "i"),
+  );
+  const dayFirstMatch = normalizedValue.match(
+    new RegExp(`\\b(\\d{1,2})\\s+${monthNamePattern}(?:\\s*,?\\s*(\\d{4}))?\\b`, "i"),
+  );
+  const numericMatch = normalizedValue.match(
+    /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/,
+  );
+
+  if (monthFirstMatch?.[1] && monthFirstMatch?.[2]) {
+    const month = draftDateMonthMap.get(monthFirstMatch[1].toLowerCase());
+    const day = Number.parseInt(monthFirstMatch[2], 10);
+    const year = monthFirstMatch[3]
+      ? Number.parseInt(monthFirstMatch[3], 10)
+      : defaultYear;
+
+    return month ? buildDraftIsoDate(year, month, day) : null;
+  }
+
+  if (dayFirstMatch?.[1] && dayFirstMatch?.[2]) {
+    const day = Number.parseInt(dayFirstMatch[1], 10);
+    const month = draftDateMonthMap.get(dayFirstMatch[2].toLowerCase());
+    const year = dayFirstMatch[3]
+      ? Number.parseInt(dayFirstMatch[3], 10)
+      : defaultYear;
+
+    return month ? buildDraftIsoDate(year, month, day) : null;
+  }
+
+  if (numericMatch?.[1] && numericMatch?.[2]) {
+    const first = Number.parseInt(numericMatch[1], 10);
+    const second = Number.parseInt(numericMatch[2], 10);
+    const parsedYear = numericMatch[3]
+      ? Number.parseInt(numericMatch[3].length === 2 ? `20${numericMatch[3]}` : numericMatch[3], 10)
+      : defaultYear;
+    const month = first > 12 ? second : first;
+    const day = first > 12 ? first : second;
+
+    return buildDraftIsoDate(parsedYear, month, day);
+  }
+
+  return null;
+}
+
+function normalizeDraftDate(
+  value: string | null | undefined,
+  options: {
+    defaultYear?: number;
+  } = {},
+) {
   const normalizedValue = normalizeDraftText(value);
 
   if (!normalizedValue) {
@@ -1590,29 +1725,42 @@ function normalizeDraftDate(value: string | null | undefined) {
     return isoMatch[1];
   }
 
-  const parsedDate = new Date(normalizedValue);
+  const naturalDate = parseDraftNaturalDate(normalizedValue, options);
 
-  if (Number.isNaN(parsedDate.getTime())) {
-    return normalizedValue;
+  if (naturalDate) {
+    return naturalDate;
   }
 
-  return parsedDate.toISOString().slice(0, 10);
+  return normalizedValue;
 }
 
 function inferProjectTimeline(message: string) {
+  const dateValuePattern =
+    "(\\d{4}-\\d{2}-\\d{2}|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\s+\\d{1,2}(?:\\s*,?\\s*\\d{4})?|\\d{1,2}\\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\\s*,?\\s*\\d{4})?|\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?)";
   const rangeMatch = message.match(
-    /\b(?:from|between)\s+(\d{4}-\d{2}-\d{2})\s+(?:to|and|-)\s+(\d{4}-\d{2}-\d{2})\b/i,
+    new RegExp(`\\b(?:from|between)\\s+${dateValuePattern}\\s+(?:to|and|-)\\s+${dateValuePattern}\\b`, "i"),
   );
   const startMatch = message.match(
-    /\bstart(?:\s+date)?\s*(?:is|:)?\s*(\d{4}-\d{2}-\d{2})\b/i,
+    new RegExp(`\\bstart(?:\\s+date)?\\s*(?:is|:)?\\s*${dateValuePattern}\\b`, "i"),
   );
   const endMatch = message.match(
-    /\bend(?:\s+date)?\s*(?:is|:)?\s*(\d{4}-\d{2}-\d{2})\b/i,
+    new RegExp(`\\bend(?:\\s+date)?\\s*(?:is|:)?\\s*${dateValuePattern}\\b`, "i"),
   );
+  const defaultYear = getDraftDateContextYear([
+    startMatch?.[1],
+    endMatch?.[1],
+    rangeMatch?.[1],
+    rangeMatch?.[2],
+    message,
+  ]);
 
   return {
-    startDate: normalizeDraftDate(startMatch?.[1] ?? rangeMatch?.[1]),
-    endDate: normalizeDraftDate(endMatch?.[1] ?? rangeMatch?.[2]),
+    startDate: normalizeDraftDate(startMatch?.[1] ?? rangeMatch?.[1], {
+      defaultYear,
+    }),
+    endDate: normalizeDraftDate(endMatch?.[1] ?? rangeMatch?.[2], {
+      defaultYear,
+    }),
   };
 }
 
@@ -2124,6 +2272,15 @@ export async function prepareFluxAIDraftProject(input: FluxAIDraftPreparationInp
   const masterData = await getActiveProjectMasterDataOptions();
   const collaborators = await getCollaborators();
   const inferredTimeline = inferProjectTimeline(input.message);
+  const draftDateContextYear = getDraftDateContextYear([
+    inferredTimeline.startDate,
+    inferredTimeline.endDate,
+    detectedDraft?.startDate,
+    detectedDraft?.endDate,
+    currentDraft?.startDate,
+    currentDraft?.endDate,
+    input.message,
+  ]);
   const inferredBudget = parseBudgetFromMessage(input.message);
   const inferredStages = inferStages(input.message);
   const detectedStages = normalizeDetectedStages(detectedDraft?.stages);
@@ -2177,13 +2334,13 @@ export async function prepareFluxAIDraftProject(input: FluxAIDraftPreparationInp
     normalizeProjectPriority(currentDraft?.priority) ??
     DEFAULT_PROJECT_PRIORITY;
   const startDate =
-    normalizeDraftDate(detectedDraft?.startDate) ??
-    normalizeDraftDate(currentDraft?.startDate) ??
-    inferredTimeline.startDate;
+    inferredTimeline.startDate ??
+    normalizeDraftDate(detectedDraft?.startDate, { defaultYear: draftDateContextYear }) ??
+    normalizeDraftDate(currentDraft?.startDate, { defaultYear: draftDateContextYear });
   const endDate =
-    normalizeDraftDate(detectedDraft?.endDate) ??
-    normalizeDraftDate(currentDraft?.endDate) ??
-    inferredTimeline.endDate;
+    inferredTimeline.endDate ??
+    normalizeDraftDate(detectedDraft?.endDate, { defaultYear: draftDateContextYear }) ??
+    normalizeDraftDate(currentDraft?.endDate, { defaultYear: draftDateContextYear });
   const stages = detectedStages.length
     ? mergeStageDrafts(detectedStages, currentStages)
     : currentStages.length

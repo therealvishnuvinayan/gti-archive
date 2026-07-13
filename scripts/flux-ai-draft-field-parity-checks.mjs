@@ -86,9 +86,20 @@ for (const snippet of [
   "permissions: getFluxAICollaboratorPermissions",
   "normalizeProjectCollaboratorPermissions",
   "Select an active project status.",
+  "function parseDraftNaturalDate",
+  "function getDraftDateContextYear",
+  "inferredTimeline.startDate ??",
+  "inferredTimeline.endDate ??",
+  "normalizeDraftDate(detectedDraft?.startDate, { defaultYear: draftDateContextYear })",
+  "normalizeDraftDate(detectedDraft?.endDate, { defaultYear: draftDateContextYear })",
 ]) {
   assertIncludes(tools, snippet, `Flux AI draft server validation ${snippet}`);
 }
+assertNotIncludes(
+  tools,
+  "new Date(normalizedValue)",
+  "Flux AI draft date normalization must not use JavaScript's ambiguous date parser.",
+);
 assertNotIncludes(
   tools,
   "addMissingField(missingFields, \"Attachments\")",
