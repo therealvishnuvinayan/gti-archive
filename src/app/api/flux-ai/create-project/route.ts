@@ -14,6 +14,10 @@ import {
   validateFluxAIDraftForCreation,
 } from "@/lib/flux-ai/tools";
 import { hasPermission } from "@/lib/permissions/resolver";
+import {
+  normalizeProjectCollaboratorPermissions,
+  projectCollaboratorPermissionKeys,
+} from "@/lib/project-collaborator-permissions";
 import { DEFAULT_PROJECT_CURRENCY } from "@/lib/project-currencies";
 import { DEFAULT_PROJECT_PRIORITY } from "@/lib/project-priority";
 import { getDefaultProjectStatusOption } from "@/lib/project-statuses";
@@ -51,6 +55,15 @@ function formatBudgetInput(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
+const collaboratorPermissionFormFields = {
+  canInteract: "collaboratorCanInteract",
+  canAddCaptions: "collaboratorCanAddCaptions",
+  canDownloadFiles: "collaboratorCanDownloadFiles",
+  canViewBudget: "collaboratorCanViewBudget",
+  canViewVendorInfo: "collaboratorCanViewVendorInfo",
+  canAccessProjectArchives: "collaboratorCanAccessProjectArchives",
+} as const;
+
 function getFieldErrorMessages(fieldErrors: Record<string, unknown> | undefined) {
   if (!fieldErrors) {
     return [];
@@ -78,13 +91,9 @@ async function buildProjectFormData(draftProject: FluxAIDraftProject) {
   const executionType = draftProject.executionType ?? ProjectExecutionType.EXTERNAL;
   const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
   const mainExecutorId = draftProject.mainExecutorMatch?.selectedUserId;
-  const collaboratorIds = [
-    ...new Set(
-      (draftProject.collaboratorMatches ?? [])
-        .map((match) => match.selectedUserId)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  ];
+  const selectedCollaboratorMatches = (draftProject.collaboratorMatches ?? []).filter(
+    (match) => Boolean(match.selectedUserId),
+  );
 
   formData.set("name", draftProject.projectName);
   formData.set("category", draftProject.category);
@@ -97,7 +106,7 @@ async function buildProjectFormData(draftProject: FluxAIDraftProject) {
     "currency",
     draftProject.currency ?? (draftProject.budgetRequired ? DEFAULT_PROJECT_CURRENCY : ""),
   );
-  formData.set("statusId", defaultStatus.id);
+  formData.set("statusId", draftProject.statusId ?? defaultStatus.id);
   formData.set("startDate", draftProject.startDate ?? "");
   formData.set("endDate", draftProject.endDate ?? "");
 
@@ -120,8 +129,31 @@ async function buildProjectFormData(draftProject: FluxAIDraftProject) {
     formData.append("executorRoles", ProjectExecutorRole.MAIN_EXECUTOR);
   }
 
-  collaboratorIds.forEach((collaboratorId) => {
+  selectedCollaboratorMatches.forEach((match) => {
+    const collaboratorId = match.selectedUserId;
+
+    if (!collaboratorId) {
+      return;
+    }
+
+    const selectedCandidate = match.candidates.find(
+      (candidate) => candidate.id === collaboratorId,
+    );
+    const participantType = selectedCandidate?.type ?? null;
+    const permissions = normalizeProjectCollaboratorPermissions(
+      match.permissions ?? null,
+      participantType,
+    );
+
     formData.append("collaboratorIds", collaboratorId);
+    formData.append("collaboratorParticipantTypes", participantType ?? "");
+
+    projectCollaboratorPermissionKeys.forEach((permissionKey) => {
+      formData.append(
+        collaboratorPermissionFormFields[permissionKey],
+        permissions[permissionKey] ? "true" : "false",
+      );
+    });
   });
 
   return formData;

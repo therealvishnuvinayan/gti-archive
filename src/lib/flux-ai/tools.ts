@@ -10,7 +10,10 @@ import {
 
 import { getCollaborators, type CollaboratorRecord } from "@/lib/collaboration";
 import { getFinalCompletionArchiveBlockers } from "@/lib/project-completion";
-import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
+import {
+  normalizeProjectCollaboratorPermissions,
+  projectCollaboratorPermissionSelect,
+} from "@/lib/project-collaborator-permissions";
 import { DEFAULT_PROJECT_CURRENCY, resolveProjectCurrency } from "@/lib/project-currencies";
 import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
 import {
@@ -1782,8 +1785,20 @@ function collaboratorToCandidate(collaborator: CollaboratorRecord) {
     id: collaborator.id,
     name: collaborator.name,
     email: collaborator.email,
+    type: collaborator.type,
     typeLabel: collaborator.typeLabel,
+    typeGroup: collaborator.typeGroup,
   } satisfies FluxAIPersonCandidate;
+}
+
+function getFluxAICollaboratorPermissions(
+  collaborator: CollaboratorRecord,
+  existingMatch?: FluxAIPersonMatch | null,
+) {
+  return normalizeProjectCollaboratorPermissions(
+    existingMatch?.permissions ?? null,
+    collaborator.type,
+  );
 }
 
 function collaboratorMatchesName(collaborator: CollaboratorRecord, requestedName: string) {
@@ -1823,6 +1838,10 @@ function buildPersonMatch(input: {
         selectedName: selectedCollaborator.name,
         selectedEmail: selectedCollaborator.email,
         candidates: [collaboratorToCandidate(selectedCollaborator)],
+        permissions: getFluxAICollaboratorPermissions(
+          selectedCollaborator,
+          input.existingMatch,
+        ),
       } satisfies FluxAIPersonMatch;
     }
   }
@@ -1858,6 +1877,17 @@ function buildPersonMatch(input: {
       selectedName: candidate.name,
       selectedEmail: candidate.email,
       candidates,
+      permissions: getFluxAICollaboratorPermissions(
+        matches.find((collaborator) => collaborator.id === candidate.id) ?? {
+          id: candidate.id,
+          name: candidate.name,
+          email: candidate.email,
+          type: candidate.type as CollaboratorRecord["type"],
+          typeLabel: candidate.typeLabel,
+          typeGroup: candidate.typeGroup,
+        },
+        input.existingMatch,
+      ),
     } satisfies FluxAIPersonMatch;
   }
 
@@ -2187,6 +2217,8 @@ export async function prepareFluxAIDraftProject(input: FluxAIDraftPreparationInp
     currency: budgetRequired ? currency ?? DEFAULT_PROJECT_CURRENCY : currency,
     projectBrief,
     priority: priority as ProjectPriorityValue,
+    statusId: normalizeDraftOptionalText(detectedDraft?.statusId ?? currentDraft?.statusId),
+    statusName: normalizeDraftOptionalText(detectedDraft?.statusName ?? currentDraft?.statusName),
     startDate,
     endDate,
     mainExecutor: rawMainExecutor,
@@ -2230,6 +2262,13 @@ export async function prepareFluxAIDraftProject(input: FluxAIDraftPreparationInp
 
   if (!draftProject.projectBrief) addMissingField(missingFields, "Project Brief");
   if (!draftProject.executionType) addMissingField(missingFields, "Execution Type");
+  if (
+    draftProject.statusId &&
+    !masterData.projectStatuses.some((status) => status.id === draftProject.statusId)
+  ) {
+    addMissingField(missingFields, "Valid Project Status");
+    warnings.push("Select an active project status.");
+  }
   if (!draftProject.startDate) addMissingField(missingFields, "Start Date");
   if (!draftProject.endDate) addMissingField(missingFields, "End Date");
 

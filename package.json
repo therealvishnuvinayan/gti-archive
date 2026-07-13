@@ -12,6 +12,7 @@
     "flow:check": "node scripts/flow-regression-checks.mjs",
     "flux-ai:conversation-delete-check": "node scripts/flux-ai-conversation-delete-checks.mjs",
     "flux-ai:count-check": "node scripts/flux-ai-count-regression-checks.mjs",
+    "flux-ai:draft-parity-check": "node scripts/flux-ai-draft-field-parity-checks.mjs",
     "flux-ai:permission-help-check": "node scripts/flux-ai-permission-help-checks.mjs",
     "flux-ai:persistence-check": "node scripts/flux-ai-conversation-persistence-checks.mjs",
     "flux-ai:real-data-check": "node scripts/flux-ai-real-data-regression-checks.mjs",

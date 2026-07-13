@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Briefcase,
   CalendarDays,
+  Check,
   ClipboardCheck,
   FileText,
   Languages,
@@ -14,6 +15,7 @@ import {
   MoreVertical,
   Paperclip,
   Plus,
+  Search,
   Send,
   Sparkles,
   Square,
@@ -38,14 +40,35 @@ import {
   SUPPORTED_CHAT_LANGUAGES,
   getSupportedLanguageByCode,
 } from "@/lib/ai/languages";
+import type { CollaboratorRecord } from "@/lib/collaboration";
 import type {
   FluxAIChatResponse,
+  FluxAICollaboratorPermissions,
   FluxAIConversationDetail,
   FluxAIConversationSummary,
   FluxAIDraftProject,
+  FluxAIPersonCandidate,
+  FluxAIPersonMatch,
   FluxAIProjectResult,
   FluxAIProjectStatusSummary,
 } from "@/lib/flux-ai/types";
+import {
+  isClientOfGtiParticipantType,
+  normalizeProjectCollaboratorPermissions,
+  projectCollaboratorPermissionKeys,
+  projectCollaboratorPermissionLabels,
+  type ProjectCollaboratorPermissionKey,
+} from "@/lib/project-collaborator-permissions";
+import {
+  PROJECT_CURRENCY_OPTIONS,
+  resolveProjectCurrency,
+} from "@/lib/project-currencies";
+import {
+  DEFAULT_PROJECT_PRIORITY,
+  formatProjectPriority,
+  projectPriorityOptions,
+  type ProjectPriorityValue,
+} from "@/lib/project-priority";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +80,7 @@ const promptChips = [
 const COLLAPSED_MESSAGE_LINE_LIMIT = 6;
 const COLLAPSED_MESSAGE_CHARACTER_LIMIT = 760;
 const MAX_RECORDING_DURATION_MS = 60_000;
+const MAX_DRAFT_TAGS = 5;
 
 type ChatEntry = {
   id: string;
@@ -107,6 +131,39 @@ type CreateConversationApiResponse = {
   conversation: FluxAIConversationSummary;
 };
 
+type FluxAIDraftStatusOption = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  groupId: string | null;
+  groupName: string;
+  groupSlug: string;
+  groupColor: string;
+  groupIsActive: boolean;
+  isActive: boolean;
+};
+
+type FluxAIDraftOptions = {
+  categories: string[];
+  statuses: FluxAIDraftStatusOption[];
+  tags: string[];
+  collaborators: CollaboratorRecord[];
+  canManageProjectMasterData: boolean;
+};
+
+type FluxAiWorkspaceProps = {
+  draftOptions?: FluxAIDraftOptions;
+};
+
+const emptyDraftOptions: FluxAIDraftOptions = {
+  categories: [],
+  statuses: [],
+  tags: [],
+  collaborators: [],
+  canManageProjectMasterData: false,
+};
+
 const initialChatMessages: ChatEntry[] = [
   {
     id: "flux-ai-welcome",
@@ -124,11 +181,15 @@ function cloneDraftProject(draftProject: FluxAIDraftProject) {
     stages: draftProject.stages.map((stage) => ({ ...stage })),
     collaboratorMatches: draftProject.collaboratorMatches?.map((match) => ({
       ...match,
+      permissions: match.permissions ? { ...match.permissions } : match.permissions,
       candidates: match.candidates.map((candidate) => ({ ...candidate })),
     })),
     mainExecutorMatch: draftProject.mainExecutorMatch
       ? {
           ...draftProject.mainExecutorMatch,
+          permissions: draftProject.mainExecutorMatch.permissions
+            ? { ...draftProject.mainExecutorMatch.permissions }
+            : draftProject.mainExecutorMatch.permissions,
           candidates: draftProject.mainExecutorMatch.candidates.map((candidate) => ({
             ...candidate,
           })),
@@ -137,17 +198,6 @@ function cloneDraftProject(draftProject: FluxAIDraftProject) {
     missingFields: draftProject.missingFields ? [...draftProject.missingFields] : undefined,
     warnings: draftProject.warnings ? [...draftProject.warnings] : undefined,
   } satisfies FluxAIDraftProject;
-}
-
-function splitCommaList(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function joinCommaList(value: string[]) {
-  return value.join(", ");
 }
 
 function parseOptionalNumber(value: string) {
@@ -164,6 +214,125 @@ function parseOptionalNumber(value: string) {
 
 function formatOptionalNumber(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
+function normalizeComparable(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function findKnownOption(value: string | null | undefined, options: string[]) {
+  const normalizedValue = normalizeComparable(value);
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return options.find((option) => normalizeComparable(option) === normalizedValue) ?? null;
+}
+
+function hasKnownOption(value: string | null | undefined, options: string[]) {
+  return Boolean(findKnownOption(value, options));
+}
+
+function collaboratorToFluxCandidate(
+  collaborator: CollaboratorRecord,
+): FluxAIPersonCandidate {
+  return {
+    id: collaborator.id,
+    name: collaborator.name,
+    email: collaborator.email,
+    type: collaborator.type,
+    typeLabel: collaborator.typeLabel,
+    typeGroup: collaborator.typeGroup,
+  };
+}
+
+function getSelectedCandidate(match: FluxAIPersonMatch | null | undefined) {
+  if (!match?.selectedUserId) {
+    return null;
+  }
+
+  return (
+    match.candidates.find((candidate) => candidate.id === match.selectedUserId) ??
+    match.candidates[0] ??
+    null
+  );
+}
+
+function getMatchPermissions(
+  match: FluxAIPersonMatch | null | undefined,
+  candidate: FluxAIPersonCandidate | null | undefined,
+): FluxAICollaboratorPermissions {
+  return normalizeProjectCollaboratorPermissions(
+    match?.permissions ?? null,
+    candidate?.type ?? null,
+  );
+}
+
+function buildMatchedPersonFromCollaborator(
+  collaborator: CollaboratorRecord,
+  existingMatch?: FluxAIPersonMatch | null,
+): FluxAIPersonMatch {
+  const candidate = collaboratorToFluxCandidate(collaborator);
+
+  return buildMatchedPersonFromCandidate(candidate, existingMatch);
+}
+
+function buildMatchedPersonFromCandidate(
+  candidate: FluxAIPersonCandidate,
+  existingMatch?: FluxAIPersonMatch | null,
+): FluxAIPersonMatch {
+  return {
+    requestedName: existingMatch?.requestedName || candidate.name,
+    status: "matched",
+    selectedUserId: candidate.id,
+    selectedName: candidate.name,
+    selectedEmail: candidate.email,
+    candidates: [candidate],
+    permissions: normalizeProjectCollaboratorPermissions(
+      existingMatch?.permissions ?? null,
+      candidate.type,
+    ),
+  };
+}
+
+function findCollaboratorByCandidate(
+  candidate: FluxAIPersonCandidate,
+  collaborators: CollaboratorRecord[],
+) {
+  return collaborators.find((collaborator) => collaborator.id === candidate.id) ?? null;
+}
+
+function filterCollaboratorOptions(input: {
+  collaborators: CollaboratorRecord[];
+  query: string;
+  excludedIds?: Set<string>;
+  limit?: number;
+}) {
+  const normalizedQuery = normalizeComparable(input.query);
+  const limit = input.limit ?? 8;
+
+  return input.collaborators
+    .filter((collaborator) => !input.excludedIds?.has(collaborator.id))
+    .filter((collaborator) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      return [
+        collaborator.name,
+        collaborator.email,
+        collaborator.typeLabel,
+      ].some((value) => normalizeComparable(value).includes(normalizedQuery));
+    })
+    .slice(0, limit);
+}
+
+function getDraftStatusLabel(
+  statusId: string | null | undefined,
+  statuses: FluxAIDraftStatusOption[],
+) {
+  return statuses.find((status) => status.id === statusId)?.name ?? null;
 }
 
 function toDateInputValue(value: string | null | undefined) {
@@ -935,6 +1104,11 @@ function DraftProjectPreviewPanel({
               label="Tags"
               value={draftProject.tags.length ? draftProject.tags.join(", ") : "Not set"}
             />
+            <DraftDetail label="Status" value={draftProject.statusName} />
+            <DraftDetail
+              label="Priority"
+              value={formatProjectPriority(draftProject.priority)}
+            />
           </div>
           <div className="mt-3">
             <DraftDetail label="Project Brief" value={draftProject.projectBrief} />
@@ -1096,6 +1270,7 @@ function DraftProjectPreviewPanel({
 
 function DraftProjectEditorPanel({
   draftProject,
+  draftOptions,
   error,
   isSaving,
   onChange,
@@ -1103,14 +1278,190 @@ function DraftProjectEditorPanel({
   onCancel,
 }: {
   draftProject: FluxAIDraftProject;
+  draftOptions: FluxAIDraftOptions;
   error: string | null;
   isSaving: boolean;
   onChange: (draftProject: FluxAIDraftProject) => void;
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const [mainExecutorQuery, setMainExecutorQuery] = useState("");
+  const [collaboratorQuery, setCollaboratorQuery] = useState("");
+  const knownCategory = findKnownOption(draftProject.category, draftOptions.categories);
+  const categoryIsUnresolved = Boolean(draftProject.category && !knownCategory);
+  const selectedCurrency = resolveProjectCurrency(draftProject.currency ?? "");
+  const currencyIsUnresolved = Boolean(
+    draftProject.currency && !selectedCurrency && draftProject.budgetRequired !== false,
+  );
+  const selectedPriority = draftProject.priority ?? DEFAULT_PROJECT_PRIORITY;
+  const selectedStatusId =
+    draftProject.statusId ?? draftOptions.statuses[0]?.id ?? "";
+  const selectedStatusName = getDraftStatusLabel(selectedStatusId, draftOptions.statuses);
+  const statusIsUnresolved = Boolean(
+    selectedStatusId && !draftOptions.statuses.some((status) => status.id === selectedStatusId),
+  );
+  const mainExecutorMatch = draftProject.mainExecutorMatch ?? null;
+  const selectedMainExecutorCandidate = getSelectedCandidate(mainExecutorMatch);
+  const collaboratorMatches = draftProject.collaboratorMatches ?? [];
+  const selectedCollaboratorIds = new Set(
+    [
+      ...collaboratorMatches.map((match) => match.selectedUserId),
+      selectedMainExecutorCandidate?.id,
+    ].filter((value): value is string => Boolean(value)),
+  );
+  const selectedTagCount = draftProject.tags.length;
+  const tagSelectOptions = draftOptions.tags.filter(
+    (tag) => !draftProject.tags.some((selectedTag) => normalizeComparable(selectedTag) === normalizeComparable(tag)),
+  );
+  const mainExecutorOptions = filterCollaboratorOptions({
+    collaborators: draftOptions.collaborators,
+    query: mainExecutorQuery,
+    limit: mainExecutorQuery ? 8 : 5,
+  });
+  const collaboratorOptions = filterCollaboratorOptions({
+    collaborators: draftOptions.collaborators,
+    query: collaboratorQuery,
+    excludedIds: selectedCollaboratorIds,
+    limit: collaboratorQuery ? 8 : 5,
+  });
+
   function updateDraft(patch: Partial<FluxAIDraftProject>) {
     onChange({ ...draftProject, ...patch });
+  }
+
+  function updateTags(nextTags: string[]) {
+    updateDraft({
+      tags: nextTags
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .slice(0, MAX_DRAFT_TAGS),
+    });
+  }
+
+  function addTag(tag: string) {
+    if (
+      selectedTagCount >= MAX_DRAFT_TAGS ||
+      draftProject.tags.some((selectedTag) => normalizeComparable(selectedTag) === normalizeComparable(tag))
+    ) {
+      return;
+    }
+
+    updateTags([...draftProject.tags, tag]);
+  }
+
+  function removeTag(tag: string) {
+    updateTags(
+      draftProject.tags.filter(
+        (selectedTag) => normalizeComparable(selectedTag) !== normalizeComparable(tag),
+      ),
+    );
+  }
+
+  function updateCollaboratorMatches(nextMatches: FluxAIPersonMatch[]) {
+    updateDraft({
+      collaboratorMatches: nextMatches,
+      collaborators: nextMatches
+        .map((match) => match.selectedName || match.requestedName)
+        .map((name) => name.trim())
+        .filter(Boolean),
+    });
+  }
+
+  function selectMainExecutor(candidate: FluxAIPersonCandidate, match = mainExecutorMatch) {
+    const collaborator = findCollaboratorByCandidate(candidate, draftOptions.collaborators);
+    const nextMatch = collaborator
+      ? buildMatchedPersonFromCollaborator(collaborator, match)
+      : buildMatchedPersonFromCandidate(candidate, match);
+
+    updateDraft({
+      mainExecutor: nextMatch.selectedName,
+      mainExecutorMatch: nextMatch,
+    });
+    setMainExecutorQuery("");
+  }
+
+  function selectMainExecutorRecord(collaborator: CollaboratorRecord) {
+    const nextMatch = buildMatchedPersonFromCollaborator(collaborator, mainExecutorMatch);
+
+    updateDraft({
+      mainExecutor: nextMatch.selectedName,
+      mainExecutorMatch: nextMatch,
+    });
+    setMainExecutorQuery("");
+  }
+
+  function clearMainExecutor() {
+    updateDraft({
+      mainExecutor: null,
+      mainExecutorMatch: {
+        requestedName: "",
+        status: "missing",
+        selectedUserId: null,
+        selectedName: null,
+        selectedEmail: null,
+        candidates: [],
+      },
+    });
+  }
+
+  function addCollaborator(collaborator: CollaboratorRecord) {
+    const nextMatch = buildMatchedPersonFromCollaborator(collaborator);
+    const nextMatches = [
+      ...collaboratorMatches.filter((match) => match.selectedUserId !== collaborator.id),
+      nextMatch,
+    ];
+
+    updateCollaboratorMatches(nextMatches);
+    setCollaboratorQuery("");
+  }
+
+  function selectCollaboratorCandidate(index: number, candidate: FluxAIPersonCandidate) {
+    const currentMatch = collaboratorMatches[index] ?? null;
+    const collaborator = findCollaboratorByCandidate(candidate, draftOptions.collaborators);
+    const nextMatch = collaborator
+      ? buildMatchedPersonFromCollaborator(collaborator, currentMatch)
+      : buildMatchedPersonFromCandidate(candidate, currentMatch);
+
+    updateCollaboratorMatches(
+      collaboratorMatches.map((match, matchIndex) =>
+        matchIndex === index ? nextMatch : match,
+      ),
+    );
+  }
+
+  function removeCollaborator(index: number) {
+    updateCollaboratorMatches(
+      collaboratorMatches.filter((_, matchIndex) => matchIndex !== index),
+    );
+  }
+
+  function updateCollaboratorPermission(
+    index: number,
+    permissionKey: ProjectCollaboratorPermissionKey,
+    checked: boolean,
+  ) {
+    updateCollaboratorMatches(
+      collaboratorMatches.map((match, matchIndex) => {
+        if (matchIndex !== index) {
+          return match;
+        }
+
+        const candidate = getSelectedCandidate(match);
+        const currentPermissions = getMatchPermissions(match, candidate);
+        const nextPermissions = normalizeProjectCollaboratorPermissions(
+          {
+            ...currentPermissions,
+            [permissionKey]: checked,
+          },
+          candidate?.type ?? null,
+        );
+
+        return {
+          ...match,
+          permissions: nextPermissions,
+        };
+      }),
+    );
   }
 
   function updateStage(index: number, patch: Partial<FluxAIDraftProject["stages"][number]>) {
@@ -1180,11 +1531,35 @@ function DraftProjectEditorPanel({
             </label>
             <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
               Category
-              <Input
-                value={draftProject.category}
-                onChange={(event) => updateDraft({ category: event.target.value })}
-                disabled={isSaving}
-              />
+              <Select
+                key={`flux-draft-category-${knownCategory ?? "unresolved"}-${draftOptions.categories.join("\u001f")}`}
+                value={knownCategory ?? ""}
+                disabled={isSaving || draftOptions.categories.length === 0}
+                onValueChange={(value) => updateDraft({ category: value })}
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue
+                    placeholder={
+                      draftOptions.categories.length ? "Select project category" : "No categories available"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {draftOptions.categories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {categoryIsUnresolved ? (
+                <span className="block rounded-[12px] bg-[#fff7e7] px-3 py-2 text-[11px] font-semibold leading-4 text-[#8a621f]">
+                  {`"${draftProject.category}" is not an active category. Select an existing category before creating.`}{" "}
+                  {draftOptions.canManageProjectMasterData
+                    ? "Create new categories from Project Master Data when needed."
+                    : "Ask an admin to add new categories when needed."}
+                </span>
+              ) : null}
             </label>
             <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
               Execution type
@@ -1207,14 +1582,154 @@ function DraftProjectEditorPanel({
               </Select>
             </label>
             <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
-              Tags
-              <Input
-                value={joinCommaList(draftProject.tags)}
-                onChange={(event) => updateDraft({ tags: splitCommaList(event.target.value) })}
-                disabled={isSaving}
-                placeholder="Packaging, Ramadan"
-              />
+              Project status
+              <Select
+                key={`flux-draft-status-${selectedStatusId}-${draftOptions.statuses.map((status) => status.id).join("\u001f")}`}
+                value={selectedStatusId}
+                disabled={isSaving || draftOptions.statuses.length === 0}
+                onValueChange={(value) => {
+                  const status = draftOptions.statuses.find((option) => option.id === value);
+
+                  updateDraft({
+                    statusId: value,
+                    statusName: status?.name ?? null,
+                  });
+                }}
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue
+                    placeholder={
+                      draftOptions.statuses.length ? "Select project status" : "No statuses available"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {draftOptions.statuses.map((status) => (
+                    <SelectItem key={status.id} value={status.id}>
+                      <span className="flex items-center gap-2">
+                        {status.color ? (
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: status.color }}
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                        <span>{status.name}</span>
+                        <span className="text-[11px] text-[#8a938b]">
+                          {status.groupName}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedStatusName && !statusIsUnresolved ? (
+                <span className="block text-[11px] font-semibold text-[#7a847c]">
+                  Selected status: {selectedStatusName}
+                </span>
+              ) : null}
             </label>
+            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
+              Project priority
+              <Select
+                value={selectedPriority}
+                disabled={isSaving}
+                onValueChange={(value) =>
+                  updateDraft({ priority: value as ProjectPriorityValue })
+                }
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {projectPriorityOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="block text-[11px] font-semibold text-[#7a847c]">
+                {formatProjectPriority(selectedPriority)}
+              </span>
+            </label>
+            <div className="space-y-1.5 sm:col-span-2">
+              <p className="text-[12px] font-bold text-[#667168]">Tags</p>
+              {draftProject.tags.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {draftProject.tags.map((tag) => {
+                    const knownTag = hasKnownOption(tag, draftOptions.tags);
+
+                    return (
+                      <span
+                        key={tag}
+                        className={cn(
+                          "inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-bold",
+                          knownTag
+                            ? "border-[#cde6d3] bg-[#edf7ef] text-[#2d8055]"
+                            : "border-[#f1d7aa] bg-[#fff7e7] text-[#8a621f]",
+                        )}
+                      >
+                        <span className="truncate">{tag}</span>
+                        {!knownTag ? (
+                          <span className="text-[10px] uppercase tracking-[0.08em]">
+                            Needs selection
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => removeTag(tag)}
+                          className="grid h-4 w-4 shrink-0 place-items-center rounded-full transition-colors hover:bg-white"
+                          aria-label={`Remove ${tag}`}
+                          disabled={isSaving}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <Select
+                key={`flux-draft-tags-${draftProject.tags.join("\u001f") || "empty"}-${draftOptions.tags.join("\u001f")}`}
+                value=""
+                disabled={isSaving || selectedTagCount >= MAX_DRAFT_TAGS || tagSelectOptions.length === 0}
+                onValueChange={(value) => {
+                  if (value) {
+                    addTag(value);
+                  }
+                }}
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue
+                    placeholder={
+                      selectedTagCount >= MAX_DRAFT_TAGS
+                        ? "Maximum tags selected"
+                        : tagSelectOptions.length
+                          ? "Select project tags"
+                          : "No more tags available"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {tagSelectOptions.map((tag) => (
+                    <SelectItem key={tag} value={tag}>
+                      <span className="flex items-center gap-2">
+                        <Check className="h-3.5 w-3.5 opacity-0" />
+                        <span>{tag}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] font-semibold text-[#7a847c]">
+                Select up to {MAX_DRAFT_TAGS} active tags. Unknown AI-extracted tags stay unresolved until replaced.
+                {" "}
+                {draftOptions.canManageProjectMasterData
+                  ? "Create new tags from Project Master Data when needed."
+                  : "Ask an admin to add new tags when needed."}
+              </p>
+            </div>
           </div>
           <label className="mt-3 block space-y-1.5 text-[12px] font-bold text-[#667168]">
             Project brief
@@ -1276,37 +1791,300 @@ function DraftProjectEditorPanel({
             </label>
             <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
               Currency
-              <Input
-                value={draftProject.currency ?? ""}
-                onChange={(event) => updateDraft({ currency: event.target.value.toUpperCase() || null })}
+              <Select
+                key={`flux-draft-currency-${selectedCurrency ?? "unresolved"}`}
+                value={selectedCurrency ?? ""}
                 disabled={isSaving || draftProject.budgetRequired === false}
-                placeholder="AED"
-              />
+                onValueChange={(value) => updateDraft({ currency: value })}
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROJECT_CURRENCY_OPTIONS.map((currency) => (
+                    <SelectItem key={currency.code} value={currency.code}>
+                      {currency.code} - {currency.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {currencyIsUnresolved ? (
+                <span className="block rounded-[12px] bg-[#fff7e7] px-3 py-2 text-[11px] font-semibold leading-4 text-[#8a621f]">
+                  {`"${draftProject.currency}" is not supported. Select AED, USD, or EUR.`}
+                </span>
+              ) : null}
             </label>
           </div>
         </DraftSection>
 
         <DraftSection title="Executor & Collaborators">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
-              Main executor
-              <Input
-                value={draftProject.mainExecutor ?? ""}
-                onChange={(event) => updateDraft({ mainExecutor: event.target.value || null })}
-                disabled={isSaving}
-              />
-            </label>
-            <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
-              Collaborators
-              <Input
-                value={joinCommaList(draftProject.collaborators)}
-                onChange={(event) =>
-                  updateDraft({ collaborators: splitCommaList(event.target.value) })
-                }
-                disabled={isSaving}
-                placeholder="Sara, Yasir"
-              />
-            </label>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-3">
+              <p className="text-[12px] font-bold text-[#667168]">Main executor</p>
+              {selectedMainExecutorCandidate ? (
+                <div className="rounded-[16px] border border-[#dce8de] bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-extrabold text-[#17211a]">
+                        {selectedMainExecutorCandidate.name}
+                      </p>
+                      <p className="truncate text-[12px] font-semibold text-[#667168]">
+                        {selectedMainExecutorCandidate.email}
+                      </p>
+                      <span className="mt-2 inline-flex rounded-full bg-[#eef8f0] px-2.5 py-1 text-[11px] font-bold text-[#2d8055]">
+                        {selectedMainExecutorCandidate.typeLabel}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-[#bd4d45]"
+                      onClick={clearMainExecutor}
+                      disabled={isSaving}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              {mainExecutorMatch?.status === "multiple" ? (
+                <div className="rounded-[16px] border border-[#f1d7aa] bg-[#fffaf0] p-3">
+                  <p className="text-[12px] font-extrabold text-[#8a621f]">
+                    {`Multiple matches for "${mainExecutorMatch.requestedName}"`}
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {mainExecutorMatch.candidates.map((candidate) => (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#e1e8df] bg-white px-3 py-2 text-left transition hover:border-brand/60"
+                        onClick={() => selectMainExecutor(candidate)}
+                        disabled={isSaving}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-[12px] font-extrabold text-[#17211a]">
+                            {candidate.name}
+                          </span>
+                          <span className="block truncate text-[11px] font-semibold text-[#667168]">
+                            {candidate.email}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-[11px] font-bold text-[#2d8055]">
+                          Select
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : mainExecutorMatch?.status === "not_found" ? (
+                <p className="rounded-[14px] bg-[#fff7e7] px-3 py-2 text-[11px] font-semibold text-[#8a621f]">
+                  {`No existing collaborator matched "${mainExecutorMatch.requestedName}". Search and select a collaborator.`}
+                </p>
+              ) : null}
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a938b]" />
+                <Input
+                  value={mainExecutorQuery}
+                  onChange={(event) => setMainExecutorQuery(event.target.value)}
+                  disabled={isSaving}
+                  placeholder="Search existing executor..."
+                  className="pl-9"
+                />
+              </div>
+              <div className="space-y-2">
+                {mainExecutorOptions.map((collaborator) => (
+                  <button
+                    key={collaborator.id}
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#e1e8df] bg-white px-3 py-2 text-left transition hover:border-brand/60"
+                    onClick={() => selectMainExecutorRecord(collaborator)}
+                    disabled={isSaving}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12px] font-extrabold text-[#17211a]">
+                        {collaborator.name}
+                      </span>
+                      <span className="block truncate text-[11px] font-semibold text-[#667168]">
+                        {collaborator.email}
+                      </span>
+                    </span>
+                    <span className="shrink-0 rounded-full bg-[#f2f7f3] px-2.5 py-1 text-[11px] font-bold text-[#467356]">
+                      {collaborator.typeLabel}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[12px] font-bold text-[#667168]">Collaborators</p>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a938b]" />
+                <Input
+                  value={collaboratorQuery}
+                  onChange={(event) => setCollaboratorQuery(event.target.value)}
+                  disabled={isSaving}
+                  placeholder="Search existing collaborators..."
+                  className="pl-9"
+                />
+              </div>
+              <div className="space-y-2">
+                {collaboratorOptions.map((collaborator) => (
+                  <button
+                    key={collaborator.id}
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#e1e8df] bg-white px-3 py-2 text-left transition hover:border-brand/60"
+                    onClick={() => addCollaborator(collaborator)}
+                    disabled={isSaving}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12px] font-extrabold text-[#17211a]">
+                        {collaborator.name}
+                      </span>
+                      <span className="block truncate text-[11px] font-semibold text-[#667168]">
+                        {collaborator.email}
+                      </span>
+                    </span>
+                    <Plus className="h-4 w-4 shrink-0 text-brand" />
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-3">
+                {collaboratorMatches.map((match, index) => {
+                  const selectedCandidate = getSelectedCandidate(match);
+
+                  if (!selectedCandidate) {
+                    return (
+                      <div
+                        key={`${match.requestedName || "unresolved"}-${index}`}
+                        className="rounded-[16px] border border-[#f1d7aa] bg-[#fffaf0] p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[12px] font-extrabold text-[#8a621f]">
+                              {match.requestedName || "Unresolved collaborator"}
+                            </p>
+                            <p className="mt-1 text-[11px] font-semibold text-[#8a621f]">
+                              {match.status === "multiple"
+                                ? "Choose one existing collaborator."
+                                : "Search and select an existing collaborator."}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-[#bd4d45]"
+                            onClick={() => removeCollaborator(index)}
+                            disabled={isSaving}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                        {match.candidates.length ? (
+                          <div className="mt-3 space-y-2">
+                            {match.candidates.map((candidate) => (
+                              <button
+                                key={candidate.id}
+                                type="button"
+                                className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#e1e8df] bg-white px-3 py-2 text-left transition hover:border-brand/60"
+                                onClick={() => selectCollaboratorCandidate(index, candidate)}
+                                disabled={isSaving}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate text-[12px] font-extrabold text-[#17211a]">
+                                    {candidate.name}
+                                  </span>
+                                  <span className="block truncate text-[11px] font-semibold text-[#667168]">
+                                    {candidate.email}
+                                  </span>
+                                </span>
+                                <span className="shrink-0 text-[11px] font-bold text-[#2d8055]">
+                                  Select
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  }
+
+                  const permissions = getMatchPermissions(match, selectedCandidate);
+                  const isClientOfGti = isClientOfGtiParticipantType(selectedCandidate.type);
+
+                  return (
+                    <div
+                      key={`${selectedCandidate.id}-${index}`}
+                      className="rounded-[16px] border border-[#dce8de] bg-white p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-extrabold text-[#17211a]">
+                            {selectedCandidate.name}
+                          </p>
+                          <p className="truncate text-[12px] font-semibold text-[#667168]">
+                            {selectedCandidate.email}
+                          </p>
+                          <span className="mt-2 inline-flex rounded-full bg-[#eef8f0] px-2.5 py-1 text-[11px] font-bold text-[#2d8055]">
+                            {selectedCandidate.typeLabel}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-[#bd4d45]"
+                          onClick={() => removeCollaborator(index)}
+                          disabled={isSaving}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      <div className="mt-3 grid gap-2">
+                        {projectCollaboratorPermissionKeys.map((permissionKey) => {
+                          const archiveRestricted =
+                            permissionKey === "canAccessProjectArchives" && isClientOfGti;
+
+                          return (
+                            <label
+                              key={permissionKey}
+                              className={cn(
+                                "flex items-center justify-between gap-3 rounded-[12px] border border-[#edf1ec] bg-[#fbfcfa] px-3 py-2 text-[11px] font-bold text-[#526057]",
+                                archiveRestricted ? "opacity-70" : "",
+                              )}
+                            >
+                              <span>{projectCollaboratorPermissionLabels[permissionKey]}</span>
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-[#1f7a4c]"
+                                checked={
+                                  archiveRestricted ? false : permissions[permissionKey]
+                                }
+                                disabled={isSaving || archiveRestricted}
+                                onChange={(event) =>
+                                  updateCollaboratorPermission(
+                                    index,
+                                    permissionKey,
+                                    event.target.checked,
+                                  )
+                                }
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {isClientOfGti ? (
+                        <p className="mt-2 text-[11px] font-semibold text-[#8a621f]">
+                          Client of GTI collaborators cannot access project archives.
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </DraftSection>
 
@@ -1439,7 +2217,9 @@ function DraftProjectEditorPanel({
   );
 }
 
-export function FluxAiWorkspace() {
+export function FluxAiWorkspace({
+  draftOptions = emptyDraftOptions,
+}: FluxAiWorkspaceProps) {
   const [messages, setMessages] = useState<ChatEntry[]>(initialChatMessages);
   const [conversations, setConversations] = useState<FluxAIConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -2597,6 +3377,7 @@ export function FluxAiWorkspace() {
             draftEditValue ? (
               <DraftProjectEditorPanel
                 draftProject={draftEditValue}
+                draftOptions={draftOptions}
                 error={draftEditError}
                 isSaving={isValidatingDraftEdit}
                 onChange={setDraftEditValue}

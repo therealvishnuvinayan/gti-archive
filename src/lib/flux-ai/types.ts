@@ -1,3 +1,5 @@
+import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
+
 export const fluxAIIntentValues = [
   "project_search",
   "project_count_summary",
@@ -66,6 +68,8 @@ export type FluxAIDraftProject = {
   currency: string | null;
   projectBrief: string;
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT" | null;
+  statusId?: string | null;
+  statusName?: string | null;
   startDate: string | null;
   endDate: string | null;
   mainExecutor: string | null;
@@ -89,11 +93,22 @@ export type FluxAIStageDraft = {
   invoiceRequired: boolean | null;
 };
 
+export type FluxAICollaboratorPermissions = {
+  canInteract: boolean;
+  canAddCaptions: boolean;
+  canDownloadFiles: boolean;
+  canViewBudget: boolean;
+  canViewVendorInfo: boolean;
+  canAccessProjectArchives: boolean;
+};
+
 export type FluxAIPersonCandidate = {
   id: string;
   name: string;
   email: string;
+  type: ProjectCollaboratorParticipantType;
   typeLabel: string;
+  typeGroup: "internal" | "external";
 };
 
 export type FluxAIPersonMatch = {
@@ -103,6 +118,7 @@ export type FluxAIPersonMatch = {
   selectedName: string | null;
   selectedEmail: string | null;
   candidates: FluxAIPersonCandidate[];
+  permissions?: FluxAICollaboratorPermissions | null;
 };
 
 export type FluxAIProjectStatusSummary = {
