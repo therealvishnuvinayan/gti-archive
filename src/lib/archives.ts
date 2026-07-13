@@ -131,12 +131,101 @@ export type ArchiveArtworkMetadataSummary = {
   brandSubBrand: string;
   productSku: string | null;
   campaignProject: string | null;
+  formatDimensions: string | null;
+  colourSpace: string;
+  resolution: string | null;
+  fileFormats: string;
+  printProcess: string | null;
+  specialFinishes: string | null;
+  creationDate: string;
+  lastModifiedDate: string;
+  goLiveOnShelfDate: string | null;
+  expirySunsetDate: string | null;
   archiveStatus: string;
   createdByName: string;
   approvedByName: string;
+  approvedAt: string | null;
+  clientBrandOwner: string;
+  regulatoryClearance: string | null;
+  fontsUsed: string;
+  imagesPhotography: string;
+  illustrationsIcons: string;
+  colourCodes: string;
+  thirdPartyLogosIp: string | null;
+  supplierPrinter: string | null;
+  outputFilesList: string | null;
+  printProofRef: string | null;
+  packagingDielineRef: string | null;
   changeLog: string;
+  relatedArtworks: string | null;
+  briefSpecLink: string | null;
   generalNotes: string | null;
 };
+
+const archiveArtworkMetadataSummarySelect = {
+  artworkId: true,
+  titleWorkingName: true,
+  versionRevision: true,
+  languageMarket: true,
+  artworkType: true,
+  brandSubBrand: true,
+  productSku: true,
+  campaignProject: true,
+  formatDimensions: true,
+  colourSpace: true,
+  resolution: true,
+  fileFormats: true,
+  printProcess: true,
+  specialFinishes: true,
+  creationDate: true,
+  lastModifiedDate: true,
+  goLiveOnShelfDate: true,
+  expirySunsetDate: true,
+  archiveStatus: true,
+  createdByName: true,
+  approvedByName: true,
+  approvedAt: true,
+  clientBrandOwner: true,
+  regulatoryClearance: true,
+  fontsUsed: true,
+  imagesPhotography: true,
+  illustrationsIcons: true,
+  colourCodes: true,
+  thirdPartyLogosIp: true,
+  supplierPrinter: true,
+  outputFilesList: true,
+  printProofRef: true,
+  packagingDielineRef: true,
+  changeLog: true,
+  relatedArtworks: true,
+  briefSpecLink: true,
+  generalNotes: true,
+} satisfies Prisma.ArchiveArtworkMetadataSelect;
+
+type ArchiveArtworkMetadataSummarySource = Prisma.ArchiveArtworkMetadataGetPayload<{
+  select: typeof archiveArtworkMetadataSummarySelect;
+}>;
+
+function mapArchiveArtworkMetadataSummary(
+  metadata: ArchiveArtworkMetadataSummarySource | null | undefined,
+): ArchiveArtworkMetadataSummary | null {
+  if (!metadata) {
+    return null;
+  }
+
+  return {
+    ...metadata,
+    creationDate: formatArchiveMetadataDate(metadata.creationDate),
+    lastModifiedDate: formatArchiveMetadataDate(metadata.lastModifiedDate),
+    goLiveOnShelfDate: metadata.goLiveOnShelfDate
+      ? formatArchiveMetadataDate(metadata.goLiveOnShelfDate)
+      : null,
+    expirySunsetDate: metadata.expirySunsetDate
+      ? formatArchiveMetadataDate(metadata.expirySunsetDate)
+      : null,
+    approvedAt: metadata.approvedAt ? formatArchiveMetadataDate(metadata.approvedAt) : null,
+  };
+}
 
 export type ProjectArchivePreparationFile = {
   sourceAttachmentId: string;
@@ -817,21 +906,7 @@ async function getProjectArchiveBase(projectId: string) {
                   },
                 },
                 artworkMetadata: {
-                  select: {
-                    artworkId: true,
-                    titleWorkingName: true,
-                    versionRevision: true,
-                    languageMarket: true,
-                    artworkType: true,
-                    brandSubBrand: true,
-                    productSku: true,
-                    campaignProject: true,
-                    archiveStatus: true,
-                    createdByName: true,
-                    approvedByName: true,
-                    changeLog: true,
-                    generalNotes: true,
-                  },
+                  select: archiveArtworkMetadataSummarySelect,
                 },
               },
             },
@@ -1451,7 +1526,7 @@ function mapArchivedFileRecord(input: {
   fileSize: number;
   archivedAt: Date;
   archivedBy: Pick<User, "name" | "email">;
-  artworkMetadata?: ArchiveArtworkMetadataSummary | null;
+  artworkMetadata?: ArchiveArtworkMetadataSummarySource | null;
 }) {
   const sourceLabel = input.sourceRevisionId
     ? `Revision ${input.sourceRevisionNumber ?? "—"}`
@@ -1485,7 +1560,7 @@ function mapArchivedFileRecord(input: {
     fileSizeLabel: formatArchiveFileSize(input.fileSize),
     archivedAt: formatArchiveTimestamp(input.archivedAt) ?? "—",
     archivedBy: getUserDisplayName(input.archivedBy),
-    artworkMetadata: input.artworkMetadata ?? null,
+    artworkMetadata: mapArchiveArtworkMetadataSummary(input.artworkMetadata),
     previewPath: `/api/archives/files/${input.id}/preview`,
     downloadPath: `/api/archives/files/${input.id}/download`,
   } satisfies ArchivedProjectFileRecord;
@@ -1503,7 +1578,7 @@ function mapManualArchiveFileRecord(input: {
   fileSize: number;
   uploadedAt: Date;
   uploadedBy: Pick<User, "name" | "email">;
-  artworkMetadata?: ArchiveArtworkMetadataSummary | null;
+  artworkMetadata?: ArchiveArtworkMetadataSummarySource | null;
 }) {
   const assetTags = mapAssetTagAssignments(input.assetTags);
   const category = getArchiveCategoryDisplay(input.archiveCategory);
@@ -1531,7 +1606,7 @@ function mapManualArchiveFileRecord(input: {
     fileSizeLabel: formatArchiveFileSize(input.fileSize),
     archivedAt: formatArchiveTimestamp(input.uploadedAt) ?? "—",
     archivedBy: getUserDisplayName(input.uploadedBy),
-    artworkMetadata: input.artworkMetadata ?? null,
+    artworkMetadata: mapArchiveArtworkMetadataSummary(input.artworkMetadata),
     previewPath: `/api/archives/files/${input.id}/preview`,
     downloadPath: `/api/archives/files/${input.id}/download`,
   } satisfies ArchivedProjectFileRecord;
@@ -2037,21 +2112,7 @@ export async function listArchivedFilesByCategory(
             },
           },
           artworkMetadata: {
-            select: {
-              artworkId: true,
-              titleWorkingName: true,
-              versionRevision: true,
-              languageMarket: true,
-              artworkType: true,
-              brandSubBrand: true,
-              productSku: true,
-              campaignProject: true,
-              archiveStatus: true,
-              createdByName: true,
-              approvedByName: true,
-              changeLog: true,
-              generalNotes: true,
-            },
+            select: archiveArtworkMetadataSummarySelect,
           },
           archive: {
             select: {
@@ -2147,21 +2208,7 @@ export async function listArchivedFilesByCategory(
                 },
               },
               artworkMetadata: {
-                select: {
-                  artworkId: true,
-                  titleWorkingName: true,
-                  versionRevision: true,
-                  languageMarket: true,
-                  artworkType: true,
-                  brandSubBrand: true,
-                  productSku: true,
-                  campaignProject: true,
-                  archiveStatus: true,
-                  createdByName: true,
-                  approvedByName: true,
-                  changeLog: true,
-                  generalNotes: true,
-                },
+                select: archiveArtworkMetadataSummarySelect,
               },
             },
           })

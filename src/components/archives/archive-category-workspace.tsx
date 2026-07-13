@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, X } from "lucide-react";
 
 import {
   ArchiveCategoryIconGlyph,
@@ -12,6 +12,7 @@ import { ArchiveUploadButton } from "@/components/dashboard/upload-assets-button
 import {
   MotionItem,
   MotionSection,
+  MotionSwap,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
@@ -59,6 +60,93 @@ const ALL_USERS = "__all_users__";
 const ALL_TAGS = "__all_tags__";
 const ALL_ASSET_TAGS = "__all_asset_tags__";
 
+type ArchiveArtworkMetadata = NonNullable<ArchivedProjectFileRecord["artworkMetadata"]>;
+type ArchiveMetadataField = {
+  label: string;
+  key: keyof ArchiveArtworkMetadata;
+};
+
+const archiveMetadataSections: Array<{
+  title: string;
+  fields: ArchiveMetadataField[];
+}> = [
+  {
+    title: "Identification",
+    fields: [
+      { label: "Artwork ID", key: "artworkId" },
+      { label: "Title / Working name", key: "titleWorkingName" },
+      { label: "Version / Revision", key: "versionRevision" },
+      { label: "Language / Market", key: "languageMarket" },
+      { label: "Artwork type", key: "artworkType" },
+      { label: "Brand / Sub-brand", key: "brandSubBrand" },
+      { label: "Product SKU", key: "productSku" },
+      { label: "Campaign / Project", key: "campaignProject" },
+    ],
+  },
+  {
+    title: "Technical Specs",
+    fields: [
+      { label: "Format / Dimensions", key: "formatDimensions" },
+      { label: "Colour space", key: "colourSpace" },
+      { label: "Resolution", key: "resolution" },
+      { label: "File format(s)", key: "fileFormats" },
+      { label: "Print process", key: "printProcess" },
+      { label: "Special finishes", key: "specialFinishes" },
+    ],
+  },
+  {
+    title: "Dates & Status",
+    fields: [
+      { label: "Creation date", key: "creationDate" },
+      { label: "Last modified", key: "lastModifiedDate" },
+      { label: "Go live / On shelf", key: "goLiveOnShelfDate" },
+      { label: "Expiry / Sunset", key: "expirySunsetDate" },
+      { label: "Archive status", key: "archiveStatus" },
+    ],
+  },
+  {
+    title: "Ownership & Approvals",
+    fields: [
+      { label: "Created by", key: "createdByName" },
+      { label: "Approved by", key: "approvedByName" },
+      { label: "Approved at", key: "approvedAt" },
+      { label: "Client / Brand owner", key: "clientBrandOwner" },
+      { label: "Regulatory clearance", key: "regulatoryClearance" },
+    ],
+  },
+  {
+    title: "Assets & Rights",
+    fields: [
+      { label: "Fonts used", key: "fontsUsed" },
+      { label: "Images / Photography", key: "imagesPhotography" },
+      { label: "Illustrations / Icons", key: "illustrationsIcons" },
+      { label: "Colour codes", key: "colourCodes" },
+      { label: "Third-party logos / IP", key: "thirdPartyLogosIp" },
+      { label: "Supplier / Printer", key: "supplierPrinter" },
+      { label: "Output files list", key: "outputFilesList" },
+      { label: "Print proof ref", key: "printProofRef" },
+      { label: "Packaging dieline ref", key: "packagingDielineRef" },
+    ],
+  },
+  {
+    title: "Notes & Links",
+    fields: [
+      { label: "Change log", key: "changeLog" },
+      { label: "Related artworks", key: "relatedArtworks" },
+      { label: "Brief / Spec link", key: "briefSpecLink" },
+      { label: "General notes", key: "generalNotes" },
+    ],
+  },
+];
+
+function formatArchiveMetadataValue(
+  value: ArchiveArtworkMetadata[keyof ArchiveArtworkMetadata] | null | undefined,
+) {
+  const normalized = typeof value === "string" ? value.trim() : value;
+
+  return normalized || "—";
+}
+
 function uniqueValues(items: ArchivedProjectFileRecord[], key: keyof ArchivedProjectFileRecord) {
   return Array.from(new Set(items.map((item) => item[key] as string).filter(Boolean))).sort(
     (left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }),
@@ -97,6 +185,9 @@ export function ArchiveCategoryWorkspace({
   currentUserDisplayName,
 }: ArchiveCategoryWorkspaceProps) {
   const [filters, setFilters] = useState<ArchiveFilters>(defaultFilters);
+  const [expandedArchiveItemIds, setExpandedArchiveItemIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const categoryIconSrc = getArchiveCategoryIconImageSrc(categoryIconUrl);
 
   const options = useMemo(
@@ -177,6 +268,20 @@ export function ArchiveCategoryWorkspace({
 
   function clearFilters() {
     setFilters(defaultFilters);
+  }
+
+  function toggleArchiveItemDetails(itemId: string) {
+    setExpandedArchiveItemIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+
+      return next;
+    });
   }
 
   return (
@@ -325,9 +430,12 @@ export function ArchiveCategoryWorkspace({
           ) : null}
 
           <MotionStaggerGroup className="mt-4 space-y-3" stagger={0.035}>
-            {visibleItems.map((item) => (
-                <MotionItem key={item.id} layout className="rounded-[20px]">
-                  <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]">
+            {visibleItems.map((item) => {
+              const isExpanded = expandedArchiveItemIds.has(item.id);
+
+              return (
+                <MotionItem key={item.id} className="rounded-[20px]">
+                  <article className="grid min-w-0 gap-4 rounded-[20px] border border-brand/35 bg-white px-5 py-4 shadow-[0_18px_45px_rgba(23,39,28,0.05)] transition-shadow duration-200 hover:shadow-[0_22px_50px_rgba(23,39,28,0.08)]">
                     <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start gap-3">
@@ -420,6 +528,21 @@ export function ArchiveCategoryWorkspace({
                           Download
                         </a>
                       </Button>
+                      {item.artworkMetadata ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleArchiveItemDetails(item.id)}
+                          aria-expanded={isExpanded}
+                          className="inline-flex h-10 min-w-[126px] items-center justify-center gap-2 rounded-full border border-[#cfe3d2] bg-[#f7fbf6] px-3 text-[13px] font-[800] text-brand shadow-[0_8px_20px_rgba(16,26,20,0.06)] transition hover:bg-[#edf7ef]"
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                          {isExpanded ? "Hide details" : "Expand archive"}
+                        </button>
+                      ) : null}
                     </div>
                     </div>
 
@@ -469,9 +592,64 @@ export function ArchiveCategoryWorkspace({
                         </p>
                       </div>
                     </div>
+
+                    {isExpanded && item.artworkMetadata ? (
+                      <MotionSwap motionKey={`archive-details-${item.id}`}>
+                        <div className="rounded-[18px] border border-[#dfe9df] bg-[#fbfdfb] p-4">
+                          <div className="flex flex-col gap-1 border-b border-[#e6eee6] pb-3 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                              <p className="text-[11px] font-[900] uppercase tracking-[0.08em] text-brand">
+                                Full archive metadata
+                              </p>
+                              <h4 className="mt-1 text-[16px] font-[800] text-[#111712]">
+                                {item.artworkMetadata.titleWorkingName}
+                              </h4>
+                            </div>
+                            <p className="text-[12px] font-[700] text-[#667168]">
+                              {item.artworkMetadata.artworkId} · {item.artworkMetadata.versionRevision}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                            {archiveMetadataSections.map((section) => (
+                              <section
+                                key={section.title}
+                                className="min-w-0 rounded-[16px] border border-[#e6eee6] bg-white p-3.5"
+                              >
+                                <h5 className="text-[12px] font-[900] uppercase tracking-[0.08em] text-[#536057]">
+                                  {section.title}
+                                </h5>
+                                <dl className="mt-3 grid gap-2">
+                                  {section.fields.map((field) => {
+                                    const value = formatArchiveMetadataValue(
+                                      item.artworkMetadata?.[field.key],
+                                    );
+
+                                    return (
+                                      <div
+                                        key={field.key}
+                                        className="grid min-w-0 gap-1 rounded-[12px] bg-[#f8faf8] px-3 py-2 sm:grid-cols-[150px_minmax(0,1fr)]"
+                                      >
+                                        <dt className="text-[11px] font-[800] leading-5 text-[#6b766e]">
+                                          {field.label}
+                                        </dt>
+                                        <dd className="whitespace-pre-wrap break-words text-[12px] font-[700] leading-5 text-[#1f2922]">
+                                          {value}
+                                        </dd>
+                                      </div>
+                                    );
+                                  })}
+                                </dl>
+                              </section>
+                            ))}
+                          </div>
+                        </div>
+                      </MotionSwap>
+                    ) : null}
                   </article>
                 </MotionItem>
-              ))}
+              );
+            })}
 
             {visibleItems.length === 0 ? (
               <MotionItem y={8}>
