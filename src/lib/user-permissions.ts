@@ -1,4 +1,10 @@
-import { CollaboratorType, UserRole } from "@prisma/client";
+import {
+  ArchiveAccessLevel,
+  AttachmentStatus,
+  CollaboratorType,
+  Prisma,
+  UserRole,
+} from "@prisma/client";
 
 import type {
   CollaboratorTypeValue,
@@ -10,6 +16,17 @@ import {
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export type ManagedUserStatus = "ACTIVE" | "INVITED" | "INVITE_EXPIRED";
+export type ManagedArchiveAccessLevel = "NONE" | "FULL" | "PARTIAL";
+
+export type ManagedArchiveAssetAccessRecord = {
+  id: string;
+  recordType: "FINAL_ARCHIVE_FILE" | "MANUAL_ARCHIVE_FILE";
+  fileName: string;
+  categoryId: string | null;
+  categoryLabel: string;
+  sourceLabel: string;
+  archivedAtLabel: string;
+};
 
 export type ManagedUserRecord = {
   id: string;
@@ -18,6 +35,8 @@ export type ManagedUserRecord = {
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
   canAccessArchives: boolean;
+  archiveAccessLevel: ManagedArchiveAccessLevel;
+  archiveAssetAccesses: ManagedArchiveAssetAccessRecord[];
   status: ManagedUserStatus;
 };
 
@@ -25,9 +44,24 @@ export type ManagedUserUpdateInput = {
   userId: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
-  canAccessArchives: boolean;
+  archiveAccessLevel: ManagedArchiveAccessLevel;
+  archiveAssetIds?: string[];
   updatedById?: string | null;
 };
+
+const archiveAccessLevelValues = ["NONE", "FULL", "PARTIAL"] as const;
+
+function formatArchiveAccessDate(date: Date | null | undefined) {
+  if (!date) {
+    return "Not dated";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
 
 function getFallbackName(email: string) {
   const [localPart] = email.split("@");
@@ -55,6 +89,94 @@ function getManagedUserStatus(user: {
   return "INVITED" satisfies ManagedUserStatus;
 }
 
+function getArchiveAssetAccessId(input: {
+  archivedProjectFileId?: string | null;
+  manualArchiveFileId?: string | null;
+}) {
+  if (input.archivedProjectFileId) {
+    return `project:${input.archivedProjectFileId}`;
+  }
+
+  if (input.manualArchiveFileId) {
+    return `manual:${input.manualArchiveFileId}`;
+  }
+
+  return null;
+}
+
+function mapArchiveAssetAccess(
+  access: {
+    archivedProjectFileId: string | null;
+    manualArchiveFileId: string | null;
+    archivedProjectFile?: {
+      finalArchiveFileName: string;
+      archivedAt: Date;
+      archive: {
+        projectName: string;
+        archiveCategory: { id: string; name: string } | null;
+      };
+    } | null;
+    manualArchiveFile?: {
+      fileName: string;
+      uploadedAt: Date;
+      projectName: string | null;
+      archiveCategory: { id: string; name: string } | null;
+    } | null;
+  },
+): ManagedArchiveAssetAccessRecord | null {
+  const id = getArchiveAssetAccessId(access);
+
+  if (!id) {
+    return null;
+  }
+
+  if (access.archivedProjectFile) {
+    const category = access.archivedProjectFile.archive.archiveCategory;
+
+    return {
+      id,
+      recordType: "FINAL_ARCHIVE_FILE",
+      fileName: access.archivedProjectFile.finalArchiveFileName,
+      categoryId: category?.id ?? null,
+      categoryLabel: category?.name ?? "Uncategorized",
+      sourceLabel: access.archivedProjectFile.archive.projectName,
+      archivedAtLabel: formatArchiveAccessDate(access.archivedProjectFile.archivedAt),
+    };
+  }
+
+  if (access.manualArchiveFile) {
+    const category = access.manualArchiveFile.archiveCategory;
+
+    return {
+      id,
+      recordType: "MANUAL_ARCHIVE_FILE",
+      fileName: access.manualArchiveFile.fileName,
+      categoryId: category?.id ?? null,
+      categoryLabel: category?.name ?? "Uncategorized",
+      sourceLabel: access.manualArchiveFile.projectName?.trim() || "Manual Archive",
+      archivedAtLabel: formatArchiveAccessDate(access.manualArchiveFile.uploadedAt),
+    };
+  }
+
+  return null;
+}
+
+function getEffectiveManagedArchiveAccessLevel(user: {
+  role: UserRole;
+  collaboratorType: CollaboratorType;
+  archiveAccess?: { level: ArchiveAccessLevel } | null;
+}): ManagedArchiveAccessLevel {
+  if (user.collaboratorType === CollaboratorType.CLIENT_OF_GTI) {
+    return "NONE";
+  }
+
+  if (user.role === UserRole.SUPER_ADMIN) {
+    return "FULL";
+  }
+
+  return user.archiveAccess?.level ?? "NONE";
+}
+
 function mapManagedUser(user: {
   id: string;
   email: string;
@@ -64,15 +186,40 @@ function mapManagedUser(user: {
   inviteToken: string | null;
   inviteExpiresAt: Date | null;
   inviteAcceptedAt: Date | null;
-  archiveAccess?: { id: string } | null;
+  archiveAccess?: { id: string; level: ArchiveAccessLevel } | null;
+  archiveAssetAccesses?: Array<{
+    archivedProjectFileId: string | null;
+    manualArchiveFileId: string | null;
+    archivedProjectFile?: {
+      finalArchiveFileName: string;
+      archivedAt: Date;
+      archive: {
+        projectName: string;
+        archiveCategory: { id: string; name: string } | null;
+      };
+    } | null;
+    manualArchiveFile?: {
+      fileName: string;
+      uploadedAt: Date;
+      projectName: string | null;
+      archiveCategory: { id: string; name: string } | null;
+    } | null;
+  }>;
 }): ManagedUserRecord {
+  const archiveAccessLevel = getEffectiveManagedArchiveAccessLevel(user);
+  const archiveAssetAccesses = (user.archiveAssetAccesses ?? [])
+    .map(mapArchiveAssetAccess)
+    .filter((asset): asset is ManagedArchiveAssetAccessRecord => Boolean(asset));
+
   return {
     id: user.id,
     name: user.name?.trim() || getFallbackName(user.email),
     email: user.email,
     role: user.role,
     collaboratorType: user.collaboratorType,
-    canAccessArchives: user.role === UserRole.SUPER_ADMIN || Boolean(user.archiveAccess),
+    canAccessArchives: archiveAccessLevel !== "NONE",
+    archiveAccessLevel,
+    archiveAssetAccesses,
     status: getManagedUserStatus(user),
   };
 }
@@ -97,6 +244,46 @@ export async function listUsersForPermissionManagement() {
         archiveAccess: {
           select: {
             id: true,
+            level: true,
+          },
+        },
+        archiveAssetAccesses: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            archivedProjectFileId: true,
+            manualArchiveFileId: true,
+            archivedProjectFile: {
+              select: {
+                finalArchiveFileName: true,
+                archivedAt: true,
+                archive: {
+                  select: {
+                    projectName: true,
+                    archiveCategory: {
+                      select: {
+                        id: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            manualArchiveFile: {
+              select: {
+                fileName: true,
+                uploadedAt: true,
+                projectName: true,
+                archiveCategory: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -124,6 +311,46 @@ export async function getManagedUserPermissionRecord(userId: string) {
         archiveAccess: {
           select: {
             id: true,
+            level: true,
+          },
+        },
+        archiveAssetAccesses: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            archivedProjectFileId: true,
+            manualArchiveFileId: true,
+            archivedProjectFile: {
+              select: {
+                finalArchiveFileName: true,
+                archivedAt: true,
+                archive: {
+                  select: {
+                    projectName: true,
+                    archiveCategory: {
+                      select: {
+                        id: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            manualArchiveFile: {
+              select: {
+                fileName: true,
+                uploadedAt: true,
+                projectName: true,
+                archiveCategory: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -143,6 +370,101 @@ export async function countSuperAdmins() {
   );
 }
 
+function normalizeArchiveAssetIds(assetIds: string[] | undefined) {
+  const projectFileIds = new Set<string>();
+  const manualFileIds = new Set<string>();
+
+  for (const assetId of assetIds ?? []) {
+    const trimmedId = assetId.trim();
+
+    if (!trimmedId) {
+      continue;
+    }
+
+    const separatorIndex = trimmedId.indexOf(":");
+
+    if (separatorIndex <= 0) {
+      throw new Error("Choose valid archive assets for partial access.");
+    }
+
+    const type = trimmedId.slice(0, separatorIndex);
+    const id = trimmedId.slice(separatorIndex + 1).trim();
+
+    if (!id) {
+      throw new Error("Choose valid archive assets for partial access.");
+    }
+
+    if (type === "project") {
+      projectFileIds.add(id);
+      continue;
+    }
+
+    if (type === "manual") {
+      manualFileIds.add(id);
+      continue;
+    }
+
+    throw new Error("Choose valid archive assets for partial access.");
+  }
+
+  return {
+    projectFileIds: [...projectFileIds],
+    manualFileIds: [...manualFileIds],
+  };
+}
+
+async function validateArchiveAssetSelection(
+  tx: Prisma.TransactionClient,
+  input: ReturnType<typeof normalizeArchiveAssetIds>,
+) {
+  const [projectFileCount, manualFileCount] = await Promise.all([
+    input.projectFileIds.length > 0
+      ? tx.archivedProjectFile.count({
+          where: {
+            id: {
+              in: input.projectFileIds,
+            },
+          },
+        })
+      : Promise.resolve(0),
+    input.manualFileIds.length > 0
+      ? tx.manualArchiveFile.count({
+          where: {
+            id: {
+              in: input.manualFileIds,
+            },
+            status: AttachmentStatus.READY,
+          },
+        })
+      : Promise.resolve(0),
+  ]);
+
+  if (
+    projectFileCount !== input.projectFileIds.length ||
+    manualFileCount !== input.manualFileIds.length
+  ) {
+    throw new Error("One or more selected archive assets are no longer available.");
+  }
+}
+
+function getRequestedArchiveAccessLevel(
+  input: Pick<ManagedUserUpdateInput, "role" | "collaboratorType" | "archiveAccessLevel">,
+) {
+  if (!archiveAccessLevelValues.includes(input.archiveAccessLevel)) {
+    throw new Error("Choose a valid archive access level.");
+  }
+
+  if (input.collaboratorType === CollaboratorType.CLIENT_OF_GTI) {
+    return ArchiveAccessLevel.NONE;
+  }
+
+  if (input.role === UserRole.SUPER_ADMIN) {
+    return ArchiveAccessLevel.FULL;
+  }
+
+  return input.archiveAccessLevel as ArchiveAccessLevel;
+}
+
 export async function updateManagedUserPermissions(
   input: ManagedUserUpdateInput,
 ) {
@@ -152,6 +474,21 @@ export async function updateManagedUserPermissions(
 
   const updatedUser = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
+      const archiveAccessLevel = getRequestedArchiveAccessLevel(input);
+      const archiveAssetSelection = normalizeArchiveAssetIds(input.archiveAssetIds);
+
+      if (archiveAccessLevel === ArchiveAccessLevel.PARTIAL) {
+        if (
+          archiveAssetSelection.projectFileIds.length +
+            archiveAssetSelection.manualFileIds.length ===
+          0
+        ) {
+          throw new Error("Select at least one archive asset for partial access.");
+        }
+
+        await validateArchiveAssetSelection(tx, archiveAssetSelection);
+      }
+
       await tx.user.update({
         where: {
           id: input.userId,
@@ -165,20 +502,51 @@ export async function updateManagedUserPermissions(
         },
       });
 
-      if (input.role === UserRole.SUPER_ADMIN || input.canAccessArchives) {
+      if (archiveAccessLevel !== ArchiveAccessLevel.NONE) {
         await tx.userArchiveAccess.upsert({
           where: {
             userId: input.userId,
           },
           update: {
+            level: archiveAccessLevel,
             grantedById: input.updatedById ?? undefined,
           },
           create: {
             userId: input.userId,
+            level: archiveAccessLevel,
             grantedById: input.updatedById ?? undefined,
           },
         });
+
+        await tx.userArchiveAssetAccess.deleteMany({
+          where: {
+            userId: input.userId,
+          },
+        });
+
+        if (archiveAccessLevel === ArchiveAccessLevel.PARTIAL) {
+          await tx.userArchiveAssetAccess.createMany({
+            data: [
+              ...archiveAssetSelection.projectFileIds.map((archivedProjectFileId) => ({
+                userId: input.userId,
+                archivedProjectFileId,
+                grantedById: input.updatedById ?? null,
+              })),
+              ...archiveAssetSelection.manualFileIds.map((manualArchiveFileId) => ({
+                userId: input.userId,
+                manualArchiveFileId,
+                grantedById: input.updatedById ?? null,
+              })),
+            ],
+            skipDuplicates: true,
+          });
+        }
       } else {
+        await tx.userArchiveAssetAccess.deleteMany({
+          where: {
+            userId: input.userId,
+          },
+        });
         await tx.userArchiveAccess.deleteMany({
           where: {
             userId: input.userId,
@@ -202,6 +570,46 @@ export async function updateManagedUserPermissions(
           archiveAccess: {
             select: {
               id: true,
+              level: true,
+            },
+          },
+          archiveAssetAccesses: {
+            orderBy: {
+              createdAt: "asc",
+            },
+            select: {
+              archivedProjectFileId: true,
+              manualArchiveFileId: true,
+              archivedProjectFile: {
+                select: {
+                  finalArchiveFileName: true,
+                  archivedAt: true,
+                  archive: {
+                    select: {
+                      projectName: true,
+                      archiveCategory: {
+                        select: {
+                          id: true,
+                          name: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              manualArchiveFile: {
+                select: {
+                  fileName: true,
+                  uploadedAt: true,
+                  projectName: true,
+                  archiveCategory: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
             },
           },
         },

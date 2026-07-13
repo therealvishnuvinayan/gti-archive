@@ -20,6 +20,7 @@ import {
   resetPermissionProfileToDefaultsAction,
   savePermissionProfileAction,
   saveUserAccessAction,
+  searchArchiveAssetsForAccessAction,
   syncPermissionDefinitionsAction,
 } from "@/app/(dashboard)/users/actions";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +55,12 @@ import {
 } from "@/lib/permissions/preview";
 import { getCollaboratorTypeLabel } from "@/lib/project-collaborator-participant-types";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
-import type { ManagedUserRecord, ManagedUserStatus } from "@/lib/user-permissions";
+import type {
+  ManagedArchiveAccessLevel,
+  ManagedArchiveAssetAccessRecord,
+  ManagedUserRecord,
+  ManagedUserStatus,
+} from "@/lib/user-permissions";
 import { cn } from "@/lib/utils";
 
 type UsersWorkspaceProps = {
@@ -68,7 +74,8 @@ type UserEditForm = {
   userId: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
-  canAccessArchives: boolean;
+  archiveAccessLevel: ManagedArchiveAccessLevel;
+  archiveAssetAccesses: ManagedArchiveAssetAccessRecord[];
 };
 
 type PermissionProfileFormState = Record<PermissionKey, boolean>;
@@ -100,6 +107,18 @@ const statusBadgeStyles: Record<ManagedUserStatus, string> = {
   ACTIVE: "border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]",
   INVITED: "border-[#f4dfbf] bg-[#fff4e4] text-[#cb821e]",
   INVITE_EXPIRED: "border-[#f3d1cf] bg-[#fff0ef] text-[#d6544d]",
+};
+
+const archiveAccessLabels: Record<ManagedArchiveAccessLevel, string> = {
+  NONE: "No Access",
+  FULL: "Full Access",
+  PARTIAL: "Partial Access",
+};
+
+const archiveAccessBadgeStyles: Record<ManagedArchiveAccessLevel, string> = {
+  NONE: "border-[#f3d1cf] bg-[#fff0ef] text-[#d6544d]",
+  FULL: "border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]",
+  PARTIAL: "border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]",
 };
 
 const profileTypeLabels: Record<PermissionProfileType, string> = {
@@ -138,11 +157,20 @@ function getInitials(name: string) {
 }
 
 function getDefaultForm(user: ManagedUserRecord): UserEditForm {
+  const archiveAccessLevel =
+    user.collaboratorType === "CLIENT_OF_GTI"
+      ? "NONE"
+      : user.role === "SUPER_ADMIN"
+        ? "FULL"
+        : user.archiveAccessLevel;
+
   return {
     userId: user.id,
     role: user.role,
     collaboratorType: user.collaboratorType,
-    canAccessArchives: user.canAccessArchives,
+    archiveAccessLevel,
+    archiveAssetAccesses:
+      archiveAccessLevel === "PARTIAL" ? user.archiveAssetAccesses : [],
   };
 }
 
@@ -207,6 +235,241 @@ function StatusBadge({
     >
       {children}
     </Badge>
+  );
+}
+
+type ArchiveAccessAssetOption = ManagedArchiveAssetAccessRecord & {
+  recordTypeLabel?: string;
+};
+
+function ArchiveAssetAccessPicker({
+  selectedAssets,
+  disabled,
+  onChange,
+}: {
+  selectedAssets: ManagedArchiveAssetAccessRecord[];
+  disabled?: boolean;
+  onChange: (assets: ManagedArchiveAssetAccessRecord[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [categoryId, setCategoryId] = useState("all");
+  const [assets, setAssets] = useState<ArchiveAccessAssetOption[]>([]);
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
+
+  const selectedAssetIds = useMemo(
+    () => new Set(selectedAssets.map((asset) => asset.id)),
+    [selectedAssets],
+  );
+
+  useEffect(() => {
+    if (disabled) {
+      return;
+    }
+
+    let isCancelled = false;
+    const timeout = window.setTimeout(() => {
+      setLoading(true);
+      setError(undefined);
+
+      searchArchiveAssetsForAccessAction({
+        query,
+        categoryId: categoryId === "all" ? undefined : categoryId,
+      })
+        .then((result) => {
+          if (isCancelled) {
+            return;
+          }
+
+          if ("error" in result) {
+            setError(result.error);
+            setAssets([]);
+            return;
+          }
+
+          setAssets(result.assets);
+          setCategories(result.categories);
+        })
+        .catch((searchError) => {
+          if (isCancelled) {
+            return;
+          }
+
+          setError(
+            searchError instanceof Error
+              ? searchError.message
+              : "Unable to load archive assets.",
+          );
+          setAssets([]);
+        })
+        .finally(() => {
+          if (!isCancelled) {
+            setLoading(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [categoryId, disabled, query]);
+
+  function addAsset(asset: ArchiveAccessAssetOption) {
+    if (selectedAssetIds.has(asset.id)) {
+      return;
+    }
+
+    onChange([
+      ...selectedAssets,
+      {
+        id: asset.id,
+        recordType: asset.recordType,
+        fileName: asset.fileName,
+        categoryId: asset.categoryId,
+        categoryLabel: asset.categoryLabel,
+        sourceLabel: asset.sourceLabel,
+        archivedAtLabel: asset.archivedAtLabel,
+      },
+    ]);
+  }
+
+  function removeAsset(assetId: string) {
+    onChange(selectedAssets.filter((asset) => asset.id !== assetId));
+  }
+
+  return (
+    <div className="mt-4 rounded-[20px] border border-[#dfeadf] bg-white p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8b948c]" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            disabled={disabled}
+            placeholder="Search archive files by name, project, category, or artwork ID..."
+            className="h-[46px] rounded-[16px] border border-[#dce6dc] pl-11 shadow-none"
+          />
+        </div>
+        <Select value={categoryId} onValueChange={setCategoryId} disabled={disabled}>
+          <SelectTrigger className="h-[46px] rounded-[16px] border border-[#dce6dc] px-4 shadow-none lg:w-[230px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All categories</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                {category.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Badge
+          variant="outline"
+          className="rounded-full border-[#d5e7d6] bg-[#eef8ef] px-3 py-1.5 text-[#2f7f53]"
+        >
+          {selectedAssets.length} selected
+        </Badge>
+        <p className="text-[12px] leading-5 text-[#6f796f]">
+          Partial access users can only see selected archive assets.
+        </p>
+      </div>
+
+      {selectedAssets.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {selectedAssets.map((asset) => (
+            <div
+              key={asset.id}
+              className="flex flex-col gap-3 rounded-[16px] border border-[#e5eee4] bg-[#fbfdfb] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[14px] font-[700] text-[#18201a]">
+                  {asset.fileName}
+                </p>
+                <p className="mt-1 text-[12px] text-[#6f796f]">
+                  {asset.categoryLabel} - {asset.sourceLabel} - {asset.archivedAtLabel}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={disabled}
+                onClick={() => removeAsset(asset.id)}
+                className="shrink-0 rounded-full"
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
+        {error ? (
+          <div className="rounded-[16px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
+            {error}
+          </div>
+        ) : null}
+
+        {isLoading ? (
+          <div className="rounded-[16px] border border-[#e5eee4] bg-[#fbfdfb] px-4 py-6 text-[13px] text-[#6f796f]">
+            Loading archive assets...
+          </div>
+        ) : null}
+
+        {!isLoading && !error && assets.length === 0 ? (
+          <div className="rounded-[16px] border border-dashed border-[#dbe7db] bg-[#fbfdfb] px-4 py-6 text-[13px] text-[#6f796f]">
+            No archive assets found.
+          </div>
+        ) : null}
+
+        {!isLoading && !error
+          ? assets.map((asset) => {
+              const isSelected = selectedAssetIds.has(asset.id);
+
+              return (
+                <button
+                  key={asset.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => (isSelected ? removeAsset(asset.id) : addAsset(asset))}
+                  className={cn(
+                    "flex w-full items-start justify-between gap-4 rounded-[16px] border px-4 py-3 text-left transition-colors",
+                    isSelected
+                      ? "border-[#b8d9bf] bg-[#eef8ef]"
+                      : "border-[#e5eee4] bg-white hover:border-[#c8ddcb]",
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-[14px] font-[700] text-[#18201a]">
+                      {asset.fileName}
+                    </span>
+                    <span className="mt-1 block text-[12px] leading-5 text-[#6f796f]">
+                      {asset.recordTypeLabel ?? asset.recordType} - {asset.categoryLabel} -{" "}
+                      {asset.sourceLabel} - {asset.archivedAtLabel}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full border px-3 py-1 text-[12px] font-[700]",
+                      isSelected
+                        ? "border-[#b8d9bf] bg-white text-[#2f7f53]"
+                        : "border-[#dce6dc] bg-[#fbfdfb] text-[#536055]",
+                    )}
+                  >
+                    {isSelected ? "Selected" : "Select"}
+                  </span>
+                </button>
+              );
+            })
+          : null}
+      </div>
+    </div>
   );
 }
 
@@ -332,30 +595,91 @@ function EditUserModal({
           <div className="mt-5 rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
             <p className="text-[16px] font-[700] text-[#18201a]">Archive Access</p>
             <p className="mt-1 text-[13px] leading-5 text-[#748074]">
-              Grant this user access to the Archives module when their permission profile also allows Archive permissions.
+              Choose whether this user can open Archives and whether they can view all archive assets or only selected assets.
             </p>
-            <label
-              className={cn(
-                "mt-4 flex items-start gap-3 rounded-[18px] border border-[#edf2ed] bg-white px-4 py-4",
-                form.role === "SUPER_ADMIN" && "bg-[#f8fbff]",
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={form.role === "SUPER_ADMIN" || form.canAccessArchives}
-                onChange={(event) => onChange("canAccessArchives", event.target.checked)}
-                disabled={saving || form.role === "SUPER_ADMIN"}
-                className="mt-1 h-4 w-4 rounded border-[#c6d6c8] accent-[#256a45]"
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              {[
+                {
+                  level: "NONE" as const,
+                  title: "No Access",
+                  description: "Hide Archives and block archive asset access.",
+                },
+                {
+                  level: "FULL" as const,
+                  title: "Full Access",
+                  description: "Allow all archive assets permitted by profile and category rules.",
+                },
+                {
+                  level: "PARTIAL" as const,
+                  title: "Partial Access",
+                  description: "Allow only the archive assets selected below.",
+                },
+              ].map((option) => {
+                const isClientHardDenied = form.collaboratorType === "CLIENT_OF_GTI";
+                const isSuperAdminLocked = form.role === "SUPER_ADMIN" && !isClientHardDenied;
+                const isChecked =
+                  (isSuperAdminLocked && option.level === "FULL") ||
+                  (isClientHardDenied && option.level === "NONE") ||
+                  form.archiveAccessLevel === option.level;
+
+                return (
+                  <button
+                    key={option.level}
+                    type="button"
+                    disabled={saving || isSuperAdminLocked || isClientHardDenied}
+                    onClick={() => onChange("archiveAccessLevel", option.level)}
+                    className={cn(
+                      "rounded-[18px] border px-4 py-4 text-left transition-colors",
+                      isChecked
+                        ? "border-[#aad2b3] bg-[#eef8ef] shadow-[0_10px_24px_rgba(31,91,58,0.08)]"
+                        : "border-[#edf2ed] bg-white hover:border-[#c8ddcb]",
+                    )}
+                  >
+                    <span className="flex items-start gap-3">
+                      <span
+                        className={cn(
+                          "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border",
+                          isChecked
+                            ? "border-[#2f8d5d] bg-[#2f8d5d]"
+                            : "border-[#cbd9cc] bg-white",
+                        )}
+                      >
+                        {isChecked ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[14px] font-[800] text-[#1a221c]">
+                          {option.title}
+                        </span>
+                        <span className="mt-1 block text-[12px] leading-5 text-[#6f796f]">
+                          {option.description}
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {form.role === "SUPER_ADMIN" && form.collaboratorType !== "CLIENT_OF_GTI" ? (
+              <p className="mt-3 rounded-[14px] bg-[#f8fbff] px-4 py-3 text-[12px] leading-5 text-[#5f6c75]">
+                Super Admins always retain full Archive access.
+              </p>
+            ) : null}
+
+            {form.collaboratorType === "CLIENT_OF_GTI" ? (
+              <p className="mt-3 rounded-[14px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] leading-5 text-[#bb4d49]">
+                GTI Client users cannot receive Archive access.
+              </p>
+            ) : null}
+
+            {form.archiveAccessLevel === "PARTIAL" &&
+            form.collaboratorType !== "CLIENT_OF_GTI" ? (
+              <ArchiveAssetAccessPicker
+                selectedAssets={form.archiveAssetAccesses}
+                disabled={saving}
+                onChange={(assets) => onChange("archiveAssetAccesses", assets)}
               />
-              <div className="min-w-0">
-                <p className="text-[14px] font-[700] text-[#1a221c]">
-                  Allow Archive module access
-                </p>
-                <p className="mt-1 text-[12px] leading-5 text-[#6f796f]">
-                  Super Admins always retain Archive access. Other users must be selected here before Archives appears in navigation.
-                </p>
-              </div>
-            </label>
+            ) : null}
           </div>
         </div>
 
@@ -372,7 +696,12 @@ function EditUserModal({
           <Button
             type="button"
             onClick={onSave}
-            disabled={saving}
+            disabled={
+              saving ||
+              (form.archiveAccessLevel === "PARTIAL" &&
+                form.role !== "SUPER_ADMIN" &&
+                form.archiveAssetAccesses.length === 0)
+            }
             className="min-w-[184px] rounded-[16px]"
           >
             {saving ? "Saving..." : "Save Changes"}
@@ -998,7 +1327,7 @@ export function UsersWorkspace({
         user.email,
         user.role,
         getCollaboratorTypeLabel(user.collaboratorType),
-        user.canAccessArchives ? "archive access" : "no archive access",
+        archiveAccessLabels[user.archiveAccessLevel],
         statusLabels[user.status],
       ]
         .join(" ")
@@ -1031,7 +1360,27 @@ export function UsersWorkspace({
     field: K,
     value: UserEditForm[K],
   ) {
-    setForm((current) => (current ? { ...current, [field]: value } : current));
+    setForm((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const next = { ...current, [field]: value };
+
+      if (next.collaboratorType === "CLIENT_OF_GTI") {
+        next.archiveAccessLevel = "NONE";
+        next.archiveAssetAccesses = [];
+      } else if (field === "role" && value === "SUPER_ADMIN") {
+        next.archiveAccessLevel = "FULL";
+        next.archiveAssetAccesses = [];
+      }
+
+      if (field === "archiveAccessLevel" && value !== "PARTIAL") {
+        next.archiveAssetAccesses = [];
+      }
+
+      return next;
+    });
   }
 
   function handleSave() {
@@ -1043,7 +1392,16 @@ export function UsersWorkspace({
 
     startTransition(async () => {
       try {
-        const result = await saveUserAccessAction(form);
+        const result = await saveUserAccessAction({
+          userId: form.userId,
+          role: form.role,
+          collaboratorType: form.collaboratorType,
+          archiveAccessLevel: form.archiveAccessLevel,
+          archiveAssetIds:
+            form.archiveAccessLevel === "PARTIAL"
+              ? form.archiveAssetAccesses.map((asset) => asset.id)
+              : [],
+        });
 
         if ("error" in result) {
           setDrawerError(result.error);
@@ -1105,7 +1463,7 @@ export function UsersWorkspace({
                   User Directory
                 </h2>
                 <p className="mt-1 text-[14px] text-[#748074]">
-                  Assign roles, collaborator types, and per-user Archive module access.
+                  Assign roles, collaborator types, and per-user Archive access levels.
                 </p>
               </div>
               <FilterBadge
@@ -1132,7 +1490,7 @@ export function UsersWorkspace({
                 />
                 <FilterBadge
                   icon={<Archive className="h-4 w-4 text-brand" />}
-                  text="Archive access per user"
+                  text="Archive access levels"
                 />
               </div>
             </div>
@@ -1189,14 +1547,8 @@ export function UsersWorkspace({
                         </StatusBadge>
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
-                        <StatusBadge
-                          className={
-                            user.canAccessArchives
-                              ? "border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]"
-                              : "border-[#f3d1cf] bg-[#fff0ef] text-[#d6544d]"
-                          }
-                        >
-                          {user.canAccessArchives ? "Allowed" : "Not Allowed"}
+                        <StatusBadge className={archiveAccessBadgeStyles[user.archiveAccessLevel]}>
+                          {archiveAccessLabels[user.archiveAccessLevel]}
                         </StatusBadge>
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
@@ -1253,7 +1605,7 @@ export function UsersWorkspace({
                 Permission model
               </p>
               <p className="mt-1 text-[14px] leading-6 text-[#748074]">
-                Effective access is role permissions intersected with collaborator type permissions for collaborator users. Archive module access also requires the per-user Archive Access grant.
+                Effective access is role permissions intersected with collaborator type permissions for collaborator users. Archive module access also requires a per-user Archive access level.
               </p>
             </div>
             {canManagePermissions ? (

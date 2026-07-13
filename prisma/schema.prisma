@@ -111,6 +111,12 @@ enum ArchiveRecordStatus {
   ARCHIVED
 }
 
+enum ArchiveAccessLevel {
+  NONE
+  FULL
+  PARTIAL
+}
+
 enum ProjectCompletionStepStatus {
   NOT_STARTED
   NOT_REQUIRED
@@ -210,8 +216,10 @@ model User {
   uploadedCompletionDocuments         ProjectCompletionDocument[]          @relation("ProjectCompletionDocumentUploadedBy")
   manualArchiveFiles                  ManualArchiveFile[]                  @relation("ManualArchiveFileUploadedBy")
   archiveAccess                       UserArchiveAccess?                   @relation("UserArchiveAccessUser")
+  archiveAssetAccesses                UserArchiveAssetAccess[]             @relation("UserArchiveAssetAccessUser")
   archiveCategoryAccesses             ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessUser")
   grantedArchiveAccesses              UserArchiveAccess[]                  @relation("UserArchiveAccessGrantedBy")
+  grantedArchiveAssetAccesses         UserArchiveAssetAccess[]             @relation("UserArchiveAssetAccessGrantedBy")
   createdArchiveCategoryAccesses      ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessCreatedBy")
   fluxAiConversations                 FluxAiConversation[]
   manualLibraryAssets                 ManualLibraryAsset[]                 @relation("ManualLibraryAssetUploadedBy")
@@ -236,14 +244,36 @@ model User {
 }
 
 model UserArchiveAccess {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  user        User     @relation("UserArchiveAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  id          String             @id @default(cuid())
+  userId      String             @unique
+  user        User               @relation("UserArchiveAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  level       ArchiveAccessLevel @default(FULL)
   grantedById String?
-  grantedBy   User?    @relation("UserArchiveAccessGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  grantedBy   User?              @relation("UserArchiveAccessGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
+  @@index([grantedById])
+}
+
+model UserArchiveAssetAccess {
+  id                    String               @id @default(cuid())
+  userId                String
+  user                  User                 @relation("UserArchiveAssetAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  archivedProjectFileId String?
+  archivedProjectFile   ArchivedProjectFile? @relation("UserArchiveAssetAccessArchivedProjectFile", fields: [archivedProjectFileId], references: [id], onDelete: Cascade)
+  manualArchiveFileId   String?
+  manualArchiveFile     ManualArchiveFile?   @relation("UserArchiveAssetAccessManualArchiveFile", fields: [manualArchiveFileId], references: [id], onDelete: Cascade)
+  grantedById           String?
+  grantedBy             User?                @relation("UserArchiveAssetAccessGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@unique([userId, archivedProjectFileId])
+  @@unique([userId, manualArchiveFileId])
+  @@index([userId])
+  @@index([archivedProjectFileId])
+  @@index([manualArchiveFileId])
   @@index([grantedById])
 }
 
@@ -864,15 +894,15 @@ model ProjectArchive {
 }
 
 model ArchivedProjectFile {
-  id                   String                  @id @default(cuid())
+  id                   String                   @id @default(cuid())
   archiveId            String
-  archive              ProjectArchive          @relation(fields: [archiveId], references: [id], onDelete: Cascade)
+  archive              ProjectArchive           @relation(fields: [archiveId], references: [id], onDelete: Cascade)
   projectId            String
-  project              Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project              Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sourceAttachmentId   String
-  sourceAttachment     ProjectAttachment       @relation("ArchivedProjectFileSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Restrict)
+  sourceAttachment     ProjectAttachment        @relation("ArchivedProjectFileSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Restrict)
   sourceRevisionId     String?
-  sourceRevision       ProjectRevision?        @relation("ArchivedProjectFileSourceRevision", fields: [sourceRevisionId], references: [id], onDelete: SetNull)
+  sourceRevision       ProjectRevision?         @relation("ArchivedProjectFileSourceRevision", fields: [sourceRevisionId], references: [id], onDelete: SetNull)
   finalArchiveFileName String
   originalFileName     String
   mimeType             String
@@ -880,11 +910,12 @@ model ArchivedProjectFile {
   bucket               String
   storageKey           String
   archivedById         String
-  archivedBy           User                    @relation("ArchivedProjectFileArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  archivedBy           User                     @relation("ArchivedProjectFileArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
   artworkMetadata      ArchiveArtworkMetadata?
+  userArchiveAccesses  UserArchiveAssetAccess[] @relation("UserArchiveAssetAccessArchivedProjectFile")
   archivedAt           DateTime
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
 
   @@unique([archiveId, finalArchiveFileName])
   @@unique([archiveId, sourceAttachmentId])
@@ -1033,26 +1064,27 @@ model ProjectCompletionDocument {
 }
 
 model ManualArchiveFile {
-  id                String                                @id @default(cuid())
-  fileName          String
-  originalFileName  String
-  projectName       String?
-  projectCreatedBy  String?
-  archiveCategoryId String?
-  archiveCategory   ArchiveCategory?                      @relation(fields: [archiveCategoryId], references: [id], onDelete: SetNull)
-  projectDate       DateTime?
-  mimeType          String
-  fileSize          Int
-  bucket            String
-  storageKey        String                                @unique
-  status            AttachmentStatus                      @default(UPLOADING)
-  uploadedById      String
-  uploadedBy        User                                  @relation("ManualArchiveFileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
-  assetTags         ManualArchiveFileAssetTagAssignment[]
-  artworkMetadata   ArchiveArtworkMetadata?
-  uploadedAt        DateTime                              @default(now())
-  createdAt         DateTime                              @default(now())
-  updatedAt         DateTime                              @updatedAt
+  id                  String                                @id @default(cuid())
+  fileName            String
+  originalFileName    String
+  projectName         String?
+  projectCreatedBy    String?
+  archiveCategoryId   String?
+  archiveCategory     ArchiveCategory?                      @relation(fields: [archiveCategoryId], references: [id], onDelete: SetNull)
+  projectDate         DateTime?
+  mimeType            String
+  fileSize            Int
+  bucket              String
+  storageKey          String                                @unique
+  status              AttachmentStatus                      @default(UPLOADING)
+  uploadedById        String
+  uploadedBy          User                                  @relation("ManualArchiveFileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  assetTags           ManualArchiveFileAssetTagAssignment[]
+  artworkMetadata     ArchiveArtworkMetadata?
+  userArchiveAccesses UserArchiveAssetAccess[]              @relation("UserArchiveAssetAccessManualArchiveFile")
+  uploadedAt          DateTime                              @default(now())
+  createdAt           DateTime                              @default(now())
+  updatedAt           DateTime                              @updatedAt
 
   @@index([archiveCategoryId, uploadedAt])
   @@index([uploadedById])

@@ -148,18 +148,25 @@ export function isClientOfGtiUser(
     collaboratorType?: PermissionUser["collaboratorType"];
   },
 ) {
-  return (
-    user.role === UserRole.COLLABORATOR &&
-    user.collaboratorType === "CLIENT_OF_GTI"
-  );
+  return user.collaboratorType === "CLIENT_OF_GTI";
+}
+
+export function getArchiveAccessLevel(user: PermissionUser) {
+  if (isClientOfGtiUser(user)) {
+    return "NONE" as const;
+  }
+
+  if (user.role === UserRole.SUPER_ADMIN) {
+    return "FULL" as const;
+  }
+
+  return user.permissionProfileSnapshot?.archiveAccessLevel ?? "NONE";
 }
 
 export function canUseArchives(user: PermissionUser) {
   return (
-    !isClientOfGtiUser(user) &&
     hasPermission(user, "archive.view") &&
-    (user.role === UserRole.SUPER_ADMIN ||
-      Boolean(user.permissionProfileSnapshot?.archiveAccessGranted))
+    getArchiveAccessLevel(user) !== "NONE"
   );
 }
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
-import { UserRole } from "@prisma/client";
+import { AttachmentStatus, UserRole } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
 import { CALENDAR_CACHE_TAG } from "@/lib/calendar";
@@ -33,13 +33,25 @@ import {
   countSuperAdmins,
   getManagedUserPermissionRecord,
   updateManagedUserPermissions,
+  type ManagedArchiveAccessLevel,
+  type ManagedArchiveAssetAccessRecord,
 } from "@/lib/user-permissions";
 
 type SaveUserAccessInput = {
   userId: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
-  canAccessArchives: boolean;
+  archiveAccessLevel: ManagedArchiveAccessLevel;
+  archiveAssetIds?: string[];
+};
+
+type SearchArchiveAccessAssetsInput = {
+  query?: string;
+  categoryId?: string;
+};
+
+type ArchiveAccessAssetSearchRecord = ManagedArchiveAssetAccessRecord & {
+  recordTypeLabel: string;
 };
 
 type PermissionProfileInput = {
@@ -115,6 +127,44 @@ async function requireSuperAdminPermission(permissionKey: PermissionKey) {
   return currentUser;
 }
 
+function formatArchiveAccessDate(date: Date | null | undefined) {
+  if (!date) {
+    return "Not dated";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function normalizeArchiveAssetSearchTerm(query: string | undefined) {
+  return query?.trim().slice(0, 120) ?? "";
+}
+
+function getArchiveAssetSearchRecord(input: {
+  id: string;
+  recordType: "FINAL_ARCHIVE_FILE" | "MANUAL_ARCHIVE_FILE";
+  fileName: string;
+  categoryId: string | null;
+  categoryLabel: string;
+  sourceLabel: string;
+  archivedAt: Date | null;
+}): ArchiveAccessAssetSearchRecord {
+  return {
+    id: `${input.recordType === "FINAL_ARCHIVE_FILE" ? "project" : "manual"}:${input.id}`,
+    recordType: input.recordType,
+    recordTypeLabel:
+      input.recordType === "FINAL_ARCHIVE_FILE" ? "Final Archive File" : "Manual Archive File",
+    fileName: input.fileName,
+    categoryId: input.categoryId,
+    categoryLabel: input.categoryLabel,
+    sourceLabel: input.sourceLabel,
+    archivedAtLabel: formatArchiveAccessDate(input.archivedAt),
+  };
+}
+
 export async function saveUserAccessAction(input: SaveUserAccessInput) {
   const currentUser = await requireSuperAdminPermission("users.update");
 
@@ -165,7 +215,8 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     userId,
     role: input.role,
     collaboratorType: input.collaboratorType,
-    canAccessArchives: Boolean(input.canAccessArchives),
+    archiveAccessLevel: input.archiveAccessLevel,
+    archiveAssetIds: input.archiveAssetIds ?? [],
     updatedById: currentUser.id,
   });
 
@@ -174,6 +225,255 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
   return {
     success: true,
     user,
+  };
+}
+
+export async function searchArchiveAssetsForAccessAction(
+  input: SearchArchiveAccessAssetsInput,
+) {
+  const currentUser = await requireSuperAdminPermission("users.update");
+
+  if (!currentUser) {
+    return { error: "Only super admins with user update access can search archive assets." };
+  }
+
+  const query = normalizeArchiveAssetSearchTerm(input.query);
+  const categoryId = input.categoryId?.trim() || "";
+  const queryWhere = query
+    ? {
+        OR: [
+          {
+            finalArchiveFileName: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            originalFileName: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            archive: {
+              is: {
+                projectName: {
+                  contains: query,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          },
+          {
+            archive: {
+              is: {
+                projectCategory: {
+                  contains: query,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          },
+          {
+            archive: {
+              is: {
+                projectTag: {
+                  contains: query,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          },
+          {
+            artworkMetadata: {
+              is: {
+                artworkId: {
+                  contains: query,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          },
+          {
+            artworkMetadata: {
+              is: {
+                titleWorkingName: {
+                  contains: query,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          },
+        ],
+      }
+    : {};
+  const manualQueryWhere = query
+    ? {
+        OR: [
+          {
+            fileName: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            originalFileName: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            projectName: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            projectCreatedBy: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            artworkMetadata: {
+              is: {
+                artworkId: {
+                  contains: query,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          },
+          {
+            artworkMetadata: {
+              is: {
+                titleWorkingName: {
+                  contains: query,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          },
+        ],
+      }
+    : {};
+
+  const [categories, projectFiles, manualFiles] = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.archiveCategory.findMany({
+        where: {
+          isActive: true,
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+        },
+      }),
+      prisma.archivedProjectFile.findMany({
+        where: {
+          ...queryWhere,
+          ...(categoryId
+            ? {
+                archive: {
+                  is: {
+                    archiveCategoryId: categoryId,
+                  },
+                },
+              }
+            : {}),
+        },
+        orderBy: [
+          {
+            archivedAt: "desc",
+          },
+          {
+            finalArchiveFileName: "asc",
+          },
+        ],
+        take: 50,
+        select: {
+          id: true,
+          finalArchiveFileName: true,
+          archivedAt: true,
+          archive: {
+            select: {
+              projectName: true,
+              archiveCategory: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.manualArchiveFile.findMany({
+        where: {
+          ...manualQueryWhere,
+          status: AttachmentStatus.READY,
+          ...(categoryId ? { archiveCategoryId: categoryId } : {}),
+        },
+        orderBy: [
+          {
+            uploadedAt: "desc",
+          },
+          {
+            fileName: "asc",
+          },
+        ],
+        take: 50,
+        select: {
+          id: true,
+          fileName: true,
+          uploadedAt: true,
+          projectName: true,
+          archiveCategory: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      }),
+    ]),
+  );
+
+  const assets = [
+    ...projectFiles.map((file) =>
+      getArchiveAssetSearchRecord({
+        id: file.id,
+        recordType: "FINAL_ARCHIVE_FILE",
+        fileName: file.finalArchiveFileName,
+        categoryId: file.archive.archiveCategory?.id ?? null,
+        categoryLabel: file.archive.archiveCategory?.name ?? "Uncategorized",
+        sourceLabel: file.archive.projectName,
+        archivedAt: file.archivedAt,
+      }),
+    ),
+    ...manualFiles.map((file) =>
+      getArchiveAssetSearchRecord({
+        id: file.id,
+        recordType: "MANUAL_ARCHIVE_FILE",
+        fileName: file.fileName,
+        categoryId: file.archiveCategory?.id ?? null,
+        categoryLabel: file.archiveCategory?.name ?? "Uncategorized",
+        sourceLabel: file.projectName?.trim() || "Manual Archive",
+        archivedAt: file.uploadedAt,
+      }),
+    ),
+  ]
+    .sort((left, right) =>
+      right.archivedAtLabel.localeCompare(left.archivedAtLabel) ||
+      left.fileName.localeCompare(right.fileName),
+    )
+    .slice(0, 75);
+
+  return {
+    success: true,
+    assets,
+    categories,
   };
 }
 

@@ -39,6 +39,7 @@ export type PermissionProfileSnapshot = {
   rolePermissions: ReadonlySet<PermissionKey>;
   collaboratorTypePermissions: ReadonlySet<PermissionKey>;
   archiveAccessGranted: boolean;
+  archiveAccessLevel: "NONE" | "FULL" | "PARTIAL";
 };
 
 export type PermissionSyncResult = {
@@ -642,6 +643,7 @@ export async function getPermissionProfileSnapshotForUser(
       },
       select: {
         id: true,
+        level: true,
       },
     }),
   ]);
@@ -697,7 +699,11 @@ export async function getPermissionProfileSnapshotForUser(
     effectivePermissions,
     rolePermissions,
     collaboratorTypePermissions,
-    archiveAccessGranted: Boolean(archiveAccess),
+    archiveAccessGranted: Boolean(archiveAccess && archiveAccess.level !== "NONE"),
+    archiveAccessLevel:
+      user.role === UserRole.SUPER_ADMIN
+        ? "FULL"
+        : archiveAccess?.level ?? "NONE",
   };
 }
 
