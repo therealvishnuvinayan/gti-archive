@@ -4407,6 +4407,16 @@ export function ProjectChatWorkspace({
     });
   }
 
+  function navigateToStage(nextStageId: string) {
+    setCompletionPrompt(null);
+    router.push(
+      `/projects/${encodeURIComponent(project.id)}/chat?stage=${encodeURIComponent(nextStageId)}`,
+    );
+    window.requestAnimationFrame(() => {
+      chatScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
   async function loadEarlierMessages() {
     const activeStageId = activeStage?.id;
 
@@ -7200,6 +7210,42 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
+              {completionPrompt?.nextStageId && !completionPrompt.allStagesCompleted ? (
+                <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#acd9bd] bg-[linear-gradient(135deg,#f5fff6,#e6f7ea)] p-3 shadow-[0_18px_42px_rgba(22,93,56,0.16)] backdrop-blur">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                        Stage completed
+                      </p>
+                      <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
+                        You can now move to the next stage.
+                      </p>
+                      {completionPrompt.nextStageLabel ? (
+                        <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
+                          Next stage: {completionPrompt.nextStageLabel}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        className="min-h-[44px] rounded-full px-5 text-[14px] font-[800] shadow-[0_12px_24px_rgba(34,102,70,0.2)]"
+                        onClick={() => navigateToStage(completionPrompt.nextStageId as string)}
+                      >
+                        Go to Next Stage
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="min-h-[44px] rounded-full border border-[#cfe0d4] bg-white px-5 text-[14px] font-[800] text-[#24573d]"
+                        onClick={() => setCompletionPrompt(null)}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {showSubmitWorkAction &&
               hasAcceptedBrief &&
               (canSubmitNewRevision || isUploadingRevision) ? (
@@ -7337,31 +7383,15 @@ export function ProjectChatWorkspace({
                   </Card>
                 ) : null}
 
-                {completionPrompt ? (
+                {completionPrompt?.allStagesCompleted ? (
                   <Card className="rounded-[18px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
                     <CardContent className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-[14px] font-semibold text-[#173120]">
-                          {completionPrompt.allStagesCompleted
-                            ? "All stages completed. Final project completion is now available."
-                            : "Stage completed. You can now move to the next stage."}
+                          All stages completed. Final project completion is now available.
                         </p>
-                        {completionPrompt.nextStageLabel && !completionPrompt.allStagesCompleted ? (
-                          <p className="mt-1 text-[12px] text-[#5f6b62]">
-                            Next stage: {completionPrompt.nextStageLabel}
-                          </p>
-                        ) : null}
                       </div>
                       <div className="flex gap-2">
-                        {completionPrompt.nextStageId && !completionPrompt.allStagesCompleted ? (
-                          <Button asChild size="sm" className="rounded-full text-[12px]">
-                            <Link
-                              href={`/projects/${project.id}/chat?stage=${completionPrompt.nextStageId}`}
-                            >
-                              Go to Next Stage
-                            </Link>
-                          </Button>
-                        ) : null}
                         <Button
                           type="button"
                           size="sm"

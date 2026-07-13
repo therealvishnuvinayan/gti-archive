@@ -49,6 +49,17 @@ assert(
 );
 
 assert(
+  chatSource.includes("function navigateToStage(nextStageId: string)") &&
+    chatSource.includes("router.push(") &&
+    chatSource.includes("encodeURIComponent(nextStageId)") &&
+    chatSource.includes("completionPrompt?.nextStageId && !completionPrompt.allStagesCompleted") &&
+    chatSource.includes("sticky top-[56px]") &&
+    chatSource.includes("Go to Next Stage") &&
+    !inlineCompletionBlock.includes("Go to Next Stage"),
+  "Go to Next Stage must render as a sticky action bar and navigate through the Stage Chat router handler.",
+);
+
+assert(
   !inlineCompletionBlock.includes("<ProjectCompletionChecklist"),
   "Stage Chat must not render the full Project Completion checklist inline.",
 );
