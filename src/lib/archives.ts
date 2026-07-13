@@ -56,6 +56,17 @@ import {
   type AssetTagAssignmentRecord,
   type AssetTagRecord,
 } from "@/lib/asset-tags";
+import {
+  formatArchiveMetadataDate,
+  getArchiveArtworkMetadataMissingGroups,
+  type ArchiveArtworkMetadataDraft,
+  type ArchiveArtworkMetadataMissingGroup,
+} from "@/lib/archive-artwork-metadata";
+
+export type {
+  ArchiveArtworkMetadataDraft,
+  ArchiveArtworkMetadataMissingGroup,
+} from "@/lib/archive-artwork-metadata";
 
 export type ArchiveAccessUser = Pick<
   User,
@@ -125,51 +136,6 @@ export type ArchiveArtworkMetadataSummary = {
   approvedByName: string;
   changeLog: string;
   generalNotes: string | null;
-};
-
-export type ArchiveArtworkMetadataDraft = {
-  artworkId: string;
-  titleWorkingName: string;
-  versionRevision: string;
-  languageMarket: string;
-  artworkType: string;
-  brandSubBrand: string;
-  productSku: string;
-  campaignProject: string;
-  formatDimensions: string;
-  colourSpace: string;
-  resolution: string;
-  fileFormats: string;
-  printProcess: string;
-  specialFinishes: string;
-  creationDate: string;
-  lastModifiedDate: string;
-  goLiveOnShelfDate: string;
-  expirySunsetDate: string;
-  archiveStatus: string;
-  createdByName: string;
-  approvedByName: string;
-  approvedAt: string;
-  clientBrandOwner: string;
-  regulatoryClearance: string;
-  fontsUsed: string;
-  imagesPhotography: string;
-  illustrationsIcons: string;
-  colourCodes: string;
-  thirdPartyLogosIp: string;
-  supplierPrinter: string;
-  outputFilesList: string;
-  printProofRef: string;
-  packagingDielineRef: string;
-  changeLog: string;
-  relatedArtworks: string;
-  briefSpecLink: string;
-  generalNotes: string;
-};
-
-export type ArchiveArtworkMetadataMissingGroup = {
-  section: string;
-  fields: string[];
 };
 
 export type ProjectArchivePreparationFile = {
@@ -249,6 +215,13 @@ type RequestArchiveUploadInput = {
   archiveCategoryId?: string | null;
   assetTagIds?: string[];
   projectDate?: string | null;
+};
+
+type CompleteArchiveUploadInput = {
+  failed?: boolean;
+  finalArchiveFileName?: string | null;
+  archiveCategoryId?: string | null;
+  artworkMetadata?: ArchiveArtworkMetadataDraft;
 };
 
 type ArchiveCategoryDisplay = {
@@ -552,20 +525,7 @@ function normalizeOptionalArchiveText(value: string | null | undefined) {
 }
 
 function resolveUploadedFileName(fileName: string, originalFileName: string) {
-  const trimmedFileName = fileName.trim();
-
-  if (!trimmedFileName) {
-    throw new Error("File name is required.");
-  }
-
-  const displayExtension = getFileExtension(trimmedFileName);
-  const originalExtension = getFileExtension(originalFileName);
-
-  if (!displayExtension && originalExtension) {
-    return `${trimmedFileName}.${originalExtension}`;
-  }
-
-  return trimmedFileName;
+  return validateArchiveFileName(originalFileName, fileName, new Set<string>());
 }
 
 function parseOptionalArchiveDate(value: string | null | undefined) {
@@ -593,20 +553,6 @@ function getArchiveFileTypeLabel(fileName: string, mimeType: string) {
 
   const subtype = mimeType.split("/")[1];
   return subtype ? subtype.toUpperCase() : "FILE";
-}
-
-function formatArchiveMetadataDate(value: Date | string | number | null | undefined) {
-  if (!value) {
-    return "";
-  }
-
-  const date = value instanceof Date ? value : new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toISOString().slice(0, 10);
 }
 
 function getArtworkTypeFromProjectCategory(category: string) {
@@ -1267,32 +1213,6 @@ function validateArchiveFileName(
   return nextName;
 }
 
-const requiredArchiveArtworkMetadataFields: Array<{
-  section: string;
-  label: string;
-  key: keyof ArchiveArtworkMetadataDraft;
-}> = [
-  { section: "Identification", label: "Artwork ID", key: "artworkId" },
-  { section: "Identification", label: "Title / Working name", key: "titleWorkingName" },
-  { section: "Identification", label: "Version / Revision", key: "versionRevision" },
-  { section: "Identification", label: "Language / Market", key: "languageMarket" },
-  { section: "Classification", label: "Artwork type", key: "artworkType" },
-  { section: "Classification", label: "Brand / Sub-brand", key: "brandSubBrand" },
-  { section: "Technical Specs", label: "Colour space", key: "colourSpace" },
-  { section: "Technical Specs", label: "File format(s)", key: "fileFormats" },
-  { section: "Dates & Status", label: "Creation date", key: "creationDate" },
-  { section: "Dates & Status", label: "Last modified", key: "lastModifiedDate" },
-  { section: "Dates & Status", label: "Status", key: "archiveStatus" },
-  { section: "Ownership & Approvals", label: "Created by", key: "createdByName" },
-  { section: "Ownership & Approvals", label: "Approved by", key: "approvedByName" },
-  { section: "Ownership & Approvals", label: "Client / Brand owner", key: "clientBrandOwner" },
-  { section: "Assets & Rights", label: "Fonts used", key: "fontsUsed" },
-  { section: "Assets & Rights", label: "Images / Photography", key: "imagesPhotography" },
-  { section: "Assets & Rights", label: "Illustrations / Icons", key: "illustrationsIcons" },
-  { section: "Assets & Rights", label: "Colour codes", key: "colourCodes" },
-  { section: "Notes & Links", label: "Change log", key: "changeLog" },
-];
-
 function normalizeArchiveMetadataValue(value: string | null | undefined) {
   const trimmed = value?.trim() ?? "";
   return trimmed || null;
@@ -1322,32 +1242,19 @@ function parseArchiveMetadataDate(
   return date;
 }
 
-export function getArchiveArtworkMetadataMissingGroups(
-  metadata: ArchiveArtworkMetadataDraft,
-) {
-  const grouped = new Map<string, string[]>();
-
-  requiredArchiveArtworkMetadataFields.forEach((field) => {
-    if (metadata[field.key]?.trim()) {
-      return;
-    }
-
-    grouped.set(field.section, [...(grouped.get(field.section) ?? []), field.label]);
-  });
-
-  return Array.from(grouped.entries()).map(([section, fields]) => ({
-    section,
-    fields,
-  })) satisfies ArchiveArtworkMetadataMissingGroup[];
-}
-
 function formatArchiveMetadataMissingGroups(groups: ArchiveArtworkMetadataMissingGroup[]) {
   return groups.map((group) => `${group.section}: ${group.fields.join(", ")}`);
 }
 
 function validateArchiveArtworkMetadataInput(input: {
   metadata: ArchiveArtworkMetadataDraft | undefined;
-  file: ArchivableAttachment;
+  file: {
+    uploadedById?: string | null;
+    approvedById?: string | null;
+    createdByUserId?: string | null;
+    approvedByUserId?: string | null;
+    approvedAt?: Date | null;
+  };
 }) {
   if (!input.metadata) {
     throw new Error("Archive metadata is required for every final file.");
@@ -1397,9 +1304,9 @@ function validateArchiveArtworkMetadataInput(input: {
     ),
     archiveStatus: input.metadata.archiveStatus.trim(),
     createdByName: input.metadata.createdByName.trim(),
-    createdByUserId: input.file.uploadedById,
+    createdByUserId: input.file.createdByUserId ?? input.file.uploadedById ?? null,
     approvedByName: input.metadata.approvedByName.trim(),
-    approvedByUserId: input.file.approvedById,
+    approvedByUserId: input.file.approvedByUserId ?? input.file.approvedById ?? null,
     approvedAt:
       parseArchiveMetadataDate(input.metadata.approvedAt, "Approved at", {
         required: false,
@@ -1419,6 +1326,64 @@ function validateArchiveArtworkMetadataInput(input: {
     relatedArtworks: normalizeArchiveMetadataValue(input.metadata.relatedArtworks),
     briefSpecLink: normalizeArchiveMetadataValue(input.metadata.briefSpecLink),
     generalNotes: normalizeArchiveMetadataValue(input.metadata.generalNotes),
+  };
+}
+
+function buildArchiveArtworkMetadataCreateData(input: {
+  sourceType: "PROJECT_FINAL_FILE" | "DIRECT_UPLOAD";
+  archiveFileId?: string | null;
+  manualArchiveFileId?: string | null;
+  projectId?: string | null;
+  sourceAttachmentId?: string | null;
+  artworkMetadata: ReturnType<typeof validateArchiveArtworkMetadataInput>;
+  archivedById: string;
+}) {
+  return {
+    sourceType: input.sourceType,
+    archiveFileId: input.archiveFileId ?? null,
+    manualArchiveFileId: input.manualArchiveFileId ?? null,
+    projectId: input.projectId ?? null,
+    sourceAttachmentId: input.sourceAttachmentId ?? null,
+    artworkId: input.artworkMetadata.artworkId,
+    titleWorkingName: input.artworkMetadata.titleWorkingName,
+    versionRevision: input.artworkMetadata.versionRevision,
+    languageMarket: input.artworkMetadata.languageMarket,
+    artworkType: input.artworkMetadata.artworkType,
+    brandSubBrand: input.artworkMetadata.brandSubBrand,
+    productSku: input.artworkMetadata.productSku,
+    campaignProject: input.artworkMetadata.campaignProject,
+    formatDimensions: input.artworkMetadata.formatDimensions,
+    colourSpace: input.artworkMetadata.colourSpace,
+    resolution: input.artworkMetadata.resolution,
+    fileFormats: input.artworkMetadata.fileFormats,
+    printProcess: input.artworkMetadata.printProcess,
+    specialFinishes: input.artworkMetadata.specialFinishes,
+    creationDate: input.artworkMetadata.creationDate,
+    lastModifiedDate: input.artworkMetadata.lastModifiedDate,
+    goLiveOnShelfDate: input.artworkMetadata.goLiveOnShelfDate,
+    expirySunsetDate: input.artworkMetadata.expirySunsetDate,
+    archiveStatus: input.artworkMetadata.archiveStatus,
+    createdByName: input.artworkMetadata.createdByName,
+    createdByUserId: input.artworkMetadata.createdByUserId,
+    approvedByName: input.artworkMetadata.approvedByName,
+    approvedByUserId: input.artworkMetadata.approvedByUserId,
+    approvedAt: input.artworkMetadata.approvedAt,
+    clientBrandOwner: input.artworkMetadata.clientBrandOwner,
+    regulatoryClearance: input.artworkMetadata.regulatoryClearance,
+    fontsUsed: input.artworkMetadata.fontsUsed,
+    imagesPhotography: input.artworkMetadata.imagesPhotography,
+    illustrationsIcons: input.artworkMetadata.illustrationsIcons,
+    colourCodes: input.artworkMetadata.colourCodes,
+    thirdPartyLogosIp: input.artworkMetadata.thirdPartyLogosIp,
+    supplierPrinter: input.artworkMetadata.supplierPrinter,
+    outputFilesList: input.artworkMetadata.outputFilesList,
+    printProofRef: input.artworkMetadata.printProofRef,
+    packagingDielineRef: input.artworkMetadata.packagingDielineRef,
+    changeLog: input.artworkMetadata.changeLog,
+    relatedArtworks: input.artworkMetadata.relatedArtworks,
+    briefSpecLink: input.artworkMetadata.briefSpecLink,
+    generalNotes: input.artworkMetadata.generalNotes,
+    archivedById: input.archivedById,
   };
 }
 
@@ -1492,6 +1457,7 @@ function mapManualArchiveFileRecord(input: {
   fileSize: number;
   uploadedAt: Date;
   uploadedBy: Pick<User, "name" | "email">;
+  artworkMetadata?: ArchiveArtworkMetadataSummary | null;
 }) {
   const assetTags = mapAssetTagAssignments(input.assetTags);
   const category = getArchiveCategoryDisplay(input.archiveCategory);
@@ -1519,7 +1485,7 @@ function mapManualArchiveFileRecord(input: {
     fileSizeLabel: formatArchiveFileSize(input.fileSize),
     archivedAt: formatArchiveTimestamp(input.uploadedAt) ?? "—",
     archivedBy: getUserDisplayName(input.uploadedBy),
-    artworkMetadata: null,
+    artworkMetadata: input.artworkMetadata ?? null,
     previewPath: `/api/archives/files/${input.id}/preview`,
     downloadPath: `/api/archives/files/${input.id}/download`,
   } satisfies ArchivedProjectFileRecord;
@@ -1813,62 +1779,141 @@ export async function requestArchiveFileUpload(
 export async function completeArchiveFileUpload(
   user: ArchiveAccessUser,
   archiveFileId: string,
-  failed = false,
+  input: CompleteArchiveUploadInput = {},
 ) {
   if (!canUploadArchiveFiles(user)) {
     throw new Error("You do not have permission to upload to Archives.");
   }
 
-  return withPrismaRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const archiveFile = await tx.manualArchiveFile.findUnique({
-        where: {
-          id: archiveFileId,
-        },
-        select: {
-          id: true,
-          uploadedById: true,
-          status: true,
-          archiveCategory: {
-            select: {
-              slug: true,
-            },
+  const archiveFile = await withPrismaRetry(() =>
+    prisma.manualArchiveFile.findUnique({
+      where: {
+        id: archiveFileId,
+      },
+      select: {
+        id: true,
+        uploadedById: true,
+        status: true,
+        fileName: true,
+        originalFileName: true,
+        archiveCategoryId: true,
+        archiveCategory: {
+          select: {
+            slug: true,
           },
         },
-      });
+      },
+    }),
+  );
 
-      if (!archiveFile) {
-        throw new Error("Archive upload not found.");
-      }
+  if (!archiveFile) {
+    throw new Error("Archive upload not found.");
+  }
 
-      if (archiveFile.uploadedById !== user.id) {
-        throw new Error("Only the uploader can complete this archive upload.");
-      }
+  if (archiveFile.uploadedById !== user.id) {
+    throw new Error("Only the uploader can complete this archive upload.");
+  }
 
-      if (archiveFile.status === AttachmentStatus.READY) {
-        return {
-          archiveCategorySlug: archiveFile.archiveCategory?.slug ?? null,
-        };
-      }
+  if (archiveFile.status === AttachmentStatus.READY) {
+    return {
+      archiveCategorySlug: archiveFile.archiveCategory?.slug ?? null,
+    };
+  }
 
-      if (archiveFile.status !== AttachmentStatus.UPLOADING) {
-        throw new Error("Archive upload is not active.");
-      }
+  if (archiveFile.status !== AttachmentStatus.UPLOADING) {
+    throw new Error("Archive upload is not active.");
+  }
 
-      const nextStatus = failed ? AttachmentStatus.FAILED : AttachmentStatus.READY;
+  if (input.failed) {
+    await withPrismaRetry(() =>
+      prisma.manualArchiveFile.update({
+        where: {
+          id: archiveFile.id,
+        },
+        data: {
+          status: AttachmentStatus.FAILED,
+        },
+      }),
+    );
 
+    return {
+      archiveCategorySlug: archiveFile.archiveCategory?.slug ?? null,
+    };
+  }
+
+  const archiveCategoryId = input.archiveCategoryId?.trim() || archiveFile.archiveCategoryId;
+
+  if (!archiveCategoryId) {
+    throw new Error("Choose an archive category before uploading.");
+  }
+
+  await assertCanUploadToArchiveCategory(user, archiveCategoryId);
+
+  const archiveCategory = await withPrismaRetry(() =>
+    prisma.archiveCategory.findFirst({
+      where: {
+        id: archiveCategoryId,
+        isActive: true,
+      },
+      select: {
+        slug: true,
+      },
+    }),
+  );
+
+  if (!archiveCategory) {
+    throw new Error("Choose a valid archive category.");
+  }
+
+  const finalArchiveFileName = validateArchiveFileName(
+    archiveFile.originalFileName,
+    input.finalArchiveFileName ?? archiveFile.fileName,
+    new Set<string>(),
+  );
+  const artworkMetadata = validateArchiveArtworkMetadataInput({
+    metadata: input.artworkMetadata,
+    file: {
+      createdByUserId: user.id,
+      approvedByUserId: user.id,
+      approvedAt: new Date(),
+    },
+  });
+  const archivedAt = new Date();
+
+  return withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
       await tx.manualArchiveFile.update({
         where: {
           id: archiveFile.id,
         },
         data: {
-          status: nextStatus,
-          uploadedAt: failed ? undefined : new Date(),
+          fileName: finalArchiveFileName,
+          archiveCategoryId,
+          status: AttachmentStatus.READY,
+          uploadedAt: archivedAt,
         },
       });
 
+      await tx.archiveArtworkMetadata.upsert({
+        where: {
+          manualArchiveFileId: archiveFile.id,
+        },
+        update: buildArchiveArtworkMetadataCreateData({
+          sourceType: "DIRECT_UPLOAD",
+          manualArchiveFileId: archiveFile.id,
+          artworkMetadata,
+          archivedById: user.id,
+        }),
+        create: buildArchiveArtworkMetadataCreateData({
+          sourceType: "DIRECT_UPLOAD",
+          manualArchiveFileId: archiveFile.id,
+          artworkMetadata,
+          archivedById: user.id,
+        }),
+      });
+
       return {
-        archiveCategorySlug: archiveFile.archiveCategory?.slug ?? null,
+        archiveCategorySlug: archiveCategory.slug,
       };
     }),
   );
@@ -2053,6 +2098,23 @@ export async function listArchivedFilesByCategory(
                   email: true,
                 },
               },
+              artworkMetadata: {
+                select: {
+                  artworkId: true,
+                  titleWorkingName: true,
+                  versionRevision: true,
+                  languageMarket: true,
+                  artworkType: true,
+                  brandSubBrand: true,
+                  productSku: true,
+                  campaignProject: true,
+                  archiveStatus: true,
+                  createdByName: true,
+                  approvedByName: true,
+                  changeLog: true,
+                  generalNotes: true,
+                },
+              },
             },
           })
         : Promise.resolve([]),
@@ -2099,6 +2161,7 @@ export async function listArchivedFilesByCategory(
         fileSize: file.fileSize,
         uploadedAt: file.uploadedAt,
         uploadedBy: file.uploadedBy,
+        artworkMetadata: file.artworkMetadata,
       }),
     })),
   ]

@@ -66,7 +66,16 @@ import {
   CompletedProjectArchiveSummaryCard,
   ProjectCompletionChecklist,
 } from "@/components/projects/project-completion-checklist";
-import { AppDatePicker } from "@/components/calendar/app-date-picker";
+import {
+  ArchiveMetadataIdentificationStep,
+  ArchiveMetadataReviewList,
+  ArchiveMetadataTechnicalStep,
+} from "@/components/archives/archive-artwork-metadata-form";
+import {
+  archiveProjectWizardSteps as archiveWizardSteps,
+  getArchiveArtworkMetadataMissingGroups as getArchiveMetadataMissingGroups,
+  type ArchiveArtworkMetadataDraft,
+} from "@/lib/archive-artwork-metadata";
 import {
   CollaboratorDialog,
   type CollaboratorForm,
@@ -101,8 +110,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useStageChatRealtime } from "@/hooks/use-stage-chat-realtime";
 import type {
-  ArchiveArtworkMetadataDraft,
-  ArchiveArtworkMetadataMissingGroup,
   ProjectArchivePreparation,
   ProjectCompletionSummary,
 } from "@/lib/archives";
@@ -949,88 +956,6 @@ function getArchiveFileNameError(
 }
 
 type ArchiveWizardStep = 0 | 1 | 2 | 3;
-
-const archiveWizardSteps = [
-  "Final Files",
-  "Archive Metadata",
-  "Rights & Production Details",
-  "Review & Archive",
-] as const;
-
-const archiveArtworkTypeOptions = [
-  "Packaging",
-  "Promo Item",
-  "Advertising & Print",
-  "Digital & Website",
-  "Video",
-  "POSMs & Retail",
-  "Corporate Identity",
-  "Logos & Icons",
-] as const;
-
-const archiveColourSpaceOptions = ["CMYK", "RGB", "Pantone", "Mixed"] as const;
-
-const archivePrintProcessOptions = [
-  "Offset",
-  "Rotogravure",
-  "Flexo",
-  "Digital",
-  "Screen",
-  "Dry Offset",
-  "Dye Sublimation",
-] as const;
-
-const archiveStatusOptions = ["WIP", "Review", "Approved", "Archived"] as const;
-
-const requiredArchiveMetadataFields: Array<{
-  section: string;
-  label: string;
-  key: keyof ArchiveArtworkMetadataDraft;
-}> = [
-  { section: "Identification", label: "Artwork ID", key: "artworkId" },
-  { section: "Identification", label: "Title / Working name", key: "titleWorkingName" },
-  { section: "Identification", label: "Version / Revision", key: "versionRevision" },
-  { section: "Identification", label: "Language / Market", key: "languageMarket" },
-  { section: "Classification", label: "Artwork type", key: "artworkType" },
-  { section: "Classification", label: "Brand / Sub-brand", key: "brandSubBrand" },
-  { section: "Technical Specs", label: "Colour space", key: "colourSpace" },
-  { section: "Technical Specs", label: "File format(s)", key: "fileFormats" },
-  { section: "Dates & Status", label: "Creation date", key: "creationDate" },
-  { section: "Dates & Status", label: "Last modified", key: "lastModifiedDate" },
-  { section: "Dates & Status", label: "Status", key: "archiveStatus" },
-  { section: "Ownership & Approvals", label: "Created by", key: "createdByName" },
-  { section: "Ownership & Approvals", label: "Approved by", key: "approvedByName" },
-  { section: "Ownership & Approvals", label: "Client / Brand owner", key: "clientBrandOwner" },
-  { section: "Assets & Rights", label: "Fonts used", key: "fontsUsed" },
-  { section: "Assets & Rights", label: "Images / Photography", key: "imagesPhotography" },
-  { section: "Assets & Rights", label: "Illustrations / Icons", key: "illustrationsIcons" },
-  { section: "Assets & Rights", label: "Colour codes", key: "colourCodes" },
-  { section: "Notes & Links", label: "Change log", key: "changeLog" },
-];
-
-function getArchiveMetadataMissingGroups(metadata: ArchiveArtworkMetadataDraft) {
-  const grouped = new Map<string, string[]>();
-
-  requiredArchiveMetadataFields.forEach((field) => {
-    if (metadata[field.key]?.trim()) {
-      return;
-    }
-
-    grouped.set(field.section, [...(grouped.get(field.section) ?? []), field.label]);
-  });
-
-  return Array.from(grouped.entries()).map(([section, fields]) => ({
-    section,
-    fields,
-  })) satisfies ArchiveArtworkMetadataMissingGroup[];
-}
-
-function getArchiveMetadataMissingCount(metadata: ArchiveArtworkMetadataDraft) {
-  return getArchiveMetadataMissingGroups(metadata).reduce(
-    (count, group) => count + group.fields.length,
-    0,
-  );
-}
 
 function uploadFileToS3WithProgress(input: {
   uploadUrl: string;
@@ -6994,6 +6919,12 @@ export function ProjectChatWorkspace({
     );
   }
 
+  const archiveMetadataWizardFiles =
+    archivePreparation?.files.map((file) => ({
+      id: file.sourceAttachmentId,
+      originalFileName: file.originalFileName,
+      metadata: archiveMetadataDrafts[file.sourceAttachmentId] ?? file.metadataDraft,
+    })) ?? [];
   const archiveMissingMetadataByFile =
     archivePreparation?.files.map((file) => {
       const metadata = archiveMetadataDrafts[file.sourceAttachmentId] ?? file.metadataDraft;
@@ -7015,113 +6946,6 @@ export function ProjectChatWorkspace({
     Boolean(archiveCategoryId) &&
     !archiveHasBlockingFileErrors &&
     archiveMissingMetadataCount === 0;
-
-  function renderArchiveMetadataField(input: {
-    sourceAttachmentId: string;
-    metadata: ArchiveArtworkMetadataDraft;
-    field: keyof ArchiveArtworkMetadataDraft;
-    label: string;
-    required?: boolean;
-    type?: "text" | "date" | "textarea";
-    options?: readonly string[];
-  }) {
-    const value = input.metadata[input.field] ?? "";
-    const isMissing = Boolean(input.required && !value.trim());
-    const inputId = `archive-${input.sourceAttachmentId}-${String(input.field)}`;
-    const label = (
-      <label
-        htmlFor={inputId}
-        className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#6c786f]"
-      >
-        {input.label}
-        {input.required ? " *" : ""}
-      </label>
-    );
-
-    if (input.options) {
-      return (
-        <div className="space-y-1.5">
-          {label}
-          <Select
-            value={value}
-            onValueChange={(nextValue) =>
-              updateArchiveMetadataField(input.sourceAttachmentId, input.field, nextValue)
-            }
-          >
-            <SelectTrigger
-              id={inputId}
-              className={`h-10 rounded-[14px] border ${isMissing ? "border-[#df6f66]" : "border-line"}`}
-            >
-              <SelectValue placeholder={`Select ${input.label.toLowerCase()}`} />
-            </SelectTrigger>
-            <SelectContent>
-              {input.options.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      );
-    }
-
-    if (input.type === "textarea") {
-      return (
-        <div className="space-y-1.5">
-          {label}
-          <Textarea
-            id={inputId}
-            value={value}
-            onChange={(event) =>
-              updateArchiveMetadataField(
-                input.sourceAttachmentId,
-                input.field,
-                event.target.value,
-              )
-            }
-            className={`min-h-[88px] rounded-[14px] border ${isMissing ? "border-[#df6f66]" : "border-line"}`}
-          />
-        </div>
-      );
-    }
-
-    if (input.type === "date") {
-      return (
-        <div className="space-y-1.5">
-          {label}
-          <AppDatePicker
-            id={inputId}
-            value={value}
-            onChange={(nextValue) =>
-              updateArchiveMetadataField(input.sourceAttachmentId, input.field, nextValue)
-            }
-            required={input.required}
-            clearable={!input.required}
-            placeholder={`Select ${input.label.toLowerCase()}`}
-            triggerClassName={`h-10 w-full justify-between rounded-[14px] border bg-white px-3 text-left text-[13px] font-normal shadow-none hover:bg-white ${
-              isMissing ? "border-[#df6f66]" : "border-line"
-            }`}
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-1.5">
-        {label}
-        <Input
-          id={inputId}
-          type="text"
-          value={value}
-          onChange={(event) =>
-            updateArchiveMetadataField(input.sourceAttachmentId, input.field, event.target.value)
-          }
-          className={`h-10 rounded-[14px] border ${isMissing ? "border-[#df6f66]" : "border-line"}`}
-        />
-      </div>
-    );
-  }
 
   return (
     <section className="min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-17rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
@@ -9587,425 +9411,46 @@ export function ProjectChatWorkspace({
               ) : null}
 
               {archiveWizardStep === 1 ? (
-                <div className="mt-5 space-y-4">
-                  <div className="flex flex-col gap-3 rounded-[20px] border border-line bg-[#fbfcfa] p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[15px] font-[800] text-[#173120]">
-                        Identification & Classification
-                      </p>
-                      <p className="mt-1 text-[12px] leading-5 text-[#687269]">
-                        Complete Artwork Legend identification for each final file.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="rounded-full text-[12px]"
-                      onClick={applyProjectMetadataToAllArchiveFiles}
-                    >
-                      Apply project metadata to all files
-                    </Button>
-                  </div>
-
-                  {archivePreparation.files.map((file) => {
-                    const metadata =
-                      archiveMetadataDrafts[file.sourceAttachmentId] ?? file.metadataDraft;
-                    const missingCount = getArchiveMetadataMissingCount(metadata);
-
-                    return (
-                      <div
-                        key={file.sourceAttachmentId}
-                        className="space-y-4 rounded-[20px] border border-[#dbe4dc] bg-white p-4"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-[14px] font-[800] text-[#173120]">
-                            {file.originalFileName}
-                          </p>
-                          <span
-                            className={`rounded-full px-3 py-1 text-[11px] font-[800] ${
-                              missingCount > 0
-                                ? "bg-[#fff2f1] text-[#bb4d49]"
-                                : "bg-[#edf7ef] text-[#2b8b56]"
-                            }`}
-                          >
-                            {missingCount > 0 ? `Missing ${missingCount}` : "Complete"}
-                          </span>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          {renderArchiveMetadataField({
-                            sourceAttachmentId: file.sourceAttachmentId,
-                            metadata,
-                            field: "artworkId",
-                            label: "Artwork ID",
-                            required: true,
-                          })}
-                          {renderArchiveMetadataField({
-                            sourceAttachmentId: file.sourceAttachmentId,
-                            metadata,
-                            field: "titleWorkingName",
-                            label: "Title / Working name",
-                            required: true,
-                          })}
-                          {renderArchiveMetadataField({
-                            sourceAttachmentId: file.sourceAttachmentId,
-                            metadata,
-                            field: "versionRevision",
-                            label: "Version / Revision",
-                            required: true,
-                          })}
-                          {renderArchiveMetadataField({
-                            sourceAttachmentId: file.sourceAttachmentId,
-                            metadata,
-                            field: "languageMarket",
-                            label: "Language / Market",
-                            required: true,
-                          })}
-                          {renderArchiveMetadataField({
-                            sourceAttachmentId: file.sourceAttachmentId,
-                            metadata,
-                            field: "artworkType",
-                            label: "Artwork type",
-                            required: true,
-                            options: archiveArtworkTypeOptions,
-                          })}
-                          {renderArchiveMetadataField({
-                            sourceAttachmentId: file.sourceAttachmentId,
-                            metadata,
-                            field: "brandSubBrand",
-                            label: "Brand / Sub-brand",
-                            required: true,
-                          })}
-                          {renderArchiveMetadataField({
-                            sourceAttachmentId: file.sourceAttachmentId,
-                            metadata,
-                            field: "productSku",
-                            label: "Product / SKU",
-                          })}
-                          {renderArchiveMetadataField({
-                            sourceAttachmentId: file.sourceAttachmentId,
-                            metadata,
-                            field: "campaignProject",
-                            label: "Campaign / Project",
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="mt-5">
+                  <ArchiveMetadataIdentificationStep
+                    files={archiveMetadataWizardFiles}
+                    onChange={updateArchiveMetadataField}
+                    onApplyToAll={applyProjectMetadataToAllArchiveFiles}
+                    disabled={isCompletingProject}
+                    description="Complete Artwork Legend identification for each final file."
+                  />
                 </div>
               ) : null}
 
               {archiveWizardStep === 2 ? (
-                <div className="mt-5 space-y-4">
-                  {archivePreparation.files.map((file) => {
-                    const metadata =
-                      archiveMetadataDrafts[file.sourceAttachmentId] ?? file.metadataDraft;
-
-                    return (
-                      <div
-                        key={file.sourceAttachmentId}
-                        className="space-y-5 rounded-[20px] border border-[#dbe4dc] bg-white p-4"
-                      >
-                        <p className="text-[14px] font-[800] text-[#173120]">
-                          {file.originalFileName}
-                        </p>
-                        <div>
-                          <p className="mb-3 text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
-                            Technical Specs
-                          </p>
-                          <div className="grid gap-3 md:grid-cols-3">
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "formatDimensions",
-                              label: "Format / Dimensions",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "colourSpace",
-                              label: "Colour space",
-                              required: true,
-                              options: archiveColourSpaceOptions,
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "resolution",
-                              label: "Resolution",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "fileFormats",
-                              label: "File format(s)",
-                              required: true,
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "printProcess",
-                              label: "Print process",
-                              options: archivePrintProcessOptions,
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "specialFinishes",
-                              label: "Special finishes",
-                            })}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="mb-3 text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
-                            Dates, Ownership & Approvals
-                          </p>
-                          <div className="grid gap-3 md:grid-cols-3">
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "creationDate",
-                              label: "Creation date",
-                              required: true,
-                              type: "date",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "lastModifiedDate",
-                              label: "Last modified",
-                              required: true,
-                              type: "date",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "archiveStatus",
-                              label: "Status",
-                              required: true,
-                              options: archiveStatusOptions,
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "goLiveOnShelfDate",
-                              label: "Go-live / On-shelf date",
-                              type: "date",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "expirySunsetDate",
-                              label: "Expiry / Sunset date",
-                              type: "date",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "approvedAt",
-                              label: "Approved at",
-                              type: "date",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "createdByName",
-                              label: "Created by",
-                              required: true,
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "approvedByName",
-                              label: "Approved by",
-                              required: true,
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "clientBrandOwner",
-                              label: "Client / Brand owner",
-                              required: true,
-                            })}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="mb-3 text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
-                            Assets, Rights & Production
-                          </p>
-                          <div className="grid gap-3 md:grid-cols-2">
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "fontsUsed",
-                              label: "Fonts used",
-                              required: true,
-                              type: "textarea",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "imagesPhotography",
-                              label: "Images / Photography",
-                              required: true,
-                              type: "textarea",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "illustrationsIcons",
-                              label: "Illustrations / Icons",
-                              required: true,
-                              type: "textarea",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "colourCodes",
-                              label: "Colour codes",
-                              required: true,
-                              type: "textarea",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "thirdPartyLogosIp",
-                              label: "3rd-party logos / IP",
-                              type: "textarea",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "regulatoryClearance",
-                              label: "Regulatory clearance",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "supplierPrinter",
-                              label: "Supplier / Printer",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "outputFilesList",
-                              label: "Output files list",
-                              type: "textarea",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "printProofRef",
-                              label: "Print proof ref",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "packagingDielineRef",
-                              label: "Packaging dieline ref",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "changeLog",
-                              label: "Change log",
-                              required: true,
-                              type: "textarea",
-                            })}
-                            {renderArchiveMetadataField({
-                              sourceAttachmentId: file.sourceAttachmentId,
-                              metadata,
-                              field: "generalNotes",
-                              label: "General notes",
-                              type: "textarea",
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="mt-5">
+                  <ArchiveMetadataTechnicalStep
+                    files={archiveMetadataWizardFiles}
+                    onChange={updateArchiveMetadataField}
+                    disabled={isCompletingProject}
+                  />
                 </div>
               ) : null}
 
               {archiveWizardStep === 3 ? (
-                <div className="mt-5 space-y-4">
-                  <div className="rounded-[20px] border border-line bg-[#fbfcfa] p-4">
-                    <p className="text-[15px] font-[800] text-[#173120]">Review & Archive</p>
-                    <p className="mt-1 text-[12px] leading-5 text-[#687269]">
-                      Archive category, file names, and required Artwork Legend metadata
-                      must be complete before archive.
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[12px] font-[800]">
-                      <span className="rounded-full bg-[#edf7ef] px-3 py-1 text-[#2b8b56]">
-                        {archivePreparation.files.length} final files
-                      </span>
-                      <span
-                        className={`rounded-full px-3 py-1 ${
-                          archiveMissingMetadataCount > 0
-                            ? "bg-[#fff2f1] text-[#bb4d49]"
-                            : "bg-[#edf7ef] text-[#2b8b56]"
-                        }`}
-                      >
-                        {archiveMissingMetadataCount > 0
-                          ? `${archiveMissingMetadataCount} metadata fields missing`
-                          : "Metadata complete"}
-                      </span>
-                    </div>
-                  </div>
+                <div className="mt-5">
+                  <ArchiveMetadataReviewList
+                    files={archiveMetadataWizardFiles}
+                    getFinalFileName={(file) => {
+                      const sourceFile = archivePreparation.files.find(
+                        (candidate) => candidate.sourceAttachmentId === file.id,
+                      );
 
-                  {archiveMissingMetadataByFile.map(({ file, metadata, missingGroups }) => (
-                    <div
-                      key={file.sourceAttachmentId}
-                      className="rounded-[20px] border border-[#dbe4dc] bg-white p-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[14px] font-[800] text-[#173120]">
-                            {metadata.artworkId || "Artwork ID missing"} ·{" "}
-                            {metadata.titleWorkingName || file.originalFileName}
-                          </p>
-                          <p className="mt-1 text-[12px] text-[#687269]">
-                            {metadata.brandSubBrand || "Brand missing"} ·{" "}
-                            {metadata.artworkType || "Artwork type missing"} ·{" "}
-                            {metadata.languageMarket || "Market missing"}
-                          </p>
-                          <p className="mt-1 text-[12px] text-[#687269]">
-                            Final name:{" "}
-                            {archiveFileNames[file.sourceAttachmentId] ??
-                              file.defaultArchiveFileName}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="rounded-full text-[12px]"
-                          onClick={() => setArchiveWizardStep(1)}
-                        >
-                          Edit Metadata
-                        </Button>
-                      </div>
-                      {missingGroups.length > 0 ? (
-                        <div className="mt-4 rounded-[16px] border border-[#f0c9c7] bg-[#fff7f6] p-3">
-                          <p className="text-[12px] font-[800] text-[#bb4d49]">
-                            Missing archive metadata
-                          </p>
-                          <ul className="mt-2 space-y-1 text-[12px] leading-5 text-[#8d4944]">
-                            {missingGroups.map((group) => (
-                              <li key={group.section}>
-                                {group.section}: {group.fields.join(", ")}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : (
-                        <p className="mt-4 rounded-[16px] border border-[#cfe6d5] bg-[#f3fbf4] px-3 py-2 text-[12px] font-[800] text-[#2b8b56]">
-                          Required metadata complete.
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                      return (
+                        archiveFileNames[file.id] ??
+                        sourceFile?.defaultArchiveFileName ??
+                        file.originalFileName
+                      );
+                    }}
+                    onEditMetadata={() => setArchiveWizardStep(1)}
+                    missingMetadataCount={archiveMissingMetadataCount}
+                    fileCountLabel={`${archivePreparation.files.length} final files`}
+                  />
                 </div>
               ) : null}
 

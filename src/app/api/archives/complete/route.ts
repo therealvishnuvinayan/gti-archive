@@ -3,6 +3,7 @@ import { after, NextResponse } from "next/server";
 
 import { completeArchiveFileUpload } from "@/lib/archives";
 import { getCurrentUser } from "@/lib/auth";
+import type { ArchiveArtworkMetadataDraft } from "@/lib/archive-artwork-metadata";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -14,6 +15,9 @@ export async function POST(request: Request) {
   let payload: {
     archiveFileId?: string;
     failed?: boolean;
+    finalArchiveFileName?: string;
+    archiveCategoryId?: string;
+    artworkMetadata?: ArchiveArtworkMetadataDraft;
   } = {};
 
   try {
@@ -30,7 +34,12 @@ export async function POST(request: Request) {
     const result = await completeArchiveFileUpload(
       user,
       payload.archiveFileId,
-      Boolean(payload.failed),
+      {
+        failed: Boolean(payload.failed),
+        finalArchiveFileName: payload.finalArchiveFileName,
+        archiveCategoryId: payload.archiveCategoryId,
+        artworkMetadata: payload.artworkMetadata,
+      },
     );
     after(() => {
       revalidatePath("/archives");

@@ -9,7 +9,7 @@ import {
   listArchivedFilesByCategory,
 } from "@/lib/archives";
 import { getArchiveCategoryBySlug } from "@/lib/archive-categories";
-import { requireUser } from "@/lib/auth";
+import { getUserDisplayName, requireUser } from "@/lib/auth";
 import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
 import { Card } from "@/components/ui/card";
 
@@ -97,6 +97,7 @@ export default async function ArchiveCategoryPage({
         categoryColor={category.color}
         items={items}
         canUploadArchives={canUploadArchives}
+        currentUserDisplayName={getUserDisplayName(user)}
       />
     </DashboardLayout>
   );

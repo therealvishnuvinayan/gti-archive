@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ArchiveOverview } from "@/components/archives/archive-overview";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { canAccessArchivesArea, listArchiveCategorySummaries } from "@/lib/archives";
-import { requireUser } from "@/lib/auth";
+import { getUserDisplayName, requireUser } from "@/lib/auth";
 import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
 
 export default async function ArchivesPage() {
@@ -27,6 +27,7 @@ export default async function ArchivesPage() {
         summaries={summaries}
         canUploadArchives={canUploadArchives}
         canManageArchiveCategories={canManageArchiveCategories}
+        currentUserDisplayName={getUserDisplayName(user)}
       />
     </DashboardLayout>
   );

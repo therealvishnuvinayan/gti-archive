@@ -17,12 +17,14 @@ type ArchiveOverviewProps = {
   summaries: ArchiveCategorySummary[];
   canUploadArchives: boolean;
   canManageArchiveCategories: boolean;
+  currentUserDisplayName: string;
 };
 
 export function ArchiveOverview({
   summaries,
   canUploadArchives,
   canManageArchiveCategories,
+  currentUserDisplayName,
 }: ArchiveOverviewProps) {
   return (
     <section className="space-y-6">
@@ -40,6 +42,7 @@ export function ArchiveOverview({
           <ArchiveUploadButton
             canUploadAssets={canUploadArchives}
             disabledReason="You do not have permission to upload to Archive."
+            currentUserDisplayName={currentUserDisplayName}
           />
         </header>
       </MotionSection>

@@ -895,13 +895,16 @@ model ArchivedProjectFile {
 }
 
 model ArchiveArtworkMetadata {
-  id                  String              @id @default(cuid())
-  archiveFileId       String              @unique
-  archiveFile         ArchivedProjectFile @relation(fields: [archiveFileId], references: [id], onDelete: Cascade)
-  projectId           String
-  project             Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceAttachmentId  String
-  sourceAttachment    ProjectAttachment   @relation("ArchiveArtworkMetadataSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Restrict)
+  id                  String                           @id @default(cuid())
+  sourceType          ArchiveArtworkMetadataSourceType @default(PROJECT_FINAL_FILE)
+  archiveFileId       String?                          @unique
+  archiveFile         ArchivedProjectFile?             @relation(fields: [archiveFileId], references: [id], onDelete: Cascade)
+  manualArchiveFileId String?                          @unique
+  manualArchiveFile   ManualArchiveFile?               @relation(fields: [manualArchiveFileId], references: [id], onDelete: Cascade)
+  projectId           String?
+  project             Project?                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceAttachmentId  String?
+  sourceAttachment    ProjectAttachment?               @relation("ArchiveArtworkMetadataSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Restrict)
   artworkId           String
   titleWorkingName    String
   versionRevision     String
@@ -923,10 +926,10 @@ model ArchiveArtworkMetadata {
   archiveStatus       String
   createdByName       String
   createdByUserId     String?
-  createdByUser       User?               @relation("ArchiveArtworkMetadataCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByUser       User?                            @relation("ArchiveArtworkMetadataCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   approvedByName      String
   approvedByUserId    String?
-  approvedByUser      User?               @relation("ArchiveArtworkMetadataApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedByUser      User?                            @relation("ArchiveArtworkMetadataApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
   approvedAt          DateTime?
   clientBrandOwner    String
   regulatoryClearance String?
@@ -944,11 +947,12 @@ model ArchiveArtworkMetadata {
   briefSpecLink       String?
   generalNotes        String?
   archivedById        String
-  archivedBy          User                @relation("ArchiveArtworkMetadataArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  archivedBy          User                             @relation("ArchiveArtworkMetadataArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
 
   @@index([projectId])
+  @@index([manualArchiveFileId])
   @@index([sourceAttachmentId])
   @@index([artworkId])
   @@index([titleWorkingName])
@@ -957,6 +961,11 @@ model ArchiveArtworkMetadata {
   @@index([languageMarket])
   @@index([archiveStatus])
   @@index([archivedById])
+}
+
+enum ArchiveArtworkMetadataSourceType {
+  PROJECT_FINAL_FILE
+  DIRECT_UPLOAD
 }
 
 model ProjectCompletionWorkflow {
@@ -1040,6 +1049,7 @@ model ManualArchiveFile {
   uploadedById      String
   uploadedBy        User                                  @relation("ManualArchiveFileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
   assetTags         ManualArchiveFileAssetTagAssignment[]
+  artworkMetadata   ArchiveArtworkMetadata?
   uploadedAt        DateTime                              @default(now())
   createdAt         DateTime                              @default(now())
   updatedAt         DateTime                              @updatedAt

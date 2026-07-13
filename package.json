@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "lint": "eslint",
     "typecheck": "tsc --noEmit --project tsconfig.typecheck.json",
+    "archive:direct-wizard-check": "node scripts/archive-direct-wizard-checks.mjs",
     "flow:check": "node scripts/flow-regression-checks.mjs",
     "flux-ai:conversation-delete-check": "node scripts/flux-ai-conversation-delete-checks.mjs",
     "flux-ai:count-check": "node scripts/flux-ai-count-regression-checks.mjs",

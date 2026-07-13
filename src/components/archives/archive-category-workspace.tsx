@@ -35,6 +35,7 @@ type ArchiveCategoryWorkspaceProps = {
   categoryColor: string;
   items: ArchivedProjectFileRecord[];
   canUploadArchives: boolean;
+  currentUserDisplayName: string;
 };
 
 type ArchiveFilters = {
@@ -93,6 +94,7 @@ export function ArchiveCategoryWorkspace({
   categoryColor,
   items,
   canUploadArchives,
+  currentUserDisplayName,
 }: ArchiveCategoryWorkspaceProps) {
   const [filters, setFilters] = useState<ArchiveFilters>(defaultFilters);
   const categoryIconSrc = getArchiveCategoryIconImageSrc(categoryIconUrl);
@@ -211,6 +213,7 @@ export function ArchiveCategoryWorkspace({
             disabledReason="You do not have permission to upload to Archive."
             defaultCategoryId={categoryId}
             buttonLabel="Add Archive File"
+            currentUserDisplayName={currentUserDisplayName}
           />
         </header>
       </MotionSection>

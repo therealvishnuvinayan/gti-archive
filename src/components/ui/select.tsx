@@ -75,7 +75,7 @@ function SelectContent({
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
-          "relative z-50 max-h-[min(var(--radix-select-content-available-height),24rem)] min-w-[8rem] overflow-hidden rounded-[20px] border border-[#dde4dd] bg-white p-1.5 text-[#1d251f] shadow-[0_20px_50px_rgba(23,39,28,0.12)] data-[state=open]:animate-in data-[state=closed]:animate-out",
+          "relative z-[140] max-h-[min(var(--radix-select-content-available-height),24rem)] min-w-[8rem] overflow-hidden rounded-[20px] border border-[#dde4dd] bg-white p-1.5 text-[#1d251f] shadow-[0_20px_50px_rgba(23,39,28,0.12)] data-[state=open]:animate-in data-[state=closed]:animate-out",
           className,
         )}
         collisionPadding={collisionPadding}
@@ -88,7 +88,7 @@ function SelectContent({
           className={cn(
             "p-1",
             position === "popper" &&
-              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]",
+              "w-full min-w-[var(--radix-select-trigger-width)]",
           )}
         >
           {children}

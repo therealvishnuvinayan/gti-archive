@@ -35,7 +35,7 @@ import {
   type DashboardProjectCounts,
 } from "@/lib/projects";
 import { getDashboardArchiveUploadAccessState } from "@/lib/archives";
-import { requireUser } from "@/lib/auth";
+import { getUserDisplayName, requireUser } from "@/lib/auth";
 import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
 import { hasPermission } from "@/lib/permissions/resolver";
 
@@ -335,6 +335,7 @@ export default async function Home() {
                     ? undefined
                     : "You do not have permission to upload to Archive."
                 }
+                currentUserDisplayName={getUserDisplayName(user)}
               />
             </div>
           </header>
