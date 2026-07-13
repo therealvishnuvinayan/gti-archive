@@ -12,7 +12,7 @@ type AssetPreviewButtonProps = {
   fileName: string;
   mimeType: string;
   previewPath: string;
-  downloadPath: string;
+  downloadPath?: string | null;
   triggerClassName?: string;
   iconOnly?: boolean;
   label?: string;
@@ -104,22 +104,24 @@ export function AssetPreviewButton({
             </CardTitle>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              asChild
-              type="button"
-              variant="secondary"
-              size="icon"
-              className="border border-line"
-            >
-              <a
-                href={downloadPath}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={`Download ${fileName}`}
+            {downloadPath ? (
+              <Button
+                asChild
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="border border-line"
               >
-                <Download className="h-4 w-4" />
-              </a>
-            </Button>
+                <a
+                  href={downloadPath}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Download ${fileName}`}
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="secondary"

@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Archive,
   Briefcase,
   CalendarDays,
   Check,
   ClipboardCheck,
   FileText,
+  Download,
   Languages,
   Loader2,
   Mic,
@@ -24,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { AppDatePicker } from "@/components/calendar/app-date-picker";
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +47,7 @@ import {
 import type { CollaboratorRecord } from "@/lib/collaboration";
 import type {
   FluxAIChatResponse,
+  FluxAIArchiveAssetResult,
   FluxAICollaboratorPermissions,
   FluxAIConversationDetail,
   FluxAIConversationSummary,
@@ -557,10 +561,23 @@ function hasFluxResultContent(response: FluxAIChatResponse | null) {
 
   return Boolean(
     shouldShowProjectMatches(response) ||
+      shouldShowArchiveMatches(response) ||
       response.projectStatus ||
       response.type === "created_project" ||
       response.draftProject ||
       response.blockers?.length,
+  );
+}
+
+function shouldShowArchiveMatches(response: FluxAIChatResponse | null) {
+  if (!response) {
+    return false;
+  }
+
+  return (
+    response.type === "archive_results" ||
+    response.intent === "archive_search" ||
+    Boolean(response.archiveAssets?.length)
   );
 }
 
@@ -657,6 +674,141 @@ function ProjectResultDetailCard({
       <Button asChild size="sm" className="mt-5 min-h-11 w-full text-[13px]">
         <Link href={project.href}>View Project</Link>
       </Button>
+    </article>
+  );
+}
+
+function getArchiveAssetMimeType(asset: FluxAIArchiveAssetResult) {
+  if (asset.mimeType) {
+    return asset.mimeType;
+  }
+
+  const fileType = asset.fileType.toLowerCase();
+
+  if (fileType === "pdf") {
+    return "application/pdf";
+  }
+
+  if (["png", "jpg", "jpeg", "webp", "gif"].includes(fileType)) {
+    return `image/${fileType === "jpg" ? "jpeg" : fileType}`;
+  }
+
+  return "application/octet-stream";
+}
+
+function ArchiveAssetDetailCard({ asset }: { asset: FluxAIArchiveAssetResult }) {
+  const mimeType = getArchiveAssetMimeType(asset);
+  const details: Array<[string, string | null | undefined]> = [
+    ["File Name", asset.fileName],
+    ["Artwork ID", asset.artworkId],
+    ["Category", asset.archiveCategory],
+    ["Brand/Sub-brand", asset.brandSubBrand],
+    ["File Type", asset.fileType],
+    ["File Size", asset.fileSize],
+    ["Linked Project", asset.linkedProject],
+    ["Archived Date", asset.archivedAt],
+    ["Status", asset.status],
+  ];
+
+  return (
+    <article className="rounded-[22px] border border-[#dfe8dd] bg-white p-5 shadow-[0_16px_36px_rgba(23,39,28,0.045)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[12px] font-extrabold uppercase text-[#6f7a72]">
+            Archive Result Detail
+          </p>
+          <h3 className="mt-2 text-[20px] font-extrabold leading-6 text-[#111712]">
+            {asset.title}
+          </h3>
+        </div>
+        <span className="inline-flex shrink-0 rounded-full bg-[#eef8ef] px-3 py-1 text-[12px] font-extrabold text-[#2f7f53]">
+          {asset.recordType === "FINAL_ARCHIVE_FILE" ? "Final Archive" : "Manual Archive"}
+        </span>
+      </div>
+
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2">
+        {details
+          .filter(([, value]) => Boolean(value))
+          .map(([label, value]) => (
+            <div
+              key={label}
+              className="min-w-0 rounded-[16px] border border-[#e2e9e0] bg-[#f9fbf8] p-4"
+            >
+              <dt className="text-[12px] font-semibold text-[#7a847c]">{label}</dt>
+              <dd className="mt-1 min-w-0 break-words text-[14px] font-extrabold leading-5 text-[#17211a]">
+                {value}
+              </dd>
+            </div>
+          ))}
+      </dl>
+
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <AssetPreviewButton
+          fileName={asset.fileName}
+          mimeType={mimeType}
+          previewPath={asset.viewHref}
+          downloadPath={asset.downloadHref}
+          triggerClassName="min-h-11 w-full justify-center gap-2 rounded-md bg-brand px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-brand-dark"
+          iconOnly={false}
+        />
+        {asset.downloadHref ? (
+          <Button asChild variant="outline" size="sm" className="min-h-11 gap-2 text-[13px]">
+            <Link href={asset.downloadHref} target="_blank" rel="noreferrer">
+              <Download className="h-4 w-4" />
+              Download
+            </Link>
+          </Button>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function ArchiveAssetMatchCard({ asset }: { asset: FluxAIArchiveAssetResult }) {
+  const mimeType = getArchiveAssetMimeType(asset);
+
+  return (
+    <article className="rounded-[18px] border border-[#e2e9e0] bg-white p-4 shadow-[0_12px_28px_rgba(23,39,28,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-[15px] font-extrabold text-[#111712]">
+            {asset.title}
+          </h3>
+          <p className="mt-1 truncate text-[12px] font-semibold text-[#6f7a72]">
+            {asset.fileName}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#eef8ef] px-2.5 py-1 text-[11px] font-extrabold text-[#2f7f53]">
+          {asset.fileType}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-2 text-[12px] font-semibold text-[#5f6b62]">
+        {asset.artworkId ? <p>Artwork ID: {asset.artworkId}</p> : null}
+        <p>Category: {asset.archiveCategory}</p>
+        {asset.brandSubBrand ? <p>Brand: {asset.brandSubBrand}</p> : null}
+        {asset.linkedProject ? <p>Project: {asset.linkedProject}</p> : null}
+        <p>Archived: {asset.archivedAt}</p>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <AssetPreviewButton
+          fileName={asset.fileName}
+          mimeType={mimeType}
+          previewPath={asset.viewHref}
+          downloadPath={asset.downloadHref}
+          triggerClassName="min-h-10 flex-1 justify-center gap-2 rounded-md bg-brand px-3 text-[12px] font-semibold text-white shadow-sm hover:bg-brand-dark"
+          iconOnly={false}
+        />
+        {asset.downloadHref ? (
+          <Button asChild variant="outline" size="sm" className="min-h-10 flex-1 gap-2 text-[12px]">
+            <Link href={asset.downloadHref} target="_blank" rel="noreferrer">
+              <Download className="h-3.5 w-3.5" />
+              Download
+            </Link>
+          </Button>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -2328,6 +2480,7 @@ export function FluxAiWorkspace({
     () => (fluxResponse?.projects ?? []).map(mapProjectResultToCard),
     [fluxResponse],
   );
+  const archiveAssets = fluxResponse?.archiveAssets ?? [];
   const missingFields =
     draftProject
       ? fluxResponse?.missingFields ?? draftProject.missingFields ?? []
@@ -2343,6 +2496,7 @@ export function FluxAiWorkspace({
     [fluxResponse],
   );
   const shouldShowProjectMatchesPanel = shouldShowProjectMatches(fluxResponse);
+  const shouldShowArchiveMatchesPanel = shouldShowArchiveMatches(fluxResponse);
   const shouldShowStatusSummaryPanel = Boolean(fluxResponse?.projectStatus);
   const shouldShowCreatedProjectPanel = fluxResponse?.type === "created_project";
   const shouldShowDraftPanel =
@@ -3427,6 +3581,53 @@ export function FluxAiWorkspace({
                   {hasSubmittedQuery
                     ? "Try searching by project name, executor, category, tag, or status."
                     : "Ask Flux AI to find projects and real matches will appear here."}
+                </p>
+              </div>
+            )}
+          </Panel>
+          ) : null}
+
+          {shouldShowArchiveMatchesPanel ? (
+          <Panel className="p-5">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <PanelIcon>
+                  <Archive className="h-5 w-5" />
+                </PanelIcon>
+                <div className="min-w-0">
+                  <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
+                    {archiveAssets.length === 1 ? "Archive Match" : "Archive Matches"}
+                  </h2>
+                  <p className="text-[13px] font-medium text-[#667168]">
+                    {isSubmitting
+                      ? "Searching real archive data"
+                      : `${archiveAssets.length} archive asset${archiveAssets.length === 1 ? "" : "s"} found`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {archiveAssets.length === 1 ? (
+              <ArchiveAssetDetailCard asset={archiveAssets[0]} />
+            ) : archiveAssets.length > 1 ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                {archiveAssets.map((asset) => (
+                  <ArchiveAssetMatchCard key={`${asset.recordType}-${asset.id}`} asset={asset} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-[#d9e4d9] bg-[#fbfcfa] px-5 py-8 text-center">
+                <p className="text-[14px] font-extrabold text-[#263129]">
+                  {isSubmitting
+                    ? "Searching archive assets..."
+                    : hasSubmittedQuery
+                      ? "No archive assets found."
+                      : "No archive query yet."}
+                </p>
+                <p className="mt-2 text-[13px] font-medium text-[#758078]">
+                  {hasSubmittedQuery
+                    ? "Try searching by file name, artwork ID, brand, archive category, project name, or file type."
+                    : "Ask Flux AI to find archive assets and real matches will appear here."}
                 </p>
               </div>
             )}

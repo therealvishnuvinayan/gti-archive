@@ -5,6 +5,7 @@ export const fluxAIIntentValues = [
   "project_count_summary",
   "project_status_summary",
   "archive_blockers",
+  "archive_search",
   "overdue_stages",
   "ready_for_archive",
   "draft_project_create",
@@ -16,6 +17,7 @@ export type FluxAIIntent = (typeof fluxAIIntentValues)[number];
 export type FluxAIResponseType =
   | "message"
   | "project_results"
+  | "archive_results"
   | "draft_project"
   | "status_summary"
   | "missing_fields"
@@ -46,6 +48,25 @@ export type FluxAIProjectResult = {
   archiveBlockers?: string[];
   blockersSummary?: string | null;
   readyForArchive?: boolean;
+};
+
+export type FluxAIArchiveAssetResult = {
+  id: string;
+  recordType: "FINAL_ARCHIVE_FILE" | "MANUAL_ARCHIVE_FILE";
+  title: string;
+  fileName: string;
+  originalFileName: string;
+  artworkId: string | null;
+  archiveCategory: string;
+  brandSubBrand: string | null;
+  fileType: string;
+  mimeType: string;
+  fileSize: string;
+  linkedProject: string | null;
+  archivedAt: string;
+  status: string;
+  viewHref: string;
+  downloadHref?: string | null;
 };
 
 export type FluxAIStatusSummary = {
@@ -147,6 +168,7 @@ export type FluxAIChatResponse = {
   createdProjectId?: string;
   createdProjectHref?: string;
   projects?: FluxAIProjectResult[];
+  archiveAssets?: FluxAIArchiveAssetResult[];
   draftProject?: FluxAIDraftProject | null;
   statusSummary?: FluxAIStatusSummary;
   projectStatus?: FluxAIProjectStatusSummary | null;

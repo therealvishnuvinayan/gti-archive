@@ -6,6 +6,7 @@ import type {
   FluxAIConversationMessage,
   FluxAIConversationSummary,
   FluxAIDraftProject,
+  FluxAIArchiveAssetResult,
   FluxAIProjectResult,
 } from "@/lib/flux-ai/types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -135,6 +136,29 @@ function sanitizeProjectResultForPersistence(
   };
 }
 
+function sanitizeArchiveAssetForPersistence(
+  asset: FluxAIArchiveAssetResult,
+): FluxAIArchiveAssetResult {
+  return {
+    id: asset.id,
+    recordType: asset.recordType,
+    title: asset.title,
+    fileName: asset.fileName,
+    originalFileName: asset.originalFileName,
+    artworkId: asset.artworkId,
+    archiveCategory: asset.archiveCategory,
+    brandSubBrand: asset.brandSubBrand,
+    fileType: asset.fileType,
+    mimeType: asset.mimeType,
+    fileSize: asset.fileSize,
+    linkedProject: asset.linkedProject,
+    archivedAt: asset.archivedAt,
+    status: asset.status,
+    viewHref: asset.viewHref,
+    downloadHref: asset.downloadHref ?? null,
+  };
+}
+
 function sanitizeDraftProjectForPersistence(
   draftProject: FluxAIDraftProject | null | undefined,
 ) {
@@ -175,6 +199,7 @@ export function sanitizeFluxAIResponseForPersistence(
     createdProjectId: response.createdProjectId,
     createdProjectHref: response.createdProjectHref,
     projects: response.projects?.map(sanitizeProjectResultForPersistence),
+    archiveAssets: response.archiveAssets?.map(sanitizeArchiveAssetForPersistence),
     draftProject: sanitizeDraftProjectForPersistence(response.draftProject),
     statusSummary: response.statusSummary ? { ...response.statusSummary } : undefined,
     projectStatus: response.projectStatus

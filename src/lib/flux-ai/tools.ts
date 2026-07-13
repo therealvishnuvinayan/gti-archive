@@ -1,4 +1,5 @@
 import {
+  AttachmentStatus,
   ProjectCompletionStepStatus,
   ProjectExecutionType,
   ProjectExecutorRole,
@@ -26,6 +27,7 @@ import { getDashboardProjectCounts, MAX_PROJECT_TAGS } from "@/lib/projects";
 import {
   canUseArchives,
   getAccessibleProjectsWhere,
+  getArchiveAccessLevel,
   hasPermission,
   hasProjectPermission,
   isProjectAdmin,
@@ -38,6 +40,7 @@ import {
 } from "@/lib/project-statuses";
 import type {
   FluxAIDraftProject,
+  FluxAIArchiveAssetResult,
   FluxAIIntentDetection,
   FluxAIPersonCandidate,
   FluxAIPersonMatch,
@@ -57,6 +60,23 @@ export class FluxAIPermissionError extends Error {
 
 const MAX_PROJECTS_FOR_FLUX_AI = 100;
 const DEFAULT_RESULT_LIMIT = 6;
+const MAX_ARCHIVE_ASSETS_FOR_FLUX_AI = 100;
+
+const archiveFileExtensions = [
+  "pdf",
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "ai",
+  "psd",
+  "zip",
+  "rar",
+  "docx",
+  "xlsx",
+  "pptx",
+] as const;
 
 const fluxProjectSelect = {
   id: true,
@@ -224,6 +244,44 @@ function formatFluxDate(date: Date | null | undefined) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function formatFluxFileSize(size: number | null | undefined) {
+  if (!size || size <= 0) {
+    return "Unknown size";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = size;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const formattedValue = unitIndex === 0 ? String(size) : value.toFixed(value >= 10 ? 1 : 2);
+
+  return `${formattedValue} ${units[unitIndex]}`;
+}
+
+function getFileExtensionFromName(fileName: string | null | undefined) {
+  const normalizedFileName = normalizeText(fileName).toLowerCase();
+  const match = normalizedFileName.match(/\.([a-z0-9]{1,8})$/i);
+
+  return match?.[1] ?? "";
+}
+
+function getFileTypeLabel(fileName: string | null | undefined, mimeType: string | null | undefined) {
+  const extension = getFileExtensionFromName(fileName);
+
+  if (extension) {
+    return extension.toUpperCase();
+  }
+
+  const normalizedMimeType = normalizeText(mimeType);
+
+  return normalizedMimeType ? normalizedMimeType.split("/").pop()?.toUpperCase() ?? "File" : "File";
 }
 
 function formatStageStatus(status: StageStatus) {
@@ -607,6 +665,841 @@ function mapProjectForFluxAI(
       : null,
     ...options,
   };
+}
+
+const fluxArchiveProjectFileSelect = {
+  id: true,
+  finalArchiveFileName: true,
+  originalFileName: true,
+  mimeType: true,
+  fileSize: true,
+  archivedAt: true,
+  archive: {
+    select: {
+      status: true,
+      projectName: true,
+      projectCategory: true,
+      projectTag: true,
+      archiveCategory: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+  artworkMetadata: {
+    select: {
+      artworkId: true,
+      titleWorkingName: true,
+      languageMarket: true,
+      artworkType: true,
+      brandSubBrand: true,
+      productSku: true,
+      campaignProject: true,
+      archiveStatus: true,
+      changeLog: true,
+      generalNotes: true,
+    },
+  },
+} satisfies Prisma.ArchivedProjectFileSelect;
+
+const fluxManualArchiveFileSelect = {
+  id: true,
+  fileName: true,
+  originalFileName: true,
+  projectName: true,
+  projectCreatedBy: true,
+  mimeType: true,
+  fileSize: true,
+  status: true,
+  uploadedAt: true,
+  archiveCategory: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  artworkMetadata: {
+    select: {
+      artworkId: true,
+      titleWorkingName: true,
+      languageMarket: true,
+      artworkType: true,
+      brandSubBrand: true,
+      productSku: true,
+      campaignProject: true,
+      archiveStatus: true,
+      changeLog: true,
+      generalNotes: true,
+    },
+  },
+} satisfies Prisma.ManualArchiveFileSelect;
+
+type FluxArchiveProjectFile = Prisma.ArchivedProjectFileGetPayload<{
+  select: typeof fluxArchiveProjectFileSelect;
+}>;
+
+type FluxManualArchiveFile = Prisma.ManualArchiveFileGetPayload<{
+  select: typeof fluxManualArchiveFileSelect;
+}>;
+
+type ArchiveDateWindow = {
+  gte: Date;
+  lte: Date;
+};
+
+function getFluxAIAccessibleArchiveCategoryWhere(user: PermissionUser) {
+  if (!canUseArchives(user)) {
+    return {
+      id: "__no_archive_access__",
+    } satisfies Prisma.ArchiveCategoryWhereInput;
+  }
+
+  if (hasPermission(user, "settings.manageMasterData")) {
+    return {
+      isActive: true,
+    } satisfies Prisma.ArchiveCategoryWhereInput;
+  }
+
+  return {
+    isActive: true,
+    OR: [
+      {
+        allowedUsers: {
+          none: {},
+        },
+      },
+      {
+        allowedUsers: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
+    ],
+  } satisfies Prisma.ArchiveCategoryWhereInput;
+}
+
+function extractArchiveFilenameTerms(message: string) {
+  const terms = new Set<string>();
+  const extensionPattern = archiveFileExtensions.join("|");
+  const fileNamePattern = new RegExp(
+    `[^\\s"'<>]+\\.(${extensionPattern})\\b`,
+    "gi",
+  );
+
+  for (const match of message.matchAll(fileNamePattern)) {
+    const fileName = normalizeText(match[0]).replace(/[),.;:!?]+$/g, "");
+
+    if (fileName) {
+      terms.add(fileName);
+      terms.add(fileName.replace(/\.[^.]+$/, ""));
+    }
+  }
+
+  return [...terms].filter((term) => term.length >= 2);
+}
+
+function extractArchiveFileExtensions(message: string) {
+  const normalizedMessage = normalizePromptTokenText(message);
+  const extensions = new Set<string>();
+
+  for (const extension of archiveFileExtensions) {
+    if (
+      new RegExp(`\\b${extension}\\b`, "i").test(normalizedMessage) ||
+      new RegExp(`\\.${extension}\\b`, "i").test(normalizedMessage)
+    ) {
+      extensions.add(extension);
+    }
+  }
+
+  return [...extensions];
+}
+
+function normalizePromptTokenText(value: string | null | undefined) {
+  return normalizeText(value).toLowerCase().replace(/[_-]+/g, " ");
+}
+
+function cleanArchiveSearchQuery(value: string | null | undefined) {
+  let query = normalizeText(value);
+
+  if (!query) {
+    return "";
+  }
+
+  query = query
+    .replace(/^(?:can\s+you\s+)?(?:please\s+)?/i, "")
+    .replace(
+      /^(?:find|show|list|view|search|display|give)\s+(?:me\s+)?(?:an?\s+|the\s+)?/i,
+      "",
+    )
+    .replace(/\b(?:pdf|png|jpg|jpeg|webp|gif|ai|psd|zip|rar|docx|xlsx|pptx)\s+files?\b/gi, " ")
+    .replace(/\b(?:archive|archived|assets?|files?|artworks?|artwork\s+id|artwork|ids?)\b/gi, " ")
+    .replace(/\b(?:in|from|for|by|with|to|category|categories|brand|type)\b/gi, " ")
+    .replace(/\b(?:pdf|png|jpg|jpeg|webp|gif|ai|psd|zip|rar|docx|xlsx|pptx)\b/gi, " ")
+    .replace(/\b(?:uploaded|created|today|yesterday|recent|latest)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return query.length >= 2 ? query : "";
+}
+
+function getArchiveDateWindow(message: string | null | undefined): ArchiveDateWindow | null {
+  const normalizedMessage = normalizePromptTokenText(message);
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+
+  if (/\byesterday\b/.test(normalizedMessage)) {
+    start.setDate(start.getDate() - 1);
+    end.setDate(end.getDate() - 1);
+    return { gte: start, lte: end };
+  }
+
+  if (/\btoday\b/.test(normalizedMessage)) {
+    return { gte: start, lte: end };
+  }
+
+  return null;
+}
+
+function uniqueSearchTerms(...values: Array<string | null | undefined>) {
+  const terms = new Set<string>();
+
+  for (const value of values) {
+    const normalizedValue = normalizeText(value);
+
+    if (normalizedValue.length >= 2) {
+      terms.add(normalizedValue);
+    }
+  }
+
+  return [...terms];
+}
+
+function buildArchivedProjectFileTextWhere(term: string): Prisma.ArchivedProjectFileWhereInput {
+  const containsTerm = containsInsensitive(term);
+
+  return {
+    OR: [
+      { finalArchiveFileName: containsTerm },
+      { originalFileName: containsTerm },
+      { mimeType: containsTerm },
+      {
+        archive: {
+          is: {
+            projectName: containsTerm,
+          },
+        },
+      },
+      {
+        archive: {
+          is: {
+            projectCategory: containsTerm,
+          },
+        },
+      },
+      {
+        archive: {
+          is: {
+            projectTag: containsTerm,
+          },
+        },
+      },
+      {
+        archive: {
+          is: {
+            archiveCategory: {
+              is: {
+                name: containsTerm,
+              },
+            },
+          },
+        },
+      },
+      {
+        archivedBy: {
+          is: {
+            name: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            artworkId: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            titleWorkingName: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            brandSubBrand: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            productSku: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            campaignProject: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            languageMarket: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            artworkType: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            archiveStatus: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            changeLog: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            generalNotes: containsTerm,
+          },
+        },
+      },
+    ],
+  };
+}
+
+function buildArchivedProjectFileAnyTextWhere(
+  terms: string[],
+): Prisma.ArchivedProjectFileWhereInput | null {
+  if (terms.length === 0) {
+    return null;
+  }
+
+  return {
+    OR: terms.flatMap((term) => buildArchivedProjectFileTextWhere(term).OR ?? []),
+  };
+}
+
+function buildManualArchiveFileTextWhere(term: string): Prisma.ManualArchiveFileWhereInput {
+  const containsTerm = containsInsensitive(term);
+
+  return {
+    OR: [
+      { fileName: containsTerm },
+      { originalFileName: containsTerm },
+      { projectName: containsTerm },
+      { projectCreatedBy: containsTerm },
+      { mimeType: containsTerm },
+      {
+        archiveCategory: {
+          is: {
+            name: containsTerm,
+          },
+        },
+      },
+      {
+        uploadedBy: {
+          is: {
+            name: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            artworkId: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            titleWorkingName: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            brandSubBrand: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            productSku: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            campaignProject: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            languageMarket: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            artworkType: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            archiveStatus: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            changeLog: containsTerm,
+          },
+        },
+      },
+      {
+        artworkMetadata: {
+          is: {
+            generalNotes: containsTerm,
+          },
+        },
+      },
+    ],
+  };
+}
+
+function buildManualArchiveFileAnyTextWhere(
+  terms: string[],
+): Prisma.ManualArchiveFileWhereInput | null {
+  if (terms.length === 0) {
+    return null;
+  }
+
+  return {
+    OR: terms.flatMap((term) => buildManualArchiveFileTextWhere(term).OR ?? []),
+  };
+}
+
+function buildArchivedProjectFileExtensionWhere(
+  extensions: string[],
+): Prisma.ArchivedProjectFileWhereInput | null {
+  if (extensions.length === 0) {
+    return null;
+  }
+
+  return {
+    OR: extensions.flatMap((extension) => [
+      {
+        finalArchiveFileName: {
+          endsWith: `.${extension}`,
+          mode: "insensitive" as const,
+        },
+      },
+      {
+        originalFileName: {
+          endsWith: `.${extension}`,
+          mode: "insensitive" as const,
+        },
+      },
+      {
+        mimeType: containsInsensitive(extension),
+      },
+    ]),
+  };
+}
+
+function buildManualArchiveFileExtensionWhere(
+  extensions: string[],
+): Prisma.ManualArchiveFileWhereInput | null {
+  if (extensions.length === 0) {
+    return null;
+  }
+
+  return {
+    OR: extensions.flatMap((extension) => [
+      {
+        fileName: {
+          endsWith: `.${extension}`,
+          mode: "insensitive" as const,
+        },
+      },
+      {
+        originalFileName: {
+          endsWith: `.${extension}`,
+          mode: "insensitive" as const,
+        },
+      },
+      {
+        mimeType: containsInsensitive(extension),
+      },
+    ]),
+  };
+}
+
+function buildArchivedProjectFileAccessWhere(
+  user: PermissionUser,
+): Prisma.ArchivedProjectFileWhereInput {
+  if (getArchiveAccessLevel(user) === "PARTIAL") {
+    return {
+      userArchiveAccesses: {
+        some: {
+          userId: user.id,
+        },
+      },
+    };
+  }
+
+  return {
+    project: {
+      is: getAccessibleProjectsWhere(user),
+    },
+  };
+}
+
+function buildManualArchiveFileAccessWhere(user: PermissionUser): Prisma.ManualArchiveFileWhereInput {
+  if (getArchiveAccessLevel(user) === "PARTIAL") {
+    return {
+      userArchiveAccesses: {
+        some: {
+          userId: user.id,
+        },
+      },
+    };
+  }
+
+  return {};
+}
+
+function mapProjectArchiveFileForFluxAI(
+  file: FluxArchiveProjectFile,
+  options: { canDownload: boolean },
+): FluxAIArchiveAssetResult {
+  const title =
+    file.artworkMetadata?.titleWorkingName?.trim() ||
+    file.finalArchiveFileName ||
+    file.originalFileName;
+
+  return {
+    id: file.id,
+    recordType: "FINAL_ARCHIVE_FILE",
+    title,
+    fileName: file.finalArchiveFileName,
+    originalFileName: file.originalFileName,
+    artworkId: file.artworkMetadata?.artworkId?.trim() || null,
+    archiveCategory: file.archive.archiveCategory?.name ?? "Uncategorized",
+    brandSubBrand: file.artworkMetadata?.brandSubBrand?.trim() || null,
+    fileType: getFileTypeLabel(file.finalArchiveFileName, file.mimeType),
+    mimeType: file.mimeType,
+    fileSize: formatFluxFileSize(file.fileSize),
+    linkedProject:
+      file.artworkMetadata?.campaignProject?.trim() ||
+      file.archive.projectName?.trim() ||
+      null,
+    archivedAt: formatFluxDate(file.archivedAt),
+    status: file.artworkMetadata?.archiveStatus?.trim() || file.archive.status,
+    viewHref: `/api/archives/files/${file.id}/preview`,
+    downloadHref: options.canDownload
+      ? `/api/archives/files/${file.id}/download`
+      : null,
+  };
+}
+
+function mapManualArchiveFileForFluxAI(
+  file: FluxManualArchiveFile,
+  options: { canDownload: boolean },
+): FluxAIArchiveAssetResult {
+  const title =
+    file.artworkMetadata?.titleWorkingName?.trim() ||
+    file.fileName ||
+    file.originalFileName;
+
+  return {
+    id: file.id,
+    recordType: "MANUAL_ARCHIVE_FILE",
+    title,
+    fileName: file.fileName,
+    originalFileName: file.originalFileName,
+    artworkId: file.artworkMetadata?.artworkId?.trim() || null,
+    archiveCategory: file.archiveCategory?.name ?? "Uncategorized",
+    brandSubBrand: file.artworkMetadata?.brandSubBrand?.trim() || null,
+    fileType: getFileTypeLabel(file.fileName, file.mimeType),
+    mimeType: file.mimeType,
+    fileSize: formatFluxFileSize(file.fileSize),
+    linkedProject:
+      file.artworkMetadata?.campaignProject?.trim() ||
+      file.projectName?.trim() ||
+      null,
+    archivedAt: formatFluxDate(file.uploadedAt),
+    status: file.artworkMetadata?.archiveStatus?.trim() || "Archived",
+    viewHref: `/api/archives/files/${file.id}/preview`,
+    downloadHref: options.canDownload
+      ? `/api/archives/files/${file.id}/download`
+      : null,
+  };
+}
+
+function buildArchiveAssetSearchText(asset: FluxAIArchiveAssetResult) {
+  return [
+    asset.title,
+    asset.fileName,
+    asset.originalFileName,
+    asset.artworkId,
+    asset.archiveCategory,
+    asset.brandSubBrand,
+    asset.fileType,
+    asset.linkedProject,
+    asset.status,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function scoreArchiveAssetResult(input: {
+  asset: FluxAIArchiveAssetResult;
+  searchTerms: string[];
+  filenameTerms: string[];
+  extensions: string[];
+}) {
+  const finalName = input.asset.fileName.toLowerCase();
+  const originalName = input.asset.originalFileName.toLowerCase();
+  const searchableText = buildArchiveAssetSearchText(input.asset);
+  let score = 0;
+
+  for (const filenameTerm of input.filenameTerms.map((term) => term.toLowerCase())) {
+    if (finalName === filenameTerm || originalName === filenameTerm) {
+      score += 140;
+    } else if (finalName.includes(filenameTerm) || originalName.includes(filenameTerm)) {
+      score += 90;
+    }
+  }
+
+  for (const extension of input.extensions) {
+    if (
+      finalName.endsWith(`.${extension}`) ||
+      originalName.endsWith(`.${extension}`) ||
+      input.asset.fileType.toLowerCase() === extension
+    ) {
+      score += 30;
+    }
+  }
+
+  for (const term of input.searchTerms.map((value) => value.toLowerCase())) {
+    if (searchableText.includes(term)) {
+      score += 20;
+    }
+  }
+
+  return score;
+}
+
+export async function searchArchiveAssetsForFluxAI(
+  user: PermissionUser,
+  input: {
+    query?: string | null;
+    rawMessage?: string | null;
+    category?: string | null;
+    tag?: string | null;
+    limit?: number | null;
+  },
+) {
+  if (!canUseArchives(user) || isClientOfGtiUser(user)) {
+    return [];
+  }
+
+  const rawMessage = input.rawMessage ?? input.query ?? "";
+  const filenameTerms = extractArchiveFilenameTerms(rawMessage || input.query || "");
+  const extensions = extractArchiveFileExtensions(`${rawMessage} ${input.query ?? ""}`);
+  const cleanedQuery =
+    filenameTerms.length > 0
+      ? ""
+      : cleanArchiveSearchQuery(input.query) || cleanArchiveSearchQuery(rawMessage);
+  const searchTerms = uniqueSearchTerms(
+    cleanedQuery,
+    input.category,
+    input.tag,
+  );
+  const dateWindow = getArchiveDateWindow(rawMessage);
+  const resultLimit = resolveLimit(input.limit);
+
+  const accessibleCategoryIds = await withPrismaRetry(() =>
+    prisma.archiveCategory.findMany({
+      where: getFluxAIAccessibleArchiveCategoryWhere(user),
+      select: {
+        id: true,
+      },
+    }),
+  );
+  const archiveCategoryIds = accessibleCategoryIds.map((category) => category.id);
+
+  if (archiveCategoryIds.length === 0) {
+    return [];
+  }
+
+  const projectFileWhereParts: Prisma.ArchivedProjectFileWhereInput[] = [
+    {
+      archive: {
+        is: {
+          archiveCategoryId: {
+            in: archiveCategoryIds,
+          },
+        },
+      },
+    },
+    buildArchivedProjectFileAccessWhere(user),
+    ...searchTerms.map(buildArchivedProjectFileTextWhere),
+  ];
+  const projectFileNameWhere = buildArchivedProjectFileAnyTextWhere(filenameTerms);
+  const projectFileExtensionWhere = buildArchivedProjectFileExtensionWhere(extensions);
+
+  if (projectFileNameWhere) {
+    projectFileWhereParts.push(projectFileNameWhere);
+  }
+
+  if (projectFileExtensionWhere) {
+    projectFileWhereParts.push(projectFileExtensionWhere);
+  }
+
+  if (dateWindow) {
+    projectFileWhereParts.push({
+      archivedAt: dateWindow,
+    });
+  }
+
+  const manualFileWhereParts: Prisma.ManualArchiveFileWhereInput[] = [
+    {
+      status: AttachmentStatus.READY,
+      archiveCategoryId: {
+        in: archiveCategoryIds,
+      },
+    },
+    buildManualArchiveFileAccessWhere(user),
+    ...searchTerms.map(buildManualArchiveFileTextWhere),
+  ];
+  const manualFileNameWhere = buildManualArchiveFileAnyTextWhere(filenameTerms);
+  const manualFileExtensionWhere = buildManualArchiveFileExtensionWhere(extensions);
+
+  if (manualFileNameWhere) {
+    manualFileWhereParts.push(manualFileNameWhere);
+  }
+
+  if (manualFileExtensionWhere) {
+    manualFileWhereParts.push(manualFileExtensionWhere);
+  }
+
+  if (dateWindow) {
+    manualFileWhereParts.push({
+      uploadedAt: dateWindow,
+    });
+  }
+
+  const [projectFiles, manualFiles] = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.archivedProjectFile.findMany({
+        where: {
+          AND: projectFileWhereParts,
+        },
+        orderBy: [
+          {
+            archivedAt: "desc",
+          },
+          {
+            finalArchiveFileName: "asc",
+          },
+        ],
+        take: MAX_ARCHIVE_ASSETS_FOR_FLUX_AI,
+        select: fluxArchiveProjectFileSelect,
+      }),
+      prisma.manualArchiveFile.findMany({
+        where: {
+          AND: manualFileWhereParts,
+        },
+        orderBy: [
+          {
+            uploadedAt: "desc",
+          },
+          {
+            fileName: "asc",
+          },
+        ],
+        take: MAX_ARCHIVE_ASSETS_FOR_FLUX_AI,
+        select: fluxManualArchiveFileSelect,
+      }),
+    ]),
+  );
+
+  const canDownloadArchiveAssets = hasPermission(user, "archive.download");
+  const results = [
+    ...projectFiles.map((file) =>
+      mapProjectArchiveFileForFluxAI(file, { canDownload: canDownloadArchiveAssets }),
+    ),
+    ...manualFiles.map((file) =>
+      mapManualArchiveFileForFluxAI(file, { canDownload: canDownloadArchiveAssets }),
+    ),
+  ];
+
+  return results
+    .map((asset) => ({
+      asset,
+      score: scoreArchiveAssetResult({
+        asset,
+        searchTerms,
+        filenameTerms,
+        extensions,
+      }),
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return left.asset.fileName.localeCompare(right.asset.fileName);
+    })
+    .slice(0, resultLimit)
+    .map((entry) => entry.asset);
 }
 
 function projectMatchesSearch(user: PermissionUser, project: FluxProject, searchValue: string) {
