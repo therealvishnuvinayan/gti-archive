@@ -10,6 +10,7 @@ const completeRouteSource = readFileSync(
   "utf8",
 );
 const completionServiceSource = readFileSync("src/lib/project-completion.ts", "utf8");
+const archivesSource = readFileSync("src/lib/archives.ts", "utf8");
 
 function assert(condition, message) {
   if (!condition) {
@@ -119,6 +120,36 @@ assert(
     completionServiceSource.includes("input.required === true") &&
     completionServiceSource.includes("input.status === ProjectCompletionStepStatus.COMPLETED"),
   "Project completion must treat NOT_REQUIRED and required=false as resolved states.",
+);
+
+const preparationStart = archivesSource.indexOf("export async function getProjectArchivePreparation");
+const completionStart = archivesSource.indexOf("export async function completeProjectArchive");
+const nextExportAfterCompletion = archivesSource.indexOf(
+  "export async function",
+  completionStart + "export async function completeProjectArchive".length,
+);
+const preparationBlock = archivesSource.slice(preparationStart, completionStart);
+const completionBlock = archivesSource.slice(
+  completionStart,
+  nextExportAfterCompletion > completionStart ? nextExportAfterCompletion : undefined,
+);
+
+assert(
+  preparationStart >= 0 &&
+    completionStart > preparationStart &&
+    preparationBlock.includes("ensureProjectCanBeCompleted(user, project, input.stageId)") &&
+    preparationBlock.includes("getProjectCompletionArchiveCategoryOptions()") &&
+    !preparationBlock.includes("assertCanUseArchives(user)"),
+  "Project archive preparation must use project-level completion permission, not module archive access.",
+);
+
+assert(
+  completionStart >= 0 &&
+    completionBlock.includes("ensureProjectCanBeCompleted(user, archiveProject, input.stageId)") &&
+    completionBlock.includes("assertActiveProjectCompletionArchiveCategory(archiveCategoryId)") &&
+    !completionBlock.includes("assertCanUseArchives(user)") &&
+    !completionBlock.includes("assertCanUploadToArchiveCategory(user"),
+  "Project archive completion must allow authorized project owners without requiring Archives module upload permission.",
 );
 
 assert(

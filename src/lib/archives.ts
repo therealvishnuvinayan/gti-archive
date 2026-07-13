@@ -1299,6 +1299,32 @@ function ensureProjectCanBeCompleted(
   return finalStage;
 }
 
+async function getProjectCompletionArchiveCategoryOptions() {
+  return getActiveArchiveCategoryOptions();
+}
+
+async function assertActiveProjectCompletionArchiveCategory(archiveCategoryId: string) {
+  const archiveCategory = await withPrismaRetry(() =>
+    prisma.archiveCategory.findFirst({
+      where: {
+        id: archiveCategoryId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+      },
+    }),
+  );
+
+  if (!archiveCategory) {
+    throw new Error("Choose a valid archive category.");
+  }
+
+  return archiveCategory;
+}
+
 function validateArchiveFileName(
   originalFileName: string,
   proposedFileName: string,
@@ -2277,8 +2303,6 @@ export async function getProjectArchivePreparation(
     stageId: string;
   },
 ) {
-  assertCanUseArchives(user);
-
   const project = await getProjectArchiveBase(input.projectId);
 
   if (!project) {
@@ -2294,7 +2318,7 @@ export async function getProjectArchivePreparation(
     throw new Error("No approved final files are available to archive.");
   }
 
-  const categories = await getActiveArchiveCategoryOptions(user);
+  const categories = await getProjectCompletionArchiveCategoryOptions();
 
   if (categories.length === 0) {
     throw new Error("Create an archive category before archiving final files.");
@@ -2422,8 +2446,6 @@ export async function completeProjectArchive(
     }>;
   },
 ) {
-  assertCanUseArchives(user);
-
   const project = await getProjectArchiveBase(input.projectId);
 
   if (!project) {
@@ -2492,25 +2514,7 @@ export async function completeProjectArchive(
     throw new Error("Choose an archive category.");
   }
 
-  const archiveCategory = await withPrismaRetry(() =>
-    prisma.archiveCategory.findFirst({
-      where: {
-        id: archiveCategoryId,
-        isActive: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-      },
-    }),
-  );
-
-  if (!archiveCategory) {
-    throw new Error("Choose a valid archive category.");
-  }
-
-  await assertCanUploadToArchiveCategory(user, archiveCategory.id);
+  const archiveCategory = await assertActiveProjectCompletionArchiveCategory(archiveCategoryId);
 
   const archivedAt = new Date();
 
