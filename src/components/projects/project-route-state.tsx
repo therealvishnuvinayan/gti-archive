@@ -59,6 +59,17 @@ export function ProjectAccessUnavailableState() {
   );
 }
 
+export function ProjectEditLockedState({ projectHref }: { projectHref: string }) {
+  return (
+    <ProjectRouteState
+      title="Project editing locked"
+      message="Completed projects cannot be edited."
+      primaryHref={projectHref}
+      primaryLabel="Back to Project"
+    />
+  );
+}
+
 export function StageNotFoundState({ projectHref }: { projectHref: string }) {
   return (
     <ProjectRouteState

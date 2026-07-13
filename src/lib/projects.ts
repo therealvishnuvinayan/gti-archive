@@ -174,6 +174,8 @@ type ProjectCardProject = Pick<
   | "category"
   | "currentStageName"
   | "createdAt"
+  | "completedAt"
+  | "archivedAt"
   | "createdById"
   | "isPinned"
 > & {
@@ -404,6 +406,7 @@ export type ProjectFlowRecord = {
   id: string;
   ownerId: string;
   isCompleted: boolean;
+  canEdit: boolean;
   executors: ProjectExecutorRecord[];
   canViewParticipants: boolean;
   canRemoveCollaborators: boolean;
@@ -1089,6 +1092,9 @@ function mapProjectToCard(
   currentUser: ProjectAccessUser,
 ): ProjectCardRecord {
   const tags = getProjectTagNames(project);
+  const editingLocked = Boolean(
+    project.completedAt || project.archivedAt || isProjectStatusCompleted(project.status),
+  );
 
   return {
     id: project.id,
@@ -1101,10 +1107,10 @@ function mapProjectToCard(
     isPinned: project.isPinned,
     canPin: hasProjectPermission(currentUser, project, "project.update"),
     canEdit:
-      !isProjectStatusCompleted(project.status) &&
+      !editingLocked &&
       hasProjectPermission(currentUser, project, "project.update"),
     canDelete:
-      !isProjectStatusCompleted(project.status) &&
+      !editingLocked &&
       hasProjectPermission(currentUser, project, "project.delete"),
   };
 }
@@ -1222,6 +1228,9 @@ function mapProjectToFlow(
       : "Restricted";
   const allowBudgetView = canViewProjectBudget(project, currentUser);
   const allowBriefView = canViewBriefContent(project, currentUser);
+  const editingLocked = Boolean(
+    project.completedAt || project.archivedAt || isProjectStatusCompleted(project.status),
+  );
   const stages = getProjectStages(project);
   const allStagesCompleted =
     stages.length > 0 && stages.every((stage) => stage.status === StageStatus.COMPLETED);
@@ -1305,7 +1314,10 @@ function mapProjectToFlow(
   return {
     id: project.id,
     ownerId: project.createdById,
-    isCompleted: Boolean(project.completedAt || project.archivedAt),
+    isCompleted: editingLocked,
+    canEdit:
+      !editingLocked &&
+      hasProjectPermission(currentUser, project, "project.update"),
     executors: visibleExecutorRecords,
     canViewParticipants,
     canRemoveCollaborators,
@@ -2636,6 +2648,8 @@ export async function getProjectsList(
             category: true,
             currentStageName: true,
             createdAt: true,
+            completedAt: true,
+            archivedAt: true,
             createdById: true,
             isPinned: true,
             status: {
@@ -3288,6 +3302,8 @@ export async function getProjectEditAccessById(
     prisma.project.findUnique({
       where: { id },
       select: {
+        completedAt: true,
+        archivedAt: true,
         status: {
           select: {
             id: true,
@@ -3317,10 +3333,15 @@ export async function getProjectEditAccessById(
     return null;
   }
 
+  const editingLocked = Boolean(
+    project.completedAt || project.archivedAt || isProjectStatusCompleted(project.status),
+  );
+
   return {
     canEdit:
-      !isProjectStatusCompleted(project.status) &&
+      !editingLocked &&
       hasProjectPermission(currentUser, project, "project.update"),
+    editingLocked,
   };
 }
 

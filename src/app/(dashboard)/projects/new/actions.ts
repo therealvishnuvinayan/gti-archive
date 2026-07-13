@@ -1359,7 +1359,12 @@ export async function updateProjectAction(
     return { error: "You are not allowed to edit projects." };
   }
 
-  if (existingProject.archive || existingProject.archivedAt || existingProject.completedAt) {
+  if (
+    existingProject.archive ||
+    existingProject.archivedAt ||
+    existingProject.completedAt ||
+    isProjectStatusCompleted(existingProject.status)
+  ) {
     return { error: "Completed projects cannot be edited." };
   }
 

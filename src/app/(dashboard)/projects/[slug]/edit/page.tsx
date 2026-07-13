@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { CreateProjectWorkspace } from "@/components/projects/create-project-workspace";
+import { ProjectEditLockedState } from "@/components/projects/project-route-state";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
 import { hasPermission } from "@/lib/permissions/resolver";
@@ -16,6 +17,19 @@ export default async function EditProjectPage({
 }) {
   const [{ slug }, user] = await Promise.all([params, requireUser()]);
   const editAccess = await getProjectEditAccessById(slug, user);
+
+  if (editAccess?.editingLocked) {
+    return (
+      <DashboardLayout
+        topbarProps={{
+          leadingContent: <ProjectBackButton href={`/projects/${slug}`} />,
+          showSearch: false,
+        }}
+      >
+        <ProjectEditLockedState projectHref={`/projects/${slug}`} />
+      </DashboardLayout>
+    );
+  }
 
   if (!editAccess?.canEdit) {
     notFound();
