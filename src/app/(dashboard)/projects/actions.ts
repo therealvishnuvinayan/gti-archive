@@ -8,6 +8,7 @@ import { getUserDisplayName, requireUser } from "@/lib/auth";
 import {
   completeProjectArchive,
   getProjectArchivePreparation,
+  type ArchiveArtworkMetadataDraft,
 } from "@/lib/archives";
 import { createComparisonComment } from "@/lib/comparison";
 import {
@@ -829,6 +830,7 @@ export async function completeProjectArchiveAction(input: {
   files: Array<{
     sourceAttachmentId: string;
     finalArchiveFileName: string;
+    artworkMetadata: ArchiveArtworkMetadataDraft;
   }>;
 }) {
   const user = await requireUser();

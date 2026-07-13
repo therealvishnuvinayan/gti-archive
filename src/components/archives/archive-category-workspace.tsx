@@ -117,6 +117,15 @@ export function ArchiveCategoryWorkspace({
           item.projectName,
           item.projectCategory,
           item.projectTag,
+          item.artworkMetadata?.artworkId,
+          item.artworkMetadata?.titleWorkingName,
+          item.artworkMetadata?.brandSubBrand,
+          item.artworkMetadata?.productSku,
+          item.artworkMetadata?.campaignProject,
+          item.artworkMetadata?.languageMarket,
+          item.artworkMetadata?.artworkType,
+          item.artworkMetadata?.changeLog,
+          item.artworkMetadata?.generalNotes,
           ...item.projectTags,
           ...item.assetTags.map((tag) => tag.name),
           item.archivedBy,
@@ -371,6 +380,19 @@ export function ArchiveCategoryWorkspace({
                               ) : null}
                             </div>
                           ) : null}
+                          {item.artworkMetadata ? (
+                            <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] font-[800]">
+                              <span className="rounded-full bg-[#edf7ef] px-2 py-0.5 text-[#2d8055]">
+                                {item.artworkMetadata.artworkId}
+                              </span>
+                              <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[#566259]">
+                                {item.artworkMetadata.artworkType}
+                              </span>
+                              <span className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[#566259]">
+                                {item.artworkMetadata.languageMarket}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -410,27 +432,23 @@ export function ArchiveCategoryWorkspace({
                       </div>
 
                       <div className="min-w-0 space-y-1">
-                        <p className="text-[#687269]">Project tags</p>
-                        {item.projectTags.length > 0 ? (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {item.projectTags.slice(0, 3).map((tag) => (
-                              <span
-                                key={tag}
-                                className="max-w-[120px] truncate rounded-full bg-[#edf7ef] px-2 py-0.5 text-[11px] font-[700] text-[#2d8055]"
-                                title={tag}
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                            {item.projectTags.length > 3 ? (
-                              <span
-                                className="rounded-full bg-[#f4f7f4] px-2 py-0.5 text-[11px] font-[800] text-[#5d685f]"
-                                title={item.projectTag}
-                              >
-                                +{item.projectTags.length - 3}
-                              </span>
-                            ) : null}
-                          </div>
+                        <p className="text-[#687269]">Artwork metadata</p>
+                        {item.artworkMetadata ? (
+                          <>
+                            <p
+                              className="truncate font-[700] text-[#111712]"
+                              title={item.artworkMetadata.titleWorkingName}
+                            >
+                              {item.artworkMetadata.titleWorkingName}
+                            </p>
+                            <p
+                              className="truncate text-[#687269]"
+                              title={item.artworkMetadata.brandSubBrand}
+                            >
+                              {item.artworkMetadata.brandSubBrand} ·{" "}
+                              {item.artworkMetadata.versionRevision}
+                            </p>
+                          </>
                         ) : (
                           <p className="font-[700] text-[#111712]">—</p>
                         )}

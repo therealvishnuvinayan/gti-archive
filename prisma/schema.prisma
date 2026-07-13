@@ -201,6 +201,9 @@ model User {
   attachments                         ProjectAttachment[]
   projectArchives                     ProjectArchive[]                     @relation("ProjectArchiveArchivedBy")
   archivedProjectFiles                ArchivedProjectFile[]                @relation("ArchivedProjectFileArchivedBy")
+  createdArchiveArtworkMetadata       ArchiveArtworkMetadata[]             @relation("ArchiveArtworkMetadataCreatedBy")
+  approvedArchiveArtworkMetadata      ArchiveArtworkMetadata[]             @relation("ArchiveArtworkMetadataApprovedBy")
+  archivedArtworkMetadata             ArchiveArtworkMetadata[]             @relation("ArchiveArtworkMetadataArchivedBy")
   approvalContactWorkflows            ProjectCompletionWorkflow[]          @relation("ProjectCompletionApprovalContact")
   copyrightContactWorkflows           ProjectCompletionWorkflow[]          @relation("ProjectCompletionCopyrightContact")
   invoiceContactWorkflows             ProjectCompletionWorkflow[]          @relation("ProjectCompletionInvoiceContact")
@@ -299,42 +302,43 @@ model CollaboratorTypePermission {
 }
 
 model Project {
-  id                  String                      @id @default(cuid())
-  name                String
-  category            String
-  description         String
-  executionType       ProjectExecutionType        @default(EXTERNAL)
-  budgetRequired      Boolean                     @default(false)
-  budget              Int?
-  currency            String                      @default("USD")
-  statusId            String?
-  status              ProjectStatusOption?        @relation(fields: [statusId], references: [id], onDelete: SetNull)
-  priority            ProjectPriority             @default(MEDIUM)
-  startDate           DateTime
-  endDate             DateTime
-  currentStageName    String?
-  stageCount          Int                         @default(1)
-  createdById         String
-  createdBy           User                        @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  isPinned            Boolean                     @default(false)
-  stages              ProjectStage[]
-  tags                ProjectTagAssignment[]
-  revisions           ProjectRevision[]
-  comments            ProjectComment[]
-  comparisonComments  ComparisonComment[]
-  attachments         ProjectAttachment[]
-  invoiceRequests     StageInvoiceRequest[]
-  activityLogs        ProjectActivityLog[]
-  collaborators       ProjectCollaborator[]
-  executors           ProjectExecutor[]
-  archive             ProjectArchive?
-  archivedFiles       ArchivedProjectFile[]
-  completionWorkflow  ProjectCompletionWorkflow?
-  completionDocuments ProjectCompletionDocument[]
-  completedAt         DateTime?
-  archivedAt          DateTime?
-  createdAt           DateTime                    @default(now())
-  updatedAt           DateTime                    @updatedAt
+  id                     String                      @id @default(cuid())
+  name                   String
+  category               String
+  description            String
+  executionType          ProjectExecutionType        @default(EXTERNAL)
+  budgetRequired         Boolean                     @default(false)
+  budget                 Int?
+  currency               String                      @default("USD")
+  statusId               String?
+  status                 ProjectStatusOption?        @relation(fields: [statusId], references: [id], onDelete: SetNull)
+  priority               ProjectPriority             @default(MEDIUM)
+  startDate              DateTime
+  endDate                DateTime
+  currentStageName       String?
+  stageCount             Int                         @default(1)
+  createdById            String
+  createdBy              User                        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  isPinned               Boolean                     @default(false)
+  stages                 ProjectStage[]
+  tags                   ProjectTagAssignment[]
+  revisions              ProjectRevision[]
+  comments               ProjectComment[]
+  comparisonComments     ComparisonComment[]
+  attachments            ProjectAttachment[]
+  invoiceRequests        StageInvoiceRequest[]
+  activityLogs           ProjectActivityLog[]
+  collaborators          ProjectCollaborator[]
+  executors              ProjectExecutor[]
+  archive                ProjectArchive?
+  archivedFiles          ArchivedProjectFile[]
+  archiveArtworkMetadata ArchiveArtworkMetadata[]
+  completionWorkflow     ProjectCompletionWorkflow?
+  completionDocuments    ProjectCompletionDocument[]
+  completedAt            DateTime?
+  archivedAt             DateTime?
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
 
   @@index([statusId])
   @@index([isPinned])
@@ -353,19 +357,19 @@ model ProjectCategory {
 }
 
 model ProjectStatusOption {
-  id          String             @id @default(cuid())
+  id          String                    @id @default(cuid())
   name        String
-  slug        String             @unique
+  slug        String                    @unique
   description String?
   color       String?
   groupId     String?
   group       ProjectStatusGroupOption? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  sortOrder   Int                @default(0)
-  isActive    Boolean            @default(true)
-  isSystem    Boolean            @default(false)
+  sortOrder   Int                       @default(0)
+  isActive    Boolean                   @default(true)
+  isSystem    Boolean                   @default(false)
   projects    Project[]
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
 
   @@index([slug])
   @@index([groupId, isActive, sortOrder])
@@ -424,24 +428,24 @@ model AssetTag {
 }
 
 model ArchiveCategory {
-  id                 String              @id @default(cuid())
+  id                 String                  @id @default(cuid())
   name               String
-  slug               String              @unique
+  slug               String                  @unique
   description        String?
   iconUrl            String?
   iconKey            String?
   color              String?
   parentId           String?
-  parent             ArchiveCategory?    @relation("ArchiveCategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children           ArchiveCategory[]   @relation("ArchiveCategoryHierarchy")
-  sortOrder          Int                 @default(0)
-  isActive           Boolean             @default(true)
-  isSystem           Boolean             @default(false)
+  parent             ArchiveCategory?        @relation("ArchiveCategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children           ArchiveCategory[]       @relation("ArchiveCategoryHierarchy")
+  sortOrder          Int                     @default(0)
+  isActive           Boolean                 @default(true)
+  isSystem           Boolean                 @default(false)
   allowedUsers       ArchiveCategoryAccess[]
   projectArchives    ProjectArchive[]
   manualArchiveFiles ManualArchiveFile[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   @@index([slug])
   @@index([parentId])
@@ -554,12 +558,12 @@ model ProjectCollaboratorVisibilityPause {
 }
 
 model CalendarCollaborator {
-  id        String             @id @default(cuid())
-  userId    String             @unique
-  user      User               @relation("CalendarCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation("CalendarCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
   addedById String?
-  addedBy   User?              @relation("CalendarCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
-  createdAt DateTime           @default(now())
+  addedBy   User?    @relation("CalendarCollaboratorAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
 
   @@index([addedById])
 }
@@ -722,6 +726,7 @@ model ProjectAttachment {
   reviewedAt                DateTime?
   reviewNote                String?
   archivedFiles             ArchivedProjectFile[]                 @relation("ArchivedProjectFileSourceAttachment")
+  archiveArtworkMetadata    ArchiveArtworkMetadata[]              @relation("ArchiveArtworkMetadataSourceAttachment")
   assetTags                 ProjectAttachmentAssetTagAssignment[]
   createdAt                 DateTime                              @default(now())
   updatedAt                 DateTime                              @updatedAt
@@ -773,12 +778,12 @@ model FileFavorite {
 }
 
 model ManualLibraryAssetFavorite {
-  id                 String            @id @default(cuid())
-  userId             String
-  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String             @id @default(cuid())
+  userId               String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   manualLibraryAssetId String
-  manualLibraryAsset ManualLibraryAsset @relation(fields: [manualLibraryAssetId], references: [id], onDelete: Cascade)
-  createdAt          DateTime          @default(now())
+  manualLibraryAsset   ManualLibraryAsset @relation(fields: [manualLibraryAssetId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
 
   @@unique([userId, manualLibraryAssetId])
   @@index([userId])
@@ -787,26 +792,26 @@ model ManualLibraryAssetFavorite {
 }
 
 model ComparisonComment {
-  id                  String            @id @default(cuid())
+  id                  String             @id @default(cuid())
   projectId           String
-  project             Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project             Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   stageId             String
-  stage               ProjectStage      @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  stage               ProjectStage       @relation(fields: [stageId], references: [id], onDelete: Cascade)
   baseAttachmentId    String
-  baseAttachment      ProjectAttachment @relation("ComparisonCommentBaseAttachment", fields: [baseAttachmentId], references: [id], onDelete: Cascade)
+  baseAttachment      ProjectAttachment  @relation("ComparisonCommentBaseAttachment", fields: [baseAttachmentId], references: [id], onDelete: Cascade)
   compareAttachmentId String
-  compareAttachment   ProjectAttachment @relation("ComparisonCommentCompareAttachment", fields: [compareAttachmentId], references: [id], onDelete: Cascade)
+  compareAttachment   ProjectAttachment  @relation("ComparisonCommentCompareAttachment", fields: [compareAttachmentId], references: [id], onDelete: Cascade)
   captionAttachmentId String?
   captionAttachment   ProjectAttachment? @relation("ComparisonCommentCaptionAttachment", fields: [captionAttachmentId], references: [id], onDelete: SetNull)
-  isCaption           Boolean           @default(false)
+  isCaption           Boolean            @default(false)
   comparisonOpacity   Float?
   xPercent            Float
   yPercent            Float
   body                String
   createdById         String
-  createdBy           User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  createdBy           User               @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([projectId, stageId, createdAt])
   @@index([baseAttachmentId, compareAttachmentId, createdAt])
@@ -859,15 +864,15 @@ model ProjectArchive {
 }
 
 model ArchivedProjectFile {
-  id                   String            @id @default(cuid())
+  id                   String                  @id @default(cuid())
   archiveId            String
-  archive              ProjectArchive    @relation(fields: [archiveId], references: [id], onDelete: Cascade)
+  archive              ProjectArchive          @relation(fields: [archiveId], references: [id], onDelete: Cascade)
   projectId            String
-  project              Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project              Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sourceAttachmentId   String
-  sourceAttachment     ProjectAttachment @relation("ArchivedProjectFileSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Restrict)
+  sourceAttachment     ProjectAttachment       @relation("ArchivedProjectFileSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Restrict)
   sourceRevisionId     String?
-  sourceRevision       ProjectRevision?  @relation("ArchivedProjectFileSourceRevision", fields: [sourceRevisionId], references: [id], onDelete: SetNull)
+  sourceRevision       ProjectRevision?        @relation("ArchivedProjectFileSourceRevision", fields: [sourceRevisionId], references: [id], onDelete: SetNull)
   finalArchiveFileName String
   originalFileName     String
   mimeType             String
@@ -875,16 +880,82 @@ model ArchivedProjectFile {
   bucket               String
   storageKey           String
   archivedById         String
-  archivedBy           User              @relation("ArchivedProjectFileArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  archivedBy           User                    @relation("ArchivedProjectFileArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  artworkMetadata      ArchiveArtworkMetadata?
   archivedAt           DateTime
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
 
   @@unique([archiveId, finalArchiveFileName])
   @@unique([archiveId, sourceAttachmentId])
   @@index([projectId, archivedAt])
   @@index([sourceAttachmentId])
   @@index([sourceRevisionId])
+  @@index([archivedById])
+}
+
+model ArchiveArtworkMetadata {
+  id                  String              @id @default(cuid())
+  archiveFileId       String              @unique
+  archiveFile         ArchivedProjectFile @relation(fields: [archiveFileId], references: [id], onDelete: Cascade)
+  projectId           String
+  project             Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceAttachmentId  String
+  sourceAttachment    ProjectAttachment   @relation("ArchiveArtworkMetadataSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Restrict)
+  artworkId           String
+  titleWorkingName    String
+  versionRevision     String
+  languageMarket      String
+  artworkType         String
+  brandSubBrand       String
+  productSku          String?
+  campaignProject     String?
+  formatDimensions    String?
+  colourSpace         String
+  resolution          String?
+  fileFormats         String
+  printProcess        String?
+  specialFinishes     String?
+  creationDate        DateTime
+  lastModifiedDate    DateTime
+  goLiveOnShelfDate   DateTime?
+  expirySunsetDate    DateTime?
+  archiveStatus       String
+  createdByName       String
+  createdByUserId     String?
+  createdByUser       User?               @relation("ArchiveArtworkMetadataCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  approvedByName      String
+  approvedByUserId    String?
+  approvedByUser      User?               @relation("ArchiveArtworkMetadataApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedAt          DateTime?
+  clientBrandOwner    String
+  regulatoryClearance String?
+  fontsUsed           String
+  imagesPhotography   String
+  illustrationsIcons  String
+  colourCodes         String
+  thirdPartyLogosIp   String?
+  supplierPrinter     String?
+  outputFilesList     String?
+  printProofRef       String?
+  packagingDielineRef String?
+  changeLog           String
+  relatedArtworks     String?
+  briefSpecLink       String?
+  generalNotes        String?
+  archivedById        String
+  archivedBy          User                @relation("ArchiveArtworkMetadataArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([projectId])
+  @@index([sourceAttachmentId])
+  @@index([artworkId])
+  @@index([titleWorkingName])
+  @@index([brandSubBrand])
+  @@index([artworkType])
+  @@index([languageMarket])
+  @@index([archiveStatus])
   @@index([archivedById])
 }
 
@@ -979,24 +1050,24 @@ model ManualArchiveFile {
 }
 
 model ManualLibraryAsset {
-  id               String                            @id @default(cuid())
-  assetName        String
-  originalFileName String
-  createdByName    String?
-  description      String?
-  category         String?
-  mimeType         String
-  fileSize         Int
-  bucket           String
-  storageKey       String                            @unique
-  status           AttachmentStatus                  @default(UPLOADING)
-  uploadedById     String
-  uploadedBy       User                              @relation("ManualLibraryAssetUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
-  assetTags        ManualLibraryAssetTagAssignment[]
+  id                          String                            @id @default(cuid())
+  assetName                   String
+  originalFileName            String
+  createdByName               String?
+  description                 String?
+  category                    String?
+  mimeType                    String
+  fileSize                    Int
+  bucket                      String
+  storageKey                  String                            @unique
+  status                      AttachmentStatus                  @default(UPLOADING)
+  uploadedById                String
+  uploadedBy                  User                              @relation("ManualLibraryAssetUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  assetTags                   ManualLibraryAssetTagAssignment[]
   manualLibraryAssetFavorites ManualLibraryAssetFavorite[]
-  uploadedAt       DateTime                          @default(now())
-  createdAt        DateTime                          @default(now())
-  updatedAt        DateTime                          @updatedAt
+  uploadedAt                  DateTime                          @default(now())
+  createdAt                   DateTime                          @default(now())
+  updatedAt                   DateTime                          @updatedAt
 
   @@index([category, uploadedAt])
   @@index([uploadedById])
