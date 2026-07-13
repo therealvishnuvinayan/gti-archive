@@ -467,7 +467,7 @@ export function ProjectDetailWorkspace({
               <h2 className="text-[20px] font-[800] leading-tight text-[#111712]">
                 Project Brief
               </h2>
-              <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-[14px] font-[500] leading-6 text-[#303a33]">
+              <p className="dashboard-scroll-thin mt-2 max-h-[18rem] overflow-y-auto whitespace-pre-wrap break-words pr-3 text-left text-[14px] font-[500] leading-6 text-[#303a33]">
                 {project.description.trim() || "Project brief is not available."}
               </p>
             </div>
