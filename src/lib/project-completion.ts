@@ -371,11 +371,23 @@ function canUseFinalCompletionWorkflow(project: {
   return isCompletedProject(project) || areAllStagesCompleted(project);
 }
 
-function isStepResolved(status: ProjectCompletionStepStatus) {
-  return (
-    status === ProjectCompletionStepStatus.COMPLETED ||
-    status === ProjectCompletionStepStatus.NOT_REQUIRED
-  );
+export function isCompletionRequirementResolved(input: {
+  required: boolean | null;
+  status: ProjectCompletionStepStatus;
+}) {
+  if (input.status === ProjectCompletionStepStatus.NOT_REQUIRED) {
+    return true;
+  }
+
+  if (input.required === false) {
+    return true;
+  }
+
+  if (input.required === true) {
+    return input.status === ProjectCompletionStepStatus.COMPLETED;
+  }
+
+  return false;
 }
 
 export function getFinalCompletionArchiveBlockers(input: {
@@ -403,32 +415,41 @@ export function getFinalCompletionArchiveBlockers(input: {
   }
 
   const blockers: string[] = [];
+  const approvalResolved = isCompletionRequirementResolved({
+    required: workflow.approvalRequired,
+    status: workflow.approvalStatus,
+  });
+  const copyrightResolved = isCompletionRequirementResolved({
+    required: workflow.copyrightRequired,
+    status: workflow.copyrightStatus,
+  });
+  const invoiceResolved = isCompletionRequirementResolved({
+    required: workflow.invoiceRequired,
+    status: workflow.invoiceStatus,
+  });
 
-  if (workflow.approvalRequired === null) {
-    blockers.push("Approval requirement must be confirmed.");
-  } else if (
-    workflow.approvalRequired &&
-    workflow.approvalStatus !== ProjectCompletionStepStatus.COMPLETED
-  ) {
-    blockers.push("Approval is required and still pending.");
+  if (!approvalResolved) {
+    if (workflow.approvalRequired === null) {
+      blockers.push("Approval requirement must be confirmed.");
+    } else {
+      blockers.push("Approval is required and still pending.");
+    }
   }
 
-  if (workflow.copyrightRequired === null) {
-    blockers.push("Copyright transfer requirement must be confirmed.");
-  } else if (
-    workflow.copyrightRequired &&
-    workflow.copyrightStatus !== ProjectCompletionStepStatus.COMPLETED
-  ) {
-    blockers.push("Copyright transfer is required and still pending.");
+  if (!copyrightResolved) {
+    if (workflow.copyrightRequired === null) {
+      blockers.push("Copyright transfer requirement must be confirmed.");
+    } else {
+      blockers.push("Copyright transfer is required and still pending.");
+    }
   }
 
-  if (workflow.invoiceRequired === null) {
-    blockers.push("Final invoice requirement must be confirmed.");
-  } else if (
-    workflow.invoiceRequired &&
-    workflow.invoiceStatus !== ProjectCompletionStepStatus.COMPLETED
-  ) {
-    blockers.push("Final invoice is required and still pending.");
+  if (!invoiceResolved) {
+    if (workflow.invoiceRequired === null) {
+      blockers.push("Final invoice requirement must be confirmed.");
+    } else {
+      blockers.push("Final invoice is required and still pending.");
+    }
   }
 
   return blockers;
@@ -446,14 +467,26 @@ function getNextInvoiceStatus(currentStatus: ProjectCompletionStepStatus) {
   return ProjectCompletionStepStatus.NOT_STARTED;
 }
 
-function getWorkflowCompletedAtValue(
-  approvalStatus: ProjectCompletionStepStatus,
-  copyrightStatus: ProjectCompletionStepStatus,
-  invoiceStatus: ProjectCompletionStepStatus,
-) {
-  return isStepResolved(approvalStatus) &&
-    isStepResolved(copyrightStatus) &&
-    isStepResolved(invoiceStatus)
+function getWorkflowCompletedAtValue(input: {
+  approvalRequired: boolean | null;
+  approvalStatus: ProjectCompletionStepStatus;
+  copyrightRequired: boolean | null;
+  copyrightStatus: ProjectCompletionStepStatus;
+  invoiceRequired: boolean | null;
+  invoiceStatus: ProjectCompletionStepStatus;
+}) {
+  return isCompletionRequirementResolved({
+    required: input.approvalRequired,
+    status: input.approvalStatus,
+  }) &&
+    isCompletionRequirementResolved({
+      required: input.copyrightRequired,
+      status: input.copyrightStatus,
+    }) &&
+    isCompletionRequirementResolved({
+      required: input.invoiceRequired,
+      status: input.invoiceStatus,
+    })
     ? new Date()
     : null;
 }
@@ -1070,6 +1103,14 @@ async function mapWorkflowRecord(
   const invoiceRequired = isInternalExecution
     ? false
     : project.completionWorkflow.invoiceRequired;
+  const isApprovalResolved = isCompletionRequirementResolved({
+    required: approvalRequired,
+    status: approvalStatus,
+  });
+  const isCopyrightResolved = isCompletionRequirementResolved({
+    required: copyrightRequired,
+    status: copyrightStatus,
+  });
   const archiveBlockers = getFinalCompletionArchiveBlockers({
     executionType: project.executionType,
     workflow: project.completionWorkflow,
@@ -1136,13 +1177,12 @@ async function mapWorkflowRecord(
     ),
     invoiceCompletedAt: formatCompletionTimestamp(project.completionWorkflow.invoiceCompletedAt),
     completedAt: formatCompletionTimestamp(project.completionWorkflow.completedAt),
-    isApprovalResolved: isStepResolved(approvalStatus),
-    isCopyrightUnlocked: isStepResolved(approvalStatus),
-    isCopyrightResolved: isStepResolved(copyrightStatus),
+    isApprovalResolved,
+    isCopyrightUnlocked: isApprovalResolved,
+    isCopyrightResolved,
     isInvoiceUnlocked:
       isInternalExecution ||
-      (isStepResolved(approvalStatus) &&
-        isStepResolved(copyrightStatus)),
+      (isApprovalResolved && isCopyrightResolved),
     availableContacts: mapContactOptions(project),
     finalArchivedFiles,
     approvalSelectedFiles: isInternalExecution ? [] : approvalSelectedFiles,
@@ -1348,11 +1388,14 @@ export async function configureProjectCompletionWorkflow(
           input.invoiceRequired,
         ),
       );
-      const completedAt = getWorkflowCompletedAtValue(
-        nextApprovalStatus,
-        nextCopyrightStatus,
-        nextInvoiceStatus,
-      );
+      const completedAt = getWorkflowCompletedAtValue({
+        approvalRequired: input.approvalRequired,
+        approvalStatus: nextApprovalStatus,
+        copyrightRequired: input.copyrightRequired,
+        copyrightStatus: nextCopyrightStatus,
+        invoiceRequired: input.invoiceRequired,
+        invoiceStatus: nextInvoiceStatus,
+      });
 
       await tx.projectCompletionWorkflow.update({
         where: {
@@ -1517,7 +1560,12 @@ export async function prepareCopyrightTransferRequest(
     prisma.$transaction(async (tx) => {
       const workflow = await ensureWorkflowExistsTx(tx, project.id);
 
-      if (!isStepResolved(workflow.approvalStatus)) {
+      if (
+        !isCompletionRequirementResolved({
+          required: workflow.approvalRequired,
+          status: workflow.approvalStatus,
+        })
+      ) {
         throw new Error(
           "Complete or mark authority approval as not required before preparing copyright transfer.",
         );
@@ -1582,8 +1630,14 @@ export async function requestProjectFinalInvoice(
       const workflow = await ensureWorkflowExistsTx(tx, project.id);
 
       if (
-        !isStepResolved(workflow.approvalStatus) ||
-        !isStepResolved(workflow.copyrightStatus)
+        !isCompletionRequirementResolved({
+          required: workflow.approvalRequired,
+          status: workflow.approvalStatus,
+        }) ||
+        !isCompletionRequirementResolved({
+          required: workflow.copyrightRequired,
+          status: workflow.copyrightStatus,
+        })
       ) {
         throw new Error(
           "Complete or skip authority approval and copyright transfer before requesting the final invoice.",
@@ -1662,8 +1716,14 @@ export async function markProjectInvoiceNotRequired(
       const workflow = await ensureWorkflowExistsTx(tx, project.id);
 
       if (
-        !isStepResolved(workflow.approvalStatus) ||
-        !isStepResolved(workflow.copyrightStatus)
+        !isCompletionRequirementResolved({
+          required: workflow.approvalRequired,
+          status: workflow.approvalStatus,
+        }) ||
+        !isCompletionRequirementResolved({
+          required: workflow.copyrightRequired,
+          status: workflow.copyrightStatus,
+        })
       ) {
         throw new Error(
           "Complete or skip authority approval and copyright transfer before marking final invoice as not required.",
@@ -1987,11 +2047,14 @@ export async function finalizeProjectCompletionDocumentUpload(
               approvalStatus: ProjectCompletionStepStatus.COMPLETED,
               approvalCompletedAt: uploadedAt,
               invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
-              completedAt: getWorkflowCompletedAtValue(
-                ProjectCompletionStepStatus.COMPLETED,
-                workflow.copyrightStatus,
-                getNextInvoiceStatus(workflow.invoiceStatus),
-              ),
+              completedAt: getWorkflowCompletedAtValue({
+                approvalRequired: workflow.approvalRequired,
+                approvalStatus: ProjectCompletionStepStatus.COMPLETED,
+                copyrightRequired: workflow.copyrightRequired,
+                copyrightStatus: workflow.copyrightStatus,
+                invoiceRequired: workflow.invoiceRequired,
+                invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
+              }),
             },
           });
           break;
@@ -2000,7 +2063,12 @@ export async function finalizeProjectCompletionDocumentUpload(
             throw new Error("Only the selected copyright contact can upload copyright transfer documents.");
           }
 
-          if (!isStepResolved(workflow.approvalStatus)) {
+          if (
+            !isCompletionRequirementResolved({
+              required: workflow.approvalRequired,
+              status: workflow.approvalStatus,
+            })
+          ) {
             throw new Error(
               "Complete authority approval before uploading the signed copyright transfer document.",
             );
@@ -2050,11 +2118,14 @@ export async function finalizeProjectCompletionDocumentUpload(
               copyrightStatus: ProjectCompletionStepStatus.COMPLETED,
               copyrightCompletedAt: uploadedAt,
               invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
-              completedAt: getWorkflowCompletedAtValue(
-                workflow.approvalStatus,
-                ProjectCompletionStepStatus.COMPLETED,
-                getNextInvoiceStatus(workflow.invoiceStatus),
-              ),
+              completedAt: getWorkflowCompletedAtValue({
+                approvalRequired: workflow.approvalRequired,
+                approvalStatus: workflow.approvalStatus,
+                copyrightRequired: workflow.copyrightRequired,
+                copyrightStatus: ProjectCompletionStepStatus.COMPLETED,
+                invoiceRequired: workflow.invoiceRequired,
+                invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
+              }),
             },
           });
           break;
@@ -2064,8 +2135,14 @@ export async function finalizeProjectCompletionDocumentUpload(
           }
 
           if (
-            !isStepResolved(workflow.approvalStatus) ||
-            !isStepResolved(workflow.copyrightStatus)
+            !isCompletionRequirementResolved({
+              required: workflow.approvalRequired,
+              status: workflow.approvalStatus,
+            }) ||
+            !isCompletionRequirementResolved({
+              required: workflow.copyrightRequired,
+              status: workflow.copyrightStatus,
+            })
           ) {
             throw new Error(
               "Complete or skip authority approval and copyright transfer before uploading the final invoice.",

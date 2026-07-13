@@ -54,8 +54,13 @@ const archives = read("src/lib/archives.ts");
 assertIncludes(archives, "assertCanUseArchives(user);", "archive list guard");
 assertIncludes(
   archives,
-  "assertCanUseArchives(user, \"You do not have permission to download archive files.\")",
+  "if (!hasPermission(user, \"archive.download\"))",
   "manual archive download guard",
+);
+assertIncludes(
+  archives,
+  "assertCanAccessManualArchiveFileAsset",
+  "manual archive access guard",
 );
 assertIncludes(
   archives,

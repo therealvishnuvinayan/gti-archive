@@ -88,7 +88,8 @@ for (const snippet of [
   "ArchiveArtworkMetadataSourceType",
   "manualArchiveFileId String?",
   "manualArchiveFile   ManualArchiveFile?",
-  "artworkMetadata   ArchiveArtworkMetadata?",
+  "artworkMetadata",
+  "ArchiveArtworkMetadata?",
 ]) {
   assertIncludes(schema, snippet, `Prisma direct archive metadata schema ${snippet}`);
 }

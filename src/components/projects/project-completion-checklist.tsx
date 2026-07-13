@@ -85,7 +85,7 @@ function getStepStatusMeta(
 
   if (required === false || status === "NOT_REQUIRED") {
     return {
-      label: "Not required",
+      label: "Not Required",
       className: "bg-[#f4f7f4] text-[#5f6b62]",
     };
   }

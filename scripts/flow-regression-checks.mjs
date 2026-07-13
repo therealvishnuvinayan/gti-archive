@@ -61,7 +61,7 @@ assertIncludesAll(
     "hasProjectArchiveAccessGrant(user, project)",
     "case \"stage.submitWork\":",
     "case \"file.uploadSubmission\":",
-    "return !isProjectOwner(user, project) && isMainProjectExecutor(user, project);",
+    "return isMainProjectExecutor(user, project);",
     "case \"compare.createComment\":\n      return canAddProjectCaptions(user, project);",
     "isArchiveSensitivePermission(permissionKey) && isClientOfGtiUser(user)",
     "archives: canUseArchives(user)",
@@ -84,15 +84,15 @@ assertIncludesAll(
 
 const archivesPage = read("src/app/(dashboard)/archives/page.tsx");
 const archiveCategoryPage = read("src/app/(dashboard)/archives/[slug]/page.tsx");
-assertIncludes(archivesPage, "if (!canUseArchives(user))", "archives page client hard-deny");
+assertIncludes(archivesPage, "canAccessArchivesArea(user)", "archives page client hard-deny");
 assertIncludes(
   archiveCategoryPage,
-  "if (!canUseArchives(user))",
+  "canAccessArchivesArea(user)",
   "archive category page client hard-deny",
 );
 assertIncludes(
   archiveCategoryPage,
-  "canAccessArchiveCategoryRecord(user, category)",
+  "canAccessArchiveCategoryForUser(user, category)",
   "archive category access check",
 );
 
@@ -109,7 +109,8 @@ assertIncludesAll(
   [
     "assertCanUseArchives(user);",
     "assertCanAccessArchiveCategory(user, manualArchiveFile.archiveCategoryId)",
-    "assertCanUseArchives(user, \"You do not have permission to download archive files.\")",
+    "if (!hasPermission(user, \"archive.download\"))",
+    "assertCanAccessManualArchiveFileAsset",
     "if (!hasProjectPermission(user, project, \"archive.download\"))",
     "if (!hasProjectPermission(user, project, \"archive.view\"))",
     "Final completion requirements must be resolved before archive.",

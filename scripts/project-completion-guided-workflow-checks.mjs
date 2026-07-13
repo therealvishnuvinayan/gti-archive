@@ -96,8 +96,45 @@ assert(
 assert(
   checklistSource.includes("Waiting for approval proof") &&
     checklistSource.includes("Authority approval is completed when") &&
-    checklistSource.includes("selected approval contact"),
+    checklistSource.includes("selected approval contact") &&
+    checklistSource.includes('label: "Not Required"'),
   "Pending authority approval must explain that the selected contact uploads approval proof.",
+);
+
+assert(
+  completionServiceSource.includes("export function isCompletionRequirementResolved") &&
+    completionServiceSource.includes("input.status === ProjectCompletionStepStatus.NOT_REQUIRED") &&
+    completionServiceSource.includes("input.required === false") &&
+    completionServiceSource.includes("input.required === true") &&
+    completionServiceSource.includes("input.status === ProjectCompletionStepStatus.COMPLETED"),
+  "Project completion must treat NOT_REQUIRED and required=false as resolved states.",
+);
+
+assert(
+  /const approvalResolved = isCompletionRequirementResolved[\s\S]*if \(!approvalResolved\)[\s\S]*Approval requirement must be confirmed[\s\S]*Approval is required and still pending/.test(
+    completionServiceSource,
+  ) &&
+    /const copyrightResolved = isCompletionRequirementResolved[\s\S]*if \(!copyrightResolved\)[\s\S]*Copyright transfer requirement must be confirmed[\s\S]*Copyright transfer is required and still pending/.test(
+      completionServiceSource,
+    ) &&
+    /const invoiceResolved = isCompletionRequirementResolved[\s\S]*if \(!invoiceResolved\)[\s\S]*Final invoice requirement must be confirmed[\s\S]*Final invoice is required and still pending/.test(
+      completionServiceSource,
+    ),
+  "Final completion blockers must skip steps already resolved as Not Required.",
+);
+
+assert(
+  /isApprovalResolved,[\s\S]*isCopyrightUnlocked: isApprovalResolved[\s\S]*isCopyrightResolved,[\s\S]*isInvoiceUnlocked:[\s\S]*isApprovalResolved && isCopyrightResolved/.test(
+    completionServiceSource,
+  ),
+  "Checklist unlock state must use requirement-aware resolution, not status-only checks.",
+);
+
+assert(
+  /getWorkflowCompletedAtValue\(\{[\s\S]*approvalRequired:[\s\S]*approvalStatus:[\s\S]*copyrightRequired:[\s\S]*copyrightStatus:[\s\S]*invoiceRequired:[\s\S]*invoiceStatus:/.test(
+    completionServiceSource,
+  ),
+  "Workflow completedAt calculation must receive required/status pairs for Not Required resolution.",
 );
 
 assert(
