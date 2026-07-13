@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 
+import { AppDatePicker } from "@/components/calendar/app-date-picker";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1813,20 +1814,22 @@ function DraftProjectEditorPanel({
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
               Start date
-              <Input
-                type="date"
+              <AppDatePicker
                 value={toDateInputValue(draftProject.startDate)}
-                onChange={(event) => updateDraft({ startDate: event.target.value || null })}
+                onChange={(value) => updateDraft({ startDate: value || null })}
+                placeholder="Select start date"
                 disabled={isSaving}
+                clearable
               />
             </label>
             <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
               End date
-              <Input
-                type="date"
+              <AppDatePicker
                 value={toDateInputValue(draftProject.endDate)}
-                onChange={(event) => updateDraft({ endDate: event.target.value || null })}
+                onChange={(value) => updateDraft({ endDate: value || null })}
+                placeholder="Select end date"
                 disabled={isSaving}
+                clearable
               />
             </label>
             <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
@@ -2200,24 +2203,22 @@ function DraftProjectEditorPanel({
                   </label>
                   <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
                     Start date
-                    <Input
-                      type="date"
+                    <AppDatePicker
                       value={toDateInputValue(stage.startDate)}
-                      onChange={(event) =>
-                        updateStage(index, { startDate: event.target.value || null })
-                      }
+                      onChange={(value) => updateStage(index, { startDate: value || null })}
+                      placeholder="Select stage start"
                       disabled={isSaving}
+                      clearable
                     />
                   </label>
                   <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">
                     Due date
-                    <Input
-                      type="date"
+                    <AppDatePicker
                       value={toDateInputValue(stage.dueDate)}
-                      onChange={(event) =>
-                        updateStage(index, { dueDate: event.target.value || null })
-                      }
+                      onChange={(value) => updateStage(index, { dueDate: value || null })}
+                      placeholder="Select due date"
                       disabled={isSaving}
+                      clearable
                     />
                   </label>
                   <label className="space-y-1.5 text-[12px] font-bold text-[#667168]">

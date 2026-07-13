@@ -1381,10 +1381,10 @@ function validateArchiveArtworkMetadataInput(input: {
     specialFinishes: normalizeArchiveMetadataValue(input.metadata.specialFinishes),
     creationDate: parseArchiveMetadataDate(input.metadata.creationDate, "Creation date", {
       required: true,
-    }),
+    }) as Date,
     lastModifiedDate: parseArchiveMetadataDate(input.metadata.lastModifiedDate, "Last modified", {
       required: true,
-    }),
+    }) as Date,
     goLiveOnShelfDate: parseArchiveMetadataDate(
       input.metadata.goLiveOnShelfDate,
       "Go-live / On-shelf date",

@@ -66,6 +66,7 @@ import {
   CompletedProjectArchiveSummaryCard,
   ProjectCompletionChecklist,
 } from "@/components/projects/project-completion-checklist";
+import { AppDatePicker } from "@/components/calendar/app-date-picker";
 import {
   CollaboratorDialog,
   type CollaboratorForm,
@@ -6682,12 +6683,33 @@ export function ProjectChatWorkspace({
       );
     }
 
+    if (input.type === "date") {
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <AppDatePicker
+            id={inputId}
+            value={value}
+            onChange={(nextValue) =>
+              updateArchiveMetadataField(input.sourceAttachmentId, input.field, nextValue)
+            }
+            required={input.required}
+            clearable={!input.required}
+            placeholder={`Select ${input.label.toLowerCase()}`}
+            triggerClassName={`h-10 w-full justify-between rounded-[14px] border bg-white px-3 text-left text-[13px] font-normal shadow-none hover:bg-white ${
+              isMissing ? "border-[#df6f66]" : "border-line"
+            }`}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-1.5">
         {label}
         <Input
           id={inputId}
-          type={input.type === "date" ? "date" : "text"}
+          type="text"
           value={value}
           onChange={(event) =>
             updateArchiveMetadataField(input.sourceAttachmentId, input.field, event.target.value)
