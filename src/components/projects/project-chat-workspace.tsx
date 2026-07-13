@@ -6775,6 +6775,8 @@ export function ProjectChatWorkspace({
         );
 
         if (result.revision.rejectionComment) {
+          const revisionReasonText = nextReason || rejectionReason;
+
           return [
             ...nextEntries,
             {
@@ -6787,7 +6789,9 @@ export function ProjectChatWorkspace({
               authorId: currentUserId,
               authorAvatarSrc: currentUserAvatarSrc,
               role: currentUserRoleLabel,
-              body: `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.`,
+              body: revisionReasonText
+                ? `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.\n\nReason: ${revisionReasonText}`
+                : `${currentUserDisplayName} requested a revision for ${reviewRevisionLabel}.`,
               createdAt: "Just now",
               localCreatedAtMs,
             },

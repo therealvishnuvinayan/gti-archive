@@ -562,6 +562,7 @@ function getRevisionRequestSystemDetails(body: string) {
 
   return {
     revisionLabel: `Revision ${match[1]}`,
+    reason: match[2]?.trim() || null,
   };
 }
 
@@ -657,6 +658,9 @@ function mapCommentEntry(
 
   if (revisionRequestSystemDetails) {
     const actorName = getDisplayName(comment.author);
+    const reasonText = revisionRequestSystemDetails.reason
+      ? `\n\nReason: ${revisionRequestSystemDetails.reason}`
+      : "";
 
     return {
       id: comment.id,
@@ -666,7 +670,7 @@ function mapCommentEntry(
       authorId: comment.author.id,
       author: actorName,
       role: getActorRole(comment.author),
-      body: `${actorName} requested a revision for ${revisionRequestSystemDetails.revisionLabel}.`,
+      body: `${actorName} requested a revision for ${revisionRequestSystemDetails.revisionLabel}.${reasonText}`,
       createdAt: formatHistoryTimestamp(comment.createdAt),
       mentions: [],
       attachments: [],
