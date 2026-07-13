@@ -4,9 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
-  Archive,
-  Briefcase,
-  CalendarDays,
   Check,
   ClipboardCheck,
   FileText,
@@ -14,7 +11,6 @@ import {
   Languages,
   Loader2,
   Mic,
-  MoreVertical,
   Paperclip,
   Plus,
   Search,
@@ -96,6 +92,7 @@ type ChatEntry = {
 
 type ProjectCardView = {
   name: string;
+  category: string;
   status: string;
   statusClass: string;
   stage: string;
@@ -510,6 +507,7 @@ function mapProjectResultToCard(
 
   return {
     name: project.name,
+    category: project.category,
     status: project.status,
     owner: project.owner,
     ownerInitials: getInitials(project.owner),
@@ -543,15 +541,6 @@ function getDraftWarnings(response: FluxAIChatResponse | null) {
     ...(response?.warnings ?? []),
     ...(response?.draftProject?.warnings ?? []),
   ].filter((warning, index, warnings) => warnings.indexOf(warning) === index);
-}
-
-function getProjectStageParts(project: FluxAIProjectResult) {
-  const [stageName, ...statusParts] = project.currentStage.split(/\s+:\s+/);
-
-  return {
-    stageName: stageName?.trim() || project.currentStage,
-    stageStatus: statusParts.join(" : ").trim() || project.status,
-  };
 }
 
 function hasFluxResultContent(response: FluxAIChatResponse | null) {
@@ -595,87 +584,16 @@ function shouldShowProjectMatches(response: FluxAIChatResponse | null) {
   );
 }
 
-function ProjectResultDetailCard({
-  project,
-}: {
-  project: FluxAIProjectResult;
-}) {
-  const tone = getStatusTone(project.status, project.statusGroup);
-  const stage = getProjectStageParts(project);
-  const blockerSummary =
-    project.blockersSummary ||
-    (project.archiveBlockers?.length
-      ? project.archiveBlockers.slice(0, 2).join(" ")
-      : null);
+function getPreferredMatchesTab(response: FluxAIChatResponse | null): FluxMatchesTab | null {
+  if (shouldShowArchiveMatches(response) && !shouldShowProjectMatches(response)) {
+    return "archives";
+  }
 
-  const details: Array<[string, string]> = [
-    ["Category", project.category],
-    ["Current Stage", stage.stageName],
-    ["Stage Status", stage.stageStatus],
-    ["Owner", project.owner],
-    ["Executor", project.executor],
-    ["Deadline", project.deadline],
-    ...(project.budgetLabel ? ([["Budget", project.budgetLabel]] as Array<[string, string]>) : []),
-  ];
+  if (shouldShowProjectMatches(response)) {
+    return "projects";
+  }
 
-  return (
-    <article className="rounded-[22px] border border-[#dfe8dd] bg-white p-5 shadow-[0_16px_36px_rgba(23,39,28,0.045)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[12px] font-extrabold uppercase text-[#6f7a72]">
-            Project Result Detail
-          </p>
-          <h3 className="mt-2 text-[20px] font-extrabold leading-6 text-[#111712]">
-            {project.name}
-          </h3>
-        </div>
-        <span
-          className={cn(
-            "inline-flex shrink-0 rounded-full px-3 py-1 text-[12px] font-extrabold",
-            tone.statusClass,
-          )}
-        >
-          {project.status}
-        </span>
-      </div>
-
-      <dl className="mt-5 grid gap-3 sm:grid-cols-2">
-        {details.map(([label, value]) => (
-          <div
-            key={label}
-            className="min-w-0 rounded-[16px] border border-[#e2e9e0] bg-[#f9fbf8] p-4"
-          >
-            <dt className="text-[12px] font-semibold text-[#7a847c]">{label}</dt>
-            <dd
-              className={cn(
-                "mt-1 min-w-0 text-[14px] font-extrabold leading-5 text-[#17211a]",
-                label === "Stage Status" ? tone.stageClass : "",
-              )}
-            >
-              {value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      {blockerSummary || project.readyForArchive || project.overdueStages?.length ? (
-        <div className="mt-4 rounded-[18px] bg-[#f7faf6] p-4 text-[13px] font-semibold leading-5 text-[#536057]">
-          {project.readyForArchive ? <p>Ready for archive.</p> : null}
-          {project.overdueStages?.length ? (
-            <p>
-              {project.overdueStages.length} overdue stage
-              {project.overdueStages.length === 1 ? "" : "s"} returned.
-            </p>
-          ) : null}
-          {blockerSummary ? <p>{blockerSummary}</p> : null}
-        </div>
-      ) : null}
-
-      <Button asChild size="sm" className="mt-5 min-h-11 w-full text-[13px]">
-        <Link href={project.href}>View Project</Link>
-      </Button>
-    </article>
-  );
+  return null;
 }
 
 function getArchiveAssetMimeType(asset: FluxAIArchiveAssetResult) {
@@ -696,65 +614,79 @@ function getArchiveAssetMimeType(asset: FluxAIArchiveAssetResult) {
   return "application/octet-stream";
 }
 
-function ArchiveAssetDetailCard({ asset }: { asset: FluxAIArchiveAssetResult }) {
-  const mimeType = getArchiveAssetMimeType(asset);
-  const details: Array<[string, string | null | undefined]> = [
-    ["File Name", asset.fileName],
-    ["Artwork ID", asset.artworkId],
-    ["Category", asset.archiveCategory],
-    ["Brand/Sub-brand", asset.brandSubBrand],
-    ["File Type", asset.fileType],
-    ["File Size", asset.fileSize],
-    ["Linked Project", asset.linkedProject],
-    ["Archived Date", asset.archivedAt],
-    ["Status", asset.status],
-  ];
+type FluxMatchesTab = "projects" | "archives";
 
+function CompactProjectMatchCard({ project }: { project: ProjectCardView }) {
   return (
-    <article className="rounded-[22px] border border-[#dfe8dd] bg-white p-5 shadow-[0_16px_36px_rgba(23,39,28,0.045)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <article className="rounded-[16px] border border-[#e3e9e2] bg-white p-3 shadow-[0_8px_20px_rgba(23,39,28,0.035)]">
+      <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[12px] font-extrabold uppercase text-[#6f7a72]">
-            Archive Result Detail
-          </p>
-          <h3 className="mt-2 text-[20px] font-extrabold leading-6 text-[#111712]">
-            {asset.title}
+          <h3 className="truncate text-[13px] font-extrabold leading-5 text-[#111712]">
+            {project.name}
           </h3>
+          <p className="mt-1 truncate text-[11px] font-semibold text-[#6f7a72]">
+            Project · {project.category}
+          </p>
         </div>
-        <span className="inline-flex shrink-0 rounded-full bg-[#eef8ef] px-3 py-1 text-[12px] font-extrabold text-[#2f7f53]">
-          {asset.recordType === "FINAL_ARCHIVE_FILE" ? "Final Archive" : "Manual Archive"}
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-extrabold",
+            project.statusClass,
+          )}
+        >
+          {project.status}
         </span>
       </div>
+      <p className="mt-2 truncate text-[11px] font-semibold text-[#657069]">
+        {project.stage}
+      </p>
+      <Button asChild variant="outline" size="sm" className="mt-3 min-h-9 w-full text-[12px]">
+        <Link href={project.href}>View</Link>
+      </Button>
+    </article>
+  );
+}
 
-      <dl className="mt-5 grid gap-3 sm:grid-cols-2">
-        {details
-          .filter(([, value]) => Boolean(value))
-          .map(([label, value]) => (
-            <div
-              key={label}
-              className="min-w-0 rounded-[16px] border border-[#e2e9e0] bg-[#f9fbf8] p-4"
-            >
-              <dt className="text-[12px] font-semibold text-[#7a847c]">{label}</dt>
-              <dd className="mt-1 min-w-0 break-words text-[14px] font-extrabold leading-5 text-[#17211a]">
-                {value}
-              </dd>
-            </div>
-          ))}
-      </dl>
+function CompactArchiveMatchCard({ asset }: { asset: FluxAIArchiveAssetResult }) {
+  const mimeType = getArchiveAssetMimeType(asset);
 
-      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+  return (
+    <article className="rounded-[16px] border border-[#e3e9e2] bg-white p-3 shadow-[0_8px_20px_rgba(23,39,28,0.035)]">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-[13px] font-extrabold leading-5 text-[#111712]">
+            {asset.title}
+          </h3>
+          <p className="mt-1 truncate text-[11px] font-semibold text-[#6f7a72]">
+            {asset.fileName}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#eef8ef] px-2.5 py-1 text-[10px] font-extrabold text-[#2f7f53]">
+          {asset.status}
+        </span>
+      </div>
+      <div className="mt-2 space-y-1 text-[11px] font-semibold leading-4 text-[#657069]">
+        <p className="truncate">
+          {asset.fileType}
+          {asset.fileSize ? ` · ${asset.fileSize}` : ""}
+          {asset.archiveCategory ? ` · ${asset.archiveCategory}` : ""}
+        </p>
+        {asset.artworkId ? <p className="truncate">Artwork ID: {asset.artworkId}</p> : null}
+        {asset.brandSubBrand ? <p className="truncate">Brand: {asset.brandSubBrand}</p> : null}
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
         <AssetPreviewButton
           fileName={asset.fileName}
           mimeType={mimeType}
           previewPath={asset.viewHref}
           downloadPath={asset.downloadHref}
-          triggerClassName="min-h-11 w-full justify-center gap-2 rounded-md bg-brand px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-brand-dark"
+          triggerClassName="min-h-9 w-full justify-center rounded-md border border-brand/35 bg-white px-3 text-[12px] font-semibold text-brand hover:bg-brand-soft/60"
           iconOnly={false}
         />
         {asset.downloadHref ? (
-          <Button asChild variant="outline" size="sm" className="min-h-11 gap-2 text-[13px]">
+          <Button asChild variant="outline" size="sm" className="min-h-9 text-[12px]">
             <Link href={asset.downloadHref} target="_blank" rel="noreferrer">
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5" />
               Download
             </Link>
           </Button>
@@ -764,52 +696,226 @@ function ArchiveAssetDetailCard({ asset }: { asset: FluxAIArchiveAssetResult }) 
   );
 }
 
-function ArchiveAssetMatchCard({ asset }: { asset: FluxAIArchiveAssetResult }) {
-  const mimeType = getArchiveAssetMimeType(asset);
+function FluxMatchesPanel({
+  activeTab,
+  onTabChange,
+  projectCards,
+  archiveAssets,
+  hasProjectQuery,
+  hasArchiveQuery,
+  isSubmitting,
+}: {
+  activeTab: FluxMatchesTab;
+  onTabChange: (tab: FluxMatchesTab) => void;
+  projectCards: ProjectCardView[];
+  archiveAssets: FluxAIArchiveAssetResult[];
+  hasProjectQuery: boolean;
+  hasArchiveQuery: boolean;
+  isSubmitting: boolean;
+}) {
+  const isProjectsTab = activeTab === "projects";
+  const count = isProjectsTab ? projectCards.length : archiveAssets.length;
 
   return (
-    <article className="rounded-[18px] border border-[#e2e9e0] bg-white p-4 shadow-[0_12px_28px_rgba(23,39,28,0.04)]">
-      <div className="flex items-start justify-between gap-3">
+    <Panel className="p-4">
+      <div className="mb-4 flex items-center gap-3">
+        <PanelIcon>
+          <Search className="h-5 w-5" />
+        </PanelIcon>
         <div className="min-w-0">
-          <h3 className="truncate text-[15px] font-extrabold text-[#111712]">
-            {asset.title}
-          </h3>
-          <p className="mt-1 truncate text-[12px] font-semibold text-[#6f7a72]">
-            {asset.fileName}
+          <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
+            Matches
+          </h2>
+          <p className="text-[12px] font-semibold text-[#667168]">
+            {count ? `${count} result${count === 1 ? "" : "s"}` : "Latest Flux AI context"}
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-[#eef8ef] px-2.5 py-1 text-[11px] font-extrabold text-[#2f7f53]">
-          {asset.fileType}
-        </span>
       </div>
 
-      <div className="mt-4 grid gap-2 text-[12px] font-semibold text-[#5f6b62]">
-        {asset.artworkId ? <p>Artwork ID: {asset.artworkId}</p> : null}
-        <p>Category: {asset.archiveCategory}</p>
-        {asset.brandSubBrand ? <p>Brand: {asset.brandSubBrand}</p> : null}
-        {asset.linkedProject ? <p>Project: {asset.linkedProject}</p> : null}
-        <p>Archived: {asset.archivedAt}</p>
+      <div className="grid grid-cols-2 rounded-[14px] bg-[#f5f8f4] p-1">
+        {[
+          ["projects", `Projects${projectCards.length ? ` ${projectCards.length}` : ""}`],
+          ["archives", `Archives${archiveAssets.length ? ` ${archiveAssets.length}` : ""}`],
+        ].map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => onTabChange(tab as FluxMatchesTab)}
+            className={cn(
+              "min-h-9 rounded-[11px] px-3 text-[12px] font-extrabold transition-colors",
+              activeTab === tab
+                ? "bg-white text-brand shadow-[0_8px_18px_rgba(23,39,28,0.06)]"
+                : "text-[#687269] hover:text-[#1f2a23]",
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <AssetPreviewButton
-          fileName={asset.fileName}
-          mimeType={mimeType}
-          previewPath={asset.viewHref}
-          downloadPath={asset.downloadHref}
-          triggerClassName="min-h-10 flex-1 justify-center gap-2 rounded-md bg-brand px-3 text-[12px] font-semibold text-white shadow-sm hover:bg-brand-dark"
-          iconOnly={false}
-        />
-        {asset.downloadHref ? (
-          <Button asChild variant="outline" size="sm" className="min-h-10 flex-1 gap-2 text-[12px]">
-            <Link href={asset.downloadHref} target="_blank" rel="noreferrer">
-              <Download className="h-3.5 w-3.5" />
-              Download
-            </Link>
-          </Button>
-        ) : null}
+      <div
+        className="mt-4 max-h-[390px] space-y-2 overflow-y-auto pr-1"
+        aria-label={isProjectsTab ? "Project Matches" : "Archive Matches"}
+      >
+        {isProjectsTab ? (
+          projectCards.length ? (
+            projectCards.slice(0, 8).map((project) => (
+              <CompactProjectMatchCard key={project.name} project={project} />
+            ))
+          ) : (
+            <div className="rounded-[16px] border border-dashed border-[#d9e4d9] bg-[#fbfcfa] px-4 py-5 text-center">
+              <p className="text-[13px] font-extrabold text-[#263129]">
+                {isSubmitting
+                  ? "Searching projects..."
+                  : hasProjectQuery
+                    ? "No projects found."
+                    : "No project query yet."}
+              </p>
+              <p className="mt-1.5 text-[12px] font-medium text-[#758078]">
+                {hasProjectQuery || isSubmitting
+                  ? "Try searching by project name, executor, category, tag, or status."
+                  : "Ask Flux AI to find projects and real matches will appear here."}
+              </p>
+            </div>
+          )
+        ) : archiveAssets.length ? (
+          archiveAssets.slice(0, 8).map((asset) => (
+            <div key={`${asset.recordType}-${asset.id}`} aria-label="Archive Match">
+              <CompactArchiveMatchCard asset={asset} />
+            </div>
+          ))
+        ) : (
+          <div className="rounded-[16px] border border-dashed border-[#d9e4d9] bg-[#fbfcfa] px-4 py-5 text-center">
+            <p className="text-[13px] font-extrabold text-[#263129]">
+              {isSubmitting
+                ? "Searching archive assets..."
+                : hasArchiveQuery
+                  ? "No archive assets found."
+                  : "No archive search yet."}
+            </p>
+            <p className="mt-1.5 text-[12px] font-medium text-[#758078]">
+              Try searching by file name, artwork ID, brand, archive category, project name, or file type.
+            </p>
+          </div>
+        )}
       </div>
-    </article>
+    </Panel>
+  );
+}
+
+function FluxRecentChatsPanel({
+  conversations,
+  activeConversationId,
+  activeConversationTitle,
+  isBusy,
+  conversationError,
+  onNewChat,
+  onLoadConversation,
+  onDeleteConversation,
+}: {
+  conversations: FluxAIConversationSummary[];
+  activeConversationId: string | null;
+  activeConversationTitle: string;
+  isBusy: boolean;
+  conversationError: string | null;
+  onNewChat: () => void;
+  onLoadConversation: (conversationId: string) => void;
+  onDeleteConversation: (conversation: FluxAIConversationSummary) => void;
+}) {
+  return (
+    <Panel className="p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
+            Recent Chats
+          </h2>
+          <p className="text-[12px] font-semibold text-[#667168]">
+            Conversation history
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="min-h-9 shrink-0 text-[12px]"
+          onClick={onNewChat}
+          disabled={isBusy}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          New Chat
+        </Button>
+      </div>
+
+      {conversationError ? (
+        <p className="mb-3 rounded-[14px] border border-[#f0d4d2] bg-[#fff5f4] px-3 py-2 text-[12px] font-semibold text-[#bd4d45]">
+          {conversationError}
+        </p>
+      ) : null}
+
+      <div className="mb-3 rounded-[14px] border border-[#e1e8df] bg-[#fbfcfa] px-3 py-2">
+        <p className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#78837b]">
+          Current Chat
+        </p>
+        <p className="mt-1 truncate text-[12px] font-extrabold text-[#1f2a23]">
+          {activeConversationTitle}
+        </p>
+      </div>
+
+      {conversations.length ? (
+        <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+          {conversations.map((conversation) => {
+            const isActive = conversation.id === activeConversationId;
+
+            return (
+              <div
+                key={conversation.id}
+                className={cn(
+                  "group flex min-w-0 items-start gap-2 rounded-[16px] border p-2.5 transition-colors",
+                  isActive
+                    ? "border-brand/25 bg-[#edf8ef]"
+                    : "border-[#e0e7de] bg-white hover:bg-[#f5f8f4]",
+                )}
+              >
+                <button
+                  type="button"
+                  disabled={isBusy || isActive}
+                  onClick={() => onLoadConversation(conversation.id)}
+                  className="min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-75"
+                >
+                  <span className="block truncate text-[13px] font-extrabold text-[#263129]">
+                    {conversation.title}
+                  </span>
+                  <span className="mt-1 line-clamp-2 block text-[11px] font-semibold leading-4 text-[#7a847c]">
+                    {isActive ? "Current Chat" : "Open this Flux AI conversation"}
+                  </span>
+                  <span className="mt-1 block text-[11px] font-semibold text-[#7a847c]">
+                    {formatConversationTime(conversation.lastMessageAt)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="grid size-8 shrink-0 place-items-center rounded-full text-[#8b5a55] opacity-100 transition-colors hover:bg-[#fff1f0] hover:text-[#b83d36] disabled:cursor-not-allowed disabled:opacity-45 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                  aria-label={`Delete Flux AI chat ${conversation.title}`}
+                  disabled={isBusy}
+                  onClick={() => onDeleteConversation(conversation)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-[16px] border border-dashed border-[#d9e4d9] bg-[#fbfcfa] px-4 py-5 text-center">
+          <p className="text-[13px] font-extrabold text-[#263129]">
+            No recent chats yet.
+          </p>
+          <p className="mt-1.5 text-[12px] font-medium text-[#758078]">
+            Start a conversation and it will appear here.
+          </p>
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -897,85 +1003,6 @@ function ChatMessage({
         </div>
       </div>
     </div>
-  );
-}
-
-function ProjectMatchCard({
-  project,
-}: {
-  project: ProjectCardView;
-}) {
-  return (
-    <article className="flex min-h-[286px] min-w-0 flex-col rounded-[18px] border border-[#e1e7df] bg-white p-4 shadow-[0_12px_28px_rgba(23,39,28,0.035)]">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0 text-[14px] font-extrabold leading-5 text-[#111712]">
-          {project.name}
-        </h3>
-        <button
-          type="button"
-          className="grid size-8 shrink-0 place-items-center rounded-full text-[#707a72] transition-colors hover:bg-[#f2f5f0]"
-          aria-label={`Project options for ${project.name}`}
-        >
-          <MoreVertical className="h-4 w-4" />
-        </button>
-      </div>
-
-      <span
-        className={cn(
-          "mt-2 inline-flex w-fit rounded-full px-3 py-1 text-[12px] font-extrabold",
-          project.statusClass,
-        )}
-      >
-        {project.status}
-      </span>
-
-      <dl className="mt-5 space-y-3 text-[12px]">
-        <div>
-          <dt className="text-[#899188]">Current Stage</dt>
-          <dd className={cn("mt-1 flex items-center gap-1.5 font-extrabold", project.stageClass)}>
-            {project.stage}
-            <span className={cn("size-1.5 rounded-full", project.stageDotClass)} />
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[#899188]">Owner</dt>
-          <dd className="mt-1 flex items-center gap-2 font-semibold text-[#222b25]">
-            <span
-              className={cn(
-                "grid size-6 place-items-center rounded-full text-[9px] font-extrabold",
-                project.ownerAvatarClass,
-              )}
-            >
-              {project.ownerInitials}
-            </span>
-            {project.owner}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[#899188]">Executor</dt>
-          <dd className="mt-1 font-extrabold text-[#202922]">{project.executor}</dd>
-        </div>
-        <div>
-          <dt className="text-[#899188]">Deadline</dt>
-          <dd className="mt-1 flex items-center gap-2 font-bold text-[#222b25]">
-            <CalendarDays className="h-3.5 w-3.5 text-[#758078]" />
-            {project.deadline}
-          </dd>
-        </div>
-      </dl>
-
-      {project.meta?.length ? (
-        <div className="mt-4 space-y-1.5 rounded-[14px] bg-[#f7faf6] p-3 text-[11px] font-semibold text-[#667168]">
-          {project.meta.slice(0, 2).map((item) => (
-            <p key={item}>{item}</p>
-          ))}
-        </div>
-      ) : null}
-
-      <Button asChild size="sm" className="mt-auto min-h-10 w-full text-[13px]">
-        <Link href={project.href}>View Project</Link>
-      </Button>
-    </article>
   );
 }
 
@@ -2457,6 +2484,7 @@ export function FluxAiWorkspace({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isResultPanelOpen, setIsResultPanelOpen] = useState(false);
+  const [activeMatchesTab, setActiveMatchesTab] = useState<FluxMatchesTab>("projects");
   const [draftEditValue, setDraftEditValue] = useState<FluxAIDraftProject | null>(null);
   const [draftEditError, setDraftEditError] = useState<string | null>(null);
   const [isValidatingDraftEdit, setIsValidatingDraftEdit] = useState(false);
@@ -2505,12 +2533,21 @@ export function FluxAiWorkspace({
     blockers.length > 0 && !shouldShowStatusSummaryPanel && !shouldShowDraftPanel;
   const hasResultContent = hasFluxResultContent(fluxResponse);
   const shouldShowResultPanel = hasResultContent && isResultPanelOpen;
-  const hasSubmittedQuery = Boolean(fluxResponse);
   const hasUserStartedConversation = messages.some((message) => message.role === "user");
   const canCreateDraftProject =
     Boolean(draftProject?.canCreate) && missingFields.length === 0 && !isCreatingProject;
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
+
+  function applyFluxResponse(payload: FluxAIChatResponse | null) {
+    setFluxResponse(payload);
+    setIsResultPanelOpen(hasFluxResultContent(payload));
+
+    const preferredTab = getPreferredMatchesTab(payload);
+    if (preferredTab) {
+      setActiveMatchesTab(preferredTab);
+    }
+  }
 
   useEffect(() => {
     composerValueRef.current = composerValue;
@@ -2537,8 +2574,8 @@ export function FluxAiWorkspace({
 
   function resetToWelcomeState() {
     setMessages(initialChatMessages);
-    setFluxResponse(null);
-    setIsResultPanelOpen(false);
+    applyFluxResponse(null);
+    setActiveMatchesTab("projects");
     setDraftEditValue(null);
     setDraftEditError(null);
     setCreateError(null);
@@ -2591,8 +2628,7 @@ export function FluxAiWorkspace({
       setActiveConversationId(detail.conversation.id);
       setActiveConversationTitle(detail.conversation.title);
       setMessages(mapConversationMessagesToChatEntries(detail));
-      setFluxResponse(detail.latestResponse);
-      setIsResultPanelOpen(hasFluxResultContent(detail.latestResponse));
+      applyFluxResponse(detail.latestResponse);
       setDraftEditValue(null);
       setDraftEditError(null);
       setCreateError(null);
@@ -3040,8 +3076,7 @@ export function FluxAiWorkspace({
         throw new Error(payload.assistantMessage || "Unable to validate the draft.");
       }
 
-      setFluxResponse(payload);
-      setIsResultPanelOpen(hasFluxResultContent(payload));
+      applyFluxResponse(payload);
       setDraftEditValue(null);
       void refreshConversationList().catch(() => undefined);
     } catch (error) {
@@ -3117,8 +3152,7 @@ export function FluxAiWorkspace({
         setActiveConversationTitle(payload.conversationTitle);
       }
 
-      setFluxResponse(payload);
-      setIsResultPanelOpen(hasFluxResultContent(payload));
+      applyFluxResponse(payload);
       setMessages([
         ...nextMessages,
         {
@@ -3190,8 +3224,7 @@ export function FluxAiWorkspace({
         replaceConversationUrl(payload.conversationId);
       }
 
-      setFluxResponse(payload);
-      setIsResultPanelOpen(hasFluxResultContent(payload));
+      applyFluxResponse(payload);
       setMessages((currentMessages) => [
         ...currentMessages,
         {
@@ -3233,14 +3266,12 @@ export function FluxAiWorkspace({
       <div className="min-w-0">
         <div
         className={cn(
-          "grid min-w-0 gap-4",
-          shouldShowResultPanel
-            ? "xl:grid-cols-[minmax(0,1fr)_minmax(420px,560px)]"
-            : "xl:grid-cols-1",
+          "grid min-w-0 gap-5 xl:h-[calc(100vh-180px)] xl:min-h-[640px] xl:overflow-hidden",
+          "xl:grid-cols-[minmax(0,1fr)_minmax(340px,390px)] 2xl:grid-cols-[minmax(0,1fr)_420px]",
         )}
       >
-        <Panel className="flex min-h-[760px] flex-col p-5 sm:p-7 lg:p-8">
-          <header className="mb-8">
+        <Panel className="flex min-h-[680px] flex-col overflow-hidden p-5 sm:p-7 lg:p-8 xl:h-full xl:min-h-0">
+          <header className="mb-6 shrink-0">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-[42px] font-extrabold leading-none tracking-normal text-[#121714] sm:text-[54px]">
                 Flux AI
@@ -3250,94 +3281,10 @@ export function FluxAiWorkspace({
             <p className="mt-3 max-w-[620px] text-[15px] leading-6 text-[#4f5a52]">
               Ask, find, create, and manage projects with AI.
             </p>
-
-            <div className="mt-6 rounded-[22px] border border-[#e2e9e0] bg-[#fbfcfa] p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-extrabold uppercase text-[#78837b]">
-                    Current Chat
-                  </p>
-                  <p className="mt-1 truncate text-[14px] font-extrabold text-[#1f2a23]">
-                    {activeConversationTitle}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="min-h-10 shrink-0"
-                  onClick={() => {
-                    void startNewConversation();
-                  }}
-                  disabled={isLoadingConversation || isSubmitting || isCreatingProject}
-                >
-                  <Plus className="h-4 w-4" />
-                  New Chat
-                </Button>
-              </div>
-
-              {conversations.length ? (
-                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                  {conversations.slice(0, 8).map((conversation) => (
-                    <div
-                      key={conversation.id}
-                      className={cn(
-                        "group flex min-w-[230px] items-center gap-2 rounded-[16px] border p-2 transition-colors",
-                        conversation.id === activeConversationId
-                          ? "border-brand/25 bg-[#edf8ef]"
-                          : "border-[#e0e7de] bg-white hover:bg-[#f5f8f4]",
-                      )}
-                    >
-                      <button
-                        type="button"
-                        disabled={
-                          isLoadingConversation ||
-                          isDeletingConversation ||
-                          conversation.id === activeConversationId
-                        }
-                        onClick={() => {
-                          void loadConversation(conversation.id);
-                        }}
-                        className="min-w-0 flex-1 rounded-[12px] px-1 py-0.5 text-left disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        <span className="block truncate text-[12px] font-extrabold text-[#263129]">
-                          {conversation.title}
-                        </span>
-                        <span className="mt-0.5 block text-[11px] font-semibold text-[#7a847c]">
-                          {formatConversationTime(conversation.lastMessageAt)}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="grid size-8 shrink-0 place-items-center rounded-full text-[#8b5a55] opacity-100 transition-colors hover:bg-[#fff1f0] hover:text-[#b83d36] disabled:cursor-not-allowed disabled:opacity-45 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-                        aria-label={`Delete Flux AI chat ${conversation.title}`}
-                        disabled={
-                          isLoadingConversation ||
-                          isSubmitting ||
-                          isCreatingProject ||
-                          isDeletingConversation
-                        }
-                        onClick={() => {
-                          setDeleteConversationError(null);
-                          setConversationPendingDelete(conversation);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              {conversationError ? (
-                <p className="mt-3 rounded-[14px] border border-[#f0d4d2] bg-[#fff5f4] px-3 py-2 text-[12px] font-semibold text-[#bd4d45]">
-                  {conversationError}
-                </p>
-              ) : null}
-            </div>
           </header>
 
-          <div className="flex min-h-0 flex-1 flex-col justify-end gap-5">
-            <div className="max-h-[min(58vh,640px)] space-y-5 overflow-y-auto pr-1">
+          <div className="flex min-h-0 flex-1 flex-col gap-5">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
               {isLoadingConversation ? (
                 <ChatMessage
                   role="assistant"
@@ -3525,187 +3472,114 @@ export function FluxAiWorkspace({
           </div>
         </Panel>
 
-        {shouldShowResultPanel ? (
-        <aside className="min-w-0 xl:sticky xl:top-6 xl:self-start">
-          <div className="mb-3 flex justify-end">
-            <button
-              type="button"
-              aria-label="Close results panel"
-              onClick={() => {
-                setIsResultPanelOpen(false);
-              }}
-              className="grid size-10 place-items-center rounded-full border border-[#dfe7dd] bg-white text-[#5f6a62] shadow-[0_12px_24px_rgba(23,39,28,0.04)] transition-colors hover:bg-[#f5f8f4] hover:text-[#173f2d]"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid min-w-0 content-start gap-4">
-          {shouldShowProjectMatchesPanel ? (
-          <Panel className="p-5">
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <PanelIcon>
-                  <Briefcase className="h-5 w-5" />
-                </PanelIcon>
-                <div className="min-w-0">
-                  <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
-                    {projectCards.length === 1 ? "Project Match" : "Project Matches"}
-                  </h2>
-                  <p className="text-[13px] font-medium text-[#667168]">
-                    {isSubmitting
-                      ? "Searching real project data"
-                      : `${projectCards.length} project${projectCards.length === 1 ? "" : "s"} found`}
-                  </p>
-                </div>
-              </div>
+        <aside className="min-w-0 space-y-4 xl:h-full xl:overflow-y-auto xl:pr-1">
+          {shouldShowResultPanel ? (
+            <div className="grid min-w-0 content-start gap-4">
+              {shouldShowStatusSummaryPanel && fluxResponse?.projectStatus ? (
+                <StatusSummaryPanel status={fluxResponse.projectStatus} blockers={blockers} />
+              ) : null}
+
+              {shouldShowCreatedProjectPanel ? (
+                <CreatedProjectPanel href={fluxResponse?.createdProjectHref} />
+              ) : null}
+
+              {shouldShowDraftPanel && draftProject ? (
+                draftEditValue ? (
+                  <DraftProjectEditorPanel
+                    draftProject={draftEditValue}
+                    draftOptions={draftOptions}
+                    error={draftEditError}
+                    isSaving={isValidatingDraftEdit}
+                    onChange={setDraftEditValue}
+                    onSave={() => {
+                      void saveDraftEdit();
+                    }}
+                    onCancel={cancelDraftEdit}
+                  />
+                ) : (
+                  <DraftProjectPreviewPanel
+                    draftProject={draftProject}
+                    missingFields={missingFields}
+                    warnings={draftWarnings}
+                    createError={createError}
+                    canCreateDraftProject={canCreateDraftProject}
+                    isCreatingProject={isCreatingProject}
+                    onCreate={() => {
+                      void createDraftProject();
+                    }}
+                    onEdit={openDraftEditor}
+                    onCancel={() => {
+                      void clearPersistedConversationState();
+                      setFluxResponse(null);
+                      setIsResultPanelOpen(false);
+                      setCreateError(null);
+                      setComposerError(null);
+                      setDraftEditValue(null);
+                      setDraftEditError(null);
+                    }}
+                  />
+                )
+              ) : shouldShowStandaloneBlockersPanel ? (
+                <Panel className="p-5">
+                  <div className="mb-4 flex items-center gap-3">
+                    <PanelIcon>
+                      <AlertTriangle className="h-5 w-5" />
+                    </PanelIcon>
+                    <div>
+                      <h2 className="text-[18px] font-extrabold leading-tight text-[#111712]">
+                        Blockers
+                      </h2>
+                      <p className="text-[13px] font-medium text-[#667168]">
+                        Read-only blocker summary
+                      </p>
+                    </div>
+                  </div>
+                  <ul className="space-y-2 text-[13px] font-semibold text-[#5b403d]">
+                    {blockers.slice(0, 8).map((blocker) => (
+                      <li key={blocker} className="flex items-start gap-2 rounded-[14px] bg-[#fff4f4] p-3">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#d45e55]" />
+                        <span>{blocker}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Panel>
+              ) : null}
             </div>
-
-            {fluxResponse?.projects?.length === 1 ? (
-              <ProjectResultDetailCard project={fluxResponse.projects[0]} />
-            ) : projectCards.length > 1 ? (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                {projectCards.map((project) => (
-                  <ProjectMatchCard key={project.name} project={project} />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[18px] border border-dashed border-[#d9e4d9] bg-[#fbfcfa] px-5 py-8 text-center">
-                <p className="text-[14px] font-extrabold text-[#263129]">
-                  {isSubmitting
-                    ? "Searching projects..."
-                    : hasSubmittedQuery
-                      ? "No projects found."
-                      : "No project query yet."}
-                </p>
-                <p className="mt-2 text-[13px] font-medium text-[#758078]">
-                  {hasSubmittedQuery
-                    ? "Try searching by project name, executor, category, tag, or status."
-                    : "Ask Flux AI to find projects and real matches will appear here."}
-                </p>
-              </div>
-            )}
-          </Panel>
           ) : null}
 
-          {shouldShowArchiveMatchesPanel ? (
-          <Panel className="p-5">
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <PanelIcon>
-                  <Archive className="h-5 w-5" />
-                </PanelIcon>
-                <div className="min-w-0">
-                  <h2 className="truncate text-[18px] font-extrabold leading-tight text-[#111712]">
-                    {archiveAssets.length === 1 ? "Archive Match" : "Archive Matches"}
-                  </h2>
-                  <p className="text-[13px] font-medium text-[#667168]">
-                    {isSubmitting
-                      ? "Searching real archive data"
-                      : `${archiveAssets.length} archive asset${archiveAssets.length === 1 ? "" : "s"} found`}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <FluxMatchesPanel
+            activeTab={activeMatchesTab}
+            onTabChange={setActiveMatchesTab}
+            projectCards={projectCards}
+            archiveAssets={archiveAssets}
+            hasProjectQuery={shouldShowProjectMatchesPanel}
+            hasArchiveQuery={shouldShowArchiveMatchesPanel}
+            isSubmitting={isSubmitting}
+          />
 
-            {archiveAssets.length === 1 ? (
-              <ArchiveAssetDetailCard asset={archiveAssets[0]} />
-            ) : archiveAssets.length > 1 ? (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                {archiveAssets.map((asset) => (
-                  <ArchiveAssetMatchCard key={`${asset.recordType}-${asset.id}`} asset={asset} />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[18px] border border-dashed border-[#d9e4d9] bg-[#fbfcfa] px-5 py-8 text-center">
-                <p className="text-[14px] font-extrabold text-[#263129]">
-                  {isSubmitting
-                    ? "Searching archive assets..."
-                    : hasSubmittedQuery
-                      ? "No archive assets found."
-                      : "No archive query yet."}
-                </p>
-                <p className="mt-2 text-[13px] font-medium text-[#758078]">
-                  {hasSubmittedQuery
-                    ? "Try searching by file name, artwork ID, brand, archive category, project name, or file type."
-                    : "Ask Flux AI to find archive assets and real matches will appear here."}
-                </p>
-              </div>
-            )}
-          </Panel>
-          ) : null}
-
-          {shouldShowStatusSummaryPanel && fluxResponse?.projectStatus ? (
-            <StatusSummaryPanel status={fluxResponse.projectStatus} blockers={blockers} />
-          ) : null}
-
-          {shouldShowCreatedProjectPanel ? (
-            <CreatedProjectPanel href={fluxResponse?.createdProjectHref} />
-          ) : null}
-
-          {shouldShowDraftPanel && draftProject ? (
-            draftEditValue ? (
-              <DraftProjectEditorPanel
-                draftProject={draftEditValue}
-                draftOptions={draftOptions}
-                error={draftEditError}
-                isSaving={isValidatingDraftEdit}
-                onChange={setDraftEditValue}
-                onSave={() => {
-                  void saveDraftEdit();
-                }}
-                onCancel={cancelDraftEdit}
-              />
-            ) : (
-              <DraftProjectPreviewPanel
-                draftProject={draftProject}
-                missingFields={missingFields}
-                warnings={draftWarnings}
-                createError={createError}
-                canCreateDraftProject={canCreateDraftProject}
-                isCreatingProject={isCreatingProject}
-                onCreate={() => {
-                  void createDraftProject();
-                }}
-                onEdit={openDraftEditor}
-                onCancel={() => {
-                  void clearPersistedConversationState();
-                  setFluxResponse(null);
-                  setIsResultPanelOpen(false);
-                  setCreateError(null);
-                  setComposerError(null);
-                  setDraftEditValue(null);
-                  setDraftEditError(null);
-                }}
-              />
-            )
-          ) : shouldShowStandaloneBlockersPanel ? (
-            <Panel className="p-5">
-              <div className="mb-4 flex items-center gap-3">
-                <PanelIcon>
-                  <AlertTriangle className="h-5 w-5" />
-                </PanelIcon>
-                <div>
-                  <h2 className="text-[18px] font-extrabold leading-tight text-[#111712]">
-                    Blockers
-                  </h2>
-                  <p className="text-[13px] font-medium text-[#667168]">
-                    Read-only blocker summary
-                  </p>
-                </div>
-              </div>
-              <ul className="space-y-2 text-[13px] font-semibold text-[#5b403d]">
-                {blockers.slice(0, 8).map((blocker) => (
-                  <li key={blocker} className="flex items-start gap-2 rounded-[14px] bg-[#fff4f4] p-3">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#d45e55]" />
-                    <span>{blocker}</span>
-                  </li>
-                ))}
-              </ul>
-            </Panel>
-          ) : null}
-          </div>
+          <FluxRecentChatsPanel
+            conversations={conversations}
+            activeConversationId={activeConversationId}
+            activeConversationTitle={activeConversationTitle}
+            isBusy={
+              isLoadingConversation ||
+              isSubmitting ||
+              isCreatingProject ||
+              isDeletingConversation
+            }
+            conversationError={conversationError}
+            onNewChat={() => {
+              void startNewConversation();
+            }}
+            onLoadConversation={(conversationId) => {
+              void loadConversation(conversationId);
+            }}
+            onDeleteConversation={(conversation) => {
+              setDeleteConversationError(null);
+              setConversationPendingDelete(conversation);
+            }}
+          />
         </aside>
-        ) : null}
         </div>
       </div>
       <ConfirmationDialog

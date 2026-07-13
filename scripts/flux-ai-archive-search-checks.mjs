@@ -110,8 +110,7 @@ for (const snippet of [
 const workspace = read("src/components/flux-ai/flux-ai-workspace.tsx");
 for (const snippet of [
   "shouldShowArchiveMatches",
-  "ArchiveAssetDetailCard",
-  "ArchiveAssetMatchCard",
+  "CompactArchiveMatchCard",
   "AssetPreviewButton",
   "getArchiveAssetMimeType",
   "Archive Match",

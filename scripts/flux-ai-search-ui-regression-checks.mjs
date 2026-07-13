@@ -112,18 +112,23 @@ for (const snippet of [
   "shouldShowCreatedProjectPanel",
   "shouldShowStandaloneBlockersPanel",
   "response.intent === \"project_count_summary\"",
-  "ProjectResultDetailCard",
-  "Project Result Detail",
-  "fluxResponse?.projects?.length === 1",
-  "projectCards.length > 1",
+  "FluxMatchesPanel",
+  "FluxRecentChatsPanel",
+  "CompactProjectMatchCard",
+  "CompactArchiveMatchCard",
+  "activeMatchesTab",
+  "Recent Chats",
+  "Current Chat",
   "Try searching by project name, executor, category, tag, or status.",
   "CreatedProjectPanel",
   "Flux AI is thinking...",
   "messagesEndRef",
   "!hasUserStartedConversation",
-  "Close results panel",
-  "xl:sticky xl:top-6 xl:self-start",
-  "xl:grid-cols-[minmax(0,1fr)_minmax(420px,560px)]",
+  "xl:h-[calc(100vh-180px)]",
+  "xl:overflow-hidden",
+  "xl:h-full xl:overflow-y-auto xl:pr-1",
+  "min-h-0 flex-1 space-y-5 overflow-y-auto pr-1",
+  "xl:grid-cols-[minmax(0,1fr)_minmax(340px,390px)]",
   "setFluxResponse(null);",
   "No projects found.",
   "No project query yet.",
@@ -153,16 +158,29 @@ for (const snippet of [
   assertIncludes(workspace, snippet, `Flux AI workspace state ${snippet}`);
 }
 assert(
-  /fluxResponse\?\.projects\?\.length === 1[\s\S]*<ProjectResultDetailCard[\s\S]*project=\{fluxResponse\.projects\[0\]\}/.test(
+  /projectCards\.slice\(0, 8\)\.map[\s\S]*<CompactProjectMatchCard/.test(
     workspace,
   ),
-  "Single project results must render through the detail card.",
+  "Project matches must render through compact right-sidebar cards.",
 );
 assert(
-  /projectCards\.length > 1[\s\S]*projectCards\.map[\s\S]*<ProjectMatchCard/.test(
+  /archiveAssets\.slice\(0, 8\)\.map[\s\S]*<CompactArchiveMatchCard/.test(
     workspace,
   ),
-  "Multiple project results must continue to render through compact cards.",
+  "Archive matches must render through compact right-sidebar cards.",
+);
+assert(
+  /<FluxRecentChatsPanel[\s\S]*conversations=\{conversations\}[\s\S]*activeConversationId=\{activeConversationId\}/.test(
+    workspace,
+  ),
+  "Conversation history must render in the right sidebar.",
+);
+assert(
+  /header[\s\S]*Flux AI[\s\S]*Ask, find, create, and manage projects with AI\.[\s\S]*<\/header>/.test(
+    workspace,
+  ) &&
+    !/header[\s\S]*Recent Chats[\s\S]*<\/header>/.test(workspace),
+  "Main chat header must not include the horizontal recent-chat strip.",
 );
 assert(
   /No projects found\.[\s\S]*Try searching by project name, executor, category, tag, or status\./.test(
