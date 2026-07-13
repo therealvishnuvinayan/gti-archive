@@ -335,6 +335,24 @@ type PresignedDownloadInput = {
   expiresInSeconds?: number;
 };
 
+function encodeRfc5987ValueChars(value: string) {
+  return encodeURIComponent(value)
+    .replace(/['()]/g, (character) => `%${character.charCodeAt(0).toString(16)}`)
+    .replace(/\*/g, "%2A")
+    .replace(/%(7C|60|5E)/g, (_, hex) => `%${hex.toLowerCase()}`);
+}
+
+function buildContentDisposition(type: "attachment" | "inline", fileName: string) {
+  const fallbackFileName =
+    sanitizeFileName(fileName)
+      .replace(/"/g, "")
+      .slice(0, 180) || "download";
+
+  return `${type}; filename="${fallbackFileName}"; filename*=UTF-8''${encodeRfc5987ValueChars(
+    fileName,
+  )}`;
+}
+
 export async function createPresignedDownloadUrl({
   bucket = getS3BucketName(),
   storageKey,
@@ -344,7 +362,7 @@ export async function createPresignedDownloadUrl({
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: storageKey,
-    ResponseContentDisposition: `attachment; filename="${fileName}"`,
+    ResponseContentDisposition: buildContentDisposition("attachment", fileName),
   });
 
   return getSignedUrl(getS3Client(), command, {
@@ -362,7 +380,7 @@ export async function createPresignedPreviewUrl({
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: storageKey,
-    ResponseContentDisposition: `inline; filename="${fileName}"`,
+    ResponseContentDisposition: buildContentDisposition("inline", fileName),
     ResponseContentType: mimeType || undefined,
   });
 
