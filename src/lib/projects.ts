@@ -3076,7 +3076,12 @@ export async function getProjectChatShellById(
             },
             attachments: {
               where: {
-                assetType: "STAGE_INVOICE" as AttachmentAssetType,
+                assetType: {
+                  in: [
+                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                    "STAGE_INVOICE" as AttachmentAssetType,
+                  ],
+                },
                 status: "READY" as AttachmentStatus,
               },
               orderBy: {
@@ -3103,7 +3108,7 @@ export async function getProjectChatShellById(
           },
         }),
       ),
-    ["project-chat-shell-by-id", id, currentUser.id, currentUser.role],
+    ["project-chat-shell-by-id-v2", id, currentUser.id, currentUser.role],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -3115,12 +3120,23 @@ export async function getProjectChatShellById(
     return null;
   }
 
+  const visibleAttachments = await getProjectAttachmentsVisibleToUser(
+    currentUser,
+    project,
+  );
+  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
+    currentUser.id,
+    visibleAttachments.map((attachment) => attachment.id),
+  );
+
   return mapProjectToFlow(
     {
       ...project,
+      attachments: visibleAttachments,
       tags: [],
     },
     currentUser,
+    favoritedAttachmentIds,
   );
 }
 
