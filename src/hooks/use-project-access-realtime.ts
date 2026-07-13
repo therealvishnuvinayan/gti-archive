@@ -11,7 +11,6 @@ import {
 import {
   createProjectAccessRealtimeClient,
   isStageChatRealtimeClientEnabled,
-  type ProjectAccessRealtimeClient,
 } from "@/lib/realtime/client";
 
 type UseProjectAccessRealtimeInput = {
@@ -19,12 +18,6 @@ type UseProjectAccessRealtimeInput = {
   currentUserId: string;
   onAccessRevoked: (payload: ProjectAccessRevokedPayload) => void;
 };
-
-const ABLY_INACTIVE_CONNECTION_STATES = new Set<Ably.ConnectionState>([
-  "closed",
-  "closing",
-  "failed",
-]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -68,16 +61,6 @@ function runProjectAccessCleanup(label: string, task: () => unknown) {
   } catch (error) {
     ignoreCleanupError(label, error);
   }
-}
-
-function closeClient(client: ProjectAccessRealtimeClient) {
-  if (ABLY_INACTIVE_CONNECTION_STATES.has(client.connection.state)) {
-    return;
-  }
-
-  window.setTimeout(() => {
-    runProjectAccessCleanup("client close", () => client.close());
-  }, 0);
 }
 
 export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
@@ -124,7 +107,6 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
           handleAccessRevoked,
         ),
       );
-      closeClient(client);
     };
   }, [input.currentUserId, input.projectId]);
 }
