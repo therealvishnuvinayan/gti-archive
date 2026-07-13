@@ -20,6 +20,7 @@
     "flux-ai:security-check": "node scripts/flux-ai-security-regression-checks.mjs",
     "phase0:check": "node scripts/phase0-regression-checks.mjs",
     "phase3:check": "node scripts/phase3-caption-regression-checks.mjs",
+    "project-owner:workflow-check": "node scripts/project-owner-workflow-permission-checks.mjs",
     "permissions:sync": "tsc --project scripts/tsconfig.permissions-sync.json && node .tmp/permissions-sync/scripts/sync-permissions.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",

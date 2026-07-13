@@ -204,9 +204,17 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
     permissionKey === "collaborator.pauseVisibility" ||
     permissionKey === "collaborator.changeType" ||
     permissionKey === "collaborator.changeAccess" ||
+    permissionKey === "stage.reviewSubmission" ||
+    permissionKey === "stage.requestRevision" ||
+    permissionKey === "stage.markSubmissionComplete" ||
+    permissionKey === "stage.markStageComplete" ||
     permissionKey === "stage.manageDefinitions" ||
     permissionKey === "stage.updateTimeline" ||
-    permissionKey === "stage.updateBudget"
+    permissionKey === "stage.updateBudget" ||
+    permissionKey === "completion.setApprovalRequired" ||
+    permissionKey === "completion.prepareApproval" ||
+    permissionKey === "completion.setCopyrightRequired" ||
+    permissionKey === "completion.prepareCopyrightTransfer"
   );
 }
 
