@@ -369,6 +369,35 @@ function isProjectSearchPrompt(message: string) {
   );
 }
 
+function isPlainProjectLookupPrompt(message: string) {
+  const trimmedMessage = message.trim();
+  const normalizedMessage = normalizePromptText(message);
+
+  if (!trimmedMessage || trimmedMessage.length > 120) {
+    return false;
+  }
+
+  if (
+    /^(?:hi|hello|hey|thanks|thank you|help)$/i.test(trimmedMessage) ||
+    /[?]/.test(trimmedMessage)
+  ) {
+    return false;
+  }
+
+  if (
+    /\b(?:how|why|what|when|where|who|count|total|summary|summarize|dashboard)\b/.test(
+      normalizedMessage,
+    ) ||
+    /\b(?:create|draft|prepare|set up|delete|remove|update|archive|overdue|invoice|approval|copyright|permission)\b/.test(
+      normalizedMessage,
+    )
+  ) {
+    return false;
+  }
+
+  return /^[\p{L}\p{N}][\p{L}\p{N}\s&'.,()#/_-]*$/u.test(trimmedMessage);
+}
+
 function getDeterministicFluxAIIntent(
   message: string,
   explicitMode: FluxAIIntent | null,
@@ -402,6 +431,10 @@ function getDeterministicFluxAIIntent(
   }
 
   if (isProjectSearchPrompt(message)) {
+    return "project_search";
+  }
+
+  if (isPlainProjectLookupPrompt(message)) {
     return "project_search";
   }
 

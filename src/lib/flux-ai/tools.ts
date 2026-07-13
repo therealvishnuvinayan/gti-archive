@@ -28,6 +28,7 @@ import {
   getAccessibleProjectsWhere,
   hasPermission,
   hasProjectPermission,
+  isProjectAdmin,
   isClientOfGtiUser,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
@@ -200,6 +201,13 @@ function normalizeSearchValue(value: string | null | undefined) {
 
 function includesSearchValue(value: string | null | undefined, searchValue: string) {
   return normalizeSearchValue(value).includes(searchValue);
+}
+
+function containsInsensitive(value: string) {
+  return {
+    contains: value,
+    mode: "insensitive" as const,
+  };
 }
 
 function getDisplayName(user: { name?: string | null; email: string }) {
@@ -799,6 +807,478 @@ function inferCompletionBlockerFromPrompt(rawQuery: string | null | undefined) {
   return "";
 }
 
+function buildFluxAIUserNameWhere(searchValue: string) {
+  return {
+    OR: [
+      {
+        name: containsInsensitive(searchValue),
+      },
+      {
+        email: containsInsensitive(searchValue),
+      },
+    ],
+  } satisfies Prisma.UserWhereInput;
+}
+
+function buildFluxAIParticipantVisibilityScopeWhere(user: PermissionUser) {
+  if (isProjectAdmin(user)) {
+    return null;
+  }
+
+  return {
+    OR: [
+      {
+        createdById: user.id,
+      },
+      {
+        collaborators: {
+          some: {
+            userId: user.id,
+            canViewVendorInfo: true,
+          },
+        },
+      },
+    ],
+  } satisfies Prisma.ProjectWhereInput;
+}
+
+function scopeParticipantSearchForFluxAI(
+  user: PermissionUser,
+  where: Prisma.ProjectWhereInput,
+) {
+  const scopeWhere = buildFluxAIParticipantVisibilityScopeWhere(user);
+
+  if (!scopeWhere) {
+    return where;
+  }
+
+  return {
+    AND: [
+      scopeWhere,
+      where,
+    ],
+  } satisfies Prisma.ProjectWhereInput;
+}
+
+function buildFluxAIOwnerSearchWhere(searchValue: string) {
+  return {
+    createdBy: {
+      is: buildFluxAIUserNameWhere(searchValue),
+    },
+  } satisfies Prisma.ProjectWhereInput;
+}
+
+function buildFluxAIExecutorSearchWhere(searchValue: string) {
+  return {
+    executors: {
+      some: {
+        user: {
+          is: buildFluxAIUserNameWhere(searchValue),
+        },
+      },
+    },
+  } satisfies Prisma.ProjectWhereInput;
+}
+
+function buildFluxAICollaboratorSearchWhere(searchValue: string) {
+  return {
+    collaborators: {
+      some: {
+        user: {
+          is: buildFluxAIUserNameWhere(searchValue),
+        },
+      },
+    },
+  } satisfies Prisma.ProjectWhereInput;
+}
+
+function buildFluxAIParticipantSearchWhere(
+  user: PermissionUser,
+  searchValue: string,
+  fields: Array<"owner" | "executor" | "collaborator"> = [
+    "owner",
+    "executor",
+    "collaborator",
+  ],
+) {
+  const clauses = fields.map((field) => {
+    if (field === "owner") {
+      return buildFluxAIOwnerSearchWhere(searchValue);
+    }
+
+    if (field === "executor") {
+      return buildFluxAIExecutorSearchWhere(searchValue);
+    }
+
+    return buildFluxAICollaboratorSearchWhere(searchValue);
+  });
+
+  return scopeParticipantSearchForFluxAI(user, {
+    OR: clauses,
+  });
+}
+
+function buildFluxAISafeTextSearchWhere(user: PermissionUser, searchValue: string) {
+  const participantWhere = buildFluxAIParticipantSearchWhere(user, searchValue);
+
+  return {
+    OR: [
+      {
+        name: containsInsensitive(searchValue),
+      },
+      {
+        category: containsInsensitive(searchValue),
+      },
+      {
+        description: containsInsensitive(searchValue),
+      },
+      {
+        currentStageName: containsInsensitive(searchValue),
+      },
+      {
+        status: {
+          is: {
+            OR: [
+              {
+                name: containsInsensitive(searchValue),
+              },
+              {
+                slug: containsInsensitive(searchValue),
+              },
+              {
+                group: {
+                  is: {
+                    OR: [
+                      {
+                        name: containsInsensitive(searchValue),
+                      },
+                      {
+                        slug: containsInsensitive(searchValue),
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        tags: {
+          some: {
+            tag: {
+              is: {
+                name: containsInsensitive(searchValue),
+              },
+            },
+          },
+        },
+      },
+      {
+        stages: {
+          some: {
+            name: containsInsensitive(searchValue),
+          },
+        },
+      },
+      participantWhere,
+    ],
+  } satisfies Prisma.ProjectWhereInput;
+}
+
+function buildFluxAIStatusSearchWhere(status: string) {
+  if (!status) {
+    return null;
+  }
+
+  if (
+    status.includes("ongoing") ||
+    status.includes("active") ||
+    status.includes("progress")
+  ) {
+    return {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: defaultProjectStatusGroupSlugs.active,
+            },
+          },
+        },
+      },
+    } satisfies Prisma.ProjectWhereInput;
+  }
+
+  if (status.includes("pending")) {
+    return {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: defaultProjectStatusGroupSlugs.pending,
+            },
+          },
+        },
+      },
+    } satisfies Prisma.ProjectWhereInput;
+  }
+
+  if (status.includes("hold")) {
+    return {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: defaultProjectStatusGroupSlugs.onHold,
+            },
+          },
+        },
+      },
+    } satisfies Prisma.ProjectWhereInput;
+  }
+
+  if (status.includes("complete")) {
+    return {
+      OR: [
+        {
+          completedAt: {
+            not: null,
+          },
+        },
+        {
+          status: {
+            is: {
+              group: {
+                is: {
+                  slug: defaultProjectStatusGroupSlugs.completed,
+                },
+              },
+            },
+          },
+        },
+      ],
+    } satisfies Prisma.ProjectWhereInput;
+  }
+
+  if (status.includes("archive")) {
+    return {
+      OR: [
+        {
+          archivedAt: {
+            not: null,
+          },
+        },
+        {
+          archive: {
+            isNot: null,
+          },
+        },
+        {
+          status: {
+            is: {
+              group: {
+                is: {
+                  slug: defaultProjectStatusGroupSlugs.archived,
+                },
+              },
+            },
+          },
+        },
+      ],
+    } satisfies Prisma.ProjectWhereInput;
+  }
+
+  if (status.includes("cancel")) {
+    return {
+      status: {
+        is: {
+          group: {
+            is: {
+              slug: defaultProjectStatusGroupSlugs.cancelled,
+            },
+          },
+        },
+      },
+    } satisfies Prisma.ProjectWhereInput;
+  }
+
+  return {
+    status: {
+      is: {
+        OR: [
+          {
+            name: containsInsensitive(status),
+          },
+          {
+            slug: containsInsensitive(status),
+          },
+          {
+            group: {
+              is: {
+                OR: [
+                  {
+                    name: containsInsensitive(status),
+                  },
+                  {
+                    slug: containsInsensitive(status),
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    },
+  } satisfies Prisma.ProjectWhereInput;
+}
+
+function buildFluxAIDeadlineSearchWhere(deadlineState: string | null | undefined) {
+  const window = getDeadlineWindow(deadlineState);
+
+  if (!window) {
+    return null;
+  }
+
+  return {
+    AND: [
+      window.after
+        ? {
+            endDate: {
+              gte: window.after,
+            },
+          }
+        : {},
+      window.before
+        ? {
+            endDate: {
+              lte: window.before,
+            },
+          }
+        : {},
+      !window.includeCompleted
+        ? {
+            completedAt: null,
+            archivedAt: null,
+            archive: {
+              is: null,
+            },
+          }
+        : {},
+    ],
+  } satisfies Prisma.ProjectWhereInput;
+}
+
+function buildFluxAIProjectSearchWhere(
+  user: PermissionUser,
+  input: {
+    query: string;
+    projectName: string;
+    executorName: string;
+    ownerName: string;
+    collaboratorName: string;
+    assigneeName: string;
+    status: string;
+    category: string;
+    tag: string;
+    stageStatus: StageStatus | null;
+    deadlineState?: string | null;
+  },
+) {
+  const clauses: Prisma.ProjectWhereInput[] = [];
+
+  if (input.query) {
+    clauses.push(buildFluxAISafeTextSearchWhere(user, input.query));
+  }
+
+  if (input.projectName) {
+    clauses.push({
+      name: containsInsensitive(input.projectName),
+    });
+  }
+
+  if (input.category) {
+    clauses.push({
+      category: containsInsensitive(input.category),
+    });
+  }
+
+  if (input.tag) {
+    clauses.push({
+      tags: {
+        some: {
+          tag: {
+            is: {
+              name: containsInsensitive(input.tag),
+            },
+          },
+        },
+      },
+    });
+  }
+
+  if (input.assigneeName) {
+    clauses.push(
+      buildFluxAIParticipantSearchWhere(user, input.assigneeName, [
+        "executor",
+        "collaborator",
+      ]),
+    );
+  }
+
+  if (input.executorName) {
+    clauses.push(
+      scopeParticipantSearchForFluxAI(
+        user,
+        buildFluxAIExecutorSearchWhere(input.executorName),
+      ),
+    );
+  }
+
+  if (input.ownerName) {
+    clauses.push(
+      scopeParticipantSearchForFluxAI(
+        user,
+        buildFluxAIOwnerSearchWhere(input.ownerName),
+      ),
+    );
+  }
+
+  if (input.collaboratorName) {
+    clauses.push(
+      scopeParticipantSearchForFluxAI(
+        user,
+        buildFluxAICollaboratorSearchWhere(input.collaboratorName),
+      ),
+    );
+  }
+
+  if (input.stageStatus) {
+    clauses.push({
+      stages: {
+        some: {
+          status: input.stageStatus,
+        },
+      },
+    });
+  }
+
+  const statusWhere = buildFluxAIStatusSearchWhere(input.status);
+  if (statusWhere) {
+    clauses.push(statusWhere);
+  }
+
+  const deadlineWhere = buildFluxAIDeadlineSearchWhere(input.deadlineState);
+  if (deadlineWhere) {
+    clauses.push(deadlineWhere);
+  }
+
+  return clauses.length > 0
+    ? ({
+        AND: clauses,
+      } satisfies Prisma.ProjectWhereInput)
+    : null;
+}
+
 function sanitizeProjectSearchQuery(input: {
   query?: string | null;
   rawMessage?: string | null;
@@ -818,7 +1298,7 @@ function sanitizeProjectSearchQuery(input: {
   return cleanExtractedSearchValue(
     query
       .replace(
-        /^(?:find|show|list|view|display|search|give)\s+(?:me\s+)?(?:the\s+)?/i,
+        /^(?:find|show|list|view|display|search|lookup|open|give)\s+(?:me\s+)?(?:the\s+)?/i,
         "",
       )
       .replace(/\b(?:projects?|records?)\b/gi, " ")
@@ -837,10 +1317,25 @@ function getAccessibleProjectWhere(user: PermissionUser) {
   return getAccessibleProjectsWhere(user);
 }
 
-async function getAccessibleFluxProjects(user: PermissionUser, limit = MAX_PROJECTS_FOR_FLUX_AI) {
+async function getAccessibleFluxProjects(
+  user: PermissionUser,
+  options: {
+    where?: Prisma.ProjectWhereInput | null;
+    limit?: number;
+  } = {},
+) {
+  const where = options.where
+    ? {
+        AND: [
+          getAccessibleProjectWhere(user),
+          options.where,
+        ],
+      }
+    : getAccessibleProjectWhere(user);
+
   return withPrismaRetry(() =>
     prisma.project.findMany({
-      where: getAccessibleProjectWhere(user),
+      where,
       orderBy: [
         {
           updatedAt: "desc",
@@ -849,7 +1344,7 @@ async function getAccessibleFluxProjects(user: PermissionUser, limit = MAX_PROJE
           createdAt: "desc",
         },
       ],
-      take: limit,
+      take: options.limit ?? MAX_PROJECTS_FOR_FLUX_AI,
       select: fluxProjectSelect,
     }),
   );
@@ -881,7 +1376,6 @@ export async function searchProjectsForFluxAI(
     limit?: number | null;
   },
 ) {
-  const projects = await getAccessibleFluxProjects(user);
   const rawMessage = input.rawMessage ?? input.query ?? "";
   const explicitProjectName =
     inferProjectNameFromPrompt(rawMessage) || inferProjectNameFromPrompt(input.query);
@@ -950,6 +1444,26 @@ export async function searchProjectsForFluxAI(
         input.deadlineState,
     ),
   });
+  const searchWhere = buildFluxAIProjectSearchWhere(user, {
+    query,
+    projectName,
+    executorName,
+    ownerName,
+    collaboratorName,
+    assigneeName,
+    status,
+    category,
+    tag,
+    stageStatus,
+    deadlineState: input.deadlineState,
+  });
+  const resultLimit = resolveLimit(input.limit);
+  const projects = await getAccessibleFluxProjects(user, {
+    where: searchWhere,
+    limit: searchWhere
+      ? Math.max(MAX_PROJECTS_FOR_FLUX_AI, resultLimit * 8)
+      : MAX_PROJECTS_FOR_FLUX_AI,
+  });
 
   return projects
     .filter((project) => projectMatchesSearch(user, project, query))
@@ -1007,7 +1521,7 @@ export async function searchProjectsForFluxAI(
         ? getCompletionBlockerMessages(project, completionBlocker)
         : [],
     }))
-    .slice(0, resolveLimit(input.limit))
+    .slice(0, resultLimit)
     .map((entry) =>
       mapProjectForFluxAI(user, entry.project, {
         archiveBlockers: entry.blockers.length > 0 ? entry.blockers : undefined,
@@ -1201,7 +1715,7 @@ export async function getProjectStatusForFluxAI(
     projectName?: string | null;
   } = {},
 ) {
-  const projects = await getAccessibleFluxProjects(user, 200);
+  const projects = await getAccessibleFluxProjects(user, { limit: 200 });
   const project = findBestProject(user, projects, input);
   const statusSummary: FluxAIStatusSummary = {
     total: projects.length,

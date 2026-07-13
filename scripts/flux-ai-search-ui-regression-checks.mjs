@@ -25,6 +25,12 @@ function assertNotIncludes(source, value, label) {
 const tools = read("src/lib/flux-ai/tools.ts");
 for (const snippet of [
   "sanitizeProjectSearchQuery",
+  "containsInsensitive",
+  "buildFluxAISafeTextSearchWhere",
+  "buildFluxAIProjectSearchWhere",
+  "scopeParticipantSearchForFluxAI",
+  "canViewVendorInfo: true",
+  "where: searchWhere",
   "isAllProjectsPrompt",
   "isBroadProjectSearchPrompt",
   "inferAssigneeNameFromPrompt",
@@ -56,11 +62,24 @@ assert(
   ),
   "Broad project searches must not trust model project-name extraction unless explicitly named.",
 );
+assert(
+  /const searchWhere = buildFluxAIProjectSearchWhere[\s\S]*where: searchWhere[\s\S]*\.filter\(\(project\) => projectMatchesSearch/.test(
+    tools,
+  ),
+  "Flux AI project search must query matching accessible projects before applying final in-memory checks.",
+);
+assert(
+  /buildFluxAIParticipantVisibilityScopeWhere[\s\S]*canViewVendorInfo: true[\s\S]*scopeParticipantSearchForFluxAI[\s\S]*buildFluxAIParticipantSearchWhere/.test(
+    tools,
+  ),
+  "Flux AI participant search must remain scoped to users allowed to see participant information.",
+);
 
 const chatRoute = read("src/app/api/flux-ai/chat/route.ts");
 for (const snippet of [
   "getDeterministicFluxAIIntent",
   "isProjectSearchPrompt",
+  "isPlainProjectLookupPrompt",
   "isReadyForArchivePrompt",
   "isOverdueStagesPrompt",
   "isArchiveBlockersPrompt",
