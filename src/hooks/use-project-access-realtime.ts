@@ -20,6 +20,12 @@ type UseProjectAccessRealtimeInput = {
   onAccessRevoked: (payload: ProjectAccessRevokedPayload) => void;
 };
 
+const ABLY_INACTIVE_CONNECTION_STATES = new Set<Ably.ConnectionState>([
+  "closed",
+  "closing",
+  "failed",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -39,12 +45,39 @@ function isProjectAccessRevokedPayload(
   );
 }
 
-function closeClient(client: ProjectAccessRealtimeClient) {
-  try {
-    client.close();
-  } catch {
-    // Best effort cleanup only.
+function ignoreCleanupError(label: string, error: unknown) {
+  if (process.env.NODE_ENV === "production") {
+    return;
   }
+
+  console.info(`[ably:project-access] cleanup ${label} ignored`, {
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+
+function runProjectAccessCleanup(label: string, task: () => unknown) {
+  try {
+    const result = task();
+    const maybePromise = result as { catch?: unknown };
+
+    if (typeof maybePromise?.catch === "function") {
+      void (maybePromise as Promise<unknown>).catch((error) => {
+        ignoreCleanupError(label, error);
+      });
+    }
+  } catch (error) {
+    ignoreCleanupError(label, error);
+  }
+}
+
+function closeClient(client: ProjectAccessRealtimeClient) {
+  if (ABLY_INACTIVE_CONNECTION_STATES.has(client.connection.state)) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    runProjectAccessCleanup("client close", () => client.close());
+  }, 0);
 }
 
 export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
@@ -85,9 +118,11 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
 
     return () => {
       cancelled = true;
-      void channel.unsubscribe(
-        PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
-        handleAccessRevoked,
+      runProjectAccessCleanup("unsubscribe access.revoked", () =>
+        channel.unsubscribe(
+          PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
+          handleAccessRevoked,
+        ),
       );
       closeClient(client);
     };
