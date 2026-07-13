@@ -2879,8 +2879,9 @@ export function ProjectChatWorkspace({
   const isProjectCompleted = completionState.isCompleted;
   const isFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
+  const canArchiveProject = project.ownerId === currentUserId;
   const canCompleteProject =
-    completionState.canCompleteProject && !isProjectCompleted;
+    canArchiveProject && completionState.canCompleteProject && !isProjectCompleted;
   const shouldExpectCompletionWorkflow =
     isProjectCompleted ||
     (!isProjectCompleted && completionState.allStagesCompleted);
@@ -6956,6 +6957,7 @@ export function ProjectChatWorkspace({
   );
   const archiveHasBlockingFileErrors = Object.values(archiveFileErrors).some(Boolean);
   const canSubmitFinalArchive =
+    canArchiveProject &&
     Boolean(archivePreparation) &&
     Boolean(archiveCategoryId) &&
     !archiveHasBlockingFileErrors &&
@@ -9250,24 +9252,26 @@ export function ProjectChatWorkspace({
                 >
                   Close
                 </Button>
-                <Button
-                  type="button"
-                  className="rounded-full text-[12px]"
-                  disabled={
-                    !effectiveCompletionWorkflow ||
-                    !canCompleteProject ||
-                    isPreparingProjectCompletion ||
-                    isCompletionDataLoading
-                  }
-                  onClick={() => {
-                    void handlePrepareProjectCompletion();
-                  }}
-                >
-                  {isPreparingProjectCompletion ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : null}
-                  Archive Project
-                </Button>
+                {canArchiveProject ? (
+                  <Button
+                    type="button"
+                    className="rounded-full text-[12px]"
+                    disabled={
+                      !effectiveCompletionWorkflow ||
+                      !canCompleteProject ||
+                      isPreparingProjectCompletion ||
+                      isCompletionDataLoading
+                    }
+                    onClick={() => {
+                      void handlePrepareProjectCompletion();
+                    }}
+                  >
+                    {isPreparingProjectCompletion ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : null}
+                    Archive Project
+                  </Button>
+                ) : null}
               </div>
             </div>
           </Card>

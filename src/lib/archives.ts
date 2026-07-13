@@ -1258,6 +1258,10 @@ function ensureProjectCanBeCompleted(
   project: NonNullable<Awaited<ReturnType<typeof getProjectArchiveBase>>>,
   stageId: string,
 ) {
+  if (project.createdById !== user.id) {
+    throw new Error("Only the project owner can complete and archive this project.");
+  }
+
   if (!hasProjectPermission(user, project, "project.completeArchive")) {
     throw new Error("You do not have permission to complete and archive this project.");
   }
@@ -2355,6 +2359,7 @@ export async function getProjectCompletionSummary(
   const allStagesCompleted = incompleteStages.length === 0 && project.stages.length > 0;
   const isCompleted = Boolean(project.archive || project.archivedAt || project.completedAt);
   const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
+  const isProjectOwner = project.createdById === user.id;
   const canViewArchivedFiles = hasProjectPermission(user, project, "archive.view");
   const visibleArchivedFiles =
     project.archive?.files.filter((file) =>
@@ -2393,6 +2398,7 @@ export async function getProjectCompletionSummary(
     finalStageName: finalStage?.name ?? null,
     isSelectedStageFinal,
     canCompleteProject:
+      isProjectOwner &&
       canCompleteArchive &&
       Boolean(finalStage) &&
       allStagesCompleted &&
