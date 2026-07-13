@@ -983,16 +983,18 @@ const defaultCollaboratorWorkflowPermissions = [
   "help.view",
 ] as const satisfies readonly PermissionKey[];
 
+const defaultRestrictedCollaboratorPermissions = [] as const satisfies readonly PermissionKey[];
+
 export const defaultCollaboratorTypePermissions: Record<
   CollaboratorTypeValue,
   readonly PermissionKey[]
 > = {
   GTI_INTERNAL_CLIENT: defaultCollaboratorWorkflowPermissions,
-  GTI_SISTER_COMPANY_INTERNAL_CLIENT: defaultCollaboratorWorkflowPermissions,
-  EXTERNAL_FREELANCER: defaultCollaboratorWorkflowPermissions,
-  EXTERNAL_AGENCY: defaultCollaboratorWorkflowPermissions,
-  EXTERNAL_VENDOR: defaultCollaboratorWorkflowPermissions,
-  CLIENT_OF_GTI: defaultCollaboratorWorkflowPermissions,
+  GTI_SISTER_COMPANY_INTERNAL_CLIENT: defaultRestrictedCollaboratorPermissions,
+  EXTERNAL_FREELANCER: defaultRestrictedCollaboratorPermissions,
+  EXTERNAL_AGENCY: defaultRestrictedCollaboratorPermissions,
+  EXTERNAL_VENDOR: defaultRestrictedCollaboratorPermissions,
+  CLIENT_OF_GTI: defaultRestrictedCollaboratorPermissions,
 };
 
 export const criticalSuperAdminPermissionKeys = [

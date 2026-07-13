@@ -132,6 +132,14 @@ export function isMainProjectExecutor(
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
+  if (
+    user.role === UserRole.COLLABORATOR &&
+    permissionKey === "project.create" &&
+    user.collaboratorType !== "GTI_INTERNAL_CLIENT"
+  ) {
+    return false;
+  }
+
   return getBasePermissionSet(user).has(permissionKey);
 }
 

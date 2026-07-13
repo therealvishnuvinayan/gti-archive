@@ -172,6 +172,18 @@ function hasPermissionProfileChanges(
   );
 }
 
+function isPermissionUnavailableForProfile(input: {
+  permissionKey: PermissionKey;
+  profileType: PermissionProfileType;
+  profileKey: string;
+}) {
+  return (
+    input.profileType === "collaboratorType" &&
+    input.permissionKey === "project.create" &&
+    input.profileKey !== "GTI_INTERNAL_CLIENT"
+  );
+}
+
 function FilterBadge({ icon, text }: { icon: ReactNode; text: string }) {
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-[#d9e4da] bg-[#f8fbf8] px-4 py-2 text-[13px] font-[600] text-[#4e5a50]">
@@ -787,7 +799,12 @@ function ManagePermissionsModal({
                 ) : (
                   <div className="mt-5 space-y-3">
                     {filteredItems.map((item) => {
-                      const enabled = draftState[item.key];
+                      const isUnavailableForProfile = isPermissionUnavailableForProfile({
+                        permissionKey: item.key,
+                        profileType,
+                        profileKey,
+                      });
+                      const enabled = isUnavailableForProfile ? false : draftState[item.key];
                       const isProtectedSuperAdminPermission =
                         profileType === "role" &&
                         profileKey === "SUPER_ADMIN" &&
@@ -811,7 +828,8 @@ function ManagePermissionsModal({
                             disabled={
                               isSavingProfile ||
                               isResettingProfile ||
-                              isProtectedSuperAdminPermission
+                              isProtectedSuperAdminPermission ||
+                              isUnavailableForProfile
                             }
                             className="mt-1 h-4 w-4 rounded border-[#c6d6c8] accent-[#256a45]"
                           />
@@ -846,6 +864,11 @@ function ManagePermissionsModal({
                                   {isProtectedSuperAdminPermission ? (
                                     <StatusBadge className="border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]">
                                       Protected for SUPER_ADMIN
+                                    </StatusBadge>
+                                  ) : null}
+                                  {isUnavailableForProfile ? (
+                                    <StatusBadge className="border-[#e4e5e4] bg-[#f5f6f5] text-[#6b746d]">
+                                      Internal clients only
                                     </StatusBadge>
                                   ) : null}
                                 </div>
