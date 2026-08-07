@@ -29,28 +29,30 @@ assert(
   "Invoice candidates must be deduped by user.",
 );
 assert(
-  candidateBlock.includes('executor.role === "MAIN_EXECUTOR"') &&
+  candidateBlock.includes("executors.forEach") &&
+    !candidateBlock.includes("MAIN_EXECUTOR") &&
     !candidateBlock.includes('collaborator.group === "external"') &&
-    !candidateBlock.includes('role: executor.role === "MAIN_EXECUTOR" ? "Main Executor" : "Executor"'),
-  "Invoice candidates must include only current main executors.",
+    candidateBlock.includes('role: "Executor"'),
+  "Invoice candidates must include every current executor equally.",
 );
 assert(
   chatSource.includes("invoiceRequestCandidates.length === 1 ? invoiceRequestCandidates[0]?.id : \"\""),
   "Multiple invoice recipients must not silently preselect the first recipient.",
 );
 assert(
-  chatSource.includes("Select main executor"),
-  "Invoice recipient dropdown placeholder must be main-executor specific.",
+  chatSource.includes("Select executor"),
+  "Invoice recipient dropdown placeholder must be executor-specific.",
 );
 assert(
   chatSource.includes('<SelectContent className="z-[120]">'),
   "Invoice recipient dropdown content must render above the z-[70] invoice modal overlay.",
 );
 assert(
-  historySource.includes("executor.role === ProjectExecutorRole.MAIN_EXECUTOR") &&
-    historySource.includes("Invoice can only be requested from a project main executor.") &&
+  historySource.includes("executor.userId === requestedFromId") &&
+    historySource.includes("Invoice can only be requested from a project executor.") &&
+    !historySource.includes("ProjectExecutorRole") &&
     !historySource.includes("externalCollaboratorCandidate"),
-  "Server validation must allow only current project main executors.",
+  "Server validation must allow current project executors without hierarchy.",
 );
 
 console.log("Stage invoice recipient dropdown regression checks passed.");

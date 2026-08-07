@@ -108,19 +108,17 @@ assertNotIncludes(
 
 const createRoute = read("src/app/api/flux-ai/create-project/route.ts");
 for (const snippet of [
-  "createProjectAction(",
-  "collaboratorPermissionFormFields",
-  "projectCollaboratorPermissionKeys.forEach",
-  "normalizeProjectCollaboratorPermissions",
-  "formData.append(\"collaboratorParticipantTypes\", participantType ?? \"\")",
-  "formData.set(\"statusId\", draftProject.statusId ?? defaultStatus.id)",
+  "temporarily unavailable for the V2 workflow",
+  "select an operational owner, optional co-owners, and executors",
+  "jsonFluxAI(response, 409)",
 ]) {
   assertIncludes(createRoute, snippet, `Flux AI create route form parity ${snippet}`);
 }
 assertNotIncludes(
   createRoute,
-  "prisma.project.create",
-  "Flux AI create route must not bypass the existing create project action.",
+  "createProjectAction(",
+  "Flux AI create route must not call the legacy create project action.",
 );
+assertNotIncludes(createRoute, "prisma.project.create", "Flux AI create route direct create");
 
 console.log("Flux AI draft field parity checks passed.");

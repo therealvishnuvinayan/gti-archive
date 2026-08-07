@@ -50,11 +50,6 @@ enum ProjectPriority {
   URGENT
 }
 
-enum ProjectExecutorRole {
-  MAIN_EXECUTOR
-  EXECUTOR
-}
-
 enum CalendarEventType {
   PROJECTS
   EVENTS
@@ -197,7 +192,10 @@ model User {
   inviteAcceptedAt                    DateTime?
   sessions                            Session[]
   passwordResetTokens                 PasswordResetToken[]
-  projects                            Project[]
+  projects                            Project[]                            @relation("ProjectCreator")
+  ownedProjects                       Project[]                            @relation("ProjectOwner")
+  projectCoOwnerships                 ProjectCoOwner[]                     @relation("ProjectCoOwnerUser")
+  addedProjectCoOwnerships            ProjectCoOwner[]                     @relation("ProjectCoOwnerAdder")
   revisions                           ProjectRevision[]
   reviewedRevisions                   ProjectRevision[]                    @relation("ProjectRevisionReviewer")
   comments                            ProjectComment[]
@@ -334,21 +332,23 @@ model CollaboratorTypePermission {
 model Project {
   id                     String                      @id @default(cuid())
   name                   String
-  category               String
-  description            String
-  executionType          ProjectExecutionType        @default(EXTERNAL)
-  budgetRequired         Boolean                     @default(false)
+  category               String?
+  description            String?
+  executionType          ProjectExecutionType?
+  budgetRequired         Boolean?
   budget                 Int?
-  currency               String                      @default("USD")
+  currency               String?
   statusId               String?
   status                 ProjectStatusOption?        @relation(fields: [statusId], references: [id], onDelete: SetNull)
-  priority               ProjectPriority             @default(MEDIUM)
-  startDate              DateTime
-  endDate                DateTime
+  priority               ProjectPriority?
+  startDate              DateTime?
+  endDate                DateTime?
   currentStageName       String?
-  stageCount             Int                         @default(1)
+  stageCount             Int?
+  ownerId                String?
+  owner                  User?                       @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   createdById            String
-  createdBy              User                        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy              User                        @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
   isPinned               Boolean                     @default(false)
   stages                 ProjectStage[]
   tags                   ProjectTagAssignment[]
@@ -359,6 +359,7 @@ model Project {
   invoiceRequests        StageInvoiceRequest[]
   activityLogs           ProjectActivityLog[]
   collaborators          ProjectCollaborator[]
+  coOwners               ProjectCoOwner[]
   executors              ProjectExecutor[]
   archive                ProjectArchive?
   archivedFiles          ArchivedProjectFile[]
@@ -371,9 +372,24 @@ model Project {
   updatedAt              DateTime                    @updatedAt
 
   @@index([statusId])
+  @@index([ownerId])
   @@index([isPinned])
   @@index([createdAt])
   @@index([createdById])
+}
+
+model ProjectCoOwner {
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("ProjectCoOwnerUser", fields: [userId], references: [id], onDelete: Cascade)
+  addedById String?
+  addedBy   User?    @relation("ProjectCoOwnerAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@index([addedById])
 }
 
 model ProjectCategory {
@@ -555,19 +571,17 @@ model ProjectCollaborator {
 
 model ProjectExecutor {
   projectId String
-  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   userId    String
-  user      User                @relation("ProjectExecutorUser", fields: [userId], references: [id], onDelete: Cascade)
-  role      ProjectExecutorRole @default(EXECUTOR)
+  user      User     @relation("ProjectExecutorUser", fields: [userId], references: [id], onDelete: Cascade)
   addedById String?
-  addedBy   User?               @relation("ProjectExecutorAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  addedBy   User?    @relation("ProjectExecutorAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@id([projectId, userId])
   @@index([userId])
   @@index([addedById])
-  @@index([role])
 }
 
 model ProjectCollaboratorVisibilityPause {

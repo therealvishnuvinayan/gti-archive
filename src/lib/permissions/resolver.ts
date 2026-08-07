@@ -1,8 +1,8 @@
 import {
   Prisma,
-  ProjectExecutorRole,
   UserRole,
   type Project,
+  type ProjectCoOwner,
   type ProjectCollaborator,
   type ProjectExecutor,
   type User,
@@ -25,9 +25,10 @@ export type PermissionUser = Pick<User, "id" | "role"> & {
 
 export type ProjectPermissionContext = Pick<
   Project,
-  "createdById"
+  "ownerId"
 > & {
-  executors?: Array<Pick<ProjectExecutor, "userId" | "role">>;
+  coOwners?: Array<Pick<ProjectCoOwner, "userId">>;
+  executors?: Array<Pick<ProjectExecutor, "userId">>;
   collaborators?: Array<
     Pick<ProjectCollaborator, "userId"> &
       Partial<Pick<ProjectCollaborator, ProjectCollaboratorPermissionKey>>
@@ -65,7 +66,11 @@ function isProjectMember(
   user: PermissionUser,
   project: ProjectPermissionContext,
 ) {
-  if (project.createdById === user.id || isProjectExecutor(user, project)) {
+  if (
+    isProjectOwner(user, project) ||
+    isProjectCoOwner(user, project) ||
+    isProjectExecutor(user, project)
+  ) {
     return true;
   }
 
@@ -106,9 +111,27 @@ export function isProjectAdmin(user: Pick<PermissionUser, "role">) {
 
 export function isProjectOwner(
   user: Pick<PermissionUser, "id">,
-  project: Pick<ProjectPermissionContext, "createdById">,
+  project: Pick<ProjectPermissionContext, "ownerId">,
 ) {
-  return project.createdById === user.id;
+  return project.ownerId === user.id;
+}
+
+export function isProjectCoOwner(
+  user: Pick<PermissionUser, "id">,
+  project: Pick<ProjectPermissionContext, "coOwners">,
+) {
+  return project.coOwners?.some((coOwner) => coOwner.userId === user.id) ?? false;
+}
+
+function isProjectOwnerOrCoOwner(
+  user: Pick<PermissionUser, "id" | "role">,
+  project: ProjectPermissionContext,
+) {
+  return (
+    user.role === UserRole.SUPER_ADMIN ||
+    isProjectOwner(user, project) ||
+    isProjectCoOwner(user, project)
+  );
 }
 
 export function isProjectExecutor(
@@ -116,19 +139,6 @@ export function isProjectExecutor(
   project: Pick<ProjectPermissionContext, "executors">,
 ) {
   return project.executors?.some((executor) => executor.userId === user.id) ?? false;
-}
-
-export function isMainProjectExecutor(
-  user: Pick<PermissionUser, "id">,
-  project: Pick<ProjectPermissionContext, "executors">,
-) {
-  return (
-    project.executors?.some(
-      (executor) =>
-        executor.userId === user.id &&
-        executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
-    ) ?? false
-  );
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
@@ -265,7 +275,14 @@ export function getAccessibleProjectsWhere(user: PermissionUser): Prisma.Project
 
   return {
     OR: [
-      { createdById: user.id },
+      { ownerId: user.id },
+      {
+        coOwners: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
       {
         executors: {
           some: {
@@ -293,7 +310,10 @@ export function hasProjectPermission(
     return false;
   }
 
-  if (isProjectOwner(user, project) && isProjectOwnerManagePermission(permissionKey)) {
+  if (
+    isProjectOwnerOrCoOwner(user, project) &&
+    isProjectOwnerManagePermission(permissionKey)
+  ) {
     return true;
   }
 
@@ -301,19 +321,19 @@ export function hasProjectPermission(
     case "project.viewBudget":
       return (
         isProjectAdmin(user) ||
-        isProjectOwner(user, project) ||
+        isProjectOwnerOrCoOwner(user, project) ||
         hasProjectCollaboratorGrant(user, project, "canViewBudget")
       );
     case "project.viewParticipants":
       return (
         isProjectAdmin(user) ||
-        isProjectOwner(user, project) ||
+        isProjectOwnerOrCoOwner(user, project) ||
         hasProjectCollaboratorGrant(user, project, "canViewVendorInfo")
       );
     case "file.download":
       return (
         isProjectAdmin(user) ||
-        isProjectOwner(user, project) ||
+        isProjectOwnerOrCoOwner(user, project) ||
         hasProjectCollaboratorGrant(user, project, "canDownloadFiles")
       );
     case "chat.createComment":
@@ -322,8 +342,8 @@ export function hasProjectPermission(
     case "file.uploadAttachment":
       return (
         isProjectAdmin(user) ||
-        isProjectOwner(user, project) ||
-        isMainProjectExecutor(user, project) ||
+        isProjectOwnerOrCoOwner(user, project) ||
+        isProjectExecutor(user, project) ||
         hasProjectCollaboratorGrant(user, project, "canInteract")
       );
     case "compare.createComment":
@@ -331,22 +351,22 @@ export function hasProjectPermission(
     case "archive.view":
       return (
         isProjectAdmin(user) ||
-        isProjectOwner(user, project) ||
+        isProjectOwnerOrCoOwner(user, project) ||
         hasProjectArchiveAccessGrant(user, project)
       );
     case "archive.download":
       return (
         isProjectAdmin(user) ||
-        isProjectOwner(user, project) ||
+        isProjectOwnerOrCoOwner(user, project) ||
         (hasProjectArchiveAccessGrant(user, project) &&
           hasProjectCollaboratorGrant(user, project, "canDownloadFiles"))
       );
     case "archive.uploadFile":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "compare.view":
       return (
         isProjectAdmin(user) ||
-        isProjectOwner(user, project) ||
+        isProjectOwnerOrCoOwner(user, project) ||
         hasProjectArchiveAccessGrant(user, project)
       );
   }
@@ -364,30 +384,30 @@ export function hasProjectPermission(
       return isProjectAdmin(user) || isProjectMember(user, project);
     case "stage.updateBudget":
     case "project.updateBudget":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "stage.manageDefinitions":
     case "stage.updateTimeline":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "project.update":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "file.delete":
     case "library.deleteFile":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "project.delete":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "project.manageCollaborators":
     case "collaborator.pauseVisibility":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "collaborator.inviteToProject":
     case "collaborator.removeFromProject":
     case "collaborator.changeType":
     case "collaborator.changeAccess":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "stage.acceptBrief":
-      return isMainProjectExecutor(user, project);
+      return isProjectExecutor(user, project);
     case "stage.submitWork":
     case "file.uploadSubmission":
-      return isMainProjectExecutor(user, project);
+      return isProjectExecutor(user, project);
     case "stage.reviewSubmission":
     case "stage.requestRevision":
     case "stage.markSubmissionComplete":
@@ -396,15 +416,15 @@ export function hasProjectPermission(
     case "completion.prepareApproval":
     case "completion.setCopyrightRequired":
     case "completion.prepareCopyrightTransfer":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "completion.uploadApprovalProof":
     case "completion.uploadCopyrightDocument":
       return false;
     case "project.completeArchive":
-      return isProjectAdmin(user) || isProjectOwner(user, project);
+      return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "completion.viewChecklist":
     case "completion.uploadInvoice":
-      return isProjectOwner(user, project) || isProjectExecutor(user, project);
+      return isProjectOwnerOrCoOwner(user, project) || isProjectExecutor(user, project);
     case "library.uploadAsset":
       return isProjectAdmin(user) || isProjectMember(user, project);
     default:
@@ -418,7 +438,7 @@ export function canAddProjectCaptions(
 ) {
   return (
     isProjectAdmin(user) ||
-    isProjectOwner(user, project) ||
+    isProjectOwnerOrCoOwner(user, project) ||
     hasProjectCollaboratorGrant(user, project, "canAddCaptions")
   );
 }

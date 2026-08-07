@@ -38,21 +38,36 @@ for (const permissionKey of [
 }
 
 assert(
-  /if \(isProjectOwner\(user, project\) && isProjectOwnerManagePermission\(permissionKey\)\) \{\s*return true;\s*\}/.test(
+  /if\s*\(\s*isProjectOwnerOrCoOwner\(user, project\)\s*&&\s*isProjectOwnerManagePermission\(permissionKey\)\s*\)\s*\{\s*return true;\s*\}/.test(
     resolver,
   ),
-  "Project owner workflow permissions must bypass the base role grant before hard-rule checks.",
+  "Project owner/co-owner workflow permissions must bypass the base role grant before hard-rule checks.",
 );
+
+for (const snippet of [
+  "user.role === UserRole.SUPER_ADMIN",
+  "isProjectCoOwner",
+  "isProjectExecutor",
+  'case "stage.acceptBrief"',
+  'case "stage.submitWork"',
+]) {
+  assertIncludes(resolver, snippet, `V2 project access rule ${snippet}`);
+}
 
 const projectHistory = read("src/lib/project-history.ts");
 for (const snippet of [
   '"stage.markSubmissionComplete"',
   '"Only the project owner can request an invoice."',
-  "if (stage.project.createdById !== user.id)",
-  "throw new Error(\"Only the project owner can request an invoice.\");",
-  "if (requestedFromId === stage.project.createdById)",
+  "isProjectExecutorUser",
+  "executor.userId === requestedFromId",
 ]) {
-  assertIncludes(projectHistory, snippet, `Invoice request owner guard ${snippet}`);
+  assertIncludes(projectHistory, snippet, `V2 workflow guard ${snippet}`);
 }
+
+assert(
+  !projectHistory.includes("ProjectExecutorRole") &&
+    !projectHistory.includes("MAIN_EXECUTOR"),
+  "Project history must not retain executor hierarchy checks.",
+);
 
 console.log("Project owner workflow permission checks passed.");

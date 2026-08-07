@@ -5,7 +5,6 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
-  ProjectExecutorRole,
   ProjectExecutionType,
   ProjectRevisionStatus,
   StageStatus,
@@ -20,7 +19,7 @@ import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
   hasProjectPermission,
-  isMainProjectExecutor,
+  isProjectExecutor,
   type PermissionUser,
   type ProjectPermissionContext,
 } from "@/lib/permissions/resolver";
@@ -839,7 +838,10 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
       select: {
         id: true,
         category: true,
-        createdById: true,
+        ownerId: true,
+        coOwners: {
+          select: { userId: true },
+        },
         executors: {
           ...(userId
             ? {
@@ -850,7 +852,6 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
             : {}),
           select: {
             userId: true,
-            role: true,
           },
         },
         status: {
@@ -927,14 +928,16 @@ async function getStageChatAccessRecord(
         project: {
           select: {
             id: true,
-            createdById: true,
+            ownerId: true,
+            coOwners: {
+              select: { userId: true },
+            },
             executors: {
               where: {
                 userId,
               },
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
@@ -972,7 +975,8 @@ async function getStageChatAccessRecord(
 
   return {
     id: stage.project.id,
-    createdById: stage.project.createdById,
+    ownerId: stage.project.ownerId,
+    coOwners: stage.project.coOwners,
     executors: stage.project.executors,
     collaborators: stage.project.collaborators,
     stages: stage.project.stages.map((projectStage) => ({
@@ -992,19 +996,13 @@ async function getStageChatAccessRecord(
   };
 }
 
-function isMainProjectExecutorUser(
+function isProjectExecutorUser(
   project: {
-    createdById?: string | null;
-    executors?: Array<{ userId: string; role: ProjectExecutorRole }>;
+    executors?: Array<{ userId: string }>;
   },
   userId: string,
 ) {
-  return isMainProjectExecutor(
-    { id: userId },
-    {
-      executors: project.executors,
-    },
-  );
+  return isProjectExecutor({ id: userId }, project);
 }
 
 export async function assertProjectAccess(user: AccessUser, projectId: string) {
@@ -1044,7 +1042,6 @@ function assertProjectWorkflowPermission(
 }
 
 type StageChatWriteProjectContext = ProjectPermissionContext & {
-  createdById: string;
   archivedAt?: Date | null;
   status: Parameters<typeof isProjectStatusCompleted>[0];
 };
@@ -1092,7 +1089,10 @@ export async function assertStageChatWriteAccess(
     throw new Error("Please accept the brief before adding stage chat.");
   }
 
-  if (!canBypassCollaboratorVisibility(user, input.stage.project.createdById)) {
+  if (
+    !canBypassCollaboratorVisibility(user, input.stage.project.ownerId ?? "") &&
+    !hasProjectPermission(user, input.stage.project, "collaborator.pauseVisibility")
+  ) {
     const visibilityState = await getProjectCollaboratorVisibilityState(
       input.projectId,
       user.id,
@@ -1128,7 +1128,7 @@ function getUploadPermissionErrorMessage(assetType: AttachmentAssetType) {
 }
 
 function isStageInvoiceRequired(
-  project: { executionType: ProjectExecutionType },
+  project: { executionType: ProjectExecutionType | null },
   stage: { invoiceRequired: boolean },
 ) {
   return project.executionType === ProjectExecutionType.EXTERNAL && stage.invoiceRequired;
@@ -1185,9 +1185,12 @@ function filterHistoryEntriesOutsidePauseWindows<
 
 async function getProjectVisibilityPauseWindows(
   user: AccessUser,
-  project: Pick<ProjectStageChatAccessRecord, "id" | "createdById">,
+  project: Pick<ProjectStageChatAccessRecord, "id" | "ownerId" | "coOwners">,
 ) {
-  if (canBypassCollaboratorVisibility(user, project.createdById)) {
+  if (
+    canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
+    hasProjectPermission(user, project, "collaborator.pauseVisibility")
+  ) {
     return [];
   }
 
@@ -1338,13 +1341,18 @@ export async function assertProjectAttachmentVisibilityForUser(
     projectId: string;
     createdAt: Date;
     project: {
-      createdById: string;
+      ownerId: string | null;
+      coOwners?: Array<{ userId: string }>;
     };
   },
 ) {
+  if (hasProjectPermission(user, attachment.project, "collaborator.pauseVisibility")) {
+    return;
+  }
+
   await assertProjectTimestampVisibleForUser(user, {
     projectId: attachment.projectId,
-    projectOwnerId: attachment.project.createdById,
+    projectOwnerId: attachment.project.ownerId ?? "",
     timestamp: attachment.createdAt,
     message: "You do not have permission to access this file.",
   });
@@ -2694,11 +2702,11 @@ export async function createStageRevision(
     user,
     project,
     "stage.submitWork",
-    "Only a Main Executor can submit work for review.",
+    "Only a project executor can submit work for review.",
   );
 
-  if (!isMainProjectExecutorUser(project, user.id)) {
-    throw new Error("Only a Main Executor can submit work for review.");
+  if (!isProjectExecutorUser(project, user.id)) {
+    throw new Error("Only a project executor can submit work for review.");
   }
 
   if (isProjectStatusCompleted(project.status)) {
@@ -2792,14 +2800,14 @@ export async function createStageComment(
         status: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               where: {
                 userId: user.id,
               },
               select: {
                 userId: true,
-                role: true,
               },
             },
             status: {
@@ -2990,14 +2998,14 @@ export async function createStageTextCommentFast(
         status: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               where: {
                 userId: user.id,
               },
               select: {
                 userId: true,
-                role: true,
               },
             },
             status: {
@@ -3302,11 +3310,11 @@ export async function deleteStageComment(
         },
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             status: {
@@ -3442,11 +3450,11 @@ export async function prepareStageCommentUploads(
         status: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             status: {
@@ -3724,14 +3732,14 @@ export async function finalizePreparedStageCommentUploads(
             status: true,
             project: {
               select: {
-                createdById: true,
+                ownerId: true,
+                coOwners: { select: { userId: true } },
                 executors: {
                   where: {
                     userId: user.id,
                   },
                   select: {
                     userId: true,
-                    role: true,
                   },
                 },
                 status: {
@@ -3824,11 +3832,11 @@ export async function cancelStageRevisionSubmission(
         id: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
@@ -3853,11 +3861,11 @@ export async function cancelStageRevisionSubmission(
     user,
     project,
     "stage.submitWork",
-    "Only a Main Executor can submit work for review.",
+    "Only a project executor can submit work for review.",
   );
 
-  if (!isMainProjectExecutorUser(revision.project, user.id)) {
-    throw new Error("Only a Main Executor can cancel this revision.");
+  if (!isProjectExecutorUser(revision.project, user.id)) {
+    throw new Error("Only a project executor can cancel this revision.");
   }
 
   await withPrismaRetry(() =>
@@ -3905,11 +3913,11 @@ export async function startProjectStageWork(
     user,
     project,
     "stage.acceptBrief",
-    "Only a Main Executor can accept the brief for this stage.",
+    "Only a project executor can accept the brief for this stage.",
   );
 
-  if (!isMainProjectExecutorUser(project, user.id)) {
-    throw new Error("Only a Main Executor can accept the brief for this stage.");
+  if (!isProjectExecutorUser(project, user.id)) {
+    throw new Error("Only a project executor can accept the brief for this stage.");
   }
 
   if (isProjectStatusCompleted(project.status)) {
@@ -3989,10 +3997,6 @@ export async function completeProjectStage(
     "stage.markStageComplete",
     "Only the project owner can mark this stage as complete.",
   );
-
-  if (project.createdById !== user.id) {
-    throw new Error("Only the project owner can mark this stage as complete.");
-  }
 
   if (isProjectStatusCompleted(project.status)) {
     throw new Error("This project is already completed.");
@@ -4149,7 +4153,8 @@ export async function reviewStageSubmission(
         submissionReviewStatus: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executionType: true,
             status: {
               select: projectStatusSelect,
@@ -4171,16 +4176,10 @@ export async function reviewStageSubmission(
   if (
     !hasProjectPermission(
       user,
-      {
-        createdById: attachment.project.createdById,
-      },
+      attachment.project,
       "stage.reviewSubmission",
     )
   ) {
-    throw new Error("Only the project owner can review submissions.");
-  }
-
-  if (attachment.project.createdById !== user.id) {
     throw new Error("Only the project owner can review submissions.");
   }
 
@@ -4249,7 +4248,8 @@ export async function reviewProjectRevision(
         },
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executionType: true,
             status: {
               select: projectStatusSelect,
@@ -4266,9 +4266,7 @@ export async function reviewProjectRevision(
 
   assertProjectWorkflowPermission(
     user,
-    {
-      createdById: revision.project.createdById,
-    },
+    revision.project,
     input.status === "APPROVED"
       ? "stage.markSubmissionComplete"
       : "stage.requestRevision",
@@ -4276,10 +4274,6 @@ export async function reviewProjectRevision(
       ? "Only the project owner can review this submission."
       : "Only the project owner can request revisions.",
   );
-
-  if (revision.project.createdById !== user.id) {
-    throw new Error("Only the project owner can review this submission.");
-  }
 
   if (isProjectStatusCompleted(revision.project.status)) {
     throw new Error("This project is already completed.");
@@ -4530,7 +4524,8 @@ export async function requestStageInvoice(
           select: {
             id: true,
             name: true,
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executionType: true,
             status: {
               select: projectStatusSelect,
@@ -4539,7 +4534,6 @@ export async function requestStageInvoice(
             executors: {
               select: {
                 userId: true,
-                role: true,
                 user: {
                   select: {
                     name: true,
@@ -4577,10 +4571,6 @@ export async function requestStageInvoice(
     "Only the project owner can request an invoice.",
   );
 
-  if (stage.project.createdById !== user.id) {
-    throw new Error("Only the project owner can request an invoice.");
-  }
-
   if (isProjectStatusCompleted(stage.project.status)) {
     throw new Error("This project is already completed.");
   }
@@ -4612,14 +4602,12 @@ export async function requestStageInvoice(
   }
 
   const executorCandidate = stage.project.executors.find(
-    (executor) =>
-      executor.userId === requestedFromId &&
-      executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
+    (executor) => executor.userId === requestedFromId,
   );
   const candidate = executorCandidate?.user ?? null;
 
   if (!candidate) {
-    throw new Error("Invoice can only be requested from a project main executor.");
+    throw new Error("Invoice can only be requested from a project executor.");
   }
 
   const note = input.note?.trim() || null;
@@ -4759,11 +4747,11 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               category: true,
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               executors: {
                 select: {
                   userId: true,
-                  role: true,
                 },
               },
               status: {
@@ -4791,11 +4779,11 @@ export async function requestAttachmentUpload(
     const project = assertProjectAccessFromContext(user, revision.project);
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
-      return { error: "Only a Main Executor can submit work for review." };
+      return { error: "Only a project executor can submit work for review." };
     }
 
-    if (!isMainProjectExecutorUser(revision.project, user.id)) {
-      return { error: "Only a Main Executor can submit work for review." };
+    if (!isProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only a project executor can submit work for review." };
     }
 
     if (isProjectStatusCompleted(revision.project.status)) {
@@ -4851,11 +4839,11 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               category: true,
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               executors: {
                 select: {
                   userId: true,
-                  role: true,
                 },
               },
               status: {
@@ -4882,7 +4870,6 @@ export async function requestAttachmentUpload(
     assertProjectAccessFromContext(user, stage.project);
     const activeInvoiceRequest = stage.invoiceRequests[0] ?? null;
     const canUploadStageInvoice =
-      stage.project.createdById !== user.id &&
       activeInvoiceRequest?.fulfilledAt === null &&
       activeInvoiceRequest.requestedFromId === user.id;
 
@@ -4942,11 +4929,11 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               category: true,
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               executors: {
                 select: {
                   userId: true,
-                  role: true,
                 },
               },
               status: {
@@ -4974,11 +4961,11 @@ export async function requestAttachmentUpload(
     const project = assertProjectAccessFromContext(user, revision.project);
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
-      return { error: "Only a Main Executor can upload submissions for review." };
+      return { error: "Only a project executor can upload submissions for review." };
     }
 
-    if (!isMainProjectExecutorUser(revision.project, user.id)) {
-      return { error: "Only a Main Executor can upload submissions for review." };
+    if (!isProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only a project executor can upload submissions for review." };
     }
 
     if (isProjectStatusCompleted(revision.project.status)) {
@@ -5018,11 +5005,11 @@ export async function requestAttachmentUpload(
           },
           project: {
             select: {
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               executors: {
                 select: {
                   userId: true,
-                  role: true,
                 },
               },
               status: {
@@ -5078,7 +5065,6 @@ export async function requestAttachmentUpload(
         },
         select: {
           id: true,
-          createdById: true,
           status: {
             select: projectStatusSelect,
           },
@@ -5233,11 +5219,11 @@ export async function completeAttachmentUpload(
         fileSize: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
@@ -5318,8 +5304,7 @@ export async function completeAttachmentUpload(
     if (
       !activeInvoiceRequest ||
       activeInvoiceRequest.fulfilledAt ||
-      activeInvoiceRequest.requestedFromId !== user.id ||
-      attachment.project.createdById === user.id
+      activeInvoiceRequest.requestedFromId !== user.id
     ) {
       throw new Error(
         "Only the requested invoice recipient can upload the invoice for this stage.",
@@ -5508,14 +5493,14 @@ export async function completePreparedChatAttachmentUpload(
             status: true,
             project: {
               select: {
-                createdById: true,
+                ownerId: true,
+                coOwners: { select: { userId: true } },
                 executors: {
                   where: {
                     userId: user.id,
                   },
                   select: {
                     userId: true,
-                    role: true,
                   },
                 },
                 status: {
@@ -5576,15 +5561,15 @@ export async function completePreparedChatAttachmentUpload(
         : "chat.uploadAttachment",
     permissionMessage:
       attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION
-        ? "Only a Main Executor can upload submissions for review."
+        ? "Only a project executor can upload submissions for review."
         : "You do not have permission to upload chat attachments.",
   });
 
   if (
     attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-    !isMainProjectExecutorUser(attachment.stage.project, user.id)
+    !isProjectExecutorUser(attachment.stage.project, user.id)
   ) {
-    throw new Error("Only a Main Executor can upload submissions for review.");
+    throw new Error("Only a project executor can upload submissions for review.");
   }
 
   await withPrismaRetry(() =>
@@ -5651,7 +5636,8 @@ export async function getAttachmentDownloadUrlForUser(
         createdAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
       },
@@ -5699,7 +5685,8 @@ export async function getAttachmentPreviewUrlForUser(
         createdAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
       },
@@ -5745,7 +5732,8 @@ export async function deleteAttachmentForUser(
         createdAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
       },

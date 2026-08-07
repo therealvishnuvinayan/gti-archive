@@ -6,7 +6,6 @@ import {
   AttachmentStatus,
   ProjectCompletionStepStatus,
   ProjectExecutionType,
-  ProjectExecutorRole,
   StageStatus,
   type CollaboratorType,
 } from "@prisma/client";
@@ -18,7 +17,6 @@ import type {
 import { requireUser } from "@/lib/auth";
 import {
   notifyProjectAssignmentChanges,
-  notifyProjectCreated,
   runNotificationTask,
 } from "@/lib/notification-center";
 import {
@@ -38,7 +36,6 @@ import {
 import { prisma } from "@/lib/prisma";
 import { MAX_PROJECT_TAGS, PROJECTS_CACHE_TAG } from "@/lib/projects";
 import {
-  hasPermission,
   hasProjectPermission,
 } from "@/lib/permissions/resolver";
 import {
@@ -155,41 +152,6 @@ function isProjectExecutionType(value: string): value is ProjectExecutionType {
   return Object.values(ProjectExecutionType).includes(value as ProjectExecutionType);
 }
 
-function isProjectExecutorRole(value: string): value is ProjectExecutorRole {
-  return Object.values(ProjectExecutorRole).includes(value as ProjectExecutorRole);
-}
-
-function getInitialStageStatuses(
-  projectStatusGroupSlug: string | null | undefined,
-  stageCount: number,
-) {
-  const normalizedGroupSlug = projectStatusGroupSlug ?? "";
-
-  if (
-    normalizedGroupSlug === defaultProjectStatusGroupSlugs.completed ||
-    normalizedGroupSlug === defaultProjectStatusGroupSlugs.archived
-  ) {
-    return Array.from({ length: stageCount }, () => StageStatus.COMPLETED);
-  }
-
-  if (normalizedGroupSlug === defaultProjectStatusGroupSlugs.pending) {
-    return Array.from({ length: stageCount }, () => StageStatus.PENDING);
-  }
-
-  if (
-    normalizedGroupSlug === defaultProjectStatusGroupSlugs.onHold ||
-    normalizedGroupSlug === defaultProjectStatusGroupSlugs.cancelled
-  ) {
-    return Array.from({ length: stageCount }, (_, index) =>
-      index === 0 ? StageStatus.ON_HOLD : StageStatus.PENDING,
-    );
-  }
-
-  return Array.from({ length: stageCount }, (_, index) =>
-    index === 0 ? StageStatus.ONGOING : StageStatus.PENDING,
-  );
-}
-
 function isArchiveCompletionStatusGroup(groupSlug: string | null | undefined) {
   return (
     groupSlug === defaultProjectStatusGroupSlugs.completed ||
@@ -248,9 +210,6 @@ function parseProjectFormData(formData: FormData) {
     .map((value) => String(value).trim());
   const executorIds = formData
     .getAll("executorIds")
-    .map((value) => String(value).trim());
-  const executorRoles = formData
-    .getAll("executorRoles")
     .map((value) => String(value).trim());
   const rawCollaboratorIds = formData
     .getAll("collaboratorIds")
@@ -330,7 +289,6 @@ function parseProjectFormData(formData: FormData) {
     stageInvoiceRequired,
     stageIds,
     executorIds,
-    executorRoles,
     collaboratorIds,
     collaboratorParticipantTypes,
     collaboratorPermissionsById,
@@ -418,41 +376,22 @@ async function validateSubmittedProjectAttachments(input: {
 function normalizeProjectExecutorAssignments(
   parsed: ReturnType<typeof parseProjectFormData>,
 ) {
-  const assignmentMap = new Map<string, { userId: string; role: ProjectExecutorRole }>();
-  let hasInvalidRole = false;
+  const assignmentMap = new Map<string, { userId: string }>();
 
-  parsed.executorIds.forEach((executorId, index) => {
+  parsed.executorIds.forEach((executorId) => {
     if (!executorId) {
-      return;
-    }
-
-    const roleInput = parsed.executorRoles[index] ?? "";
-
-    if (!isProjectExecutorRole(roleInput)) {
-      hasInvalidRole = true;
       return;
     }
 
     assignmentMap.set(executorId, {
       userId: executorId,
-      role: roleInput,
     });
   });
 
   const assignments = [...assignmentMap.values()];
-  const hasMainExecutor = assignments.some(
-    (assignment) => assignment.role === ProjectExecutorRole.MAIN_EXECUTOR,
-  );
-
-  if (hasInvalidRole) {
+  if (assignments.length === 0) {
     return {
-      error: "Choose a valid executor role.",
-    };
-  }
-
-  if (!hasMainExecutor) {
-    return {
-      error: "Add at least one Main Executor.",
+      error: "Add at least one executor.",
     };
   }
 
@@ -890,12 +829,11 @@ async function resolveSubmittedProjectTags(tagInputs: string[]) {
 type ResolvedProjectExecutor = {
   userId: string;
   name: string;
-  role: ProjectExecutorRole;
   collaboratorType: CollaboratorType;
 };
 
 async function resolveProjectExecutors(
-  executorAssignments: Array<{ userId: string; role: ProjectExecutorRole }> | undefined,
+  executorAssignments: Array<{ userId: string }> | undefined,
 ) {
   const normalizedExecutorAssignments = executorAssignments ?? [];
   const executorIds = normalizedExecutorAssignments.map((assignment) => assignment.userId);
@@ -932,7 +870,6 @@ async function resolveProjectExecutors(
     return {
       userId: assignmentUser.id,
       name: assignmentUser.name?.trim() || assignmentUser.email,
-      role: assignment.role,
       collaboratorType: assignmentUser.collaboratorType,
     };
   });
@@ -979,294 +916,6 @@ function stageHasLinkedHistory(stage: {
   );
 }
 
-export async function createProjectAction(
-  _previousState: ProjectFormState,
-  formData: FormData,
-): Promise<ProjectFormState> {
-  const user = await requireUser();
-
-  if (!hasPermission(user, "project.create")) {
-    return { error: "You are not allowed to create projects." };
-  }
-
-  const validated = validateProjectFormData(parseProjectFormData(formData), {
-    canUpdateBudget: true,
-  });
-
-  if ("error" in validated) {
-    return validated;
-  }
-
-  const resolvedTags = await resolveSubmittedProjectTags(validated.data.tags);
-
-  if ("error" in resolvedTags) {
-    return resolvedTags;
-  }
-
-  const resolvedStatus = await resolveSubmittedProjectStatus(validated.data.statusId);
-
-  if ("error" in resolvedStatus) {
-    return resolvedStatus;
-  }
-
-  const {
-    name,
-    category,
-    executorAssignments,
-    description,
-    executionType,
-    budgetRequired,
-    budget,
-    currency,
-    statusId,
-    priority,
-    startDate,
-    endDate,
-    stageNames,
-    stageBudgets,
-    stageDescriptions,
-    stageStartDates,
-    stageDueDates,
-    stageInvoiceRequired,
-    currentStageName,
-    collaboratorIds,
-    collaboratorParticipantTypes,
-    collaboratorPermissionsById,
-  } = validated.data;
-  const isExternalExecution = executionType === ProjectExecutionType.EXTERNAL;
-  const stageStatuses = getInitialStageStatuses(
-    resolvedStatus.status.group?.slug,
-    stageNames.length,
-  );
-
-  const currencyCode = resolveProjectCurrency(currency);
-
-  if (!currencyCode) {
-    return {
-      error: "Please correct the highlighted fields.",
-      fieldErrors: { currency: "Currency must be AED, USD, or EUR." },
-    };
-  }
-
-  const resolvedExecutors = await resolveProjectExecutors(executorAssignments);
-
-  if (!resolvedExecutors) {
-    return {
-      error: "Please correct the highlighted fields.",
-      fieldErrors: { executors: "Choose valid project executors." },
-    };
-  }
-
-  const assignedCollaboratorIds = [
-    ...new Set(
-      [
-        ...collaboratorIds,
-        ...resolvedExecutors.executors.map((executor) => executor.userId),
-      ].filter(
-        (collaboratorId): collaboratorId is string =>
-          Boolean(collaboratorId) && collaboratorId !== user.id,
-      ),
-    ),
-  ];
-
-  const validCollaborators = assignedCollaboratorIds.length
-    ? await prisma.user.findMany({
-        where: {
-          id: {
-            in: assignedCollaboratorIds,
-          },
-        },
-        select: {
-          id: true,
-          collaboratorType: true,
-        },
-      })
-    : [];
-  const validCollaboratorIds = validCollaborators.map((collaborator) => collaborator.id);
-  const validCollaboratorTypeMap = new Map(
-    validCollaborators.map((collaborator) => [
-      collaborator.id,
-      getCollaboratorTypeGroup(collaborator.collaboratorType),
-    ] as const),
-  );
-  const collaboratorParticipantTypeMap = new Map<
-    string,
-    ProjectCollaboratorParticipantType | null
-  >(
-    collaboratorIds.map((collaboratorId, index) => {
-      const participantType = collaboratorParticipantTypes[index] ?? "";
-      return [
-        collaboratorId,
-        isProjectCollaboratorParticipantType(participantType) ? participantType : null,
-      ];
-    }),
-  );
-  const executorRoleMap = new Map(
-    resolvedExecutors.executors.map((executor) => [
-      executor.userId,
-      executor.role,
-    ] as const),
-  );
-
-  let projectId: string;
-  let createdStageIds: string[] = [];
-  let initialBriefStageId: string | undefined;
-  let initialBriefCommentId: string | undefined;
-
-  try {
-    const project = await prisma.$transaction(async (tx) => {
-      const createdProject = await tx.project.create({
-        data: {
-          name,
-          category,
-          description,
-          executionType,
-          budgetRequired,
-          budget,
-          currency: currencyCode,
-          statusId,
-          priority,
-          startDate,
-          endDate,
-          currentStageName,
-          stageCount: stageNames.length,
-          createdById: user.id,
-          executors: {
-            createMany: {
-              data: resolvedExecutors.executors.map((executor) => ({
-                userId: executor.userId,
-                role: executor.role,
-                addedById: user.id,
-              })),
-              skipDuplicates: true,
-            },
-          },
-          tags:
-            resolvedTags.tags.length > 0
-              ? {
-                  createMany: {
-                    data: resolvedTags.tags.map((tag) => ({
-                      tagId: tag.id,
-                    })),
-                    skipDuplicates: true,
-                  },
-                }
-              : undefined,
-          collaborators: {
-            createMany: {
-              data: validCollaboratorIds.map((collaboratorId) => {
-                const participantType =
-                  collaboratorParticipantTypeMap.get(collaboratorId) ??
-                  getDefaultProjectCollaboratorParticipantType(
-                    validCollaboratorTypeMap.get(collaboratorId) ?? "external",
-                  );
-
-                return {
-                  userId: collaboratorId,
-                  addedById: user.id,
-                  participantType,
-                  ...normalizeProjectCollaboratorPermissions(
-                    collaboratorPermissionsById.get(collaboratorId),
-                    participantType,
-                    { executorRole: executorRoleMap.get(collaboratorId) ?? null },
-                  ),
-                };
-              }),
-              skipDuplicates: true,
-            },
-          },
-          stages: {
-            create: stageNames.map((stageName, index) => {
-              const parsedStageBudget = parseBudget(stageBudgets[index] ?? "");
-
-              return {
-                name: stageName,
-                description: stageDescriptions[index] || null,
-                budget:
-                  isExternalExecution && Number.isFinite(parsedStageBudget) && parsedStageBudget > 0
-                    ? parsedStageBudget
-                    : isExternalExecution && budgetRequired && index === 0
-                      ? budget
-                      : null,
-                plannedStartAt: stageStartDates[index],
-                plannedDueAt: stageDueDates[index],
-                invoiceRequired: isExternalExecution
-                  ? stageInvoiceRequired[index] ?? true
-                  : false,
-                status: stageStatuses[index],
-                order: index + 1,
-              };
-            }),
-          },
-        },
-        select: {
-          id: true,
-          stages: {
-            orderBy: {
-              order: "asc",
-            },
-            select: {
-              id: true,
-            },
-          },
-        },
-      });
-
-      const firstStageId = createdProject.stages[0]?.id;
-      let initialCommentId: string | undefined;
-
-      if (firstStageId) {
-        const firstStageBrief = stageDescriptions[0]?.trim() ?? "";
-        const initialBriefBody = [
-          `Project Brief:\n${description}`,
-          firstStageBrief ? `Stage Brief:\n${firstStageBrief}` : null,
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-        const initialComment = await tx.projectComment.create({
-          data: {
-            projectId: createdProject.id,
-            stageId: firstStageId,
-            authorId: user.id,
-            body: initialBriefBody,
-          },
-          select: {
-            id: true,
-          },
-        });
-
-        initialCommentId = initialComment.id;
-      }
-
-      return {
-        id: createdProject.id,
-        stages: createdProject.stages,
-        initialCommentId,
-      };
-    });
-    projectId = project.id;
-    createdStageIds = project.stages.map((stage) => stage.id);
-    initialBriefStageId = project.stages[0]?.id;
-    initialBriefCommentId = project.initialCommentId;
-  } catch {
-    return { error: "Unable to create the project right now. Please try again." };
-  }
-
-  revalidatePath("/");
-  revalidatePath("/projects");
-  revalidatePath(`/projects/${projectId}`);
-  revalidateTag(PROJECTS_CACHE_TAG, "max");
-
-  await runNotificationTask("project-created", () =>
-    notifyProjectCreated({
-      projectId,
-      actorId: user.id,
-    }),
-  );
-
-  return { projectId, createdStageIds, initialBriefStageId, initialBriefCommentId };
-}
-
 export async function updateProjectAction(
   _previousState: ProjectFormState,
   formData: FormData,
@@ -1311,11 +960,11 @@ export async function updateProjectAction(
           },
         },
       },
-      createdById: true,
+      ownerId: true,
+      coOwners: { select: { userId: true } },
       executors: {
         select: {
           userId: true,
-          role: true,
         },
       },
       collaborators: {
@@ -1375,7 +1024,7 @@ export async function updateProjectAction(
   );
   const validated = validateProjectFormData(parseProjectFormData(formData), {
     canUpdateBudget,
-    existingBudgetRequired: existingProject.budgetRequired,
+    existingBudgetRequired: existingProject.budgetRequired ?? false,
     existingBudget: existingProject.budget,
     existingCurrency: existingProject.currency,
   });
@@ -1439,7 +1088,7 @@ export async function updateProjectAction(
 
   const currencyCode = canUpdateBudget
     ? resolveProjectCurrency(currency)
-    : resolveProjectCurrency(existingProject.currency) ?? DEFAULT_PROJECT_CURRENCY;
+    : resolveProjectCurrency(existingProject.currency ?? "") ?? DEFAULT_PROJECT_CURRENCY;
 
   if (!currencyCode) {
     return {
@@ -1464,7 +1113,7 @@ export async function updateProjectAction(
         ...resolvedExecutors.executors.map((executor) => executor.userId),
       ].filter(
         (collaboratorId): collaboratorId is string =>
-          Boolean(collaboratorId) && collaboratorId !== existingProject.createdById,
+          Boolean(collaboratorId),
       ),
     ),
   ];
@@ -1532,11 +1181,8 @@ export async function updateProjectAction(
   const submittedExistingStageIds = stageIds.filter(Boolean);
   const submittedExistingStageIdSet = new Set(submittedExistingStageIds);
   const executionTypeChanged = existingProject.executionType !== executionType;
-  const nextExecutorRoleMap = new Map(
-    resolvedExecutors.executors.map((executor) => [
-      executor.userId,
-      executor.role,
-    ] as const),
+  const nextExecutorIdSet = new Set(
+    resolvedExecutors.executors.map((executor) => executor.userId),
   );
 
   if (submittedExistingStageIdSet.size !== submittedExistingStageIds.length) {
@@ -1681,7 +1327,7 @@ export async function updateProjectAction(
           collaboratorPermissionsById.get(collaboratorId) ??
             existingCollaboratorPermissionMap.get(collaboratorId),
           participantType,
-          { executorRole: nextExecutorRoleMap.get(collaboratorId) ?? null },
+          { isExecutor: nextExecutorIdSet.has(collaboratorId) },
         );
 
         await tx.projectCollaborator.upsert({
@@ -1734,23 +1380,7 @@ export async function updateProjectAction(
             data: {
               projectId,
               userId: executor.userId,
-              role: executor.role,
               addedById: user.id,
-            },
-          });
-          continue;
-        }
-
-        if (existingExecutor.role !== executor.role) {
-          await tx.projectExecutor.update({
-            where: {
-              projectId_userId: {
-                projectId,
-                userId: executor.userId,
-              },
-            },
-            data: {
-              role: executor.role,
             },
           });
         }
@@ -1865,11 +1495,11 @@ export async function deleteProjectAction(projectId: string) {
           },
         },
       },
-      createdById: true,
+      ownerId: true,
+      coOwners: { select: { userId: true } },
       executors: {
         select: {
           userId: true,
-          role: true,
         },
       },
       collaborators: {

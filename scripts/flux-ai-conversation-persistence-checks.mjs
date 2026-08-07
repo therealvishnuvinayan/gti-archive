@@ -138,7 +138,8 @@ for (const snippet of [
   "conversationId?: unknown;",
   "persistFluxAIAssistantMessage",
   "FluxAIConversationAccessError",
-  "conversationId: requestedConversationId",
+  "const conversationId = normalizeString(payload.conversationId)",
+  "conversationId,",
 ]) {
   assertIncludes(createRoute, snippet, `create persistence ${snippet}`);
 }

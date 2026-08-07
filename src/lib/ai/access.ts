@@ -30,11 +30,11 @@ export async function canUseChatAiTools(
         id: projectId,
       },
       select: {
-        createdById: true,
+        ownerId: true,
+        coOwners: { select: { userId: true } },
         executors: {
           select: {
             userId: true,
-            role: true,
           },
         },
         status: {

@@ -191,11 +191,11 @@ export async function toggleProjectPinAction(projectId: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: {
-      createdById: true,
+      ownerId: true,
+      coOwners: { select: { userId: true } },
       executors: {
         select: {
           userId: true,
-          role: true,
         },
       },
       isPinned: true,

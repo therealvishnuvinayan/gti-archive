@@ -116,11 +116,11 @@ export async function GET(request: Request) {
           id: projectId,
         },
         select: {
-          createdById: true,
+          ownerId: true,
+          coOwners: { select: { userId: true } },
           executors: {
             select: {
               userId: true,
-              role: true,
             },
           },
           collaborators: {
@@ -143,7 +143,10 @@ export async function GET(request: Request) {
       );
     }
 
-    if (!canBypassCollaboratorVisibility(user, project.createdById)) {
+    if (
+      !canBypassCollaboratorVisibility(user, project.ownerId ?? "") &&
+      !hasProjectPermission(user, project, "collaborator.pauseVisibility")
+    ) {
       const visibilityState = await getProjectCollaboratorVisibilityState(
         projectId,
         user.id,
@@ -196,11 +199,11 @@ export async function GET(request: Request) {
         projectId: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
@@ -265,7 +268,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: lockedStageInfo.message }, { status: 403 });
   }
 
-  if (!canBypassCollaboratorVisibility(user, stage.project.createdById)) {
+  if (
+    !canBypassCollaboratorVisibility(user, stage.project.ownerId ?? "") &&
+    !hasProjectPermission(user, stage.project, "collaborator.pauseVisibility")
+  ) {
     const visibilityState = await getProjectCollaboratorVisibilityState(
       projectId,
       user.id,

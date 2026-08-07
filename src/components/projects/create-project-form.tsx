@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Plus, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Loader2, Plus, UserPlus } from "lucide-react";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
+import { createProjectV2Action } from "@/app/(dashboard)/projects/new/v2-actions";
 import {
   CollaboratorDialog,
   type CollaboratorForm,
@@ -30,6 +32,7 @@ type CreateProjectFormProps = {
 type FormErrors = {
   name?: string;
   owner?: string;
+  coOwners?: string;
   executors?: string;
 };
 
@@ -73,6 +76,8 @@ export function CreateProjectForm({
   availableCollaborators,
   canInviteCollaborator,
 }: CreateProjectFormProps) {
+  const router = useRouter();
+  const [isCreating, startCreating] = useTransition();
   const [projectName, setProjectName] = useState("");
   const [collaborators, setCollaborators] = useState(availableCollaborators);
   const [ownerIds, setOwnerIds] = useState<string[]>(() =>
@@ -90,12 +95,12 @@ export function CreateProjectForm({
   const [inviteError, setInviteError] = useState<string>();
   const [inviteSaving, setInviteSaving] = useState(false);
 
-  const userOptions = useMemo(() => {
-    const options = [currentUser, ...collaborators.map(toUserOption)];
+  const executorOptions = useMemo(() => {
+    const options = collaborators.map(toUserOption);
     const uniqueOptions = new Map(options.map((user) => [user.id, user] as const));
 
     return [...uniqueOptions.values()];
-  }, [collaborators, currentUser]);
+  }, [collaborators]);
   const ownerOptions = useMemo(
     () =>
       eligibleOwnerCandidates
@@ -111,8 +116,8 @@ export function CreateProjectForm({
     [currentUser, eligibleOwnerCandidates],
   );
   const coOwnerOptions = useMemo(
-    () => userOptions.filter((user) => !ownerIds.includes(user.id)),
-    [ownerIds, userOptions],
+    () => ownerOptions.filter((user) => !ownerIds.includes(user.id)),
+    [ownerIds, ownerOptions],
   );
 
   function handleOwnerChange(nextOwnerIds: string[]) {
@@ -192,6 +197,10 @@ export function CreateProjectForm({
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (isCreating) {
+      return;
+    }
+
     const nextErrors: FormErrors = {};
 
     if (!projectName.trim()) {
@@ -213,10 +222,29 @@ export function CreateProjectForm({
       return;
     }
 
-    showWarningToast(
-      "Project creation is awaiting Phase 2.",
-      "The current project model still requires legacy fields and executor hierarchy data, so this form was not persisted.",
-    );
+    startCreating(async () => {
+      const result = await createProjectV2Action({
+        name: projectName,
+        ownerId: ownerIds[0] ?? "",
+        coOwnerIds,
+        executorIds,
+      });
+
+      if ("error" in result) {
+        setErrors({
+          name: result.fieldErrors?.name,
+          owner: result.fieldErrors?.ownerId,
+          coOwners: result.fieldErrors?.coOwnerIds,
+          executors: result.fieldErrors?.executorIds,
+        });
+        showErrorToast("Unable to create project.", result.error);
+        return;
+      }
+
+      showSuccessToast("Project created successfully.");
+      router.push("/projects");
+      router.refresh();
+    });
   }
 
   return (
@@ -280,10 +308,14 @@ export function CreateProjectForm({
             <ProjectUserSelector
               users={coOwnerOptions}
               selectedIds={coOwnerIds}
-              onChange={setCoOwnerIds}
+              onChange={(nextIds) => {
+                setCoOwnerIds(nextIds);
+                setErrors((current) => ({ ...current, coOwners: undefined }));
+              }}
               mode="multiple"
               placeholder="Search users..."
               ariaLabel="Project co-owners"
+              error={errors.coOwners}
             />
 
             <div className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">
@@ -291,7 +323,7 @@ export function CreateProjectForm({
             </div>
             <div>
               <ProjectUserSelector
-                users={userOptions}
+                users={executorOptions}
                 selectedIds={executorIds}
                 onChange={(nextIds) => {
                   setExecutorIds(nextIds);
@@ -332,10 +364,22 @@ export function CreateProjectForm({
         </div>
 
         <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
-          <Button type="submit" size="lg" className="min-w-[170px] rounded-[14px]">
-            Create Project
+          <Button
+            type="submit"
+            size="lg"
+            disabled={isCreating}
+            className="min-w-[170px] rounded-[14px]"
+          >
+            {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {isCreating ? "Creating..." : "Create Project"}
           </Button>
-          <Button asChild type="button" size="lg" variant="secondary" className="min-w-[112px] rounded-[14px] shadow-none">
+          <Button
+            asChild
+            type="button"
+            size="lg"
+            variant="secondary"
+            className="min-w-[112px] rounded-[14px] shadow-none"
+          >
             <Link href="/projects">Cancel</Link>
           </Button>
         </div>

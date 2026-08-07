@@ -30,11 +30,13 @@ async function getProjectStageContext(projectId: string, stageId?: string | null
       select: {
         id: true,
         name: true,
-        createdById: true,
+        ownerId: true,
+        coOwners: {
+          select: { userId: true },
+        },
         executors: {
           select: {
             userId: true,
-            role: true,
           },
         },
         stages: stageId
@@ -190,10 +192,13 @@ export async function notifyProjectAssignmentChanges(input: {
 
   if (
     (input.removedCollaboratorIds?.length ?? 0) > 0 &&
-    project.createdById !== input.actorId
+    project.ownerId !== input.actorId
   ) {
     await createNotificationsForUsers({
-      recipientUserIds: [project.createdById],
+      recipientUserIds: dedupeRecipients([
+        project.ownerId,
+        ...project.coOwners.map((coOwner) => coOwner.userId),
+      ]).filter((userId) => userId !== input.actorId),
       type: "COLLABORATOR_REMOVED",
       title: "Collaborator removed",
       message: `A collaborator was removed from ${project.name}.`,
@@ -217,12 +222,15 @@ export async function notifyBriefAccepted(
   const project = await getProjectStageContext(input.projectId, input.stageId);
   const stage = project?.stages?.[0];
 
-  if (!project || !stage || project.createdById === input.actorId) {
+  if (!project || !stage) {
     return;
   }
 
   await createNotificationsForUsers({
-    recipientUserIds: [project.createdById],
+    recipientUserIds: dedupeRecipients([
+      project.ownerId,
+      ...project.coOwners.map((coOwner) => coOwner.userId),
+    ]).filter((userId) => userId !== input.actorId),
     type: "BRIEF_ACCEPTED",
     title: "Brief accepted",
     message: `${input.actorName} accepted the brief and started work on ${stage.name}.`,
@@ -262,19 +270,25 @@ export async function notifyRevisionSubmitted(
         project: {
           select: {
             id: true,
-            createdById: true,
+            ownerId: true,
+            coOwners: {
+              select: { userId: true },
+            },
           },
         },
       },
     }),
   );
 
-  if (!revision || revision.project.createdById === input.actorId) {
+  if (!revision) {
     return;
   }
 
   await createNotificationsForUsers({
-    recipientUserIds: [revision.project.createdById],
+    recipientUserIds: dedupeRecipients([
+      revision.project.ownerId,
+      ...revision.project.coOwners.map((coOwner) => coOwner.userId),
+    ]).filter((userId) => userId !== input.actorId),
     type: "REVISION_SUBMITTED",
     title: "Work submitted for review",
     message: `${input.actorName} submitted Revision ${revision.revisionNumber} for ${revision.stage.name}.`,
@@ -311,7 +325,6 @@ export async function notifyStageSubmissionReviewDecision(
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
           },
@@ -329,9 +342,7 @@ export async function notifyStageSubmissionReviewDecision(
     return;
   }
 
-  const executorRecipients = getProjectExecutorRecipientUserIds(attachment.project, {
-    role: "main",
-  });
+  const executorRecipients = getProjectExecutorRecipientUserIds(attachment.project);
   const recipients = await filterRecipientsVisibleForStageEvent(
     attachment.project.id,
     executorRecipients,
@@ -375,7 +386,6 @@ export async function notifySubmissionWorkflowDecision(input: {
   }
 
   const executorRecipients = getProjectExecutorRecipientUserIds(project, {
-    role: "main",
     excludeUserId: input.actorId,
   });
   const recipients = await filterRecipientsVisibleForStageEvent(
@@ -426,7 +436,6 @@ export async function notifyStageTransition(input: {
         executors: {
           select: {
             userId: true,
-            role: true,
           },
         },
         stages: {
@@ -490,7 +499,6 @@ export async function notifyStageTransition(input: {
   }
 
   const executorRecipients = getProjectExecutorRecipientUserIds(project, {
-    role: "main",
     excludeUserId: input.actorId,
   });
   const nextStageRecipients = await filterRecipientsVisibleForStageEvent(
@@ -950,19 +958,22 @@ export async function notifyInvoiceUploaded(input: {
     ? await getProjectStageContext(input.projectId, input.stageId)
     : await getProjectNotificationContext(input.projectId);
 
-  if (!project || !project.createdById || project.createdById === input.actorId) {
+  if (!project) {
     return;
   }
 
   const stage = "stages" in project ? project.stages?.[0] ?? null : null;
 
   await createNotificationsForUsers({
-    recipientUserIds: [project.createdById],
+    recipientUserIds: dedupeRecipients([
+      project.ownerId,
+      ...project.coOwners.map((coOwner) => coOwner.userId),
+    ]).filter((userId) => userId !== input.actorId),
     type: "INVOICE_UPLOADED",
     title: "Invoice uploaded",
     message:
       input.stageId && stage
-        ? `${input.actorName ?? "Main Executor"} uploaded invoice for ${stage.name}.`
+        ? `${input.actorName ?? "Executor"} uploaded invoice for ${stage.name}.`
         : `Invoice has been uploaded for ${project.name}.`,
     entityType: input.attachmentId ? "ATTACHMENT" : "COMPLETION_DOCUMENT",
     entityId: input.attachmentId,

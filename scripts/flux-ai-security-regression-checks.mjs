@@ -47,9 +47,10 @@ assertIncludes(
 );
 assertIncludes(
   fluxTools,
-  "canUseParticipantFilter(user, project) &&\n          includesSearchValue(getDisplayName(project.createdBy), ownerName)",
+  "ownerName\n        ? canUseParticipantFilter(user, project)",
   "owner-name search must be participant-gated",
 );
+assertIncludes(fluxTools, "getDisplayName(project.owner)", "owner search must use operational owner");
 assertNotIncludes(
   fluxTools,
   "downloadPath",
@@ -87,17 +88,16 @@ const createRoute = read("src/app/api/flux-ai/create-project/route.ts");
 for (const snippet of [
   "hasPermission(user, \"fluxAi.view\")",
   "hasPermission(user, \"project.create\")",
-  "validateFluxAIDraftForCreation",
-  "!draftProject.canCreate || missingFields.length > 0",
-  "createProjectAction(",
-  "ProjectExecutorRole.MAIN_EXECUTOR",
+  "temporarily unavailable for the V2 workflow",
+  "persistFluxAIAssistantMessage",
+  "jsonFluxAI(response, 409)",
 ]) {
   assertIncludes(createRoute, snippet, `Flux create route guard ${snippet}`);
 }
 assertNotIncludes(
   createRoute,
   "prisma.project.create",
-  "Flux create route must reuse the existing project creation action",
+  "Flux create route must not bypass the V2 creation service",
 );
 assertNotIncludes(
   createRoute,

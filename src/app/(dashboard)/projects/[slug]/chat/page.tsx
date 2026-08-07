@@ -38,10 +38,12 @@ type ProjectChatShellProject = NonNullable<
 
 function getProjectPermissionContext(project: ProjectChatShellProject) {
   return {
-    createdById: project.ownerId,
+    ownerId: project.ownerId,
+    coOwners: project.collaborators
+      .filter((collaborator) => collaborator.role === "Project Co-Owner")
+      .map((collaborator) => ({ userId: collaborator.id })),
     executors: project.executors.map((executor) => ({
       userId: executor.id,
-      role: executor.role,
     })),
     collaborators: project.collaborators.map((collaborator) => ({
       userId: collaborator.id,
@@ -60,10 +62,12 @@ function getProjectStageChatAccessRecord(
 ): ProjectStageChatAccessRecord {
   return {
     id: project.id,
-    createdById: project.ownerId,
+    ownerId: project.ownerId,
+    coOwners: project.collaborators
+      .filter((collaborator) => collaborator.role === "Project Co-Owner")
+      .map((collaborator) => ({ userId: collaborator.id })),
     executors: project.executors.map((executor) => ({
       userId: executor.id,
-      role: executor.role,
     })),
     collaborators: project.collaborators
       .filter((collaborator) => collaborator.id !== project.ownerId)

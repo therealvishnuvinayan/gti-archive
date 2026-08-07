@@ -1,6 +1,6 @@
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 import type { ProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
-import type { ProjectExecutionType, ProjectExecutorRole } from "@prisma/client";
+import type { ProjectExecutionType } from "@prisma/client";
 
 export type ProjectFormFieldErrors = {
   name?: string;
@@ -75,7 +75,6 @@ export type ProjectEditorInitialExecutor = {
   id: string;
   name: string;
   email?: string;
-  role: ProjectExecutorRole;
   roleLabel: string;
   group: "internal" | "external";
   chatVisibilityPaused: boolean;

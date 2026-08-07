@@ -7,7 +7,6 @@ import {
   ProjectCompletionDocumentType,
   ProjectCompletionStepStatus,
   ProjectExecutionType,
-  ProjectExecutorRole,
   ProjectRevisionStatus,
   SubmissionReviewStatus,
   type User,
@@ -95,7 +94,7 @@ export type ProjectCompletionDocumentRecord = {
 export type ProjectCompletionWorkflowRecord = {
   workflowId: string;
   projectId: string;
-  executionType: ProjectExecutionType;
+  executionType: ProjectExecutionType | null;
   executionTypeLabel: string;
   isInternalExecution: boolean;
   canManage: boolean;
@@ -158,7 +157,11 @@ type ProjectCompletionProjectRecord = NonNullable<
   Awaited<ReturnType<typeof getProjectCompletionProject>>
 >;
 
-function formatCompletionExecutionTypeLabel(executionType: ProjectExecutionType) {
+function formatCompletionExecutionTypeLabel(executionType: ProjectExecutionType | null) {
+  if (!executionType) {
+    return "Not configured";
+  }
+
   return executionType === ProjectExecutionType.INTERNAL
     ? "Internal Execution"
     : "External Execution";
@@ -268,11 +271,9 @@ function getArchivedFileSourceLabel(file: {
 }
 
 type ProjectCompletionPermissionProject = {
-  createdById: string;
-  executors: Array<{
-    userId: string;
-    role: ProjectExecutorRole;
-  }>;
+  ownerId: string | null;
+  coOwners?: Array<{ userId: string }>;
+  executors: Array<{ userId: string }>;
   completionWorkflow?: {
     approvalContactUserId?: string | null;
     copyrightContactUserId?: string | null;
@@ -391,7 +392,7 @@ export function isCompletionRequirementResolved(input: {
 }
 
 export function getFinalCompletionArchiveBlockers(input: {
-  executionType: ProjectExecutionType;
+  executionType: ProjectExecutionType | null;
   workflow:
     | {
         approvalRequired: boolean | null;
@@ -514,18 +515,10 @@ function ensureRequirementChangeAllowed(
     : ProjectCompletionStepStatus.NOT_REQUIRED;
 }
 
-function getProjectCompletionExecutorRoleLabel(role: ProjectExecutorRole) {
-  return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
-}
-
 function compareProjectCompletionExecutors(
   left: ProjectCompletionProjectRecord["executors"][number],
   right: ProjectCompletionProjectRecord["executors"][number],
 ) {
-  if (left.role !== right.role) {
-    return left.role === ProjectExecutorRole.MAIN_EXECUTOR ? -1 : 1;
-  }
-
   return getUserDisplayName(left.user).localeCompare(
     getUserDisplayName(right.user),
     undefined,
@@ -550,10 +543,16 @@ function mapContactOptions(project: ProjectCompletionProjectRecord) {
     }
   };
 
-  addContact(project.createdBy, "Project Owner");
+  if (project.owner) {
+    addContact(project.owner, "Project Owner");
+  }
+
+  for (const coOwner of project.coOwners) {
+    addContact(coOwner.user, "Project Co-Owner");
+  }
 
   for (const executor of [...project.executors].sort(compareProjectCompletionExecutors)) {
-    addContact(executor.user, getProjectCompletionExecutorRoleLabel(executor.role));
+    addContact(executor.user, "Executor");
   }
 
   const sortedCollaborators = [...project.collaborators].sort((left, right) =>
@@ -746,11 +745,29 @@ async function getProjectCompletionProject(projectId: string) {
             },
           },
         },
-        createdById: true,
+        ownerId: true,
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        coOwners: {
+          select: {
+            userId: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
         executors: {
           select: {
             userId: true,
-            role: true,
             user: {
               select: {
                 id: true,
@@ -773,15 +790,9 @@ async function getProjectCompletionProject(projectId: string) {
             order: true,
           },
         },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
         collaborators: {
           select: {
+            userId: true,
             user: {
               select: {
                 id: true,
@@ -969,11 +980,13 @@ async function ensureProjectCompletionDocumentAccess(
         uploadedAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: {
+              select: { userId: true },
+            },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             completionWorkflow: {
@@ -999,12 +1012,14 @@ async function ensureProjectCompletionDocumentAccess(
     throw new Error("You do not have access to this completion document.");
   }
 
-  await assertProjectTimestampVisibleForUser(user, {
-    projectId: document.projectId,
-    projectOwnerId: document.project.createdById,
-    timestamp: document.uploadedAt,
-    message: "You do not have access to this completion document.",
-  });
+  if (!hasProjectPermission(user, document.project, "completion.viewChecklist")) {
+    await assertProjectTimestampVisibleForUser(user, {
+      projectId: document.projectId,
+      projectOwnerId: document.project.ownerId ?? "",
+      timestamp: document.uploadedAt,
+      message: "You do not have access to this completion document.",
+    });
+  }
 
   return document;
 }
@@ -1200,7 +1215,10 @@ async function filterCompletionProjectForVisibility(
   project: ProjectCompletionProjectRecord,
   user: ProjectCompletionWorkflowUser,
 ): Promise<ProjectCompletionProjectRecord> {
-  if (canBypassCollaboratorVisibility(user, project.createdById)) {
+  if (
+    canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
+    hasProjectPermission(user, project, "completion.viewChecklist")
+  ) {
     return project;
   }
 
@@ -1936,11 +1954,13 @@ export async function finalizeProjectCompletionDocumentUpload(
         },
         select: {
           id: true,
-          createdById: true,
+          ownerId: true,
+          coOwners: {
+            select: { userId: true },
+          },
           executors: {
             select: {
               userId: true,
-              role: true,
             },
           },
           executionType: true,

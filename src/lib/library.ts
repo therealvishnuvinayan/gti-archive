@@ -111,7 +111,8 @@ type RawLibraryAttachment = {
         name: string;
       };
     }>;
-    createdById: string;
+    ownerId: string | null;
+    coOwners: Array<{ userId: string }>;
     executors: Array<{
       userId: string;
     }>;
@@ -359,12 +360,18 @@ function isFinanceLibraryFile(fileName: string) {
   return financeFilePattern.test(fileName);
 }
 
-function canDeleteLibraryAttachment(user: LibraryUser, ownerId: string) {
+function canDeleteLibraryAttachment(
+  user: LibraryUser,
+  project: { ownerId: string | null; coOwners?: Array<{ userId: string }> },
+) {
   return (
     hasPermission(user, "library.deleteFile") &&
-    (user.role === UserRole.SUPER_ADMIN ||
-      user.role === UserRole.ADMIN ||
-      ownerId === user.id)
+    Boolean(
+      user.role === UserRole.SUPER_ADMIN ||
+        user.role === UserRole.ADMIN ||
+        project.ownerId === user.id ||
+        project.coOwners?.some((coOwner) => coOwner.userId === user.id),
+    )
   );
 }
 
@@ -381,7 +388,10 @@ function isAttachmentVisibleToUser(
   user: LibraryUser,
   attachment: RawLibraryAttachment,
 ) {
-  if (canBypassCollaboratorVisibility(user, attachment.project.createdById)) {
+  if (
+    canBypassCollaboratorVisibility(user, attachment.project.ownerId ?? "") ||
+    attachment.project.coOwners.some((coOwner) => coOwner.userId === user.id)
+  ) {
     return true;
   }
 
@@ -438,7 +448,7 @@ function mapAttachmentToLibraryItem(
     mimeType: attachment.mimeType,
     previewPath: `/api/project-assets/${attachment.id}/preview`,
     downloadPath: `/api/project-assets/${attachment.id}/download`,
-    canDelete: canDeleteLibraryAttachment(user, attachment.project.createdById),
+    canDelete: canDeleteLibraryAttachment(user, attachment.project),
     isFavoritedByCurrentUser: favoritedAttachmentIds?.has(attachment.id) ?? false,
   };
 }
@@ -666,7 +676,8 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
                 },
               },
             },
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
@@ -1280,7 +1291,8 @@ export async function deleteLibraryAttachmentForUser(
         },
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
       },
@@ -1295,7 +1307,7 @@ export async function deleteLibraryAttachmentForUser(
     throw new Error("Archived files cannot be deleted from the library.");
   }
 
-  if (!canDeleteLibraryAttachment(user, attachment.project.createdById)) {
+  if (!canDeleteLibraryAttachment(user, attachment.project)) {
     throw new Error("You do not have permission to delete this file.");
   }
 

@@ -19,10 +19,7 @@ import {
   saveProjectCategoryAction,
   saveProjectTagAction,
 } from "@/app/(dashboard)/settings/project-master-data/actions";
-import {
-  createProjectAction,
-  updateProjectAction,
-} from "@/app/(dashboard)/projects/new/actions";
+import { updateProjectAction } from "@/app/(dashboard)/projects/new/actions";
 import { saveProjectCollaboratorsAction } from "@/app/(dashboard)/projects/actions";
 import {
   initialProjectFormState,
@@ -215,8 +212,6 @@ type ExecutorOption = {
   type: CollaboratorRecord["type"];
   typeLabel: string;
 };
-
-type ProjectExecutorRoleValue = ProjectEditorInitialExecutor["role"];
 
 type UploadAssetResponse = {
   attachmentId?: string;
@@ -770,7 +765,7 @@ function normalizeAssignedCollaboratorRecord(
 
 function buildCollaboratorSavePayload(
   collaborators: ProjectEditorInitialCollaborator[],
-  executorRoleById: Map<string, ProjectExecutorRoleValue> = new Map(),
+  executorIds: ReadonlySet<string> = new Set(),
 ) {
   return collaborators
     .filter((collaborator) => collaborator.access !== "owner")
@@ -778,7 +773,7 @@ function buildCollaboratorSavePayload(
       const permissions = normalizeProjectCollaboratorPermissions(
         collaborator,
         collaborator.participantType,
-        { executorRole: executorRoleById.get(collaborator.id) ?? null },
+        { isExecutor: executorIds.has(collaborator.id) },
       );
 
       return {
@@ -877,27 +872,17 @@ function formatExecutorTypeLabel(type: CollaboratorRecord["type"]) {
   return getCollaboratorTypeLabel(type);
 }
 
-function formatProjectExecutorRoleLabel(role: ProjectExecutorRoleValue) {
-  return role === "MAIN_EXECUTOR" ? "Main Executor" : "Executor";
-}
-
 function buildProjectExecutorRecord(
   executor: ExecutorOption,
-  role: ProjectExecutorRoleValue,
 ): ProjectEditorInitialExecutor {
   return {
     id: executor.id,
     name: executor.name,
     email: executor.email,
-    role,
-    roleLabel: formatProjectExecutorRoleLabel(role),
+    roleLabel: "Executor",
     group: getCollaboratorTypeGroup(executor.type),
     chatVisibilityPaused: false,
   };
-}
-
-function hasMainExecutor(executors: ProjectEditorInitialExecutor[]) {
-  return executors.some((executor) => executor.role === "MAIN_EXECUTOR");
 }
 
 function QuickAddMasterDataDialog({
@@ -1264,7 +1249,7 @@ export function CreateProjectWorkspace({
   canInviteExecutor = false,
   mode = "create",
   initialValues,
-  action = mode === "edit" ? updateProjectAction : createProjectAction,
+  action = updateProjectAction,
 }: CreateProjectWorkspaceProps) {
   const router = useRouter();
   const [formState, formAction] = useActionState<ProjectFormState, FormData>(
@@ -1393,8 +1378,6 @@ export function CreateProjectWorkspace({
   const [stageRemovalTarget, setStageRemovalTarget] = useState<StageForm | null>(null);
   const [executorPickerOpen, setExecutorPickerOpen] = useState(false);
   const [executorSearch, setExecutorSearch] = useState("");
-  const [executorRoleDraft, setExecutorRoleDraft] =
-    useState<ProjectExecutorRoleValue>("MAIN_EXECUTOR");
   const [executorRemovalTarget, setExecutorRemovalTarget] =
     useState<ProjectEditorInitialExecutor | null>(null);
   const [quickAddMasterDataKind, setQuickAddMasterDataKind] =
@@ -1530,21 +1513,17 @@ export function CreateProjectWorkspace({
         : assignedCollaborators.map((collaborator) => collaborator.id),
     [assignedCollaborators, draftCollaboratorIds, pickerOpen],
   );
-  const projectExecutorRoleById = useMemo(
-    () =>
-      new Map(
-        projectExecutors.map((executor) => [executor.id, executor.role] as const),
-      ),
+  const projectExecutorIds = useMemo(
+    () => new Set(projectExecutors.map((executor) => executor.id)),
     [projectExecutors],
   );
   const collaboratorSummaryRecords = useMemo<ProjectCollaboratorRecord[]>(
     () =>
       assignedCollaborators.map((collaborator) => {
-        const executorRole = projectExecutorRoleById.get(collaborator.id) ?? null;
         const permissions = normalizeProjectCollaboratorPermissions(
           collaborator,
           collaborator.participantType,
-          { executorRole },
+          { isExecutor: projectExecutorIds.has(collaborator.id) },
         );
 
         return {
@@ -1557,7 +1536,7 @@ export function CreateProjectWorkspace({
               : false,
         };
       }),
-    [assignedCollaborators, projectExecutorRoleById],
+    [assignedCollaborators, projectExecutorIds],
   );
   const categorySelectOptions = useMemo(
     () =>
@@ -1631,10 +1610,7 @@ export function CreateProjectWorkspace({
     );
   }, [executorOptions, executorSearch]);
   const primaryProjectExecutor = useMemo(
-    () =>
-      projectExecutors.find((executor) => executor.role === "MAIN_EXECUTOR") ??
-      projectExecutors[0] ??
-      null,
+    () => projectExecutors[0] ?? null,
     [projectExecutors],
   );
   const executorOverviewLabel = useMemo(() => {
@@ -1906,9 +1882,8 @@ export function CreateProjectWorkspace({
 
   function upsertProjectExecutor(
     executor: ExecutorOption,
-    role: ProjectExecutorRoleValue,
   ) {
-    const nextExecutor = buildProjectExecutorRecord(executor, role);
+    const nextExecutor = buildProjectExecutorRecord(executor);
 
     setProjectExecutors((current) => {
       const existingIndex = current.findIndex((item) => item.id === executor.id);
@@ -1918,67 +1893,13 @@ export function CreateProjectWorkspace({
       }
 
       return current.map((item, index) =>
-        index === existingIndex
-          ? {
-              ...item,
-              role,
-              roleLabel: formatProjectExecutorRoleLabel(role),
-            }
-          : item,
-      );
-    });
-    clearFieldError("executors");
-  }
-
-  function updateProjectExecutorRole(
-    executorId: string,
-    role: ProjectExecutorRoleValue,
-  ) {
-    setProjectExecutors((current) => {
-      const target = current.find((executor) => executor.id === executorId);
-
-      if (!target || target.role === role) {
-        return current;
-      }
-
-      if (
-        target.role === "MAIN_EXECUTOR" &&
-        role !== "MAIN_EXECUTOR" &&
-        current.filter((executor) => executor.role === "MAIN_EXECUTOR").length <= 1
-      ) {
-        showErrorToast(
-          "Main Executor required.",
-          "At least one Main Executor must remain assigned to the project.",
-        );
-        return current;
-      }
-
-      return current.map((executor) =>
-        executor.id === executorId
-          ? {
-              ...executor,
-              role,
-              roleLabel: formatProjectExecutorRoleLabel(role),
-            }
-          : executor,
+        index === existingIndex ? nextExecutor : item,
       );
     });
     clearFieldError("executors");
   }
 
   function removeProjectExecutor(executor: ProjectEditorInitialExecutor) {
-    if (
-      executor.role === "MAIN_EXECUTOR" &&
-      projectExecutors.filter((item) => item.role === "MAIN_EXECUTOR").length <= 1
-    ) {
-      showErrorToast(
-        "Main Executor required.",
-        "At least one Main Executor must remain assigned to the project.",
-      );
-      setExecutorRemovalTarget(null);
-      return;
-    }
-
     setProjectExecutors((current) =>
       current.filter((item) => item.id !== executor.id),
     );
@@ -2025,7 +1946,7 @@ export function CreateProjectWorkspace({
               [permissionKey]: checked,
             },
             collaborator.participantType,
-            { executorRole: projectExecutorRoleById.get(collaborator.id) ?? null },
+            { isExecutor: projectExecutorIds.has(collaborator.id) },
           ),
         };
       }),
@@ -2074,7 +1995,7 @@ export function CreateProjectWorkspace({
     try {
       const result = await saveProjectCollaboratorsAction(
         initialValues.id,
-        buildCollaboratorSavePayload(nextCollaborators, projectExecutorRoleById),
+        buildCollaboratorSavePayload(nextCollaborators, projectExecutorIds),
       );
 
       if ("error" in result) {
@@ -2130,7 +2051,7 @@ export function CreateProjectWorkspace({
           initialValues.id,
           buildCollaboratorSavePayload(
             nextAssignedCollaborators,
-            projectExecutorRoleById,
+            projectExecutorIds,
           ),
         );
 
@@ -2263,7 +2184,6 @@ export function CreateProjectWorkspace({
           type: result.collaborator.type,
           typeLabel: result.collaborator.typeLabel,
         },
-        executorRoleDraft,
       );
       setExecutorInviteOpen(false);
       setExecutorPickerOpen(false);
@@ -2348,11 +2268,11 @@ export function CreateProjectWorkspace({
       return;
     }
 
-    if (!hasMainExecutor(projectExecutors)) {
+    if (projectExecutors.length === 0) {
       event.preventDefault();
       showErrorToast(
-        "Main Executor required.",
-        "Add at least one Main Executor before saving the project.",
+        "Executor required.",
+        "Add at least one executor before saving the project.",
       );
       return;
     }
@@ -3335,7 +3255,6 @@ export function CreateProjectWorkspace({
       {projectExecutors.map((executor) => (
         <div key={executor.id}>
           <input type="hidden" name="executorIds" value={executor.id} />
-          <input type="hidden" name="executorRoles" value={executor.role} />
         </div>
       ))}
       {projectTags.map((tag) => (
@@ -3345,11 +3264,11 @@ export function CreateProjectWorkspace({
       <input type="hidden" name="statusId" value={projectStatusId} />
       <input type="hidden" name="priority" value={projectPriority} />
       {assignedCollaborators.map((collaborator) => {
-        const executorRole = projectExecutorRoleById.get(collaborator.id) ?? null;
+        const isExecutor = projectExecutorIds.has(collaborator.id);
         const permissions = normalizeProjectCollaboratorPermissions(
           collaborator,
           collaborator.participantType,
-          { executorRole },
+          { isExecutor },
         );
 
         return (
@@ -4375,7 +4294,7 @@ export function CreateProjectWorkspace({
                           <p className="mt-1 text-[11px] leading-4 text-[#7a837b]">
                             {isInternalExecution
                               ? "Not required for internal execution."
-                              : "Main Executor uploads the invoice before stage completion."}
+                              : "The requested executor uploads the invoice before stage completion."}
                           </p>
                         </div>
                         {isInternalExecution ? (
@@ -4649,24 +4568,7 @@ export function CreateProjectWorkspace({
 
               {executorPickerOpen ? (
                 <div className="absolute z-30 mt-2 w-full rounded-[20px] border border-[#dde6de] bg-white p-3 shadow-[0_24px_50px_rgba(17,31,23,0.12)]">
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["MAIN_EXECUTOR", "EXECUTOR"] as ProjectExecutorRoleValue[]).map((role) => (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => setExecutorRoleDraft(role)}
-                        className={`rounded-full px-3 py-2 text-[11px] font-[800] transition ${
-                          executorRoleDraft === role
-                            ? "bg-brand text-white"
-                            : "border border-[#dbe7dc] bg-[#f7fbf7] text-brand"
-                        }`}
-                      >
-                        {formatProjectExecutorRoleLabel(role)}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="relative mt-3">
+                  <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a948c]" />
                     <Input
                       value={executorSearch}
@@ -4687,7 +4589,7 @@ export function CreateProjectWorkspace({
                             key={option.id}
                             type="button"
                             onClick={() => {
-                              upsertProjectExecutor(option, executorRoleDraft);
+                              upsertProjectExecutor(option);
                               setExecutorPickerOpen(false);
                               setExecutorSearch("");
                             }}
@@ -4712,7 +4614,7 @@ export function CreateProjectWorkspace({
                                 {option.email}
                               </p>
                               <p className="mt-1 text-[10px] font-[700] uppercase tracking-[0.08em] text-brand">
-                                {isSelected ? "Update role" : formatExecutorTypeLabel(option.type)}
+                                {isSelected ? "Selected" : formatExecutorTypeLabel(option.type)}
                               </p>
                             </div>
                           </button>
@@ -4765,22 +4667,9 @@ export function CreateProjectWorkspace({
                       <p className="truncate text-[11px] leading-4 text-[#7a837b]">
                         {executor.email ?? executor.roleLabel}
                       </p>
-                      <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        {(["MAIN_EXECUTOR", "EXECUTOR"] as ProjectExecutorRoleValue[]).map((role) => (
-                          <button
-                            key={role}
-                            type="button"
-                            onClick={() => updateProjectExecutorRole(executor.id, role)}
-                            className={`rounded-full px-2 py-1 text-[10px] font-[800] transition ${
-                              executor.role === role
-                                ? "bg-brand text-white"
-                                : "border border-[#dbe7dc] bg-white text-brand"
-                            }`}
-                          >
-                            {role === "MAIN_EXECUTOR" ? "Main" : "Executor"}
-                          </button>
-                        ))}
-                      </div>
+                      <span className="mt-2 inline-flex rounded-full border border-[#dbe7dc] bg-white px-2 py-1 text-[10px] font-[800] text-brand">
+                        Executor
+                      </span>
                     </div>
                     <Button
                       type="button"
@@ -4822,22 +4711,15 @@ export function CreateProjectWorkspace({
             </div>
             <div className="space-y-3">
               {assignedCollaborators.map((collaborator) => {
-                const executorRole = projectExecutorRoleById.get(collaborator.id) ?? null;
+                const isExecutor = projectExecutorIds.has(collaborator.id);
                 const permissions = normalizeProjectCollaboratorPermissions(
                   collaborator,
                   collaborator.participantType,
-                  { executorRole },
+                  { isExecutor },
                 );
                 const isClientOfGti = isClientOfGtiParticipantType(
                   collaborator.participantType,
                 );
-                const executorRoleLabel =
-                  executorRole === "MAIN_EXECUTOR"
-                    ? "Main Executor"
-                    : executorRole === "EXECUTOR"
-                      ? "Executor"
-                      : null;
-
                 return (
                   <div
                     key={collaborator.id}
@@ -4858,7 +4740,7 @@ export function CreateProjectWorkspace({
                         const archiveBlocked =
                           permissionKey === "canAccessProjectArchives" && isClientOfGti;
                         const interactionGrantedByExecutorRole =
-                          permissionKey === "canInteract" && Boolean(executorRole);
+                          permissionKey === "canInteract" && isExecutor;
 
                         return (
                           <label
@@ -4892,9 +4774,9 @@ export function CreateProjectWorkspace({
                         Archive access is blocked for Client of GTI.
                       </p>
                     ) : null}
-                    {executorRoleLabel ? (
+                    {isExecutor ? (
                       <p className="mt-2 text-[12px] text-[#5e7765]">
-                        Can interact is granted by the assigned {executorRoleLabel} role.
+                        Can interact is granted by the executor assignment.
                       </p>
                     ) : null}
                   </div>

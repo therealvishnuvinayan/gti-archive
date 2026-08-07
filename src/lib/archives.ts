@@ -800,7 +800,14 @@ async function getProjectArchiveBase(projectId: string) {
             },
           },
         },
-        createdById: true,
+        ownerId: true,
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        coOwners: { select: { userId: true } },
         createdBy: {
           select: {
             name: true,
@@ -810,7 +817,6 @@ async function getProjectArchiveBase(projectId: string) {
         executors: {
           select: {
             userId: true,
-            role: true,
           },
         },
         collaborators: {
@@ -1116,14 +1122,15 @@ function buildArchiveArtworkMetadataDraft(input: {
   file: ArchivableAttachment;
   project: {
     name: string;
-    category: string;
-    description: string;
+    category: string | null;
+    description: string | null;
+    owner: Pick<User, "name" | "email"> | null;
     createdBy: Pick<User, "name" | "email">;
   };
   index: number;
 }) {
-  const artworkType = getArtworkTypeFromProjectCategory(input.project.category);
-  const prefix = getArtworkIdPrefix(artworkType, input.project.category);
+  const artworkType = getArtworkTypeFromProjectCategory(input.project.category ?? "");
+  const prefix = getArtworkIdPrefix(artworkType, input.project.category ?? "");
   const year =
     input.file.approvedAt?.getFullYear() ??
     input.file.updatedAt.getFullYear() ??
@@ -1158,9 +1165,11 @@ function buildArchiveArtworkMetadataDraft(input: {
     expirySunsetDate: "",
     archiveStatus: "Approved",
     createdByName: input.file.uploadedByName,
-    approvedByName: input.file.approvedByName ?? getUserNameLabel(input.project.createdBy),
+    approvedByName:
+      input.file.approvedByName ??
+      getUserNameLabel(input.project.owner ?? input.project.createdBy),
     approvedAt: formatArchiveMetadataDate(input.file.approvedAt),
-    clientBrandOwner: getUserNameLabel(input.project.createdBy),
+    clientBrandOwner: getUserNameLabel(input.project.owner ?? input.project.createdBy),
     regulatoryClearance: "",
     fontsUsed: "",
     imagesPhotography: "",
@@ -1181,8 +1190,9 @@ function buildArchiveArtworkMetadataDraft(input: {
 function normalizePreparedArchiveFiles(
   project: {
     name: string;
-    category: string;
-    description: string;
+    category: string | null;
+    description: string | null;
+    owner: Pick<User, "name" | "email"> | null;
     createdBy: Pick<User, "name" | "email">;
   },
   files: ArchivableAttachment[],
@@ -1258,10 +1268,6 @@ function ensureProjectCanBeCompleted(
   project: NonNullable<Awaited<ReturnType<typeof getProjectArchiveBase>>>,
   stageId: string,
 ) {
-  if (project.createdById !== user.id) {
-    throw new Error("Only the project owner can complete and archive this project.");
-  }
-
   if (!hasProjectPermission(user, project, "project.completeArchive")) {
     throw new Error("You do not have permission to complete and archive this project.");
   }
@@ -1645,7 +1651,8 @@ function mapManualArchiveFileRecord(input: {
 function isArchiveTimestampVisibleToUser(
   user: ArchiveAccessUser,
   project: {
-    createdById: string;
+    ownerId: string | null;
+    coOwners?: Array<{ userId: string }>;
     collaborators?: Array<{
       chatVisibilityPaused: boolean;
       visibilityPauses: Array<{
@@ -1656,7 +1663,10 @@ function isArchiveTimestampVisibleToUser(
   },
   timestamp: Date,
 ) {
-  if (canBypassCollaboratorVisibility(user, project.createdById)) {
+  if (
+    canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
+    project.coOwners?.some((coOwner) => coOwner.userId === user.id)
+  ) {
     return true;
   }
 
@@ -1712,7 +1722,8 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
           projectId: true,
           project: {
             select: {
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -2164,7 +2175,8 @@ export async function listArchivedFilesByCategory(
           projectId: true,
           project: {
             select: {
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -2359,14 +2371,15 @@ export async function getProjectCompletionSummary(
   const allStagesCompleted = incompleteStages.length === 0 && project.stages.length > 0;
   const isCompleted = Boolean(project.archive || project.archivedAt || project.completedAt);
   const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
-  const isProjectOwner = project.createdById === user.id;
+  const isProjectOwner = hasProjectPermission(user, project, "project.completeArchive");
   const canViewArchivedFiles = hasProjectPermission(user, project, "archive.view");
   const visibleArchivedFiles =
     project.archive?.files.filter((file) =>
       isArchiveTimestampVisibleToUser(
         user,
         {
-          createdById: project.createdById,
+          ownerId: project.ownerId,
+          coOwners: project.coOwners,
           collaborators: project.collaborators.filter(
             (collaborator) => collaborator.userId === user.id,
           ),
@@ -2420,7 +2433,7 @@ export async function getProjectCompletionSummary(
             originalFileName: file.originalFileName,
             projectId: project.id,
             projectName: project.name,
-            projectCategory: project.category,
+            projectCategory: project.category ?? "Uncategorized",
             projectTag: formatArchiveProjectTagsLabel(projectTags),
             projectTags,
             assetTags: file.sourceAttachment.assetTags,
@@ -2532,7 +2545,8 @@ export async function completeProjectArchive(
         },
         select: {
           id: true,
-          createdById: true,
+          ownerId: true,
+          coOwners: { select: { userId: true } },
           executionType: true,
           statusId: true,
           status: {
@@ -2557,7 +2571,6 @@ export async function completeProjectArchive(
           executors: {
             select: {
               userId: true,
-              role: true,
             },
           },
           collaborators: {
@@ -2631,7 +2644,7 @@ export async function completeProjectArchive(
           finalStageId: finalStage.id,
           archivedById: user.id,
           projectName: archiveProject.name,
-          projectCategory: archiveProject.category,
+          projectCategory: archiveProject.category ?? "Uncategorized",
           projectTag: projectTagLabel === "—" ? null : projectTagLabel,
           archiveCategoryId: archiveCategory.id,
           status: "ARCHIVED",
@@ -2864,7 +2877,8 @@ export async function getArchivedFileDownloadUrlForUser(
         archivedAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
         archive: {
@@ -2939,12 +2953,14 @@ export async function getArchivedFileDownloadUrlForUser(
       "You do not have permission to download archive files.",
     );
 
-    await assertProjectTimestampVisibleForUser(user, {
-      projectId: archivedFile.projectId,
-      projectOwnerId: archivedFile.project.createdById,
-      timestamp: archivedFile.archivedAt,
-      message: "You do not have permission to access this archive file.",
-    });
+    if (!hasProjectPermission(user, project, "collaborator.pauseVisibility")) {
+      await assertProjectTimestampVisibleForUser(user, {
+        projectId: archivedFile.projectId,
+        projectOwnerId: archivedFile.project.ownerId ?? "",
+        timestamp: archivedFile.archivedAt,
+        message: "You do not have permission to access this archive file.",
+      });
+    }
   }
 
   return createPresignedDownloadUrl({
@@ -2974,7 +2990,8 @@ export async function getArchivedFilePreviewUrlForUser(
         archivedAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
         archive: {
@@ -3041,12 +3058,14 @@ export async function getArchivedFilePreviewUrlForUser(
       "You do not have permission to preview archive files.",
     );
 
-    await assertProjectTimestampVisibleForUser(user, {
-      projectId: archivedFile.projectId,
-      projectOwnerId: archivedFile.project.createdById,
-      timestamp: archivedFile.archivedAt,
-      message: "You do not have permission to access this archive file.",
-    });
+    if (!hasProjectPermission(user, project, "collaborator.pauseVisibility")) {
+      await assertProjectTimestampVisibleForUser(user, {
+        projectId: archivedFile.projectId,
+        projectOwnerId: archivedFile.project.ownerId ?? "",
+        timestamp: archivedFile.archivedAt,
+        message: "You do not have permission to access this archive file.",
+      });
+    }
   }
 
   return createPresignedPreviewUrl({

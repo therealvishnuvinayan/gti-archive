@@ -287,7 +287,8 @@ async function resolveComparableSubmissionPair(
       projectId: attachment.projectId,
       createdAt: attachment.createdAt,
       project: {
-        createdById: project.createdById,
+        ownerId: project.ownerId,
+        coOwners: project.coOwners,
       },
     });
   }
@@ -342,7 +343,8 @@ async function getVisibleSubmissionCaptionContext(
     projectId: attachment.projectId,
     createdAt: attachment.createdAt,
     project: {
-      createdById: project.createdById,
+      ownerId: project.ownerId,
+      coOwners: project.coOwners,
     },
   });
 
@@ -434,7 +436,10 @@ async function getSubmissionCaptionReadOnlyReason(
     return "This submission has been superseded. Existing captions are read-only.";
   }
 
-  if (!canBypassCollaboratorVisibility(user, project.createdById)) {
+  if (
+    !canBypassCollaboratorVisibility(user, project.ownerId ?? "") &&
+    !hasProjectPermission(user, project, "collaborator.pauseVisibility")
+  ) {
     const visibilityState = await getProjectCollaboratorVisibilityState(
       project.id,
       user.id,
@@ -475,15 +480,17 @@ async function assertCanCreateSubmissionCaption(
 
 async function getComparisonCommentVisibilityPauseWindows(
   user: AccessUser,
-  projectId: string,
-  projectOwnerId: string,
+  project: { id: string; ownerId: string | null; coOwners?: Array<{ userId: string }> },
 ) {
-  if (canBypassCollaboratorVisibility(user, projectOwnerId)) {
+  if (
+    canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
+    hasProjectPermission(user, project, "collaborator.pauseVisibility")
+  ) {
     return [];
   }
 
   const visibilityState = await getProjectCollaboratorVisibilityState(
-    projectId,
+    project.id,
     user.id,
   );
 
@@ -535,8 +542,7 @@ export async function getComparisonCommentsForPair(
 
   const pauseWindows = await getComparisonCommentVisibilityPauseWindows(
     user,
-    input.projectId,
-    pair.project.createdById,
+    pair.project,
   );
   const visibleComments =
     pauseWindows.length > 0
@@ -589,8 +595,7 @@ export async function getSubmissionCaptionsForAttachment(
 
   const pauseWindows = await getComparisonCommentVisibilityPauseWindows(
     user,
-    context.attachment.projectId,
-    context.project.createdById,
+    context.project,
   );
   const visibleComments =
     pauseWindows.length > 0

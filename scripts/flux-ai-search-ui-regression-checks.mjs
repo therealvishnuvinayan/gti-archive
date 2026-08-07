@@ -151,7 +151,7 @@ for (const snippet of [
   "Cancel Edit",
   "Project Details",
   "Timeline & Budget",
-  "Main Executor",
+  "Executor",
   "Collaborators",
   "Stages",
 ]) {
@@ -189,7 +189,7 @@ assert(
   "Empty project results must show the guided empty state.",
 );
 assert(
-  /draftMissingFieldOrder[\s\S]*\^Project Name\$[\s\S]*\^Category\$[\s\S]*\^Project Brief\$[\s\S]*\^Start Date\$[\s\S]*\^Main Executor\$[\s\S]*\^Resolve Collaborators\$[\s\S]*\^Stages\$/.test(
+  /draftMissingFieldOrder[\s\S]*\^Project Name\$[\s\S]*\^Category\$[\s\S]*\^Project Brief\$[\s\S]*\^Start Date\$[\s\S]*\^Executor\$[\s\S]*\^Resolve Collaborators\$[\s\S]*\^Stages\$/.test(
     workspace,
   ),
   "Draft missing-field chips must follow the same order as the draft preview sections.",

@@ -33,8 +33,8 @@ assertIncludes(
 );
 assertIncludes(
   resolver,
-  "return isProjectAdmin(user) || isProjectOwner(user, project);",
-  "owner/admin project management rule",
+  "return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);",
+  "owner/co-owner/admin project management rule",
 );
 
 const definitions = read("src/lib/permissions/definitions.ts");
@@ -51,7 +51,7 @@ assert(
 );
 
 const archives = read("src/lib/archives.ts");
-assertIncludes(archives, "assertCanUseArchives(user);", "archive list guard");
+assertIncludes(archives, "await canAccessArchivesArea(user)", "archive list guard");
 assertIncludes(
   archives,
   "if (!hasPermission(user, \"archive.download\"))",

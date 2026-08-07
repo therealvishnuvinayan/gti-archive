@@ -1,5 +1,3 @@
-import type { ProjectExecutorRole } from "@prisma/client";
-
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 
 export const projectCollaboratorPermissionKeys = [
@@ -67,10 +65,10 @@ export function isInternalProjectParticipantType(
 
 export function getDefaultProjectCollaboratorPermissions(
   participantType: ProjectCollaboratorParticipantType | null | undefined,
-  options: { executorRole?: ProjectExecutorRole | null } = {},
+  options: { isExecutor?: boolean } = {},
 ): ProjectCollaboratorPermissions {
   const canInteract =
-    Boolean(options.executorRole) || isInternalProjectParticipantType(participantType);
+    Boolean(options.isExecutor) || isInternalProjectParticipantType(participantType);
 
   return {
     ...emptyProjectCollaboratorPermissions,
@@ -84,7 +82,7 @@ export function normalizeProjectCollaboratorPermissions(
     | null
     | undefined,
   participantType: ProjectCollaboratorParticipantType | null | undefined,
-  options: { executorRole?: ProjectExecutorRole | null } = {},
+  options: { isExecutor?: boolean } = {},
 ): ProjectCollaboratorPermissions {
   const defaults = getDefaultProjectCollaboratorPermissions(participantType, options);
   const permissions = {
@@ -101,7 +99,7 @@ export function normalizeProjectCollaboratorPermissions(
     permissions.canAccessProjectArchives = false;
   }
 
-  if (options.executorRole) {
+  if (options.isExecutor) {
     permissions.canInteract = true;
   }
 
