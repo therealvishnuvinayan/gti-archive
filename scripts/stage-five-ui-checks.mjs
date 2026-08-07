@@ -100,7 +100,7 @@ assert(
 );
 assert(
   workflowAccess.includes("ProjectWorkflowStageKey.FINAL_LAYOUT") &&
-    overview.includes("stage.number >= 1 && stage.number <= 5"),
+    overview.includes("stage.number >= 1 && stage.number <= 6"),
   "The centralized SUPER_ADMIN testing bypass and overview must include implemented Stage 5.",
 );
 
