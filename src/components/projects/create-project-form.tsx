@@ -242,7 +242,7 @@ export function CreateProjectForm({
       }
 
       showSuccessToast("Project created successfully.");
-      router.push("/projects");
+      router.push(`/projects/${result.projectId}`);
       router.refresh();
     });
   }

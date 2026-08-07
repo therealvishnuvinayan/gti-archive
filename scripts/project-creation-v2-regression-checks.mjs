@@ -92,7 +92,7 @@ for (const snippet of [
   "createProjectV2(user, input)",
   'revalidatePath("/projects")',
   "isCreating",
-  'router.push("/projects")',
+  "router.push(`/projects/${result.projectId}`)",
   "fieldErrors",
 ]) {
   assertIncludes(`${action}\n${form}`, snippet, `Create UI submission behavior ${snippet}`);

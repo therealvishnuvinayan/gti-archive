@@ -2,17 +2,16 @@ import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
-import { ProjectDetailWorkspace } from "@/components/projects/project-detail-workspace";
+import {
+  ProjectOverviewLoadingShell,
+  ProjectOverviewWorkspace,
+} from "@/components/projects/project-overview-workspace";
 import {
   ProjectAccessUnavailableState,
   ProjectNotFoundState,
 } from "@/components/projects/project-route-state";
-import { ProjectDetailRouteLoadingShell } from "@/components/projects/project-route-loading-shells";
-import { getProjectCompletionSummary } from "@/lib/archives";
 import { requireUser } from "@/lib/auth";
-import { getProjectCompletionWorkflowForUser } from "@/lib/project-completion";
 import {
-  getProjectById,
   getProjectRouteAvailability,
   getProjectShellById,
 } from "@/lib/projects";
@@ -35,35 +34,7 @@ async function ProjectUnavailableContent({
   return <ProjectNotFoundState />;
 }
 
-async function ProjectDetailDeferredContent({
-  slug,
-  user,
-}: {
-  slug: string;
-  user: ProjectPageUser;
-}) {
-  const project = await getProjectById(slug, user);
-
-  if (!project) {
-    return <ProjectUnavailableContent slug={slug} user={user} />;
-  }
-
-  const [completionSummary, completionWorkflow] = await Promise.all([
-    getProjectCompletionSummary(user, slug),
-    getProjectCompletionWorkflowForUser(user, slug),
-  ]);
-
-  return (
-    <ProjectDetailWorkspace
-      project={project}
-      currentUserId={user.id}
-      completionSummary={completionSummary}
-      completionWorkflow={completionWorkflow}
-    />
-  );
-}
-
-async function ProjectDetailShellContent({
+async function ProjectOverviewContent({
   slug,
   userPromise,
 }: {
@@ -77,21 +48,7 @@ async function ProjectDetailShellContent({
     return <ProjectUnavailableContent slug={slug} user={user} />;
   }
 
-  return (
-    <Suspense
-      fallback={
-        <ProjectDetailWorkspace
-          project={project}
-          currentUserId={user.id}
-          completionWorkflow={null}
-          assetsLoading
-          completionLoading
-        />
-      }
-    >
-      <ProjectDetailDeferredContent slug={slug} user={user} />
-    </Suspense>
-  );
+  return <ProjectOverviewWorkspace project={project} currentUserId={user.id} />;
 }
 
 export default async function ProjectDetailPage({
@@ -109,8 +66,8 @@ export default async function ProjectDetailPage({
         leadingContent: <ProjectBackButton />,
       }}
     >
-      <Suspense fallback={<ProjectDetailRouteLoadingShell />}>
-        <ProjectDetailShellContent slug={slug} userPromise={userPromise} />
+      <Suspense fallback={<ProjectOverviewLoadingShell />}>
+        <ProjectOverviewContent slug={slug} userPromise={userPromise} />
       </Suspense>
     </DashboardLayout>
   );
