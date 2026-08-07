@@ -9,6 +9,7 @@ const IMPLEMENTED_WORKFLOW_STAGE_KEYS = new Set<ProjectWorkflowStageKey>([
   ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
   ProjectWorkflowStageKey.CONCEPT_CREATION,
   ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+  ProjectWorkflowStageKey.FINAL_LAYOUT,
 ]);
 
 export function isWorkflowStagePersistentlyOpen(
