@@ -14,6 +14,7 @@ import type {
   Project,
   ProjectCollaborator,
   ProjectExecutor,
+  ProjectWorkflowStage,
   ProjectTag,
   ProjectStage,
   User,
@@ -128,6 +129,7 @@ type ProjectWithCreator = Project & {
     userId: string;
     user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
   }>;
+  workflowStages?: ProjectWorkflowStage[];
   status: ProjectStatusRelation;
   tags?: Array<{
     tag: Pick<ProjectTag, "id" | "name" | "color">;
@@ -413,6 +415,12 @@ export type ProjectFlowRecord = {
   isCompleted: boolean;
   canEdit: boolean;
   executors: ProjectExecutorRecord[];
+  workflowStages: Array<
+    Pick<ProjectWorkflowStage, "id" | "stageKey" | "status"> & {
+      unlockedAt: string | null;
+      completedAt: string | null;
+    }
+  >;
   canViewParticipants: boolean;
   canRemoveCollaborators: boolean;
   canViewBudget: boolean;
@@ -1360,6 +1368,13 @@ function mapProjectToFlow(
       !editingLocked &&
       hasProjectPermission(currentUser, project, "project.update"),
     executors: visibleExecutorRecords,
+    workflowStages: (project.workflowStages ?? []).map((stage) => ({
+      id: stage.id,
+      stageKey: stage.stageKey,
+      status: stage.status,
+      unlockedAt: stage.unlockedAt?.toISOString() ?? null,
+      completedAt: stage.completedAt?.toISOString() ?? null,
+    })),
     canViewParticipants,
     canRemoveCollaborators,
     canViewBudget: allowBudgetView,
@@ -3012,6 +3027,11 @@ export async function getProjectShellById(
                     collaboratorType: true,
                   },
                 },
+              },
+            },
+            workflowStages: {
+              orderBy: {
+                createdAt: "asc",
               },
             },
             stages: {

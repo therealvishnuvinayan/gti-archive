@@ -7,6 +7,7 @@ import {
 } from "./project-collaborator-participant-types";
 import { normalizeProjectCollaboratorPermissions } from "./project-collaborator-permissions";
 import { prisma, withPrismaRetry } from "./prisma";
+import { getInitialProjectWorkflowStageData } from "./project-workflow";
 
 export type CreateProjectV2Input = {
   name: string;
@@ -180,6 +181,11 @@ export async function createProjectV2(
                   }),
                 };
               }),
+            },
+          },
+          workflowStages: {
+            createMany: {
+              data: getInitialProjectWorkflowStageData(),
             },
           },
         },

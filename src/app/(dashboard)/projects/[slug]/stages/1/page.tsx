@@ -11,6 +11,8 @@ import {
   StageOneWorkspace,
 } from "@/components/projects/stage-one-workspace";
 import { requireUser } from "@/lib/auth";
+import { getCollaborators } from "@/lib/collaboration";
+import { getProjectInquiryPageData } from "@/lib/project-inquiry";
 import {
   getProjectRouteAvailability,
   getProjectShellById,
@@ -42,13 +44,24 @@ async function StageOneContent({
   userPromise: Promise<StageOnePageUser>;
 }) {
   const user = await userPromise;
-  const project = await getProjectShellById(slug, user);
+  const [project, collaborators] = await Promise.all([
+    getProjectShellById(slug, user),
+    getCollaborators(),
+  ]);
 
   if (!project) {
     return <StageOneUnavailableContent slug={slug} user={user} />;
   }
 
-  return <StageOneWorkspace project={project} currentUserId={user.id} />;
+  const pageData = await getProjectInquiryPageData(user, slug, collaborators);
+
+  return (
+    <StageOneWorkspace
+      project={project}
+      currentUserId={user.id}
+      pageData={pageData}
+    />
+  );
 }
 
 export default async function StageOnePage({

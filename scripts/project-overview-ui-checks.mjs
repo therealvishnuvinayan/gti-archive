@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [overview, projectPage, createForm] = await Promise.all([
+const [overview, workflow, projectPage, createForm, projectQuery] = await Promise.all([
   readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
+  readFile("src/lib/project-workflow.ts", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/page.tsx", "utf8"),
   readFile("src/components/projects/create-project-form.tsx", "utf8"),
+  readFile("src/lib/projects.ts", "utf8"),
 ]);
 
 const stageNames = [
@@ -18,8 +20,8 @@ const stageNames = [
 ];
 
 for (const [index, stageName] of stageNames.entries()) {
-  assert.match(overview, new RegExp(`number: ${index + 1},`));
-  assert(overview.includes(`name: "${stageName}"`), `Missing predefined stage: ${stageName}`);
+  assert.match(workflow, new RegExp(`number: ${index + 1},`));
+  assert(workflow.includes(`name: "${stageName}"`), `Missing predefined stage: ${stageName}`);
 }
 
 for (const label of [
@@ -37,8 +39,15 @@ assert(
   overview.includes("href={`/projects/${projectId}/stages/1`}"),
   "Stage 1 should open its dedicated UI route.",
 );
-assert(overview.includes("disabled"), "Locked stage controls should be disabled.");
-assert(overview.includes("Locked"), "Stages 2-7 should show their locked state.");
+assert(overview.includes("status === \"AVAILABLE\""), "Available state must come from persisted workflow status.");
+assert(overview.includes("status === \"COMPLETED\""), "Completed state must come from persisted workflow status.");
+assert(overview.includes("Available · Stage UI coming next"), "Stage 2 should show a safe available state.");
+assert(overview.includes("disabled"), "Unavailable stage controls should be disabled.");
+assert(overview.includes("Locked"), "Locked workflow stages should show their real state.");
+assert(
+  projectQuery.includes("workflowStages:") && projectQuery.includes("stageKey: stage.stageKey"),
+  "The project query must return persisted workflow stage state.",
+);
 assert(
   projectPage.includes("ProjectOverviewWorkspace") &&
     projectPage.includes("getProjectShellById"),

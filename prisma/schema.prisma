@@ -50,6 +50,55 @@ enum ProjectPriority {
   URGENT
 }
 
+enum ProjectWorkflowStageKey {
+  PROJECT_INQUIRY
+  PROJECT_RESEARCH_AND_PLANNING
+  CONCEPT_CREATION
+  PROJECT_DEVELOPMENT
+  FINAL_LAYOUT
+  PRODUCTION_AND_HANDOVER
+  IMPLEMENTATION_AND_SUPERVISION
+}
+
+enum ProjectWorkflowStageStatus {
+  LOCKED
+  AVAILABLE
+  COMPLETED
+}
+
+enum ProjectInquiryClientOrigin {
+  INTERNAL
+  EXTERNAL
+}
+
+enum ProjectInquiryPartyRole {
+  CLIENT
+  FINAL_BENEFICIARY
+}
+
+enum ProjectInquiryPartySource {
+  USER
+  MANUAL_CONTACT
+}
+
+enum ProjectInquiryTargetMarketKind {
+  COUNTRY
+  REGION
+  GLOBAL
+}
+
+enum ProjectInquiryPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ProjectInquiryAttachmentField {
+  INITIAL_BRIEF
+  BUSINESS_OBJECTIVES
+  LEGAL_NOTES
+}
+
 enum CalendarEventType {
   PROJECTS
   EVENTS
@@ -237,6 +286,8 @@ model User {
   addedProjectCollaborations          ProjectCollaborator[]                @relation("ProjectCollaboratorAdder")
   calendarCollaborations              CalendarCollaborator[]               @relation("CalendarCollaboratorUser")
   addedCalendarCollaborations         CalendarCollaborator[]               @relation("CalendarCollaboratorAdder")
+  createdContactDirectoryEntries      ContactDirectoryEntry[]              @relation("ContactDirectoryEntryCreator")
+  projectInquiryPartySelections       ProjectInquiryParty[]                @relation("ProjectInquiryPartyUser")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -366,6 +417,8 @@ model Project {
   archiveArtworkMetadata ArchiveArtworkMetadata[]
   completionWorkflow     ProjectCompletionWorkflow?
   completionDocuments    ProjectCompletionDocument[]
+  workflowStages         ProjectWorkflowStage[]
+  inquiry                ProjectInquiry?
   completedAt            DateTime?
   archivedAt             DateTime?
   createdAt              DateTime                    @default(now())
@@ -390,6 +443,122 @@ model ProjectCoOwner {
   @@id([projectId, userId])
   @@index([userId])
   @@index([addedById])
+}
+
+model ProjectWorkflowStage {
+  id          String                     @id @default(cuid())
+  projectId   String
+  project     Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageKey    ProjectWorkflowStageKey
+  status      ProjectWorkflowStageStatus @default(LOCKED)
+  unlockedAt  DateTime?
+  completedAt DateTime?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  @@unique([projectId, stageKey])
+  @@index([projectId, status])
+  @@index([stageKey, status])
+}
+
+model ContactDirectoryEntry {
+  id             String                @id @default(cuid())
+  name           String
+  company        String?
+  position       String?
+  email          String?
+  phone          String?
+  createdById    String
+  createdBy      User                  @relation("ContactDirectoryEntryCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  inquiryParties ProjectInquiryParty[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([name])
+  @@index([email])
+  @@index([createdById])
+}
+
+model ProjectInquiry {
+  id                 String                       @id @default(cuid())
+  projectId          String                       @unique
+  project            Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clientOrigin       ProjectInquiryClientOrigin?
+  initialBrief       String?                      @db.Text
+  businessObjectives String?                      @db.Text
+  inquiryDate        DateTime?                    @db.Date
+  deadline           DateTime?                    @db.Date
+  legalNotes         String?                      @db.Text
+  priority           ProjectInquiryPriority?
+  parties            ProjectInquiryParty[]
+  targetMarkets      ProjectInquiryTargetMarket[]
+  deliverables       ProjectInquiryDeliverable[]
+  attachments        ProjectInquiryAttachment[]
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  @@index([createdAt])
+}
+
+model ProjectInquiryParty {
+  id               String                    @id @default(cuid())
+  inquiryId        String
+  inquiry          ProjectInquiry            @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  role             ProjectInquiryPartyRole
+  source           ProjectInquiryPartySource
+  userId           String?
+  user             User?                     @relation("ProjectInquiryPartyUser", fields: [userId], references: [id], onDelete: Restrict)
+  contactId        String?
+  contact          ContactDirectoryEntry?    @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  snapshotName     String
+  snapshotCompany  String?
+  snapshotPosition String?
+  snapshotEmail    String?
+  snapshotPhone    String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  @@unique([inquiryId, role])
+  @@index([userId])
+  @@index([contactId])
+}
+
+model ProjectInquiryTargetMarket {
+  id              String                         @id @default(cuid())
+  inquiryId       String
+  inquiry         ProjectInquiry                 @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  label           String
+  normalizedLabel String
+  kind            ProjectInquiryTargetMarketKind
+  createdAt       DateTime                       @default(now())
+
+  @@unique([inquiryId, normalizedLabel])
+  @@index([normalizedLabel])
+}
+
+model ProjectInquiryDeliverable {
+  id              String         @id @default(cuid())
+  inquiryId       String
+  inquiry         ProjectInquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  label           String
+  normalizedLabel String
+  createdAt       DateTime       @default(now())
+
+  @@unique([inquiryId, normalizedLabel])
+  @@index([normalizedLabel])
+}
+
+model ProjectInquiryAttachment {
+  inquiryId    String
+  inquiry      ProjectInquiry                @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  attachmentId String
+  attachment   ProjectAttachment             @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  field        ProjectInquiryAttachmentField
+  createdAt    DateTime                      @default(now())
+
+  @@id([inquiryId, attachmentId])
+  @@unique([attachmentId])
+  @@index([inquiryId, field])
 }
 
 model ProjectCategory {
@@ -772,6 +941,7 @@ model ProjectAttachment {
   archivedFiles             ArchivedProjectFile[]                 @relation("ArchivedProjectFileSourceAttachment")
   archiveArtworkMetadata    ArchiveArtworkMetadata[]              @relation("ArchiveArtworkMetadataSourceAttachment")
   assetTags                 ProjectAttachmentAssetTagAssignment[]
+  inquiryAssociations       ProjectInquiryAttachment[]
   createdAt                 DateTime                              @default(now())
   updatedAt                 DateTime                              @updatedAt
 

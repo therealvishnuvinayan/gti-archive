@@ -2,6 +2,8 @@ import Link from "next/link";
 import {
   ArrowRight,
   Briefcase,
+  CircleCheck,
+  Clock3,
   FileText,
   FolderKanban,
   Lock,
@@ -14,55 +16,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProjectFlowRecord } from "@/lib/projects";
+import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
 
 type ProjectOverviewWorkspaceProps = {
   project: ProjectFlowRecord;
   currentUserId: string;
 };
 
-type ProjectOverviewStage = {
-  number: number;
-  name: string;
-  description: string;
-};
-
-const PROJECT_OVERVIEW_STAGES: ProjectOverviewStage[] = [
-  {
-    number: 1,
-    name: "Project Inquiry",
-    description: "Gather the initial requirements, goals, and context for the project.",
-  },
-  {
-    number: 2,
-    name: "Project Research and Planning",
-    description: "Research and plan the project scope, timeline, and resources.",
-  },
-  {
-    number: 3,
-    name: "Concept Creation",
-    description: "Develop creative concepts and clear design directions.",
-  },
-  {
-    number: 4,
-    name: "Project Development",
-    description: "Refine and develop the selected concepts and solutions.",
-  },
-  {
-    number: 5,
-    name: "Final Layout",
-    description: "Prepare final layouts and detailed design specifications.",
-  },
-  {
-    number: 6,
-    name: "Production and Handover",
-    description: "Oversee production and prepare a clear quality handover.",
-  },
-  {
-    number: 7,
-    name: "Implementation and Supervision",
-    description: "Implement the project and provide on-site supervision.",
-  },
-];
+type ProjectOverviewStage = (typeof PROJECT_WORKFLOW_STAGE_DEFINITIONS)[number];
 
 function formatNames(names: string[], emptyLabel: string) {
   return names.length > 0 ? names.join(", ") : emptyLabel;
@@ -152,50 +113,74 @@ export function ProjectSummaryCard({ project }: { project: ProjectFlowRecord }) 
 export function StageOverviewCard({
   stage,
   projectId,
+  workflowStage,
 }: {
   stage: ProjectOverviewStage;
   projectId: string;
+  workflowStage: ProjectFlowRecord["workflowStages"][number] | null;
 }) {
-  const active = stage.number === 1;
+  const status = workflowStage?.status ?? "LOCKED";
+  const available = status === "AVAILABLE";
+  const completed = status === "COMPLETED";
+  const locked = status === "LOCKED";
+  const stageOneOpenable = stage.number === 1 && !locked;
+  const statusLabel = completed ? "Completed" : available ? "Available" : "Locked";
 
   return (
     <article
       className={`flex min-h-[250px] min-w-0 flex-col rounded-[22px] border p-5 transition sm:p-6 ${
-        active
+        stageOneOpenable
           ? "border-[#287750] bg-[linear-gradient(145deg,#0f5b39_0%,#19764c_55%,#378a62_100%)] text-white shadow-[0_18px_42px_rgba(25,103,67,0.2)]"
+          : available
+            ? "border-[#b9dbc5] bg-[linear-gradient(145deg,#f8fff9,#edf8f0)] text-[#285c40] shadow-[0_12px_30px_rgba(23,85,50,0.06)]"
           : "border-[#dfe5df] bg-[linear-gradient(145deg,#fbfcfa,#f3f6f3)] text-[#7a847d] shadow-[0_12px_30px_rgba(23,39,28,0.035)]"
       }`}
     >
       <div className="flex items-center justify-between gap-3">
         <span
           className={`inline-flex rounded-full px-3 py-1 text-[11px] font-[750] ${
-            active
+            stageOneOpenable
               ? "border border-white/35 bg-white/10 text-white"
+              : available
+                ? "bg-[#dff1e5] text-[#28724b]"
               : "bg-[#e7ece7] text-[#78827b]"
           }`}
         >
           Stage {stage.number}
         </span>
-        {!active ? <Lock className="h-4 w-4 text-[#9ba49e]" aria-hidden="true" /> : null}
+        <span
+          className={`inline-flex items-center gap-1.5 text-[11px] font-[700] ${
+            stageOneOpenable ? "text-white/85" : available ? "text-[#397a55]" : "text-[#8a948c]"
+          }`}
+        >
+          {completed ? (
+            <CircleCheck className="h-4 w-4" />
+          ) : available ? (
+            <Clock3 className="h-4 w-4" />
+          ) : (
+            <Lock className="h-4 w-4" />
+          )}
+          {statusLabel}
+        </span>
       </div>
 
       <h2
         className={`mt-5 text-[18px] font-[760] leading-[1.25] tracking-[-0.02em] ${
-          active ? "text-white" : "text-[#6f7972]"
+          stageOneOpenable ? "text-white" : available ? "text-[#285c40]" : "text-[#6f7972]"
         }`}
       >
         {stage.name}
       </h2>
       <p
         className={`mt-3 text-[13px] font-[500] leading-5 ${
-          active ? "text-white/82" : "text-[#7d8780]"
+          stageOneOpenable ? "text-white/82" : available ? "text-[#587063]" : "text-[#7d8780]"
         }`}
       >
         {stage.description}
       </p>
 
       <div className="mt-auto pt-6">
-        {active ? (
+        {stageOneOpenable ? (
           <Button
             asChild
             variant="secondary"
@@ -205,6 +190,15 @@ export function StageOverviewCard({
               Open Stage
               <ArrowRight className="h-4 w-4" />
             </Link>
+          </Button>
+        ) : available ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled
+            className="h-11 w-full rounded-[13px] border-[#a8cfb6] bg-white/70 text-[#397a55] shadow-none disabled:opacity-100"
+          >
+            Available · Stage UI coming next
           </Button>
         ) : (
           <Button
@@ -222,7 +216,7 @@ export function StageOverviewCard({
   );
 }
 
-export function ProjectStageGrid({ projectId }: { projectId: string }) {
+export function ProjectStageGrid({ project }: { project: ProjectFlowRecord }) {
   return (
     <section className="mt-8" aria-labelledby="project-stages-heading">
       <div>
@@ -238,8 +232,17 @@ export function ProjectStageGrid({ projectId }: { projectId: string }) {
       </div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {PROJECT_OVERVIEW_STAGES.map((stage) => (
-          <StageOverviewCard key={stage.number} stage={stage} projectId={projectId} />
+        {PROJECT_WORKFLOW_STAGE_DEFINITIONS.map((stage) => (
+          <StageOverviewCard
+            key={stage.key}
+            stage={stage}
+            projectId={project.id}
+            workflowStage={
+              project.workflowStages.find(
+                (workflowStage) => workflowStage.stageKey === stage.key,
+              ) ?? null
+            }
+          />
         ))}
       </div>
     </section>
@@ -255,7 +258,7 @@ export function ProjectOverviewWorkspace({
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <ProjectOverviewHeader projectName={project.title} />
       <ProjectSummaryCard project={project} />
-      <ProjectStageGrid projectId={project.id} />
+      <ProjectStageGrid project={project} />
     </section>
   );
 }

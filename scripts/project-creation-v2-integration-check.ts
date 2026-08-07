@@ -48,6 +48,7 @@ async function main() {
       coOwners: true,
       executors: true,
       collaborators: true,
+      workflowStages: true,
       stages: true,
     },
   });
@@ -63,6 +64,17 @@ async function main() {
     "Executor participant type must match the selected user exactly.",
   );
   assert(created.stages.length === 0, "V2 creation must not create dynamic stages.");
+  assert(created.workflowStages.length === 7, "V2 creation must create exactly seven fixed workflow rows.");
+  assert(
+    created.workflowStages.find((stage) => stage.stageKey === "PROJECT_INQUIRY")?.status ===
+      "AVAILABLE",
+    "Stage 1 must start AVAILABLE.",
+  );
+  assert(
+    created.workflowStages.filter((stage) => stage.stageKey !== "PROJECT_INQUIRY")
+      .every((stage) => stage.status === "LOCKED"),
+    "Stages 2-7 must start LOCKED.",
+  );
   assert(
     created.category === null &&
       created.description === null &&
@@ -151,6 +163,11 @@ async function main() {
     (await prisma.project.count({ where: { name: "Must roll back" } })) === 0,
     "A nested write failure must roll back the project and all related writes.",
   );
+
+  await prisma.$executeRawUnsafe(
+    `DROP TRIGGER fail_v2_executor_insert ON "ProjectExecutor"`,
+  );
+  await prisma.$executeRawUnsafe(`DROP FUNCTION fail_v2_executor_insert()`);
 
   console.log("Project creation V2 database integration checks passed.");
 }

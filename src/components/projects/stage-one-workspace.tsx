@@ -1,26 +1,50 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import type {
+  ProjectInquiryAttachmentField,
+  ProjectInquiryPriority,
+} from "@prisma/client";
 import {
   ArrowRight,
   BriefcaseBusiness,
+  Check,
   ChevronDown,
   FileText,
   FolderKanban,
   ListChecks,
+  Loader2,
   Paperclip,
   Search,
+  UserPlus,
   UserRound,
   Users,
   X,
 } from "lucide-react";
 
+import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
+import {
+  completeProjectInquiryAction,
+  createContactDirectoryEntryAction,
+} from "@/app/(dashboard)/projects/[slug]/stages/1/actions";
 import { AppDatePicker } from "@/components/calendar/app-date-picker";
+import {
+  CollaboratorDialog,
+  type CollaboratorForm,
+} from "@/components/collaboration/collaborator-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import {
+  ProjectContactDialog,
+  type ProjectContactForm,
+} from "@/components/projects/project-contact-dialog";
+import {
+  ProjectUserSelector,
+  type ProjectUserOption,
+} from "@/components/projects/project-user-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -30,29 +54,84 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import type { CollaboratorRecord } from "@/lib/collaboration";
+import type {
+  CompleteProjectInquiryInput,
+  ProjectInquiryAttachmentRecord,
+  ProjectInquiryFieldErrors,
+  ProjectInquiryPageData,
+  ProjectInquiryPartyOption,
+  ProjectInquiryPartySelection,
+} from "@/lib/project-inquiry";
 import type { ProjectFlowRecord } from "@/lib/projects";
+import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 type StageOneWorkspaceProps = {
   project: ProjectFlowRecord;
   currentUserId: string;
+  pageData: ProjectInquiryPageData;
 };
+
+type PartyField = "client" | "finalBeneficiary";
+
+const attachmentFields = {
+  initialBrief: "INITIAL_BRIEF",
+  businessObjectives: "BUSINESS_OBJECTIVES",
+  legalNotes: "LEGAL_NOTES",
+} as const satisfies Record<string, ProjectInquiryAttachmentField>;
 
 function getTodayDateValue() {
   const today = new Date();
   const year = today.getFullYear();
   const month = `${today.getMonth() + 1}`.padStart(2, "0");
   const day = `${today.getDate()}`.padStart(2, "0");
-
   return `${year}-${month}-${day}`;
+}
+
+function getDefaultContactForm(): ProjectContactForm {
+  return { name: "", company: "", position: "", email: "", phone: "" };
+}
+
+function getDefaultCollaboratorForm(): CollaboratorForm {
+  return { name: "", email: "", type: "GTI_INTERNAL_CLIENT" };
+}
+
+function toUserOption(collaborator: CollaboratorRecord): ProjectUserOption {
+  return {
+    id: collaborator.id,
+    name: collaborator.name,
+    email: collaborator.email,
+    role: "COLLABORATOR",
+  };
+}
+
+function upsertCollaborator(
+  collaborators: CollaboratorRecord[],
+  next: CollaboratorRecord,
+) {
+  return collaborators.some((collaborator) => collaborator.id === next.id)
+    ? collaborators.map((collaborator) =>
+        collaborator.id === next.id ? next : collaborator,
+      )
+    : [...collaborators, next];
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function StageOneFormField({
   label,
   required = false,
+  error,
   children,
 }: {
   label: string;
   required?: boolean;
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -62,127 +141,480 @@ function StageOneFormField({
         {required ? <span className="ml-1 text-[#bd4d48]">*</span> : null}
       </label>
       {children}
+      {error ? <p className="mt-1.5 text-[12px] text-[#b84e48]">{error}</p> : null}
     </div>
   );
 }
 
-function ManualAction({ label = "Add manually" }: { label?: string }) {
-  return (
-    <button
-      type="button"
-      title={`${label} will be connected in a later implementation phase.`}
-      className="mt-2 text-[12px] font-[650] text-[#2d7b51] transition hover:text-[#185d3a]"
-    >
-      {label}
-    </button>
-  );
-}
-
-function SearchSelectField({
+function PartySelector({
   ariaLabel,
   placeholder,
+  options,
+  value,
+  disabled,
+  error,
+  onChange,
 }: {
   ariaLabel: string;
   placeholder: string;
+  options: ProjectInquiryPartyOption[];
+  value: ProjectInquiryPartySelection | null;
+  disabled: boolean;
+  error?: string;
+  onChange: (value: ProjectInquiryPartySelection | null) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const listboxId = useId();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase("en");
+    return options.filter((option) => {
+      if (!normalizedQuery) return true;
+      return [option.name, option.company, option.position, option.email]
+        .filter(Boolean)
+        .some((part) => part!.toLocaleLowerCase("en").includes(normalizedQuery));
+    });
+  }, [options, query]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
   return (
-    <div className="relative">
-      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#859087]" />
-      <Input
-        aria-label={ariaLabel}
-        role="combobox"
-        aria-expanded="false"
-        placeholder={placeholder}
-        className="h-12 rounded-[14px] border-[#dce3dc] bg-white pl-11 pr-11 shadow-none"
-      />
-      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#59645d]" />
+    <div ref={rootRef} className="relative">
+      <div
+        className={cn(
+          "flex min-h-12 items-center gap-2 rounded-[14px] border bg-white px-3 transition",
+          open ? "border-brand ring-3 ring-brand/10" : "border-[#dce3dc]",
+          error && "border-[#c85c54]",
+          disabled && "bg-[#f6f8f6] opacity-70",
+        )}
+      >
+        <Search className="h-4 w-4 shrink-0 text-[#859087]" />
+        {value && !open ? (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setOpen(true)}
+            className="min-w-0 flex-1 text-left"
+          >
+            <span className="block truncate text-[13px] font-[650] text-[#263029]">
+              {value.name}
+            </span>
+            {value.company || value.email ? (
+              <span className="block truncate text-[11px] text-[#7d8780]">
+                {value.company || value.email}
+              </span>
+            ) : null}
+          </button>
+        ) : (
+          <input
+            aria-label={ariaLabel}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={listboxId}
+            disabled={disabled}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setOpen(false);
+              if (event.key === "Enter" && filteredOptions[0]) {
+                event.preventDefault();
+                onChange(filteredOptions[0]);
+                setQuery("");
+                setOpen(false);
+              }
+            }}
+            placeholder={placeholder}
+            className="h-10 min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[#9aa39b]"
+          />
+        )}
+        {value && !disabled ? (
+          <button
+            type="button"
+            aria-label={`Clear ${ariaLabel}`}
+            onClick={() => {
+              onChange(null);
+              setQuery("");
+              setOpen(true);
+            }}
+            className="grid size-7 place-items-center rounded-full text-[#7d8780] hover:bg-[#edf2ed]"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={`Open ${ariaLabel}`}
+          onClick={() => setOpen((current) => !current)}
+          className="grid size-7 place-items-center rounded-full text-[#59645d]"
+        >
+          <ChevronDown className={cn("h-4 w-4 transition", open && "rotate-180")} />
+        </button>
+      </div>
+
+      {open && !disabled ? (
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label={ariaLabel}
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 max-h-[290px] overflow-y-auto rounded-[18px] border border-[#dce3dc] bg-white p-1.5 shadow-[0_20px_50px_rgba(17,33,23,0.14)]"
+        >
+          {filteredOptions.length ? (
+            filteredOptions.map((option) => {
+              const selected = value?.id === option.id && value.source === option.source;
+              return (
+                <button
+                  key={`${option.source}:${option.id}`}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange(option);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-[13px] px-3 py-2.5 text-left hover:bg-[#f3f7f3]"
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#edf4ee] text-[11px] font-[750] text-[#2d704b]">
+                    {option.name
+                      .split(/\s+/)
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-[650] text-[#202923]">
+                      {option.name}
+                    </span>
+                    <span className="block truncate text-[11px] text-[#7d8780]">
+                      {[option.company, option.position, option.email]
+                        .filter(Boolean)
+                        .join(" · ") ||
+                        (option.source === "USER" ? "FluxSys user" : "Directory contact")}
+                    </span>
+                  </span>
+                  {selected ? <Check className="h-4 w-4 text-brand" /> : null}
+                </button>
+              );
+            })
+          ) : (
+            <p className="px-4 py-8 text-center text-[13px] text-[#7b847d]">
+              No matching people or contacts.
+            </p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function MultiEntryInput({
   ariaLabel,
-  initialValues,
+  values,
+  suggestions,
   placeholder,
+  disabled,
+  error,
+  onChange,
 }: {
   ariaLabel: string;
-  initialValues: string[];
+  values: string[];
+  suggestions: string[];
   placeholder: string;
+  disabled: boolean;
+  error?: string;
+  onChange: (values: string[]) => void;
 }) {
-  const [values, setValues] = useState(initialValues);
   const [draft, setDraft] = useState("");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const normalizedValues = useMemo(
+    () => new Set(values.map((value) => value.trim().toLocaleLowerCase("en"))),
+    [values],
+  );
+  const filteredSuggestions = useMemo(() => {
+    const query = draft.trim().toLocaleLowerCase("en");
+    return suggestions
+      .filter((suggestion) => !normalizedValues.has(suggestion.toLocaleLowerCase("en")))
+      .filter((suggestion) => !query || suggestion.toLocaleLowerCase("en").includes(query))
+      .slice(0, 30);
+  }, [draft, normalizedValues, suggestions]);
 
-  function addDraftValue() {
-    const nextValue = draft.trim();
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
 
-    if (!nextValue || values.some((value) => value.toLowerCase() === nextValue.toLowerCase())) {
+  function add(value: string) {
+    const normalized = value.trim();
+    if (!normalized || normalizedValues.has(normalized.toLocaleLowerCase("en"))) {
       setDraft("");
       return;
     }
-
-    setValues((current) => [...current, nextValue]);
+    onChange([...values, normalized]);
     setDraft("");
+    setOpen(false);
   }
 
   return (
-    <div className="flex min-h-12 flex-wrap items-center gap-2 rounded-[14px] border border-[#dce3dc] bg-white px-2.5 py-2 focus-within:ring-3 focus-within:ring-brand/15">
-      {values.map((value) => (
-        <span
-          key={value}
-          className="inline-flex items-center gap-1.5 rounded-[9px] bg-[#f0f4f0] px-2.5 py-1.5 text-[11px] font-[650] text-[#38443c]"
-        >
-          {value}
-          <button
-            type="button"
-            aria-label={`Remove ${value}`}
-            onClick={() => setValues((current) => current.filter((item) => item !== value))}
-            className="rounded-full text-[#7d8880] transition hover:text-[#2d6949]"
+    <div ref={rootRef} className="relative">
+      <div
+        className={cn(
+          "flex min-h-12 flex-wrap items-center gap-2 rounded-[14px] border bg-white px-2.5 py-2 focus-within:ring-3 focus-within:ring-brand/15",
+          error ? "border-[#c85c54]" : "border-[#dce3dc]",
+          disabled && "bg-[#f6f8f6] opacity-70",
+        )}
+      >
+        {values.map((value) => (
+          <span
+            key={value.toLocaleLowerCase("en")}
+            className="inline-flex items-center gap-1.5 rounded-[9px] bg-[#f0f4f0] px-2.5 py-1.5 text-[11px] font-[650] text-[#38443c]"
           >
-            <X className="h-3 w-3" />
-          </button>
-        </span>
-      ))}
-      <input
-        aria-label={ariaLabel}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={addDraftValue}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === ",") {
-            event.preventDefault();
-            addDraftValue();
-          }
-        }}
-        placeholder={placeholder}
-        className="h-7 min-w-[150px] flex-1 bg-transparent px-1 text-[13px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
-      />
-      <ChevronDown className="h-4 w-4 shrink-0 text-[#59645d]" />
+            {value}
+            {!disabled ? (
+              <button
+                type="button"
+                aria-label={`Remove ${value}`}
+                onClick={() => onChange(values.filter((item) => item !== value))}
+                className="rounded-full text-[#7d8880] hover:text-[#2d6949]"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            ) : null}
+          </span>
+        ))}
+        <input
+          aria-label={ariaLabel}
+          disabled={disabled}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            window.setTimeout(() => {
+              if (draft.trim()) add(draft);
+            }, 120);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === ",") {
+              event.preventDefault();
+              add(draft);
+            }
+            if (event.key === "Backspace" && !draft && values.length) {
+              onChange(values.slice(0, -1));
+            }
+          }}
+          placeholder={placeholder}
+          className="h-7 min-w-[150px] flex-1 bg-transparent px-1 text-[13px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
+        />
+        <ChevronDown className="h-4 w-4 shrink-0 text-[#59645d]" />
+      </div>
+      {open && !disabled && filteredSuggestions.length ? (
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[250px] overflow-y-auto rounded-[16px] border border-[#dce3dc] bg-white p-1.5 shadow-[0_18px_44px_rgba(17,33,23,0.13)]">
+          {filteredSuggestions.map((suggestion) => (
+            <button
+              key={suggestion.toLocaleLowerCase("en")}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => add(suggestion)}
+              className="block w-full rounded-[11px] px-3 py-2 text-left text-[13px] text-[#2d372f] hover:bg-[#f2f6f2]"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function AttachmentTextarea({
+  projectId,
+  field,
   ariaLabel,
   placeholder,
+  value,
+  attachments,
+  disabled,
+  error,
+  onValueChange,
+  onAttachmentsChange,
 }: {
+  projectId: string;
+  field: ProjectInquiryAttachmentField;
   ariaLabel: string;
   placeholder: string;
+  value: string;
+  attachments: ProjectInquiryAttachmentRecord[];
+  disabled: boolean;
+  error?: string;
+  onValueChange: (value: string) => void;
+  onAttachmentsChange: (files: ProjectInquiryAttachmentRecord[]) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string>();
+
+  async function uploadFile(file: File) {
+    const requestResponse = await fetch("/api/project-assets/upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        originalFileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        fileSize: file.size,
+        assetType: "GENERAL_PROJECT_ASSET",
+      }),
+    });
+    const requestResult = (await requestResponse.json()) as {
+      attachmentId?: string;
+      uploadUrl?: string;
+      uploadExpectedHeaders?: Record<string, string>;
+      error?: string;
+    };
+    if (!requestResponse.ok || !requestResult.attachmentId || !requestResult.uploadUrl) {
+      throw new Error(requestResult.error || `Unable to prepare ${file.name}.`);
+    }
+
+    try {
+      const uploadResponse = await fetch(requestResult.uploadUrl, {
+        method: "PUT",
+        headers: requestResult.uploadExpectedHeaders ?? {
+          "Content-Type": file.type || "application/octet-stream",
+        },
+        body: file,
+      });
+      if (!uploadResponse.ok) throw new Error(`Unable to upload ${file.name}.`);
+    } catch (uploadFailure) {
+      await fetch("/api/project-assets/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attachmentId: requestResult.attachmentId, failed: true }),
+      }).catch(() => undefined);
+      throw uploadFailure;
+    }
+
+    const completionResponse = await fetch("/api/project-assets/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attachmentId: requestResult.attachmentId }),
+    });
+    const completionResult = (await completionResponse.json()) as { error?: string };
+    if (!completionResponse.ok) {
+      throw new Error(completionResult.error || `Unable to finish ${file.name}.`);
+    }
+
+    return {
+      id: requestResult.attachmentId,
+      originalFileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      fileSize: file.size,
+    } satisfies ProjectInquiryAttachmentRecord;
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files?.length || disabled || uploading) return;
+    setUploading(true);
+    setUploadError(undefined);
+    const uploaded: ProjectInquiryAttachmentRecord[] = [];
+    try {
+      for (const file of Array.from(files)) uploaded.push(await uploadFile(file));
+      onAttachmentsChange([...attachments, ...uploaded]);
+    } catch (uploadFailure) {
+      if (uploaded.length) onAttachmentsChange([...attachments, ...uploaded]);
+      const message =
+        uploadFailure instanceof Error ? uploadFailure.message : "Unable to upload the file.";
+      setUploadError(message);
+      showErrorToast("Attachment upload failed.", message);
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
   return (
-    <div className="relative">
-      <Textarea
-        aria-label={ariaLabel}
-        placeholder={placeholder}
-        className="min-h-[104px] resize-none rounded-[14px] border-[#dce3dc] bg-white pb-10 pr-12 shadow-none"
-      />
-      <button
-        type="button"
-        aria-label={`Attach a file to ${ariaLabel}`}
-        title="Attachments will be connected in a later implementation phase."
-        className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full text-[#6f7b73] transition hover:bg-[#eef5ef] hover:text-brand"
-      >
-        <Paperclip className="h-[18px] w-[18px]" />
-      </button>
+    <div>
+      <div className="relative">
+        <Textarea
+          aria-label={ariaLabel}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onValueChange(event.target.value)}
+          placeholder={placeholder}
+          className={cn(
+            "min-h-[104px] resize-none rounded-[14px] bg-white pb-10 pr-12 shadow-none",
+            error ? "border-[#c85c54]" : "border-[#dce3dc]",
+          )}
+        />
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(event) => void handleFiles(event.target.files)}
+        />
+        <button
+          type="button"
+          disabled={disabled || uploading}
+          aria-label={`Attach a file to ${ariaLabel}`}
+          onClick={() => inputRef.current?.click()}
+          className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full text-[#6f7b73] hover:bg-[#eef5ef] hover:text-brand disabled:opacity-50"
+        >
+          {uploading ? (
+            <Loader2 className="h-[18px] w-[18px] animate-spin" />
+          ) : (
+            <Paperclip className="h-[18px] w-[18px]" />
+          )}
+        </button>
+      </div>
+      {attachments.length ? (
+        <div className="mt-2 flex flex-wrap gap-2" data-attachment-field={field}>
+          {attachments.map((attachment) => (
+            <span
+              key={attachment.id}
+              className="inline-flex max-w-full items-center gap-2 rounded-[10px] border border-[#dfe6df] bg-[#f7f9f7] px-2.5 py-1.5 text-[11px] text-[#465149]"
+            >
+              <FileText className="h-3.5 w-3.5 shrink-0 text-[#377253]" />
+              <span className="max-w-[220px] truncate">{attachment.originalFileName}</span>
+              <span className="text-[#8b948d]">{formatBytes(attachment.fileSize)}</span>
+              {!disabled ? (
+                <button
+                  type="button"
+                  aria-label={`Remove ${attachment.originalFileName}`}
+                  onClick={() =>
+                    onAttachmentsChange(
+                      attachments.filter((item) => item.id !== attachment.id),
+                    )
+                  }
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {uploadError ? <p className="mt-1.5 text-[12px] text-[#b84e48]">{uploadError}</p> : null}
     </div>
   );
 }
@@ -224,36 +656,234 @@ export function StageOneProjectSummary({ project }: { project: ProjectFlowRecord
   return (
     <Card className="mt-6 rounded-[20px] border-[#dfe6df] shadow-[0_12px_30px_rgba(23,39,28,0.04)]">
       <CardContent className="grid gap-5 px-5 py-5 sm:grid-cols-2 lg:grid-cols-4 lg:px-6">
-        <StageOneSummaryItem
-          icon={<FolderKanban className="h-[18px] w-[18px]" />}
-          label="Project Name"
-          value={project.title}
-        />
-        <StageOneSummaryItem
-          icon={<UserRound className="h-[18px] w-[18px]" />}
-          label="Project Owner"
-          value={owner?.name ?? (project.ownerId ? "Restricted" : "Not assigned")}
-        />
-        <StageOneSummaryItem
-          icon={<Users className="h-[18px] w-[18px]" />}
-          label="Project Co-Owners"
-          value={coOwners.length > 0 ? coOwners.join(", ") : restrictedLabel}
-        />
-        <StageOneSummaryItem
-          icon={<BriefcaseBusiness className="h-[18px] w-[18px]" />}
-          label="Project Executors"
-          value={executors.length > 0 ? executors.join(", ") : restrictedLabel}
-        />
+        <StageOneSummaryItem icon={<FolderKanban className="h-[18px] w-[18px]" />} label="Project Name" value={project.title} />
+        <StageOneSummaryItem icon={<UserRound className="h-[18px] w-[18px]" />} label="Project Owner" value={owner?.name ?? (project.ownerId ? "Restricted" : "Not assigned")} />
+        <StageOneSummaryItem icon={<Users className="h-[18px] w-[18px]" />} label="Project Co-Owners" value={coOwners.length ? coOwners.join(", ") : restrictedLabel} />
+        <StageOneSummaryItem icon={<BriefcaseBusiness className="h-[18px] w-[18px]" />} label="Project Executors" value={executors.length ? executors.join(", ") : restrictedLabel} />
       </CardContent>
     </Card>
   );
 }
 
-export function StageOneWorkspace({ project, currentUserId }: StageOneWorkspaceProps) {
-  const [projectType, setProjectType] = useState<"external" | "internal">("external");
-  const [date, setDate] = useState(getTodayDateValue);
-  const [deadline, setDeadline] = useState("");
-  const [priority, setPriority] = useState("");
+export function StageOneWorkspace({
+  project,
+  currentUserId,
+  pageData,
+}: StageOneWorkspaceProps) {
+  const router = useRouter();
+  const saved = pageData.inquiry;
+  const [submitting, startSubmitting] = useTransition();
+  const [partyOptions, setPartyOptions] = useState(() => {
+    const options = [...pageData.partyOptions];
+    for (const savedParty of [saved?.client, saved?.finalBeneficiary]) {
+      if (
+        savedParty &&
+        !options.some(
+          (option) => option.id === savedParty.id && option.source === savedParty.source,
+        )
+      ) {
+        options.push(savedParty);
+      }
+    }
+    return options;
+  });
+  const [client, setClient] = useState(saved?.client ?? null);
+  const [finalBeneficiary, setFinalBeneficiary] = useState(
+    saved?.finalBeneficiary ?? null,
+  );
+  const [clientOrigin, setClientOrigin] = useState<"EXTERNAL" | "INTERNAL">(
+    saved?.clientOrigin ?? "EXTERNAL",
+  );
+  const [targetMarkets, setTargetMarkets] = useState(
+    saved?.targetMarkets.map((market) => market.label) ?? [],
+  );
+  const [initialBrief, setInitialBrief] = useState(saved?.initialBrief ?? "");
+  const [businessObjectives, setBusinessObjectives] = useState(
+    saved?.businessObjectives ?? "",
+  );
+  const [collaborators, setCollaborators] = useState(pageData.availableCollaborators);
+  const [collaboratorIds, setCollaboratorIds] = useState(
+    saved?.collaboratorIds ?? pageData.projectCollaboratorIds,
+  );
+  const [deliverables, setDeliverables] = useState(saved?.deliverables ?? []);
+  const [inquiryDate, setInquiryDate] = useState(saved?.inquiryDate || getTodayDateValue());
+  const [deadline, setDeadline] = useState(saved?.deadline ?? "");
+  const [legalNotes, setLegalNotes] = useState(saved?.legalNotes ?? "");
+  const [priority, setPriority] = useState<ProjectInquiryPriority | "">(
+    saved?.priority ?? "",
+  );
+  const [attachments, setAttachments] = useState(() =>
+    saved?.attachments ?? {
+      INITIAL_BRIEF: [],
+      BUSINESS_OBJECTIVES: [],
+      LEGAL_NOTES: [],
+    },
+  );
+  const [fieldErrors, setFieldErrors] = useState<ProjectInquiryFieldErrors>({});
+  const [formError, setFormError] = useState<string>();
+  const [contactTarget, setContactTarget] = useState<PartyField | null>(null);
+  const [contactForm, setContactForm] = useState<ProjectContactForm>(getDefaultContactForm);
+  const [contactErrors, setContactErrors] = useState<Partial<Record<keyof ProjectContactForm, string>>>({});
+  const [contactError, setContactError] = useState<string>();
+  const [contactSaving, setContactSaving] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteForm, setInviteForm] = useState<CollaboratorForm>(getDefaultCollaboratorForm);
+  const [inviteError, setInviteError] = useState<string>();
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const collaboratorOptions = useMemo(
+    () => collaborators.map(toUserOption),
+    [collaborators],
+  );
+  const targetMarketSuggestions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...pageData.countryOptions,
+          ...pageData.targetMarketSuggestions.map((market) => market.label),
+        ]),
+      ),
+    [pageData.countryOptions, pageData.targetMarketSuggestions],
+  );
+
+  function clearFieldError(field: keyof ProjectInquiryFieldErrors) {
+    setFieldErrors((current) => ({ ...current, [field]: undefined }));
+    setFormError(undefined);
+  }
+
+  function openContactDialog(target: PartyField) {
+    if (!pageData.canEdit) return;
+    setContactTarget(target);
+    setContactForm(getDefaultContactForm());
+    setContactErrors({});
+    setContactError(undefined);
+  }
+
+  async function handleCreateContact() {
+    if (!contactTarget) return;
+    setContactSaving(true);
+    setContactError(undefined);
+    setContactErrors({});
+    try {
+      const result = await createContactDirectoryEntryAction(project.id, contactForm);
+      if ("error" in result) {
+        setContactError(result.error);
+        setContactErrors(result.fieldErrors ?? {});
+        return;
+      }
+      setPartyOptions((current) => [...current, result.contact]);
+      if (contactTarget === "client") {
+        setClient(result.contact);
+        clearFieldError("client");
+      } else {
+        setFinalBeneficiary(result.contact);
+        clearFieldError("finalBeneficiary");
+      }
+      setContactTarget(null);
+      showSuccessToast("Contact saved to the directory.");
+    } catch {
+      setContactError("Unable to save the contact right now. Please try again.");
+    } finally {
+      setContactSaving(false);
+    }
+  }
+
+  function openInviteDialog() {
+    if (!pageData.canInviteCollaborator) {
+      showWarningToast(
+        "Invitation unavailable.",
+        "You do not have permission to invite collaborators.",
+      );
+      return;
+    }
+    setInviteForm(getDefaultCollaboratorForm());
+    setInviteError(undefined);
+    setInviteOpen(true);
+  }
+
+  async function handleInviteCollaborator() {
+    if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
+      setInviteError("Enter both collaborator name and email.");
+      return;
+    }
+    setInviteSaving(true);
+    setInviteError(undefined);
+    try {
+      const result = await saveCollaboratorAction({
+        ...inviteForm,
+        allowExistingUser: true,
+      });
+      if ("error" in result) {
+        setInviteError(result.error);
+        return;
+      }
+      setCollaborators((current) => upsertCollaborator(current, result.collaborator));
+      setCollaboratorIds((current) =>
+        current.includes(result.collaborator.id)
+          ? current
+          : [...current, result.collaborator.id],
+      );
+      clearFieldError("collaboratorIds");
+      setInviteOpen(false);
+      showSuccessToast("Collaborator invited and selected.");
+      if (result.warning) showWarningToast("Collaborator saved with a warning.", result.warning);
+    } catch {
+      setInviteError("Unable to invite the collaborator right now. Please try again.");
+    } finally {
+      setInviteSaving(false);
+    }
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!pageData.canEdit || submitting) return;
+    const nextErrors: ProjectInquiryFieldErrors = {};
+    if (!client) nextErrors.client = "Select a client.";
+    if (!finalBeneficiary) nextErrors.finalBeneficiary = "Select a final beneficiary.";
+    setFieldErrors(nextErrors);
+    setFormError(undefined);
+    if (Object.keys(nextErrors).length) {
+      showErrorToast("Review the highlighted fields.");
+      return;
+    }
+
+    const input: CompleteProjectInquiryInput = {
+      projectId: project.id,
+      client: client ? { source: client.source, id: client.id } : null,
+      finalBeneficiary: finalBeneficiary
+        ? { source: finalBeneficiary.source, id: finalBeneficiary.id }
+        : null,
+      clientOrigin,
+      targetMarkets: targetMarkets.map((label) => ({ label })),
+      initialBrief,
+      businessObjectives,
+      collaboratorIds,
+      deliverables,
+      inquiryDate,
+      deadline,
+      legalNotes,
+      priority: priority || null,
+      attachmentIds: {
+        INITIAL_BRIEF: attachments.INITIAL_BRIEF.map((attachment) => attachment.id),
+        BUSINESS_OBJECTIVES: attachments.BUSINESS_OBJECTIVES.map((attachment) => attachment.id),
+        LEGAL_NOTES: attachments.LEGAL_NOTES.map((attachment) => attachment.id),
+      },
+    };
+
+    startSubmitting(async () => {
+      const result = await completeProjectInquiryAction(input);
+      if ("error" in result) {
+        setFieldErrors(result.fieldErrors ?? {});
+        setFormError(result.error);
+        showErrorToast("Unable to complete Project Inquiry.", result.error);
+        return;
+      }
+      showSuccessToast("Project Inquiry completed.", "Stage 2 is now available.");
+      router.push(`/projects/${project.id}`);
+      router.refresh();
+    });
+  }
+
+  const readOnly = !pageData.canEdit;
 
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
@@ -266,151 +896,228 @@ export function StageOneWorkspace({ project, currentUserId }: StageOneWorkspaceP
       <h1 className="mt-3 text-[30px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[36px]">
         Stage 1 - Project Inquiry
       </h1>
-
       <StageOneProjectSummary project={project} />
 
       <Card className="mt-6 rounded-[22px] border-[#dde5de] shadow-[0_18px_44px_rgba(23,39,28,0.055)]">
         <CardContent className="px-5 py-6 sm:px-7 sm:py-7 lg:px-8">
-          <form onSubmit={(event) => event.preventDefault()}>
+          {!pageData.canEdit ? (
+            <div className="mb-6 rounded-[15px] border border-[#dce4dd] bg-[#f4f7f4] px-4 py-3 text-[13px] text-[#536057]">
+              You can view this inquiry, but you do not have permission to change it.
+            </div>
+          ) : null}
+          {formError ? (
+            <div className="mb-6 rounded-[15px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#ae4742]">
+              {formError}
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSubmit}>
             <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
-              <StageOneFormField label="Client Name" required>
-                <SearchSelectField
+              <StageOneFormField label="Client Name" required error={fieldErrors.client}>
+                <PartySelector
                   ariaLabel="Client name"
                   placeholder="Search or select client"
+                  options={partyOptions}
+                  value={client}
+                  disabled={readOnly || submitting}
+                  error={fieldErrors.client}
+                  onChange={(value) => {
+                    setClient(value);
+                    clearFieldError("client");
+                  }}
                 />
-                <ManualAction />
+                {!readOnly ? (
+                  <button type="button" onClick={() => openContactDialog("client")} className="mt-2 text-[12px] font-[650] text-[#2d7b51] hover:text-[#185d3a]">
+                    Add manually
+                  </button>
+                ) : null}
               </StageOneFormField>
 
-              <StageOneFormField label="External / Internal">
-                <div
-                  role="group"
-                  aria-label="External or internal project"
-                  className="grid h-12 grid-cols-2 overflow-hidden rounded-[14px] border border-[#dce3dc] bg-white p-1"
-                >
-                  {(["external", "internal"] as const).map((option) => {
-                    const selected = projectType === option;
-
+              <StageOneFormField label="External / Internal" error={fieldErrors.clientOrigin}>
+                <div role="group" aria-label="External or internal project" className="grid h-12 grid-cols-2 overflow-hidden rounded-[14px] border border-[#dce3dc] bg-white p-1">
+                  {(["EXTERNAL", "INTERNAL"] as const).map((option) => {
+                    const selected = clientOrigin === option;
                     return (
                       <button
                         key={option}
                         type="button"
+                        disabled={readOnly || submitting}
                         aria-pressed={selected}
-                        onClick={() => setProjectType(option)}
-                        className={`rounded-[10px] text-[13px] font-[680] capitalize transition ${
+                        onClick={() => {
+                          setClientOrigin(option);
+                          clearFieldError("clientOrigin");
+                        }}
+                        className={cn(
+                          "rounded-[10px] text-[13px] font-[680] capitalize transition disabled:cursor-not-allowed",
                           selected
                             ? "bg-[linear-gradient(90deg,#2f8d5d,#1a6341)] text-white shadow-[0_8px_18px_rgba(35,113,73,0.16)]"
-                            : "text-[#5e6961] hover:bg-[#f3f7f3]"
-                        }`}
+                            : "text-[#5e6961] hover:bg-[#f3f7f3]",
+                        )}
                       >
-                        {option}
+                        {option.toLocaleLowerCase("en")}
                       </button>
                     );
                   })}
                 </div>
               </StageOneFormField>
 
-              <StageOneFormField label="Final Beneficiary" required>
-                <SearchSelectField
+              <StageOneFormField label="Final Beneficiary" required error={fieldErrors.finalBeneficiary}>
+                <PartySelector
                   ariaLabel="Final beneficiary"
                   placeholder="Search or select beneficiary"
+                  options={partyOptions}
+                  value={finalBeneficiary}
+                  disabled={readOnly || submitting}
+                  error={fieldErrors.finalBeneficiary}
+                  onChange={(value) => {
+                    setFinalBeneficiary(value);
+                    clearFieldError("finalBeneficiary");
+                  }}
                 />
-                <ManualAction />
+                {!readOnly ? (
+                  <button type="button" onClick={() => openContactDialog("finalBeneficiary")} className="mt-2 text-[12px] font-[650] text-[#2d7b51] hover:text-[#185d3a]">
+                    Add manually
+                  </button>
+                ) : null}
               </StageOneFormField>
 
-              <StageOneFormField label="Target Market">
+              <StageOneFormField label="Target Market" error={fieldErrors.targetMarkets}>
                 <MultiEntryInput
                   ariaLabel="Add target market"
-                  initialValues={["UAE", "GCC"]}
+                  values={targetMarkets}
+                  suggestions={targetMarketSuggestions}
                   placeholder="Countries or regions"
+                  disabled={readOnly || submitting}
+                  error={fieldErrors.targetMarkets}
+                  onChange={(values) => {
+                    setTargetMarkets(values);
+                    clearFieldError("targetMarkets");
+                  }}
                 />
-                <ManualAction />
+                {!readOnly ? <p className="mt-2 text-[11px] text-[#718078]">Choose a country or type a custom region.</p> : null}
               </StageOneFormField>
 
-              <StageOneFormField label="Initial Brief">
+              <StageOneFormField label="Initial Brief" error={fieldErrors.initialBrief || fieldErrors.attachments}>
                 <AttachmentTextarea
+                  projectId={project.id}
+                  field={attachmentFields.initialBrief}
                   ariaLabel="Initial brief"
                   placeholder="Provide an overview or background of the project"
+                  value={initialBrief}
+                  attachments={attachments.INITIAL_BRIEF}
+                  disabled={readOnly || submitting}
+                  error={fieldErrors.initialBrief || fieldErrors.attachments}
+                  onValueChange={(value) => {
+                    setInitialBrief(value);
+                    clearFieldError("initialBrief");
+                  }}
+                  onAttachmentsChange={(files) => setAttachments((current) => ({ ...current, INITIAL_BRIEF: files }))}
                 />
               </StageOneFormField>
 
-              <StageOneFormField label="Key Business Objectives">
+              <StageOneFormField label="Key Business Objectives" error={fieldErrors.businessObjectives || fieldErrors.attachments}>
                 <AttachmentTextarea
+                  projectId={project.id}
+                  field={attachmentFields.businessObjectives}
                   ariaLabel="Key business objectives"
                   placeholder="Outline the key goals and objectives of this project"
+                  value={businessObjectives}
+                  attachments={attachments.BUSINESS_OBJECTIVES}
+                  disabled={readOnly || submitting}
+                  error={fieldErrors.businessObjectives || fieldErrors.attachments}
+                  onValueChange={(value) => {
+                    setBusinessObjectives(value);
+                    clearFieldError("businessObjectives");
+                  }}
+                  onAttachmentsChange={(files) => setAttachments((current) => ({ ...current, BUSINESS_OBJECTIVES: files }))}
                 />
               </StageOneFormField>
 
-              <StageOneFormField label="Collaborators">
-                <SearchSelectField
-                  ariaLabel="Collaborators"
-                  placeholder="Search or select collaborators"
-                />
-                <ManualAction />
+              <StageOneFormField label="Collaborators" error={fieldErrors.collaboratorIds}>
+                <div className={cn((readOnly || submitting) && "pointer-events-none opacity-70")}>
+                  <ProjectUserSelector
+                    users={collaboratorOptions}
+                    selectedIds={collaboratorIds}
+                    onChange={(ids) => {
+                      setCollaboratorIds(ids);
+                      clearFieldError("collaboratorIds");
+                    }}
+                    mode="multiple"
+                    placeholder="Search or select collaborators"
+                    ariaLabel="Collaborators"
+                    error={fieldErrors.collaboratorIds}
+                  />
+                </div>
+                {!readOnly ? (
+                  <button type="button" disabled={submitting} onClick={openInviteDialog} className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-[650] text-[#2d7b51] hover:text-[#185d3a] disabled:opacity-50">
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Invite collaborator
+                  </button>
+                ) : null}
               </StageOneFormField>
 
-              <StageOneFormField label="Deliverables">
+              <StageOneFormField label="Deliverables" error={fieldErrors.deliverables}>
                 <MultiEntryInput
                   ariaLabel="Add deliverable"
-                  initialValues={["Packaging Artwork", "Signature Artwork"]}
+                  values={deliverables}
+                  suggestions={pageData.deliverableSuggestions}
                   placeholder="Add deliverables"
+                  disabled={readOnly || submitting}
+                  error={fieldErrors.deliverables}
+                  onChange={(values) => {
+                    setDeliverables(values);
+                    clearFieldError("deliverables");
+                  }}
                 />
-                <ManualAction label="Add more" />
+                {!readOnly ? <p className="mt-2 text-[11px] text-[#718078]">Select a previous value or type a new deliverable.</p> : null}
               </StageOneFormField>
 
-              <StageOneFormField label="Date">
-                <AppDatePicker
-                  value={date}
-                  onChange={setDate}
-                  placeholder="Select date"
-                  triggerClassName="h-12 w-full justify-between rounded-[14px] border border-[#dce3dc] bg-white px-4 text-left text-[13px] font-normal text-[#263029] shadow-none hover:bg-white"
-                />
+              <StageOneFormField label="Date" error={fieldErrors.inquiryDate}>
+                <AppDatePicker value={inquiryDate} onChange={(value) => { setInquiryDate(value); clearFieldError("inquiryDate"); }} disabled={readOnly || submitting} placeholder="Select date" triggerClassName="h-12 w-full justify-between rounded-[14px] border border-[#dce3dc] bg-white px-4 text-left text-[13px] font-normal text-[#263029] shadow-none hover:bg-white" />
               </StageOneFormField>
 
-              <StageOneFormField label="Deadline">
-                <AppDatePicker
-                  value={deadline}
-                  onChange={setDeadline}
-                  placeholder="Select deadline"
-                  triggerClassName="h-12 w-full justify-between rounded-[14px] border border-[#dce3dc] bg-white px-4 text-left text-[13px] font-normal text-[#263029] shadow-none hover:bg-white"
-                />
+              <StageOneFormField label="Deadline" error={fieldErrors.deadline}>
+                <AppDatePicker value={deadline} onChange={(value) => { setDeadline(value); clearFieldError("deadline"); }} disabled={readOnly || submitting} placeholder="Select deadline" triggerClassName="h-12 w-full justify-between rounded-[14px] border border-[#dce3dc] bg-white px-4 text-left text-[13px] font-normal text-[#263029] shadow-none hover:bg-white" />
               </StageOneFormField>
 
-              <StageOneFormField label="Legal Notes">
+              <StageOneFormField label="Legal Notes" error={fieldErrors.legalNotes || fieldErrors.attachments}>
                 <AttachmentTextarea
+                  projectId={project.id}
+                  field={attachmentFields.legalNotes}
                   ariaLabel="Legal notes"
                   placeholder="Add any legal requirements or special considerations"
+                  value={legalNotes}
+                  attachments={attachments.LEGAL_NOTES}
+                  disabled={readOnly || submitting}
+                  error={fieldErrors.legalNotes || fieldErrors.attachments}
+                  onValueChange={(value) => { setLegalNotes(value); clearFieldError("legalNotes"); }}
+                  onAttachmentsChange={(files) => setAttachments((current) => ({ ...current, LEGAL_NOTES: files }))}
                 />
               </StageOneFormField>
 
-              <StageOneFormField label="Priority">
-                <Select value={priority} onValueChange={setPriority}>
+              <StageOneFormField label="Priority" error={fieldErrors.priority}>
+                <Select disabled={readOnly || submitting} value={priority} onValueChange={(value) => { setPriority(value as ProjectInquiryPriority); clearFieldError("priority"); }}>
                   <SelectTrigger className="h-12 rounded-[14px] border-[#dce3dc] bg-white px-4 shadow-none">
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
                   </SelectContent>
                 </Select>
               </StageOneFormField>
             </div>
 
             <div className="mt-8 flex flex-col gap-3 border-t border-[#edf1ed] pt-6 sm:flex-row sm:items-center">
-              <Button
-                type="button"
-                title="Stage progression will be connected after the Stage 1 backend is implemented."
-                className="min-w-[170px] rounded-[13px]"
-              >
-                Next Stage
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button
-                asChild
-                type="button"
-                variant="outline"
-                className="min-w-[150px] rounded-[13px] shadow-none"
-              >
+              {pageData.canEdit ? (
+                <Button type="submit" disabled={submitting} className="min-w-[170px] rounded-[13px]">
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {submitting ? "Completing..." : "Next Stage"}
+                  {!submitting ? <ArrowRight className="h-4 w-4" /> : null}
+                </Button>
+              ) : null}
+              <Button asChild type="button" variant="outline" className="min-w-[150px] rounded-[13px] shadow-none">
                 <Link href={`/projects/${project.id}`}>
                   <ListChecks className="h-4 w-4" />
                   All Stages
@@ -420,6 +1127,36 @@ export function StageOneWorkspace({ project, currentUserId }: StageOneWorkspaceP
           </form>
         </CardContent>
       </Card>
+
+      <ProjectContactDialog
+        isOpen={contactTarget !== null}
+        title={contactTarget === "client" ? "Add client manually" : "Add final beneficiary manually"}
+        form={contactForm}
+        fieldErrors={contactErrors}
+        error={contactError}
+        saving={contactSaving}
+        onClose={() => { if (!contactSaving) setContactTarget(null); }}
+        onSubmit={() => void handleCreateContact()}
+        onChange={(field, value) => {
+          setContactForm((current) => ({ ...current, [field]: value }));
+          setContactErrors((current) => ({ ...current, [field]: undefined }));
+          setContactError(undefined);
+        }}
+      />
+
+      <CollaboratorDialog
+        isOpen={inviteOpen}
+        mode="invite"
+        form={inviteForm}
+        error={inviteError}
+        saving={inviteSaving}
+        onClose={() => { if (!inviteSaving) setInviteOpen(false); }}
+        onSubmit={() => void handleInviteCollaborator()}
+        onChange={(field, value) => {
+          setInviteForm((current) => ({ ...current, [field]: value }));
+          setInviteError(undefined);
+        }}
+      />
     </section>
   );
 }
@@ -435,11 +1172,7 @@ export function StageOneLoadingShell() {
           {Array.from({ length: 12 }).map((_, index) => (
             <div key={index}>
               <Skeleton className="h-3.5 w-32 rounded-full" />
-              <Skeleton
-                className={`mt-2 w-full rounded-[14px] ${
-                  index === 4 || index === 5 || index === 10 ? "h-[104px]" : "h-12"
-                }`}
-              />
+              <Skeleton className={cn("mt-2 w-full rounded-[14px]", index === 4 || index === 5 || index === 10 ? "h-[104px]" : "h-12")} />
             </div>
           ))}
         </CardContent>
