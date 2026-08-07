@@ -60,6 +60,7 @@ export async function canUseChatAiTools(
         stages: {
           where: {
             id: stageId || "__stage_context_not_supplied__",
+            isTasker: false,
           },
           select: {
             id: true,

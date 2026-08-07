@@ -742,6 +742,7 @@ export async function getDashboardDeadlines(
   const stageDeadlines = await withPrismaRetry(() =>
     prisma.projectStage.findMany({
       where: {
+        isTasker: false,
         status: {
           not: StageStatus.COMPLETED,
         },

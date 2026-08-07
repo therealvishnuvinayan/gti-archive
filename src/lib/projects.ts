@@ -1083,6 +1083,7 @@ function buildSyntheticStages(project: ProjectWithCreator): ProjectStageWithStar
     startedById: null,
     completedAt: null,
     invoiceRequired: !isInternalExecution,
+    isTasker: false,
     plannedStartAt: project.startDate,
     plannedDueAt: project.endDate,
     status: completed
@@ -1096,9 +1097,29 @@ function buildSyntheticStages(project: ProjectWithCreator): ProjectStageWithStar
   }));
 }
 
-function getProjectStages(project: ProjectWithCreator) {
-  if (project.stages.length > 0) {
-    return [...project.stages].sort((left, right) => left.order - right.order);
+type ProjectStageSelection = {
+  taskerStageIds?: readonly string[];
+};
+
+function getProjectStages(
+  project: ProjectWithCreator,
+  selection?: ProjectStageSelection,
+) {
+  const selectedTaskerStageIds = selection?.taskerStageIds
+    ? new Set(selection.taskerStageIds)
+    : null;
+  const persistedStages = project.stages.filter((stage) =>
+    selectedTaskerStageIds
+      ? stage.isTasker && selectedTaskerStageIds.has(stage.id)
+      : !stage.isTasker,
+  );
+
+  if (persistedStages.length > 0) {
+    return [...persistedStages].sort((left, right) => left.order - right.order);
+  }
+
+  if (selectedTaskerStageIds) {
+    return [];
   }
 
   return project.stageCount === null ? [] : buildSyntheticStages(project);
@@ -1236,6 +1257,7 @@ function mapProjectToFlow(
   project: ProjectWithCreator,
   currentUser: ProjectAccessUser,
   favoritedAttachmentIds?: ReadonlySet<string>,
+  stageSelection?: ProjectStageSelection,
 ): ProjectFlowRecord {
   const creatorName = getCreatorName(project.createdBy);
   const rawExecutorRecords = getProjectExecutorRecords(project);
@@ -1270,7 +1292,7 @@ function mapProjectToFlow(
   const editingLocked = Boolean(
     project.completedAt || project.archivedAt || isProjectStatusCompleted(project.status),
   );
-  const stages = getProjectStages(project);
+  const stages = getProjectStages(project, stageSelection);
   const allStagesCompleted =
     stages.length > 0 && stages.every((stage) => stage.status === StageStatus.COMPLETED);
   const currentStage =
@@ -3108,7 +3130,9 @@ export async function getProjectShellById(
 export async function getProjectChatShellById(
   id: string,
   currentUser: ProjectAccessUser,
+  options: ProjectStageSelection = {},
 ) {
+  const taskerStageIds = [...(options.taskerStageIds ?? [])].sort();
   const project = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
@@ -3248,7 +3272,13 @@ export async function getProjectChatShellById(
           },
         }),
       ),
-    ["project-chat-shell-by-id-v2", id, currentUser.id, currentUser.role],
+    [
+      "project-chat-shell-by-id-v3",
+      id,
+      currentUser.id,
+      currentUser.role,
+      taskerStageIds.join(",") || "workflow-stages",
+    ],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();
 
@@ -3277,6 +3307,7 @@ export async function getProjectChatShellById(
     },
     currentUser,
     favoritedAttachmentIds,
+    taskerStageIds.length > 0 ? { taskerStageIds } : undefined,
   );
 }
 

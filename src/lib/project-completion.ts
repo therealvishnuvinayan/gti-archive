@@ -780,6 +780,7 @@ async function getProjectCompletionProject(projectId: string) {
         archivedAt: true,
         completedAt: true,
         stages: {
+          where: { isTasker: false },
           orderBy: {
             order: "asc",
           },
@@ -1989,6 +1990,7 @@ export async function finalizeProjectCompletionDocumentUpload(
             },
           },
           stages: {
+            where: { isTasker: false },
             select: {
               status: true,
             },

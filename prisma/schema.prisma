@@ -302,6 +302,7 @@ model User {
   researchWorkspaces                  ProjectResearchWorkspace[]           @relation("ProjectResearchWorkspaceOwner")
   createdResearchFolders              ProjectResearchFolder[]              @relation("ProjectResearchFolderCreator")
   addedResearchFolderFiles            ProjectResearchFolderFile[]          @relation("ProjectResearchFolderFileAdder")
+  createdConceptFolders               ProjectConceptFolder[]               @relation("ProjectConceptFolderCreator")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -434,6 +435,7 @@ model Project {
   workflowStages         ProjectWorkflowStage[]
   inquiry                ProjectInquiry?
   researchWorkspaces     ProjectResearchWorkspace[]
+  conceptFolders         ProjectConceptFolder[]
   completedAt            DateTime?
   archivedAt             DateTime?
   createdAt              DateTime                    @default(now())
@@ -624,6 +626,26 @@ model ProjectResearchFolderFile {
   @@unique([folderId, attachmentId])
   @@index([folderId, createdAt])
   @@index([addedById])
+}
+
+model ProjectConceptFolder {
+  id               String                  @id @default(cuid())
+  projectId        String
+  project          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workflowStageKey ProjectWorkflowStageKey @default(CONCEPT_CREATION)
+  taskerStageId    String                  @unique
+  taskerStage      ProjectStage            @relation(fields: [taskerStageId], references: [id], onDelete: Cascade)
+  name             String
+  normalizedName   String
+  sortOrder        Int                     @default(1)
+  createdById      String?
+  createdBy        User?                   @relation("ProjectConceptFolderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@unique([projectId, workflowStageKey, normalizedName])
+  @@index([projectId, workflowStageKey, sortOrder])
+  @@index([createdById])
 }
 
 model ProjectCategory {
@@ -856,6 +878,7 @@ model ProjectStage {
   plannedStartAt     DateTime?
   plannedDueAt       DateTime?
   invoiceRequired    Boolean               @default(true)
+  isTasker           Boolean               @default(false)
   actualStartedAt    DateTime?
   startedById        String?
   startedBy          User?                 @relation("ProjectStageStarter", fields: [startedById], references: [id], onDelete: SetNull)
@@ -868,11 +891,13 @@ model ProjectStage {
   invoiceRequests    StageInvoiceRequest[]
   archives           ProjectArchive[]      @relation("ProjectArchiveFinalStage")
   activityLogs       ProjectActivityLog[]
+  conceptFolder      ProjectConceptFolder?
   completedAt        DateTime?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
   @@index([projectId, order])
+  @@index([projectId, isTasker, order])
   @@index([startedById])
 }
 

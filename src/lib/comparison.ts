@@ -327,7 +327,11 @@ async function getVisibleSubmissionCaptionContext(
     throw new Error("Submission not found.");
   }
 
-  const project = await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(
+    user,
+    attachment.projectId,
+    attachment.stageId,
+  );
 
   if (!hasProjectPermission(user, project, "file.view")) {
     throw new Error("You do not have permission to view this submission.");
@@ -463,6 +467,8 @@ async function assertCanCreateSubmissionCaption(
     projectId: attachment.projectId,
     stage: {
       id: stage.id,
+      isTasker: stage.isTasker,
+      conceptFolder: stage.conceptFolder,
       actualStartedAt: stage.actualStartedAt,
       status: stage.status,
       project,
@@ -689,7 +695,11 @@ export async function createComparisonComment(
 ) {
   const body = assertCaptionBodyAndPosition(input);
 
-  const project = await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(
+    user,
+    input.projectId,
+    input.stageId,
+  );
   const stage = project.stages.find((item) => item.id === input.stageId);
 
   if (!stage) {
@@ -700,6 +710,8 @@ export async function createComparisonComment(
     projectId: input.projectId,
     stage: {
       id: stage.id,
+      isTasker: stage.isTasker,
+      conceptFolder: stage.conceptFolder,
       actualStartedAt: stage.actualStartedAt,
       status: stage.status,
       project,

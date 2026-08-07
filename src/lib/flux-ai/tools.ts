@@ -130,6 +130,9 @@ const fluxProjectSelect = {
     },
   },
   stages: {
+    where: {
+      isTasker: false,
+    },
     orderBy: {
       order: "asc",
     },
@@ -1880,6 +1883,7 @@ function buildFluxAISafeTextSearchWhere(user: PermissionUser, searchValue: strin
       {
         stages: {
           some: {
+            isTasker: false,
             name: containsInsensitive(searchValue),
           },
         },
@@ -2159,6 +2163,7 @@ function buildFluxAIProjectSearchWhere(
     clauses.push({
       stages: {
         some: {
+          isTasker: false,
           status: input.stageStatus,
         },
       },
@@ -2756,6 +2761,7 @@ export async function getOverdueStagesForFluxAI(
           {
             stages: {
               some: {
+                isTasker: false,
                 status: {
                   not: StageStatus.COMPLETED,
                 },

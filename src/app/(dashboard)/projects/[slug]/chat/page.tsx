@@ -227,10 +227,12 @@ async function ProjectChatDeferredContent({
 async function ProjectChatShellContent({
   slug,
   stage,
+  taskerStageId,
   userPromise,
 }: {
   slug: string;
   stage?: string;
+  taskerStageId?: string;
   userPromise: Promise<ProjectChatPageUser>;
 }) {
   const pageStartedAt = getStageChatTimingStart();
@@ -238,7 +240,11 @@ async function ProjectChatShellContent({
   const user = await userPromise;
   logStageChatTiming("init", "auth/session", authStartedAt);
   const projectLookupStartedAt = getStageChatTimingStart();
-  const project = await getProjectChatShellById(slug, user);
+  const project = await getProjectChatShellById(
+    slug,
+    user,
+    taskerStageId ? { taskerStageIds: [taskerStageId] } : undefined,
+  );
   logStageChatTiming("init", "project chat shell lookup", projectLookupStartedAt, {
     projectId: slug,
   });
@@ -296,20 +302,43 @@ export default async function ProjectChatPage({
   const pageStartedAt = getStageChatTimingStart();
   const { slug } = await params;
   const { stage } = await searchParams;
-  const userPromise = requireUser();
   logStageChatTiming("init", "page params", pageStartedAt, { slug, stage });
+
+  return <ProjectChatRoute slug={slug} stage={stage} />;
+}
+
+export function ProjectChatRoute({
+  slug,
+  stage,
+  taskerStageId,
+  backHref,
+  backLabel,
+}: {
+  slug: string;
+  stage?: string;
+  taskerStageId?: string;
+  backHref?: string;
+  backLabel?: string;
+}) {
+  const userPromise = requireUser();
 
   return (
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search for Projects...",
-        leadingContent: <ProjectBackButton href={`/projects/${slug}`} />,
+        leadingContent: (
+          <ProjectBackButton
+            href={backHref ?? `/projects/${slug}`}
+            label={backLabel}
+          />
+        ),
       }}
     >
       <Suspense fallback={<ProjectChatLoadingShell stageId={stage} />}>
         <ProjectChatShellContent
           slug={slug}
           stage={stage}
+          taskerStageId={taskerStageId}
           userPromise={userPromise}
         />
       </Suspense>

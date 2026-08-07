@@ -16,6 +16,7 @@ import {
   isStageChatRealtimeConfigured,
 } from "@/lib/realtime/server";
 import { getLockedStageInfo } from "@/lib/stage-locking";
+import { canOpenProjectStageChatContainer } from "@/lib/workflow-stage-access";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -197,6 +198,12 @@ export async function GET(request: Request) {
       select: {
         id: true,
         projectId: true,
+        isTasker: true,
+        conceptFolder: {
+          select: {
+            workflowStageKey: true,
+          },
+        },
         project: {
           select: {
             ownerId: true,
@@ -209,6 +216,12 @@ export async function GET(request: Request) {
             collaborators: {
               select: {
                 userId: true,
+              },
+            },
+            workflowStages: {
+              select: {
+                stageKey: true,
+                status: true,
               },
             },
             stages: {
@@ -240,6 +253,20 @@ export async function GET(request: Request) {
   }
 
   if (
+    !canOpenProjectStageChatContainer({
+      user,
+      isTasker: stage.isTasker,
+      conceptFolder: stage.conceptFolder,
+      workflowStages: stage.project.workflowStages,
+    })
+  ) {
+    return NextResponse.json(
+      { error: "This workflow stage is locked." },
+      { status: 403 },
+    );
+  }
+
+  if (
     !hasProjectPermission(user, stage.project, "project.view") ||
     !hasProjectPermission(user, stage.project, "chat.view")
   ) {
@@ -255,7 +282,9 @@ export async function GET(request: Request) {
       { status: 403 },
     );
   }
-  const lockedStageInfo = getLockedStageInfo(stage.project.stages, activeStageId);
+  const lockedStageInfo = stage.isTasker
+    ? null
+    : getLockedStageInfo(stage.project.stages, activeStageId);
 
   if (lockedStageInfo) {
     logAblyToken("token denied", {

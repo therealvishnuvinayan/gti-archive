@@ -7,6 +7,8 @@ import {
   Prisma,
   ProjectExecutionType,
   ProjectRevisionStatus,
+  ProjectWorkflowStageKey,
+  ProjectWorkflowStageStatus,
   StageStatus,
   SubmissionReviewStatus,
   UserRole,
@@ -46,6 +48,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { logChatSendFastTiming, logStageChatTiming } from "@/lib/stage-chat-timing";
 import { getLockedStageInfo } from "@/lib/stage-locking";
+import { canOpenProjectStageChatContainer } from "@/lib/workflow-stage-access";
 import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   buildProjectAssetKey,
@@ -837,7 +840,11 @@ function mapComparisonEntry(
   };
 }
 
-async function getProjectAccessRecord(projectId: string, userId?: string) {
+async function getProjectAccessRecord(
+  projectId: string,
+  userId?: string,
+  selectedStageId?: string,
+) {
   return withPrismaRetry(() =>
     prisma.project.findUnique({
       where: { id: projectId },
@@ -876,13 +883,30 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
               select: projectCollaboratorPermissionSelect,
             }
           : false,
+        workflowStages: {
+          select: {
+            stageKey: true,
+            status: true,
+          },
+        },
         stages: {
+          where: selectedStageId
+            ? {
+                OR: [{ isTasker: false }, { id: selectedStageId }],
+              }
+            : { isTasker: false },
           orderBy: {
             order: "asc",
           },
           select: {
             id: true,
             name: true,
+            isTasker: true,
+            conceptFolder: {
+              select: {
+                workflowStageKey: true,
+              },
+            },
             budget: true,
             invoiceRequired: true,
             actualStartedAt: true,
@@ -900,6 +924,7 @@ export type ProjectStageChatAccessRecord = ProjectPermissionContext & {
   id: string;
   stages: Array<{
     id: string;
+    isTasker?: boolean;
     name?: string | null;
     order?: number | null;
     status?: StageStatus | string | null;
@@ -915,7 +940,7 @@ export type ProjectStageChatAccessRecord = ProjectPermissionContext & {
 async function getStageChatAccessRecord(
   projectId: string,
   stageId: string,
-  userId: string,
+  user: AccessUser,
 ): Promise<ProjectStageChatAccessRecord | null> {
   const stage = await withPrismaRetry(() =>
     prisma.projectStage.findUnique({
@@ -925,6 +950,12 @@ async function getStageChatAccessRecord(
       select: {
         id: true,
         projectId: true,
+        isTasker: true,
+        conceptFolder: {
+          select: {
+            workflowStageKey: true,
+          },
+        },
         _count: {
           select: {
             revisions: true,
@@ -940,7 +971,7 @@ async function getStageChatAccessRecord(
             },
             executors: {
               where: {
-                userId,
+                userId: user.id,
               },
               select: {
                 userId: true,
@@ -948,16 +979,26 @@ async function getStageChatAccessRecord(
             },
             collaborators: {
               where: {
-                userId,
+                userId: user.id,
               },
               select: projectCollaboratorPermissionSelect,
             },
+            workflowStages: {
+              select: {
+                stageKey: true,
+                status: true,
+              },
+            },
             stages: {
+              where: {
+                OR: [{ isTasker: false }, { id: stageId }],
+              },
               orderBy: {
                 order: "asc",
               },
               select: {
                 id: true,
+                isTasker: true,
                 name: true,
                 order: true,
                 status: true,
@@ -979,26 +1020,44 @@ async function getStageChatAccessRecord(
     return null;
   }
 
+  if (
+    !canOpenProjectStageChatContainer({
+      user,
+      isTasker: stage.isTasker,
+      conceptFolder: stage.conceptFolder,
+      workflowStages: stage.project.workflowStages,
+    })
+  ) {
+    return null;
+  }
+
   return {
     id: stage.project.id,
     ownerId: stage.project.ownerId,
     coOwners: stage.project.coOwners,
     executors: stage.project.executors,
     collaborators: stage.project.collaborators,
-    stages: stage.project.stages.map((projectStage) => ({
-      id: projectStage.id,
-      name: projectStage.name,
-      order: projectStage.order,
-      status: projectStage.status,
-      revisionCount:
-        projectStage.id === stage.id
-          ? stage._count.revisions
-          : projectStage._count.revisions,
-      comparisonCount:
-        projectStage.id === stage.id
-          ? stage._count.comparisonComments
-          : projectStage._count.comparisonComments,
-    })),
+    stages: stage.project.stages
+      .filter((projectStage) =>
+        stage.isTasker
+          ? projectStage.id === stage.id
+          : !projectStage.isTasker,
+      )
+      .map((projectStage) => ({
+        id: projectStage.id,
+        isTasker: projectStage.isTasker,
+        name: projectStage.name,
+        order: projectStage.order,
+        status: projectStage.status,
+        revisionCount:
+          projectStage.id === stage.id
+            ? stage._count.revisions
+            : projectStage._count.revisions,
+        comparisonCount:
+          projectStage.id === stage.id
+            ? stage._count.comparisonComments
+            : projectStage._count.comparisonComments,
+      })),
   };
 }
 
@@ -1011,11 +1070,31 @@ function isProjectExecutorUser(
   return isProjectExecutor({ id: userId }, project);
 }
 
-export async function assertProjectAccess(user: AccessUser, projectId: string) {
-  const project = await getProjectAccessRecord(projectId, user.id);
+export async function assertProjectAccess(
+  user: AccessUser,
+  projectId: string,
+  selectedStageId?: string,
+) {
+  const project = await getProjectAccessRecord(projectId, user.id, selectedStageId);
 
   if (!project) {
     throw new Error("Project not found.");
+  }
+
+  const selectedStage = selectedStageId
+    ? project.stages.find((stage) => stage.id === selectedStageId)
+    : null;
+
+  if (
+    selectedStage &&
+    !canOpenProjectStageChatContainer({
+      user,
+      isTasker: selectedStage.isTasker,
+      conceptFolder: selectedStage.conceptFolder,
+      workflowStages: project.workflowStages,
+    })
+  ) {
+    throw new Error("This workflow stage is locked.");
   }
 
   if (hasProjectPermission(user, project, "project.view")) {
@@ -1050,10 +1129,16 @@ function assertProjectWorkflowPermission(
 type StageChatWriteProjectContext = ProjectPermissionContext & {
   archivedAt?: Date | null;
   status: Parameters<typeof isProjectStatusCompleted>[0];
+  workflowStages: Array<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+  }>;
 };
 
 type StageChatWriteStageContext = {
   id: string;
+  isTasker: boolean;
+  conceptFolder: { workflowStageKey: ProjectWorkflowStageKey } | null;
   actualStartedAt: Date | null;
   status: StageStatus;
   project: StageChatWriteProjectContext;
@@ -1071,6 +1156,17 @@ export async function assertStageChatWriteAccess(
 ) {
   const permissionKey = input.permissionKey ?? "chat.createComment";
   const project = assertProjectAccessFromContext(user, input.stage.project);
+
+  if (
+    !canOpenProjectStageChatContainer({
+      user,
+      isTasker: input.stage.isTasker,
+      conceptFolder: input.stage.conceptFolder,
+      workflowStages: input.stage.project.workflowStages,
+    })
+  ) {
+    throw new Error("This workflow stage is locked.");
+  }
 
   assertProjectWorkflowPermission(
     user,
@@ -1381,7 +1477,7 @@ export async function getProjectStageChatMessages(
   const project =
     options.projectAccessRecord ??
     (preferredStageId
-      ? await getStageChatAccessRecord(projectId, preferredStageId, user.id)
+      ? await getStageChatAccessRecord(projectId, preferredStageId, user)
       : await getProjectAccessRecord(projectId, user.id));
   logStageChatTiming("init", "project lookup", projectLookupStartedAt, {
     projectId,
@@ -1932,7 +2028,7 @@ async function assertStageChatRealtimeAccess(
   projectId: string,
   stageId: string,
 ) {
-  const project = await getStageChatAccessRecord(projectId, stageId, user.id);
+  const project = await getStageChatAccessRecord(projectId, stageId, user);
 
   if (!project) {
     throw new Error("Project not found.");
@@ -2422,7 +2518,17 @@ export async function getProjectStageHistory(
   preferredStageId?: string | null,
   requiredPermissionKey: PermissionKey = "chat.view",
 ): Promise<StageHistoryRecord> {
-  const project = await assertProjectAccess(user, projectId);
+  const project = preferredStageId
+    ? await getStageChatAccessRecord(projectId, preferredStageId, user)
+    : await assertProjectAccess(user, projectId);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!hasProjectPermission(user, project, "project.view")) {
+    throw new Error("You do not have access to this project.");
+  }
   assertProjectWorkflowPermission(
     user,
     project,
@@ -2697,7 +2803,7 @@ export async function createStageRevision(
     summary?: string;
   },
 ) {
-  const project = await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(user, input.projectId, input.stageId);
   const stage = project.stages.find((item) => item.id === input.stageId);
 
   if (!stage) {
@@ -2802,6 +2908,10 @@ export async function createStageComment(
       },
       select: {
         id: true,
+        isTasker: true,
+        conceptFolder: {
+          select: { workflowStageKey: true },
+        },
         actualStartedAt: true,
         status: true,
         project: {
@@ -2820,6 +2930,9 @@ export async function createStageComment(
               select: projectStatusSelect,
             },
             archivedAt: true,
+            workflowStages: {
+              select: { stageKey: true, status: true },
+            },
             collaborators: {
               where: {
                 userId: user.id,
@@ -3000,6 +3113,10 @@ export async function createStageTextCommentFast(
       select: {
         id: true,
         projectId: true,
+        isTasker: true,
+        conceptFolder: {
+          select: { workflowStageKey: true },
+        },
         actualStartedAt: true,
         status: true,
         project: {
@@ -3032,6 +3149,9 @@ export async function createStageTextCommentFast(
               },
             },
             archivedAt: true,
+            workflowStages: {
+              select: { stageKey: true, status: true },
+            },
             collaborators: {
               where: {
                 userId: user.id,
@@ -3452,6 +3572,10 @@ export async function prepareStageCommentUploads(
       },
       select: {
         id: true,
+        isTasker: true,
+        conceptFolder: {
+          select: { workflowStageKey: true },
+        },
         actualStartedAt: true,
         status: true,
         project: {
@@ -3467,6 +3591,9 @@ export async function prepareStageCommentUploads(
               select: projectStatusSelect,
             },
             archivedAt: true,
+            workflowStages: {
+              select: { stageKey: true, status: true },
+            },
             collaborators: {
               where: {
                 userId: user.id,
@@ -3734,6 +3861,10 @@ export async function finalizePreparedStageCommentUploads(
         stage: {
           select: {
             id: true,
+            isTasker: true,
+            conceptFolder: {
+              select: { workflowStageKey: true },
+            },
             actualStartedAt: true,
             status: true,
             project: {
@@ -3752,6 +3883,9 @@ export async function finalizePreparedStageCommentUploads(
                   select: projectStatusSelect,
                 },
                 archivedAt: true,
+                workflowStages: {
+                  select: { stageKey: true, status: true },
+                },
                 collaborators: {
                   where: {
                     userId: user.id,
@@ -3908,7 +4042,7 @@ export async function startProjectStageWork(
     stageId: string;
   },
 ) {
-  const project = await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(user, input.projectId, input.stageId);
   const stage = project.stages.find((item) => item.id === input.stageId);
 
   if (!stage) {
@@ -3991,7 +4125,11 @@ export async function completeProjectStage(
     stageId: string;
   },
 ) {
-  const project = await getProjectAccessRecord(input.projectId);
+  const project = await getProjectAccessRecord(
+    input.projectId,
+    undefined,
+    input.stageId,
+  );
 
   if (!project) {
     throw new Error("Project not found.");
@@ -4014,7 +4152,13 @@ export async function completeProjectStage(
     throw new Error("Stage not found.");
   }
 
-  const orderedStages = [...project.stages].sort((left, right) => left.order - right.order);
+  if (stage.isTasker) {
+    throw new Error("Concept taskers do not use the stage completion flow.");
+  }
+
+  const orderedStages = project.stages
+    .filter((item) => !item.isTasker)
+    .sort((left, right) => left.order - right.order);
   const stageIndex = orderedStages.findIndex((item) => item.id === stage.id);
   const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
 
@@ -4371,6 +4515,7 @@ export async function reviewProjectRevision(
         const orderedStages = await tx.projectStage.findMany({
           where: {
             projectId: revision.projectId,
+            isTasker: false,
           },
           orderBy: {
             order: "asc",
@@ -4753,6 +4898,11 @@ export async function requestAttachmentUpload(
           id: true,
           stage: {
             select: {
+              id: true,
+              isTasker: true,
+              conceptFolder: {
+                select: { workflowStageKey: true },
+              },
               actualStartedAt: true,
               status: true,
             },
@@ -4771,6 +4921,9 @@ export async function requestAttachmentUpload(
                 select: projectStatusSelect,
               },
               archivedAt: true,
+              workflowStages: {
+                select: { stageKey: true, status: true },
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -4788,6 +4941,26 @@ export async function requestAttachmentUpload(
     }
 
     stageSubmissionProjectCategory = revision.project.category;
+
+    try {
+      await assertStageChatWriteAccess(user, {
+        projectId: input.projectId,
+        stage: {
+          ...revision.stage,
+          project: revision.project,
+        },
+        permissionKey: getUploadPermissionKey(input.assetType),
+        permissionMessage:
+          "Only a project executor can upload submissions for review.",
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Only a project executor can upload submissions for review.",
+      };
+    }
 
     const project = assertProjectAccessFromContext(user, revision.project);
 
@@ -4935,6 +5108,11 @@ export async function requestAttachmentUpload(
           id: true,
           stage: {
             select: {
+              id: true,
+              isTasker: true,
+              conceptFolder: {
+                select: { workflowStageKey: true },
+              },
               actualStartedAt: true,
               status: true,
             },
@@ -4953,6 +5131,9 @@ export async function requestAttachmentUpload(
                 select: projectStatusSelect,
               },
               archivedAt: true,
+              workflowStages: {
+                select: { stageKey: true, status: true },
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -4970,6 +5151,26 @@ export async function requestAttachmentUpload(
     }
 
     stageSubmissionProjectCategory = revision.project.category;
+
+    try {
+      await assertStageChatWriteAccess(user, {
+        projectId: input.projectId,
+        stage: {
+          ...revision.stage,
+          project: revision.project,
+        },
+        permissionKey: getUploadPermissionKey(input.assetType),
+        permissionMessage:
+          "Only a project executor can upload submissions for review.",
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Only a project executor can upload submissions for review.",
+      };
+    }
 
     const project = assertProjectAccessFromContext(user, revision.project);
 
@@ -5012,6 +5213,10 @@ export async function requestAttachmentUpload(
           revisionId: true,
           stage: {
             select: {
+              isTasker: true,
+              conceptFolder: {
+                select: { workflowStageKey: true },
+              },
               actualStartedAt: true,
               status: true,
             },
@@ -5029,6 +5234,9 @@ export async function requestAttachmentUpload(
                 select: projectStatusSelect,
               },
               archivedAt: true,
+              workflowStages: {
+                select: { stageKey: true, status: true },
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -5050,6 +5258,8 @@ export async function requestAttachmentUpload(
         projectId: input.projectId,
         stage: {
           id: stageId,
+          isTasker: comment.stage.isTasker,
+          conceptFolder: comment.stage.conceptFolder,
           actualStartedAt: comment.stage.actualStartedAt,
           status: comment.stage.status,
           project: comment.project,
@@ -5570,6 +5780,10 @@ export async function completePreparedChatAttachmentUpload(
         stage: {
           select: {
             id: true,
+            isTasker: true,
+            conceptFolder: {
+              select: { workflowStageKey: true },
+            },
             actualStartedAt: true,
             status: true,
             project: {
@@ -5588,6 +5802,9 @@ export async function completePreparedChatAttachmentUpload(
                   select: projectStatusSelect,
                 },
                 archivedAt: true,
+                workflowStages: {
+                  select: { stageKey: true, status: true },
+                },
                 collaborators: {
                   where: {
                     userId: user.id,

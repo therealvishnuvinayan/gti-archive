@@ -21,6 +21,7 @@ import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
 type ProjectOverviewWorkspaceProps = {
   project: ProjectFlowRecord;
   currentUserId: string;
+  canBypassLockedStages: boolean;
 };
 
 type ProjectOverviewStage = (typeof PROJECT_WORKFLOW_STAGE_DEFINITIONS)[number];
@@ -114,17 +115,20 @@ export function StageOverviewCard({
   stage,
   projectId,
   workflowStage,
+  canBypassLockedStage = false,
 }: {
   stage: ProjectOverviewStage;
   projectId: string;
   workflowStage: ProjectFlowRecord["workflowStages"][number] | null;
+  canBypassLockedStage?: boolean;
 }) {
   const status = workflowStage?.status ?? "LOCKED";
   const available = status === "AVAILABLE";
   const completed = status === "COMPLETED";
   const locked = status === "LOCKED";
   const implementedStage = stage.number >= 1 && stage.number <= 4;
-  const stageOpenable = implementedStage && !locked;
+  const stageOpenable =
+    implementedStage && (!locked || canBypassLockedStage);
   const statusLabel = completed ? "Completed" : available ? "Available" : "Locked";
 
   return (
@@ -217,7 +221,13 @@ export function StageOverviewCard({
   );
 }
 
-export function ProjectStageGrid({ project }: { project: ProjectFlowRecord }) {
+export function ProjectStageGrid({
+  project,
+  canBypassLockedStages = false,
+}: {
+  project: ProjectFlowRecord;
+  canBypassLockedStages?: boolean;
+}) {
   return (
     <section className="mt-8" aria-labelledby="project-stages-heading">
       <div>
@@ -238,6 +248,7 @@ export function ProjectStageGrid({ project }: { project: ProjectFlowRecord }) {
             key={stage.key}
             stage={stage}
             projectId={project.id}
+            canBypassLockedStage={canBypassLockedStages}
             workflowStage={
               project.workflowStages.find(
                 (workflowStage) => workflowStage.stageKey === stage.key,
@@ -253,13 +264,17 @@ export function ProjectStageGrid({ project }: { project: ProjectFlowRecord }) {
 export function ProjectOverviewWorkspace({
   project,
   currentUserId,
+  canBypassLockedStages,
 }: ProjectOverviewWorkspaceProps) {
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <ProjectOverviewHeader projectName={project.title} />
       <ProjectSummaryCard project={project} />
-      <ProjectStageGrid project={project} />
+      <ProjectStageGrid
+        project={project}
+        canBypassLockedStages={canBypassLockedStages}
+      />
     </section>
   );
 }

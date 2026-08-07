@@ -975,6 +975,9 @@ export async function updateProjectAction(
         },
       },
       stages: {
+        where: {
+          isTasker: false,
+        },
         orderBy: {
           order: "asc",
         },
@@ -1447,6 +1450,7 @@ export async function updateProjectAction(
   const updatedStages = await prisma.projectStage.findMany({
     where: {
       projectId,
+      isTasker: false,
     },
     orderBy: {
       order: "asc",

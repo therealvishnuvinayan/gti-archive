@@ -1,8 +1,4 @@
 import { Suspense } from "react";
-import {
-  type ProjectWorkflowStageKey,
-  ProjectWorkflowStageStatus,
-} from "@prisma/client";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -16,7 +12,12 @@ import {
   StageLockedState,
 } from "@/components/projects/project-route-state";
 import { requireUser } from "@/lib/auth";
+import {
+  getProjectConceptFolders,
+  type ConceptWorkflowStageKey,
+} from "@/lib/project-concepts";
 import { getProjectRouteAvailability, getProjectShellById } from "@/lib/projects";
+import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 type ConceptStageRouteUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -46,7 +47,7 @@ async function ConceptStageContent({
   slug: string;
   stageNumber: 3 | 4;
   stageTitle: string;
-  stageKey: ProjectWorkflowStageKey;
+  stageKey: ConceptWorkflowStageKey;
   userPromise: Promise<ConceptStageRouteUser>;
 }) {
   const user = await userPromise;
@@ -59,9 +60,11 @@ async function ConceptStageContent({
   const workflowStage = project.workflowStages.find(
     (stage) => stage.stageKey === stageKey,
   );
-  const stageAvailable =
-    workflowStage?.status === ProjectWorkflowStageStatus.AVAILABLE ||
-    workflowStage?.status === ProjectWorkflowStageStatus.COMPLETED;
+  const stageAvailable = canOpenImplementedWorkflowStage({
+    user,
+    stageKey,
+    status: workflowStage?.status,
+  });
 
   if (!stageAvailable) {
     return (
@@ -72,12 +75,20 @@ async function ConceptStageContent({
     );
   }
 
+  const folders = await getProjectConceptFolders(user, slug, stageKey);
+
+  if (!folders) {
+    return <ProjectAccessUnavailableState />;
+  }
+
   return (
     <ConceptStageWorkspace
       stageNumber={stageNumber}
       stageTitle={stageTitle}
+      stageKey={stageKey}
       project={project}
       currentUserId={user.id}
+      initialFolders={folders}
     />
   );
 }
@@ -91,7 +102,7 @@ export function ConceptStageRoute({
   slug: string;
   stageNumber: 3 | 4;
   stageTitle: string;
-  stageKey: ProjectWorkflowStageKey;
+  stageKey: ConceptWorkflowStageKey;
 }) {
   const userPromise = requireUser();
 

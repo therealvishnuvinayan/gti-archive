@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import {
   BriefcaseBusiness,
   Building2,
@@ -16,6 +18,10 @@ import {
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import {
+  createProjectConceptFolderAction,
+  renameProjectConceptFolderAction,
+} from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -25,12 +31,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import type {
+  ConceptWorkflowStageKey,
+  ProjectConceptFolderRecord,
+} from "@/lib/project-concepts";
 import type { ProjectFlowRecord } from "@/lib/projects";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
-type ConceptFolder = {
-  id: string;
-  name: string;
-};
+type ConceptFolder = ProjectConceptFolderRecord;
 
 type FolderDialogState =
   | { mode: "create" }
@@ -117,7 +125,7 @@ function FolderNameDialog({
                 {state.mode === "create" ? "Create concept folder" : "Rename concept folder"}
               </h2>
               <p className="mt-1 text-[12px] leading-5 text-[#6f7a72]">
-                This UI-only change will reset when the page is refreshed.
+                Folder names must be unique within this project stage.
               </p>
             </div>
             <Button
@@ -136,7 +144,7 @@ function FolderNameDialog({
             <Input
               autoFocus
               value={name}
-              maxLength={80}
+              maxLength={120}
               placeholder="e.g., Concept 2"
               className="h-12 rounded-[14px]"
               onChange={(event) => setName(event.target.value)}
@@ -168,37 +176,69 @@ function FolderNameDialog({
 export function ConceptStageWorkspace({
   stageNumber,
   stageTitle,
+  stageKey,
   project,
   currentUserId,
+  initialFolders,
 }: {
   stageNumber: 3 | 4;
   stageTitle: string;
+  stageKey: ConceptWorkflowStageKey;
   project: ProjectFlowRecord;
   currentUserId: string;
+  initialFolders: ProjectConceptFolderRecord[];
 }) {
-  const [folders, setFolders] = useState<ConceptFolder[]>([
-    { id: "concept-1", name: "Concept 1" },
-  ]);
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [folders, setFolders] = useState<ConceptFolder[]>(initialFolders);
   const [dialog, setDialog] = useState<FolderDialogState>(null);
   const projectDetails = getProjectDetails(project);
 
   function submitFolderName(name: string) {
     if (!dialog) return;
 
-    if (dialog.mode === "rename") {
-      setFolders((current) =>
-        current.map((folder) =>
-          folder.id === dialog.folderId ? { ...folder, name } : folder,
-        ),
-      );
-    } else {
-      setFolders((current) => [
-        ...current,
-        { id: crypto.randomUUID(), name },
-      ]);
-    }
+    const submittedDialog = dialog;
+    startTransition(async () => {
+      if (submittedDialog.mode === "rename") {
+        const result = await renameProjectConceptFolderAction({
+          projectId: project.id,
+          stageKey,
+          folderId: submittedDialog.folderId,
+          name,
+        });
 
-    setDialog(null);
+        if ("error" in result) {
+          showErrorToast(result.error ?? "Unable to rename the concept folder.");
+          return;
+        }
+
+        setFolders((current) =>
+          current.map((folder) =>
+            folder.id === result.folder.id
+              ? { ...folder, name: result.folder.name }
+              : folder,
+          ),
+        );
+        showSuccessToast("Concept folder renamed.");
+      } else {
+        const result = await createProjectConceptFolderAction({
+          projectId: project.id,
+          stageKey,
+          name,
+        });
+
+        if ("error" in result) {
+          showErrorToast(result.error ?? "Unable to create the concept folder.");
+          return;
+        }
+
+        setFolders((current) => [...current, result.folder]);
+        showSuccessToast("Concept folder created.");
+      }
+
+      setDialog(null);
+      router.refresh();
+    });
   }
 
   return (
@@ -263,6 +303,7 @@ export function ConceptStageWorkspace({
             type="button"
             variant="outline"
             className="h-11 rounded-[12px] border-[#39835d] bg-white px-5 font-[720] text-[#27704b] hover:bg-[#f1f8f3]"
+            disabled={isPending}
             onClick={() => setDialog({ mode: "create" })}
           >
             <Plus className="h-4 w-4" />
@@ -274,8 +315,13 @@ export function ConceptStageWorkspace({
           {folders.map((folder) => (
             <Card
               key={folder.id}
-              className="min-w-0 rounded-[20px] border-[#dfe6df] shadow-[0_12px_30px_rgba(23,39,28,0.05)] transition hover:-translate-y-0.5 hover:border-[#bdd4c4] hover:shadow-[0_18px_38px_rgba(28,75,48,0.08)]"
+              className="relative min-w-0 rounded-[20px] border-[#dfe6df] shadow-[0_12px_30px_rgba(23,39,28,0.05)] transition hover:-translate-y-0.5 hover:border-[#bdd4c4] hover:shadow-[0_18px_38px_rgba(28,75,48,0.08)]"
             >
+              <Link
+                href={`/projects/${project.id}/stages/${stageNumber}/concepts/${folder.id}`}
+                className="absolute inset-0 rounded-[20px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8057] focus-visible:ring-offset-2"
+                aria-label={`Open ${folder.name}`}
+              />
               <CardContent className="flex min-h-[126px] items-center gap-4 p-5">
                 <span className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-[#e7f2ea] text-[#30845a]">
                   <Folder className="h-7 w-7 fill-current" />
@@ -289,7 +335,7 @@ export function ConceptStageWorkspace({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="size-8 shrink-0 text-[#758078]"
+                      className="relative z-10 size-8 shrink-0 text-[#758078]"
                       aria-label={`Folder actions for ${folder.name}`}
                     >
                       <MoreVertical className="h-4 w-4" />

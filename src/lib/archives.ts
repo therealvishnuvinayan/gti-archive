@@ -837,6 +837,7 @@ async function getProjectArchiveBase(projectId: string) {
         completedAt: true,
         archivedAt: true,
         stages: {
+          where: { isTasker: false },
           orderBy: {
             order: "asc",
           },
@@ -2594,6 +2595,7 @@ export async function completeProjectArchive(
             },
           },
           stages: {
+            where: { isTasker: false },
             orderBy: {
               order: "asc",
             },
