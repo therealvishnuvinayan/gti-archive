@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 
-const [workspace, page, workflowAccess, overview, schema] = await Promise.all([
+const [workspace, summary, page, workflowAccess, overview, schema] = await Promise.all([
   readFile("src/components/projects/stage-six-workspace.tsx", "utf8"),
+  readFile("src/components/projects/project-stage-summary.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/6/page.tsx", "utf8"),
   readFile("src/lib/workflow-stage-access.ts", "utf8"),
   readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
@@ -12,10 +13,6 @@ const [workspace, page, workflowAccess, overview, schema] = await Promise.all([
 for (const content of [
   "Stage 6 - Handover &amp; Approval",
   "Configure the handover file and approval chain.",
-  "Project Name",
-  "Project Owner",
-  "Project Co-Owners",
-  "Project Executors",
   "Handover File",
   "Final_Concept_Package.pdf",
   "PDF · 24.8 MB · Uploaded by Super Admin",
@@ -33,6 +30,13 @@ for (const content of [
 ]) {
   assert(workspace.includes(content), `Missing Stage 6 UI content: ${content}`);
 }
+for (const label of ["Project Name", "Project Owner", "Project Co-Owners", "Project Executors"]) {
+  assert(summary.includes(label), `Missing shared project summary label: ${label}`);
+}
+assert(
+  workspace.includes("ProjectStageSummary") && workspace.includes('from "@/components/projects/project-stage-summary"'),
+  "Stage 6 must use the shared real-data project summary.",
+);
 
 for (const mockValue of [
   "Design Department",
@@ -93,7 +97,7 @@ assert(
 );
 assert(
   workflowAccess.includes("ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER") &&
-    overview.includes("stage.number >= 1 && stage.number <= 6"),
+    overview.includes("stage.number >= 1 && stage.number <= 7"),
   "The centralized SUPER_ADMIN testing bypass and overview must include implemented Stage 6.",
 );
 

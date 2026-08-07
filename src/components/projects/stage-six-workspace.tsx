@@ -4,8 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ArrowRight,
-  BriefcaseBusiness,
-  Building2,
   Check,
   Clock3,
   Download,
@@ -17,12 +15,12 @@ import {
   Plus,
   ShieldCheck,
   Trash2,
-  UserRound,
   Users,
   X,
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { ProjectStageSummary } from "@/components/projects/project-stage-summary";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -79,81 +77,6 @@ const INITIAL_APPROVAL_STEPS: ApprovalStep[] = [
 
 const CONTROL_CLASS =
   "min-h-11 rounded-[12px] border-[#dfe6df] bg-white shadow-none focus-visible:border-[#8db49a]";
-
-function getProjectDetails(project: ProjectFlowRecord) {
-  const owner = project.collaborators.find(
-    (collaborator) => collaborator.role === "Project Owner",
-  );
-  const coOwners = project.collaborators
-    .filter((collaborator) => collaborator.role === "Project Co-Owner")
-    .map((collaborator) => collaborator.name);
-  const executors = project.executors.map((executor) => executor.name);
-  const unavailableLabel = project.canViewParticipants ? "None assigned" : "Restricted";
-
-  return {
-    projectName: project.title,
-    ownerName:
-      owner?.name ??
-      (project.ownerId ? "Restricted" : "Operational owner not assigned"),
-    coOwnerNames: coOwners.join(", ") || unavailableLabel,
-    executorNames: executors.join(", ") || unavailableLabel,
-  };
-}
-
-function SummaryItem({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-3 rounded-[16px] border border-[#e7ece7] bg-[#fbfcfb] px-4 py-3.5">
-      <span className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-[#edf5ef] text-[#32704e]">
-        {icon}
-      </span>
-      <div className="min-w-0 pt-0.5">
-        <dt className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#7b857e]">
-          {label}
-        </dt>
-        <dd className="mt-1 truncate text-[13px] font-[680] text-[#253028]" title={value}>
-          {value}
-        </dd>
-      </div>
-    </div>
-  );
-}
-
-function ProjectSummary({ project }: { project: ProjectFlowRecord }) {
-  const details = getProjectDetails(project);
-
-  return (
-    <dl className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryItem
-        icon={<Building2 className="h-[17px] w-[17px]" />}
-        label="Project Name"
-        value={details.projectName}
-      />
-      <SummaryItem
-        icon={<UserRound className="h-[17px] w-[17px]" />}
-        label="Project Owner"
-        value={details.ownerName}
-      />
-      <SummaryItem
-        icon={<Users className="h-[17px] w-[17px]" />}
-        label="Project Co-Owners"
-        value={details.coOwnerNames}
-      />
-      <SummaryItem
-        icon={<BriefcaseBusiness className="h-[17px] w-[17px]" />}
-        label="Project Executors"
-        value={details.executorNames}
-      />
-    </dl>
-  );
-}
 
 function HandoverFileCard() {
   function showFilePlaceholder(action: "preview" | "download") {
@@ -492,7 +415,7 @@ export function StageSixWorkspace({
             <p className="mt-2 text-[13px] leading-5 text-[#6f7a72]">
               Configure the handover file and approval chain.
             </p>
-            <ProjectSummary project={project} />
+            <ProjectStageSummary project={project} />
           </div>
 
           <div className="space-y-5 border-t border-[#e7ece7] bg-[#fbfcfb] px-5 py-6 sm:px-7 lg:px-9 lg:py-7">

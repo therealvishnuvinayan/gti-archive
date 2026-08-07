@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, page, workflowAccess, overview, schema, chatWorkspace] =
+const [workspace, summary, page, workflowAccess, overview, schema, chatWorkspace] =
   await Promise.all([
     readFile("src/components/projects/stage-five-workspace.tsx", "utf8"),
+    readFile("src/components/projects/project-stage-summary.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/5/page.tsx", "utf8"),
     readFile("src/lib/workflow-stage-access.ts", "utf8"),
     readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
@@ -39,10 +40,6 @@ for (const item of checklistItems) {
 for (const content of [
   "Stage 5 - File Checklist",
   "Complete or request the required project information and files.",
-  "Project Name",
-  "Project Owner",
-  "Project Co-Owners",
-  "Project Executors",
   "Pending",
   "Filled",
   "Request",
@@ -53,6 +50,13 @@ for (const content of [
 ]) {
   assert(workspace.includes(content), `Missing Stage 5 UI content: ${content}`);
 }
+for (const label of ["Project Name", "Project Owner", "Project Co-Owners", "Project Executors"]) {
+  assert(summary.includes(label), `Missing shared project summary label: ${label}`);
+}
+assert(
+  workspace.includes("ProjectStageSummary") && workspace.includes('from "@/components/projects/project-stage-summary"'),
+  "Stage 5 must use the shared real-data project summary.",
+);
 
 assert(
   workspace.includes("CHECKLIST_ITEMS.map") &&
@@ -100,7 +104,7 @@ assert(
 );
 assert(
   workflowAccess.includes("ProjectWorkflowStageKey.FINAL_LAYOUT") &&
-    overview.includes("stage.number >= 1 && stage.number <= 6"),
+    overview.includes("stage.number >= 1 && stage.number <= 7"),
   "The centralized SUPER_ADMIN testing bypass and overview must include implemented Stage 5.",
 );
 

@@ -45,6 +45,6 @@ assert(schema.includes("model ProjectResearchWorkspace") && schema.includes("mod
 assert(migration.includes("ON CONFLICT") && migration.includes('FROM "ProjectCollaborator"'), "Migration participant backfill must be idempotent and include ProjectCollaborator.");
 assert(migration.includes("'workflow:' || project.\"id\"") && migration.includes('ON CONFLICT ("projectId", "stageKey") DO NOTHING'), "Stage 2 migration must reconcile missing fixed-workflow rows idempotently.");
 assert(!schema.includes("parentFolderId") && !migration.includes('ALTER TABLE "ProjectStage"'), "Stage 2 must remain flat and must not mutate legacy ProjectStage.");
-assert(overview.includes("stage.number >= 1 && stage.number <= 6") && overview.includes("Available · Stage UI coming next"), "Overview must expose the implemented Stage 3/4/5/6 UI routes while keeping later stages safely non-linked.");
+assert(overview.includes("stage.number >= 1 && stage.number <= 7") && overview.includes("Available · Stage UI coming next"), "Overview must expose all seven implemented stage UI routes while retaining the safe fallback for any future non-linked stage.");
 
 console.log("Stage 2 connected UI and architecture checks passed.");

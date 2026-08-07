@@ -34,7 +34,7 @@ for (const label of [
 }
 
 assert(
-  overview.includes("stage.number >= 1 && stage.number <= 6"),
+  overview.includes("stage.number >= 1 && stage.number <= 7"),
   "Stage 1 through Stage 6 should be openable only when persisted status permits.",
 );
 assert(overview.includes("Open Stage"), "Implemented stages should show the Open Stage CTA.");
