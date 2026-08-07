@@ -38,6 +38,10 @@ import {
   type ProjectCollaboratorVisibilityPauseRecord,
 } from "@/lib/project-collaborator-visibility";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import {
+  assertProjectResearchFileAccess,
+  assertResearchFolderWriteAccess,
+} from "@/lib/project-research-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { logChatSendFastTiming, logStageChatTiming } from "@/lib/stage-chat-timing";
@@ -286,6 +290,8 @@ export type RequestUploadInput = {
   assetType: AttachmentAssetType;
   assetTagIds?: string[];
   uploadEndpointMode?: S3UploadEndpointMode;
+  /** Server-only context. Public upload routes must never forward this field. */
+  researchFolderId?: string;
 };
 
 type UploadRequestErrorResult = { error: string } | UploadFileTypeErrorPayload;
@@ -4703,7 +4709,14 @@ export async function requestAttachmentUpload(
     input.assetType === AttachmentAssetType.STAGE_SUBMISSION ||
     input.assetType === AttachmentAssetType.REVISION_ORIGINAL;
 
-  if (!isFormalStageSubmission && !isAllowedAssetFile(input.originalFileName)) {
+  const isProjectResearchFile =
+    input.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE;
+
+  if (
+    !isFormalStageSubmission &&
+    !isProjectResearchFile &&
+    !isAllowedAssetFile(input.originalFileName)
+  ) {
     return buildFileTypeNotAllowedPayload({
       fileName: input.originalFileName,
       mimeType: input.mimeType,
@@ -5057,6 +5070,24 @@ export async function requestAttachmentUpload(
     if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {
       return { error: "Comment upload context is invalid." };
     }
+  } else if (isProjectResearchFile) {
+    if (!input.researchFolderId) {
+      return { error: "Research uploads require a valid folder." };
+    }
+
+    try {
+      await assertResearchFolderWriteAccess(user, {
+        projectId: input.projectId,
+        folderId: input.researchFolderId,
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "You do not have permission to upload to this folder.",
+      };
+    }
   } else {
     const project = await withPrismaRetry(() =>
       prisma.project.findUnique({
@@ -5122,6 +5153,7 @@ export async function requestAttachmentUpload(
     stageId: input.stageId,
     revisionId: input.revisionId,
     commentId: input.commentId,
+    researchFolderId: input.researchFolderId,
     assetType: input.assetType,
     safeFileName: uniqueFileName,
   });
@@ -5196,6 +5228,7 @@ export async function completeAttachmentUpload(
   attachmentId: string,
   failed = false,
   uploadMetadata?: LibraryUploadMetadata,
+  options?: { researchFolderId?: string },
 ) {
   const attachment = await withPrismaRetry(() =>
     prisma.projectAttachment.findUnique({
@@ -5257,7 +5290,50 @@ export async function completeAttachmentUpload(
 
   const project = assertProjectAccessFromContext(user, attachment.project);
 
+  const isProjectResearchFile =
+    attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE;
+
+  if (isProjectResearchFile) {
+    if (!options?.researchFolderId) {
+      throw new Error("Research uploads must be completed from their folder.");
+    }
+    if (attachment.uploadedById !== user.id) {
+      throw new Error("Only the uploader can complete this research file upload.");
+    }
+    await assertResearchFolderWriteAccess(user, {
+      projectId: attachment.projectId,
+      folderId: options.researchFolderId,
+    });
+    const expectedStoragePrefix = `projects/${attachment.projectId}/research/${options.researchFolderId}/`;
+    if (!attachment.storageKey.startsWith(expectedStoragePrefix)) {
+      throw new Error("Research upload context is invalid.");
+    }
+
+    if (attachment.status === AttachmentStatus.READY) {
+      const association = await withPrismaRetry(() =>
+        prisma.projectResearchFolderFile.findUnique({
+          where: { attachmentId: attachment.id },
+          select: { folderId: true },
+        }),
+      );
+      if (association?.folderId !== options.researchFolderId) {
+        throw new Error("Research upload context is invalid.");
+      }
+      return {
+        projectId: attachment.projectId,
+        stageId: attachment.stageId,
+        assetType: attachment.assetType,
+        invoiceCommentId: null,
+      };
+    }
+
+    if (attachment.status !== AttachmentStatus.UPLOADING) {
+      throw new Error("Attachment cannot be completed.");
+    }
+  }
+
   if (
+    !isProjectResearchFile &&
     attachment.assetType !== AttachmentAssetType.STAGE_INVOICE &&
     !hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))
   ) {
@@ -5364,36 +5440,39 @@ export async function completeAttachmentUpload(
               : undefined,
         },
       }),
-      prisma.projectActivityLog.create({
-        data: {
-          projectId: attachment.projectId,
-          stageId: attachment.stageId,
-          revisionId: attachment.revisionId,
-          actorId: user.id,
-          action: getUploadAction(attachment.assetType),
-          metadata: {
-            attachmentId: attachment.id,
-            commentId: attachment.commentId,
-            fileName: attachment.originalFileName,
-            storageKey: attachment.storageKey,
-            ...(uploadMetadata?.source
-              ? {
-                  source: uploadMetadata.source,
-                }
-              : {}),
-            ...(uploadMetadata?.category
-              ? {
-                  category: uploadMetadata.category,
-                }
-              : {}),
-            ...(uploadMetadata?.note
-              ? {
-                  note: uploadMetadata.note,
-                }
-              : {}),
-          },
-        },
-      }),
+      ...(!isProjectResearchFile
+        ? [
+            prisma.projectActivityLog.create({
+              data: {
+                projectId: attachment.projectId,
+                stageId: attachment.stageId,
+                revisionId: attachment.revisionId,
+                actorId: user.id,
+                action: getUploadAction(attachment.assetType),
+                metadata: {
+                  attachmentId: attachment.id,
+                  commentId: attachment.commentId,
+                  fileName: attachment.originalFileName,
+                  storageKey: attachment.storageKey,
+                  ...(uploadMetadata?.source ? { source: uploadMetadata.source } : {}),
+                  ...(uploadMetadata?.category ? { category: uploadMetadata.category } : {}),
+                  ...(uploadMetadata?.note ? { note: uploadMetadata.note } : {}),
+                },
+              },
+            }),
+          ]
+        : []),
+      ...(isProjectResearchFile && options?.researchFolderId
+        ? [
+            prisma.projectResearchFolderFile.create({
+              data: {
+                folderId: options.researchFolderId,
+                attachmentId: attachment.id,
+                addedById: user.id,
+              },
+            }),
+          ]
+        : []),
       ...(attachment.assetType === AttachmentAssetType.STAGE_INVOICE && attachment.stage
         ? [
             prisma.stageInvoiceRequest.updateMany({
@@ -5423,16 +5502,18 @@ export async function completeAttachmentUpload(
       ? (transactionResults[3] as { id: string } | undefined)
       : null;
 
-  runNotificationTaskAfterResponse("file-uploaded", () =>
-    notifyFileUploaded({
-      actorId: user.id,
-      actorName: getDisplayName(user),
-      projectId: attachment.projectId,
-      stageId: attachment.stageId,
-      attachmentId: attachment.id,
-      assetType: attachment.assetType,
-    }),
-  );
+  if (!isProjectResearchFile) {
+    runNotificationTaskAfterResponse("file-uploaded", () =>
+      notifyFileUploaded({
+        actorId: user.id,
+        actorName: getDisplayName(user),
+        projectId: attachment.projectId,
+        stageId: attachment.stageId,
+        attachmentId: attachment.id,
+        assetType: attachment.assetType,
+      }),
+    );
+  }
 
   if (attachment.assetType === AttachmentAssetType.STAGE_INVOICE) {
     runNotificationTaskAfterResponse("invoice-uploaded", () =>
@@ -5633,6 +5714,7 @@ export async function getAttachmentDownloadUrlForUser(
         originalFileName: true,
         mimeType: true,
         status: true,
+        assetType: true,
         createdAt: true,
         project: {
           select: {
@@ -5646,6 +5728,17 @@ export async function getAttachmentDownloadUrlForUser(
 
   if (!attachment || attachment.status !== AttachmentStatus.READY) {
     throw new Error("Attachment not found.");
+  }
+
+  if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
+    await assertProjectResearchFileAccess(user, attachment.id, "read");
+
+    return createPresignedDownloadUrl({
+      bucket: attachment.bucket,
+      storageKey: attachment.storageKey,
+      fileName: attachment.originalFileName,
+      mimeType: attachment.mimeType,
+    });
   }
 
   const project = await assertProjectAccess(user, attachment.projectId);
@@ -5682,6 +5775,7 @@ export async function getAttachmentPreviewUrlForUser(
         originalFileName: true,
         mimeType: true,
         status: true,
+        assetType: true,
         createdAt: true,
         project: {
           select: {
@@ -5695,6 +5789,17 @@ export async function getAttachmentPreviewUrlForUser(
 
   if (!attachment || attachment.status !== AttachmentStatus.READY) {
     throw new Error("Attachment not found.");
+  }
+
+  if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
+    await assertProjectResearchFileAccess(user, attachment.id, "read");
+
+    return createPresignedPreviewUrl({
+      bucket: attachment.bucket,
+      storageKey: attachment.storageKey,
+      fileName: attachment.originalFileName,
+      mimeType: attachment.mimeType,
+    });
   }
 
   const project = await assertProjectAccess(user, attachment.projectId);
@@ -5729,6 +5834,7 @@ export async function deleteAttachmentForUser(
         bucket: true,
         storageKey: true,
         status: true,
+        assetType: true,
         createdAt: true,
         project: {
           select: {
@@ -5742,6 +5848,26 @@ export async function deleteAttachmentForUser(
 
   if (!attachment || attachment.status === AttachmentStatus.DELETED) {
     throw new Error("Attachment not found.");
+  }
+
+  if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
+    await assertProjectResearchFileAccess(user, attachment.id, "write");
+
+    await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(
+      () => undefined,
+    );
+    await withPrismaRetry(() =>
+      prisma.$transaction([
+        prisma.projectResearchFolderFile.deleteMany({
+          where: { attachmentId: attachment.id },
+        }),
+        prisma.projectAttachment.update({
+          where: { id: attachment.id },
+          data: { status: AttachmentStatus.DELETED },
+        }),
+      ]),
+    );
+    return;
   }
 
   const project = await assertProjectAccess(user, attachment.projectId);

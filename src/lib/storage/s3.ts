@@ -161,6 +161,7 @@ type BuildProjectAssetKeyInput = {
   stageId?: string | null;
   revisionId?: string | null;
   commentId?: string | null;
+  researchFolderId?: string | null;
   assetType: AttachmentAssetType;
   safeFileName: string;
 };
@@ -170,6 +171,7 @@ export function buildProjectAssetKey({
   stageId,
   revisionId,
   commentId,
+  researchFolderId,
   assetType,
   safeFileName,
 }: BuildProjectAssetKeyInput) {
@@ -230,6 +232,13 @@ export function buildProjectAssetKey({
       }
 
       return `projects/${projectId}/stages/${stageId}/final/archive/${safeFileName}`;
+    }
+    case AttachmentAssetType.PROJECT_RESEARCH_FILE: {
+      if (!researchFolderId) {
+        throw new Error("Project research assets require researchFolderId.");
+      }
+
+      return `projects/${projectId}/research/${researchFolderId}/${safeFileName}`;
     }
     case AttachmentAssetType.GENERAL_PROJECT_ASSET:
     default:

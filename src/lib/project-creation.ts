@@ -7,6 +7,7 @@ import {
 } from "./project-collaborator-participant-types";
 import { normalizeProjectCollaboratorPermissions } from "./project-collaborator-permissions";
 import { prisma, withPrismaRetry } from "./prisma";
+import { ensureProjectResearchWorkspaceTx } from "./project-research";
 import { getInitialProjectWorkflowStageData } from "./project-workflow";
 
 export type CreateProjectV2Input = {
@@ -195,6 +196,10 @@ export async function createProjectV2(
         },
       });
 
+      for (const participantId of participantIds) {
+        await ensureProjectResearchWorkspaceTx(tx, project.id, participantId);
+      }
+
       const ownerRecipientIds = [ownerId].filter((userId) => userId !== creator.id);
       const coOwnerRecipientIds = coOwnerIds.filter(
         (userId) => userId !== creator.id && !ownerRecipientIds.includes(userId),
@@ -260,7 +265,7 @@ export async function createProjectV2(
       }
 
       return project;
-    }),
+    }, { timeout: 30_000 }),
   );
 
   return {

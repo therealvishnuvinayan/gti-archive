@@ -32,6 +32,7 @@ import {
   type ProjectPermissionContext,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { ensureProjectResearchWorkspaceTx } from "@/lib/project-research";
 import type { ProjectAccessUser } from "@/lib/projects";
 import {
   getInitialProjectWorkflowStageData,
@@ -1066,6 +1067,10 @@ export async function completeProjectInquiry(
 
           if (created.count === 1 && collaborator.id !== user.id) {
             notificationRecipientIds.push(collaborator.id);
+          }
+
+          if (created.count === 1) {
+            await ensureProjectResearchWorkspaceTx(tx, projectId, collaborator.id);
           }
         }
 

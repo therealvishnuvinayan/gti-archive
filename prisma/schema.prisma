@@ -122,6 +122,17 @@ enum AttachmentAssetType {
   STAGE_INVOICE
   FINAL_ARCHIVE
   GENERAL_PROJECT_ASSET
+  PROJECT_RESEARCH_FILE
+}
+
+enum ProjectResearchFolderSystemKey {
+  BRIEF
+  MARKET_COMPETITION
+  TECH
+  VENDORS
+  FINANCE
+  LEGAL
+  PITCH
 }
 
 enum AttachmentStatus {
@@ -288,6 +299,9 @@ model User {
   addedCalendarCollaborations         CalendarCollaborator[]               @relation("CalendarCollaboratorAdder")
   createdContactDirectoryEntries      ContactDirectoryEntry[]              @relation("ContactDirectoryEntryCreator")
   projectInquiryPartySelections       ProjectInquiryParty[]                @relation("ProjectInquiryPartyUser")
+  researchWorkspaces                  ProjectResearchWorkspace[]           @relation("ProjectResearchWorkspaceOwner")
+  createdResearchFolders              ProjectResearchFolder[]              @relation("ProjectResearchFolderCreator")
+  addedResearchFolderFiles            ProjectResearchFolderFile[]          @relation("ProjectResearchFolderFileAdder")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -419,6 +433,7 @@ model Project {
   completionDocuments    ProjectCompletionDocument[]
   workflowStages         ProjectWorkflowStage[]
   inquiry                ProjectInquiry?
+  researchWorkspaces     ProjectResearchWorkspace[]
   completedAt            DateTime?
   archivedAt             DateTime?
   createdAt              DateTime                    @default(now())
@@ -559,6 +574,56 @@ model ProjectInquiryAttachment {
   @@id([inquiryId, attachmentId])
   @@unique([attachmentId])
   @@index([inquiryId, field])
+}
+
+model ProjectResearchWorkspace {
+  id          String                  @id @default(cuid())
+  projectId   String
+  project     Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ownerUserId String
+  owner       User                    @relation("ProjectResearchWorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  folders     ProjectResearchFolder[]
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  @@unique([projectId, ownerUserId])
+  @@index([ownerUserId])
+}
+
+model ProjectResearchFolder {
+  id             String                          @id @default(cuid())
+  workspaceId    String
+  workspace      ProjectResearchWorkspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name           String
+  normalizedName String
+  systemKey      ProjectResearchFolderSystemKey?
+  isSystem       Boolean                         @default(false)
+  sortOrder      Int                             @default(1000)
+  createdById    String?
+  createdBy      User?                           @relation("ProjectResearchFolderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  files          ProjectResearchFolderFile[]
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+
+  @@unique([workspaceId, normalizedName])
+  @@unique([workspaceId, systemKey])
+  @@index([workspaceId, sortOrder])
+  @@index([createdById])
+}
+
+model ProjectResearchFolderFile {
+  id           String                @id @default(cuid())
+  folderId     String
+  folder       ProjectResearchFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  attachmentId String                @unique
+  attachment   ProjectAttachment     @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  addedById    String
+  addedBy      User                  @relation("ProjectResearchFolderFileAdder", fields: [addedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime              @default(now())
+
+  @@unique([folderId, attachmentId])
+  @@index([folderId, createdAt])
+  @@index([addedById])
 }
 
 model ProjectCategory {
@@ -942,6 +1007,7 @@ model ProjectAttachment {
   archiveArtworkMetadata    ArchiveArtworkMetadata[]              @relation("ArchiveArtworkMetadataSourceAttachment")
   assetTags                 ProjectAttachmentAssetTagAssignment[]
   inquiryAssociations       ProjectInquiryAttachment[]
+  researchFolderFile        ProjectResearchFolderFile?
   createdAt                 DateTime                              @default(now())
   updatedAt                 DateTime                              @updatedAt
 

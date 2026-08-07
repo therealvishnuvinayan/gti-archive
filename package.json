@@ -29,6 +29,7 @@
     "project-owner:workflow-check": "node scripts/project-owner-workflow-permission-checks.mjs",
     "stage-one:ui-check": "node scripts/stage-one-ui-checks.mjs",
     "stage-two:ui-check": "node scripts/stage-two-ui-checks.mjs",
+    "stage-two:integration-check": "tsc --project scripts/tsconfig.project-research-integration.json && COMPILED_ALIAS_ROOT=.tmp/project-research-integration node -r ./scripts/register-compiled-alias.cjs .tmp/project-research-integration/scripts/project-research-integration-check.js",
     "permissions:sync": "tsc --project scripts/tsconfig.permissions-sync.json && node .tmp/permissions-sync/scripts/sync-permissions.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",

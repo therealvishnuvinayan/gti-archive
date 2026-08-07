@@ -13,8 +13,8 @@ import {
 import { requireUser } from "@/lib/auth";
 import {
   getProjectRouteAvailability,
-  getProjectShellById,
 } from "@/lib/projects";
+import { getProjectResearchPageData } from "@/lib/project-research";
 
 type StageTwoPageUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -37,26 +37,37 @@ async function StageTwoUnavailableContent({
 async function StageTwoContent({
   slug,
   userPromise,
+  workspaceId,
 }: {
   slug: string;
   userPromise: Promise<StageTwoPageUser>;
+  workspaceId?: string;
 }) {
   const user = await userPromise;
-  const project = await getProjectShellById(slug, user);
+  let data = null;
 
-  if (!project) {
+  try {
+    data = await getProjectResearchPageData(user, slug, workspaceId);
+  } catch {
+    data = null;
+  }
+
+  if (!data) {
     return <StageTwoUnavailableContent slug={slug} user={user} />;
   }
 
-  return <StageTwoWorkspace project={project} currentUserId={user.id} />;
+  return <StageTwoWorkspace data={data} currentUserId={user.id} />;
 }
 
 export default async function StageTwoPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ workspace?: string }>;
 }) {
   const { slug } = await params;
+  const { workspace } = await searchParams;
   const userPromise = requireUser();
 
   return (
@@ -67,7 +78,7 @@ export default async function StageTwoPage({
       }}
     >
       <Suspense fallback={<StageTwoLoadingShell />}>
-        <StageTwoContent slug={slug} userPromise={userPromise} />
+        <StageTwoContent slug={slug} userPromise={userPromise} workspaceId={workspace} />
       </Suspense>
     </DashboardLayout>
   );

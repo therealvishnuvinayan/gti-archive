@@ -35,6 +35,7 @@ import {
 } from "@/lib/project-collaborator-permissions";
 import { prisma } from "@/lib/prisma";
 import { MAX_PROJECT_TAGS, PROJECTS_CACHE_TAG } from "@/lib/projects";
+import { ensureProjectResearchWorkspacesForProjectTx } from "@/lib/project-research";
 import {
   hasProjectPermission,
 } from "@/lib/permissions/resolver";
@@ -1436,6 +1437,8 @@ export async function updateProjectAction(
           },
         });
       }
+
+      await ensureProjectResearchWorkspacesForProjectTx(tx, projectId);
     });
   } catch {
     return { error: "Unable to update the project right now. Please try again." };

@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": "../.tmp/project-research-integration",
+    "rootDir": "..",
+    "target": "ES2022"
+  },
+  "include": ["project-research-integration-check.ts"]
+}

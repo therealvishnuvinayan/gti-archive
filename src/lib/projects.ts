@@ -61,6 +61,7 @@ import {
 } from "@/lib/permissions/resolver";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { ensureProjectResearchWorkspace } from "@/lib/project-research";
 import {
   defaultProjectStatusGroupSlugs,
   getActiveProjectStatusOptions,
@@ -1757,6 +1758,10 @@ export async function updateProjectCollaborators(
     ]),
   );
 
+  for (const userId of validIds) {
+    await ensureProjectResearchWorkspace(projectId, userId);
+  }
+
   const assignments = await withPrismaRetry(() =>
     prisma.projectCollaborator.findMany({
       where: {
@@ -2027,6 +2032,7 @@ export async function setProjectCollaboratorChatVisibility(
         },
       }),
     );
+    await ensureProjectResearchWorkspace(input.projectId, input.collaboratorId);
   }
 
   if (assignment.chatVisibilityPaused === input.paused) {
