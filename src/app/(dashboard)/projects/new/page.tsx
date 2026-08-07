@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
-import { CreateProjectWorkspace } from "@/components/projects/create-project-workspace";
-import { requireUser } from "@/lib/auth";
+import { CreateProjectForm } from "@/components/projects/create-project-form";
+import { getUserDisplayName, requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
 import { hasPermission } from "@/lib/permissions/resolver";
-import { getActiveProjectMasterDataOptions } from "@/lib/project-master-data";
+import { getEligibleProjectOwnerCandidates } from "@/lib/project-owner-candidates";
 
 export default async function NewProjectPage() {
   const user = await requireUser();
@@ -15,28 +14,27 @@ export default async function NewProjectPage() {
     redirect("/projects");
   }
 
-  const [collaborators, masterDataOptions] = await Promise.all([
+  const [collaborators, eligibleOwnerCandidates] = await Promise.all([
     getCollaborators(),
-    getActiveProjectMasterDataOptions(),
+    getEligibleProjectOwnerCandidates(),
   ]);
-
-  const canManageProjectMasterData = hasPermission(user, "settings.manageMasterData");
-  const canInviteExecutor = hasPermission(user, "collaboration.createUser");
+  const displayName = getUserDisplayName(user);
 
   return (
-    <DashboardLayout
-      topbarProps={{
-        leadingContent: <ProjectBackButton />,
-        showSearch: false,
-      }}
-    >
-      <CreateProjectWorkspace
+    <DashboardLayout>
+      <CreateProjectForm
+        currentUser={{
+          id: user.id,
+          name: displayName,
+          email: user.email,
+          role: user.role,
+          avatarSrc: user.avatarUrl
+            ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
+            : null,
+        }}
+        eligibleOwnerCandidates={eligibleOwnerCandidates}
         availableCollaborators={collaborators}
-        categoryOptions={masterDataOptions.categories}
-        statusOptions={masterDataOptions.projectStatuses}
-        tagOptions={masterDataOptions.tags}
-        canManageProjectMasterData={canManageProjectMasterData}
-        canInviteExecutor={canInviteExecutor}
+        canInviteCollaborator={hasPermission(user, "collaboration.createUser")}
       />
     </DashboardLayout>
   );
