@@ -33,6 +33,10 @@ for (const label of [
 
 assert(overview.includes("stage.number === 1"), "Only Stage 1 should be visually active.");
 assert(overview.includes("Open Stage"), "Stage 1 should show the Open Stage CTA.");
+assert(
+  overview.includes("href={`/projects/${projectId}/stages/1`}"),
+  "Stage 1 should open its dedicated UI route.",
+);
 assert(overview.includes("disabled"), "Locked stage controls should be disabled.");
 assert(overview.includes("Locked"), "Stages 2-7 should show their locked state.");
 assert(

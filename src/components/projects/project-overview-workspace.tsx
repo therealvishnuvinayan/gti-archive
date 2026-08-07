@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   ArrowRight,
   Briefcase,
@@ -148,7 +149,13 @@ export function ProjectSummaryCard({ project }: { project: ProjectFlowRecord }) 
   );
 }
 
-export function StageOverviewCard({ stage }: { stage: ProjectOverviewStage }) {
+export function StageOverviewCard({
+  stage,
+  projectId,
+}: {
+  stage: ProjectOverviewStage;
+  projectId: string;
+}) {
   const active = stage.number === 1;
 
   return (
@@ -190,13 +197,14 @@ export function StageOverviewCard({ stage }: { stage: ProjectOverviewStage }) {
       <div className="mt-auto pt-6">
         {active ? (
           <Button
-            type="button"
+            asChild
             variant="secondary"
-            title="Stage 1 workspace will be connected in the next implementation phase."
             className="h-11 w-full justify-between rounded-[13px] border-white bg-white px-5 text-[#174f34] shadow-[0_10px_24px_rgba(0,0,0,0.12)] hover:bg-[#f5fbf6]"
           >
-            Open Stage
-            <ArrowRight className="h-4 w-4" />
+            <Link href={`/projects/${projectId}/stages/1`}>
+              Open Stage
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </Button>
         ) : (
           <Button
@@ -214,7 +222,7 @@ export function StageOverviewCard({ stage }: { stage: ProjectOverviewStage }) {
   );
 }
 
-export function ProjectStageGrid() {
+export function ProjectStageGrid({ projectId }: { projectId: string }) {
   return (
     <section className="mt-8" aria-labelledby="project-stages-heading">
       <div>
@@ -231,7 +239,7 @@ export function ProjectStageGrid() {
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {PROJECT_OVERVIEW_STAGES.map((stage) => (
-          <StageOverviewCard key={stage.number} stage={stage} />
+          <StageOverviewCard key={stage.number} stage={stage} projectId={projectId} />
         ))}
       </div>
     </section>
@@ -247,7 +255,7 @@ export function ProjectOverviewWorkspace({
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <ProjectOverviewHeader projectName={project.title} />
       <ProjectSummaryCard project={project} />
-      <ProjectStageGrid />
+      <ProjectStageGrid projectId={project.id} />
     </section>
   );
 }
