@@ -12,8 +12,8 @@ const [overview, workflow, projectPage, createForm, projectQuery] = await Promis
 const stageNames = [
   "Project Inquiry",
   "Project Research and Planning",
-  "Concept Creation",
-  "Project Development",
+  "Initial Concept",
+  "Final Concept",
   "Final Layout",
   "Production and Handover",
   "Implementation and Supervision",
@@ -34,8 +34,8 @@ for (const label of [
 }
 
 assert(
-  overview.includes("stage.number === 1 || stage.number === 2"),
-  "Stage 1 and Stage 2 should be openable when persisted status permits.",
+  overview.includes("stage.number >= 1 && stage.number <= 4"),
+  "Stage 1 through Stage 4 should be openable only when persisted status permits.",
 );
 assert(overview.includes("Open Stage"), "Implemented stages should show the Open Stage CTA.");
 assert(

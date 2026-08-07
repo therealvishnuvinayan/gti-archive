@@ -19,14 +19,14 @@ export const PROJECT_WORKFLOW_STAGE_DEFINITIONS = [
   {
     key: ProjectWorkflowStageKey.CONCEPT_CREATION,
     number: 3,
-    name: "Concept Creation",
-    description: "Develop creative concepts and clear design directions.",
+    name: "Initial Concept",
+    description: "Create and manage the initial concept directions for the project.",
   },
   {
     key: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
     number: 4,
-    name: "Project Development",
-    description: "Refine and develop the selected concepts and solutions.",
+    name: "Final Concept",
+    description: "Refine selected directions into final project concepts.",
   },
   {
     key: ProjectWorkflowStageKey.FINAL_LAYOUT,

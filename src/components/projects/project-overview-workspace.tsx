@@ -123,7 +123,7 @@ export function StageOverviewCard({
   const available = status === "AVAILABLE";
   const completed = status === "COMPLETED";
   const locked = status === "LOCKED";
-  const implementedStage = stage.number === 1 || stage.number === 2;
+  const implementedStage = stage.number >= 1 && stage.number <= 4;
   const stageOpenable = implementedStage && !locked;
   const statusLabel = completed ? "Completed" : available ? "Available" : "Locked";
 
