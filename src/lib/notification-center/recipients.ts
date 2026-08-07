@@ -1,16 +1,12 @@
-import { ProjectExecutorRole } from "@prisma/client";
-
 import { withPrismaRetry, prisma } from "@/lib/prisma";
 import { isTimestampHiddenByPauseWindows } from "@/lib/project-collaborator-visibility";
 
 type ProjectNotificationContext = {
   id: string;
   name: string;
-  createdById: string;
-  executors: Array<{
-    userId: string;
-    role: ProjectExecutorRole;
-  }>;
+  ownerId: string | null;
+  coOwners: Array<{ userId: string }>;
+  executors: Array<{ userId: string }>;
   collaborators: Array<{
     userId: string;
     chatVisibilityPaused: boolean;
@@ -30,11 +26,13 @@ export async function getProjectNotificationContext(projectId: string) {
       select: {
         id: true,
         name: true,
-        createdById: true,
+        ownerId: true,
+        coOwners: {
+          select: { userId: true },
+        },
         executors: {
           select: {
             userId: true,
-            role: true,
           },
         },
         collaborators: {
@@ -68,28 +66,18 @@ export function dedupeRecipients(recipientUserIds: Array<string | null | undefin
 }
 
 type ProjectExecutorRecipientProject = {
-  executors?: Array<{
-    userId: string;
-    role?: ProjectExecutorRole | null;
-  }>;
+  executors?: Array<{ userId: string }>;
 };
 
 export function getProjectExecutorRecipientUserIds(
   project: ProjectExecutorRecipientProject,
   options: {
-    role?: "all" | "main";
     excludeUserId?: string | null;
   } = {},
 ) {
-  const executorRecords = project.executors ?? [];
-  const role = options.role ?? "all";
-  const currentExecutorIds =
-    role === "main"
-      ? executorRecords
-          .filter((executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR)
-          .map((executor) => executor.userId)
-      : executorRecords.map((executor) => executor.userId);
-  const recipients = dedupeRecipients(currentExecutorIds);
+  const recipients = dedupeRecipients(
+    (project.executors ?? []).map((executor) => executor.userId),
+  );
 
   return excludeActor(recipients, options.excludeUserId);
 }
@@ -101,12 +89,12 @@ export async function getProjectOwnerId(projectId: string) {
         id: projectId,
       },
       select: {
-        createdById: true,
+        ownerId: true,
       },
     }),
   );
 
-  return project?.createdById ?? null;
+  return project?.ownerId ?? null;
 }
 
 export async function getProjectExecutorId(projectId: string) {
@@ -122,7 +110,6 @@ export async function getProjectExecutorId(projectId: string) {
           },
           select: {
             userId: true,
-            role: true,
           },
         },
       },
@@ -133,13 +120,7 @@ export async function getProjectExecutorId(projectId: string) {
     return null;
   }
 
-  return (
-    project.executors.find(
-      (executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
-    )?.userId ??
-    project.executors[0]?.userId ??
-    null
-  );
+  return project.executors[0]?.userId ?? null;
 }
 
 export async function getProjectCollaboratorUserIds(projectId: string) {
@@ -168,7 +149,9 @@ export async function getProjectParticipantUserIds(
       ? []
       : getProjectExecutorRecipientUserIds(project);
   const recipients = dedupeRecipients([
-    options.includeOwner === false ? null : project.createdById,
+    ...(options.includeOwner === false
+      ? []
+      : [project.ownerId, ...project.coOwners.map((coOwner) => coOwner.userId)]),
     ...executorRecipientIds,
     ...(options.includeCollaborators === false
       ? []
@@ -195,7 +178,10 @@ export async function filterRecipientsVisibleForStageEvent(
   const assignmentRecipientIds = new Set(getProjectExecutorRecipientUserIds(project));
 
   return recipientUserIds.filter((recipientUserId) => {
-    if (recipientUserId === project.createdById) {
+    if (
+      recipientUserId === project.ownerId ||
+      project.coOwners.some((coOwner) => coOwner.userId === recipientUserId)
+    ) {
       return true;
     }
 

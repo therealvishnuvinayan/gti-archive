@@ -30,11 +30,11 @@ export async function canUseChatAiTools(
         id: projectId,
       },
       select: {
-        createdById: true,
+        ownerId: true,
+        coOwners: { select: { userId: true } },
         executors: {
           select: {
             userId: true,
-            role: true,
           },
         },
         status: {
@@ -60,6 +60,7 @@ export async function canUseChatAiTools(
         stages: {
           where: {
             id: stageId || "__stage_context_not_supplied__",
+            isTasker: false,
           },
           select: {
             id: true,

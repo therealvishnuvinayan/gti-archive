@@ -1191,9 +1191,9 @@ const draftMissingFieldOrder: RegExp[] = [
   /^Valid Currency$/i,
   /^Stage Budgets$/i,
   /^Stage Budget Allocation$/i,
-  /^Main Executor$/i,
-  /^Choose Main Executor$/i,
-  /^Valid Main Executor$/i,
+  /^Executor$/i,
+  /^Choose Executor$/i,
+  /^Valid Executor$/i,
   /^Resolve Collaborators$/i,
   /^Stages$/i,
   /^Stage \d+ Name$/i,
@@ -1276,9 +1276,9 @@ function DraftProjectPreviewPanel({
     /^Stage Budget Allocation$/i,
   ]);
   const executorMissing = getSectionMissingFields(orderedMissingFields, [
-    /^Main Executor$/i,
-    /^Choose Main Executor$/i,
-    /^Valid Main Executor$/i,
+    /^Executor$/i,
+    /^Choose Executor$/i,
+    /^Valid Executor$/i,
   ]);
   const collaboratorMissing = getSectionMissingFields(orderedMissingFields, [
     /^Resolve Collaborators$/i,
@@ -1381,7 +1381,7 @@ function DraftProjectPreviewPanel({
           </div>
         </DraftSection>
 
-        <DraftSection title="Main Executor" missingFields={executorMissing}>
+        <DraftSection title="Executor" missingFields={executorMissing}>
           <DraftDetail
             label="Executor"
             value={

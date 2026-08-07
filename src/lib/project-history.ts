@@ -5,9 +5,10 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
-  ProjectExecutorRole,
   ProjectExecutionType,
   ProjectRevisionStatus,
+  ProjectWorkflowStageKey,
+  ProjectWorkflowStageStatus,
   StageStatus,
   SubmissionReviewStatus,
   UserRole,
@@ -20,7 +21,7 @@ import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
   hasProjectPermission,
-  isMainProjectExecutor,
+  isProjectExecutor,
   type PermissionUser,
   type ProjectPermissionContext,
 } from "@/lib/permissions/resolver";
@@ -39,10 +40,15 @@ import {
   type ProjectCollaboratorVisibilityPauseRecord,
 } from "@/lib/project-collaborator-visibility";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import {
+  assertProjectResearchFileAccess,
+  assertResearchFolderWriteAccess,
+} from "@/lib/project-research-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { logChatSendFastTiming, logStageChatTiming } from "@/lib/stage-chat-timing";
 import { getLockedStageInfo } from "@/lib/stage-locking";
+import { canOpenProjectStageChatContainer } from "@/lib/workflow-stage-access";
 import type { LibraryUploadMetadata } from "@/lib/library-shared";
 import {
   buildProjectAssetKey,
@@ -287,6 +293,8 @@ export type RequestUploadInput = {
   assetType: AttachmentAssetType;
   assetTagIds?: string[];
   uploadEndpointMode?: S3UploadEndpointMode;
+  /** Server-only context. Public upload routes must never forward this field. */
+  researchFolderId?: string;
 };
 
 type UploadRequestErrorResult = { error: string } | UploadFileTypeErrorPayload;
@@ -832,14 +840,21 @@ function mapComparisonEntry(
   };
 }
 
-async function getProjectAccessRecord(projectId: string, userId?: string) {
+async function getProjectAccessRecord(
+  projectId: string,
+  userId?: string,
+  selectedStageId?: string,
+) {
   return withPrismaRetry(() =>
     prisma.project.findUnique({
       where: { id: projectId },
       select: {
         id: true,
         category: true,
-        createdById: true,
+        ownerId: true,
+        coOwners: {
+          select: { userId: true },
+        },
         executors: {
           ...(userId
             ? {
@@ -850,7 +865,6 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
             : {}),
           select: {
             userId: true,
-            role: true,
           },
         },
         status: {
@@ -869,13 +883,30 @@ async function getProjectAccessRecord(projectId: string, userId?: string) {
               select: projectCollaboratorPermissionSelect,
             }
           : false,
+        workflowStages: {
+          select: {
+            stageKey: true,
+            status: true,
+          },
+        },
         stages: {
+          where: selectedStageId
+            ? {
+                OR: [{ isTasker: false }, { id: selectedStageId }],
+              }
+            : { isTasker: false },
           orderBy: {
             order: "asc",
           },
           select: {
             id: true,
             name: true,
+            isTasker: true,
+            conceptFolder: {
+              select: {
+                workflowStageKey: true,
+              },
+            },
             budget: true,
             invoiceRequired: true,
             actualStartedAt: true,
@@ -893,6 +924,7 @@ export type ProjectStageChatAccessRecord = ProjectPermissionContext & {
   id: string;
   stages: Array<{
     id: string;
+    isTasker?: boolean;
     name?: string | null;
     order?: number | null;
     status?: StageStatus | string | null;
@@ -908,7 +940,7 @@ export type ProjectStageChatAccessRecord = ProjectPermissionContext & {
 async function getStageChatAccessRecord(
   projectId: string,
   stageId: string,
-  userId: string,
+  user: AccessUser,
 ): Promise<ProjectStageChatAccessRecord | null> {
   const stage = await withPrismaRetry(() =>
     prisma.projectStage.findUnique({
@@ -918,6 +950,12 @@ async function getStageChatAccessRecord(
       select: {
         id: true,
         projectId: true,
+        isTasker: true,
+        conceptFolder: {
+          select: {
+            workflowStageKey: true,
+          },
+        },
         _count: {
           select: {
             revisions: true,
@@ -927,28 +965,40 @@ async function getStageChatAccessRecord(
         project: {
           select: {
             id: true,
-            createdById: true,
+            ownerId: true,
+            coOwners: {
+              select: { userId: true },
+            },
             executors: {
               where: {
-                userId,
+                userId: user.id,
               },
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
               where: {
-                userId,
+                userId: user.id,
               },
               select: projectCollaboratorPermissionSelect,
             },
+            workflowStages: {
+              select: {
+                stageKey: true,
+                status: true,
+              },
+            },
             stages: {
+              where: {
+                OR: [{ isTasker: false }, { id: stageId }],
+              },
               orderBy: {
                 order: "asc",
               },
               select: {
                 id: true,
+                isTasker: true,
                 name: true,
                 order: true,
                 status: true,
@@ -970,48 +1020,81 @@ async function getStageChatAccessRecord(
     return null;
   }
 
+  if (
+    !canOpenProjectStageChatContainer({
+      user,
+      isTasker: stage.isTasker,
+      conceptFolder: stage.conceptFolder,
+      workflowStages: stage.project.workflowStages,
+    })
+  ) {
+    return null;
+  }
+
   return {
     id: stage.project.id,
-    createdById: stage.project.createdById,
+    ownerId: stage.project.ownerId,
+    coOwners: stage.project.coOwners,
     executors: stage.project.executors,
     collaborators: stage.project.collaborators,
-    stages: stage.project.stages.map((projectStage) => ({
-      id: projectStage.id,
-      name: projectStage.name,
-      order: projectStage.order,
-      status: projectStage.status,
-      revisionCount:
-        projectStage.id === stage.id
-          ? stage._count.revisions
-          : projectStage._count.revisions,
-      comparisonCount:
-        projectStage.id === stage.id
-          ? stage._count.comparisonComments
-          : projectStage._count.comparisonComments,
-    })),
+    stages: stage.project.stages
+      .filter((projectStage) =>
+        stage.isTasker
+          ? projectStage.id === stage.id
+          : !projectStage.isTasker,
+      )
+      .map((projectStage) => ({
+        id: projectStage.id,
+        isTasker: projectStage.isTasker,
+        name: projectStage.name,
+        order: projectStage.order,
+        status: projectStage.status,
+        revisionCount:
+          projectStage.id === stage.id
+            ? stage._count.revisions
+            : projectStage._count.revisions,
+        comparisonCount:
+          projectStage.id === stage.id
+            ? stage._count.comparisonComments
+            : projectStage._count.comparisonComments,
+      })),
   };
 }
 
-function isMainProjectExecutorUser(
+function isProjectExecutorUser(
   project: {
-    createdById?: string | null;
-    executors?: Array<{ userId: string; role: ProjectExecutorRole }>;
+    executors?: Array<{ userId: string }>;
   },
   userId: string,
 ) {
-  return isMainProjectExecutor(
-    { id: userId },
-    {
-      executors: project.executors,
-    },
-  );
+  return isProjectExecutor({ id: userId }, project);
 }
 
-export async function assertProjectAccess(user: AccessUser, projectId: string) {
-  const project = await getProjectAccessRecord(projectId, user.id);
+export async function assertProjectAccess(
+  user: AccessUser,
+  projectId: string,
+  selectedStageId?: string,
+) {
+  const project = await getProjectAccessRecord(projectId, user.id, selectedStageId);
 
   if (!project) {
     throw new Error("Project not found.");
+  }
+
+  const selectedStage = selectedStageId
+    ? project.stages.find((stage) => stage.id === selectedStageId)
+    : null;
+
+  if (
+    selectedStage &&
+    !canOpenProjectStageChatContainer({
+      user,
+      isTasker: selectedStage.isTasker,
+      conceptFolder: selectedStage.conceptFolder,
+      workflowStages: project.workflowStages,
+    })
+  ) {
+    throw new Error("This workflow stage is locked.");
   }
 
   if (hasProjectPermission(user, project, "project.view")) {
@@ -1044,13 +1127,18 @@ function assertProjectWorkflowPermission(
 }
 
 type StageChatWriteProjectContext = ProjectPermissionContext & {
-  createdById: string;
   archivedAt?: Date | null;
   status: Parameters<typeof isProjectStatusCompleted>[0];
+  workflowStages: Array<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+  }>;
 };
 
 type StageChatWriteStageContext = {
   id: string;
+  isTasker: boolean;
+  conceptFolder: { workflowStageKey: ProjectWorkflowStageKey } | null;
   actualStartedAt: Date | null;
   status: StageStatus;
   project: StageChatWriteProjectContext;
@@ -1068,6 +1156,17 @@ export async function assertStageChatWriteAccess(
 ) {
   const permissionKey = input.permissionKey ?? "chat.createComment";
   const project = assertProjectAccessFromContext(user, input.stage.project);
+
+  if (
+    !canOpenProjectStageChatContainer({
+      user,
+      isTasker: input.stage.isTasker,
+      conceptFolder: input.stage.conceptFolder,
+      workflowStages: input.stage.project.workflowStages,
+    })
+  ) {
+    throw new Error("This workflow stage is locked.");
+  }
 
   assertProjectWorkflowPermission(
     user,
@@ -1092,7 +1191,10 @@ export async function assertStageChatWriteAccess(
     throw new Error("Please accept the brief before adding stage chat.");
   }
 
-  if (!canBypassCollaboratorVisibility(user, input.stage.project.createdById)) {
+  if (
+    !canBypassCollaboratorVisibility(user, input.stage.project.ownerId ?? "") &&
+    !hasProjectPermission(user, input.stage.project, "collaborator.pauseVisibility")
+  ) {
     const visibilityState = await getProjectCollaboratorVisibilityState(
       input.projectId,
       user.id,
@@ -1128,7 +1230,7 @@ function getUploadPermissionErrorMessage(assetType: AttachmentAssetType) {
 }
 
 function isStageInvoiceRequired(
-  project: { executionType: ProjectExecutionType },
+  project: { executionType: ProjectExecutionType | null },
   stage: { invoiceRequired: boolean },
 ) {
   return project.executionType === ProjectExecutionType.EXTERNAL && stage.invoiceRequired;
@@ -1185,9 +1287,12 @@ function filterHistoryEntriesOutsidePauseWindows<
 
 async function getProjectVisibilityPauseWindows(
   user: AccessUser,
-  project: Pick<ProjectStageChatAccessRecord, "id" | "createdById">,
+  project: Pick<ProjectStageChatAccessRecord, "id" | "ownerId" | "coOwners">,
 ) {
-  if (canBypassCollaboratorVisibility(user, project.createdById)) {
+  if (
+    canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
+    hasProjectPermission(user, project, "collaborator.pauseVisibility")
+  ) {
     return [];
   }
 
@@ -1338,13 +1443,18 @@ export async function assertProjectAttachmentVisibilityForUser(
     projectId: string;
     createdAt: Date;
     project: {
-      createdById: string;
+      ownerId: string | null;
+      coOwners?: Array<{ userId: string }>;
     };
   },
 ) {
+  if (hasProjectPermission(user, attachment.project, "collaborator.pauseVisibility")) {
+    return;
+  }
+
   await assertProjectTimestampVisibleForUser(user, {
     projectId: attachment.projectId,
-    projectOwnerId: attachment.project.createdById,
+    projectOwnerId: attachment.project.ownerId ?? "",
     timestamp: attachment.createdAt,
     message: "You do not have permission to access this file.",
   });
@@ -1367,7 +1477,7 @@ export async function getProjectStageChatMessages(
   const project =
     options.projectAccessRecord ??
     (preferredStageId
-      ? await getStageChatAccessRecord(projectId, preferredStageId, user.id)
+      ? await getStageChatAccessRecord(projectId, preferredStageId, user)
       : await getProjectAccessRecord(projectId, user.id));
   logStageChatTiming("init", "project lookup", projectLookupStartedAt, {
     projectId,
@@ -1918,7 +2028,7 @@ async function assertStageChatRealtimeAccess(
   projectId: string,
   stageId: string,
 ) {
-  const project = await getStageChatAccessRecord(projectId, stageId, user.id);
+  const project = await getStageChatAccessRecord(projectId, stageId, user);
 
   if (!project) {
     throw new Error("Project not found.");
@@ -2408,7 +2518,17 @@ export async function getProjectStageHistory(
   preferredStageId?: string | null,
   requiredPermissionKey: PermissionKey = "chat.view",
 ): Promise<StageHistoryRecord> {
-  const project = await assertProjectAccess(user, projectId);
+  const project = preferredStageId
+    ? await getStageChatAccessRecord(projectId, preferredStageId, user)
+    : await assertProjectAccess(user, projectId);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!hasProjectPermission(user, project, "project.view")) {
+    throw new Error("You do not have access to this project.");
+  }
   assertProjectWorkflowPermission(
     user,
     project,
@@ -2683,7 +2803,7 @@ export async function createStageRevision(
     summary?: string;
   },
 ) {
-  const project = await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(user, input.projectId, input.stageId);
   const stage = project.stages.find((item) => item.id === input.stageId);
 
   if (!stage) {
@@ -2694,11 +2814,11 @@ export async function createStageRevision(
     user,
     project,
     "stage.submitWork",
-    "Only a Main Executor can submit work for review.",
+    "Only a project executor can submit work for review.",
   );
 
-  if (!isMainProjectExecutorUser(project, user.id)) {
-    throw new Error("Only a Main Executor can submit work for review.");
+  if (!isProjectExecutorUser(project, user.id)) {
+    throw new Error("Only a project executor can submit work for review.");
   }
 
   if (isProjectStatusCompleted(project.status)) {
@@ -2788,24 +2908,31 @@ export async function createStageComment(
       },
       select: {
         id: true,
+        isTasker: true,
+        conceptFolder: {
+          select: { workflowStageKey: true },
+        },
         actualStartedAt: true,
         status: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               where: {
                 userId: user.id,
               },
               select: {
                 userId: true,
-                role: true,
               },
             },
             status: {
               select: projectStatusSelect,
             },
             archivedAt: true,
+            workflowStages: {
+              select: { stageKey: true, status: true },
+            },
             collaborators: {
               where: {
                 userId: user.id,
@@ -2986,18 +3113,22 @@ export async function createStageTextCommentFast(
       select: {
         id: true,
         projectId: true,
+        isTasker: true,
+        conceptFolder: {
+          select: { workflowStageKey: true },
+        },
         actualStartedAt: true,
         status: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               where: {
                 userId: user.id,
               },
               select: {
                 userId: true,
-                role: true,
               },
             },
             status: {
@@ -3018,6 +3149,9 @@ export async function createStageTextCommentFast(
               },
             },
             archivedAt: true,
+            workflowStages: {
+              select: { stageKey: true, status: true },
+            },
             collaborators: {
               where: {
                 userId: user.id,
@@ -3302,11 +3436,11 @@ export async function deleteStageComment(
         },
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             status: {
@@ -3438,21 +3572,28 @@ export async function prepareStageCommentUploads(
       },
       select: {
         id: true,
+        isTasker: true,
+        conceptFolder: {
+          select: { workflowStageKey: true },
+        },
         actualStartedAt: true,
         status: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             status: {
               select: projectStatusSelect,
             },
             archivedAt: true,
+            workflowStages: {
+              select: { stageKey: true, status: true },
+            },
             collaborators: {
               where: {
                 userId: user.id,
@@ -3720,24 +3861,31 @@ export async function finalizePreparedStageCommentUploads(
         stage: {
           select: {
             id: true,
+            isTasker: true,
+            conceptFolder: {
+              select: { workflowStageKey: true },
+            },
             actualStartedAt: true,
             status: true,
             project: {
               select: {
-                createdById: true,
+                ownerId: true,
+                coOwners: { select: { userId: true } },
                 executors: {
                   where: {
                     userId: user.id,
                   },
                   select: {
                     userId: true,
-                    role: true,
                   },
                 },
                 status: {
                   select: projectStatusSelect,
                 },
                 archivedAt: true,
+                workflowStages: {
+                  select: { stageKey: true, status: true },
+                },
                 collaborators: {
                   where: {
                     userId: user.id,
@@ -3824,11 +3972,11 @@ export async function cancelStageRevisionSubmission(
         id: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
@@ -3853,11 +4001,11 @@ export async function cancelStageRevisionSubmission(
     user,
     project,
     "stage.submitWork",
-    "Only a Main Executor can submit work for review.",
+    "Only a project executor can submit work for review.",
   );
 
-  if (!isMainProjectExecutorUser(revision.project, user.id)) {
-    throw new Error("Only a Main Executor can cancel this revision.");
+  if (!isProjectExecutorUser(revision.project, user.id)) {
+    throw new Error("Only a project executor can cancel this revision.");
   }
 
   await withPrismaRetry(() =>
@@ -3894,7 +4042,7 @@ export async function startProjectStageWork(
     stageId: string;
   },
 ) {
-  const project = await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(user, input.projectId, input.stageId);
   const stage = project.stages.find((item) => item.id === input.stageId);
 
   if (!stage) {
@@ -3905,11 +4053,11 @@ export async function startProjectStageWork(
     user,
     project,
     "stage.acceptBrief",
-    "Only a Main Executor can accept the brief for this stage.",
+    "Only a project executor can accept the brief for this stage.",
   );
 
-  if (!isMainProjectExecutorUser(project, user.id)) {
-    throw new Error("Only a Main Executor can accept the brief for this stage.");
+  if (!isProjectExecutorUser(project, user.id)) {
+    throw new Error("Only a project executor can accept the brief for this stage.");
   }
 
   if (isProjectStatusCompleted(project.status)) {
@@ -3977,7 +4125,11 @@ export async function completeProjectStage(
     stageId: string;
   },
 ) {
-  const project = await getProjectAccessRecord(input.projectId);
+  const project = await getProjectAccessRecord(
+    input.projectId,
+    undefined,
+    input.stageId,
+  );
 
   if (!project) {
     throw new Error("Project not found.");
@@ -3990,10 +4142,6 @@ export async function completeProjectStage(
     "Only the project owner can mark this stage as complete.",
   );
 
-  if (project.createdById !== user.id) {
-    throw new Error("Only the project owner can mark this stage as complete.");
-  }
-
   if (isProjectStatusCompleted(project.status)) {
     throw new Error("This project is already completed.");
   }
@@ -4004,7 +4152,13 @@ export async function completeProjectStage(
     throw new Error("Stage not found.");
   }
 
-  const orderedStages = [...project.stages].sort((left, right) => left.order - right.order);
+  if (stage.isTasker) {
+    throw new Error("Concept taskers do not use the stage completion flow.");
+  }
+
+  const orderedStages = project.stages
+    .filter((item) => !item.isTasker)
+    .sort((left, right) => left.order - right.order);
   const stageIndex = orderedStages.findIndex((item) => item.id === stage.id);
   const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] ?? null : null;
 
@@ -4149,7 +4303,8 @@ export async function reviewStageSubmission(
         submissionReviewStatus: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executionType: true,
             status: {
               select: projectStatusSelect,
@@ -4171,16 +4326,10 @@ export async function reviewStageSubmission(
   if (
     !hasProjectPermission(
       user,
-      {
-        createdById: attachment.project.createdById,
-      },
+      attachment.project,
       "stage.reviewSubmission",
     )
   ) {
-    throw new Error("Only the project owner can review submissions.");
-  }
-
-  if (attachment.project.createdById !== user.id) {
     throw new Error("Only the project owner can review submissions.");
   }
 
@@ -4249,7 +4398,8 @@ export async function reviewProjectRevision(
         },
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executionType: true,
             status: {
               select: projectStatusSelect,
@@ -4266,9 +4416,7 @@ export async function reviewProjectRevision(
 
   assertProjectWorkflowPermission(
     user,
-    {
-      createdById: revision.project.createdById,
-    },
+    revision.project,
     input.status === "APPROVED"
       ? "stage.markSubmissionComplete"
       : "stage.requestRevision",
@@ -4276,10 +4424,6 @@ export async function reviewProjectRevision(
       ? "Only the project owner can review this submission."
       : "Only the project owner can request revisions.",
   );
-
-  if (revision.project.createdById !== user.id) {
-    throw new Error("Only the project owner can review this submission.");
-  }
 
   if (isProjectStatusCompleted(revision.project.status)) {
     throw new Error("This project is already completed.");
@@ -4371,6 +4515,7 @@ export async function reviewProjectRevision(
         const orderedStages = await tx.projectStage.findMany({
           where: {
             projectId: revision.projectId,
+            isTasker: false,
           },
           orderBy: {
             order: "asc",
@@ -4530,7 +4675,8 @@ export async function requestStageInvoice(
           select: {
             id: true,
             name: true,
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executionType: true,
             status: {
               select: projectStatusSelect,
@@ -4539,7 +4685,6 @@ export async function requestStageInvoice(
             executors: {
               select: {
                 userId: true,
-                role: true,
                 user: {
                   select: {
                     name: true,
@@ -4577,10 +4722,6 @@ export async function requestStageInvoice(
     "Only the project owner can request an invoice.",
   );
 
-  if (stage.project.createdById !== user.id) {
-    throw new Error("Only the project owner can request an invoice.");
-  }
-
   if (isProjectStatusCompleted(stage.project.status)) {
     throw new Error("This project is already completed.");
   }
@@ -4612,14 +4753,12 @@ export async function requestStageInvoice(
   }
 
   const executorCandidate = stage.project.executors.find(
-    (executor) =>
-      executor.userId === requestedFromId &&
-      executor.role === ProjectExecutorRole.MAIN_EXECUTOR,
+    (executor) => executor.userId === requestedFromId,
   );
   const candidate = executorCandidate?.user ?? null;
 
   if (!candidate) {
-    throw new Error("Invoice can only be requested from a project main executor.");
+    throw new Error("Invoice can only be requested from a project executor.");
   }
 
   const note = input.note?.trim() || null;
@@ -4715,7 +4854,14 @@ export async function requestAttachmentUpload(
     input.assetType === AttachmentAssetType.STAGE_SUBMISSION ||
     input.assetType === AttachmentAssetType.REVISION_ORIGINAL;
 
-  if (!isFormalStageSubmission && !isAllowedAssetFile(input.originalFileName)) {
+  const isProjectResearchFile =
+    input.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE;
+
+  if (
+    !isFormalStageSubmission &&
+    !isProjectResearchFile &&
+    !isAllowedAssetFile(input.originalFileName)
+  ) {
     return buildFileTypeNotAllowedPayload({
       fileName: input.originalFileName,
       mimeType: input.mimeType,
@@ -4752,6 +4898,11 @@ export async function requestAttachmentUpload(
           id: true,
           stage: {
             select: {
+              id: true,
+              isTasker: true,
+              conceptFolder: {
+                select: { workflowStageKey: true },
+              },
               actualStartedAt: true,
               status: true,
             },
@@ -4759,17 +4910,20 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               category: true,
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               executors: {
                 select: {
                   userId: true,
-                  role: true,
                 },
               },
               status: {
                 select: projectStatusSelect,
               },
               archivedAt: true,
+              workflowStages: {
+                select: { stageKey: true, status: true },
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -4788,14 +4942,34 @@ export async function requestAttachmentUpload(
 
     stageSubmissionProjectCategory = revision.project.category;
 
+    try {
+      await assertStageChatWriteAccess(user, {
+        projectId: input.projectId,
+        stage: {
+          ...revision.stage,
+          project: revision.project,
+        },
+        permissionKey: getUploadPermissionKey(input.assetType),
+        permissionMessage:
+          "Only a project executor can upload submissions for review.",
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Only a project executor can upload submissions for review.",
+      };
+    }
+
     const project = assertProjectAccessFromContext(user, revision.project);
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
-      return { error: "Only a Main Executor can submit work for review." };
+      return { error: "Only a project executor can submit work for review." };
     }
 
-    if (!isMainProjectExecutorUser(revision.project, user.id)) {
-      return { error: "Only a Main Executor can submit work for review." };
+    if (!isProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only a project executor can submit work for review." };
     }
 
     if (isProjectStatusCompleted(revision.project.status)) {
@@ -4851,11 +5025,11 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               category: true,
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               executors: {
                 select: {
                   userId: true,
-                  role: true,
                 },
               },
               status: {
@@ -4882,7 +5056,6 @@ export async function requestAttachmentUpload(
     assertProjectAccessFromContext(user, stage.project);
     const activeInvoiceRequest = stage.invoiceRequests[0] ?? null;
     const canUploadStageInvoice =
-      stage.project.createdById !== user.id &&
       activeInvoiceRequest?.fulfilledAt === null &&
       activeInvoiceRequest.requestedFromId === user.id;
 
@@ -4935,6 +5108,11 @@ export async function requestAttachmentUpload(
           id: true,
           stage: {
             select: {
+              id: true,
+              isTasker: true,
+              conceptFolder: {
+                select: { workflowStageKey: true },
+              },
               actualStartedAt: true,
               status: true,
             },
@@ -4942,17 +5120,20 @@ export async function requestAttachmentUpload(
           project: {
             select: {
               category: true,
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               executors: {
                 select: {
                   userId: true,
-                  role: true,
                 },
               },
               status: {
                 select: projectStatusSelect,
               },
               archivedAt: true,
+              workflowStages: {
+                select: { stageKey: true, status: true },
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -4971,14 +5152,34 @@ export async function requestAttachmentUpload(
 
     stageSubmissionProjectCategory = revision.project.category;
 
+    try {
+      await assertStageChatWriteAccess(user, {
+        projectId: input.projectId,
+        stage: {
+          ...revision.stage,
+          project: revision.project,
+        },
+        permissionKey: getUploadPermissionKey(input.assetType),
+        permissionMessage:
+          "Only a project executor can upload submissions for review.",
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Only a project executor can upload submissions for review.",
+      };
+    }
+
     const project = assertProjectAccessFromContext(user, revision.project);
 
     if (!hasProjectPermission(user, project, getUploadPermissionKey(input.assetType))) {
-      return { error: "Only a Main Executor can upload submissions for review." };
+      return { error: "Only a project executor can upload submissions for review." };
     }
 
-    if (!isMainProjectExecutorUser(revision.project, user.id)) {
-      return { error: "Only a Main Executor can upload submissions for review." };
+    if (!isProjectExecutorUser(revision.project, user.id)) {
+      return { error: "Only a project executor can upload submissions for review." };
     }
 
     if (isProjectStatusCompleted(revision.project.status)) {
@@ -5012,23 +5213,30 @@ export async function requestAttachmentUpload(
           revisionId: true,
           stage: {
             select: {
+              isTasker: true,
+              conceptFolder: {
+                select: { workflowStageKey: true },
+              },
               actualStartedAt: true,
               status: true,
             },
           },
           project: {
             select: {
-              createdById: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
               executors: {
                 select: {
                   userId: true,
-                  role: true,
                 },
               },
               status: {
                 select: projectStatusSelect,
               },
               archivedAt: true,
+              workflowStages: {
+                select: { stageKey: true, status: true },
+              },
               collaborators: {
                 where: {
                   userId: user.id,
@@ -5050,6 +5258,8 @@ export async function requestAttachmentUpload(
         projectId: input.projectId,
         stage: {
           id: stageId,
+          isTasker: comment.stage.isTasker,
+          conceptFolder: comment.stage.conceptFolder,
           actualStartedAt: comment.stage.actualStartedAt,
           status: comment.stage.status,
           project: comment.project,
@@ -5070,6 +5280,24 @@ export async function requestAttachmentUpload(
     if ((comment.revisionId ?? null) !== (input.revisionId ?? null)) {
       return { error: "Comment upload context is invalid." };
     }
+  } else if (isProjectResearchFile) {
+    if (!input.researchFolderId) {
+      return { error: "Research uploads require a valid folder." };
+    }
+
+    try {
+      await assertResearchFolderWriteAccess(user, {
+        projectId: input.projectId,
+        folderId: input.researchFolderId,
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "You do not have permission to upload to this folder.",
+      };
+    }
   } else {
     const project = await withPrismaRetry(() =>
       prisma.project.findUnique({
@@ -5078,7 +5306,6 @@ export async function requestAttachmentUpload(
         },
         select: {
           id: true,
-          createdById: true,
           status: {
             select: projectStatusSelect,
           },
@@ -5136,6 +5363,7 @@ export async function requestAttachmentUpload(
     stageId: input.stageId,
     revisionId: input.revisionId,
     commentId: input.commentId,
+    researchFolderId: input.researchFolderId,
     assetType: input.assetType,
     safeFileName: uniqueFileName,
   });
@@ -5210,6 +5438,7 @@ export async function completeAttachmentUpload(
   attachmentId: string,
   failed = false,
   uploadMetadata?: LibraryUploadMetadata,
+  options?: { researchFolderId?: string },
 ) {
   const attachment = await withPrismaRetry(() =>
     prisma.projectAttachment.findUnique({
@@ -5233,11 +5462,11 @@ export async function completeAttachmentUpload(
         fileSize: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
@@ -5271,7 +5500,50 @@ export async function completeAttachmentUpload(
 
   const project = assertProjectAccessFromContext(user, attachment.project);
 
+  const isProjectResearchFile =
+    attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE;
+
+  if (isProjectResearchFile) {
+    if (!options?.researchFolderId) {
+      throw new Error("Research uploads must be completed from their folder.");
+    }
+    if (attachment.uploadedById !== user.id) {
+      throw new Error("Only the uploader can complete this research file upload.");
+    }
+    await assertResearchFolderWriteAccess(user, {
+      projectId: attachment.projectId,
+      folderId: options.researchFolderId,
+    });
+    const expectedStoragePrefix = `projects/${attachment.projectId}/research/${options.researchFolderId}/`;
+    if (!attachment.storageKey.startsWith(expectedStoragePrefix)) {
+      throw new Error("Research upload context is invalid.");
+    }
+
+    if (attachment.status === AttachmentStatus.READY) {
+      const association = await withPrismaRetry(() =>
+        prisma.projectResearchFolderFile.findUnique({
+          where: { attachmentId: attachment.id },
+          select: { folderId: true },
+        }),
+      );
+      if (association?.folderId !== options.researchFolderId) {
+        throw new Error("Research upload context is invalid.");
+      }
+      return {
+        projectId: attachment.projectId,
+        stageId: attachment.stageId,
+        assetType: attachment.assetType,
+        invoiceCommentId: null,
+      };
+    }
+
+    if (attachment.status !== AttachmentStatus.UPLOADING) {
+      throw new Error("Attachment cannot be completed.");
+    }
+  }
+
   if (
+    !isProjectResearchFile &&
     attachment.assetType !== AttachmentAssetType.STAGE_INVOICE &&
     !hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))
   ) {
@@ -5318,8 +5590,7 @@ export async function completeAttachmentUpload(
     if (
       !activeInvoiceRequest ||
       activeInvoiceRequest.fulfilledAt ||
-      activeInvoiceRequest.requestedFromId !== user.id ||
-      attachment.project.createdById === user.id
+      activeInvoiceRequest.requestedFromId !== user.id
     ) {
       throw new Error(
         "Only the requested invoice recipient can upload the invoice for this stage.",
@@ -5379,36 +5650,39 @@ export async function completeAttachmentUpload(
               : undefined,
         },
       }),
-      prisma.projectActivityLog.create({
-        data: {
-          projectId: attachment.projectId,
-          stageId: attachment.stageId,
-          revisionId: attachment.revisionId,
-          actorId: user.id,
-          action: getUploadAction(attachment.assetType),
-          metadata: {
-            attachmentId: attachment.id,
-            commentId: attachment.commentId,
-            fileName: attachment.originalFileName,
-            storageKey: attachment.storageKey,
-            ...(uploadMetadata?.source
-              ? {
-                  source: uploadMetadata.source,
-                }
-              : {}),
-            ...(uploadMetadata?.category
-              ? {
-                  category: uploadMetadata.category,
-                }
-              : {}),
-            ...(uploadMetadata?.note
-              ? {
-                  note: uploadMetadata.note,
-                }
-              : {}),
-          },
-        },
-      }),
+      ...(!isProjectResearchFile
+        ? [
+            prisma.projectActivityLog.create({
+              data: {
+                projectId: attachment.projectId,
+                stageId: attachment.stageId,
+                revisionId: attachment.revisionId,
+                actorId: user.id,
+                action: getUploadAction(attachment.assetType),
+                metadata: {
+                  attachmentId: attachment.id,
+                  commentId: attachment.commentId,
+                  fileName: attachment.originalFileName,
+                  storageKey: attachment.storageKey,
+                  ...(uploadMetadata?.source ? { source: uploadMetadata.source } : {}),
+                  ...(uploadMetadata?.category ? { category: uploadMetadata.category } : {}),
+                  ...(uploadMetadata?.note ? { note: uploadMetadata.note } : {}),
+                },
+              },
+            }),
+          ]
+        : []),
+      ...(isProjectResearchFile && options?.researchFolderId
+        ? [
+            prisma.projectResearchFolderFile.create({
+              data: {
+                folderId: options.researchFolderId,
+                attachmentId: attachment.id,
+                addedById: user.id,
+              },
+            }),
+          ]
+        : []),
       ...(attachment.assetType === AttachmentAssetType.STAGE_INVOICE && attachment.stage
         ? [
             prisma.stageInvoiceRequest.updateMany({
@@ -5438,16 +5712,18 @@ export async function completeAttachmentUpload(
       ? (transactionResults[3] as { id: string } | undefined)
       : null;
 
-  runNotificationTaskAfterResponse("file-uploaded", () =>
-    notifyFileUploaded({
-      actorId: user.id,
-      actorName: getDisplayName(user),
-      projectId: attachment.projectId,
-      stageId: attachment.stageId,
-      attachmentId: attachment.id,
-      assetType: attachment.assetType,
-    }),
-  );
+  if (!isProjectResearchFile) {
+    runNotificationTaskAfterResponse("file-uploaded", () =>
+      notifyFileUploaded({
+        actorId: user.id,
+        actorName: getDisplayName(user),
+        projectId: attachment.projectId,
+        stageId: attachment.stageId,
+        attachmentId: attachment.id,
+        assetType: attachment.assetType,
+      }),
+    );
+  }
 
   if (attachment.assetType === AttachmentAssetType.STAGE_INVOICE) {
     runNotificationTaskAfterResponse("invoice-uploaded", () =>
@@ -5504,24 +5780,31 @@ export async function completePreparedChatAttachmentUpload(
         stage: {
           select: {
             id: true,
+            isTasker: true,
+            conceptFolder: {
+              select: { workflowStageKey: true },
+            },
             actualStartedAt: true,
             status: true,
             project: {
               select: {
-                createdById: true,
+                ownerId: true,
+                coOwners: { select: { userId: true } },
                 executors: {
                   where: {
                     userId: user.id,
                   },
                   select: {
                     userId: true,
-                    role: true,
                   },
                 },
                 status: {
                   select: projectStatusSelect,
                 },
                 archivedAt: true,
+                workflowStages: {
+                  select: { stageKey: true, status: true },
+                },
                 collaborators: {
                   where: {
                     userId: user.id,
@@ -5576,15 +5859,15 @@ export async function completePreparedChatAttachmentUpload(
         : "chat.uploadAttachment",
     permissionMessage:
       attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION
-        ? "Only a Main Executor can upload submissions for review."
+        ? "Only a project executor can upload submissions for review."
         : "You do not have permission to upload chat attachments.",
   });
 
   if (
     attachment.assetType === AttachmentAssetType.STAGE_SUBMISSION &&
-    !isMainProjectExecutorUser(attachment.stage.project, user.id)
+    !isProjectExecutorUser(attachment.stage.project, user.id)
   ) {
-    throw new Error("Only a Main Executor can upload submissions for review.");
+    throw new Error("Only a project executor can upload submissions for review.");
   }
 
   await withPrismaRetry(() =>
@@ -5648,10 +5931,12 @@ export async function getAttachmentDownloadUrlForUser(
         originalFileName: true,
         mimeType: true,
         status: true,
+        assetType: true,
         createdAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
       },
@@ -5660,6 +5945,17 @@ export async function getAttachmentDownloadUrlForUser(
 
   if (!attachment || attachment.status !== AttachmentStatus.READY) {
     throw new Error("Attachment not found.");
+  }
+
+  if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
+    await assertProjectResearchFileAccess(user, attachment.id, "read");
+
+    return createPresignedDownloadUrl({
+      bucket: attachment.bucket,
+      storageKey: attachment.storageKey,
+      fileName: attachment.originalFileName,
+      mimeType: attachment.mimeType,
+    });
   }
 
   const project = await assertProjectAccess(user, attachment.projectId);
@@ -5696,10 +5992,12 @@ export async function getAttachmentPreviewUrlForUser(
         originalFileName: true,
         mimeType: true,
         status: true,
+        assetType: true,
         createdAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
       },
@@ -5708,6 +6006,17 @@ export async function getAttachmentPreviewUrlForUser(
 
   if (!attachment || attachment.status !== AttachmentStatus.READY) {
     throw new Error("Attachment not found.");
+  }
+
+  if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
+    await assertProjectResearchFileAccess(user, attachment.id, "read");
+
+    return createPresignedPreviewUrl({
+      bucket: attachment.bucket,
+      storageKey: attachment.storageKey,
+      fileName: attachment.originalFileName,
+      mimeType: attachment.mimeType,
+    });
   }
 
   const project = await assertProjectAccess(user, attachment.projectId);
@@ -5742,10 +6051,12 @@ export async function deleteAttachmentForUser(
         bucket: true,
         storageKey: true,
         status: true,
+        assetType: true,
         createdAt: true,
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
           },
         },
       },
@@ -5754,6 +6065,26 @@ export async function deleteAttachmentForUser(
 
   if (!attachment || attachment.status === AttachmentStatus.DELETED) {
     throw new Error("Attachment not found.");
+  }
+
+  if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
+    await assertProjectResearchFileAccess(user, attachment.id, "write");
+
+    await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(
+      () => undefined,
+    );
+    await withPrismaRetry(() =>
+      prisma.$transaction([
+        prisma.projectResearchFolderFile.deleteMany({
+          where: { attachmentId: attachment.id },
+        }),
+        prisma.projectAttachment.update({
+          where: { id: attachment.id },
+          data: { status: AttachmentStatus.DELETED },
+        }),
+      ]),
+    );
+    return;
   }
 
   const project = await assertProjectAccess(user, attachment.projectId);

@@ -16,6 +16,7 @@ import {
   isStageChatRealtimeConfigured,
 } from "@/lib/realtime/server";
 import { getLockedStageInfo } from "@/lib/stage-locking";
+import { canOpenProjectStageChatContainer } from "@/lib/workflow-stage-access";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -116,11 +117,11 @@ export async function GET(request: Request) {
           id: projectId,
         },
         select: {
-          createdById: true,
+          ownerId: true,
+          coOwners: { select: { userId: true } },
           executors: {
             select: {
               userId: true,
-              role: true,
             },
           },
           collaborators: {
@@ -143,7 +144,10 @@ export async function GET(request: Request) {
       );
     }
 
-    if (!canBypassCollaboratorVisibility(user, project.createdById)) {
+    if (
+      !canBypassCollaboratorVisibility(user, project.ownerId ?? "") &&
+      !hasProjectPermission(user, project, "collaborator.pauseVisibility")
+    ) {
       const visibilityState = await getProjectCollaboratorVisibilityState(
         projectId,
         user.id,
@@ -194,18 +198,30 @@ export async function GET(request: Request) {
       select: {
         id: true,
         projectId: true,
+        isTasker: true,
+        conceptFolder: {
+          select: {
+            workflowStageKey: true,
+          },
+        },
         project: {
           select: {
-            createdById: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
             executors: {
               select: {
                 userId: true,
-                role: true,
               },
             },
             collaborators: {
               select: {
                 userId: true,
+              },
+            },
+            workflowStages: {
+              select: {
+                stageKey: true,
+                status: true,
               },
             },
             stages: {
@@ -237,6 +253,20 @@ export async function GET(request: Request) {
   }
 
   if (
+    !canOpenProjectStageChatContainer({
+      user,
+      isTasker: stage.isTasker,
+      conceptFolder: stage.conceptFolder,
+      workflowStages: stage.project.workflowStages,
+    })
+  ) {
+    return NextResponse.json(
+      { error: "This workflow stage is locked." },
+      { status: 403 },
+    );
+  }
+
+  if (
     !hasProjectPermission(user, stage.project, "project.view") ||
     !hasProjectPermission(user, stage.project, "chat.view")
   ) {
@@ -252,7 +282,9 @@ export async function GET(request: Request) {
       { status: 403 },
     );
   }
-  const lockedStageInfo = getLockedStageInfo(stage.project.stages, activeStageId);
+  const lockedStageInfo = stage.isTasker
+    ? null
+    : getLockedStageInfo(stage.project.stages, activeStageId);
 
   if (lockedStageInfo) {
     logAblyToken("token denied", {
@@ -265,7 +297,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: lockedStageInfo.message }, { status: 403 });
   }
 
-  if (!canBypassCollaboratorVisibility(user, stage.project.createdById)) {
+  if (
+    !canBypassCollaboratorVisibility(user, stage.project.ownerId ?? "") &&
+    !hasProjectPermission(user, stage.project, "collaborator.pauseVisibility")
+  ) {
     const visibilityState = await getProjectCollaboratorVisibilityState(
       projectId,
       user.id,

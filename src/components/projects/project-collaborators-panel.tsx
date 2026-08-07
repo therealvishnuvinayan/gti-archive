@@ -71,10 +71,8 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-function getExecutorRoleBadgeClassName(executor: ProjectExecutorRecord) {
-  return executor.role === "MAIN_EXECUTOR"
-    ? "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]"
-    : "border border-[#dde7df] bg-[#f6f8f6] text-[#34614a]";
+function getExecutorRoleBadgeClassName() {
+  return "border border-[#dde7df] bg-[#f6f8f6] text-[#34614a]";
 }
 
 function getExecutorGroupBadgeClassName(executor: ProjectExecutorRecord) {
@@ -212,9 +210,7 @@ function ExecutorCompactRow({
       <div className="flex shrink-0 items-center gap-1.5">
         <div className="flex max-w-[126px] flex-col items-end gap-1.5">
           <span
-            className={`inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 ${getExecutorRoleBadgeClassName(
-              executor,
-            )}`}
+            className={`inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[9px] font-[800] uppercase leading-4 ${getExecutorRoleBadgeClassName()}`}
           >
             <span className="truncate">{executor.roleLabel}</span>
           </span>
@@ -404,13 +400,9 @@ export function ProjectExecutorsPanel({
   const [actionError, setActionError] = useState<string | null>(null);
   const sortedExecutors = useMemo(
     () =>
-      [...executors].sort((left, right) => {
-        if (left.role !== right.role) {
-          return left.role === "MAIN_EXECUTOR" ? -1 : 1;
-        }
-
-        return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
-      }),
+      [...executors].sort((left, right) =>
+        left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+      ),
     [executors],
   );
   const visibleExecutors = sortedExecutors.slice(0, 4);

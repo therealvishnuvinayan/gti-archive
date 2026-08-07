@@ -34,10 +34,12 @@ type ProjectComparePageUser = Awaited<ReturnType<typeof requireUser>>;
 
 function getProjectPermissionContext(project: NonNullable<Awaited<ReturnType<typeof getProjectShellById>>>) {
   return {
-    createdById: project.ownerId,
+    ownerId: project.ownerId,
+    coOwners: project.collaborators
+      .filter((collaborator) => collaborator.role === "Project Co-Owner")
+      .map((collaborator) => ({ userId: collaborator.id })),
     executors: project.executors.map((executor) => ({
       userId: executor.id,
-      role: executor.role,
     })),
     collaborators: project.collaborators.map((collaborator) => ({
       userId: collaborator.id,

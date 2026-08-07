@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getProjectStageHistory } from "@/lib/project-history";
 import { generateOrFetchStageActivitySummary } from "@/lib/project-stage-summary";
-import { getProjectById } from "@/lib/projects";
+import { getProjectById, getProjectChatShellById } from "@/lib/projects";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,7 +26,12 @@ export async function GET(
   }
 
   const { projectId, stageId } = await params;
-  const project = await getProjectById(projectId, user);
+  const workflowProject = await getProjectById(projectId, user);
+  const project = workflowProject?.stageCards.some((stage) => stage.id === stageId)
+    ? workflowProject
+    : await getProjectChatShellById(projectId, user, {
+        taskerStageIds: [stageId],
+      });
 
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });

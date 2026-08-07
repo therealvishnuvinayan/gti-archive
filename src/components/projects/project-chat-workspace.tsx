@@ -2966,15 +2966,7 @@ export function ProjectChatWorkspace({
       project.executors.some((executor) => executor.id === currentUserId),
     [currentUserId, project.executors],
   );
-  const isMainProjectExecutor = useMemo(
-    () =>
-      project.executors.some(
-        (executor) =>
-          executor.id === currentUserId && executor.role === "MAIN_EXECUTOR",
-      ),
-    [currentUserId, project.executors],
-  );
-  const canSubmitWorkAsMainExecutor = isMainProjectExecutor;
+  const canSubmitWorkAsProjectExecutor = isProjectExecutor;
   const stageInvoiceRequired = Boolean(activeStage?.invoiceRequired);
   const stageInvoiceRequest = activeStage?.invoiceRequest ?? null;
   const stageInvoiceMissing =
@@ -3044,14 +3036,12 @@ export function ProjectChatWorkspace({
       }
     };
 
-    executors
-      .filter((executor) => executor.role === "MAIN_EXECUTOR")
-      .forEach((executor) => {
+    executors.forEach((executor) => {
         addCandidate({
           id: executor.id,
           name: executor.name,
           email: executor.email,
-          role: "Main Executor",
+          role: "Executor",
           rank: 0,
         });
       });
@@ -3064,14 +3054,14 @@ export function ProjectChatWorkspace({
   const latestRevisionAllowsNewSubmission =
     !latestRevisionMessage || latestRevisionStatus === "REJECTED";
   const canSubmitNewRevision =
-    canSubmitWorkAsMainExecutor &&
+    canSubmitWorkAsProjectExecutor &&
     hasAcceptedBrief &&
     latestRevisionAllowsNewSubmission &&
     activeStage?.status !== "pending" &&
     !isStageCompleted &&
     !isProjectCompleted &&
     !hasPendingRevisionReview;
-  const submitWorkDisabledReason = !canSubmitWorkAsMainExecutor
+  const submitWorkDisabledReason = !canSubmitWorkAsProjectExecutor
     ? null
     : !activeStage
       ? "No active stage selected."
@@ -3087,7 +3077,7 @@ export function ProjectChatWorkspace({
                 ? pendingRevisionReviewMessage
                 : null;
   const showSubmitWorkAction =
-    canSubmitWorkAsMainExecutor &&
+    canSubmitWorkAsProjectExecutor &&
     Boolean(activeStage) &&
     !isStageCompleted &&
     !isProjectCompleted;
@@ -3111,7 +3101,7 @@ export function ProjectChatWorkspace({
     stageBriefAttachments.length > 0;
   const canAcceptCurrentStageBrief =
     Boolean(activeStage) &&
-    isMainProjectExecutor &&
+    isProjectExecutor &&
     !isProjectCompleted &&
     !isStageCompleted &&
     activeStage?.status !== "pending" &&
@@ -3127,15 +3117,15 @@ export function ProjectChatWorkspace({
     ? "Completed"
     : hasAcceptedBriefInTimeline
       ? "In progress"
-      : isMainProjectExecutor
+      : isProjectExecutor
         ? "Brief acceptance required"
-        : "Waiting for Main Executor to accept brief";
-  const briefAcceptanceWaitingTitle = isMainProjectExecutor
+        : "Waiting for project executor to accept brief";
+  const briefAcceptanceWaitingTitle = isProjectExecutor
     ? "Brief acceptance required"
-    : "Waiting for Main Executor";
-  const briefAcceptanceWaitingBody = isMainProjectExecutor
+    : "Waiting for project executor";
+  const briefAcceptanceWaitingBody = isProjectExecutor
     ? "You need to accept the brief before submitting work for this stage."
-    : "Waiting for Main Executor to accept brief.";
+    : "Waiting for project executor to accept brief.";
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
   const currentUserDisplayCode = useMemo(
@@ -3490,7 +3480,7 @@ export function ProjectChatWorkspace({
       return null;
     }
 
-    const actorName = activeStage.startedByName ?? "Main Executor";
+    const actorName = activeStage.startedByName ?? "project executor";
     const displayActorName = getActorDisplayName(actorName, currentUserDisplayName);
 
     return {
@@ -3498,7 +3488,7 @@ export function ProjectChatWorkspace({
       kind: "system",
       title: "Brief accepted",
       author: actorName,
-      role: "Main Executor",
+      role: "project executor",
       body: `${displayActorName} accepted the project and stage brief and started work on this stage.`,
       createdAt: activeStage.actualStartedAt,
     };
@@ -5279,8 +5269,8 @@ export function ProjectChatWorkspace({
   }
 
   function openRevisionDialog() {
-    if (!canSubmitWorkAsMainExecutor) {
-      const message = "Only a Main Executor can submit work for review.";
+    if (!canSubmitWorkAsProjectExecutor) {
+      const message = "Only a project executor can submit work for review.";
       setComposerError(message);
       showErrorToast("Unable to submit work.", message);
       return;
@@ -6267,8 +6257,8 @@ export function ProjectChatWorkspace({
       return;
     }
 
-    if (!canSubmitWorkAsMainExecutor) {
-      setRevisionDialogError("Only a Main Executor can submit work for review.");
+    if (!canSubmitWorkAsProjectExecutor) {
+      setRevisionDialogError("Only a project executor can submit work for review.");
       return;
     }
 
@@ -9655,7 +9645,7 @@ export function ProjectChatWorkspace({
                   Request Invoice
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  Send an in-app request to the main executor responsible for this stage.
+                  Send an in-app request to the executor responsible for this stage.
                 </p>
               </div>
               <Button
@@ -9689,7 +9679,7 @@ export function ProjectChatWorkspace({
                   disabled={isRequestingStageInvoice}
                 >
                   <SelectTrigger className="h-12 rounded-[16px] border border-line">
-                    <SelectValue placeholder="Select main executor" />
+                    <SelectValue placeholder="Select executor" />
                   </SelectTrigger>
                   <SelectContent className="z-[120]">
                     {invoiceRequestCandidates.map((candidate) => (
@@ -9701,7 +9691,7 @@ export function ProjectChatWorkspace({
                 </Select>
                 {invoiceRequestCandidates.length === 0 ? (
                   <p className="text-[12px] leading-5 text-[#a64038]">
-                    No eligible main executor found for invoice request. Add a main executor to this project first.
+                    No eligible executor found for invoice request. Add an executor to this project first.
                   </p>
                 ) : null}
               </div>

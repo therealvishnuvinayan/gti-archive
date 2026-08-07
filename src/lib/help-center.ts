@@ -103,18 +103,18 @@ export const quickStartItems: HelpQuickStartItem[] = [
   {
     id: "quick-stage-invoices",
     title: "Set stage invoice rules",
-    description: "Choose whether each stage requires a Main Executor invoice before completion.",
+    description: "Choose whether each stage requires a Executor invoice before completion.",
     sectionId: "stage-invoices",
     icon: ArrowUpFromLine,
-    keywords: ["stage invoice", "invoice required", "main executor", "complete stage"],
+    keywords: ["stage invoice", "invoice required", "executor", "complete stage"],
   },
   {
     id: "quick-assign-executor",
     title: "Assign project executors",
-    description: "Choose Main Executors and Executors responsible for execution.",
+    description: "Choose Executors responsible for execution.",
     sectionId: "projects",
     icon: CheckCircle2,
-    keywords: ["executor", "main executor", "assign", "owner", "responsibility"],
+    keywords: ["executor", "executor", "assign", "owner", "responsibility"],
   },
   {
     id: "quick-invite-collaborators",
@@ -135,10 +135,10 @@ export const quickStartItems: HelpQuickStartItem[] = [
   {
     id: "quick-submit-work",
     title: "Submit work for review",
-    description: "Main Executors submit work for the project owner to review or revise.",
+    description: "Executors submit work for the project owner to review or revise.",
     sectionId: "submissions-revisions",
     icon: ClipboardCheck,
-    keywords: ["submit work", "review", "revision", "executor", "main executor"],
+    keywords: ["submit work", "review", "revision", "executor", "executor"],
   },
   {
     id: "quick-complete-archive",
@@ -194,10 +194,10 @@ export const helpTopics: HelpTopic[] = [
   {
     id: "topic-stage-invoices",
     title: "Stage Invoices",
-    description: "Track per-stage invoice requirements, Main Executor uploads, and invoice status.",
+    description: "Track per-stage invoice requirements, Executor uploads, and invoice status.",
     sectionId: "stage-invoices",
     icon: ArrowUpFromLine,
-    keywords: ["stage invoice", "invoice required", "upload invoice", "main executor", "owner"],
+    keywords: ["stage invoice", "invoice required", "upload invoice", "executor", "owner"],
   },
   {
     id: "topic-collaboration",
@@ -205,7 +205,7 @@ export const helpTopics: HelpTopic[] = [
     description: "Understand roles, collaborator types, project participants, and server-enforced access.",
     sectionId: "collaboration-permissions",
     icon: Users,
-    keywords: ["collaboration", "permissions", "roles", "project owner", "project executor", "main executor"],
+    keywords: ["collaboration", "permissions", "roles", "project owner", "project executor", "executor"],
   },
   {
     id: "topic-library",
@@ -280,7 +280,7 @@ export const recommendedGuides: HelpGuide[] = [
     title: "How to create a new project",
     description: "Create the project record, brief, category, executors, dates, and priority.",
     sectionId: "projects",
-    keywords: ["create project", "brief", "executor", "main executor", "priority"],
+    keywords: ["create project", "brief", "executor", "executor", "priority"],
   },
   {
     id: "guide-flux-ai",
@@ -306,9 +306,9 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-assign-executor",
     title: "How to assign project executors",
-    description: "Choose Main Executors and Executors and understand what each role can do once the project opens.",
+    description: "Choose Executors and understand what each role can do once the project opens.",
     sectionId: "projects",
-    keywords: ["assign executor", "project executor", "main executor", "owner"],
+    keywords: ["assign executor", "project executor", "executor", "owner"],
   },
   {
     id: "guide-invite-collaborators",
@@ -343,19 +343,19 @@ export const recommendedGuides: HelpGuide[] = [
     title: "How stage invoices work",
     description: "Set stage invoice requirements and understand who uploads invoices before completion.",
     sectionId: "stage-invoices",
-    keywords: ["stage invoice", "invoice required", "upload invoice", "main executor"],
+    keywords: ["stage invoice", "invoice required", "upload invoice", "executor"],
   },
   {
     id: "guide-review-briefs-before-stage",
-    title: "How Main Executors review brief information before starting a stage",
+    title: "How Executors review brief information before starting a stage",
     description: "Use the Project Brief and Stage Brief buttons in Stage Chat before accepting work.",
     sectionId: "stages-briefs",
-    keywords: ["executor", "main executor", "project brief", "stage brief", "accept brief"],
+    keywords: ["executor", "executor", "project brief", "stage brief", "accept brief"],
   },
   {
     id: "guide-stage-timer",
     title: "How the stage timer works",
-    description: "The timer starts when a Main Executor confirms they are starting work, not at project creation.",
+    description: "The timer starts when a Executor confirms they are starting work, not at project creation.",
     sectionId: "stages-briefs",
     keywords: ["timer", "start work", "waiting for executor"],
   },
@@ -376,9 +376,9 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-submit-review",
     title: "How to submit work",
-    description: "Main Executors submit accepted stage work as numbered revisions for owner review.",
+    description: "Executors submit accepted stage work as numbered revisions for owner review.",
     sectionId: "submissions-revisions",
-    keywords: ["submit work", "review", "owner", "executor", "main executor"],
+    keywords: ["submit work", "review", "owner", "executor", "executor"],
   },
   {
     id: "guide-revision-review",
@@ -537,7 +537,7 @@ export const helpSections: HelpSection[] = [
       },
     ],
     callout:
-      "The core lifecycle is: create project, assign Main Executors and Executors, accept brief, discuss stage work, submit work, review or revise, complete stages, archive final files, and finish post-project documents.",
+      "The core lifecycle is: create project, assign Executors, accept brief, discuss stage work, submit work, review or revise, complete stages, archive final files, and finish post-project documents.",
   },
   {
     id: "flux-ai",
@@ -629,13 +629,13 @@ export const helpSections: HelpSection[] = [
         title: "End-to-end workflow",
         ordered: true,
         items: [
-          "Create the project and define the brief, Main Executors, Executors, stages, budget, dates, and collaborators.",
+          "Create the project and define the brief, Executors, Executors, stages, budget, dates, and collaborators.",
           "Attach project brief files if needed and add stage briefs for the stage-level work.",
           "The first stage opens with project brief context and the Stage 1 Brief in stage chat.",
-          "A Main Executor reviews the Project Brief and Stage Brief, then clicks Accept Brief / Start Work.",
+          "A Executor reviews the Project Brief and Stage Brief, then clicks Accept Brief / Start Work.",
           "Stage discussion, attachments, mentions, and working collaboration continue inside the stage chat.",
-          "A Main Executor submits work for owner review.",
-          "If the stage requires an invoice, a Main Executor uploads it in Stage Chat before completion.",
+          "A Executor submits work for owner review.",
+          "If the stage requires an invoice, a Executor uploads it in Stage Chat before completion.",
           "The project owner marks the submission complete or requests a revision with a reason.",
           "The cycle repeats until the stage is accepted.",
           "After every stage is completed, the project owner opens final project completion.",
@@ -693,7 +693,7 @@ export const helpSections: HelpSection[] = [
     title: "Projects",
     summary:
       "Project creation establishes the owner, brief, executors, financial boundaries, schedule, stages, and collaboration context for the rest of the workflow.",
-    keywords: ["projects", "create project", "priority", "budget", "executor", "main executor", "tag", "category"],
+    keywords: ["projects", "create project", "priority", "budget", "executor", "executor", "tag", "category"],
     blocks: [
       {
         title: "Project details you define",
@@ -701,8 +701,8 @@ export const helpSections: HelpSection[] = [
           "Project Name and Project Brief are the required core fields. The Project Brief is the main project-level requirement.",
           "Project Category and Project Tag come from Project Master Data, with quick-add support from the form.",
           "Project Executors are mandatory and are separate from Project Collaborators.",
-          "A project can have multiple Main Executors and multiple Executors.",
-          "At least one Main Executor is required. Main Executors accept briefs, start stage work, and submit formal work for review.",
+          "A project can have multiple equally privileged Executors.",
+          "At least one Executor is required. Executors accept briefs, start stage work, and submit formal work for review.",
           "Executors are listed as execution participants and receive project access, but normal Executors do not accept briefs or submit formal work in this phase.",
           "Project Status, Project Priority, Project Start Date, Project End Date, and collaborators shape the working context shown across the system.",
           "Project Brief attachments stay at project level and apply across the whole project.",
@@ -769,8 +769,8 @@ export const helpSections: HelpSection[] = [
         title: "How stage briefs work",
         items: [
           "Stage 1 can have a different Stage Brief from Stage 2 or later stages.",
-          "When a Main Executor opens Stage 1, they should review the Project Brief and the Stage 1 Brief.",
-          "When a Main Executor opens Stage 2, they should review the Project Brief and the Stage 2 Brief.",
+          "When a Executor opens Stage 1, they should review the Project Brief and the Stage 1 Brief.",
+          "When a Executor opens Stage 2, they should review the Project Brief and the Stage 2 Brief.",
           "Stage Chat keeps separate Project Brief and Stage Brief buttons so the context is clear.",
           "Stage Chat shows Project Executors above Project Collaborators so execution responsibility stays visible.",
         ],
@@ -798,22 +798,22 @@ export const helpSections: HelpSection[] = [
       {
         title: "Accept Brief and Stage Start",
         items: [
-          "Main Executors must review both the Project Brief and the current Stage Brief before starting stage work.",
-          "Only Main Executors can accept the brief and start the stage timer.",
+          "Executors must review both the Project Brief and the current Stage Brief before starting stage work.",
+          "Only Executors can accept the brief and start the stage timer.",
           "Normal Executors and Project Collaborators cannot accept the brief.",
-          "If multiple Main Executors are assigned, any one Main Executor can accept the brief for the current stage.",
+          "If multiple Executors are assigned, any one Executor can accept the brief for the current stage.",
           "Once accepted, the stage shows who accepted the brief and when the timer started.",
-          "After a stage is accepted, Accept Brief disappears for all Main Executors on that stage.",
+          "After a stage is accepted, Accept Brief disappears for all Executors on that stage.",
         ],
       },
       {
-        title: "How Main Executors review brief information before starting a stage",
+        title: "How Executors review brief information before starting a stage",
         ordered: true,
         items: [
           "Open Stage Chat for the current stage.",
           "Use Project Brief to review the main project-level requirement and project brief attachments.",
           "Use Stage Brief to review the current stage instruction and stage brief attachments.",
-          "A Main Executor clicks Accept Brief / Start Work to confirm they are beginning the stage.",
+          "A Executor clicks Accept Brief / Start Work to confirm they are beginning the stage.",
           "Only after acceptance does the stage timer start.",
           "Before acceptance, the timer should remain in a not-started or waiting state.",
         ],
@@ -833,8 +833,8 @@ export const helpSections: HelpSection[] = [
     eyebrow: "Finance Workflow",
     title: "Stage Invoices",
     summary:
-      "Invoices belong to stages because stages are the actual work units. A required stage invoice must be uploaded by a Main Executor before that stage can be completed.",
-    keywords: ["stage invoice", "invoice required", "main executor", "owner", "library"],
+      "Invoices belong to stages because stages are the actual work units. A required stage invoice must be uploaded by a Executor before that stage can be completed.",
+    keywords: ["stage invoice", "invoice required", "executor", "owner", "library"],
     blocks: [
       {
         title: "How invoice requirement works",
@@ -848,7 +848,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "Who uploads the invoice",
         items: [
-          "Only a Main Executor assigned to the project can upload a stage invoice.",
+          "Only a Executor assigned to the project can upload a stage invoice.",
           "Project Owners can see invoice status and view uploaded invoice files, but they do not upload the invoice.",
           "Normal Executors and collaborators cannot upload stage invoices in this phase.",
           "The server enforces this rule, so hiding or showing the button is not the only protection.",
@@ -868,7 +868,7 @@ export const helpSections: HelpSection[] = [
       {
         question: "Can a Project Owner upload the stage invoice?",
         answer:
-          "No. The current business rule is Main Executor-only invoice upload. Owners can monitor status and view the uploaded invoice.",
+          "No. The current business rule is Executor-only invoice upload. Owners can monitor status and view the uploaded invoice.",
       },
       {
         question: "Can there be multiple invoices for one stage?",
@@ -882,13 +882,13 @@ export const helpSections: HelpSection[] = [
     eyebrow: "Review Flow",
     title: "Submissions & revisions",
     summary:
-      "Submissions are formal work outputs from a Main Executor. They move through owner review, revision requests, and completion while preserving revision history.",
-    keywords: ["submissions", "revisions", "submit work", "main executor", "mark as complete", "request revision", "compare submissions"],
+      "Submissions are formal work outputs from a Executor. They move through owner review, revision requests, and completion while preserving revision history.",
+    keywords: ["submissions", "revisions", "submit work", "executor", "mark as complete", "request revision", "compare submissions"],
     blocks: [
       {
         title: "Submit work",
         items: [
-          "Main Executors submit work after accepting the stage brief and starting the stage.",
+          "Executors submit work after accepting the stage brief and starting the stage.",
           "Each submitted work package becomes a numbered revision, starting with Revision 1.",
           "Submitted work becomes Pending Review and waits for project owner action.",
           "While a revision is Pending Review, the executor cannot submit another revision for that stage.",
@@ -898,12 +898,12 @@ export const helpSections: HelpSection[] = [
         title: "Review cycle",
         ordered: true,
         items: [
-          "A Main Executor submits work as a revision.",
-          "If an invoice is required for the stage, a Main Executor uploads it before the owner completes the stage.",
+          "A Executor submits work as a revision.",
+          "If an invoice is required for the stage, a Executor uploads it before the owner completes the stage.",
           "The project owner reviews the Pending Review revision.",
           "The owner chooses Mark as Complete to accept the work, or Request Revision to send it back.",
           "Request Revision stores a revision brief or reason on that revision.",
-          "After a revision is requested, the Main Executor can submit the next numbered revision.",
+          "After a revision is requested, the Executor can submit the next numbered revision.",
         ],
       },
       {
@@ -932,7 +932,7 @@ export const helpSections: HelpSection[] = [
         title: "Business rules to remember",
         items: [
           "Only the project owner reviews and completes submissions.",
-          "Only Main Executors submit formal revisions; collaborators cannot submit or review revisions.",
+          "Only Executors submit formal revisions; collaborators cannot submit or review revisions.",
           "A required stage invoice must be uploaded before the owner can complete that stage.",
           "Old revisions remain visible as project history and should not disappear when a new revision is submitted.",
           "A Revision Requested Revision 1 stays part of the record while the next submission becomes Revision 2.",
@@ -946,7 +946,7 @@ export const helpSections: HelpSection[] = [
     title: "Collaboration & permissions",
     summary:
       "GTI Archive combines global roles, collaborator types, project-specific responsibilities, and server-enforced permission profiles to decide what each user can see and do.",
-    keywords: ["collaboration", "permissions", "super admin", "admin", "collaborator", "project owner", "project executor", "main executor"],
+    keywords: ["collaboration", "permissions", "super admin", "admin", "collaborator", "project owner", "project executor", "executor"],
     blocks: [
       {
         title: "Roles and responsibilities",
@@ -955,7 +955,7 @@ export const helpSections: HelpSection[] = [
           "ADMIN manages day-to-day projects and collaboration workflows within their allowed scope.",
           "COLLABORATOR accesses only assigned projects or allowed modules.",
           "Project Owner controls the project, budget, submission review, and final completion authority.",
-          "Main Executor accepts briefs, starts work, and submits revisions for owner review.",
+          "Executor accepts briefs, starts work, and submits revisions for owner review.",
           "Executor is an execution participant with project access, but does not accept briefs or submit formal work in this phase.",
           "Project Collaborator is a separate participant list used for project collaboration access and visibility.",
         ],
@@ -965,7 +965,7 @@ export const helpSections: HelpSection[] = [
         items: [
           "Permissions are profile-based by role and collaborator type, not manually tuned user-by-user at scale.",
           "Collaborator types such as internal client, agency, freelancer, vendor, or client of GTI shape default access expectations.",
-          "Hard business rules still apply even when broader permissions exist. For example, only the owner reviews submissions and only Main Executors submit work.",
+          "Hard business rules still apply even when broader permissions exist. For example, only the owner reviews submissions and only Executors submit work.",
           "Sensitive fields and protected actions must be enforced server-side, not only hidden in the UI.",
         ],
       },
@@ -991,7 +991,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "Why access can differ by user",
         items: [
-          "Project membership affects whether a user can see a project at all. Owners, Main Executors, Executors, and assigned collaborators can be project members.",
+          "Project membership affects whether a user can see a project at all. Owners, Executors, Executors, and assigned collaborators can be project members.",
           "Field-level filtering can hide sensitive values such as budget even when the user can see the project.",
           "Calendar, Library, Archive, and project chat visibility can differ based on the assigned profile and workflow role.",
         ],
@@ -1038,8 +1038,8 @@ export const helpSections: HelpSection[] = [
         title: "Important hard rules",
         items: [
           "Project budget visibility and budget edits remain owner-controlled.",
-          "Only Main Executors accept briefs, submit stage work, and upload formal submissions.",
-          "Only Main Executors upload stage invoices.",
+          "Only Executors accept briefs, submit stage work, and upload formal submissions.",
+          "Only Executors upload stage invoices.",
           "Only the project owner reviews submissions, requests revisions, completes stages, and completes the final archive.",
           "Checklist actions for approval proof and copyright documents remain owner-only.",
           "Users and permission profile management remain SUPER_ADMIN-only in the current product.",
@@ -1354,7 +1354,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "Stage invoice vs final invoice",
         items: [
-          "Stage Invoice belongs to one stage and is uploaded by a Main Executor in Stage Chat.",
+          "Stage Invoice belongs to one stage and is uploaded by a Executor in Stage Chat.",
           "Final Invoice belongs to the project completion package and is separate from stage invoices.",
           "Stage invoices block stage completion when required. Final invoice follows the authority and copyright steps.",
           "Do not move stage invoices into Archives automatically; they stay traceable through stage logs and Library.",
@@ -1381,9 +1381,9 @@ export const helpSections: HelpSection[] = [
       {
         title: "Check access first",
         items: [
-          "If you cannot see a project, confirm you are the owner, a Main Executor, an Executor, or an assigned collaborator.",
+          "If you cannot see a project, confirm you are the owner, a Executor, an Executor, or an assigned collaborator.",
           "If you cannot see the budget, remember budget visibility follows stricter business rules than general project access.",
-          "If the Submit Work button is missing, confirm you are a Main Executor and that the brief has been accepted.",
+          "If the Submit Work button is missing, confirm you are a Executor and that the brief has been accepted.",
           "If a calendar item is missing, confirm your calendar collaborator access or creator access.",
         ],
       },
@@ -1431,7 +1431,7 @@ export const helpManagementHighlights = [
 
 export const helpCoreWorkflow = [
   "Create the project and define the stages.",
-  "Assign Main Executors, Executors, and collaborators.",
+  "Assign Executors, Executors, and collaborators.",
   "Accept the brief and start the timer.",
   "Discuss work, upload files, and submit revisions.",
   "Upload required stage invoices before stage completion.",
@@ -1452,7 +1452,7 @@ export const helpKeyTerms = [
     description: "The user who creates or owns the project and reviews submissions.",
   },
   {
-    term: "Main Executor",
+    term: "Executor",
     description: "An execution participant who can accept briefs, start stage work, and submit formal revisions.",
   },
   {
@@ -1473,7 +1473,7 @@ export const helpKeyTerms = [
   },
   {
     term: "Stage Invoice",
-    description: "A stage-level invoice uploaded by a Main Executor when that stage requires one.",
+    description: "A stage-level invoice uploaded by a Executor when that stage requires one.",
   },
   {
     term: "Final Invoice",

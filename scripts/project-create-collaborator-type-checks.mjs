@@ -99,7 +99,7 @@ for (const snippet of [
 
 for (const guardedPath of [
   "src/app/(dashboard)/projects/new/page.tsx",
-  "src/app/(dashboard)/projects/new/actions.ts",
+  "src/app/(dashboard)/projects/new/v2-actions.ts",
   "src/app/api/flux-ai/create-project/route.ts",
   "src/app/api/flux-ai/validate-draft/route.ts",
 ]) {

@@ -2,7 +2,6 @@ import {
   AttachmentStatus,
   ProjectCompletionStepStatus,
   ProjectExecutionType,
-  ProjectExecutorRole,
   ProjectRevisionStatus,
   StageStatus,
   SubmissionReviewStatus,
@@ -91,14 +90,18 @@ const fluxProjectSelect = {
   stageCount: true,
   startDate: true,
   endDate: true,
-  createdById: true,
+  ownerId: true,
   completedAt: true,
   archivedAt: true,
-  createdBy: {
+  owner: {
     select: {
+      id: true,
       name: true,
       email: true,
     },
+  },
+  coOwners: {
+    select: { userId: true },
   },
   tags: {
     select: {
@@ -127,6 +130,9 @@ const fluxProjectSelect = {
     },
   },
   stages: {
+    where: {
+      isTasker: false,
+    },
     orderBy: {
       order: "asc",
     },
@@ -142,7 +148,6 @@ const fluxProjectSelect = {
   executors: {
     select: {
       userId: true,
-      role: true,
       user: {
         select: {
           name: true,
@@ -298,17 +303,17 @@ function formatStageStatus(status: StageStatus) {
 }
 
 function getExecutorName(project: FluxProject) {
-  const mainExecutor =
-    project.executors.find((executor) => executor.role === ProjectExecutorRole.MAIN_EXECUTOR) ??
-    project.executors[0] ??
-    null;
+  const mainExecutor = project.executors[0] ?? null;
 
   return mainExecutor ? getDisplayName(mainExecutor.user) : "Not assigned";
 }
 
 function getVisibleOwnerName(user: PermissionUser, project: FluxProject) {
-  if (canUseParticipantFilter(user, project) || project.createdById === user.id) {
-    return getDisplayName(project.createdBy);
+  if (
+    project.owner &&
+    (canUseParticipantFilter(user, project) || project.ownerId === user.id)
+  ) {
+    return getDisplayName(project.owner);
   }
 
   return "Restricted";
@@ -544,6 +549,10 @@ function projectMatchesDeadlineState(project: FluxProject, deadlineState: string
     return false;
   }
 
+  if (!project.endDate) {
+    return false;
+  }
+
   if (window.after && project.endDate < window.after) {
     return false;
   }
@@ -652,7 +661,7 @@ function mapProjectForFluxAI(
     slug: project.id,
     name: project.name,
     href: `/projects/${project.id}`,
-    category: project.category,
+    category: project.category ?? "Setup pending",
     status: statusDisplay.name,
     statusGroup: statusDisplay.group?.name ?? null,
     currentStage: getCurrentStageLabel(project),
@@ -1518,7 +1527,8 @@ function projectMatchesSearch(user: PermissionUser, project: FluxProject, search
     includesSearchValue(statusDisplay.name, searchValue) ||
     includesSearchValue(statusDisplay.group?.name, searchValue) ||
     (canSearchParticipants &&
-      includesSearchValue(getDisplayName(project.createdBy), searchValue)) ||
+      project.owner &&
+      includesSearchValue(getDisplayName(project.owner), searchValue)) ||
     getTagNames(project).some((tagName) => includesSearchValue(tagName, searchValue)) ||
     (canSearchParticipants &&
       project.executors.some((executor) =>
@@ -1721,7 +1731,10 @@ function buildFluxAIParticipantVisibilityScopeWhere(user: PermissionUser) {
   return {
     OR: [
       {
-        createdById: user.id,
+        ownerId: user.id,
+      },
+      {
+        coOwners: { some: { userId: user.id } },
       },
       {
         collaborators: {
@@ -1755,7 +1768,7 @@ function scopeParticipantSearchForFluxAI(
 
 function buildFluxAIOwnerSearchWhere(searchValue: string) {
   return {
-    createdBy: {
+    owner: {
       is: buildFluxAIUserNameWhere(searchValue),
     },
   } satisfies Prisma.ProjectWhereInput;
@@ -1870,6 +1883,7 @@ function buildFluxAISafeTextSearchWhere(user: PermissionUser, searchValue: strin
       {
         stages: {
           some: {
+            isTasker: false,
             name: containsInsensitive(searchValue),
           },
         },
@@ -2149,6 +2163,7 @@ function buildFluxAIProjectSearchWhere(
     clauses.push({
       stages: {
         some: {
+          isTasker: false,
           status: input.stageStatus,
         },
       },
@@ -2389,7 +2404,10 @@ export async function searchProjectsForFluxAI(
     .filter((project) =>
       ownerName
         ? canUseParticipantFilter(user, project) &&
-          includesSearchValue(getDisplayName(project.createdBy), ownerName)
+          Boolean(
+            project.owner &&
+              includesSearchValue(getDisplayName(project.owner), ownerName),
+          )
         : true,
     )
     .filter((project) =>
@@ -2743,6 +2761,7 @@ export async function getOverdueStagesForFluxAI(
           {
             stages: {
               some: {
+                isTasker: false,
                 status: {
                   not: StageStatus.COMPLETED,
                 },
@@ -3837,14 +3856,14 @@ export async function prepareFluxAIDraftProject(input: FluxAIDraftPreparationInp
   if (!draftProject.endDate) addMissingField(missingFields, "End Date");
 
   if (draftProject.mainExecutorMatch?.status === "missing") {
-    addMissingField(missingFields, "Main Executor");
+    addMissingField(missingFields, "Executor");
   } else if (draftProject.mainExecutorMatch?.status === "multiple") {
-    addMissingField(missingFields, "Choose Main Executor");
+    addMissingField(missingFields, "Choose Executor");
     warnings.push(
       `Multiple collaborators matched "${draftProject.mainExecutorMatch.requestedName}". Choose one before creating.`,
     );
   } else if (draftProject.mainExecutorMatch?.status === "not_found") {
-    addMissingField(missingFields, "Valid Main Executor");
+    addMissingField(missingFields, "Valid Executor");
     warnings.push(
       `No collaborator matched "${draftProject.mainExecutorMatch.requestedName}". Choose an existing collaborator or provide an email.`,
     );

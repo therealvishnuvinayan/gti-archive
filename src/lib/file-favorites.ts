@@ -42,14 +42,14 @@ async function assertAttachmentFavoriteAccess(
             createdAt: true,
             project: {
               select: {
-                createdById: true,
+                ownerId: true,
+                coOwners: { select: { userId: true } },
                 executors: {
                   where: {
                     userId: user.id,
                   },
                   select: {
                     userId: true,
-                    role: true,
                   },
                 },
                 collaborators: {
@@ -83,7 +83,8 @@ async function assertAttachmentFavoriteAccess(
   }
 
   const projectPermissionContext = {
-    createdById: attachment.project.createdById,
+    ownerId: attachment.project.ownerId,
+    coOwners: attachment.project.coOwners,
     executors: attachment.project.executors,
     collaborators: attachment.project.collaborators.map((collaborator) => ({
       userId: collaborator.userId,
@@ -94,7 +95,10 @@ async function assertAttachmentFavoriteAccess(
     throw new Error("You do not have permission to favorite this file.");
   }
 
-  if (!canBypassCollaboratorVisibility(user, attachment.project.createdById)) {
+  if (
+    !canBypassCollaboratorVisibility(user, attachment.project.ownerId ?? "") &&
+    !hasProjectPermission(user, projectPermissionContext, "collaborator.pauseVisibility")
+  ) {
     const collaborator = attachment.project.collaborators[0];
 
     if (

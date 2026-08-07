@@ -1,5 +1,5 @@
-import { ProjectDetailRouteLoadingShell } from "@/components/projects/project-route-loading-shells";
+import { ProjectOverviewLoadingShell } from "@/components/projects/project-overview-workspace";
 
 export default function ProjectRouteLoading() {
-  return <ProjectDetailRouteLoadingShell />;
+  return <ProjectOverviewLoadingShell />;
 }

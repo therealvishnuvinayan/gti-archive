@@ -287,7 +287,8 @@ async function resolveComparableSubmissionPair(
       projectId: attachment.projectId,
       createdAt: attachment.createdAt,
       project: {
-        createdById: project.createdById,
+        ownerId: project.ownerId,
+        coOwners: project.coOwners,
       },
     });
   }
@@ -326,7 +327,11 @@ async function getVisibleSubmissionCaptionContext(
     throw new Error("Submission not found.");
   }
 
-  const project = await assertProjectAccess(user, attachment.projectId);
+  const project = await assertProjectAccess(
+    user,
+    attachment.projectId,
+    attachment.stageId,
+  );
 
   if (!hasProjectPermission(user, project, "file.view")) {
     throw new Error("You do not have permission to view this submission.");
@@ -342,7 +347,8 @@ async function getVisibleSubmissionCaptionContext(
     projectId: attachment.projectId,
     createdAt: attachment.createdAt,
     project: {
-      createdById: project.createdById,
+      ownerId: project.ownerId,
+      coOwners: project.coOwners,
     },
   });
 
@@ -434,7 +440,10 @@ async function getSubmissionCaptionReadOnlyReason(
     return "This submission has been superseded. Existing captions are read-only.";
   }
 
-  if (!canBypassCollaboratorVisibility(user, project.createdById)) {
+  if (
+    !canBypassCollaboratorVisibility(user, project.ownerId ?? "") &&
+    !hasProjectPermission(user, project, "collaborator.pauseVisibility")
+  ) {
     const visibilityState = await getProjectCollaboratorVisibilityState(
       project.id,
       user.id,
@@ -458,6 +467,8 @@ async function assertCanCreateSubmissionCaption(
     projectId: attachment.projectId,
     stage: {
       id: stage.id,
+      isTasker: stage.isTasker,
+      conceptFolder: stage.conceptFolder,
       actualStartedAt: stage.actualStartedAt,
       status: stage.status,
       project,
@@ -475,15 +486,17 @@ async function assertCanCreateSubmissionCaption(
 
 async function getComparisonCommentVisibilityPauseWindows(
   user: AccessUser,
-  projectId: string,
-  projectOwnerId: string,
+  project: { id: string; ownerId: string | null; coOwners?: Array<{ userId: string }> },
 ) {
-  if (canBypassCollaboratorVisibility(user, projectOwnerId)) {
+  if (
+    canBypassCollaboratorVisibility(user, project.ownerId ?? "") ||
+    hasProjectPermission(user, project, "collaborator.pauseVisibility")
+  ) {
     return [];
   }
 
   const visibilityState = await getProjectCollaboratorVisibilityState(
-    projectId,
+    project.id,
     user.id,
   );
 
@@ -535,8 +548,7 @@ export async function getComparisonCommentsForPair(
 
   const pauseWindows = await getComparisonCommentVisibilityPauseWindows(
     user,
-    input.projectId,
-    pair.project.createdById,
+    pair.project,
   );
   const visibleComments =
     pauseWindows.length > 0
@@ -589,8 +601,7 @@ export async function getSubmissionCaptionsForAttachment(
 
   const pauseWindows = await getComparisonCommentVisibilityPauseWindows(
     user,
-    context.attachment.projectId,
-    context.project.createdById,
+    context.project,
   );
   const visibleComments =
     pauseWindows.length > 0
@@ -684,7 +695,11 @@ export async function createComparisonComment(
 ) {
   const body = assertCaptionBodyAndPosition(input);
 
-  const project = await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(
+    user,
+    input.projectId,
+    input.stageId,
+  );
   const stage = project.stages.find((item) => item.id === input.stageId);
 
   if (!stage) {
@@ -695,6 +710,8 @@ export async function createComparisonComment(
     projectId: input.projectId,
     stage: {
       id: stage.id,
+      isTasker: stage.isTasker,
+      conceptFolder: stage.conceptFolder,
       actualStartedAt: stage.actualStartedAt,
       status: stage.status,
       project,

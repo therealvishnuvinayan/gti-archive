@@ -1,6 +1,5 @@
 import {
   CalendarEventType,
-  ProjectExecutorRole,
   StageStatus,
   UserRole,
   type Prisma,
@@ -29,13 +28,15 @@ type DashboardCollaborationProjectRecord = {
       slug: string;
     } | null;
   } | null;
-  createdBy: {
+  owner: {
     id: string;
     name: string | null;
     email: string;
-  };
+  } | null;
+  coOwners: Array<{
+    user: { id: string; name: string | null; email: string };
+  }>;
   executors: Array<{
-    role: ProjectExecutorRole;
     user: {
       id: string;
       name: string | null;
@@ -174,10 +175,6 @@ export type DashboardSnapshot = {
 
 function getDisplayName(person: { name: string | null; email: string }) {
   return person.name?.trim() || person.email;
-}
-
-function getExecutorRoleLabel(role: ProjectExecutorRole) {
-  return role === ProjectExecutorRole.MAIN_EXECUTOR ? "Main Executor" : "Executor";
 }
 
 function pluralizeDurationUnit(value: number, unit: string) {
@@ -557,21 +554,24 @@ function buildCollaborationItems(
       .map((assignment) => ({
         id: assignment.user.id,
         name: getDisplayName(assignment.user),
-        task: getExecutorRoleLabel(assignment.role),
+        task: "Executor",
       }))
-      .sort((left, right) => {
-        if (left.task !== right.task) {
-          return left.task === "Main Executor" ? -1 : 1;
-        }
-
-        return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
-      });
+      .sort((left, right) =>
+        left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+      );
     const people = [
-      {
-        id: project.createdBy.id,
-        name: getDisplayName(project.createdBy),
-        task: "Project Owner",
-      },
+      ...(project.owner
+        ? [{
+            id: project.owner.id,
+            name: getDisplayName(project.owner),
+            task: "Project Owner",
+          }]
+        : []),
+      ...project.coOwners.map((assignment) => ({
+        id: assignment.user.id,
+        name: getDisplayName(assignment.user),
+        task: "Project Co-Owner",
+      })),
       ...executorPeople,
       ...project.collaborators.map((assignment) => ({
         id: assignment.user.id,
@@ -683,16 +683,26 @@ export async function getDashboardCollaboration(
             },
           },
         },
-        createdBy: {
+        owner: {
           select: {
             id: true,
             name: true,
             email: true,
           },
         },
+        coOwners: {
+          select: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
         executors: {
           select: {
-            role: true,
             user: {
               select: {
                 id: true,
@@ -732,6 +742,7 @@ export async function getDashboardDeadlines(
   const stageDeadlines = await withPrismaRetry(() =>
     prisma.projectStage.findMany({
       where: {
+        isTasker: false,
         status: {
           not: StageStatus.COMPLETED,
         },
@@ -790,12 +801,16 @@ export async function getDashboardDeadlines(
       dueAt: stage.plannedDueAt as Date,
       actionHref: `/projects/${stage.project.id}/chat?stage=${stage.id}`,
     })),
-    ...fallbackProjects.map((project) => ({
-      projectName: project.name,
-      detail: `Project deadline • ${formatDateTime(project.endDate)}`,
-      dueAt: project.endDate,
-      actionHref: `/projects/${project.id}`,
-    })),
+    ...fallbackProjects.flatMap((project) =>
+      project.endDate
+        ? [{
+            projectName: project.name,
+            detail: `Project deadline • ${formatDateTime(project.endDate)}`,
+            dueAt: project.endDate,
+            actionHref: `/projects/${project.id}`,
+          }]
+        : [],
+    ),
   ];
 
   return buildDeadlineRecords(candidates, limit);
