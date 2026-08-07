@@ -123,13 +123,14 @@ export function StageOverviewCard({
   const available = status === "AVAILABLE";
   const completed = status === "COMPLETED";
   const locked = status === "LOCKED";
-  const stageOneOpenable = stage.number === 1 && !locked;
+  const implementedStage = stage.number === 1 || stage.number === 2;
+  const stageOpenable = implementedStage && !locked;
   const statusLabel = completed ? "Completed" : available ? "Available" : "Locked";
 
   return (
     <article
       className={`flex min-h-[250px] min-w-0 flex-col rounded-[22px] border p-5 transition sm:p-6 ${
-        stageOneOpenable
+        stageOpenable
           ? "border-[#287750] bg-[linear-gradient(145deg,#0f5b39_0%,#19764c_55%,#378a62_100%)] text-white shadow-[0_18px_42px_rgba(25,103,67,0.2)]"
           : available
             ? "border-[#b9dbc5] bg-[linear-gradient(145deg,#f8fff9,#edf8f0)] text-[#285c40] shadow-[0_12px_30px_rgba(23,85,50,0.06)]"
@@ -139,7 +140,7 @@ export function StageOverviewCard({
       <div className="flex items-center justify-between gap-3">
         <span
           className={`inline-flex rounded-full px-3 py-1 text-[11px] font-[750] ${
-            stageOneOpenable
+            stageOpenable
               ? "border border-white/35 bg-white/10 text-white"
               : available
                 ? "bg-[#dff1e5] text-[#28724b]"
@@ -150,7 +151,7 @@ export function StageOverviewCard({
         </span>
         <span
           className={`inline-flex items-center gap-1.5 text-[11px] font-[700] ${
-            stageOneOpenable ? "text-white/85" : available ? "text-[#397a55]" : "text-[#8a948c]"
+            stageOpenable ? "text-white/85" : available ? "text-[#397a55]" : "text-[#8a948c]"
           }`}
         >
           {completed ? (
@@ -166,27 +167,27 @@ export function StageOverviewCard({
 
       <h2
         className={`mt-5 text-[18px] font-[760] leading-[1.25] tracking-[-0.02em] ${
-          stageOneOpenable ? "text-white" : available ? "text-[#285c40]" : "text-[#6f7972]"
+          stageOpenable ? "text-white" : available ? "text-[#285c40]" : "text-[#6f7972]"
         }`}
       >
         {stage.name}
       </h2>
       <p
         className={`mt-3 text-[13px] font-[500] leading-5 ${
-          stageOneOpenable ? "text-white/82" : available ? "text-[#587063]" : "text-[#7d8780]"
+          stageOpenable ? "text-white/82" : available ? "text-[#587063]" : "text-[#7d8780]"
         }`}
       >
         {stage.description}
       </p>
 
       <div className="mt-auto pt-6">
-        {stageOneOpenable ? (
+        {stageOpenable ? (
           <Button
             asChild
             variant="secondary"
             className="h-11 w-full justify-between rounded-[13px] border-white bg-white px-5 text-[#174f34] shadow-[0_10px_24px_rgba(0,0,0,0.12)] hover:bg-[#f5fbf6]"
           >
-            <Link href={`/projects/${projectId}/stages/1`}>
+            <Link href={`/projects/${projectId}/stages/${stage.number}`}>
               Open Stage
               <ArrowRight className="h-4 w-4" />
             </Link>

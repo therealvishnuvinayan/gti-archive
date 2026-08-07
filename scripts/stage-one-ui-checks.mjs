@@ -58,8 +58,9 @@ for (const snippet of [
 }
 
 assert(
-  overview.includes("href={`/projects/${projectId}/stages/1`}"),
-  "The Stage 1 overview CTA should open the dedicated Stage 1 route.",
+  overview.includes("href={`/projects/${projectId}/stages/${stage.number}`}") &&
+    overview.includes("stage.number === 1 || stage.number === 2"),
+  "The overview CTA should open the dedicated implemented stage route.",
 );
 assert(
   stagePage.includes("getProjectShellById") &&

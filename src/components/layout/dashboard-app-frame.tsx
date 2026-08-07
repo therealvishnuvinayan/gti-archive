@@ -105,6 +105,12 @@ function getTopbarProps(
         leadingContent: <BackPill href={`/projects/${projectId}`} />,
       };
     }
+
+    if (nestedSegment === "stages") {
+      return {
+        leadingContent: <BackPill href={`/projects/${projectId}`} />,
+      };
+    }
   }
 
   if (projectSegments.length === 2 && projectSegments[0] === "projects") {

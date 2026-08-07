@@ -33,20 +33,31 @@ for (const label of [
   assert(overview.includes(`label="${label}"`), `Missing project summary row: ${label}`);
 }
 
-assert(overview.includes("stage.number === 1"), "Only Stage 1 should be visually active.");
-assert(overview.includes("Open Stage"), "Stage 1 should show the Open Stage CTA.");
 assert(
-  overview.includes("href={`/projects/${projectId}/stages/1`}"),
-  "Stage 1 should open its dedicated UI route.",
+  overview.includes("stage.number === 1 || stage.number === 2"),
+  "Stage 1 and Stage 2 should be openable when persisted status permits.",
+);
+assert(overview.includes("Open Stage"), "Implemented stages should show the Open Stage CTA.");
+assert(
+  overview.includes("href={`/projects/${projectId}/stages/${stage.number}`}"),
+  "Implemented stages should open their dedicated UI route.",
 );
 assert(overview.includes("status === \"AVAILABLE\""), "Available state must come from persisted workflow status.");
 assert(overview.includes("status === \"COMPLETED\""), "Completed state must come from persisted workflow status.");
-assert(overview.includes("Available · Stage UI coming next"), "Stage 2 should show a safe available state.");
+assert(
+  overview.includes("Available · Stage UI coming next"),
+  "Unimplemented future stages should retain a safe available state.",
+);
 assert(overview.includes("disabled"), "Unavailable stage controls should be disabled.");
 assert(overview.includes("Locked"), "Locked workflow stages should show their real state.");
 assert(
   projectQuery.includes("workflowStages:") && projectQuery.includes("stageKey: stage.stageKey"),
   "The project query must return persisted workflow stage state.",
+);
+assert(
+  projectQuery.includes("toProjectIsoString(stage.unlockedAt)") &&
+    projectQuery.includes("toProjectIsoString(stage.completedAt)"),
+  "Cached workflow dates must accept both Prisma Date values and serialized strings.",
 );
 assert(
   projectPage.includes("ProjectOverviewWorkspace") &&

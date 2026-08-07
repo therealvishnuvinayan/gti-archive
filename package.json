@@ -28,6 +28,7 @@
     "project-inquiry:check": "node scripts/project-inquiry-migration-checks.mjs && node scripts/stage-one-ui-checks.mjs && node scripts/project-overview-ui-checks.mjs",
     "project-owner:workflow-check": "node scripts/project-owner-workflow-permission-checks.mjs",
     "stage-one:ui-check": "node scripts/stage-one-ui-checks.mjs",
+    "stage-two:ui-check": "node scripts/stage-two-ui-checks.mjs",
     "permissions:sync": "tsc --project scripts/tsconfig.permissions-sync.json && node .tmp/permissions-sync/scripts/sync-permissions.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
