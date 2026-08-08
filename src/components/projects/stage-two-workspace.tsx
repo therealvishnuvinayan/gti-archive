@@ -155,17 +155,17 @@ function WorkspaceSwitch({ data }: { data: NonNullable<ProjectResearchPageData> 
   );
 }
 
-function FolderArtwork({ custom }: { custom: boolean }) {
+function FolderArtwork({ action = false }: { action?: boolean }) {
   return (
     <span
       className={cn(
         "relative grid size-12 shrink-0 place-items-center rounded-[14px]",
-        custom
+        action
           ? "border border-dashed border-[#77a88b] bg-white/70 text-[#28724b]"
           : "bg-[linear-gradient(145deg,#eaf5ed,#dceee2)] text-[#31805a]",
       )}
     >
-      {custom ? <Plus className="h-5 w-5" /> : <Folder className="h-7 w-7 fill-current opacity-90" />}
+      {action ? <Plus className="h-5 w-5" /> : <Folder className="h-7 w-7 fill-current opacity-90" />}
     </span>
   );
 }
@@ -233,7 +233,7 @@ function FolderTile({
       )}
     >
       <div className="flex w-full items-center gap-4">
-        <FolderArtwork custom={!folder.isSystem} />
+        <FolderArtwork />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-[720] text-[#202a23]">{folder.name}</span>
           <span className="mt-1 block text-[11px] text-[#7c867f]">
@@ -495,7 +495,7 @@ export function StageTwoWorkspace({
               ))}
               {data.selectedWorkspace.canWrite ? (
                 <button type="button" onClick={() => { setFolderError(undefined); setDialogOpen(true); }} className={cn("group border border-dashed border-[#a9c6b2] bg-[linear-gradient(145deg,#f8fcf9,#eef7f1)] text-[#286b49]", view === "grid" ? "flex min-h-[154px] flex-col items-center justify-center rounded-[20px] p-5" : "flex w-full items-center gap-4 rounded-[17px] px-4 py-3.5")}>
-                  <FolderArtwork custom /><span className={view === "grid" ? "mt-3" : "flex-1 text-left"}><span className="block text-[14px] font-[720]">New Folder</span><span className="text-[11px] text-[#718079]">Create a new folder</span></span>
+                  <FolderArtwork action /><span className={view === "grid" ? "mt-3" : "flex-1 text-left"}><span className="block text-[14px] font-[720]">New Folder</span><span className="text-[11px] text-[#718079]">Create a new folder</span></span>
                 </button>
               ) : null}
             </div>

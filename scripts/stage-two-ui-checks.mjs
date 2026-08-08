@@ -45,6 +45,12 @@ assert(
 assert(workspace.includes("createProjectResearchFolderAction") && actions.includes("createProjectResearchFolder"), "New Folder must call the persisted server action.");
 assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Next Stage must call the real completion action.");
 assert(!workspace.includes("predefinedFolders") && !workspace.includes("setCustomFolders"), "Folder cards must not use mock/local folder state.");
+assert(
+  workspace.includes("<FolderArtwork />") &&
+    workspace.includes("<FolderArtwork action") &&
+    !workspace.includes("custom={!folder.isSystem}"),
+  "Persisted system and custom folders must share one folder treatment while New Folder remains distinct.",
+);
 
 assert(
   workspace.includes("onDropFiles(folder, Array.from(event.dataTransfer.files))") &&
