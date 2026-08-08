@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, contactDialog, contactValidation, readOnlyView, summary, stagePage, stageActions, service, schema, overview] = await Promise.all([
+const [workspace, calendarMonthGrid, contactDialog, contactValidation, readOnlyView, summary, stagePage, stageActions, service, schema, overview] = await Promise.all([
   readFile("src/components/projects/stage-one-workspace.tsx", "utf8"),
+  readFile("src/components/calendar/calendar-month-grid.tsx", "utf8"),
   readFile("src/components/projects/project-contact-dialog.tsx", "utf8"),
   readFile("src/lib/project-contact-validation.ts", "utf8"),
   readFile("src/components/projects/stage-one-read-only-view.tsx", "utf8"),
@@ -13,6 +14,14 @@ const [workspace, contactDialog, contactValidation, readOnlyView, summary, stage
   readFile("prisma/schema.prisma", "utf8"),
   readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
 ]);
+
+assert(
+  calendarMonthGrid.includes('cn(compactSelectClassName, "w-[96px] flex-none")') &&
+    calendarMonthGrid.includes('"z-[160]"') &&
+    calendarMonthGrid.includes('compact && "max-h-[260px] rounded-[14px] p-1"') &&
+    !calendarMonthGrid.includes('className="z-[120]"'),
+  "The compact calendar month/year menus must remain readable and above the picker panel.",
+);
 
 assert.equal(
   workspace.match(/hover:bg-\[#eaf4ed\][^"]*hover:underline[^"]*focus-visible:ring-2/g)?.length,
@@ -37,6 +46,28 @@ assert(
     contactDialog.includes("Include country code, e.g. +971, +91, +44."),
   "Contact validation errors must be inline, focused, and explain the international phone format.",
 );
+assert(
+  !workspace.includes(".slice(0, 30)") &&
+    workspace.includes('role="listbox"') &&
+    workspace.includes("max-h-[250px]") &&
+    workspace.includes("overflow-y-auto") &&
+    workspace.includes("overscroll-contain"),
+  "Multi-entry suggestions must expose the complete list inside a bounded scroll container.",
+);
+assert(
+  workspace.includes(
+    "Select a previous value, or type a new deliverable and press Enter to add it.",
+  ),
+  "Deliverables must clearly explain how to commit a typed value.",
+);
+assert(
+  workspace.includes("growTextareaToContent") &&
+    workspace.includes("textarea.scrollHeight + borderHeight") &&
+    workspace.includes("contentHeight > textarea.offsetHeight") &&
+    workspace.includes("resize-y overflow-y-auto") &&
+    workspace.includes('className="absolute bottom-3 right-8'),
+  "Stage 1 description fields must grow with content while preserving manual vertical resizing.",
+);
 
 assert(
   workspace.includes("ProjectFlowSummaryStrip") &&
@@ -47,7 +78,7 @@ assert(
 
 for (const field of [
   "Client Name",
-  "External / Internal",
+  "External / Internal - for execution",
   "Final Beneficiary",
   "Target Market",
   "Initial Brief",

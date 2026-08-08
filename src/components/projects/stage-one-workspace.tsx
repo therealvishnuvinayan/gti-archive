@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import type {
   ProjectInquiryAttachmentField,
@@ -349,8 +357,7 @@ function MultiEntryInput({
     const query = draft.trim().toLocaleLowerCase("en");
     return suggestions
       .filter((suggestion) => !normalizedValues.has(suggestion.toLocaleLowerCase("en")))
-      .filter((suggestion) => !query || suggestion.toLocaleLowerCase("en").includes(query))
-      .slice(0, 30);
+      .filter((suggestion) => !query || suggestion.toLocaleLowerCase("en").includes(query));
   }, [draft, normalizedValues, suggestions]);
 
   useEffect(() => {
@@ -428,11 +435,17 @@ function MultiEntryInput({
         <ChevronDown className="h-4 w-4 shrink-0 text-[#59645d]" />
       </div>
       {open && !disabled && filteredSuggestions.length ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[250px] overflow-y-auto rounded-[16px] border border-[#dce3dc] bg-white p-1.5 shadow-[0_18px_44px_rgba(17,33,23,0.13)]">
+        <div
+          role="listbox"
+          aria-label={`${ariaLabel} suggestions`}
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[250px] touch-pan-y overflow-y-auto overscroll-contain rounded-[16px] border border-[#dce3dc] bg-white p-1.5 [scrollbar-gutter:stable] shadow-[0_18px_44px_rgba(17,33,23,0.13)]"
+        >
           {filteredSuggestions.map((suggestion) => (
             <button
               key={suggestion.toLocaleLowerCase("en")}
               type="button"
+              role="option"
+              aria-selected="false"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => add(suggestion)}
               className="block w-full rounded-[11px] px-3 py-2 text-left text-[13px] text-[#2d372f] hover:bg-[#f2f6f2]"
@@ -444,6 +457,15 @@ function MultiEntryInput({
       ) : null}
     </div>
   );
+}
+
+function growTextareaToContent(textarea: HTMLTextAreaElement) {
+  const borderHeight = textarea.offsetHeight - textarea.clientHeight;
+  const contentHeight = textarea.scrollHeight + borderHeight;
+
+  if (contentHeight > textarea.offsetHeight) {
+    textarea.style.height = `${contentHeight}px`;
+  }
 }
 
 function AttachmentTextarea({
@@ -470,8 +492,15 @@ function AttachmentTextarea({
   onAttachmentsChange: (files: ProjectInquiryAttachmentRecord[]) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
+
+  useLayoutEffect(() => {
+    if (textareaRef.current) {
+      growTextareaToContent(textareaRef.current);
+    }
+  }, [value]);
 
   async function uploadFile(file: File) {
     const requestResponse = await fetch("/api/project-assets/upload-url", {
@@ -555,13 +584,17 @@ function AttachmentTextarea({
     <div>
       <div className="relative">
         <Textarea
+          ref={textareaRef}
           aria-label={ariaLabel}
           value={value}
           disabled={disabled}
-          onChange={(event) => onValueChange(event.target.value)}
+          onChange={(event) => {
+            onValueChange(event.target.value);
+            growTextareaToContent(event.currentTarget);
+          }}
           placeholder={placeholder}
           className={cn(
-            "min-h-[104px] resize-none rounded-[14px] bg-white pb-10 pr-12 shadow-none",
+            "min-h-[104px] resize-y overflow-y-auto rounded-[14px] bg-white pb-10 pr-16 shadow-none",
             error ? "border-[#c85c54]" : "border-[#dce3dc]",
           )}
         />
@@ -577,7 +610,7 @@ function AttachmentTextarea({
           disabled={disabled || uploading}
           aria-label={`Attach a file to ${ariaLabel}`}
           onClick={() => inputRef.current?.click()}
-          className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full text-[#6f7b73] hover:bg-[#eef5ef] hover:text-brand disabled:opacity-50"
+          className="absolute bottom-3 right-8 grid size-8 place-items-center rounded-full text-[#6f7b73] hover:bg-[#eef5ef] hover:text-brand disabled:opacity-50"
         >
           {uploading ? (
             <Loader2 className="h-[18px] w-[18px] animate-spin" />
@@ -950,7 +983,7 @@ export function StageOneWorkspace({
                 ) : null}
               </StageOneFormField>
 
-              <StageOneFormField label="External / Internal" error={fieldErrors.clientOrigin}>
+              <StageOneFormField label="External / Internal - for execution" error={fieldErrors.clientOrigin}>
                 <div role="group" aria-label="External or internal project" className="grid h-12 grid-cols-2 overflow-hidden rounded-[14px] border border-[#dce3dc] bg-white p-1">
                   {(["EXTERNAL", "INTERNAL"] as const).map((option) => {
                     const selected = clientOrigin === option;
@@ -1086,7 +1119,11 @@ export function StageOneWorkspace({
                     clearFieldError("deliverables");
                   }}
                 />
-                {!readOnly ? <p className="mt-2 text-[11px] text-[#718078]">Select a previous value or type a new deliverable.</p> : null}
+                {!readOnly ? (
+                  <p className="mt-2 text-[11px] text-[#718078]">
+                    Select a previous value, or type a new deliverable and press Enter to add it.
+                  </p>
+                ) : null}
               </StageOneFormField>
 
               <StageOneFormField label="Date" error={fieldErrors.inquiryDate}>

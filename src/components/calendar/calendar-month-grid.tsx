@@ -135,15 +135,26 @@ export function CalendarMonthGrid({
               className={cn(
                 "border-none bg-transparent px-0 font-[700] text-[#111712] shadow-none focus-visible:ring-0",
                 compact
-                  ? cn(compactSelectClassName, "w-[72px] flex-none")
+                  ? cn(compactSelectClassName, "w-[96px] flex-none")
                   : "h-9 w-[138px] text-[16px]",
               )}
             >
               <SelectValue>{monthNames[month.getMonth()]}</SelectValue>
             </SelectTrigger>
-            <SelectContent className="z-[120]">
+            <SelectContent
+              align="start"
+              collisionPadding={16}
+              className={cn(
+                "z-[160]",
+                compact && "max-h-[260px] rounded-[14px] p-1",
+              )}
+            >
               {monthNames.map((monthName, index) => (
-                <SelectItem key={monthName} value={String(index)}>
+                <SelectItem
+                  key={monthName}
+                  value={String(index)}
+                  className={compact ? "rounded-[10px] py-2 text-[12px]" : undefined}
+                >
                   {monthName}
                 </SelectItem>
               ))}
@@ -166,9 +177,20 @@ export function CalendarMonthGrid({
             >
               <SelectValue>{month.getFullYear()}</SelectValue>
             </SelectTrigger>
-            <SelectContent className="z-[120]">
+            <SelectContent
+              align="start"
+              collisionPadding={16}
+              className={cn(
+                "z-[160]",
+                compact && "max-h-[260px] rounded-[14px] p-1",
+              )}
+            >
               {yearOptions.map((year) => (
-                <SelectItem key={year} value={String(year)}>
+                <SelectItem
+                  key={year}
+                  value={String(year)}
+                  className={compact ? "rounded-[10px] py-2 text-[12px]" : undefined}
+                >
                   {year}
                 </SelectItem>
               ))}
