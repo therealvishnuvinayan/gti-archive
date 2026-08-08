@@ -71,13 +71,51 @@ export async function completeProjectResearchFileUpload(
     throw new Error("Research upload not found.");
   }
 
-  return completeAttachmentUpload(
+  await completeAttachmentUpload(
     user,
     attachment.id,
     Boolean(input.failed),
     undefined,
     { researchFolderId: input.folderId },
   );
+
+  if (input.failed) {
+    return null;
+  }
+
+  const file = await withPrismaRetry(() =>
+    prisma.projectResearchFolderFile.findUnique({
+      where: { attachmentId: attachment.id },
+      select: {
+        id: true,
+        attachmentId: true,
+        attachment: {
+          select: {
+            originalFileName: true,
+            mimeType: true,
+            fileSize: true,
+            createdAt: true,
+            uploadedBy: { select: { name: true, email: true } },
+          },
+        },
+      },
+    }),
+  );
+
+  if (!file) {
+    throw new Error("Research file association was not created.");
+  }
+
+  return {
+    id: file.id,
+    attachmentId: file.attachmentId,
+    name: file.attachment.originalFileName,
+    mimeType: file.attachment.mimeType,
+    size: file.attachment.fileSize,
+    uploadedAt: file.attachment.createdAt.toISOString(),
+    uploadedBy:
+      file.attachment.uploadedBy.name?.trim() || file.attachment.uploadedBy.email,
+  };
 }
 
 async function getExactResearchFile(

@@ -18,6 +18,15 @@ type AssetPreviewButtonProps = {
   label?: string;
 };
 
+type AssetPreviewDialogProps = {
+  isOpen: boolean;
+  fileName: string;
+  mimeType: string;
+  previewPath: string;
+  downloadPath?: string | null;
+  onClose: () => void;
+};
+
 function isPreviewableAsset(fileName: string, mimeType: string) {
   if (mimeType.startsWith("image/")) {
     return true;
@@ -78,24 +87,27 @@ function PreviewLoadingState({ mimeType }: { mimeType: string }) {
   );
 }
 
-export function AssetPreviewButton({
+export function AssetPreviewDialog({
+  isOpen,
   fileName,
   mimeType,
   previewPath,
   downloadPath,
-  triggerClassName,
-  iconOnly = true,
-  label = "View",
-}: AssetPreviewButtonProps) {
-  const [open, setOpen] = useState(false);
+  onClose,
+}: AssetPreviewDialogProps) {
   const [loading, setLoading] = useState(true);
 
-  if (!isPreviewableAsset(fileName, mimeType)) {
+  if (!isOpen || typeof document === "undefined") {
     return null;
   }
 
-  const previewDialog = open ? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview ${fileName}`}
+    >
       <Card className="flex h-full max-h-[86vh] w-full max-w-[1080px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
           <div className="min-w-0">
@@ -112,12 +124,7 @@ export function AssetPreviewButton({
                 size="icon"
                 className="border border-line"
               >
-                <a
-                  href={downloadPath}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={`Download ${fileName}`}
-                >
+                <a href={downloadPath} aria-label={`Download ${fileName}`}>
                   <Download className="h-4 w-4" />
                 </a>
               </Button>
@@ -126,7 +133,7 @@ export function AssetPreviewButton({
               type="button"
               variant="secondary"
               size="icon"
-              onClick={() => setOpen(false)}
+              onClick={onClose}
               className="border border-line"
               aria-label="Close preview"
             >
@@ -158,8 +165,25 @@ export function AssetPreviewButton({
           </div>
         </CardContent>
       </Card>
-    </div>
-  ) : null;
+    </div>,
+    document.body,
+  );
+}
+
+export function AssetPreviewButton({
+  fileName,
+  mimeType,
+  previewPath,
+  downloadPath,
+  triggerClassName,
+  iconOnly = true,
+  label = "View",
+}: AssetPreviewButtonProps) {
+  const [open, setOpen] = useState(false);
+
+  if (!isPreviewableAsset(fileName, mimeType)) {
+    return null;
+  }
 
   return (
     <>
@@ -168,19 +192,23 @@ export function AssetPreviewButton({
         variant="ghost"
         size={iconOnly ? "icon" : "sm"}
         className={triggerClassName}
-        onClick={() => {
-          setLoading(true);
-          setOpen(true);
-        }}
+        onClick={() => setOpen(true)}
         aria-label={`${label} ${fileName}`}
       >
         <Eye className="h-4 w-4" />
         {iconOnly ? null : <span>{label}</span>}
       </Button>
 
-      {previewDialog && typeof document !== "undefined"
-        ? createPortal(previewDialog, document.body)
-        : null}
+      {open ? (
+        <AssetPreviewDialog
+          isOpen
+          fileName={fileName}
+          mimeType={mimeType}
+          previewPath={previewPath}
+          downloadPath={downloadPath}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </>
   );
 }

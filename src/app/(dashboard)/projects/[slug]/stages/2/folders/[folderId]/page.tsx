@@ -33,7 +33,11 @@ export default async function ProjectResearchFolderPage({
       }}
     >
       {data ? (
-        <StageTwoFolderWorkspace data={data} currentUserId={user.id} />
+        <StageTwoFolderWorkspace
+          key={data.folder.id}
+          data={data}
+          currentUserId={user.id}
+        />
       ) : (
         <ProjectAccessUnavailableState />
       )}

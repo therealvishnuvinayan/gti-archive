@@ -205,12 +205,33 @@ async function main() {
   check(25, !("error" in upload), "own-workspace upload must be prepared");
   check(27, !("error" in upload), "generic CAD file type must be accepted");
   if ("error" in upload) throw new Error(String(upload.error));
-  await completeProjectResearchFileUpload(users.executor, { projectId, folderId: executorBrief.id, attachmentId: upload.attachmentId });
+  const completedFile = await completeProjectResearchFileUpload(users.executor, {
+    projectId,
+    folderId: executorBrief.id,
+    attachmentId: upload.attachmentId,
+  });
+  check(
+    49,
+    completedFile?.attachmentId === upload.attachmentId &&
+      completedFile.name === "floor-plan.dwg" &&
+      completedFile.uploadedAt.length > 0,
+    "upload completion must return the persisted gallery file metadata",
+  );
 
   const uploadTwo = await requestProjectResearchFileUpload(users.executor, { projectId, folderId: executorBrief.id, originalFileName: "research.bundle", mimeType: "application/octet-stream", fileSize: 256 });
   check(26, !("error" in uploadTwo), "a second file in a multi-file selection must be accepted");
   if ("error" in uploadTwo) throw new Error(String(uploadTwo.error));
-  await completeProjectResearchFileUpload(users.executor, { projectId, folderId: executorBrief.id, attachmentId: uploadTwo.attachmentId });
+  const completedFileTwo = await completeProjectResearchFileUpload(users.executor, {
+    projectId,
+    folderId: executorBrief.id,
+    attachmentId: uploadTwo.attachmentId,
+  });
+  check(
+    50,
+    completedFileTwo?.attachmentId === uploadTwo.attachmentId &&
+      completedFileTwo.name === "research.bundle",
+    "independently completed files must each return their own persisted record",
+  );
   const association = await prisma.projectResearchFolderFile.findUnique({ where: { attachmentId: upload.attachmentId } });
   check(28, association?.folderId === executorBrief.id, "file association must target the exact folder");
 
@@ -266,7 +287,7 @@ async function main() {
   check(48, !Object.keys(prisma).some((key) => /task|vendor/i.test(key)), "Stage 2 must not add task/chat/vendor-specific models");
   check(30, (await getProjectResearchPageData(users.adminOutsider, projectId)) === null, "ADMIN role alone must not gain Stage 2 access");
 
-  console.log("Stage 2 database integration checks 1-48 passed.");
+  console.log("Stage 2 database integration checks 1-50 passed.");
 }
 
 main()

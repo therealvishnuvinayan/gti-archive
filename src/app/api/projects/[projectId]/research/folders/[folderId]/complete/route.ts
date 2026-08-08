@@ -28,7 +28,7 @@ export async function POST(
   }
 
   try {
-    await completeProjectResearchFileUpload(user, {
+    const file = await completeProjectResearchFileUpload(user, {
       projectId,
       folderId,
       attachmentId: payload.attachmentId,
@@ -37,7 +37,7 @@ export async function POST(
     revalidatePath(`/projects/${projectId}/stages/2`);
     revalidatePath(`/projects/${projectId}/stages/2/folders/${folderId}`);
     revalidateTag(PROJECTS_CACHE_TAG, "max");
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, file });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to complete upload.";
     return NextResponse.json(
