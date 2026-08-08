@@ -453,6 +453,108 @@ function ChecklistItemRow({
   );
 }
 
+function StageFiveReadOnlyView({
+  textValues,
+  files,
+  multiValues,
+  healthWarningIncluded,
+  isFilled,
+}: {
+  textValues: Partial<Record<ChecklistFieldKey, string>>;
+  files: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>;
+  multiValues: Partial<Record<ChecklistFieldKey, string[]>>;
+  healthWarningIncluded: boolean;
+  isFilled: (item: ChecklistDefinition) => boolean;
+}) {
+  return (
+    <section
+      id="stage-five-view-panel"
+      role="tabpanel"
+      aria-label="View File Checklist"
+      className="border-t border-[#e7ece7] bg-[#fbfcfb]"
+    >
+      <div className="px-4 py-5 sm:px-5 lg:px-6">
+        <h2 className="text-[18px] font-[750] text-[#1b261f]">
+          Required information and files
+        </h2>
+        <p className="mt-1 text-[11px] leading-4 text-[#77827a]">
+          Read-only checklist summary.
+        </p>
+      </div>
+      <div className="bg-white">
+        {CHECKLIST_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const value = textValues[item.key]?.trim() ?? "";
+          const selectedFiles = files[item.key] ?? [];
+          const values = multiValues[item.key] ?? [];
+          const filled = isFilled(item);
+          const showIncluded = item.control === "health-warning" && healthWarningIncluded;
+          const hasContent = Boolean(value || selectedFiles.length || values.length || showIncluded);
+
+          return (
+            <article
+              key={item.key}
+              className="grid gap-4 border-t border-[#e8ede8] px-4 py-5 first:border-t-0 sm:px-5 lg:grid-cols-[230px_minmax(0,1fr)_86px] lg:px-6 lg:gap-5"
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#eef5ef] text-[#3a7556]">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-[740] text-[#253029]">{item.title}</h3>
+                  <p className="mt-1 text-[11px] leading-4 text-[#7b857e]">{item.helper}</p>
+                </div>
+              </div>
+
+              <div className="min-w-0 space-y-3 text-[13px] leading-5 text-[#344038]">
+                {value ? <p className="whitespace-pre-wrap break-words">{value}</p> : null}
+                {values.length > 0 ? (
+                  <div className="flex flex-wrap gap-2" aria-label={`${item.title} values`}>
+                    {values.map((itemValue) => (
+                      <span
+                        key={itemValue}
+                        className="inline-flex rounded-full bg-[#edf3ee] px-3 py-1.5 text-[11px] font-[650] text-[#405047]"
+                      >
+                        {itemValue}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {selectedFiles.length > 0 ? (
+                  <div className="flex flex-wrap gap-2" aria-label={`${item.title} selected files`}>
+                    {selectedFiles.map((file) => (
+                      <span
+                        key={file.id}
+                        className="inline-flex max-w-full items-center gap-2 rounded-[10px] border border-[#dfe6df] bg-[#f7faf7] px-3 py-2 text-[11px]"
+                      >
+                        <FileImage className="h-3.5 w-3.5 shrink-0 text-[#438060]" />
+                        <span className="max-w-[320px] truncate font-[650]">{file.name}</span>
+                        <span className="shrink-0 text-[#7c867f]">{formatFileSize(file.size)}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {showIncluded ? (
+                  <span className="inline-flex rounded-full bg-[#e4f2e7] px-3 py-1.5 text-[11px] font-[650] text-[#2e744e]">
+                    Included
+                  </span>
+                ) : null}
+                {!hasContent ? (
+                  <p className="italic text-[#89938c]">Not provided</p>
+                ) : null}
+              </div>
+
+              <div className="flex items-start lg:justify-end">
+                <ChecklistStatusBadge filled={filled} />
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function RequestInformationDialog({
   field,
   participants,
@@ -605,6 +707,7 @@ export function StageFiveWorkspace({
   project: ProjectFlowRecord;
   currentUserId: string;
 }) {
+  const [mode, setMode] = useState<"edit" | "view">("edit");
   const [textValues, setTextValues] = useState<Partial<Record<ChecklistFieldKey, string>>>({});
   const [files, setFiles] = useState<Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>>({});
   const [multiValues, setMultiValues] = useState<Partial<Record<ChecklistFieldKey, string[]>>>({});
@@ -783,16 +886,69 @@ export function StageFiveWorkspace({
             <div className="flex items-center gap-2 text-[11px] font-[760] uppercase tracking-[0.13em] text-[#4d765d]">
               <FileCheck2 className="h-4 w-4" /> File Checklist
             </div>
-            <h1 className="mt-3 text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
-              Stage 5 - File Checklist
-            </h1>
+            <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <h1 className="text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
+                Stage 5 - File Checklist
+              </h1>
+              <div
+                role="tablist"
+                aria-label="File Checklist presentation mode"
+                className="inline-grid w-fit grid-cols-2 rounded-[12px] border border-[#dce4dd] bg-white p-1 shadow-[0_8px_20px_rgba(23,39,28,0.04)]"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === "edit"}
+                  aria-controls="stage-five-edit-panel"
+                  onClick={() => setMode("edit")}
+                  className={cn(
+                    "min-w-[72px] rounded-[9px] px-3 py-2 text-[12px] font-[700] transition",
+                    mode === "edit"
+                      ? "bg-[#eaf4ec] text-[#236945]"
+                      : "text-[#6f7a72] hover:bg-[#f4f7f4]",
+                  )}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === "view"}
+                  aria-controls="stage-five-view-panel"
+                  onClick={() => setMode("view")}
+                  className={cn(
+                    "min-w-[72px] rounded-[9px] px-3 py-2 text-[12px] font-[700] transition",
+                    mode === "view"
+                      ? "bg-[#eaf4ec] text-[#236945]"
+                      : "text-[#6f7a72] hover:bg-[#f4f7f4]",
+                  )}
+                >
+                  View
+                </button>
+              </div>
+            </div>
             <p className="mt-2 text-[13px] leading-5 text-[#6f7a72]">
               Complete or request the required project information and files.
             </p>
             <ProjectStageSummary project={project} />
           </div>
 
-          <section className="border-t border-[#e7ece7] bg-[#fbfcfb]" aria-labelledby="file-checklist-heading">
+          {mode === "view" ? (
+            <StageFiveReadOnlyView
+              textValues={textValues}
+              files={files}
+              multiValues={multiValues}
+              healthWarningIncluded={healthWarningIncluded}
+              isFilled={isFilled}
+            />
+          ) : (
+          <section
+            id="stage-five-edit-panel"
+            role="tabpanel"
+            aria-label="Edit File Checklist"
+            className="border-t border-[#e7ece7] bg-[#fbfcfb]"
+            aria-labelledby="file-checklist-heading"
+          >
             <div className="px-4 py-5 sm:px-5 lg:px-6">
               <h2 id="file-checklist-heading" className="text-[18px] font-[750] text-[#1b261f]">
                 Required information and files
@@ -820,6 +976,7 @@ export function StageFiveWorkspace({
               ))}
             </div>
           </section>
+          )}
 
           <div className="flex flex-col-reverse gap-3 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
             <Button asChild type="button" variant="outline" className="min-w-[160px] rounded-[13px] shadow-none">

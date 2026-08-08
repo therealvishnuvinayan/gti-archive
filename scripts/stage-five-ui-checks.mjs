@@ -67,6 +67,45 @@ assert(
   "Every checklist definition must render the shared Request action.",
 );
 assert(
+  workspace.includes('const [mode, setMode] = useState<"edit" | "view">("edit")') &&
+    workspace.includes('onClick={() => setMode("edit")}') &&
+    workspace.includes('onClick={() => setMode("view")}') &&
+    workspace.includes('aria-label="File Checklist presentation mode"'),
+  "Stage 5 must default to Edit and provide the Stage 1-style Edit/View control.",
+);
+assert(
+  workspace.includes("StageFiveReadOnlyView") &&
+    workspace.includes('aria-label="View File Checklist"') &&
+    workspace.includes("Not provided") &&
+    workspace.includes("Read-only checklist summary."),
+  "Stage 5 View mode must render a dedicated readable checklist with explicit empty values.",
+);
+assert(
+  workspace.includes("textValues={textValues}") &&
+    workspace.includes("files={files}") &&
+    workspace.includes("multiValues={multiValues}") &&
+    workspace.includes("healthWarningIncluded={healthWarningIncluded}"),
+  "Stage 5 View mode must read the same parent-owned local state used by Edit mode.",
+);
+assert(
+  workspace.includes("selectedFiles.map") &&
+    workspace.includes("formatFileSize(file.size)") &&
+    workspace.includes("values.map"),
+  "Stage 5 View mode must show selected file metadata and repeatable values.",
+);
+const readOnlyView = workspace.slice(
+  workspace.indexOf("function StageFiveReadOnlyView"),
+  workspace.indexOf("function RequestInformationDialog"),
+);
+assert(
+  !readOnlyView.includes("<Input") &&
+    !readOnlyView.includes("<Textarea") &&
+    !readOnlyView.includes("<button") &&
+    !readOnlyView.includes("ChecklistUploadField") &&
+    !readOnlyView.includes("Request"),
+  "Stage 5 View mode must not render editing, upload, removal, Add, or Request controls.",
+);
+assert(
   workspace.includes('type="file"') && workspace.includes("multiple={multiple}"),
   "Stage 5 must support local single and multiple file selection.",
 );
