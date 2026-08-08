@@ -183,15 +183,26 @@ function ReadOnlyTextBlock({
   label,
   value,
   attachments,
+  displayAsChips = false,
 }: {
   label: string;
   value: string;
   attachments: ProjectInquiryAttachmentRecord[];
+  displayAsChips?: boolean;
 }) {
   return (
     <div className="rounded-[16px] border border-[#e4e9e4] bg-[#fcfdfc] p-4 sm:p-5">
       <p className="text-[13px] font-[720] text-[#253028]">{label}</p>
-      {value.trim() ? (
+      {value.trim() && displayAsChips ? (
+        <div className="mt-3">
+          <ChipList
+            values={value
+              .split(/\r?\n/)
+              .map((entry) => entry.trim())
+              .filter(Boolean)}
+          />
+        </div>
+      ) : value.trim() ? (
         <p className="mt-3 whitespace-pre-wrap text-[14px] leading-7 text-[#465149]">
           {value}
         </p>
@@ -353,6 +364,7 @@ export function StageOneReadOnlyView({
             label="Key Business Objectives"
             value={inquiry?.businessObjectives ?? ""}
             attachments={inquiry?.attachments.BUSINESS_OBJECTIVES ?? []}
+            displayAsChips
           />
         </div>
       </StageOneViewSection>

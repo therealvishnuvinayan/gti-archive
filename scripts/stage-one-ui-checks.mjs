@@ -65,8 +65,16 @@ assert(
     workspace.includes("textarea.scrollHeight + borderHeight") &&
     workspace.includes("contentHeight > textarea.offsetHeight") &&
     workspace.includes("resize-y overflow-y-auto") &&
-    workspace.includes('className="absolute bottom-3 right-8'),
+    workspace.includes('entryMode === "business-objectives" ? "right-3" : "right-8"'),
   "Stage 1 description fields must grow with content while preserving manual vertical resizing.",
+);
+assert(
+  workspace.includes("BusinessObjectiveTagsInput") &&
+    workspace.includes('entryMode="business-objectives"') &&
+    workspace.includes('onChange([...entries, nextEntry].join("\\n"))') &&
+    workspace.includes("Type an objective and press Enter to add it.") &&
+    readOnlyView.includes("displayAsChips"),
+  "Key Business Objectives must support multiple persisted tag-style entries in edit and view modes.",
 );
 
 assert(
