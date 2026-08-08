@@ -435,17 +435,10 @@ export function StageSixWorkspace({
                 <ListChecks className="h-4 w-4" /> All Stages
               </Link>
             </Button>
-            <Button
-              type="button"
-              className="min-w-[180px] rounded-[13px]"
-              onClick={() =>
-                showInfoToast(
-                  "Stage 6 UI preview.",
-                  "Stage 6 workflow will be connected in the next phase. Stage 7 remains locked.",
-                )
-              }
-            >
-              Next Stage <ArrowRight className="h-4 w-4" />
+            <Button asChild type="button" className="min-w-[180px] rounded-[13px]">
+              <Link href={`/projects/${project.id}/stages/7`}>
+                Next Stage <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
           </div>
         </CardContent>

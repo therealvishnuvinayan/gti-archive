@@ -1,19 +1,16 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Briefcase,
   CircleCheck,
   Clock3,
-  FileText,
   FolderKanban,
   Lock,
-  UserRound,
-  Users,
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProjectFlowRecord } from "@/lib/projects";
 import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
@@ -26,34 +23,6 @@ type ProjectOverviewWorkspaceProps = {
 
 type ProjectOverviewStage = (typeof PROJECT_WORKFLOW_STAGE_DEFINITIONS)[number];
 
-function formatNames(names: string[], emptyLabel: string) {
-  return names.length > 0 ? names.join(", ") : emptyLabel;
-}
-
-function SummaryRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="grid gap-3 border-b border-[#e7ece7] py-4 last:border-b-0 sm:grid-cols-[210px_minmax(0,1fr)] sm:items-center sm:gap-6">
-      <dt className="flex items-center gap-3 text-[13px] font-[700] text-[#657068]">
-        <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#f0f6f1] text-[#427158]">
-          {icon}
-        </span>
-        {label}
-      </dt>
-      <dd className="min-w-0 text-[14px] font-[650] leading-6 text-[#263029] sm:border-l sm:border-[#dfe6df] sm:pl-6">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
 export function ProjectOverviewHeader({ projectName }: { projectName: string }) {
   return (
     <header>
@@ -61,7 +30,7 @@ export function ProjectOverviewHeader({ projectName }: { projectName: string }) 
         <FolderKanban className="h-4 w-4" />
         Project workspace
       </div>
-      <h1 className="mt-3 text-[30px] font-[780] leading-[1.12] tracking-[-0.045em] text-[#111713] sm:text-[38px] lg:text-[42px]">
+      <h1 className="mt-2 text-[29px] font-[780] leading-[1.12] tracking-[-0.045em] text-[#111713] sm:text-[34px] lg:text-[38px]">
         Project - {projectName}
       </h1>
     </header>
@@ -69,46 +38,7 @@ export function ProjectOverviewHeader({ projectName }: { projectName: string }) 
 }
 
 export function ProjectSummaryCard({ project }: { project: ProjectFlowRecord }) {
-  const owner = project.collaborators.find(
-    (collaborator) => collaborator.role === "Project Owner",
-  );
-  const coOwnerNames = project.collaborators
-    .filter((collaborator) => collaborator.role === "Project Co-Owner")
-    .map((collaborator) => collaborator.name);
-  const executorNames = project.executors.map((executor) => executor.name);
-  const restrictedLabel = project.canViewParticipants ? "None" : "Restricted";
-
-  return (
-    <Card className="mt-7 rounded-[22px] border-[#dde5de] shadow-[0_16px_40px_rgba(23,39,28,0.045)]">
-      <CardContent className="px-5 py-2 sm:px-7 lg:px-8">
-        <dl>
-          <SummaryRow
-            icon={<FileText className="h-[18px] w-[18px]" />}
-            label="Project Name"
-            value={project.title}
-          />
-          <SummaryRow
-            icon={<UserRound className="h-[18px] w-[18px]" />}
-            label="Project Owner"
-            value={
-              owner?.name ??
-              (project.ownerId ? "Restricted" : "Operational owner not assigned")
-            }
-          />
-          <SummaryRow
-            icon={<Users className="h-[18px] w-[18px]" />}
-            label="Project Co-Owners"
-            value={formatNames(coOwnerNames, restrictedLabel)}
-          />
-          <SummaryRow
-            icon={<Briefcase className="h-[18px] w-[18px]" />}
-            label="Project Executors"
-            value={formatNames(executorNames, restrictedLabel)}
-          />
-        </dl>
-      </CardContent>
-    </Card>
-  );
+  return <ProjectFlowSummaryStrip project={project} className="mt-5" />;
 }
 
 export function StageOverviewCard({
@@ -133,7 +63,7 @@ export function StageOverviewCard({
 
   return (
     <article
-      className={`flex min-h-[250px] min-w-0 flex-col rounded-[22px] border p-5 transition sm:p-6 ${
+      className={`flex min-h-[210px] min-w-0 flex-col rounded-[20px] border p-4 transition sm:p-5 ${
         stageOpenable
           ? "border-[#287750] bg-[linear-gradient(145deg,#0f5b39_0%,#19764c_55%,#378a62_100%)] text-white shadow-[0_18px_42px_rgba(25,103,67,0.2)]"
           : available
@@ -170,26 +100,26 @@ export function StageOverviewCard({
       </div>
 
       <h2
-        className={`mt-5 text-[18px] font-[760] leading-[1.25] tracking-[-0.02em] ${
+        className={`mt-4 text-[17px] font-[760] leading-[1.25] tracking-[-0.02em] ${
           stageOpenable ? "text-white" : available ? "text-[#285c40]" : "text-[#6f7972]"
         }`}
       >
         {stage.name}
       </h2>
       <p
-        className={`mt-3 text-[13px] font-[500] leading-5 ${
+        className={`mt-2 line-clamp-2 text-[12px] font-[500] leading-[1.55] ${
           stageOpenable ? "text-white/82" : available ? "text-[#587063]" : "text-[#7d8780]"
         }`}
       >
         {stage.description}
       </p>
 
-      <div className="mt-auto pt-6">
+      <div className="mt-auto pt-4">
         {stageOpenable ? (
           <Button
             asChild
             variant="secondary"
-            className="h-11 w-full justify-between rounded-[13px] border-white bg-white px-5 text-[#174f34] shadow-[0_10px_24px_rgba(0,0,0,0.12)] hover:bg-[#f5fbf6]"
+            className="h-10 w-full justify-between rounded-[12px] border-white bg-white px-4 text-[#174f34] shadow-[0_8px_20px_rgba(0,0,0,0.1)] hover:bg-[#f5fbf6]"
           >
             <Link href={`/projects/${projectId}/stages/${stage.number}`}>
               Open Stage
@@ -201,7 +131,7 @@ export function StageOverviewCard({
             type="button"
             variant="outline"
             disabled
-            className="h-11 w-full rounded-[13px] border-[#a8cfb6] bg-white/70 text-[#397a55] shadow-none disabled:opacity-100"
+            className="h-10 w-full rounded-[12px] border-[#a8cfb6] bg-white/70 text-[#397a55] shadow-none disabled:opacity-100"
           >
             Available · Stage UI coming next
           </Button>
@@ -210,7 +140,7 @@ export function StageOverviewCard({
             type="button"
             variant="secondary"
             disabled
-            className="h-11 w-full rounded-[13px] border-0 bg-[#e7ebe7] text-[#818a83] shadow-none disabled:opacity-100"
+            className="h-10 w-full rounded-[12px] border-0 bg-[#e7ebe7] text-[#818a83] shadow-none disabled:opacity-100"
           >
             <Lock className="h-4 w-4" />
             Locked
@@ -229,7 +159,7 @@ export function ProjectStageGrid({
   canBypassLockedStages?: boolean;
 }) {
   return (
-    <section className="mt-8" aria-labelledby="project-stages-heading">
+    <section className="mt-6" aria-labelledby="project-stages-heading">
       <div>
         <h2
           id="project-stages-heading"
@@ -242,7 +172,7 @@ export function ProjectStageGrid({
         </p>
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {PROJECT_WORKFLOW_STAGE_DEFINITIONS.map((stage) => (
           <StageOverviewCard
             key={stage.key}
@@ -285,31 +215,26 @@ export function ProjectOverviewLoadingShell() {
       <Skeleton className="h-4 w-36 rounded-full" />
       <Skeleton className="mt-4 h-10 w-full max-w-[560px] rounded-[12px]" />
 
-      <Card className="mt-7 rounded-[22px] border-[#dde5de] shadow-none">
-        <CardContent className="px-5 py-2 sm:px-7 lg:px-8">
+      <Card className="mt-5 rounded-[18px] border-[#dde5de] p-4 shadow-none">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="grid gap-3 border-b border-[#e7ece7] py-4 last:border-b-0 sm:grid-cols-[210px_minmax(0,1fr)] sm:items-center sm:gap-6"
-            >
-              <div className="flex items-center gap-3">
-                <Skeleton className="size-9 rounded-[10px]" />
-                <Skeleton className="h-3.5 w-28 rounded-full" />
-              </div>
-              <div className="sm:border-l sm:border-[#dfe6df] sm:pl-6">
-                <Skeleton className="h-3.5 w-full max-w-[360px] rounded-full" />
+            <div key={index} className="flex items-center gap-3">
+              <Skeleton className="size-9 rounded-[11px]" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-2.5 w-20 rounded-full" />
+                <Skeleton className="mt-2 h-3.5 w-full max-w-[180px] rounded-full" />
               </div>
             </div>
           ))}
-        </CardContent>
+        </div>
       </Card>
 
-      <div className="mt-8">
+      <div className="mt-6">
         <Skeleton className="h-6 w-36 rounded-full" />
         <Skeleton className="mt-2 h-3.5 w-full max-w-[560px] rounded-full" />
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {Array.from({ length: 7 }).map((_, index) => (
-            <Skeleton key={index} className="min-h-[250px] rounded-[22px]" />
+            <Skeleton key={index} className="min-h-[210px] rounded-[20px]" />
           ))}
         </div>
       </div>

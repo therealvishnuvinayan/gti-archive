@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectChatWorkspace } from "@/components/projects/project-chat-workspace";
 import {
   ProjectAccessUnavailableState,
@@ -311,14 +310,10 @@ export function ProjectChatRoute({
   slug,
   stage,
   taskerStageId,
-  backHref,
-  backLabel,
 }: {
   slug: string;
   stage?: string;
   taskerStageId?: string;
-  backHref?: string;
-  backLabel?: string;
 }) {
   const userPromise = requireUser();
 
@@ -326,12 +321,6 @@ export function ProjectChatRoute({
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search for Projects...",
-        leadingContent: (
-          <ProjectBackButton
-            href={backHref ?? `/projects/${slug}`}
-            label={backLabel}
-          />
-        ),
       }}
     >
       <Suspense fallback={<ProjectChatLoadingShell stageId={stage} />}>

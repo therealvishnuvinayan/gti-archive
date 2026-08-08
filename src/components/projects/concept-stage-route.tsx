@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
 import {
   ConceptStageLoadingShell,
   ConceptStageWorkspace,
@@ -18,6 +17,7 @@ import {
 } from "@/lib/project-concepts";
 import { getProjectRouteAvailability, getProjectShellById } from "@/lib/projects";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import { getStageFourFinalFileHandoffData } from "@/lib/stage-five";
 
 type ConceptStageRouteUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -81,6 +81,11 @@ async function ConceptStageContent({
     return <ProjectAccessUnavailableState />;
   }
 
+  const stageFourHandoffData =
+    stageNumber === 4
+      ? await getStageFourFinalFileHandoffData(user, slug)
+      : undefined;
+
   return (
     <ConceptStageWorkspace
       stageNumber={stageNumber}
@@ -89,6 +94,7 @@ async function ConceptStageContent({
       project={project}
       currentUserId={user.id}
       initialFolders={folders}
+      stageFourHandoffData={stageFourHandoffData ?? undefined}
     />
   );
 }
@@ -107,17 +113,7 @@ export function ConceptStageRoute({
   const userPromise = requireUser();
 
   return (
-    <DashboardLayout
-      topbarProps={{
-        showSearch: false,
-        leadingContent: (
-          <ProjectBackButton
-            href={`/projects/${slug}`}
-            label="Back to Project Overview"
-          />
-        ),
-      }}
-    >
+    <DashboardLayout>
       <Suspense fallback={<ConceptStageLoadingShell />}>
         <ConceptStageContent
           slug={slug}

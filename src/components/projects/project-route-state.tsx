@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { AlertCircle } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { ProjectBackButton } from "@/components/projects/project-back-button";
 
 type ProjectRouteStateProps = {
   title: string;
@@ -13,8 +12,8 @@ type ProjectRouteStateProps = {
 export function ProjectRouteState({
   title,
   message,
-  primaryHref = "/",
-  primaryLabel = "Back to Dashboard",
+  primaryHref,
+  primaryLabel,
 }: ProjectRouteStateProps) {
   return (
     <section className="flex min-h-[60vh] items-center justify-center px-4 py-12">
@@ -28,14 +27,15 @@ export function ProjectRouteState({
         <p className="mx-auto mt-4 max-w-[440px] text-[16px] leading-7 text-[#657066]">
           {message}
         </p>
-        <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-          <Button asChild size="lg">
-            <Link href={primaryHref}>{primaryLabel}</Link>
-          </Button>
-          <Button asChild size="lg" variant="secondary">
-            <Link href="/projects">Back to Projects</Link>
-          </Button>
-        </div>
+        {primaryHref && primaryLabel ? (
+          <div className="mt-7 flex justify-center">
+            <ProjectBackButton
+              href={primaryHref}
+              label={primaryLabel}
+              ariaLabel={`Back to ${primaryLabel}`}
+            />
+          </div>
+        ) : null}
       </article>
     </section>
   );
@@ -50,33 +50,39 @@ export function ProjectNotFoundState() {
   );
 }
 
-export function ProjectAccessUnavailableState() {
+export function ProjectAccessUnavailableState({
+  parentHref,
+  parentLabel,
+}: {
+  parentHref?: string;
+  parentLabel?: string;
+} = {}) {
   return (
     <ProjectRouteState
       title="Access unavailable"
       message="You do not have access to this project, or your access may have been removed."
+      primaryHref={parentHref}
+      primaryLabel={parentLabel}
     />
   );
 }
 
 export function ProjectEditLockedState({ projectHref }: { projectHref: string }) {
+  void projectHref;
   return (
     <ProjectRouteState
       title="Project editing locked"
       message="Completed projects cannot be edited."
-      primaryHref={projectHref}
-      primaryLabel="Back to Project"
     />
   );
 }
 
 export function StageNotFoundState({ projectHref }: { projectHref: string }) {
+  void projectHref;
   return (
     <ProjectRouteState
       title="Stage not found"
       message="This stage may have been deleted or the link may be outdated."
-      primaryHref={projectHref}
-      primaryLabel="Back to Project"
     />
   );
 }
@@ -88,12 +94,11 @@ export function StageLockedState({
   projectHref: string;
   message: string;
 }) {
+  void projectHref;
   return (
     <ProjectRouteState
       title="Stage locked"
       message={message}
-      primaryHref={projectHref}
-      primaryLabel="Back to Project"
     />
   );
 }

@@ -4,23 +4,23 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
-  BriefcaseBusiness,
-  Building2,
   ChevronRight,
   Folder,
   FolderKanban,
   MoreVertical,
   Pencil,
   Plus,
-  UserRound,
-  Users,
   X,
+  FileCheck2,
+  Send,
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
 import {
   createProjectConceptFolderAction,
   renameProjectConceptFolderAction,
+  handoffStageFourFilesAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,6 +37,7 @@ import type {
 } from "@/lib/project-concepts";
 import type { ProjectFlowRecord } from "@/lib/projects";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import type { StageFourHandoffFileRecord } from "@/lib/stage-five";
 
 type ConceptFolder = ProjectConceptFolderRecord;
 
@@ -44,54 +45,6 @@ type FolderDialogState =
   | { mode: "create" }
   | { mode: "rename"; folderId: string; currentName: string }
   | null;
-
-function getProjectDetails(project: ProjectFlowRecord) {
-  const owner = project.collaborators.find(
-    (collaborator) => collaborator.role === "Project Owner",
-  );
-  const coOwners = project.collaborators
-    .filter((collaborator) => collaborator.role === "Project Co-Owner")
-    .map((collaborator) => collaborator.name);
-  const executors = project.executors.map((executor) => executor.name);
-  const unavailableLabel = project.canViewParticipants ? "None assigned" : "Restricted";
-
-  return {
-    projectName: project.title,
-    ownerName:
-      owner?.name ??
-      (project.ownerId ? "Restricted" : "Operational owner not assigned"),
-    coOwnerNames: coOwners.join(", ") || unavailableLabel,
-    executorNames: executors.join(", ") || unavailableLabel,
-  };
-}
-
-function ProjectDetailCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <Card className="min-w-0 rounded-[20px] border-[#dfe6df] shadow-[0_12px_30px_rgba(23,39,28,0.045)]">
-      <CardContent className="flex min-h-[126px] items-start gap-4 p-5 sm:p-6">
-        <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#eaf4ed] text-[#2e8057]">
-          {icon}
-        </span>
-        <span className="min-w-0 pt-0.5">
-          <span className="block text-[10px] font-[760] uppercase tracking-[0.1em] text-[#77827a]">
-            {label}
-          </span>
-          <span className="mt-2 block whitespace-pre-line text-[14px] font-[720] leading-5 text-[#202a23]">
-            {value}
-          </span>
-        </span>
-      </CardContent>
-    </Card>
-  );
-}
 
 function FolderNameDialog({
   state,
@@ -173,6 +126,149 @@ function FolderNameDialog({
   );
 }
 
+function StageFourFinalFileHandoff({
+  projectId,
+  initialFiles,
+  canHandoff,
+}: {
+  projectId: string;
+  initialFiles: StageFourHandoffFileRecord[];
+  canHandoff: boolean;
+}) {
+  const router = useRouter();
+  const [files, setFiles] = useState(initialFiles);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isSending, startSending] = useTransition();
+  const selectedFiles = files.filter((file) => selectedIds.includes(file.id));
+  const handedOffFiles = files.filter((file) => file.handedOff);
+  const availableFiles = files.filter((file) => !file.handedOff);
+
+  function sendToStageFive() {
+    if (!selectedIds.length) return;
+    const submittedIds = [...selectedIds];
+    startSending(async () => {
+      const result = await handoffStageFourFilesAction({
+        projectId,
+        attachmentIds: submittedIds,
+      });
+      if ("error" in result) {
+        showErrorToast(result.error ?? "Unable to send the selected files to Stage 5.");
+        return;
+      }
+      const handoffByAttachmentId = new Map(
+        result.handoffs.map((handoff) => [handoff.sourceAttachmentId, handoff.id]),
+      );
+      setFiles((current) =>
+        current.map((file) =>
+          handoffByAttachmentId.has(file.id)
+            ? { ...file, handedOff: true, handoffId: handoffByAttachmentId.get(file.id) ?? null }
+            : file,
+        ),
+      );
+      setSelectedIds([]);
+      setSelecting(false);
+      showSuccessToast(
+        `${submittedIds.length} final ${submittedIds.length === 1 ? "file" : "files"} sent to Stage 5.`,
+      );
+      router.refresh();
+    });
+  }
+
+  return (
+    <section className="mt-6 rounded-[20px] border border-[#dfe6df] bg-white p-5 shadow-[0_12px_30px_rgba(23,39,28,0.04)]" aria-labelledby="stage-four-final-files-heading">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#eaf4ed] text-[#2e8057]">
+            <FileCheck2 className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 id="stage-four-final-files-heading" className="text-[17px] font-[760] text-[#18211b]">
+              Final files for Stage 5
+            </h2>
+            <p className="mt-1 text-[12px] leading-5 text-[#707a73]">
+              Designate existing Stage 4 files for an independent file checklist. This does not change workflow status.
+            </p>
+          </div>
+        </div>
+        {canHandoff ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!availableFiles.length || isSending}
+            onClick={() => setSelecting(true)}
+          >
+            <Plus className="h-4 w-4" /> Select files
+          </Button>
+        ) : null}
+      </div>
+
+      {handedOffFiles.length ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {handedOffFiles.map((file) => (
+            <span key={file.id} className="inline-flex items-center gap-2 rounded-full bg-[#edf5ef] px-3 py-2 text-[11px] font-[650] text-[#326b4c]">
+              <FileCheck2 className="h-3.5 w-3.5" /> {file.name}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 text-[12px] italic text-[#879088]">No files have been sent to Stage 5 yet.</p>
+      )}
+
+      {selectedFiles.length ? (
+        <div className="mt-4 border-t border-[#edf1ed] pt-4">
+          <p className="text-[11px] font-[720] uppercase tracking-[0.08em] text-[#748078]">Selected</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {selectedFiles.map((file) => (
+              <span key={file.id} className="inline-flex items-center gap-2 rounded-full border border-[#d9e5dc] bg-white px-3 py-2 text-[11px] font-[650] text-[#344038]">
+                {file.name}
+                <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setSelectedIds((current) => current.filter((id) => id !== file.id))}>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <Button type="button" className="mt-3" disabled={isSending} onClick={sendToStageFive}>
+            <Send className="h-4 w-4" /> {isSending ? "Sending..." : "Send to Stage 5"}
+          </Button>
+        </div>
+      ) : null}
+
+      {selecting ? (
+        <div className="fixed inset-0 z-[165] flex items-center justify-center bg-[#112118]/40 px-4 py-8 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-labelledby="select-stage-four-files-title">
+          <Card className="w-full max-w-[600px] rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.22)]">
+            <CardContent className="p-6 sm:p-7">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="select-stage-four-files-title" className="text-[21px] font-[760] text-[#162019]">Select final files</h2>
+                  <p className="mt-1 text-[12px] text-[#6f7a72]">Choose one or more existing Stage 4 files.</p>
+                </div>
+                <Button type="button" variant="secondary" size="icon" onClick={() => setSelecting(false)}><X className="h-4 w-4" /></Button>
+              </div>
+              <div className="mt-5 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                {availableFiles.map((file) => (
+                  <label key={file.id} className="flex cursor-pointer items-center gap-3 rounded-[13px] border border-[#e1e8e2] px-4 py-3 hover:bg-[#f7faf7]">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(file.id)}
+                      onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, file.id] : current.filter((id) => id !== file.id))}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-[650] text-[#2d382f]">{file.name}</span>
+                    <span className="text-[10px] uppercase text-[#859087]">{file.mimeType.split("/").pop()}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <Button type="button" variant="secondary" onClick={() => setSelecting(false)}>Done</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function ConceptStageWorkspace({
   stageNumber,
   stageTitle,
@@ -180,6 +276,7 @@ export function ConceptStageWorkspace({
   project,
   currentUserId,
   initialFolders,
+  stageFourHandoffData,
 }: {
   stageNumber: 3 | 4;
   stageTitle: string;
@@ -187,12 +284,15 @@ export function ConceptStageWorkspace({
   project: ProjectFlowRecord;
   currentUserId: string;
   initialFolders: ProjectConceptFolderRecord[];
+  stageFourHandoffData?: {
+    files: StageFourHandoffFileRecord[];
+    canHandoff: boolean;
+  };
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [folders, setFolders] = useState<ConceptFolder[]>(initialFolders);
   const [dialog, setDialog] = useState<FolderDialogState>(null);
-  const projectDetails = getProjectDetails(project);
 
   function submitFolderName(name: string) {
     if (!dialog) return;
@@ -258,30 +358,17 @@ export function ConceptStageWorkspace({
         </p>
       </header>
 
-      <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <ProjectDetailCard
-          icon={<Building2 className="h-[19px] w-[19px]" />}
-          label="Project Name"
-          value={projectDetails.projectName}
-        />
-        <ProjectDetailCard
-          icon={<UserRound className="h-[19px] w-[19px]" />}
-          label="Project Owner"
-          value={projectDetails.ownerName}
-        />
-        <ProjectDetailCard
-          icon={<Users className="h-[19px] w-[19px]" />}
-          label="Project Co-Owners"
-          value={projectDetails.coOwnerNames}
-        />
-        <ProjectDetailCard
-          icon={<BriefcaseBusiness className="h-[19px] w-[19px]" />}
-          label="Project Executors"
-          value={projectDetails.executorNames}
-        />
-      </div>
+      <ProjectFlowSummaryStrip project={project} />
 
-      <section className="mt-7 border-t border-[#dfe6df] pt-7" aria-labelledby="concept-folders-heading">
+      {stageNumber === 4 && stageFourHandoffData?.canHandoff ? (
+        <StageFourFinalFileHandoff
+          projectId={project.id}
+          initialFiles={stageFourHandoffData.files}
+          canHandoff={stageFourHandoffData.canHandoff}
+        />
+      ) : null}
+
+      <section className="mt-6 border-t border-[#dfe6df] pt-6" aria-labelledby="concept-folders-heading">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#eaf4ed] text-[#2e8057]">

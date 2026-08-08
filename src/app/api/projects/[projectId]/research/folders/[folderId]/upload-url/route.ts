@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { requestProjectResearchFileUpload } from "@/lib/project-research-files";
+import { validatePreparedProjectResearchTextFile } from "@/lib/project-research-text-file";
 import { decodeRouteParam } from "@/lib/route-params";
 
 function isUploadEndpointMode(value: unknown): value is "regional" | "accelerate" {
@@ -22,6 +23,7 @@ export async function POST(
     mimeType?: string;
     fileSize?: number;
     uploadEndpointMode?: unknown;
+    createdTextFile?: boolean;
   } = {};
 
   try {
@@ -32,6 +34,17 @@ export async function POST(
 
   if (!payload.originalFileName || typeof payload.fileSize !== "number") {
     return NextResponse.json({ error: "Missing required upload fields." }, { status: 400 });
+  }
+
+  if (payload.createdTextFile) {
+    const validation = validatePreparedProjectResearchTextFile({
+      fileName: payload.originalFileName,
+      mimeType: payload.mimeType ?? "",
+      fileSize: payload.fileSize,
+    });
+    if ("error" in validation) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
   }
 
   try {

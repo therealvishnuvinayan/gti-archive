@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 
 import { NotificationCenterProvider } from "@/components/notifications/notification-center";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import type { DashboardUserView } from "@/components/layout/topbar";
-import { Button } from "@/components/ui/button";
+import { ProjectBackButton } from "@/components/projects/project-back-button";
+import { getDashboardBackNavigation } from "@/lib/dashboard-navigation";
 import type { SidebarVisibility } from "@/lib/permissions/resolver";
 
 type DashboardAppFrameProps = {
@@ -18,116 +17,22 @@ type DashboardAppFrameProps = {
   sidebarVisibility: SidebarVisibility;
 };
 
-function BackPill({ href }: { href: string }) {
-  return (
-    <Button asChild size="lg" variant="secondary" className="h-11 min-w-[120px] sm:h-12 sm:min-w-[132px]">
-      <Link href={href}>
-        <ChevronLeft className="h-4 w-4" />
-        Back
-      </Link>
-    </Button>
-  );
-}
-
-function getProjectsReturnHref(value: string | null) {
-  if (!value) {
-    return "/projects";
-  }
-
-  try {
-    const decodedValue = decodeURIComponent(value);
-
-    if (decodedValue === "/projects" || decodedValue.startsWith("/projects?")) {
-      return decodedValue;
-    }
-  } catch {
-    if (value === "/projects" || value.startsWith("/projects?")) {
-      return value;
-    }
-  }
-
-  if (value === "/projects" || value.startsWith("/projects?")) {
-    return value;
-  }
-
-  return "/projects";
-}
-
 function getTopbarProps(
   pathname: string,
   searchParams: URLSearchParams,
 ) {
-  const projectSegments = pathname.split("/").filter(Boolean);
+  const navigation = getDashboardBackNavigation(pathname, searchParams);
+  if (navigation.owner !== "topbar") return {};
 
-  if (pathname === "/projects/new") {
-    return {
-      leadingContent: <BackPill href="/projects" />,
-    };
-  }
-
-  if (pathname === "/settings/project-master-data") {
-    return {
-      leadingContent: <BackPill href="/settings" />,
-    };
-  }
-
-  if (pathname === "/projects") {
-    return {};
-  }
-
-  if (projectSegments.length >= 3 && projectSegments[0] === "projects") {
-    const [, projectId, nestedSegment] = projectSegments;
-
-    if (nestedSegment === "chat") {
-      return {
-        leadingContent: <BackPill href={`/projects/${projectId}`} />,
-      };
-    }
-
-    if (nestedSegment === "compare") {
-      const stage = searchParams.get("stage");
-
-      return {
-        leadingContent: (
-          <BackPill
-            href={
-              stage
-                ? `/projects/${projectId}/chat?stage=${stage}`
-                : `/projects/${projectId}`
-            }
-          />
-        ),
-      };
-    }
-
-    if (nestedSegment === "edit") {
-      return {
-        leadingContent: <BackPill href={`/projects/${projectId}`} />,
-      };
-    }
-
-    if (nestedSegment === "stages") {
-      return {
-        leadingContent: <BackPill href={`/projects/${projectId}`} />,
-      };
-    }
-  }
-
-  if (projectSegments.length === 2 && projectSegments[0] === "projects") {
-    return {
-      leadingContent: (
-        <BackPill href={getProjectsReturnHref(searchParams.get("returnTo"))} />
-      ),
-    };
-  }
-
-  if (pathname.startsWith("/archives/")) {
-    return {
-      leadingContent: <BackPill href="/archives" />,
-    };
-  }
-
-  return {};
+  return {
+    leadingContent: (
+      <ProjectBackButton
+        href={navigation.href}
+        label={navigation.label}
+        ariaLabel={navigation.ariaLabel}
+      />
+    ),
+  };
 }
 
 export function DashboardAppFrame({

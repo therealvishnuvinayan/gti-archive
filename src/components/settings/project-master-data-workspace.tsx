@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
@@ -1569,11 +1568,6 @@ export function ProjectMasterDataWorkspace({
           <p className="mt-3 max-w-[720px] text-[16px] leading-7 text-[#6f776f]">
             Manage reusable project categories, project statuses, project tags, asset tags, and archive categories.
           </p>
-          <div className="mt-5">
-            <Button asChild variant="outline">
-              <Link href="/settings">Back to Settings</Link>
-            </Button>
-          </div>
         </header>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">

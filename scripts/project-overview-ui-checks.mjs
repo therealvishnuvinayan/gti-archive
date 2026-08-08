@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [overview, workflow, projectPage, createForm, projectQuery] = await Promise.all([
+const [overview, summary, workflow, projectPage, createForm, projectQuery] = await Promise.all([
   readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
+  readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/lib/project-workflow.ts", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/page.tsx", "utf8"),
   readFile("src/components/projects/create-project-form.tsx", "utf8"),
@@ -30,8 +31,45 @@ for (const label of [
   "Project Co-Owners",
   "Project Executors",
 ]) {
-  assert(overview.includes(`label="${label}"`), `Missing project summary row: ${label}`);
+  assert(summary.includes(`label="${label}"`), `Missing project summary item: ${label}`);
 }
+
+assert(
+  overview.includes("ProjectFlowSummaryStrip") &&
+    !overview.includes("ProjectSummaryItem"),
+  "Project Overview must reuse the compact shared summary instead of a vertical local design.",
+);
+assert(
+  summary.includes("const MAX_VISIBLE_PEOPLE = 2") &&
+    summary.includes("people.slice(0, MAX_VISIBLE_PEOPLE)") &&
+    summary.includes("+{remainingCount}"),
+  "Shared people summaries must display at most two names followed by +N.",
+);
+assert(
+  summary.includes("DropdownMenuTrigger asChild") &&
+    summary.includes('<button') &&
+    summary.includes("aria-label={`View ${remainingCount} more") &&
+    summary.includes("people.map((person)"),
+  "+N must be a real accessible button that opens the complete participant list.",
+);
+assert(
+  summary.includes("person.email") &&
+    summary.includes("title={person.name}") &&
+    summary.includes("min-w-0") &&
+    summary.includes("truncate"),
+  "The participant menu must expose names/emails while compact labels truncate safely.",
+);
+assert(
+  summary.includes('"sm:grid-cols-2 xl:grid-cols-4"'),
+  "The shared summary must adapt from stacked/two-column layouts to four desktop columns.",
+);
+assert(
+  overview.includes("min-h-[210px]") &&
+    overview.includes("line-clamp-2") &&
+    overview.includes('className="h-10') &&
+    overview.includes('className="mt-4 grid gap-3'),
+  "Overview stage cards must use the compact height, two-line copy, controls, and grid gaps.",
+);
 
 assert(
   overview.includes("stage.number >= 1 && stage.number <= 7"),

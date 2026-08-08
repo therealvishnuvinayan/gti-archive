@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ArchiveCategoryWorkspace } from "@/components/archives/archive-category-workspace";
@@ -12,17 +11,6 @@ import { getArchiveCategoryBySlug } from "@/lib/archive-categories";
 import { getUserDisplayName, requireUser } from "@/lib/auth";
 import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
 import { Card } from "@/components/ui/card";
-
-function BackPill() {
-  return (
-    <Link
-      href="/archives"
-      className="inline-flex min-h-[52px] min-w-[126px] items-center justify-center rounded-full bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] px-8 text-[18px] font-semibold text-white shadow-[0_16px_34px_rgba(34,102,70,0.2)] transition-transform hover:-translate-y-0.5"
-    >
-      Back
-    </Link>
-  );
-}
 
 export default async function ArchiveCategoryPage({
   params,
@@ -43,7 +31,6 @@ export default async function ArchiveCategoryPage({
       <DashboardLayout
         topbarProps={{
           searchPlaceholder: "Search archive files...",
-          leadingContent: <BackPill />,
         }}
       >
         <Card className="rounded-[30px] border-0 bg-surface px-6 py-16 text-center shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
@@ -63,7 +50,6 @@ export default async function ArchiveCategoryPage({
       <DashboardLayout
         topbarProps={{
           searchPlaceholder: "Search archive files...",
-          leadingContent: <BackPill />,
         }}
       >
         <Card className="rounded-[30px] border-0 bg-surface px-6 py-16 text-center shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
@@ -85,7 +71,6 @@ export default async function ArchiveCategoryPage({
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search archive files...",
-        leadingContent: <BackPill />,
       }}
     >
       <ArchiveCategoryWorkspace

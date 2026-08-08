@@ -22,6 +22,11 @@ import {
   getProjectResearchFileDownloadUrl,
   requestProjectResearchFileUpload,
 } from "../src/lib/project-research-files";
+import {
+  normalizeProjectResearchTextFileName,
+  validatePreparedProjectResearchTextFile,
+  validateProjectResearchTextContent,
+} from "../src/lib/project-research-text-file";
 import { prisma } from "../src/lib/prisma";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 
@@ -115,6 +120,17 @@ async function mustCreateProject(name: string) {
 }
 
 async function main() {
+  check(51, "error" in normalizeProjectResearchTextFileName("   "), "empty text file names must fail");
+  const appendedTextName = normalizeProjectResearchTextFileName("  Market research notes  ");
+  check(52, "fileName" in appendedTextName && appendedTextName.fileName === "Market research notes.txt", "text file names must be trimmed and receive .txt");
+  const existingTextName = normalizeProjectResearchTextFileName("Market research notes.txt");
+  check(53, "fileName" in existingTextName && existingTextName.fileName === "Market research notes.txt", "existing .txt extensions must not be duplicated");
+  check(54, "error" in normalizeProjectResearchTextFileName("../unsafe.txt"), "path-like text file names must fail");
+  const multilineText = "Market findings\n\nConsumers prefer UTF-8 café notes.\nhttps://example.test";
+  const multilineValidation = validateProjectResearchTextContent(multilineText);
+  check(55, "byteLength" in multilineValidation && multilineValidation.byteLength === new TextEncoder().encode(multilineText).byteLength, "multiline UTF-8 content must preserve its encoded byte length");
+  check(56, "error" in validatePreparedProjectResearchTextFile({ fileName: "unsafe", mimeType: "text/plain", fileSize: 10 }), "prepared text uploads must require the normalized .txt name");
+
   await prisma.user.createMany({
     data: Object.values(users).map((user) => ({ ...user, passwordHash: "x" })),
   });
@@ -205,14 +221,59 @@ async function main() {
   check(25, !("error" in upload), "own-workspace upload must be prepared");
   check(27, !("error" in upload), "generic CAD file type must be accepted");
   if ("error" in upload) throw new Error(String(upload.error));
-  await completeProjectResearchFileUpload(users.executor, { projectId, folderId: executorBrief.id, attachmentId: upload.attachmentId });
+  const completedFile = await completeProjectResearchFileUpload(users.executor, {
+    projectId,
+    folderId: executorBrief.id,
+    attachmentId: upload.attachmentId,
+  });
+  check(
+    49,
+    completedFile?.attachmentId === upload.attachmentId &&
+      completedFile.name === "floor-plan.dwg" &&
+      completedFile.uploadedAt.length > 0,
+    "upload completion must return the persisted gallery file metadata",
+  );
 
   const uploadTwo = await requestProjectResearchFileUpload(users.executor, { projectId, folderId: executorBrief.id, originalFileName: "research.bundle", mimeType: "application/octet-stream", fileSize: 256 });
   check(26, !("error" in uploadTwo), "a second file in a multi-file selection must be accepted");
   if ("error" in uploadTwo) throw new Error(String(uploadTwo.error));
-  await completeProjectResearchFileUpload(users.executor, { projectId, folderId: executorBrief.id, attachmentId: uploadTwo.attachmentId });
+  const completedFileTwo = await completeProjectResearchFileUpload(users.executor, {
+    projectId,
+    folderId: executorBrief.id,
+    attachmentId: uploadTwo.attachmentId,
+  });
+  check(
+    50,
+    completedFileTwo?.attachmentId === uploadTwo.attachmentId &&
+      completedFileTwo.name === "research.bundle",
+    "independently completed files must each return their own persisted record",
+  );
   const association = await prisma.projectResearchFolderFile.findUnique({ where: { attachmentId: upload.attachmentId } });
   check(28, association?.folderId === executorBrief.id, "file association must target the exact folder");
+
+  const textUpload = await requestProjectResearchFileUpload(users.executor, {
+    projectId,
+    folderId: executorBrief.id,
+    originalFileName: "Market research notes.txt",
+    mimeType: "text/plain",
+    fileSize: new TextEncoder().encode(multilineText).byteLength,
+  });
+  check(57, !("error" in textUpload), "plain-text files must use the existing upload preparation pipeline");
+  if ("error" in textUpload) throw new Error(String(textUpload.error));
+  const completedTextFile = await completeProjectResearchFileUpload(users.executor, {
+    projectId,
+    folderId: executorBrief.id,
+    attachmentId: textUpload.attachmentId,
+  });
+  check(58, completedTextFile?.name === "Market research notes.txt" && completedTextFile.mimeType === "text/plain", "saved text attachments must retain their .txt name and text/plain MIME type");
+  const textAssociation = await prisma.projectResearchFolderFile.findUnique({ where: { attachmentId: textUpload.attachmentId } });
+  check(59, textAssociation?.folderId === executorBrief.id, "saved text files must associate with the exact Stage 2 folder");
+  const textFolderPage = await getProjectResearchFolderPageData(users.executor, { projectId, folderId: executorBrief.id });
+  check(60, textFolderPage?.files.some((file) => file.id === textAssociation?.id && file.mimeType === "text/plain"), "saved text files must appear in the real folder file dataset");
+  const textDownloadUrl = await getProjectResearchFileDownloadUrl(users.executor, { projectId, folderId: executorBrief.id, fileId: textAssociation!.id });
+  check(61, textDownloadUrl.length > 0, "saved text files must use the normal secure download path");
+  await deleteProjectResearchFile(users.executor, { projectId, folderId: executorBrief.id, fileId: textAssociation!.id });
+  check(62, !(await prisma.projectResearchFolderFile.findUnique({ where: { id: textAssociation!.id } })), "authorized users must delete created text files normally");
 
   const foreignProjectId = await mustCreateProject("Stage 2 foreign project");
   const foreignOwnerWorkspace = await prisma.projectResearchWorkspace.findUniqueOrThrow({ where: { projectId_ownerUserId: { projectId: foreignProjectId, ownerUserId: users.owner.id } }, include: { folders: true } });
@@ -266,7 +327,7 @@ async function main() {
   check(48, !Object.keys(prisma).some((key) => /task|vendor/i.test(key)), "Stage 2 must not add task/chat/vendor-specific models");
   check(30, (await getProjectResearchPageData(users.adminOutsider, projectId)) === null, "ADMIN role alone must not gain Stage 2 access");
 
-  console.log("Stage 2 database integration checks 1-48 passed.");
+  console.log("Stage 2 database integration checks 1-62 passed.");
 }
 
 main()

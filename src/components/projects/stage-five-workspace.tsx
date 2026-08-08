@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useId, useRef, useState, useTransition } from "react";
+import {
+  ProjectFileChecklistField,
+  ProjectFileChecklistItemStatus,
+  ProjectFileChecklistRequestChannel,
+} from "@prisma/client";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight,
@@ -29,9 +35,15 @@ import {
   ToggleLeft,
   Upload,
   X,
+  Download,
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  requestStageFiveChecklistInformationAction,
+  saveStageFiveChecklistAction,
+} from "@/app/(dashboard)/projects/[slug]/stages/5/actions";
 import { ProjectStageSummary } from "@/components/projects/project-stage-summary";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,25 +51,16 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProjectFlowRecord } from "@/lib/projects";
-import { showInfoToast } from "@/lib/toast";
+import type {
+  StageFiveChecklistValue,
+  StageFiveParticipantRecord,
+  StageFiveWorkspaceData,
+} from "@/lib/stage-five";
+import { uploadStageFiveChecklistAttachment } from "@/lib/stage-five-upload-client";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
-type ChecklistFieldKey =
-  | "outputName"
-  | "technicalDrawing"
-  | "healthWarning"
-  | "tarNicotine"
-  | "compulsoryText"
-  | "marketingCopy"
-  | "relatedGraphics"
-  | "printingTechnology"
-  | "finishes"
-  | "barcode"
-  | "trackTrace"
-  | "threeD"
-  | "taxStamp"
-  | "qrCode"
-  | "invoice";
+type ChecklistFieldKey = ProjectFileChecklistField;
 
 type ChecklistControl =
   | "text"
@@ -83,17 +86,14 @@ type LocalFileRecord = {
   id: string;
   name: string;
   size: number;
-};
-
-type ParticipantOption = {
-  id: string;
-  name: string;
-  role: string;
+  mimeType: string;
+  attachmentId?: string;
+  file?: File;
 };
 
 const CHECKLIST_ITEMS: ChecklistDefinition[] = [
   {
-    key: "outputName",
+    key: ProjectFileChecklistField.OUTPUT_NAME,
     title: "Output Name",
     helper: "The name of the output file",
     control: "text",
@@ -101,14 +101,14 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     icon: FileOutput,
   },
   {
-    key: "technicalDrawing",
+    key: ProjectFileChecklistField.TECHNICAL_DRAWING,
     title: "Technical Drawing",
     helper: "Upload the technical drawing file",
     control: "file",
     icon: FileText,
   },
   {
-    key: "healthWarning",
+    key: ProjectFileChecklistField.HEALTH_WARNING,
     title: "Health Warning",
     helper: "Add warning text, a reference file, or both",
     control: "health-warning",
@@ -116,7 +116,7 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     icon: HeartPulse,
   },
   {
-    key: "tarNicotine",
+    key: ProjectFileChecklistField.TAR_NICOTINE,
     title: "Tar / Nicotine",
     helper: "The required tar and nicotine information",
     control: "text",
@@ -124,7 +124,7 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     icon: Hash,
   },
   {
-    key: "compulsoryText",
+    key: ProjectFileChecklistField.COMPULSORY_TEXT,
     title: "Compulsory Text",
     helper: "All mandatory text required for the pack",
     control: "textarea",
@@ -132,7 +132,7 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     icon: ShieldCheck,
   },
   {
-    key: "marketingCopy",
+    key: ProjectFileChecklistField.MARKETING_COPY,
     title: "Marketing Copy",
     helper: "Add one or more lines of approved marketing copy",
     control: "textarea",
@@ -140,14 +140,14 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     icon: Palette,
   },
   {
-    key: "relatedGraphics",
+    key: ProjectFileChecklistField.RELATED_GRAPHICS,
     title: "Related Graphics",
     helper: "Add logos, illustrations, and other related graphics",
     control: "multi-file",
     icon: ImagePlus,
   },
   {
-    key: "printingTechnology",
+    key: ProjectFileChecklistField.PRINTING_TECHNOLOGY,
     title: "Printing Technology",
     helper: "Select or enter the required printing technologies",
     control: "multi-value",
@@ -155,7 +155,7 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     suggestions: ["Offset Printing", "Digital Printing", "Flexographic", "Gravure"],
   },
   {
-    key: "finishes",
+    key: ProjectFileChecklistField.FINISHES,
     title: "Finishes",
     helper: "Add finishes and optional reference files",
     control: "finishes",
@@ -163,7 +163,7 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     suggestions: ["Matte Lamination", "Gloss Lamination", "Spot UV", "Embossing", "Foil"],
   },
   {
-    key: "barcode",
+    key: ProjectFileChecklistField.BARCODE,
     title: "Barcode",
     helper: "Enter the barcode number",
     control: "text",
@@ -171,7 +171,7 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     icon: Barcode,
   },
   {
-    key: "trackTrace",
+    key: ProjectFileChecklistField.TRACK_TRACE,
     title: "Track & Trace",
     helper: "Add dimensions, location, placement, or a reference file",
     control: "text-attachment",
@@ -179,14 +179,14 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     icon: MapPin,
   },
   {
-    key: "threeD",
+    key: ProjectFileChecklistField.THREEDS,
     title: "3D's",
     helper: "Add 3D files, renders, or visualizations",
     control: "multi-file",
     icon: Box,
   },
   {
-    key: "taxStamp",
+    key: ProjectFileChecklistField.TAX_STAMP,
     title: "Tax Stamp",
     helper: "Add tax stamp details and an optional reference",
     control: "text-attachment",
@@ -194,14 +194,14 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = [
     icon: Stamp,
   },
   {
-    key: "qrCode",
+    key: ProjectFileChecklistField.QR_CODE,
     title: "QR Code",
     helper: "Add the required QR code file",
     control: "file",
     icon: QrCode,
   },
   {
-    key: "invoice",
+    key: ProjectFileChecklistField.INVOICE,
     title: "Invoice",
     helper: "Add the invoice file for this project",
     control: "file",
@@ -218,40 +218,22 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getParticipantOptions(project: ProjectFlowRecord) {
-  const participants = [
-    ...project.collaborators.map((collaborator) => ({
-      id: collaborator.id,
-      name: collaborator.name,
-      role: collaborator.role,
-    })),
-    ...project.executors.map((executor) => ({
-      id: executor.id,
-      name: executor.name,
-      role: "Project Executor",
-    })),
-  ];
-  const unique = new Map<string, ParticipantOption>();
-
-  for (const participant of participants) {
-    if (!unique.has(participant.id)) unique.set(participant.id, participant);
-  }
-
-  return [...unique.values()];
-}
-
-function ChecklistStatusBadge({ filled }: { filled: boolean }) {
+function ChecklistStatusBadge({ status }: { status: ProjectFileChecklistItemStatus }) {
+  const filled = status === ProjectFileChecklistItemStatus.FILLED;
+  const requested = status === ProjectFileChecklistItemStatus.REQUESTED;
   return (
     <span
       className={cn(
         "inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-[750]",
         filled
           ? "bg-[#e4f2e7] text-[#2e744e]"
-          : "bg-[#fff3df] text-[#9a6a22]",
+          : requested
+            ? "bg-[#eaf2ff] text-[#3569bd]"
+            : "bg-[#fff3df] text-[#9a6a22]",
       )}
     >
       {filled ? <Check className="h-3 w-3" /> : null}
-      {filled ? "Filled" : "Pending"}
+      {filled ? "Filled" : requested ? "Requested" : "Pending"}
     </span>
   );
 }
@@ -276,6 +258,8 @@ function ChecklistUploadField({
       id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
       name: file.name,
       size: file.size,
+      mimeType: file.type || "application/octet-stream",
+      file,
     }));
 
     if (selected.length > 0) {
@@ -325,7 +309,7 @@ function ChecklistUploadField({
         </label>
       </div>
       {files.length === 0 ? (
-        <p className="text-[10px] text-[#8a948d]">Selected files remain local to this page preview.</p>
+        <p className="text-[10px] text-[#8a948d]">New files are uploaded when you save changes.</p>
       ) : null}
     </div>
   );
@@ -411,12 +395,12 @@ function MultiValueChecklistInput({
 
 function ChecklistItemRow({
   item,
-  filled,
+  status,
   children,
   onRequest,
 }: {
   item: ChecklistDefinition;
-  filled: boolean;
+  status: ProjectFileChecklistItemStatus;
   children: React.ReactNode;
   onRequest: () => void;
 }) {
@@ -435,7 +419,7 @@ function ChecklistItemRow({
       </div>
       <div className="min-w-0">{children}</div>
       <div className="flex items-center xl:min-h-11">
-        <ChecklistStatusBadge filled={filled} />
+        <ChecklistStatusBadge status={status} />
       </div>
       <div className="flex items-center xl:min-h-11 xl:justify-end">
         <Button
@@ -453,29 +437,182 @@ function ChecklistItemRow({
   );
 }
 
+function StageFiveReadOnlyView({
+  textValues,
+  files,
+  multiValues,
+  healthWarningIncluded,
+  getStatus,
+}: {
+  textValues: Partial<Record<ChecklistFieldKey, string>>;
+  files: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>;
+  multiValues: Partial<Record<ChecklistFieldKey, string[]>>;
+  healthWarningIncluded: boolean;
+  getStatus: (item: ChecklistDefinition) => ProjectFileChecklistItemStatus;
+}) {
+  return (
+    <section
+      id="stage-five-view-panel"
+      role="tabpanel"
+      aria-label="View File Checklist"
+      className="border-t border-[#e7ece7] bg-[#fbfcfb]"
+    >
+      <div className="px-4 py-5 sm:px-5 lg:px-6">
+        <h2 className="text-[18px] font-[750] text-[#1b261f]">
+          Required information and files
+        </h2>
+        <p className="mt-1 text-[11px] leading-4 text-[#77827a]">
+          Read-only checklist summary.
+        </p>
+      </div>
+      <div className="bg-white">
+        {CHECKLIST_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const value = textValues[item.key]?.trim() ?? "";
+          const selectedFiles = files[item.key] ?? [];
+          const values = multiValues[item.key] ?? [];
+          const status = getStatus(item);
+          const showIncluded = item.control === "health-warning" && healthWarningIncluded;
+          const hasContent = Boolean(value || selectedFiles.length || values.length || showIncluded);
+
+          return (
+            <article
+              key={item.key}
+              className="grid gap-4 border-t border-[#e8ede8] px-4 py-5 first:border-t-0 sm:px-5 lg:grid-cols-[230px_minmax(0,1fr)_86px] lg:px-6 lg:gap-5"
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#eef5ef] text-[#3a7556]">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-[740] text-[#253029]">{item.title}</h3>
+                  <p className="mt-1 text-[11px] leading-4 text-[#7b857e]">{item.helper}</p>
+                </div>
+              </div>
+
+              <div className="min-w-0 space-y-3 text-[13px] leading-5 text-[#344038]">
+                {value ? <p className="whitespace-pre-wrap break-words">{value}</p> : null}
+                {values.length > 0 ? (
+                  <div className="flex flex-wrap gap-2" aria-label={`${item.title} values`}>
+                    {values.map((itemValue) => (
+                      <span
+                        key={itemValue}
+                        className="inline-flex rounded-full bg-[#edf3ee] px-3 py-1.5 text-[11px] font-[650] text-[#405047]"
+                      >
+                        {itemValue}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {selectedFiles.length > 0 ? (
+                  <div className="flex flex-wrap gap-2" aria-label={`${item.title} selected files`}>
+                    {selectedFiles.map((file) => (
+                      <span
+                        key={file.id}
+                        className="inline-flex max-w-full items-center gap-2 rounded-[10px] border border-[#dfe6df] bg-[#f7faf7] px-3 py-2 text-[11px]"
+                      >
+                        <FileImage className="h-3.5 w-3.5 shrink-0 text-[#438060]" />
+                        <span className="max-w-[320px] truncate font-[650]">{file.name}</span>
+                        <span className="shrink-0 text-[#7c867f]">{formatFileSize(file.size)}</span>
+                        {file.attachmentId ? (
+                          <span className="ml-1 inline-flex items-center gap-1 border-l border-[#dfe6df] pl-2">
+                            <AssetPreviewButton
+                              fileName={file.name}
+                              mimeType={file.mimeType}
+                              previewPath={`/api/project-assets/${file.attachmentId}/preview`}
+                              downloadPath={`/api/project-assets/${file.attachmentId}/download`}
+                              triggerClassName="size-7 rounded p-1 text-[#438060] hover:bg-[#e8f1ea]"
+                            />
+                            <a
+                              href={`/api/project-assets/${file.attachmentId}/download`}
+                              className="rounded p-1 text-[#438060] hover:bg-[#e8f1ea]"
+                              aria-label={`Download ${file.name}`}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </a>
+                          </span>
+                        ) : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {showIncluded ? (
+                  <span className="inline-flex rounded-full bg-[#e4f2e7] px-3 py-1.5 text-[11px] font-[650] text-[#2e744e]">
+                    Included
+                  </span>
+                ) : null}
+                {!hasContent ? (
+                  <p className="italic text-[#89938c]">Not provided</p>
+                ) : null}
+              </div>
+
+              <div className="flex items-start lg:justify-end">
+                <ChecklistStatusBadge status={status} />
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function RequestInformationDialog({
   field,
   participants,
+  projectId,
+  handoffId,
   onClose,
+  onRequested,
 }: {
   field: ChecklistDefinition;
-  participants: ParticipantOption[];
+  participants: StageFiveParticipantRecord[];
+  projectId: string;
+  handoffId: string;
   onClose: () => void;
+  onRequested: () => void;
 }) {
+  const [isSending, startSending] = useTransition();
+  const requestId = useRef<string | null>(null);
   const [recipientMode, setRecipientMode] = useState<"existing" | "email">("existing");
   const [participantId, setParticipantId] = useState("");
+  const [recipientName, setRecipientName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const canPrepare =
     recipientMode === "existing" ? Boolean(participantId) : /^\S+@\S+\.\S+$/.test(email.trim());
 
-  function prepareRequest() {
-    if (!canPrepare) return;
-    onClose();
-    showInfoToast(
-      "Request prepared.",
-      "Request functionality will be connected in the next phase. Nothing was sent.",
-    );
+  function sendRequest() {
+    if (!canPrepare || isSending) return;
+    requestId.current ??= crypto.randomUUID();
+    startSending(async () => {
+      const result = await requestStageFiveChecklistInformationAction({
+        clientRequestId: requestId.current ?? crypto.randomUUID(),
+        projectId,
+        handoffId,
+        fieldKey: field.key,
+        channel:
+          recipientMode === "existing"
+            ? ProjectFileChecklistRequestChannel.IN_APP
+            : ProjectFileChecklistRequestChannel.EMAIL,
+        ...(recipientMode === "existing"
+          ? { recipientUserId: participantId }
+          : { recipientName, recipientEmail: email }),
+        message,
+      });
+      if ("error" in result) {
+        showErrorToast("Unable to send request.", result.error);
+        if (result.request?.status === "FAILED") requestId.current = null;
+        return;
+      }
+      onRequested();
+      onClose();
+      showSuccessToast(
+        recipientMode === "existing"
+          ? "In-app request sent."
+          : "Request email sent.",
+      );
+    });
   }
 
   return (
@@ -499,7 +636,7 @@ function RequestInformationDialog({
                 Request {field.title}
               </h2>
               <p className="mt-1 text-[12px] leading-5 text-[#6f7a72]">
-                Prepare who should provide this checklist item and add an optional note.
+                Choose who should provide this checklist item and add an optional note.
               </p>
             </div>
             <Button type="button" variant="secondary" size="icon" onClick={onClose}>
@@ -559,14 +696,23 @@ function RequestInformationDialog({
                 ))}
               </select>
             ) : (
-              <Input
-                type="email"
-                value={email}
-                className={cn(CONTROL_CLASS, "mt-3")}
-                placeholder="name@example.com"
-                aria-label="Manual recipient email"
-                onChange={(event) => setEmail(event.target.value)}
-              />
+              <div className="mt-3 space-y-3">
+                <Input
+                  value={recipientName}
+                  className={CONTROL_CLASS}
+                  placeholder="Recipient name (optional)"
+                  aria-label="Manual recipient name"
+                  onChange={(event) => setRecipientName(event.target.value)}
+                />
+                <Input
+                  type="email"
+                  value={email}
+                  className={CONTROL_CLASS}
+                  placeholder="name@example.com"
+                  aria-label="Manual recipient email"
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </div>
             )}
           </fieldset>
 
@@ -581,15 +727,15 @@ function RequestInformationDialog({
           </label>
 
           <p className="mt-4 rounded-[12px] bg-[#f4f7f4] px-3 py-2 text-[10px] leading-4 text-[#748078]">
-            No email or external link will be sent in this UI preview.
+            Manual recipients receive a real email and can reply with the requested information. No external response portal is included yet.
           </p>
 
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" disabled={!canPrepare} onClick={prepareRequest}>
-              <Send className="h-4 w-4" /> Prepare Request
+            <Button type="button" disabled={!canPrepare || isSending} onClick={sendRequest}>
+              <Send className="h-4 w-4" /> {isSending ? "Sending..." : "Send Request"}
             </Button>
           </div>
         </CardContent>
@@ -601,36 +747,130 @@ function RequestInformationDialog({
 export function StageFiveWorkspace({
   project,
   currentUserId,
+  pageData,
+  initialHandoffId,
+  initialMode,
 }: {
   project: ProjectFlowRecord;
   currentUserId: string;
+  pageData: StageFiveWorkspaceData;
+  initialHandoffId?: string;
+  initialMode?: "edit" | "view";
 }) {
-  const [textValues, setTextValues] = useState<Partial<Record<ChecklistFieldKey, string>>>({});
-  const [files, setFiles] = useState<Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>>({});
-  const [multiValues, setMultiValues] = useState<Partial<Record<ChecklistFieldKey, string[]>>>({});
-  const [healthWarningIncluded, setHealthWarningIncluded] = useState(false);
+  const router = useRouter();
+  const [mode, setMode] = useState<"edit" | "view">(
+    pageData.canEdit && initialMode !== "view" ? "edit" : "view",
+  );
+  const firstHandoffId = pageData.files[0]?.handoffId ?? "";
+  const [selectedHandoffId, setSelectedHandoffId] = useState(
+    pageData.files.some((file) => file.handoffId === initialHandoffId)
+      ? initialHandoffId ?? firstHandoffId
+      : firstHandoffId,
+  );
+  const [drafts, setDrafts] = useState(() =>
+    Object.fromEntries(
+      pageData.files.map((file) => {
+        const textValues: Partial<Record<ChecklistFieldKey, string>> = {};
+        const files: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>> = {};
+        const multiValues: Partial<Record<ChecklistFieldKey, string[]>> = {};
+        const statuses: Partial<Record<ChecklistFieldKey, ProjectFileChecklistItemStatus>> = {};
+        let healthWarningIncluded = false;
+        for (const item of file.items) {
+          if (item.value.text) textValues[item.fieldKey] = item.value.text;
+          if (item.value.values?.length) multiValues[item.fieldKey] = item.value.values;
+          if (item.fieldKey === ProjectFileChecklistField.HEALTH_WARNING) {
+            healthWarningIncluded = Boolean(item.value.included);
+          }
+          if (item.attachments.length) {
+            files[item.fieldKey] = item.attachments.map((attachment) => ({
+              id: attachment.id,
+              attachmentId: attachment.id,
+              name: attachment.name,
+              mimeType: attachment.mimeType,
+              size: attachment.size,
+            }));
+          }
+          statuses[item.fieldKey] = item.status;
+        }
+        return [
+          file.handoffId,
+          { textValues, files, multiValues, healthWarningIncluded, statuses },
+        ];
+      }),
+    ) as Record<
+      string,
+      {
+        textValues: Partial<Record<ChecklistFieldKey, string>>;
+        files: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>;
+        multiValues: Partial<Record<ChecklistFieldKey, string[]>>;
+        healthWarningIncluded: boolean;
+        statuses: Partial<Record<ChecklistFieldKey, ProjectFileChecklistItemStatus>>;
+      }
+    >,
+  );
+  const [dirtyHandoffIds, setDirtyHandoffIds] = useState<Set<string>>(() => new Set());
+  const [isSaving, startSaving] = useTransition();
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
-  const participantOptions = useMemo(() => getParticipantOptions(project), [project]);
+  const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
+  const activeDraft = drafts[selectedHandoffId];
+
+  function updateSelectedFile(handoffId: string) {
+    setSelectedHandoffId(handoffId);
+    const params = new URLSearchParams(window.location.search);
+    params.set("file", handoffId);
+    params.set("mode", mode);
+    router.replace(`/projects/${project.id}/stages/5?${params.toString()}`, { scroll: false });
+  }
+
+  function updateMode(nextMode: "edit" | "view") {
+    if (nextMode === "edit" && !pageData.canEdit) return;
+    setMode(nextMode);
+    const params = new URLSearchParams(window.location.search);
+    params.set("mode", nextMode);
+    if (selectedHandoffId) params.set("file", selectedHandoffId);
+    router.replace(`/projects/${project.id}/stages/5?${params.toString()}`, { scroll: false });
+  }
+
+  function updateActiveDraft(
+    updater: (current: NonNullable<typeof activeDraft>) => NonNullable<typeof activeDraft>,
+  ) {
+    if (!selectedHandoffId || !activeDraft) return;
+    setDrafts((current) => ({
+      ...current,
+      [selectedHandoffId]: updater(current[selectedHandoffId]),
+    }));
+    setDirtyHandoffIds((current) => new Set(current).add(selectedHandoffId));
+  }
 
   function updateText(key: ChecklistFieldKey, value: string) {
-    setTextValues((current) => ({ ...current, [key]: value }));
+    updateActiveDraft((current) => ({
+      ...current,
+      textValues: { ...current.textValues, [key]: value },
+    }));
   }
 
   function updateFiles(key: ChecklistFieldKey, value: LocalFileRecord[]) {
-    setFiles((current) => ({ ...current, [key]: value }));
+    updateActiveDraft((current) => ({
+      ...current,
+      files: { ...current.files, [key]: value },
+    }));
   }
 
   function updateMultiValues(key: ChecklistFieldKey, value: string[]) {
-    setMultiValues((current) => ({ ...current, [key]: value }));
+    updateActiveDraft((current) => ({
+      ...current,
+      multiValues: { ...current.multiValues, [key]: value },
+    }));
   }
 
   function isFilled(item: ChecklistDefinition) {
-    const hasText = Boolean(textValues[item.key]?.trim());
-    const hasFiles = Boolean(files[item.key]?.length);
-    const hasMultiValues = Boolean(multiValues[item.key]?.length);
+    if (!activeDraft) return false;
+    const hasText = Boolean(activeDraft.textValues[item.key]?.trim());
+    const hasFiles = Boolean(activeDraft.files[item.key]?.length);
+    const hasMultiValues = Boolean(activeDraft.multiValues[item.key]?.length);
 
     if (item.control === "health-warning") {
-      return healthWarningIncluded || hasText || hasFiles;
+      return activeDraft.healthWarningIncluded || hasText || hasFiles;
     }
     if (item.control === "multi-value") return hasMultiValues;
     if (item.control === "finishes") return hasMultiValues || hasFiles;
@@ -639,10 +879,90 @@ export function StageFiveWorkspace({
     return hasText;
   }
 
+  function getItemStatus(item: ChecklistDefinition) {
+    if (isFilled(item)) return ProjectFileChecklistItemStatus.FILLED;
+    return activeDraft?.statuses[item.key] === ProjectFileChecklistItemStatus.REQUESTED
+      ? ProjectFileChecklistItemStatus.REQUESTED
+      : ProjectFileChecklistItemStatus.PENDING;
+  }
+
+  function saveChecklist() {
+    if (!activeFile || !activeDraft || isSaving) return;
+    const submittedHandoffId = activeFile.handoffId;
+    startSaving(async () => {
+      try {
+        const resolvedFiles: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>> = {};
+        for (const item of CHECKLIST_ITEMS) {
+          resolvedFiles[item.key] = await Promise.all(
+            (activeDraft.files[item.key] ?? []).map(async (record) => {
+              if (!record.file) return record;
+              const uploaded = await uploadStageFiveChecklistAttachment(project.id, record.file);
+              return {
+                id: uploaded.id,
+                attachmentId: uploaded.id,
+                name: uploaded.name,
+                mimeType: uploaded.mimeType,
+                size: uploaded.size,
+              };
+            }),
+          );
+        }
+
+        const result = await saveStageFiveChecklistAction({
+          projectId: project.id,
+          handoffId: submittedHandoffId,
+          items: CHECKLIST_ITEMS.map((item) => ({
+            fieldKey: item.key,
+            value: {
+              ...(activeDraft.textValues[item.key]?.trim()
+                ? { text: activeDraft.textValues[item.key]?.trim() }
+                : {}),
+              ...(activeDraft.multiValues[item.key]?.length
+                ? { values: activeDraft.multiValues[item.key] }
+                : {}),
+              ...(item.key === ProjectFileChecklistField.HEALTH_WARNING
+                ? { included: activeDraft.healthWarningIncluded }
+                : {}),
+            } satisfies StageFiveChecklistValue,
+            attachmentIds: (resolvedFiles[item.key] ?? []).map((file) => file.attachmentId ?? file.id),
+          })),
+        });
+        if ("error" in result) {
+          showErrorToast("Unable to save checklist.", result.error);
+          return;
+        }
+        const statusByField = new Map(result.items.map((item) => [item.fieldKey, item.status]));
+        setDrafts((current) => ({
+          ...current,
+          [submittedHandoffId]: {
+            ...current[submittedHandoffId],
+            files: resolvedFiles,
+            statuses: {
+              ...current[submittedHandoffId].statuses,
+              ...Object.fromEntries(statusByField),
+            },
+          },
+        }));
+        setDirtyHandoffIds((current) => {
+          const next = new Set(current);
+          next.delete(submittedHandoffId);
+          return next;
+        });
+        showSuccessToast("File checklist saved.");
+        router.refresh();
+      } catch (error) {
+        showErrorToast(
+          "Unable to save checklist.",
+          error instanceof Error ? error.message : "Please try again.",
+        );
+      }
+    });
+  }
+
   function renderControl(item: ChecklistDefinition) {
-    const value = textValues[item.key] ?? "";
-    const selectedFiles = files[item.key] ?? [];
-    const values = multiValues[item.key] ?? [];
+    const value = activeDraft?.textValues[item.key] ?? "";
+    const selectedFiles = activeDraft?.files[item.key] ?? [];
+    const values = activeDraft?.multiValues[item.key] ?? [];
 
     if (item.control === "text") {
       return (
@@ -750,24 +1070,29 @@ export function StageFiveWorkspace({
           <button
             type="button"
             role="switch"
-            aria-checked={healthWarningIncluded}
+            aria-checked={activeDraft?.healthWarningIncluded ?? false}
             className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-[11px] border border-[#dfe6df] bg-white px-3 text-[11px] font-[680] text-[#58645c]"
-            onClick={() => setHealthWarningIncluded((current) => !current)}
+            onClick={() =>
+              updateActiveDraft((current) => ({
+                ...current,
+                healthWarningIncluded: !current.healthWarningIncluded,
+              }))
+            }
           >
             <span
               className={cn(
                 "relative h-5 w-9 rounded-full transition",
-                healthWarningIncluded ? "bg-[#39845d]" : "bg-[#d5dcd6]",
+                activeDraft?.healthWarningIncluded ? "bg-[#39845d]" : "bg-[#d5dcd6]",
               )}
             >
               <span
                 className={cn(
                   "absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition",
-                  healthWarningIncluded ? "left-[18px]" : "left-0.5",
+                  activeDraft?.healthWarningIncluded ? "left-[18px]" : "left-0.5",
                 )}
               />
             </span>
-            {healthWarningIncluded ? "Included" : "Not included"}
+            {activeDraft?.healthWarningIncluded ? "Included" : "Not included"}
           </button>
         </div>
       </div>
@@ -783,23 +1108,123 @@ export function StageFiveWorkspace({
             <div className="flex items-center gap-2 text-[11px] font-[760] uppercase tracking-[0.13em] text-[#4d765d]">
               <FileCheck2 className="h-4 w-4" /> File Checklist
             </div>
-            <h1 className="mt-3 text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
-              Stage 5 - File Checklist
-            </h1>
+            <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <h1 className="text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
+                Stage 5 - File Checklist
+              </h1>
+              <div
+                role="tablist"
+                aria-label="File Checklist presentation mode"
+                className="inline-grid w-fit grid-cols-2 rounded-[12px] border border-[#dce4dd] bg-white p-1 shadow-[0_8px_20px_rgba(23,39,28,0.04)]"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === "edit"}
+                  aria-controls="stage-five-edit-panel"
+                  disabled={!pageData.canEdit}
+                  onClick={() => updateMode("edit")}
+                  className={cn(
+                    "min-w-[72px] rounded-[9px] px-3 py-2 text-[12px] font-[700] transition",
+                    mode === "edit"
+                      ? "bg-[#eaf4ec] text-[#236945]"
+                      : "text-[#6f7a72] hover:bg-[#f4f7f4]",
+                    !pageData.canEdit && "cursor-not-allowed opacity-40",
+                  )}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === "view"}
+                  aria-controls="stage-five-view-panel"
+                  onClick={() => updateMode("view")}
+                  className={cn(
+                    "min-w-[72px] rounded-[9px] px-3 py-2 text-[12px] font-[700] transition",
+                    mode === "view"
+                      ? "bg-[#eaf4ec] text-[#236945]"
+                      : "text-[#6f7a72] hover:bg-[#f4f7f4]",
+                  )}
+                >
+                  View
+                </button>
+              </div>
+            </div>
             <p className="mt-2 text-[13px] leading-5 text-[#6f7a72]">
               Complete or request the required project information and files.
             </p>
             <ProjectStageSummary project={project} />
+
+            {activeFile ? (
+              <div className="mt-5 flex flex-col gap-3 rounded-[16px] border border-[#dfe6df] bg-[#f8faf8] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-[760] uppercase tracking-[0.1em] text-[#6e7a71]">File checklist for</p>
+                  <select
+                    value={selectedHandoffId}
+                    className="mt-2 min-h-11 w-full max-w-[560px] rounded-[12px] border border-[#d7e0d8] bg-white px-3 text-[13px] font-[680] text-[#263129] outline-none focus:border-[#82aa90] sm:min-w-[420px]"
+                    aria-label="Current Stage 5 final file"
+                    onChange={(event) => updateSelectedFile(event.target.value)}
+                  >
+                    {pageData.files.map((file, index) => (
+                      <option key={file.handoffId} value={file.handoffId}>
+                        {file.sourceAttachment.name} — File {index + 1} of {pageData.files.length}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="shrink-0 text-left sm:text-right">
+                  <p className="text-[12px] font-[700] text-[#2f6548]">
+                    {CHECKLIST_ITEMS.filter((item) => getItemStatus(item) === ProjectFileChecklistItemStatus.FILLED).length} / {CHECKLIST_ITEMS.length} filled
+                  </p>
+                  <p className="mt-1 text-[10px] text-[#7b867e]">{pageData.files.length} final {pageData.files.length === 1 ? "file" : "files"}</p>
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          <section className="border-t border-[#e7ece7] bg-[#fbfcfb]" aria-labelledby="file-checklist-heading">
-            <div className="px-4 py-5 sm:px-5 lg:px-6">
-              <h2 id="file-checklist-heading" className="text-[18px] font-[750] text-[#1b261f]">
-                Required information and files
-              </h2>
-              <p className="mt-1 text-[11px] leading-4 text-[#77827a]">
-                Values and selected files are temporary in this UI preview.
+          {!activeFile || !activeDraft ? (
+            <section className="border-t border-[#e7ece7] bg-[#fbfcfb] px-6 py-16 text-center">
+              <span className="mx-auto grid size-14 place-items-center rounded-full bg-[#eaf4ed] text-[#2f8057]">
+                <FileCheck2 className="h-6 w-6" />
+              </span>
+              <h2 className="mt-4 text-[18px] font-[750] text-[#1b261f]">No final files have been handed over from Stage 4 yet.</h2>
+              <p className="mx-auto mt-2 max-w-[520px] text-[12px] leading-5 text-[#77827a]">
+                An authorized project owner can designate existing Stage 4 files from the Final Concept workspace.
               </p>
+            </section>
+          ) : mode === "view" ? (
+            <StageFiveReadOnlyView
+              textValues={activeDraft.textValues}
+              files={activeDraft.files}
+              multiValues={activeDraft.multiValues}
+              healthWarningIncluded={activeDraft.healthWarningIncluded}
+              getStatus={getItemStatus}
+            />
+          ) : (
+          <section
+            id="stage-five-edit-panel"
+            role="tabpanel"
+            aria-label="Edit File Checklist"
+            className="border-t border-[#e7ece7] bg-[#fbfcfb]"
+            aria-labelledby="file-checklist-heading"
+          >
+            <div className="flex flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:px-6">
+              <div>
+                <h2 id="file-checklist-heading" className="text-[18px] font-[750] text-[#1b261f]">
+                  Required information and files
+                </h2>
+                <p className="mt-1 text-[11px] leading-4 text-[#77827a]">
+                  Values and selected files are saved independently for this final file.
+                </p>
+              </div>
+              <Button
+                type="button"
+                disabled={isSaving || !dirtyHandoffIds.has(selectedHandoffId)}
+                onClick={saveChecklist}
+              >
+                <FileCheck2 className="h-4 w-4" /> {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
             </div>
             <div className="hidden border-t border-[#e8ede8] bg-white px-6 py-3 text-[10px] font-[740] uppercase tracking-[0.08em] text-[#7c867f] xl:grid xl:grid-cols-[230px_minmax(0,1fr)_86px_108px] xl:gap-5">
               <span>Field</span>
@@ -812,7 +1237,7 @@ export function StageFiveWorkspace({
                 <ChecklistItemRow
                   key={item.key}
                   item={item}
-                  filled={isFilled(item)}
+                  status={getItemStatus(item)}
                   onRequest={() => setRequestField(item)}
                 >
                   {renderControl(item)}
@@ -820,6 +1245,7 @@ export function StageFiveWorkspace({
               ))}
             </div>
           </section>
+          )}
 
           <div className="flex flex-col-reverse gap-3 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
             <Button asChild type="button" variant="outline" className="min-w-[160px] rounded-[13px] shadow-none">
@@ -827,17 +1253,10 @@ export function StageFiveWorkspace({
                 <ListChecks className="h-4 w-4" /> All Stages
               </Link>
             </Button>
-            <Button
-              type="button"
-              className="min-w-[180px] rounded-[13px]"
-              onClick={() =>
-                showInfoToast(
-                  "Stage 5 UI preview.",
-                  "Stage 6 remains locked and no workflow status was changed.",
-                )
-              }
-            >
-              Next Stage <ArrowRight className="h-4 w-4" />
+            <Button asChild type="button" className="min-w-[180px] rounded-[13px]">
+              <Link href={`/projects/${project.id}/stages/6`}>
+                Next Stage <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
           </div>
         </CardContent>
@@ -847,8 +1266,25 @@ export function StageFiveWorkspace({
         <RequestInformationDialog
           key={requestField.key}
           field={requestField}
-          participants={participantOptions}
+          participants={pageData.participants}
+          projectId={project.id}
+          handoffId={selectedHandoffId}
           onClose={() => setRequestField(null)}
+          onRequested={() => {
+            const nextStatus = isFilled(requestField)
+              ? ProjectFileChecklistItemStatus.FILLED
+              : ProjectFileChecklistItemStatus.REQUESTED;
+            setDrafts((current) => ({
+              ...current,
+              [selectedHandoffId]: {
+                ...current[selectedHandoffId],
+                statuses: {
+                  ...current[selectedHandoffId].statuses,
+                  [requestField.key]: nextStatus,
+                },
+              },
+            }));
+          }}
         />
       ) : null}
     </section>

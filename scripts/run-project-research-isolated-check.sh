@@ -55,6 +55,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE SCHEMA \"$chain_schema\"; CRE
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1" >/dev/null
 
 DATABASE_URL="$chain_url" pnpm prisma migrate deploy
+DATABASE_URL="$chain_url" pnpm project-create:v2-integration-check
 DATABASE_URL="$chain_url" pnpm stage-two:integration-check
 
 mkdir -p "$temporary_root/prisma/migrations"

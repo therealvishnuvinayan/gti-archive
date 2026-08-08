@@ -42,6 +42,7 @@ const notificationIconMap: Record<NotificationVisualKind, LucideIcon> = {
   "archive-created": Archive,
   "copyright-transfer": FileBadge2,
   "submission-pending": BellDot,
+  "checklist-requested": ClipboardCheck,
 };
 
 const contextToneStyles: Record<NotificationContextTone, string> = {
@@ -73,6 +74,7 @@ const iconToneStyles: Record<NotificationVisualKind, string> = {
   "archive-created": "bg-[#fff4e7] text-[#c58a25]",
   "copyright-transfer": "bg-[#e8f8fb] text-[#1593a8]",
   "submission-pending": "bg-[#fff7ea] text-[#b77420]",
+  "checklist-requested": "bg-[#eef8ef] text-[#2b8b56]",
 };
 
 const actorToneStyles = {

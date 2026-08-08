@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 
-const [workspace, summary, page, workflowAccess, overview, schema] = await Promise.all([
+const [workspace, summaryAlias, summary, page, workflowAccess, overview, schema] = await Promise.all([
   readFile("src/components/projects/stage-six-workspace.tsx", "utf8"),
   readFile("src/components/projects/project-stage-summary.tsx", "utf8"),
+  readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/6/page.tsx", "utf8"),
   readFile("src/lib/workflow-stage-access.ts", "utf8"),
   readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
@@ -34,7 +35,9 @@ for (const label of ["Project Name", "Project Owner", "Project Co-Owners", "Proj
   assert(summary.includes(label), `Missing shared project summary label: ${label}`);
 }
 assert(
-  workspace.includes("ProjectStageSummary") && workspace.includes('from "@/components/projects/project-stage-summary"'),
+  workspace.includes("ProjectStageSummary") &&
+    workspace.includes('from "@/components/projects/project-stage-summary"') &&
+    summaryAlias.includes("ProjectFlowSummaryStrip"),
   "Stage 6 must use the shared real-data project summary.",
 );
 
@@ -72,10 +75,10 @@ assert(
   "Stage 6 must describe future email behavior without sending email.",
 );
 assert(
-  workspace.includes("Stage 7 remains locked.") &&
+  workspace.includes('href={`/projects/${project.id}/stages/7`}') &&
     !workspace.includes("completeProject") &&
-    !workspace.includes("stages/7"),
-  "Next Stage must not complete Stage 6 or open/unlock Stage 7.",
+    !workspace.includes("completeProjectStage"),
+  "Next Stage must open Stage 7 directly without mutating Stage 6 workflow state.",
 );
 assert(
   workspace.includes("href={`/projects/${project.id}`}") && workspace.includes("All Stages"),

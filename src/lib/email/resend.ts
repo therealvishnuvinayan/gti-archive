@@ -1,8 +1,9 @@
-type SendEmailInput = {
+export type SendEmailInput = {
   to: string;
   subject: string;
   html: string;
   text: string;
+  replyTo?: string;
 };
 
 type SendEmailResult =
@@ -37,6 +38,7 @@ export async function sendResendEmail(
       subject: input.subject,
       html: input.html,
       text: input.text,
+      ...(input.replyTo ? { reply_to: input.replyTo } : {}),
     }),
   });
 

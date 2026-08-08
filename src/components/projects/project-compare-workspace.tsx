@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -1212,15 +1211,6 @@ export function ProjectCompareWorkspace({
                 </div>
               </div>
 
-              <Button
-                asChild
-                size="sm"
-                className="min-w-[160px] bg-[#184d34] text-[13px] hover:bg-[#123f2a]"
-              >
-                <Link href={`/projects/${project.id}/chat?stage=${stageId ?? ""}`}>
-                  Back to stage chat
-                </Link>
-              </Button>
             </div>
           </Card>
 

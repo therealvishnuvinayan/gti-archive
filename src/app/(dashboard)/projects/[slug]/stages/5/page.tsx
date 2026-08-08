@@ -16,6 +16,7 @@ import { requireUser } from "@/lib/auth";
 import { getProjectRouteAvailability, getProjectShellById } from "@/lib/projects";
 import { decodeRouteParam } from "@/lib/route-params";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import { getStageFiveWorkspaceData } from "@/lib/stage-five";
 
 type StageFiveUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -38,9 +39,13 @@ async function StageFiveUnavailableContent({
 async function StageFiveContent({
   slug,
   userPromise,
+  initialHandoffId,
+  initialMode,
 }: {
   slug: string;
   userPromise: Promise<StageFiveUser>;
+  initialHandoffId?: string;
+  initialMode?: "edit" | "view";
 }) {
   const user = await userPromise;
   const project = await getProjectShellById(slug, user);
@@ -68,15 +73,32 @@ async function StageFiveContent({
     );
   }
 
-  return <StageFiveWorkspace project={project} currentUserId={user.id} />;
+  const pageData = await getStageFiveWorkspaceData(user, slug);
+
+  if (!pageData) {
+    return <ProjectAccessUnavailableState />;
+  }
+
+  return (
+    <StageFiveWorkspace
+      project={project}
+      currentUserId={user.id}
+      pageData={pageData}
+      initialHandoffId={initialHandoffId}
+      initialMode={initialMode}
+    />
+  );
 }
 
 export default async function StageFivePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ file?: string; mode?: string }>;
 }) {
   const { slug: rawSlug } = await params;
+  const query = await searchParams;
   const slug = decodeRouteParam(rawSlug);
   const userPromise = requireUser();
 
@@ -93,7 +115,12 @@ export default async function StageFivePage({
       }}
     >
       <Suspense fallback={<StageFiveLoadingShell />}>
-        <StageFiveContent slug={slug} userPromise={userPromise} />
+        <StageFiveContent
+          slug={slug}
+          userPromise={userPromise}
+          initialHandoffId={query.file}
+          initialMode={query.mode === "view" ? "view" : "edit"}
+        />
       </Suspense>
     </DashboardLayout>
   );

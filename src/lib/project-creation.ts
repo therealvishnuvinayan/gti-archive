@@ -15,6 +15,7 @@ export type CreateProjectV2Input = {
   ownerId: string;
   coOwnerIds: string[];
   executorIds: string[];
+  collaboratorIds?: string[];
 };
 
 export type CreateProjectV2FieldErrors = {
@@ -22,6 +23,7 @@ export type CreateProjectV2FieldErrors = {
   ownerId?: string;
   coOwnerIds?: string;
   executorIds?: string;
+  collaboratorIds?: string;
 };
 
 export type CreateProjectV2Result =
@@ -43,6 +45,17 @@ function hasDuplicates(values: string[]) {
   return new Set(values).size !== values.length;
 }
 
+function hasMalformedIds(values: unknown) {
+  return (
+    !Array.isArray(values) ||
+    values.some((value) => typeof value !== "string" || !value.trim())
+  );
+}
+
+function isValidIdList(values: unknown): values is string[] {
+  return !hasMalformedIds(values);
+}
+
 export async function createProjectV2(
   creator: ProjectCreator,
   input: CreateProjectV2Input,
@@ -51,6 +64,10 @@ export async function createProjectV2(
   const ownerId = input.ownerId.trim();
   const coOwnerIds = normalizeIdList(input.coOwnerIds);
   const executorIds = normalizeIdList(input.executorIds);
+  const rawCollaboratorIds: unknown = input.collaboratorIds ?? [];
+  const collaboratorIds = isValidIdList(rawCollaboratorIds)
+    ? [...new Set(normalizeIdList(rawCollaboratorIds))]
+    : [];
   const fieldErrors: CreateProjectV2FieldErrors = {};
 
   if (!name) {
@@ -75,6 +92,11 @@ export async function createProjectV2(
     fieldErrors.executorIds = "An executor can only be selected once.";
   }
 
+  if (hasMalformedIds(rawCollaboratorIds)) {
+    fieldErrors.collaboratorIds =
+      "Every collaborator selection must contain a valid user ID.";
+  }
+
   if (Object.keys(fieldErrors).length > 0) {
     return {
       error: "Review the highlighted fields.",
@@ -82,7 +104,9 @@ export async function createProjectV2(
     };
   }
 
-  const participantIds = [...new Set([ownerId, ...coOwnerIds, ...executorIds])];
+  const participantIds = [
+    ...new Set([ownerId, ...coOwnerIds, ...executorIds, ...collaboratorIds]),
+  ];
   const users = await withPrismaRetry(() =>
     prisma.user.findMany({
       where: {
@@ -125,6 +149,15 @@ export async function createProjectV2(
       "Every executor must be an existing eligible collaborator.";
   }
 
+  const invalidCollaborator = collaboratorIds.find(
+    (userId) => userById.get(userId)?.role !== UserRole.COLLABORATOR,
+  );
+
+  if (invalidCollaborator) {
+    fieldErrors.collaboratorIds =
+      "Every project collaborator must be an existing eligible collaborator.";
+  }
+
   if (Object.keys(fieldErrors).length > 0) {
     return {
       error: "One or more selected users are no longer eligible.",
@@ -132,9 +165,16 @@ export async function createProjectV2(
     };
   }
 
-  const executorUsers = executorIds.map((userId) => userById.get(userId)).filter(
-    (user): user is NonNullable<typeof user> => Boolean(user),
+  const additionalCollaboratorIds = collaboratorIds.filter(
+    (userId) => userId !== ownerId && !coOwnerIds.includes(userId),
   );
+  const executorIdSet = new Set(executorIds);
+  const membershipIds = [
+    ...new Set([...executorIds, ...additionalCollaboratorIds]),
+  ];
+  const membershipUsers = membershipIds
+    .map((userId) => userById.get(userId))
+    .filter((user): user is NonNullable<typeof user> => Boolean(user));
 
   const createdProject = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
@@ -164,24 +204,25 @@ export async function createProjectV2(
           },
           collaborators: {
             createMany: {
-              data: executorUsers.map((executor) => {
+              data: membershipUsers.map((participant) => {
                 const participantType = isProjectCollaboratorParticipantType(
-                  executor.collaboratorType,
+                  participant.collaboratorType,
                 )
-                  ? executor.collaboratorType
+                  ? participant.collaboratorType
                   : getDefaultProjectCollaboratorParticipantType(
-                      getCollaboratorTypeGroup(executor.collaboratorType),
+                      getCollaboratorTypeGroup(participant.collaboratorType),
                     );
 
                 return {
-                  userId: executor.id,
+                  userId: participant.id,
                   addedById: creator.id,
                   participantType,
                   ...normalizeProjectCollaboratorPermissions(null, participantType, {
-                    isExecutor: true,
+                    isExecutor: executorIdSet.has(participant.id),
                   }),
                 };
               }),
+              skipDuplicates: true,
             },
           },
           workflowStages: {
@@ -209,6 +250,13 @@ export async function createProjectV2(
           userId !== creator.id &&
           !ownerRecipientIds.includes(userId) &&
           !coOwnerRecipientIds.includes(userId),
+      );
+      const collaboratorRecipientIds = additionalCollaboratorIds.filter(
+        (userId) =>
+          userId !== creator.id &&
+          !ownerRecipientIds.includes(userId) &&
+          !coOwnerRecipientIds.includes(userId) &&
+          !executorRecipientIds.includes(userId),
       );
       const notificationUrl = `/projects/${project.id}`;
       const createdAt = new Date();
@@ -254,6 +302,23 @@ export async function createProjectV2(
             type: "PROJECT_ASSIGNED",
             title: "Project assigned to you",
             message: `You have been assigned as an executor for ${project.name}.`,
+            entityType: "PROJECT",
+            entityId: project.id,
+            projectId: project.id,
+            url: notificationUrl,
+            createdAt,
+            updatedAt: createdAt,
+          })),
+        });
+      }
+
+      if (collaboratorRecipientIds.length > 0) {
+        await tx.notification.createMany({
+          data: collaboratorRecipientIds.map((userId) => ({
+            userId,
+            type: "COLLABORATOR_ADDED",
+            title: "Added to project",
+            message: `You have been added to ${project.name}.`,
             entityType: "PROJECT",
             entityId: project.id,
             projectId: project.id,

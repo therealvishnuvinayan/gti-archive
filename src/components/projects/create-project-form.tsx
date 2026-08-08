@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, UserPlus } from "lucide-react";
+import { Loader2, UserPlus } from "lucide-react";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import { createProjectV2Action } from "@/app/(dashboard)/projects/new/v2-actions";
@@ -11,7 +11,6 @@ import {
   CollaboratorDialog,
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
-import { CollaboratorPickerDialog } from "@/components/collaboration/collaborator-picker-dialog";
 import {
   ProjectUserSelector,
   type ProjectUserOption,
@@ -34,6 +33,7 @@ type FormErrors = {
   owner?: string;
   coOwners?: string;
   executors?: string;
+  collaborators?: string;
 };
 
 function getDefaultCollaboratorForm(): CollaboratorForm {
@@ -85,9 +85,8 @@ export function CreateProjectForm({
   );
   const [coOwnerIds, setCoOwnerIds] = useState<string[]>([]);
   const [executorIds, setExecutorIds] = useState<string[]>([]);
+  const [collaboratorIds, setCollaboratorIds] = useState<string[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [draftExecutorIds, setDraftExecutorIds] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState<CollaboratorForm>(
     getDefaultCollaboratorForm,
@@ -95,12 +94,16 @@ export function CreateProjectForm({
   const [inviteError, setInviteError] = useState<string>();
   const [inviteSaving, setInviteSaving] = useState(false);
 
-  const executorOptions = useMemo(() => {
+  const collaboratorUserOptions = useMemo(() => {
     const options = collaborators.map(toUserOption);
     const uniqueOptions = new Map(options.map((user) => [user.id, user] as const));
 
     return [...uniqueOptions.values()];
   }, [collaborators]);
+  const executorOptions = useMemo(
+    () => collaboratorUserOptions.filter((user) => !collaboratorIds.includes(user.id)),
+    [collaboratorIds, collaboratorUserOptions],
+  );
   const ownerOptions = useMemo(
     () =>
       eligibleOwnerCandidates
@@ -116,8 +119,22 @@ export function CreateProjectForm({
     [currentUser, eligibleOwnerCandidates],
   );
   const coOwnerOptions = useMemo(
-    () => ownerOptions.filter((user) => !ownerIds.includes(user.id)),
-    [ownerIds, ownerOptions],
+    () =>
+      ownerOptions.filter(
+        (user) =>
+          !ownerIds.includes(user.id) && !collaboratorIds.includes(user.id),
+      ),
+    [collaboratorIds, ownerIds, ownerOptions],
+  );
+  const projectCollaboratorOptions = useMemo(
+    () =>
+      collaboratorUserOptions.filter(
+        (user) =>
+          !ownerIds.includes(user.id) &&
+          !coOwnerIds.includes(user.id) &&
+          !executorIds.includes(user.id),
+      ),
+    [coOwnerIds, collaboratorUserOptions, executorIds, ownerIds],
   );
 
   function handleOwnerChange(nextOwnerIds: string[]) {
@@ -126,14 +143,10 @@ export function CreateProjectForm({
 
     if (nextOwnerId) {
       setCoOwnerIds((current) => current.filter((id) => id !== nextOwnerId));
+      setCollaboratorIds((current) => current.filter((id) => id !== nextOwnerId));
     }
 
     setErrors((current) => ({ ...current, owner: undefined }));
-  }
-
-  function openCollaboratorPicker() {
-    setDraftExecutorIds(executorIds);
-    setPickerOpen(true);
   }
 
   function openInviteDialog() {
@@ -147,7 +160,6 @@ export function CreateProjectForm({
 
     setInviteForm(getDefaultCollaboratorForm());
     setInviteError(undefined);
-    setPickerOpen(false);
     setInviteOpen(true);
   }
 
@@ -173,14 +185,14 @@ export function CreateProjectForm({
       }
 
       setCollaborators((current) => upsertCollaborator(current, result.collaborator));
-      setExecutorIds((current) =>
+      setCollaboratorIds((current) =>
         current.includes(result.collaborator.id)
           ? current
           : [...current, result.collaborator.id],
       );
-      setErrors((current) => ({ ...current, executors: undefined }));
+      setErrors((current) => ({ ...current, collaborators: undefined }));
       setInviteOpen(false);
-      showSuccessToast("Collaborator invited and added as an executor.");
+      showSuccessToast("Collaborator invited and added to the project.");
 
       if (result.warning) {
         showWarningToast("Collaborator saved with a warning.", result.warning);
@@ -228,6 +240,7 @@ export function CreateProjectForm({
         ownerId: ownerIds[0] ?? "",
         coOwnerIds,
         executorIds,
+        collaboratorIds,
       });
 
       if ("error" in result) {
@@ -236,6 +249,7 @@ export function CreateProjectForm({
           owner: result.fieldErrors?.ownerId,
           coOwners: result.fieldErrors?.coOwnerIds,
           executors: result.fieldErrors?.executorIds,
+          collaborators: result.fieldErrors?.collaboratorIds,
         });
         showErrorToast("Unable to create project.", result.error);
         return;
@@ -310,6 +324,9 @@ export function CreateProjectForm({
               selectedIds={coOwnerIds}
               onChange={(nextIds) => {
                 setCoOwnerIds(nextIds);
+                setCollaboratorIds((current) =>
+                  current.filter((id) => !nextIds.includes(id)),
+                );
                 setErrors((current) => ({ ...current, coOwners: undefined }));
               }}
               mode="multiple"
@@ -327,6 +344,9 @@ export function CreateProjectForm({
                 selectedIds={executorIds}
                 onChange={(nextIds) => {
                   setExecutorIds(nextIds);
+                  setCollaboratorIds((current) =>
+                    current.filter((id) => !nextIds.includes(id)),
+                  );
                   setErrors((current) => ({ ...current, executors: undefined }));
                 }}
                 mode="multiple"
@@ -334,16 +354,29 @@ export function CreateProjectForm({
                 ariaLabel="Project executors"
                 error={errors.executors}
               />
+            </div>
+
+            <div className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">
+              Project Collaborators
+            </div>
+            <div>
+              <ProjectUserSelector
+                users={projectCollaboratorOptions}
+                selectedIds={collaboratorIds}
+                onChange={(nextIds) => {
+                  setCollaboratorIds(nextIds);
+                  setErrors((current) => ({ ...current, collaborators: undefined }));
+                }}
+                mode="multiple"
+                placeholder="Search users..."
+                ariaLabel="Project collaborators"
+                error={errors.collaborators}
+              />
+              <p className="mt-2 text-[12px] text-[#768078]">
+                Add people who will participate in or access this project.
+              </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-                <button
-                  type="button"
-                  onClick={openCollaboratorPicker}
-                  className="inline-flex items-center gap-2 rounded-lg px-1 py-1 text-[13px] font-[650] text-brand transition hover:text-brand-dark"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add collaborator
-                </button>
                 <button
                   type="button"
                   onClick={openInviteDialog}
@@ -384,29 +417,6 @@ export function CreateProjectForm({
           </Button>
         </div>
       </form>
-
-      <CollaboratorPickerDialog
-        isOpen={pickerOpen}
-        title="Add project executors"
-        description="Select existing collaborators for this project."
-        collaborators={collaborators}
-        selectedIds={draftExecutorIds}
-        onToggle={(collaboratorId) =>
-          setDraftExecutorIds((current) =>
-            current.includes(collaboratorId)
-              ? current.filter((id) => id !== collaboratorId)
-              : [...current, collaboratorId],
-          )
-        }
-        onClose={() => setPickerOpen(false)}
-        onConfirm={() => {
-          setExecutorIds(draftExecutorIds);
-          setErrors((current) => ({ ...current, executors: undefined }));
-          setPickerOpen(false);
-        }}
-        onInviteFallback={canInviteCollaborator ? openInviteDialog : undefined}
-        confirmLabel="Add executors"
-      />
 
       <CollaboratorDialog
         isOpen={inviteOpen}

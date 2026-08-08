@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import {
+  type DragEvent,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import {
   ArrowRight,
-  BriefcaseBusiness,
   Check,
   ChevronDown,
   ChevronRight,
@@ -16,10 +21,10 @@ import {
   List,
   ListChecks,
   LockKeyhole,
+  Loader2,
   Plus,
   SlidersHorizontal,
-  UserRound,
-  Users,
+  UploadCloud,
   X,
 } from "lucide-react";
 
@@ -28,6 +33,7 @@ import {
   createProjectResearchFolderAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { ProjectSummaryStrip } from "@/components/projects/project-summary-strip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -40,12 +46,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProjectResearchPageData } from "@/lib/project-research";
+import { uploadProjectResearchFile } from "@/lib/project-research-upload-client";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 type FolderView = "grid" | "list";
 type FolderSort = "business" | "name-asc" | "name-desc" | "files-desc";
 type FolderRecord = NonNullable<ProjectResearchPageData>["folders"][number];
+type FolderUploadSummary = { fileCount: number; progress: number };
 
 const sortLabels: Record<FolderSort, string> = {
   business: "Business order",
@@ -66,56 +74,23 @@ function getInitials(name: string) {
   );
 }
 
-function SummaryItem({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-3 rounded-[16px] border border-[#e7ece7] bg-[#fbfcfb] px-4 py-3.5">
-      <span className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-[#edf5ef] text-[#32704e]">
-        {icon}
-      </span>
-      <div className="min-w-0 pt-0.5">
-        <dt className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#7b857e]">
-          {label}
-        </dt>
-        <dd className="mt-1 truncate text-[13px] font-[680] text-[#253028]" title={value}>
-          {value}
-        </dd>
-      </div>
-    </div>
-  );
-}
-
 function ProjectSummary({ data }: { data: NonNullable<ProjectResearchPageData> }) {
+  const people = (names: string[], group: string) =>
+    names.map((name, index) => ({ id: `${group}-${index}`, name }));
+
   return (
-    <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
-      <SummaryItem
-        icon={<FolderKanban className="h-[17px] w-[17px]" />}
-        label="Project Name"
-        value={data.project.name}
-      />
-      <SummaryItem
-        icon={<UserRound className="h-[17px] w-[17px]" />}
-        label="Project Owner"
-        value={data.project.ownerName}
-      />
-      <SummaryItem
-        icon={<Users className="h-[17px] w-[17px]" />}
-        label="Project Co-Owners"
-        value={data.project.coOwnerNames.join(", ") || "None assigned"}
-      />
-      <SummaryItem
-        icon={<BriefcaseBusiness className="h-[17px] w-[17px]" />}
-        label="Project Executors"
-        value={data.project.executorNames.join(", ") || "None assigned"}
-      />
-    </dl>
+    <ProjectSummaryStrip
+      projectName={data.project.name}
+      owner={
+        data.project.ownerName
+          ? { id: "project-owner", name: data.project.ownerName }
+          : null
+      }
+      coOwners={people(data.project.coOwnerNames, "co-owner")}
+      executors={people(data.project.executorNames, "executor")}
+      emptyPeopleLabel="None assigned"
+      columns="two"
+    />
   );
 }
 
@@ -180,17 +155,17 @@ function WorkspaceSwitch({ data }: { data: NonNullable<ProjectResearchPageData> 
   );
 }
 
-function FolderArtwork({ custom }: { custom: boolean }) {
+function FolderArtwork({ action = false }: { action?: boolean }) {
   return (
     <span
       className={cn(
         "relative grid size-12 shrink-0 place-items-center rounded-[14px]",
-        custom
+        action
           ? "border border-dashed border-[#77a88b] bg-white/70 text-[#28724b]"
           : "bg-[linear-gradient(145deg,#eaf5ed,#dceee2)] text-[#31805a]",
       )}
     >
-      {custom ? <Plus className="h-5 w-5" /> : <Folder className="h-7 w-7 fill-current opacity-90" />}
+      {action ? <Plus className="h-5 w-5" /> : <Folder className="h-7 w-7 fill-current opacity-90" />}
     </span>
   );
 }
@@ -199,23 +174,66 @@ function FolderTile({
   folder,
   view,
   href,
+  canWrite,
+  upload,
+  onDropFiles,
 }: {
   folder: FolderRecord;
   view: FolderView;
   href: string;
+  canWrite: boolean;
+  upload?: FolderUploadSummary;
+  onDropFiles: (folder: FolderRecord, files: File[]) => void;
 }) {
+  const dragDepth = useRef(0);
+  const [dragActive, setDragActive] = useState(false);
+
+  function isFileDrag(event: DragEvent<HTMLElement>) {
+    return event.dataTransfer.types.includes("Files");
+  }
+
   return (
     <Link
       href={href}
+      draggable={false}
+      aria-busy={Boolean(upload)}
+      onDragEnter={(event) => {
+        if (!canWrite || !isFileDrag(event)) return;
+        event.preventDefault();
+        dragDepth.current += 1;
+        setDragActive(true);
+      }}
+      onDragOver={(event) => {
+        if (!canWrite || !isFileDrag(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!canWrite || !isFileDrag(event)) return;
+        event.preventDefault();
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragActive(false);
+      }}
+      onDrop={(event) => {
+        if (!canWrite || !isFileDrag(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        dragDepth.current = 0;
+        setDragActive(false);
+        onDropFiles(folder, Array.from(event.dataTransfer.files));
+      }}
       className={cn(
-        "group border border-[#dfe6df] bg-white text-left shadow-[0_10px_28px_rgba(23,39,28,0.045)] transition hover:-translate-y-0.5 hover:border-[#bcd4c3] hover:shadow-[0_18px_38px_rgba(28,75,48,0.09)]",
+        "group relative overflow-hidden border bg-white text-left shadow-[0_10px_28px_rgba(23,39,28,0.045)] transition hover:-translate-y-0.5 hover:border-[#bcd4c3] hover:shadow-[0_18px_38px_rgba(28,75,48,0.09)]",
+        dragActive
+          ? "border-[#2b8056] bg-[#eaf5ed] ring-2 ring-[#2b8056]/20"
+          : "border-[#dfe6df]",
         view === "grid"
           ? "flex min-h-[154px] flex-col rounded-[20px] p-5"
           : "flex w-full items-center gap-4 rounded-[17px] px-4 py-3.5",
       )}
     >
       <div className="flex w-full items-center gap-4">
-        <FolderArtwork custom={!folder.isSystem} />
+        <FolderArtwork />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-[720] text-[#202a23]">{folder.name}</span>
           <span className="mt-1 block text-[11px] text-[#7c867f]">
@@ -225,8 +243,17 @@ function FolderTile({
         <ChevronRight className="h-4 w-4 shrink-0 text-[#8a948d] transition group-hover:translate-x-0.5 group-hover:text-brand" />
       </div>
       <span className={cn("flex items-center gap-1.5 text-[11px] text-[#6f7a72]", view === "grid" && "mt-auto border-t border-[#edf1ed] pt-3.5")}>
-        <File className="h-3.5 w-3.5" /> {folder.fileCount} {folder.fileCount === 1 ? "file" : "files"}
+        {upload ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <File className="h-3.5 w-3.5" />}
+        {upload
+          ? `Uploading ${upload.fileCount} ${upload.fileCount === 1 ? "file" : "files"} · ${upload.progress}%`
+          : `${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`}
       </span>
+      {dragActive ? (
+        <span className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#eaf5ed]/95 text-[#216643]">
+          <UploadCloud className="h-7 w-7" />
+          <span className="mt-2 text-[13px] font-[760]">Drop to upload</span>
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -299,16 +326,84 @@ export function StageTwoWorkspace({
   const router = useRouter();
   const [view, setView] = useState<FolderView>("grid");
   const [sort, setSort] = useState<FolderSort>("business");
+  const [folderRecords, setFolderRecords] = useState(data.folders);
+  const [folderUploads, setFolderUploads] = useState<
+    Record<string, FolderUploadSummary | undefined>
+  >({});
   const [dialogOpen, setDialogOpen] = useState(false);
   const [folderError, setFolderError] = useState<string>();
   const [isPending, startTransition] = useTransition();
 
   const folders = useMemo(() => {
-    const next = [...data.folders];
-    if (sort === "business") return next.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
-    if (sort === "files-desc") return next.sort((a, b) => b.fileCount - a.fileCount || a.name.localeCompare(b.name));
-    return next.sort((a, b) => (sort === "name-desc" ? -1 : 1) * a.name.localeCompare(b.name));
-  }, [data.folders, sort]);
+    const next = [...folderRecords];
+    const compareBusinessOrder = (left: FolderRecord, right: FolderRecord) =>
+      left.sortOrder - right.sortOrder || left.name.localeCompare(right.name);
+
+    if (sort === "business") return next.sort(compareBusinessOrder);
+    if (sort === "files-desc") {
+      return next.sort(
+        (left, right) =>
+          right.fileCount - left.fileCount || compareBusinessOrder(left, right),
+      );
+    }
+
+    return next.sort((left, right) => {
+      const nameOrder =
+        (sort === "name-desc" ? -1 : 1) * left.name.localeCompare(right.name);
+      return nameOrder || compareBusinessOrder(left, right);
+    });
+  }, [folderRecords, sort]);
+
+  async function uploadFilesToFolder(folder: FolderRecord, files: File[]) {
+    if (!data.selectedWorkspace.canWrite || files.length === 0) return;
+
+    const progress = files.map(() => 0);
+    setFolderUploads((current) => ({
+      ...current,
+      [folder.id]: { fileCount: files.length, progress: 0 },
+    }));
+
+    const results = await Promise.allSettled(
+      files.map((file, index) =>
+        uploadProjectResearchFile({
+          projectId: data.project.id,
+          folderId: folder.id,
+          file,
+          onProgress: (nextProgress) => {
+            progress[index] = nextProgress;
+            const average = Math.round(
+              progress.reduce((total, value) => total + value, 0) / files.length,
+            );
+            setFolderUploads((current) => ({
+              ...current,
+              [folder.id]: { fileCount: files.length, progress: average },
+            }));
+          },
+        }),
+      ),
+    );
+    const uploadedCount = results.filter((result) => result.status === "fulfilled").length;
+    const failedCount = results.length - uploadedCount;
+
+    if (uploadedCount > 0) {
+      setFolderRecords((current) =>
+        current.map((record) =>
+          record.id === folder.id
+            ? { ...record, fileCount: record.fileCount + uploadedCount }
+            : record,
+        ),
+      );
+      showSuccessToast(
+        `${uploadedCount} ${uploadedCount === 1 ? "file" : "files"} uploaded to ${folder.name}.`,
+      );
+    }
+    if (failedCount > 0) {
+      showErrorToast(
+        `${failedCount} ${failedCount === 1 ? "file could" : "files could"} not be uploaded.`,
+      );
+    }
+    setFolderUploads((current) => ({ ...current, [folder.id]: undefined }));
+  }
 
   function createFolder(name: string) {
     setFolderError(undefined);
@@ -323,8 +418,18 @@ export function StageTwoWorkspace({
         return;
       }
       setDialogOpen(false);
+      setFolderRecords((current) => [
+        ...current,
+        {
+          id: result.folder.id,
+          name: result.folder.name,
+          isSystem: false,
+          systemKey: null,
+          sortOrder: 1000,
+          fileCount: 0,
+        },
+      ]);
       showSuccessToast("Folder created.");
-      router.refresh();
     });
   }
 
@@ -336,13 +441,21 @@ export function StageTwoWorkspace({
         return;
       }
       showSuccessToast("Stage 2 completed.", "Concept Creation is now available.");
-      router.push(`/projects/${data.project.id}`);
+      router.push(`/projects/${data.project.id}/stages/3`);
       router.refresh();
     });
   }
 
   return (
-    <section className="mx-auto w-full max-w-[1420px] pb-6">
+    <section
+      className="mx-auto w-full max-w-[1420px] pb-6"
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+    >
       <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
       <Card className="overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
         <CardContent className="p-0">
@@ -381,11 +494,21 @@ export function StageTwoWorkspace({
             </div>
             <div className={cn("mt-5", view === "grid" ? "grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "space-y-3")}>
               {folders.map((folder) => (
-                <FolderTile key={folder.id} folder={folder} view={view} href={`/projects/${data.project.id}/stages/2/folders/${folder.id}?workspace=${encodeURIComponent(data.selectedWorkspace.id)}`} />
+                <FolderTile
+                  key={folder.id}
+                  folder={folder}
+                  view={view}
+                  href={`/projects/${data.project.id}/stages/2/folders/${folder.id}?workspace=${encodeURIComponent(data.selectedWorkspace.id)}`}
+                  canWrite={data.selectedWorkspace.canWrite}
+                  upload={folderUploads[folder.id]}
+                  onDropFiles={(targetFolder, files) =>
+                    void uploadFilesToFolder(targetFolder, files)
+                  }
+                />
               ))}
               {data.selectedWorkspace.canWrite ? (
                 <button type="button" onClick={() => { setFolderError(undefined); setDialogOpen(true); }} className={cn("group border border-dashed border-[#a9c6b2] bg-[linear-gradient(145deg,#f8fcf9,#eef7f1)] text-[#286b49]", view === "grid" ? "flex min-h-[154px] flex-col items-center justify-center rounded-[20px] p-5" : "flex w-full items-center gap-4 rounded-[17px] px-4 py-3.5")}>
-                  <FolderArtwork custom /><span className={view === "grid" ? "mt-3" : "flex-1 text-left"}><span className="block text-[14px] font-[720]">New Folder</span><span className="text-[11px] text-[#718079]">Create a new folder</span></span>
+                  <FolderArtwork action /><span className={view === "grid" ? "mt-3" : "flex-1 text-left"}><span className="block text-[14px] font-[720]">New Folder</span><span className="text-[11px] text-[#718079]">Create a new folder</span></span>
                 </button>
               ) : null}
             </div>

@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import type {
   ProjectInquiryAttachmentField,
@@ -9,18 +17,14 @@ import type {
 } from "@prisma/client";
 import {
   ArrowRight,
-  BriefcaseBusiness,
   Check,
   ChevronDown,
   FileText,
-  FolderKanban,
   ListChecks,
   Loader2,
   Paperclip,
   Search,
   UserPlus,
-  UserRound,
-  Users,
   X,
 } from "lucide-react";
 
@@ -35,6 +39,8 @@ import {
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
+import { StageOneReadOnlyView } from "@/components/projects/stage-one-read-only-view";
 import {
   ProjectContactDialog,
   type ProjectContactForm,
@@ -55,6 +61,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
+import { validateProjectContactInput } from "@/lib/project-contact-validation";
 import type {
   CompleteProjectInquiryInput,
   ProjectInquiryAttachmentRecord,
@@ -350,8 +357,7 @@ function MultiEntryInput({
     const query = draft.trim().toLocaleLowerCase("en");
     return suggestions
       .filter((suggestion) => !normalizedValues.has(suggestion.toLocaleLowerCase("en")))
-      .filter((suggestion) => !query || suggestion.toLocaleLowerCase("en").includes(query))
-      .slice(0, 30);
+      .filter((suggestion) => !query || suggestion.toLocaleLowerCase("en").includes(query));
   }, [draft, normalizedValues, suggestions]);
 
   useEffect(() => {
@@ -429,11 +435,17 @@ function MultiEntryInput({
         <ChevronDown className="h-4 w-4 shrink-0 text-[#59645d]" />
       </div>
       {open && !disabled && filteredSuggestions.length ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[250px] overflow-y-auto rounded-[16px] border border-[#dce3dc] bg-white p-1.5 shadow-[0_18px_44px_rgba(17,33,23,0.13)]">
+        <div
+          role="listbox"
+          aria-label={`${ariaLabel} suggestions`}
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[250px] touch-pan-y overflow-y-auto overscroll-contain rounded-[16px] border border-[#dce3dc] bg-white p-1.5 [scrollbar-gutter:stable] shadow-[0_18px_44px_rgba(17,33,23,0.13)]"
+        >
           {filteredSuggestions.map((suggestion) => (
             <button
               key={suggestion.toLocaleLowerCase("en")}
               type="button"
+              role="option"
+              aria-selected="false"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => add(suggestion)}
               className="block w-full rounded-[11px] px-3 py-2 text-left text-[13px] text-[#2d372f] hover:bg-[#f2f6f2]"
@@ -447,6 +459,105 @@ function MultiEntryInput({
   );
 }
 
+function growTextareaToContent(textarea: HTMLTextAreaElement) {
+  const borderHeight = textarea.offsetHeight - textarea.clientHeight;
+  const contentHeight = textarea.scrollHeight + borderHeight;
+
+  if (contentHeight > textarea.offsetHeight) {
+    textarea.style.height = `${contentHeight}px`;
+  }
+}
+
+function getBusinessObjectiveEntries(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function BusinessObjectiveTagsInput({
+  value,
+  disabled,
+  error,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  error?: string;
+  onChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const entries = getBusinessObjectiveEntries(value);
+
+  function addDraft() {
+    const nextEntry = draft.trim().replace(/\s+/g, " ");
+
+    if (!nextEntry) return;
+
+    const normalizedEntry = nextEntry.toLocaleLowerCase("en");
+    if (!entries.some((entry) => entry.toLocaleLowerCase("en") === normalizedEntry)) {
+      onChange([...entries, nextEntry].join("\n"));
+    }
+    setDraft("");
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-[104px] cursor-text flex-wrap content-start items-start gap-2 rounded-[14px] border bg-white px-3 py-3 pb-12 pr-14 focus-within:ring-3 focus-within:ring-brand/15",
+        error ? "border-[#c85c54]" : "border-[#dce3dc]",
+        disabled && "cursor-not-allowed bg-[#f6f8f6] opacity-70",
+      )}
+      onClick={() => inputRef.current?.focus()}
+    >
+      {entries.map((entry, index) => (
+        <span
+          key={`${entry.toLocaleLowerCase("en")}-${index}`}
+          className="inline-flex max-w-full items-center gap-1.5 rounded-[9px] bg-[#edf5ef] px-2.5 py-1.5 text-[12px] font-[650] text-[#315f47]"
+        >
+          <span className="max-w-[280px] truncate" title={entry}>
+            {entry}
+          </span>
+          {!disabled ? (
+            <button
+              type="button"
+              aria-label={`Remove objective: ${entry}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onChange(entries.filter((_, entryIndex) => entryIndex !== index).join("\n"));
+              }}
+              className="rounded-full text-[#738079] transition hover:text-[#225f3f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8057]"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          ) : null}
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        type="text"
+        aria-label="Add a key business objective"
+        disabled={disabled}
+        value={draft}
+        placeholder={entries.length ? "Add another objective" : "Type an objective and press Enter"}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={addDraft}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            addDraft();
+          }
+          if (event.key === "Backspace" && !draft && entries.length) {
+            onChange(entries.slice(0, -1).join("\n"));
+          }
+        }}
+        className="h-8 min-w-[210px] flex-1 bg-transparent px-1 text-[13px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
+      />
+    </div>
+  );
+}
+
 function AttachmentTextarea({
   projectId,
   field,
@@ -456,6 +567,7 @@ function AttachmentTextarea({
   attachments,
   disabled,
   error,
+  entryMode = "text",
   onValueChange,
   onAttachmentsChange,
 }: {
@@ -467,12 +579,20 @@ function AttachmentTextarea({
   attachments: ProjectInquiryAttachmentRecord[];
   disabled: boolean;
   error?: string;
+  entryMode?: "text" | "business-objectives";
   onValueChange: (value: string) => void;
   onAttachmentsChange: (files: ProjectInquiryAttachmentRecord[]) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
+
+  useLayoutEffect(() => {
+    if (textareaRef.current) {
+      growTextareaToContent(textareaRef.current);
+    }
+  }, [value]);
 
   async function uploadFile(file: File) {
     const requestResponse = await fetch("/api/project-assets/upload-url", {
@@ -555,17 +675,30 @@ function AttachmentTextarea({
   return (
     <div>
       <div className="relative">
-        <Textarea
-          aria-label={ariaLabel}
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onValueChange(event.target.value)}
-          placeholder={placeholder}
-          className={cn(
-            "min-h-[104px] resize-none rounded-[14px] bg-white pb-10 pr-12 shadow-none",
-            error ? "border-[#c85c54]" : "border-[#dce3dc]",
-          )}
-        />
+        {entryMode === "business-objectives" ? (
+          <BusinessObjectiveTagsInput
+            value={value}
+            disabled={disabled}
+            error={error}
+            onChange={onValueChange}
+          />
+        ) : (
+          <Textarea
+            ref={textareaRef}
+            aria-label={ariaLabel}
+            value={value}
+            disabled={disabled}
+            onChange={(event) => {
+              onValueChange(event.target.value);
+              growTextareaToContent(event.currentTarget);
+            }}
+            placeholder={placeholder}
+            className={cn(
+              "min-h-[104px] resize-y overflow-y-auto rounded-[14px] bg-white pb-10 pr-16 shadow-none",
+              error ? "border-[#c85c54]" : "border-[#dce3dc]",
+            )}
+          />
+        )}
         <input
           ref={inputRef}
           type="file"
@@ -578,7 +711,10 @@ function AttachmentTextarea({
           disabled={disabled || uploading}
           aria-label={`Attach a file to ${ariaLabel}`}
           onClick={() => inputRef.current?.click()}
-          className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full text-[#6f7b73] hover:bg-[#eef5ef] hover:text-brand disabled:opacity-50"
+          className={cn(
+            "absolute bottom-3 grid size-8 place-items-center rounded-full text-[#6f7b73] hover:bg-[#eef5ef] hover:text-brand disabled:opacity-50",
+            entryMode === "business-objectives" ? "right-3" : "right-8",
+          )}
         >
           {uploading ? (
             <Loader2 className="h-[18px] w-[18px] animate-spin" />
@@ -619,52 +755,6 @@ function AttachmentTextarea({
   );
 }
 
-function StageOneSummaryItem({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#f0f6f1] text-[#377253]">
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <p className="text-[11px] font-[650] text-[#778179]">{label}</p>
-        <p className="mt-0.5 truncate text-[13px] font-[680] text-[#273129]" title={value}>
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-export function StageOneProjectSummary({ project }: { project: ProjectFlowRecord }) {
-  const owner = project.collaborators.find(
-    (collaborator) => collaborator.role === "Project Owner",
-  );
-  const coOwners = project.collaborators
-    .filter((collaborator) => collaborator.role === "Project Co-Owner")
-    .map((collaborator) => collaborator.name);
-  const executors = project.executors.map((executor) => executor.name);
-  const restrictedLabel = project.canViewParticipants ? "None" : "Restricted";
-
-  return (
-    <Card className="mt-6 rounded-[20px] border-[#dfe6df] shadow-[0_12px_30px_rgba(23,39,28,0.04)]">
-      <CardContent className="grid gap-5 px-5 py-5 sm:grid-cols-2 lg:grid-cols-4 lg:px-6">
-        <StageOneSummaryItem icon={<FolderKanban className="h-[18px] w-[18px]" />} label="Project Name" value={project.title} />
-        <StageOneSummaryItem icon={<UserRound className="h-[18px] w-[18px]" />} label="Project Owner" value={owner?.name ?? (project.ownerId ? "Restricted" : "Not assigned")} />
-        <StageOneSummaryItem icon={<Users className="h-[18px] w-[18px]" />} label="Project Co-Owners" value={coOwners.length ? coOwners.join(", ") : restrictedLabel} />
-        <StageOneSummaryItem icon={<BriefcaseBusiness className="h-[18px] w-[18px]" />} label="Project Executors" value={executors.length ? executors.join(", ") : restrictedLabel} />
-      </CardContent>
-    </Card>
-  );
-}
-
 export function StageOneWorkspace({
   project,
   currentUserId,
@@ -672,6 +762,9 @@ export function StageOneWorkspace({
 }: StageOneWorkspaceProps) {
   const router = useRouter();
   const saved = pageData.inquiry;
+  const [mode, setMode] = useState<"edit" | "view">(
+    pageData.canEdit ? "edit" : "view",
+  );
   const [submitting, startSubmitting] = useTransition();
   const [partyOptions, setPartyOptions] = useState(() => {
     const options = [...pageData.partyOptions];
@@ -760,11 +853,19 @@ export function StageOneWorkspace({
 
   async function handleCreateContact() {
     if (!contactTarget) return;
+    const validation = validateProjectContactInput(contactForm);
+
+    if (Object.keys(validation.fieldErrors).length > 0) {
+      setContactErrors(validation.fieldErrors);
+      setContactError("Review the highlighted contact fields.");
+      return;
+    }
+
     setContactSaving(true);
     setContactError(undefined);
     setContactErrors({});
     try {
-      const result = await createContactDirectoryEntryAction(project.id, contactForm);
+      const result = await createContactDirectoryEntryAction(project.id, validation.data);
       if ("error" in result) {
         setContactError(result.error);
         setContactErrors(result.fieldErrors ?? {});
@@ -878,7 +979,7 @@ export function StageOneWorkspace({
         return;
       }
       showSuccessToast("Project Inquiry completed.", "Stage 2 is now available.");
-      router.push(`/projects/${project.id}`);
+      router.push(`/projects/${project.id}/stages/2`);
       router.refresh();
     });
   }
@@ -893,12 +994,65 @@ export function StageOneWorkspace({
         <FileText className="h-4 w-4" />
         Project Inquiry
       </div>
-      <h1 className="mt-3 text-[30px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[36px]">
-        Stage 1 - Project Inquiry
-      </h1>
-      <StageOneProjectSummary project={project} />
+      <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-[30px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[36px]">
+          Stage 1 - Project Inquiry
+        </h1>
+        <div
+          role="tablist"
+          aria-label="Project Inquiry presentation mode"
+          className="inline-grid w-fit grid-cols-2 rounded-[12px] border border-[#dce4dd] bg-white p-1 shadow-[0_8px_20px_rgba(23,39,28,0.04)]"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "edit"}
+            aria-controls="stage-one-edit-panel"
+            disabled={!pageData.canEdit}
+            onClick={() => setMode("edit")}
+            className={cn(
+              "min-w-[72px] rounded-[9px] px-3 py-2 text-[12px] font-[700] transition",
+              mode === "edit"
+                ? "bg-[#eaf4ec] text-[#236945]"
+                : "text-[#6f7a72] hover:bg-[#f4f7f4]",
+              !pageData.canEdit && "cursor-not-allowed opacity-40",
+            )}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "view"}
+            aria-controls="stage-one-view-panel"
+            onClick={() => setMode("view")}
+            className={cn(
+              "min-w-[72px] rounded-[9px] px-3 py-2 text-[12px] font-[700] transition",
+              mode === "view"
+                ? "bg-[#eaf4ec] text-[#236945]"
+                : "text-[#6f7a72] hover:bg-[#f4f7f4]",
+            )}
+          >
+            View
+          </button>
+        </div>
+      </div>
+      <ProjectFlowSummaryStrip project={project} className="mt-5" />
 
-      <Card className="mt-6 rounded-[22px] border-[#dde5de] shadow-[0_18px_44px_rgba(23,39,28,0.055)]">
+      {mode === "view" ? (
+        <StageOneReadOnlyView
+          projectId={project.id}
+          inquiry={saved}
+          availableCollaborators={pageData.availableCollaborators}
+          canEdit={pageData.canEdit}
+        />
+      ) : (
+        <Card
+          id="stage-one-edit-panel"
+          role="tabpanel"
+          aria-label="Edit Project Inquiry"
+          className="mt-6 rounded-[22px] border-[#dde5de] shadow-[0_18px_44px_rgba(23,39,28,0.055)]"
+        >
         <CardContent className="px-5 py-6 sm:px-7 sm:py-7 lg:px-8">
           {!pageData.canEdit ? (
             <div className="mb-6 rounded-[15px] border border-[#dce4dd] bg-[#f4f7f4] px-4 py-3 text-[13px] text-[#536057]">
@@ -927,13 +1081,13 @@ export function StageOneWorkspace({
                   }}
                 />
                 {!readOnly ? (
-                  <button type="button" onClick={() => openContactDialog("client")} className="mt-2 text-[12px] font-[650] text-[#2d7b51] hover:text-[#185d3a]">
+                  <button type="button" onClick={() => openContactDialog("client")} className="-ml-1 mt-1.5 cursor-pointer rounded-[6px] px-1 py-0.5 text-[12px] font-[650] text-[#2d7b51] transition-colors hover:bg-[#eaf4ed] hover:text-[#185d3a] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8057] focus-visible:ring-offset-2">
                     Add manually
                   </button>
                 ) : null}
               </StageOneFormField>
 
-              <StageOneFormField label="External / Internal" error={fieldErrors.clientOrigin}>
+              <StageOneFormField label="External / Internal - for execution" error={fieldErrors.clientOrigin}>
                 <div role="group" aria-label="External or internal project" className="grid h-12 grid-cols-2 overflow-hidden rounded-[14px] border border-[#dce3dc] bg-white p-1">
                   {(["EXTERNAL", "INTERNAL"] as const).map((option) => {
                     const selected = clientOrigin === option;
@@ -975,7 +1129,7 @@ export function StageOneWorkspace({
                   }}
                 />
                 {!readOnly ? (
-                  <button type="button" onClick={() => openContactDialog("finalBeneficiary")} className="mt-2 text-[12px] font-[650] text-[#2d7b51] hover:text-[#185d3a]">
+                  <button type="button" onClick={() => openContactDialog("finalBeneficiary")} className="-ml-1 mt-1.5 cursor-pointer rounded-[6px] px-1 py-0.5 text-[12px] font-[650] text-[#2d7b51] transition-colors hover:bg-[#eaf4ed] hover:text-[#185d3a] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8057] focus-visible:ring-offset-2">
                     Add manually
                   </button>
                 ) : null}
@@ -1025,12 +1179,18 @@ export function StageOneWorkspace({
                   attachments={attachments.BUSINESS_OBJECTIVES}
                   disabled={readOnly || submitting}
                   error={fieldErrors.businessObjectives || fieldErrors.attachments}
+                  entryMode="business-objectives"
                   onValueChange={(value) => {
                     setBusinessObjectives(value);
                     clearFieldError("businessObjectives");
                   }}
                   onAttachmentsChange={(files) => setAttachments((current) => ({ ...current, BUSINESS_OBJECTIVES: files }))}
                 />
+                {!readOnly ? (
+                  <p className="mt-2 text-[11px] text-[#718078]">
+                    Add each objective separately. Type an objective and press Enter to add it.
+                  </p>
+                ) : null}
               </StageOneFormField>
 
               <StageOneFormField label="Collaborators" error={fieldErrors.collaboratorIds}>
@@ -1069,7 +1229,11 @@ export function StageOneWorkspace({
                     clearFieldError("deliverables");
                   }}
                 />
-                {!readOnly ? <p className="mt-2 text-[11px] text-[#718078]">Select a previous value or type a new deliverable.</p> : null}
+                {!readOnly ? (
+                  <p className="mt-2 text-[11px] text-[#718078]">
+                    Select a previous value, or type a new deliverable and press Enter to add it.
+                  </p>
+                ) : null}
               </StageOneFormField>
 
               <StageOneFormField label="Date" error={fieldErrors.inquiryDate}>
@@ -1126,7 +1290,8 @@ export function StageOneWorkspace({
             </div>
           </form>
         </CardContent>
-      </Card>
+        </Card>
+      )}
 
       <ProjectContactDialog
         isOpen={contactTarget !== null}

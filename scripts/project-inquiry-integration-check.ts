@@ -196,13 +196,36 @@ async function main() {
   );
 
   const userCountBeforeContacts = await prisma.user.count();
+  const contactCountBeforeInvalidAttempts = await prisma.contactDirectoryEntry.count();
+  const invalidEmailContact = await createContactDirectoryEntry(
+    superAdmin,
+    mainProject.id,
+    { name: "Invalid Email Contact", email: "abc@" },
+  );
+  assert(
+    "error" in invalidEmailContact && Boolean(invalidEmailContact.fieldErrors?.email),
+    "Server-side contact creation must reject an invalid optional email.",
+  );
+  const invalidPhoneContact = await createContactDirectoryEntry(
+    superAdmin,
+    mainProject.id,
+    { name: "Invalid Phone Contact", phone: "0501234567" },
+  );
+  assert(
+    "error" in invalidPhoneContact && Boolean(invalidPhoneContact.fieldErrors?.phone),
+    "Server-side contact creation must reject a phone without an international country code.",
+  );
+  assert(
+    (await prisma.contactDirectoryEntry.count()) === contactCountBeforeInvalidAttempts,
+    "Invalid server-side contact submissions must not persist rows.",
+  );
   const clientContactResult = await createContactDirectoryEntry(
     superAdmin,
     mainProject.id,
     {
       name: "Manual Client Entity",
       company: "Manual Client Company",
-      email: "client-contact@example.test",
+      email: " CLIENT-CONTACT@Example.Test ",
     },
   );
   assert("contact" in clientContactResult, "Manual client contact must be created.");
@@ -216,6 +239,11 @@ async function main() {
     },
   );
   assert("contact" in beneficiaryContactResult, "Manual beneficiary contact must be created.");
+  assert(
+    clientContactResult.contact.email === "client-contact@example.test" &&
+      beneficiaryContactResult.contact.phone === "+971500000000",
+    "Manual contacts must persist normalized lowercase email and E.164-style phone values.",
+  );
   assert(
     (await prisma.user.count()) === userCountBeforeContacts,
     "Manual contacts must not create authentication users.",

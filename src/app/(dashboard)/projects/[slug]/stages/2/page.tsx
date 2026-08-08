@@ -56,7 +56,13 @@ async function StageTwoContent({
     return <StageTwoUnavailableContent slug={slug} user={user} />;
   }
 
-  return <StageTwoWorkspace data={data} currentUserId={user.id} />;
+  return (
+    <StageTwoWorkspace
+      key={data.selectedWorkspace.id}
+      data={data}
+      currentUserId={user.id}
+    />
+  );
 }
 
 export default async function StageTwoPage({

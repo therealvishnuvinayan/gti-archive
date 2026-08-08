@@ -1,5 +1,4 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectAccessUnavailableState } from "@/components/projects/project-route-state";
 import { StageTwoFolderWorkspace } from "@/components/projects/stage-two-folder-workspace";
 import { requireUser } from "@/lib/auth";
@@ -8,10 +7,13 @@ import { decodeRouteParam } from "@/lib/route-params";
 
 export default async function ProjectResearchFolderPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; folderId: string }>;
+  searchParams: Promise<{ workspace?: string }>;
 }) {
   const { slug, folderId: encodedFolderId } = await params;
+  const { workspace } = await searchParams;
   const folderId = decodeRouteParam(encodedFolderId);
   const user = await requireUser();
   let data = null;
@@ -29,13 +31,19 @@ export default async function ProjectResearchFolderPage({
     <DashboardLayout
       topbarProps={{
         searchPlaceholder: "Search for projects, folders, files...",
-        leadingContent: <ProjectBackButton href={`/projects/${slug}/stages/2`} />,
       }}
     >
       {data ? (
-        <StageTwoFolderWorkspace data={data} currentUserId={user.id} />
+        <StageTwoFolderWorkspace
+          key={data.folder.id}
+          data={data}
+          currentUserId={user.id}
+        />
       ) : (
-        <ProjectAccessUnavailableState />
+        <ProjectAccessUnavailableState
+          parentHref={`/projects/${slug}/stages/2${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`}
+          parentLabel="Research workspace"
+        />
       )}
     </DashboardLayout>
   );

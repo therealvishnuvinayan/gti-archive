@@ -8,7 +8,8 @@ export type NotificationType =
   | "Archive"
   | "Approval"
   | "Copyright"
-  | "Invoice";
+  | "Invoice"
+  | "Checklist";
 
 export type NotificationVisualKind =
   | "project-completed"
@@ -26,7 +27,8 @@ export type NotificationVisualKind =
   | "stage-completed"
   | "archive-created"
   | "copyright-transfer"
-  | "submission-pending";
+  | "submission-pending"
+  | "checklist-requested";
 
 export type NotificationContextTone =
   | "project"
@@ -70,6 +72,7 @@ export const notificationTypeOptions = [
   "Approval",
   "Copyright",
   "Invoice",
+  "Checklist",
 ] as const;
 
 export type NotificationTypeFilter = (typeof notificationTypeOptions)[number];

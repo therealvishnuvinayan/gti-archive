@@ -8,6 +8,7 @@ import {
   renameProjectConceptFolder,
   type ConceptWorkflowStageKey,
 } from "@/lib/project-concepts";
+import { handoffStageFourFiles } from "@/lib/stage-five";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 function getConceptStageNumber(stageKey: ConceptWorkflowStageKey) {
@@ -65,4 +66,19 @@ export async function renameProjectConceptFolderAction(input: {
     console.error("[project-concepts] rename failed", error);
     return { error: "Unable to rename the concept folder right now." } as const;
   }
+}
+
+export async function handoffStageFourFilesAction(input: {
+  projectId: string;
+  attachmentIds: string[];
+}) {
+  const user = await requireUser();
+  const result = await handoffStageFourFiles(user, input);
+
+  if (!("error" in result)) {
+    revalidatePath(`/projects/${input.projectId}/stages/4`);
+    revalidatePath(`/projects/${input.projectId}/stages/5`);
+  }
+
+  return result;
 }
