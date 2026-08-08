@@ -25,6 +25,7 @@ const migration = read(
 const creation = read("src/lib/project-creation.ts");
 const action = read("src/app/(dashboard)/projects/new/v2-actions.ts");
 const form = read("src/components/projects/create-project-form.tsx");
+const userSelector = read("src/components/projects/project-user-selector.tsx");
 const candidates = read("src/lib/project-owner-candidates.ts");
 const resolver = read("src/lib/permissions/resolver.ts");
 const fluxRoute = read("src/app/api/flux-ai/create-project/route.ts");
@@ -134,6 +135,16 @@ assert(
 assert(
   !form.includes("Add collaborator"),
   "The redundant Add collaborator button must not be rendered.",
+);
+assertIncludes(
+  userSelector,
+  "onClick={toggleSelector}",
+  "Create Project selector close toggle",
+);
+assertIncludes(
+  userSelector,
+  'document.addEventListener("pointerdown", handlePointerDown)',
+  "Create Project selector outside-click handling",
 );
 
 for (const snippet of [

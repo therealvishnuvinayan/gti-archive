@@ -1,10 +1,10 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { StageTwoLoadingShell } from "@/components/projects/stage-two-workspace";
+import { StageRouteInitialShell } from "@/components/projects/stage-route-shell";
 
 export default function StageTwoLoading() {
   return (
     <DashboardLayout>
-      <StageTwoLoadingShell />
+      <StageRouteInitialShell />
     </DashboardLayout>
   );
 }

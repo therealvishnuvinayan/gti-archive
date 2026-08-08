@@ -10,8 +10,8 @@ import {
 
 import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
 import {
-  assertResearchFolderReadAccess,
   assertResearchFolderWriteAccess,
   getProjectResearchAccess,
 } from "@/lib/project-research-access";
@@ -164,9 +164,7 @@ export async function getProjectResearchPageData(
   projectId: string,
   requestedWorkspaceId?: string | null,
 ) {
-  const project = await withPrismaRetry(() =>
-    prisma.project.findUnique({ where: { id: projectId }, select: researchProjectSelect }),
-  );
+  const project = await getProjectStageAccessRecordById(projectId);
 
   if (!project) {
     return null;
@@ -199,6 +197,7 @@ export async function getProjectResearchPageData(
             ? user.id
             : { in: [...participantIds] },
       },
+      relationLoadStrategy: "join",
       select: {
         id: true,
         ownerUserId: true,
@@ -235,6 +234,7 @@ export async function getProjectResearchPageData(
   const folders = await withPrismaRetry(() =>
     prisma.projectResearchFolder.findMany({
       where: { workspaceId: selectedWorkspace.id },
+      relationLoadStrategy: "join",
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: {
         id: true,
@@ -367,13 +367,13 @@ export async function getProjectResearchFolderPageData(
   user: ResearchUser,
   input: { projectId: string; folderId: string },
 ) {
-  const { access } = await assertResearchFolderReadAccess(user, input);
   const folder = await withPrismaRetry(() =>
     prisma.projectResearchFolder.findFirst({
       where: {
         id: input.folderId,
         workspace: { projectId: input.projectId },
       },
+      relationLoadStrategy: "join",
       select: {
         id: true,
         name: true,
@@ -383,7 +383,7 @@ export async function getProjectResearchFolderPageData(
             id: true,
             ownerUserId: true,
             owner: { select: { name: true, email: true } },
-            project: { select: { id: true, name: true } },
+            project: { select: researchProjectSelect },
           },
         },
         files: {
@@ -412,8 +412,22 @@ export async function getProjectResearchFolderPageData(
     return null;
   }
 
-  return {
+  const access = getProjectResearchAccess(user, {
+    projectId: input.projectId,
+    workspaceId: folder.workspace.id,
+    workspaceOwnerUserId: folder.workspace.ownerUserId,
     project: folder.workspace.project,
+  });
+
+  if (!access.canRead) {
+    return null;
+  }
+
+  return {
+    project: {
+      id: folder.workspace.project.id,
+      name: folder.workspace.project.name,
+    },
     workspace: {
       id: folder.workspace.id,
       ownerUserId: folder.workspace.ownerUserId,

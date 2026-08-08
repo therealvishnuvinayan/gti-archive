@@ -50,7 +50,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import type { ProjectFlowRecord } from "@/lib/projects";
+import type { ProjectStageShellRecord } from "@/lib/projects";
 import type {
   StageFiveChecklistValue,
   StageFiveParticipantRecord,
@@ -750,19 +750,21 @@ export function StageFiveWorkspace({
   pageData,
   initialHandoffId,
   initialMode,
+  showChrome = true,
 }: {
-  project: ProjectFlowRecord;
+  project: ProjectStageShellRecord;
   currentUserId: string;
   pageData: StageFiveWorkspaceData;
   initialHandoffId?: string;
   initialMode?: "edit" | "view";
+  showChrome?: boolean;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<"edit" | "view">(
     pageData.canEdit && initialMode !== "view" ? "edit" : "view",
   );
   const firstHandoffId = pageData.files[0]?.handoffId ?? "";
-  const [selectedHandoffId, setSelectedHandoffId] = useState(
+  const [selectedHandoffId] = useState(
     pageData.files.some((file) => file.handoffId === initialHandoffId)
       ? initialHandoffId ?? firstHandoffId
       : firstHandoffId,
@@ -815,7 +817,6 @@ export function StageFiveWorkspace({
   const activeDraft = drafts[selectedHandoffId];
 
   function updateSelectedFile(handoffId: string) {
-    setSelectedHandoffId(handoffId);
     const params = new URLSearchParams(window.location.search);
     params.set("file", handoffId);
     params.set("mode", mode);
@@ -1101,17 +1102,19 @@ export function StageFiveWorkspace({
 
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
-      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      {showChrome ? (
+        <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      ) : null}
       <Card className="overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
         <CardContent className="p-0">
           <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
-            <div className="flex items-center gap-2 text-[11px] font-[760] uppercase tracking-[0.13em] text-[#4d765d]">
+            {showChrome ? <div className="flex items-center gap-2 text-[11px] font-[760] uppercase tracking-[0.13em] text-[#4d765d]">
               <FileCheck2 className="h-4 w-4" /> File Checklist
-            </div>
-            <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <h1 className="text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
+            </div> : null}
+            <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between", showChrome && "mt-3")}>
+              {showChrome ? <h1 className="text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
                 Stage 5 - File Checklist
-              </h1>
+              </h1> : <span />}
               <div
                 role="tablist"
                 aria-label="File Checklist presentation mode"
@@ -1151,10 +1154,10 @@ export function StageFiveWorkspace({
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-[13px] leading-5 text-[#6f7a72]">
+            {showChrome ? <p className="mt-2 text-[13px] leading-5 text-[#6f7a72]">
               Complete or request the required project information and files.
-            </p>
-            <ProjectStageSummary project={project} />
+            </p> : null}
+            {showChrome ? <ProjectStageSummary project={project} /> : null}
 
             {activeFile ? (
               <div className="mt-5 flex flex-col gap-3 rounded-[16px] border border-[#dfe6df] bg-[#f8faf8] p-4 sm:flex-row sm:items-center sm:justify-between">

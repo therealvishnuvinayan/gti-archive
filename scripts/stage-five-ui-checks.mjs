@@ -146,7 +146,7 @@ assert(
 
 assert(
   page.includes("DashboardLayout") &&
-    page.includes("getProjectShellById") &&
+    page.includes("getProjectStageShellById") &&
     page.includes("requireUser") &&
     page.includes("StageFiveWorkspace") &&
     page.includes("getStageFiveWorkspaceData") &&

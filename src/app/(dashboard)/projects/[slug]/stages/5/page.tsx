@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { ProjectWorkflowStageKey } from "@prisma/client";
+import { FileCheck2 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -9,11 +10,15 @@ import {
   StageLockedState,
 } from "@/components/projects/project-route-state";
 import {
-  StageFiveLoadingShell,
   StageFiveWorkspace,
 } from "@/components/projects/stage-five-workspace";
+import {
+  StageRouteInitialShell,
+  StageRouteShell,
+  StageSectionLoadingShell,
+} from "@/components/projects/stage-route-shell";
 import { requireUser } from "@/lib/auth";
-import { getProjectRouteAvailability, getProjectShellById } from "@/lib/projects";
+import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { decodeRouteParam } from "@/lib/route-params";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 import { getStageFiveWorkspaceData } from "@/lib/stage-five";
@@ -48,7 +53,7 @@ async function StageFiveContent({
   initialMode?: "edit" | "view";
 }) {
   const user = await userPromise;
-  const project = await getProjectShellById(slug, user);
+  const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
     return <StageFiveUnavailableContent slug={slug} user={user} />;
@@ -73,7 +78,47 @@ async function StageFiveContent({
     );
   }
 
-  const pageData = await getStageFiveWorkspaceData(user, slug);
+  return (
+    <section className="mx-auto w-full max-w-[1420px] pb-6">
+      <StageRouteShell
+        project={project}
+        currentUserId={user.id}
+        eyebrow="File Checklist"
+        title="Stage 5 - File Checklist"
+        description="Complete or request the required project information and files."
+        icon={<FileCheck2 className="h-4 w-4" />}
+      />
+      <Suspense fallback={<StageSectionLoadingShell rows={6} />}>
+        <StageFiveDataContent
+          slug={slug}
+          user={user}
+          project={project}
+          initialHandoffId={initialHandoffId}
+          initialMode={initialMode}
+        />
+      </Suspense>
+    </section>
+  );
+}
+
+async function StageFiveDataContent({
+  slug,
+  user,
+  project,
+  initialHandoffId,
+  initialMode,
+}: {
+  slug: string;
+  user: StageFiveUser;
+  project: NonNullable<Awaited<ReturnType<typeof getProjectStageShellById>>>;
+  initialHandoffId?: string;
+  initialMode?: "edit" | "view";
+}) {
+  const pageData = await getStageFiveWorkspaceData(
+    user,
+    slug,
+    initialHandoffId,
+  );
 
   if (!pageData) {
     return <ProjectAccessUnavailableState />;
@@ -81,11 +126,13 @@ async function StageFiveContent({
 
   return (
     <StageFiveWorkspace
+      key={initialHandoffId ?? pageData.files[0]?.handoffId ?? "no-file"}
       project={project}
       currentUserId={user.id}
       pageData={pageData}
       initialHandoffId={initialHandoffId}
       initialMode={initialMode}
+      showChrome={false}
     />
   );
 }
@@ -114,7 +161,7 @@ export default async function StageFivePage({
         ),
       }}
     >
-      <Suspense fallback={<StageFiveLoadingShell />}>
+      <Suspense fallback={<StageRouteInitialShell />}>
         <StageFiveContent
           slug={slug}
           userPromise={userPromise}

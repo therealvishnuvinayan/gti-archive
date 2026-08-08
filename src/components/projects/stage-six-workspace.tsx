@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ProjectFlowRecord } from "@/lib/projects";
+import type { ProjectStageShellRecord } from "@/lib/projects";
 import { showInfoToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -392,7 +392,7 @@ export function StageSixWorkspace({
   project,
   currentUserId,
 }: {
-  project: ProjectFlowRecord;
+  project: ProjectStageShellRecord;
   currentUserId: string;
 }) {
   const [approvalSteps, setApprovalSteps] = useState<ApprovalStep[]>(

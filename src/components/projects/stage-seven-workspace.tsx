@@ -23,7 +23,7 @@ import { ProjectStageSummary } from "@/components/projects/project-stage-summary
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ProjectFlowRecord } from "@/lib/projects";
+import type { ProjectStageShellRecord } from "@/lib/projects";
 import { showInfoToast } from "@/lib/toast";
 
 type Tone = "green" | "amber" | "red" | "purple";
@@ -265,7 +265,7 @@ export function StageSevenWorkspace({
   project,
   currentUserId,
 }: {
-  project: ProjectFlowRecord;
+  project: ProjectStageShellRecord;
   currentUserId: string;
 }) {
   return (

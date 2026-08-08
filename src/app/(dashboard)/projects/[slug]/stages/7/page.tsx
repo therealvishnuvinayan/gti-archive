@@ -13,7 +13,7 @@ import {
   StageSevenWorkspace,
 } from "@/components/projects/stage-seven-workspace";
 import { requireUser } from "@/lib/auth";
-import { getProjectRouteAvailability, getProjectShellById } from "@/lib/projects";
+import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { decodeRouteParam } from "@/lib/route-params";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
@@ -43,7 +43,7 @@ async function StageSevenContent({
   userPromise: Promise<StageSevenUser>;
 }) {
   const user = await userPromise;
-  const project = await getProjectShellById(slug, user);
+  const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
     return <StageSevenUnavailableContent slug={slug} user={user} />;

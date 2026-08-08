@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -32,6 +33,8 @@ import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions"
 import {
   completeProjectInquiryAction,
   createContactDirectoryEntryAction,
+  searchProjectInquiryHistorySuggestionsAction,
+  searchProjectInquiryPartyOptionsAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/1/actions";
 import { AppDatePicker } from "@/components/calendar/app-date-picker";
 import {
@@ -70,14 +73,15 @@ import type {
   ProjectInquiryPartyOption,
   ProjectInquiryPartySelection,
 } from "@/lib/project-inquiry";
-import type { ProjectFlowRecord } from "@/lib/projects";
+import type { ProjectStageShellRecord } from "@/lib/projects";
 import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 type StageOneWorkspaceProps = {
-  project: ProjectFlowRecord;
+  project: ProjectStageShellRecord;
   currentUserId: string;
   pageData: ProjectInquiryPageData;
+  showChrome?: boolean;
 };
 
 type PartyField = "client" | "finalBeneficiary";
@@ -161,6 +165,7 @@ function PartySelector({
   disabled,
   error,
   onChange,
+  onSearch,
 }: {
   ariaLabel: string;
   placeholder: string;
@@ -169,9 +174,11 @@ function PartySelector({
   disabled: boolean;
   error?: string;
   onChange: (value: ProjectInquiryPartySelection | null) => void;
+  onSearch: (query: string) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const filteredOptions = useMemo(() => {
@@ -193,6 +200,22 @@ function PartySelector({
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
+
+  useEffect(() => {
+    if (!open || disabled) return;
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      setSearching(true);
+      void onSearch(query).finally(() => {
+        if (!cancelled) setSearching(false);
+      });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [disabled, onSearch, open, query]);
 
   return (
     <div ref={rootRef} className="relative">
@@ -279,7 +302,11 @@ function PartySelector({
           aria-label={ariaLabel}
           className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 max-h-[290px] overflow-y-auto rounded-[18px] border border-[#dce3dc] bg-white p-1.5 shadow-[0_20px_50px_rgba(17,33,23,0.14)]"
         >
-          {filteredOptions.length ? (
+          {searching && filteredOptions.length === 0 ? (
+            <p className="px-4 py-8 text-center text-[13px] text-[#7b847d]">
+              Searching...
+            </p>
+          ) : filteredOptions.length ? (
             filteredOptions.map((option) => {
               const selected = value?.id === option.id && value.source === option.source;
               return (
@@ -337,6 +364,7 @@ function MultiEntryInput({
   disabled,
   error,
   onChange,
+  onSearchSuggestions,
 }: {
   ariaLabel: string;
   values: string[];
@@ -345,9 +373,14 @@ function MultiEntryInput({
   disabled: boolean;
   error?: string;
   onChange: (values: string[]) => void;
+  onSearchSuggestions?: (query: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(
+    suggestions.length > 0 || !onSearchSuggestions,
+  );
   const rootRef = useRef<HTMLDivElement | null>(null);
   const normalizedValues = useMemo(
     () => new Set(values.map((value) => value.trim().toLocaleLowerCase("en"))),
@@ -362,11 +395,50 @@ function MultiEntryInput({
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        setSearching(false);
+      }
     }
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
+
+  useEffect(() => {
+    if (!open || disabled || !onSearchSuggestions) return;
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      void onSearchSuggestions(draft).finally(() => {
+        if (!cancelled) {
+          setSearching(false);
+          setSuggestionsLoaded(true);
+        }
+      });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [disabled, draft, onSearchSuggestions, open]);
+
+  function openSuggestions() {
+    setOpen(true);
+    if (onSearchSuggestions) {
+      setSearching(true);
+      setSuggestionsLoaded(false);
+    }
+  }
+
+  function toggleSuggestions() {
+    if (open) {
+      setOpen(false);
+      setSearching(false);
+      return;
+    }
+
+    openSuggestions();
+  }
 
   function add(value: string) {
     const normalized = value.trim();
@@ -377,6 +449,7 @@ function MultiEntryInput({
     onChange([...values, normalized]);
     setDraft("");
     setOpen(false);
+    setSearching(false);
   }
 
   return (
@@ -412,9 +485,9 @@ function MultiEntryInput({
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
-            setOpen(true);
+            openSuggestions();
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={openSuggestions}
           onBlur={() => {
             window.setTimeout(() => {
               if (draft.trim()) add(draft);
@@ -432,27 +505,49 @@ function MultiEntryInput({
           placeholder={placeholder}
           className="h-7 min-w-[150px] flex-1 bg-transparent px-1 text-[13px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
         />
-        <ChevronDown className="h-4 w-4 shrink-0 text-[#59645d]" />
+        {!disabled &&
+        (filteredSuggestions.length > 0 || searching || !suggestionsLoaded) ? (
+          <button
+            type="button"
+            aria-label={`${open ? "Close" : "Open"} ${ariaLabel} suggestions`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={toggleSuggestions}
+            className="grid size-7 shrink-0 place-items-center rounded-full text-[#59645d] transition hover:bg-[#eef3ef]"
+          >
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          </button>
+        ) : null}
       </div>
-      {open && !disabled && filteredSuggestions.length ? (
+      {open && !disabled && (searching || filteredSuggestions.length > 0) ? (
         <div
           role="listbox"
           aria-label={`${ariaLabel} suggestions`}
           className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[250px] touch-pan-y overflow-y-auto overscroll-contain rounded-[16px] border border-[#dce3dc] bg-white p-1.5 [scrollbar-gutter:stable] shadow-[0_18px_44px_rgba(17,33,23,0.13)]"
         >
-          {filteredSuggestions.map((suggestion) => (
-            <button
-              key={suggestion.toLocaleLowerCase("en")}
-              type="button"
-              role="option"
-              aria-selected="false"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => add(suggestion)}
-              className="block w-full rounded-[11px] px-3 py-2 text-left text-[13px] text-[#2d372f] hover:bg-[#f2f6f2]"
-            >
-              {suggestion}
-            </button>
-          ))}
+          {searching ? (
+            <p className="px-3 py-5 text-center text-[12px] text-[#7b857e]">
+              Loading suggestions...
+            </p>
+          ) : (
+            filteredSuggestions.map((suggestion) => (
+              <button
+                key={suggestion.toLocaleLowerCase("en")}
+                type="button"
+                role="option"
+                aria-selected="false"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => add(suggestion)}
+                className="block w-full rounded-[11px] px-3 py-2 text-left text-[13px] text-[#2d372f] hover:bg-[#f2f6f2]"
+              >
+                {suggestion}
+              </button>
+            ))
+          )}
         </div>
       ) : null}
     </div>
@@ -759,6 +854,7 @@ export function StageOneWorkspace({
   project,
   currentUserId,
   pageData,
+  showChrome = true,
 }: StageOneWorkspaceProps) {
   const router = useRouter();
   const saved = pageData.inquiry;
@@ -790,6 +886,9 @@ export function StageOneWorkspace({
   const [targetMarkets, setTargetMarkets] = useState(
     saved?.targetMarkets.map((market) => market.label) ?? [],
   );
+  const [targetMarketHistory, setTargetMarketHistory] = useState(
+    pageData.targetMarketSuggestions.map((market) => market.label),
+  );
   const [initialBrief, setInitialBrief] = useState(saved?.initialBrief ?? "");
   const [businessObjectives, setBusinessObjectives] = useState(
     saved?.businessObjectives ?? "",
@@ -799,6 +898,9 @@ export function StageOneWorkspace({
     saved?.collaboratorIds ?? pageData.projectCollaboratorIds,
   );
   const [deliverables, setDeliverables] = useState(saved?.deliverables ?? []);
+  const [deliverableHistory, setDeliverableHistory] = useState(
+    pageData.deliverableSuggestions,
+  );
   const [inquiryDate, setInquiryDate] = useState(saved?.inquiryDate || getTodayDateValue());
   const [deadline, setDeadline] = useState(saved?.deadline ?? "");
   const [legalNotes, setLegalNotes] = useState(saved?.legalNotes ?? "");
@@ -832,10 +934,62 @@ export function StageOneWorkspace({
       Array.from(
         new Set([
           ...pageData.countryOptions,
-          ...pageData.targetMarketSuggestions.map((market) => market.label),
+          ...targetMarketHistory,
         ]),
       ),
-    [pageData.countryOptions, pageData.targetMarketSuggestions],
+    [pageData.countryOptions, targetMarketHistory],
+  );
+  const loadPartyOptions = useCallback(
+    async (query: string) => {
+      try {
+        const options = await searchProjectInquiryPartyOptionsAction(
+          project.id,
+          query,
+        );
+        setPartyOptions((current) => {
+          const merged = new Map(
+            current.map((option) => [`${option.source}:${option.id}`, option]),
+          );
+          for (const option of options) {
+            merged.set(`${option.source}:${option.id}`, option);
+          }
+          return [...merged.values()];
+        });
+      } catch {
+        showErrorToast("Unable to load directory results.");
+      }
+    },
+    [project.id],
+  );
+  const loadTargetMarketHistory = useCallback(
+    async (query: string) => {
+      try {
+        const suggestions = await searchProjectInquiryHistorySuggestionsAction(
+          project.id,
+          "target-market",
+          query,
+        );
+        setTargetMarketHistory(suggestions);
+      } catch {
+        showErrorToast("Unable to load target-market history.");
+      }
+    },
+    [project.id],
+  );
+  const loadDeliverableHistory = useCallback(
+    async (query: string) => {
+      try {
+        const suggestions = await searchProjectInquiryHistorySuggestionsAction(
+          project.id,
+          "deliverable",
+          query,
+        );
+        setDeliverableHistory(suggestions);
+      } catch {
+        showErrorToast("Unable to load deliverable history.");
+      }
+    },
+    [project.id],
   );
 
   function clearFieldError(field: keyof ProjectInquiryFieldErrors) {
@@ -857,7 +1011,7 @@ export function StageOneWorkspace({
 
     if (Object.keys(validation.fieldErrors).length > 0) {
       setContactErrors(validation.fieldErrors);
-      setContactError("Review the highlighted contact fields.");
+      setContactError("Review the highlighted details.");
       return;
     }
 
@@ -880,9 +1034,15 @@ export function StageOneWorkspace({
         clearFieldError("finalBeneficiary");
       }
       setContactTarget(null);
-      showSuccessToast("Contact saved to the directory.");
+      showSuccessToast(
+        contactTarget === "client"
+          ? "Client added."
+          : "Beneficiary added.",
+      );
     } catch {
-      setContactError("Unable to save the contact right now. Please try again.");
+      setContactError(
+        `Unable to add the ${contactTarget === "client" ? "client" : "beneficiary"} right now. Please try again.`,
+      );
     } finally {
       setContactSaving(false);
     }
@@ -988,16 +1148,22 @@ export function StageOneWorkspace({
 
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
-      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      {showChrome ? (
+        <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      ) : null}
 
-      <div className="flex items-center gap-2 text-[12px] font-[750] uppercase tracking-[0.12em] text-[#4d765d]">
-        <FileText className="h-4 w-4" />
-        Project Inquiry
-      </div>
-      <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-[30px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[36px]">
-          Stage 1 - Project Inquiry
-        </h1>
+      {showChrome ? (
+        <div className="flex items-center gap-2 text-[12px] font-[750] uppercase tracking-[0.12em] text-[#4d765d]">
+          <FileText className="h-4 w-4" />
+          Project Inquiry
+        </div>
+      ) : null}
+      <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-center", showChrome ? "mt-3 sm:justify-between" : "mt-5 sm:justify-end")}>
+        {showChrome ? (
+          <h1 className="text-[30px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[36px]">
+            Stage 1 - Project Inquiry
+          </h1>
+        ) : null}
         <div
           role="tablist"
           aria-label="Project Inquiry presentation mode"
@@ -1037,7 +1203,9 @@ export function StageOneWorkspace({
           </button>
         </div>
       </div>
-      <ProjectFlowSummaryStrip project={project} className="mt-5" />
+      {showChrome ? (
+        <ProjectFlowSummaryStrip project={project} className="mt-5" />
+      ) : null}
 
       {mode === "view" ? (
         <StageOneReadOnlyView
@@ -1075,6 +1243,7 @@ export function StageOneWorkspace({
                   value={client}
                   disabled={readOnly || submitting}
                   error={fieldErrors.client}
+                  onSearch={loadPartyOptions}
                   onChange={(value) => {
                     setClient(value);
                     clearFieldError("client");
@@ -1123,6 +1292,7 @@ export function StageOneWorkspace({
                   value={finalBeneficiary}
                   disabled={readOnly || submitting}
                   error={fieldErrors.finalBeneficiary}
+                  onSearch={loadPartyOptions}
                   onChange={(value) => {
                     setFinalBeneficiary(value);
                     clearFieldError("finalBeneficiary");
@@ -1143,6 +1313,7 @@ export function StageOneWorkspace({
                   placeholder="Countries or regions"
                   disabled={readOnly || submitting}
                   error={fieldErrors.targetMarkets}
+                  onSearchSuggestions={loadTargetMarketHistory}
                   onChange={(values) => {
                     setTargetMarkets(values);
                     clearFieldError("targetMarkets");
@@ -1220,10 +1391,11 @@ export function StageOneWorkspace({
                 <MultiEntryInput
                   ariaLabel="Add deliverable"
                   values={deliverables}
-                  suggestions={pageData.deliverableSuggestions}
+                  suggestions={deliverableHistory}
                   placeholder="Add deliverables"
                   disabled={readOnly || submitting}
                   error={fieldErrors.deliverables}
+                  onSearchSuggestions={loadDeliverableHistory}
                   onChange={(values) => {
                     setDeliverables(values);
                     clearFieldError("deliverables");
@@ -1295,7 +1467,13 @@ export function StageOneWorkspace({
 
       <ProjectContactDialog
         isOpen={contactTarget !== null}
-        title={contactTarget === "client" ? "Add client manually" : "Add final beneficiary manually"}
+        title={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}
+        description={
+          contactTarget === "client"
+            ? "Enter the client details. The client will also be available in the contact directory."
+            : "Enter the beneficiary details. The beneficiary will also be available in the contact directory."
+        }
+        submitLabel={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}
         form={contactForm}
         fieldErrors={contactErrors}
         error={contactError}

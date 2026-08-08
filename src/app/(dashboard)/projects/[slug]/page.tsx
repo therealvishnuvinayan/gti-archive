@@ -13,7 +13,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import {
   getProjectRouteAvailability,
-  getProjectShellById,
+  getProjectStageShellById,
 } from "@/lib/projects";
 import { canBypassImplementedWorkflowStageLock } from "@/lib/workflow-stage-access";
 
@@ -43,7 +43,7 @@ async function ProjectOverviewContent({
   userPromise: Promise<ProjectPageUser>;
 }) {
   const user = await userPromise;
-  const project = await getProjectShellById(slug, user);
+  const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
     return <ProjectUnavailableContent slug={slug} user={user} />;

@@ -2,12 +2,46 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
+  prismaPerformanceMetrics?: {
+    queryCount: number;
+    databaseDurationMs: number;
+  };
 };
 
+const prismaPerformanceProfilingEnabled =
+  process.env.NODE_ENV !== "production" &&
+  process.env.STAGE_PERFORMANCE_PROFILE === "1";
+
 function createPrismaClient() {
-  return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+  const client: PrismaClient = new PrismaClient({
+    log: prismaPerformanceProfilingEnabled
+      ? [
+          { emit: "event", level: "query" },
+          { emit: "stdout", level: "warn" },
+          { emit: "stdout", level: "error" },
+        ]
+      : process.env.NODE_ENV === "development"
+        ? ["warn", "error"]
+        : ["error"],
   });
+
+  if (prismaPerformanceProfilingEnabled) {
+    const queryListener = (event: Prisma.QueryEvent) => {
+      const metrics = globalForPrisma.prismaPerformanceMetrics ?? {
+        queryCount: 0,
+        databaseDurationMs: 0,
+      };
+      metrics.queryCount += 1;
+      metrics.databaseDurationMs += event.duration;
+      globalForPrisma.prismaPerformanceMetrics = metrics;
+      console.info("[stage-performance:query]", {
+        durationMs: event.duration,
+      });
+    };
+    client.$on("query" as never, queryListener as never);
+  }
+
+  return client;
 }
 
 function getDelegateName(modelName: string) {
@@ -15,10 +49,17 @@ function getDelegateName(modelName: string) {
 }
 
 function isPrismaClientCompatible(client: PrismaClient) {
-  return Prisma.dmmf.datamodel.models.every((model) => {
-    const delegateName = getDelegateName(model.name) as keyof PrismaClient;
-    return typeof client[delegateName] !== "undefined";
-  });
+  const previewFeatures = (
+    client as PrismaClient & { _previewFeatures?: string[] }
+  )._previewFeatures;
+
+  return (
+    previewFeatures?.includes("relationJoins") === true &&
+    Prisma.dmmf.datamodel.models.every((model) => {
+      const delegateName = getDelegateName(model.name) as keyof PrismaClient;
+      return typeof client[delegateName] !== "undefined";
+    })
+  );
 }
 
 function getPrismaClient() {
@@ -34,6 +75,33 @@ function getPrismaClient() {
 }
 
 export const prisma = getPrismaClient();
+
+export function resetPrismaPerformanceMetrics() {
+  if (!prismaPerformanceProfilingEnabled) {
+    return;
+  }
+
+  globalForPrisma.prismaPerformanceMetrics = {
+    queryCount: 0,
+    databaseDurationMs: 0,
+  };
+}
+
+export function getPrismaPerformanceMetrics() {
+  if (!prismaPerformanceProfilingEnabled) {
+    return null;
+  }
+
+  const metrics = globalForPrisma.prismaPerformanceMetrics ?? {
+    queryCount: 0,
+    databaseDurationMs: 0,
+  };
+
+  return {
+    queryCount: metrics.queryCount,
+    databaseDurationMs: Math.round(metrics.databaseDurationMs),
+  };
+}
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
