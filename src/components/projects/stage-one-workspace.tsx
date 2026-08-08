@@ -35,6 +35,7 @@ import {
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { StageOneReadOnlyView } from "@/components/projects/stage-one-read-only-view";
 import {
   ProjectContactDialog,
   type ProjectContactForm,
@@ -672,6 +673,9 @@ export function StageOneWorkspace({
 }: StageOneWorkspaceProps) {
   const router = useRouter();
   const saved = pageData.inquiry;
+  const [mode, setMode] = useState<"edit" | "view">(
+    pageData.canEdit ? "edit" : "view",
+  );
   const [submitting, startSubmitting] = useTransition();
   const [partyOptions, setPartyOptions] = useState(() => {
     const options = [...pageData.partyOptions];
@@ -893,12 +897,65 @@ export function StageOneWorkspace({
         <FileText className="h-4 w-4" />
         Project Inquiry
       </div>
-      <h1 className="mt-3 text-[30px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[36px]">
-        Stage 1 - Project Inquiry
-      </h1>
+      <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-[30px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[36px]">
+          Stage 1 - Project Inquiry
+        </h1>
+        <div
+          role="tablist"
+          aria-label="Project Inquiry presentation mode"
+          className="inline-grid w-fit grid-cols-2 rounded-[12px] border border-[#dce4dd] bg-white p-1 shadow-[0_8px_20px_rgba(23,39,28,0.04)]"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "edit"}
+            aria-controls="stage-one-edit-panel"
+            disabled={!pageData.canEdit}
+            onClick={() => setMode("edit")}
+            className={cn(
+              "min-w-[72px] rounded-[9px] px-3 py-2 text-[12px] font-[700] transition",
+              mode === "edit"
+                ? "bg-[#eaf4ec] text-[#236945]"
+                : "text-[#6f7a72] hover:bg-[#f4f7f4]",
+              !pageData.canEdit && "cursor-not-allowed opacity-40",
+            )}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "view"}
+            aria-controls="stage-one-view-panel"
+            onClick={() => setMode("view")}
+            className={cn(
+              "min-w-[72px] rounded-[9px] px-3 py-2 text-[12px] font-[700] transition",
+              mode === "view"
+                ? "bg-[#eaf4ec] text-[#236945]"
+                : "text-[#6f7a72] hover:bg-[#f4f7f4]",
+            )}
+          >
+            View
+          </button>
+        </div>
+      </div>
       <StageOneProjectSummary project={project} />
 
-      <Card className="mt-6 rounded-[22px] border-[#dde5de] shadow-[0_18px_44px_rgba(23,39,28,0.055)]">
+      {mode === "view" ? (
+        <StageOneReadOnlyView
+          projectId={project.id}
+          inquiry={saved}
+          availableCollaborators={pageData.availableCollaborators}
+          canEdit={pageData.canEdit}
+        />
+      ) : (
+        <Card
+          id="stage-one-edit-panel"
+          role="tabpanel"
+          aria-label="Edit Project Inquiry"
+          className="mt-6 rounded-[22px] border-[#dde5de] shadow-[0_18px_44px_rgba(23,39,28,0.055)]"
+        >
         <CardContent className="px-5 py-6 sm:px-7 sm:py-7 lg:px-8">
           {!pageData.canEdit ? (
             <div className="mb-6 rounded-[15px] border border-[#dce4dd] bg-[#f4f7f4] px-4 py-3 text-[13px] text-[#536057]">
@@ -1126,7 +1183,8 @@ export function StageOneWorkspace({
             </div>
           </form>
         </CardContent>
-      </Card>
+        </Card>
+      )}
 
       <ProjectContactDialog
         isOpen={contactTarget !== null}

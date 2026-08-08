@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, stagePage, stageActions, service, schema, overview] = await Promise.all([
+const [workspace, readOnlyView, stagePage, stageActions, service, schema, overview] = await Promise.all([
   readFile("src/components/projects/stage-one-workspace.tsx", "utf8"),
+  readFile("src/components/projects/stage-one-read-only-view.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/1/page.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/1/actions.ts", "utf8"),
   readFile("src/lib/project-inquiry.ts", "utf8"),
@@ -56,6 +57,88 @@ for (const snippet of [
 ]) {
   assert(workspace.includes(snippet) || overview.includes(snippet), `Missing UI behavior: ${snippet}`);
 }
+
+for (const snippet of [
+  'useState<"edit" | "view">',
+  'pageData.canEdit ? "edit" : "view"',
+  'role="tablist"',
+  'aria-selected={mode === "edit"}',
+  'aria-selected={mode === "view"}',
+  'onClick={() => setMode("edit")}',
+  'onClick={() => setMode("view")}',
+  'mode === "view"',
+  "StageOneReadOnlyView",
+  "inquiry={saved}",
+]) {
+  assert(workspace.includes(snippet), `Missing Stage 1 mode behavior: ${snippet}`);
+}
+
+assert(
+  stagePage.includes("ProjectBackButton") &&
+    stagePage.includes('href={`/projects/${slug}`}'),
+  "Stage 1 must retain its safe Back navigation.",
+);
+
+for (const label of [
+  "Client Information",
+  "Client Name",
+  "Client Type",
+  "Final Beneficiary",
+  "Target Market",
+  "Project Brief",
+  "Initial Brief",
+  "Key Business Objectives",
+  "Project Team",
+  "Collaborators",
+  "Deliverables",
+  "Project Details",
+  "Date",
+  "Deadline",
+  "Priority",
+  "Legal Notes",
+  "Attachments",
+  "Not provided",
+]) {
+  assert(readOnlyView.includes(label), `Missing Stage 1 read-only content: ${label}`);
+}
+
+assert(
+  !readOnlyView.includes("<input") &&
+    !readOnlyView.includes("<select") &&
+    !readOnlyView.includes("<textarea"),
+  "Stage 1 View mode must not render editable form controls.",
+);
+assert(
+  !readOnlyView.includes("completeProjectInquiryAction") &&
+    !readOnlyView.includes("createContactDirectoryEntryAction") &&
+    !readOnlyView.includes("saveCollaboratorAction"),
+  "Opening or rendering View mode must not perform Stage 1 mutations.",
+);
+assert(
+  readOnlyView.includes('className="mt-3 whitespace-pre-wrap') &&
+    readOnlyView.includes("inquiry?.initialBrief") &&
+    readOnlyView.includes("inquiry?.businessObjectives") &&
+    readOnlyView.includes("inquiry?.legalNotes"),
+  "Read-only narrative fields must preserve persisted line breaks.",
+);
+assert(
+  readOnlyView.includes("party.company") &&
+    readOnlyView.includes("party.position") &&
+    readOnlyView.includes("party.email") &&
+    readOnlyView.includes("party.phone"),
+  "Read-only parties must render available snapshot details.",
+);
+assert(
+  readOnlyView.includes("/api/project-assets/${attachment.id}/preview") &&
+    readOnlyView.includes("/api/project-assets/${attachment.id}/download") &&
+    !readOnlyView.includes("upload-url"),
+  "View mode attachments must reuse safe preview/download routes without upload controls.",
+);
+assert(
+  readOnlyView.includes("formatDate") &&
+    readOnlyView.includes('new Intl.DateTimeFormat("en-GB"'),
+  "View mode must format date-only values for people to read.",
+);
 
 assert(
   overview.includes("href={`/projects/${projectId}/stages/${stage.number}`}") &&
