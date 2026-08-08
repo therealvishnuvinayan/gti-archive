@@ -1,10 +1,15 @@
 import { Suspense } from "react";
+import { FolderKanban } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
-  ConceptStageLoadingShell,
   ConceptStageWorkspace,
 } from "@/components/projects/concept-stage-workspace";
+import {
+  StageRouteInitialShell,
+  StageRouteShell,
+  StageSectionLoadingShell,
+} from "@/components/projects/stage-route-shell";
 import {
   ProjectAccessUnavailableState,
   ProjectNotFoundState,
@@ -15,7 +20,7 @@ import {
   getProjectConceptFolders,
   type ConceptWorkflowStageKey,
 } from "@/lib/project-concepts";
-import { getProjectRouteAvailability, getProjectShellById } from "@/lib/projects";
+import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 import { getStageFourFinalFileHandoffData } from "@/lib/stage-five";
 
@@ -51,7 +56,7 @@ async function ConceptStageContent({
   userPromise: Promise<ConceptStageRouteUser>;
 }) {
   const user = await userPromise;
-  const project = await getProjectShellById(slug, user);
+  const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
     return <ConceptStageUnavailableContent slug={slug} user={user} />;
@@ -75,16 +80,55 @@ async function ConceptStageContent({
     );
   }
 
-  const folders = await getProjectConceptFolders(user, slug, stageKey);
+  return (
+    <section className="mx-auto w-full max-w-[1420px] pb-8">
+      <StageRouteShell
+        project={project}
+        currentUserId={user.id}
+        eyebrow="Concept Workspace"
+        title={`Stage ${stageNumber} - ${stageTitle}`}
+        description="Create and manage concept folders."
+        icon={<FolderKanban className="h-4 w-4" />}
+      />
+      <Suspense fallback={<StageSectionLoadingShell rows={3} />}>
+        <ConceptStageDataContent
+          slug={slug}
+          stageNumber={stageNumber}
+          stageTitle={stageTitle}
+          stageKey={stageKey}
+          user={user}
+          project={project}
+        />
+      </Suspense>
+    </section>
+  );
+}
+
+async function ConceptStageDataContent({
+  slug,
+  stageNumber,
+  stageTitle,
+  stageKey,
+  user,
+  project,
+}: {
+  slug: string;
+  stageNumber: 3 | 4;
+  stageTitle: string;
+  stageKey: ConceptWorkflowStageKey;
+  user: ConceptStageRouteUser;
+  project: NonNullable<Awaited<ReturnType<typeof getProjectStageShellById>>>;
+}) {
+  const [folders, stageFourHandoffData] = await Promise.all([
+    getProjectConceptFolders(user, slug, stageKey),
+    stageNumber === 4
+      ? getStageFourFinalFileHandoffData(user, slug)
+      : Promise.resolve(undefined),
+  ]);
 
   if (!folders) {
     return <ProjectAccessUnavailableState />;
   }
-
-  const stageFourHandoffData =
-    stageNumber === 4
-      ? await getStageFourFinalFileHandoffData(user, slug)
-      : undefined;
 
   return (
     <ConceptStageWorkspace
@@ -95,6 +139,7 @@ async function ConceptStageContent({
       currentUserId={user.id}
       initialFolders={folders}
       stageFourHandoffData={stageFourHandoffData ?? undefined}
+      showChrome={false}
     />
   );
 }
@@ -114,7 +159,7 @@ export function ConceptStageRoute({
 
   return (
     <DashboardLayout>
-      <Suspense fallback={<ConceptStageLoadingShell />}>
+      <Suspense fallback={<StageRouteInitialShell />}>
         <ConceptStageContent
           slug={slug}
           stageNumber={stageNumber}

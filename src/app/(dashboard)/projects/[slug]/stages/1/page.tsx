@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { FileText } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -7,15 +8,19 @@ import {
   ProjectNotFoundState,
 } from "@/components/projects/project-route-state";
 import {
-  StageOneLoadingShell,
   StageOneWorkspace,
 } from "@/components/projects/stage-one-workspace";
+import {
+  StageRouteInitialShell,
+  StageRouteShell,
+  StageSectionLoadingShell,
+} from "@/components/projects/stage-route-shell";
 import { requireUser } from "@/lib/auth";
 import { getCollaborators } from "@/lib/collaboration";
 import { getProjectInquiryPageData } from "@/lib/project-inquiry";
 import {
   getProjectRouteAvailability,
-  getProjectShellById,
+  getProjectStageShellById,
 } from "@/lib/projects";
 
 type StageOnePageUser = Awaited<ReturnType<typeof requireUser>>;
@@ -44,22 +49,48 @@ async function StageOneContent({
   userPromise: Promise<StageOnePageUser>;
 }) {
   const user = await userPromise;
-  const [project, collaborators] = await Promise.all([
-    getProjectShellById(slug, user),
-    getCollaborators(),
-  ]);
+  const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
     return <StageOneUnavailableContent slug={slug} user={user} />;
   }
 
-  const pageData = await getProjectInquiryPageData(user, slug, collaborators);
+  return (
+    <section className="mx-auto w-full max-w-[1420px] pb-6">
+      <StageRouteShell
+        project={project}
+        currentUserId={user.id}
+        eyebrow="Project Inquiry"
+        title="Stage 1 - Project Inquiry"
+        icon={<FileText className="h-4 w-4" />}
+      />
+      <Suspense fallback={<StageSectionLoadingShell rows={6} />}>
+        <StageOneDataContent slug={slug} user={user} project={project} />
+      </Suspense>
+    </section>
+  );
+}
+
+async function StageOneDataContent({
+  slug,
+  user,
+  project,
+}: {
+  slug: string;
+  user: StageOnePageUser;
+  project: NonNullable<Awaited<ReturnType<typeof getProjectStageShellById>>>;
+}) {
+  const [pageData, collaborators] = await Promise.all([
+    getProjectInquiryPageData(user, slug, []),
+    getCollaborators(),
+  ]);
 
   return (
     <StageOneWorkspace
       project={project}
       currentUserId={user.id}
-      pageData={pageData}
+      pageData={{ ...pageData, availableCollaborators: collaborators }}
+      showChrome={false}
     />
   );
 }
@@ -79,7 +110,7 @@ export default async function StageOnePage({
         leadingContent: <ProjectBackButton href={`/projects/${slug}`} />,
       }}
     >
-      <Suspense fallback={<StageOneLoadingShell />}>
+      <Suspense fallback={<StageRouteInitialShell />}>
         <StageOneContent slug={slug} userPromise={userPromise} />
       </Suspense>
     </DashboardLayout>

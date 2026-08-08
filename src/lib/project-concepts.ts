@@ -9,6 +9,11 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  getProjectStageAccessRecordById,
+  projectStageAccessSelect,
+  type ProjectStageAccessRecord,
+} from "@/lib/project-stage-data";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 export type ConceptWorkflowStageKey =
@@ -25,37 +30,7 @@ export type ProjectConceptFolderRecord = {
 const DEFAULT_CONCEPT_FOLDER_NAME = "Concept 1";
 export const CONCEPT_FOLDER_NAME_MAX_LENGTH = 120;
 
-const conceptProjectSelect = {
-  id: true,
-  ownerId: true,
-  coOwners: {
-    select: { userId: true },
-  },
-  executors: {
-    select: { userId: true },
-  },
-  collaborators: {
-    select: {
-      userId: true,
-      canInteract: true,
-      canAddCaptions: true,
-      canDownloadFiles: true,
-      canViewBudget: true,
-      canViewVendorInfo: true,
-      canAccessProjectArchives: true,
-    },
-  },
-  workflowStages: {
-    select: {
-      stageKey: true,
-      status: true,
-    },
-  },
-} satisfies Prisma.ProjectSelect;
-
-type ConceptProject = Prisma.ProjectGetPayload<{
-  select: typeof conceptProjectSelect;
-}>;
+type ConceptProject = ProjectStageAccessRecord;
 
 function isSupportedConceptStageKey(
   stageKey: ProjectWorkflowStageKey,
@@ -111,12 +86,7 @@ async function getAuthorizedConceptProject(
     return null;
   }
 
-  const project = await withPrismaRetry(() =>
-    prisma.project.findUnique({
-      where: { id: projectId },
-      select: conceptProjectSelect,
-    }),
-  );
+  const project = await getProjectStageAccessRecordById(projectId);
 
   if (!project || !hasProjectPermission(user, project, "project.view")) {
     return null;
@@ -176,6 +146,7 @@ export async function ensureDefaultProjectConceptFolder(
   user: PermissionUser,
   projectId: string,
   stageKey: ConceptWorkflowStageKey,
+  options: { skipExistingLookup?: boolean } = {},
 ) {
   const project = await getAuthorizedConceptProject(user, projectId, stageKey);
 
@@ -183,7 +154,9 @@ export async function ensureDefaultProjectConceptFolder(
     return null;
   }
 
-  const existing = await findExistingConceptFolder(projectId, stageKey);
+  const existing = options.skipExistingLookup
+    ? null
+    : await findExistingConceptFolder(projectId, stageKey);
 
   if (existing) {
     return existing;
@@ -256,17 +229,12 @@ export async function getProjectConceptFolders(
   projectId: string,
   stageKey: ConceptWorkflowStageKey,
 ) {
-  const defaultFolder = await ensureDefaultProjectConceptFolder(
-    user,
-    projectId,
-    stageKey,
-  );
-
-  if (!defaultFolder) {
+  const project = await getAuthorizedConceptProject(user, projectId, stageKey);
+  if (!project) {
     return null;
   }
 
-  return withPrismaRetry(() =>
+  const folders = await withPrismaRetry(() =>
     prisma.projectConceptFolder.findMany({
       where: {
         projectId,
@@ -276,6 +244,18 @@ export async function getProjectConceptFolders(
       select: conceptFolderSelect,
     }),
   );
+
+  if (folders.length > 0) {
+    return folders;
+  }
+
+  const defaultFolder = await ensureDefaultProjectConceptFolder(
+    user,
+    projectId,
+    stageKey,
+    { skipExistingLookup: true },
+  );
+  return defaultFolder ? [defaultFolder] : null;
 }
 
 export async function createProjectConceptFolder(
@@ -459,20 +439,7 @@ export async function getProjectConceptChatContext(
     folderId: string;
   },
 ) {
-  const project = await getAuthorizedConceptProject(
-    user,
-    input.projectId,
-    input.stageKey,
-  );
-
-  if (
-    !project ||
-    !hasProjectPermission(user, project, "chat.view")
-  ) {
-    return null;
-  }
-
-  const folder = await withPrismaRetry(() =>
+  const record = await withPrismaRetry(() =>
     prisma.projectConceptFolder.findFirst({
       where: {
         id: input.folderId,
@@ -483,19 +450,35 @@ export async function getProjectConceptChatContext(
           isTasker: true,
         },
       },
+      relationLoadStrategy: "join",
       select: {
         id: true,
         name: true,
         taskerStageId: true,
+        project: { select: projectStageAccessSelect },
       },
     }),
   );
 
-  return folder
-    ? {
-        projectId: input.projectId,
-        workflowStageKey: input.stageKey,
-        folder,
-      }
-    : null;
+  if (
+    !record ||
+    !hasProjectPermission(user, record.project, "chat.view") ||
+    !canOpenImplementedWorkflowStage({
+      user,
+      stageKey: input.stageKey,
+      status: getWorkflowStageStatus(record.project, input.stageKey),
+    })
+  ) {
+    return null;
+  }
+
+  return {
+    projectId: input.projectId,
+    workflowStageKey: input.stageKey,
+    folder: {
+      id: record.id,
+      name: record.name,
+      taskerStageId: record.taskerStageId,
+    },
+  };
 }

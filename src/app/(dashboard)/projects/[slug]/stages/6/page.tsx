@@ -13,7 +13,7 @@ import {
   StageSixWorkspace,
 } from "@/components/projects/stage-six-workspace";
 import { requireUser } from "@/lib/auth";
-import { getProjectRouteAvailability, getProjectShellById } from "@/lib/projects";
+import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { decodeRouteParam } from "@/lib/route-params";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
@@ -43,7 +43,7 @@ async function StageSixContent({
   userPromise: Promise<StageSixUser>;
 }) {
   const user = await userPromise;
-  const project = await getProjectShellById(slug, user);
+  const project = await getProjectStageShellById(slug, user);
 
   if (!project) {
     return <StageSixUnavailableContent slug={slug} user={user} />;

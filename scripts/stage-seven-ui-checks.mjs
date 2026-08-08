@@ -102,7 +102,7 @@ assert(
 
 assert(
   page.includes("DashboardLayout") &&
-    page.includes("getProjectShellById") &&
+    page.includes("getProjectStageShellById") &&
     page.includes("requireUser") &&
     page.includes("StageSevenWorkspace"),
   "The Stage 7 route must use the existing shell and real authenticated project data.",

@@ -1,20 +1,29 @@
 import { Suspense } from "react";
+import { ProjectWorkflowStageKey } from "@prisma/client";
+import { FolderKanban } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
 import {
   ProjectAccessUnavailableState,
   ProjectNotFoundState,
+  StageLockedState,
 } from "@/components/projects/project-route-state";
 import {
-  StageTwoLoadingShell,
   StageTwoWorkspace,
 } from "@/components/projects/stage-two-workspace";
+import {
+  StageRouteInitialShell,
+  StageRouteShell,
+  StageSectionLoadingShell,
+} from "@/components/projects/stage-route-shell";
 import { requireUser } from "@/lib/auth";
 import {
   getProjectRouteAvailability,
+  getProjectStageShellById,
 } from "@/lib/projects";
 import { getProjectResearchPageData } from "@/lib/project-research";
+import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 type StageTwoPageUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -44,6 +53,62 @@ async function StageTwoContent({
   workspaceId?: string;
 }) {
   const user = await userPromise;
+  const project = await getProjectStageShellById(slug, user);
+
+  if (!project) {
+    return <StageTwoUnavailableContent slug={slug} user={user} />;
+  }
+
+  const workflowStage = project.workflowStages.find(
+    (stage) =>
+      stage.stageKey ===
+      ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+  );
+
+  if (
+    !canOpenImplementedWorkflowStage({
+      user,
+      stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+      status: workflowStage?.status,
+    })
+  ) {
+    return (
+      <StageLockedState
+        projectHref={`/projects/${slug}`}
+        message="Stage 2 - Project Research and Planning is locked. Complete Project Inquiry before opening it."
+      />
+    );
+  }
+
+  return (
+    <section className="mx-auto w-full max-w-[1420px] pb-6">
+      <StageRouteShell
+        project={project}
+        currentUserId={user.id}
+        eyebrow="Shared research workspace"
+        title="Stage 2 - Project Research and Planning"
+        icon={<FolderKanban className="h-4 w-4" />}
+      />
+      <Suspense fallback={<StageSectionLoadingShell rows={4} />}>
+        <StageTwoDataContent
+          slug={slug}
+          user={user}
+          workspaceId={workspaceId}
+        />
+      </Suspense>
+    </section>
+  );
+}
+
+async function StageTwoDataContent({
+  slug,
+  user,
+  workspaceId,
+}: {
+  slug: string;
+  user: StageTwoPageUser;
+  workspaceId?: string;
+}) {
   let data = null;
 
   try {
@@ -53,7 +118,7 @@ async function StageTwoContent({
   }
 
   if (!data) {
-    return <StageTwoUnavailableContent slug={slug} user={user} />;
+    return <ProjectAccessUnavailableState />;
   }
 
   return (
@@ -61,6 +126,7 @@ async function StageTwoContent({
       key={data.selectedWorkspace.id}
       data={data}
       currentUserId={user.id}
+      showChrome={false}
     />
   );
 }
@@ -83,7 +149,7 @@ export default async function StageTwoPage({
         leadingContent: <ProjectBackButton href={`/projects/${slug}`} />,
       }}
     >
-      <Suspense fallback={<StageTwoLoadingShell />}>
+      <Suspense fallback={<StageRouteInitialShell />}>
         <StageTwoContent slug={slug} userPromise={userPromise} workspaceId={workspace} />
       </Suspense>
     </DashboardLayout>

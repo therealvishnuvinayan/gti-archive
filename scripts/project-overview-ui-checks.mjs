@@ -99,8 +99,8 @@ assert(
 );
 assert(
   projectPage.includes("ProjectOverviewWorkspace") &&
-    projectPage.includes("getProjectShellById"),
-  "The project landing route should render the overview from the existing project query.",
+    projectPage.includes("getProjectStageShellById"),
+  "The project landing route should render the overview from the lightweight stage shell query.",
 );
 assert(
   createForm.includes("router.push(`/projects/${result.projectId}`)"),

@@ -15,6 +15,10 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  getProjectStageAccessRecordById,
+  type ProjectStageAccessRecord,
+} from "@/lib/project-stage-data";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 export const STAGE_FIVE_FIELD_KEYS = [
@@ -104,33 +108,7 @@ export type StageFiveWorkspaceData = {
   canEdit: boolean;
 };
 
-const stageFiveProjectSelect = {
-  id: true,
-  name: true,
-  ownerId: true,
-  owner: { select: { id: true, name: true, email: true } },
-  coOwners: {
-    select: { userId: true, user: { select: { id: true, name: true, email: true } } },
-  },
-  executors: {
-    select: { userId: true, user: { select: { id: true, name: true, email: true } } },
-  },
-  collaborators: {
-    select: {
-      userId: true,
-      canInteract: true,
-      canAddCaptions: true,
-      canDownloadFiles: true,
-      canViewBudget: true,
-      canViewVendorInfo: true,
-      canAccessProjectArchives: true,
-      user: { select: { id: true, name: true, email: true } },
-    },
-  },
-  workflowStages: { select: { stageKey: true, status: true } },
-} satisfies Prisma.ProjectSelect;
-
-type StageFiveProject = Prisma.ProjectGetPayload<{ select: typeof stageFiveProjectSelect }>;
+type StageFiveProject = ProjectStageAccessRecord;
 
 function displayName(user: { name: string | null; email: string }) {
   return user.name?.trim() || user.email;
@@ -145,9 +123,7 @@ async function getAuthorizedProject(
   projectId: string,
   stageKey: ProjectWorkflowStageKey,
 ) {
-  const project = await withPrismaRetry(() =>
-    prisma.project.findUnique({ where: { id: projectId }, select: stageFiveProjectSelect }),
-  );
+  const project = await getProjectStageAccessRecordById(projectId);
 
   if (!project || !hasProjectPermission(user, project, "project.view")) return null;
   if (
@@ -339,6 +315,39 @@ function parseChecklistValue(value: Prisma.JsonValue | null): StageFiveChecklist
   };
 }
 
+function loadStageFiveChecklist(handoffId: string) {
+  return withPrismaRetry(() =>
+    prisma.projectFileChecklist.findUnique({
+      where: { handoffId },
+      relationLoadStrategy: "join",
+      select: {
+        id: true,
+        items: {
+          select: {
+            fieldKey: true,
+            value: true,
+            status: true,
+            attachments: {
+              select: { attachment: { select: attachmentSelect } },
+            },
+            requests: {
+              orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
+              take: 1,
+              select: {
+                status: true,
+                recipientName: true,
+                recipientEmail: true,
+                recipientUser: { select: { name: true, email: true } },
+                requestedAt: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+}
+
 function getParticipants(project: StageFiveProject): StageFiveParticipantRecord[] {
   const candidates = [
     ...(project.owner ? [{ user: project.owner, role: "Project Owner" }] : []),
@@ -358,6 +367,7 @@ function getParticipants(project: StageFiveProject): StageFiveParticipantRecord[
 export async function getStageFiveWorkspaceData(
   user: PermissionUser,
   projectId: string,
+  selectedHandoffId?: string | null,
 ): Promise<StageFiveWorkspaceData | null> {
   const project = await getAuthorizedProject(
     user,
@@ -373,92 +383,84 @@ export async function getStageFiveWorkspaceData(
         sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
         targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
       },
+      relationLoadStrategy: "join",
       orderBy: [{ handedOffAt: "asc" }, { id: "asc" }],
       select: {
         id: true,
         handedOffAt: true,
         sourceAttachment: { select: attachmentSelect },
-        checklist: {
-          select: {
-            id: true,
-            items: {
-              select: {
-                fieldKey: true,
-                value: true,
-                status: true,
-                attachments: { select: { attachment: { select: attachmentSelect } } },
-                requests: {
-                  orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
-                  take: 1,
-                  select: {
-                    status: true,
-                    recipientName: true,
-                    recipientEmail: true,
-                    recipientUser: { select: { name: true, email: true } },
-                    requestedAt: true,
-                  },
-                },
-              },
-            },
-          },
-        },
+        checklist: { select: { id: true } },
       },
     }),
   );
 
-  const files: StageFiveFileRecord[] = [];
-  for (const handoff of handoffs) {
-    let checklistId = handoff.checklist?.id;
-    const checklistItems = handoff.checklist?.items ?? [];
-    if (!checklistId) {
+  const selectedHandoff =
+    handoffs.find((handoff) => handoff.id === selectedHandoffId) ?? handoffs[0];
+  let selectedChecklist:
+    | Awaited<ReturnType<typeof loadStageFiveChecklist>>
+    | null = null;
+
+  if (selectedHandoff) {
+    selectedChecklist = await loadStageFiveChecklist(selectedHandoff.id);
+    if (!selectedChecklist) {
       const created = await withPrismaRetry(() =>
         prisma.projectFileChecklist.create({
           data: {
             projectId,
-            handoffId: handoff.id,
-            sourceAttachmentId: handoff.sourceAttachment.id,
+            handoffId: selectedHandoff.id,
+            sourceAttachmentId: selectedHandoff.sourceAttachment.id,
           },
           select: { id: true },
         }),
       );
-      checklistId = created.id;
+      selectedChecklist = { ...created, items: [] };
     }
-    const itemByKey = new Map(checklistItems.map((item) => [item.fieldKey, item]));
-    files.push({
+  }
+
+  const files: StageFiveFileRecord[] = handoffs.map((handoff) => {
+    const checklist =
+      handoff.id === selectedHandoff?.id ? selectedChecklist : null;
+    const checklistItems = checklist?.items ?? [];
+    const itemByKey = new Map(
+      checklistItems.map((item) => [item.fieldKey, item]),
+    );
+
+    return {
       handoffId: handoff.id,
-      checklistId,
+      checklistId: checklist?.id ?? handoff.checklist?.id ?? "",
       sourceAttachment: mapAttachment(handoff.sourceAttachment),
       handedOffAt: handoff.handedOffAt.toISOString(),
-      items: STAGE_FIVE_FIELD_KEYS.map((fieldKey) => {
-        const item = itemByKey.get(fieldKey);
-        const latestRequest = item && "requests" in item ? item.requests[0] : undefined;
-        return {
-          fieldKey,
-          value: item && "value" in item ? parseChecklistValue(item.value) : {},
-          status:
-            item && "status" in item
-              ? item.status
-              : ProjectFileChecklistItemStatus.PENDING,
-          attachments:
-            item && "attachments" in item
-              ? item.attachments.map(({ attachment }) => mapAttachment(attachment))
-              : [],
-          latestRequest: latestRequest
-            ? {
-                status: latestRequest.status,
-                recipient:
-                  latestRequest.recipientName?.trim() ||
-                  latestRequest.recipientUser?.name?.trim() ||
-                  latestRequest.recipientEmail ||
-                  latestRequest.recipientUser?.email ||
-                  "Recipient",
-                requestedAt: latestRequest.requestedAt.toISOString(),
-              }
-            : null,
-        };
-      }),
-    });
-  }
+      items:
+        handoff.id === selectedHandoff?.id
+          ? STAGE_FIVE_FIELD_KEYS.map((fieldKey) => {
+              const item = itemByKey.get(fieldKey);
+              const latestRequest = item?.requests[0];
+              return {
+                fieldKey,
+                value: item ? parseChecklistValue(item.value) : {},
+                status:
+                  item?.status ?? ProjectFileChecklistItemStatus.PENDING,
+                attachments:
+                  item?.attachments.map(({ attachment }) =>
+                    mapAttachment(attachment),
+                  ) ?? [],
+                latestRequest: latestRequest
+                  ? {
+                      status: latestRequest.status,
+                      recipient:
+                        latestRequest.recipientName?.trim() ||
+                        latestRequest.recipientUser?.name?.trim() ||
+                        latestRequest.recipientEmail ||
+                        latestRequest.recipientUser?.email ||
+                        "Recipient",
+                      requestedAt: latestRequest.requestedAt.toISOString(),
+                    }
+                  : null,
+              };
+            })
+          : [],
+    };
+  });
 
   return {
     files,

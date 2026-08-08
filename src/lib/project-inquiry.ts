@@ -36,6 +36,9 @@ import {
   type ProjectPermissionContext,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  getProjectStageAccessRecordById,
+} from "@/lib/project-stage-data";
 import { ensureProjectResearchWorkspaceTx } from "@/lib/project-research";
 import type { ProjectAccessUser } from "@/lib/projects";
 import {
@@ -76,10 +79,6 @@ const projectAccessSelect = {
     },
   },
 } satisfies Prisma.ProjectSelect;
-
-type ProjectAccessRecord = Prisma.ProjectGetPayload<{
-  select: typeof projectAccessSelect;
-}>;
 
 export type ProjectInquiryPartyOption = {
   source: ProjectInquiryPartySource;
@@ -185,7 +184,7 @@ export type CreateContactDirectoryEntryResult =
   | { contact: ProjectInquiryPartyOption }
   | { error: string; fieldErrors?: Partial<Record<keyof CreateContactDirectoryEntryInput, string>> };
 
-function toPermissionContext(project: ProjectAccessRecord): ProjectPermissionContext {
+function toPermissionContext(project: ProjectPermissionContext): ProjectPermissionContext {
   return {
     ownerId: project.ownerId,
     coOwners: project.coOwners,
@@ -317,12 +316,7 @@ function mapSavedParty(party: {
 }
 
 async function getProjectAccessRecord(projectId: string) {
-  return withPrismaRetry(() =>
-    prisma.project.findUnique({
-      where: { id: projectId },
-      select: projectAccessSelect,
-    }),
-  );
+  return getProjectStageAccessRecordById(projectId);
 }
 
 export async function createContactDirectoryEntry(
@@ -386,76 +380,35 @@ export async function getProjectInquiryPageData(
     throw new Error("Project Inquiry is unavailable.");
   }
 
-  const [inquiry, users, contacts, targetMarketHistory, deliverableHistory] =
-    await withPrismaRetry(() =>
-      prisma.$transaction([
-        prisma.projectInquiry.findUnique({
-          where: { projectId },
+  const inquiry = await withPrismaRetry(() =>
+    prisma.projectInquiry.findUnique({
+      where: { projectId },
+      relationLoadStrategy: "join",
+      include: {
+        parties: true,
+        targetMarkets: {
+          orderBy: { createdAt: "asc" },
+        },
+        deliverables: {
+          orderBy: { createdAt: "asc" },
+        },
+        attachments: {
+          orderBy: { createdAt: "asc" },
           include: {
-            parties: true,
-            targetMarkets: {
-              orderBy: { createdAt: "asc" },
-            },
-            deliverables: {
-              orderBy: { createdAt: "asc" },
-            },
-            attachments: {
-              orderBy: { createdAt: "asc" },
-              include: {
-                attachment: {
-                  select: {
-                    id: true,
-                    originalFileName: true,
-                    mimeType: true,
-                    fileSize: true,
-                    status: true,
-                  },
-                },
+            attachment: {
+              select: {
+                id: true,
+                originalFileName: true,
+                mimeType: true,
+                fileSize: true,
+                status: true,
               },
             },
           },
-        }),
-        prisma.user.findMany({
-          orderBy: [{ name: "asc" }, { email: "asc" }],
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            department: true,
-            jobTitle: true,
-            phoneNumber: true,
-          },
-        }),
-        prisma.contactDirectoryEntry.findMany({
-          orderBy: [{ name: "asc" }, { createdAt: "asc" }],
-          select: {
-            id: true,
-            name: true,
-            company: true,
-            position: true,
-            email: true,
-            phone: true,
-          },
-        }),
-        prisma.projectInquiryTargetMarket.findMany({
-          distinct: ["normalizedLabel"],
-          orderBy: [{ normalizedLabel: "asc" }, { createdAt: "desc" }],
-          select: {
-            label: true,
-            kind: true,
-            normalizedLabel: true,
-          },
-        }),
-        prisma.projectInquiryDeliverable.findMany({
-          distinct: ["normalizedLabel"],
-          orderBy: [{ normalizedLabel: "asc" }, { createdAt: "desc" }],
-          select: {
-            label: true,
-            normalizedLabel: true,
-          },
-        }),
-      ]),
-    );
+        },
+      },
+    }),
+  );
 
   let mappedInquiry: ProjectInquiryRecord | null = null;
 
@@ -503,19 +456,13 @@ export async function getProjectInquiryPageData(
 
   return {
     inquiry: mappedInquiry,
-    partyOptions: [
-      ...users.map(mapPartyOptionFromUser),
-      ...contacts.map(mapPartyOptionFromContact),
-    ],
-    targetMarketSuggestions: targetMarketHistory.map((market) => ({
-      label: market.label,
-      kind: market.kind,
-    })),
+    partyOptions: [],
+    targetMarketSuggestions: [],
     countryOptions: [
       PROJECT_INQUIRY_GLOBAL_MARKET_LABEL,
       ...PROJECT_INQUIRY_COUNTRY_OPTIONS,
     ],
-    deliverableSuggestions: deliverableHistory.map((deliverable) => deliverable.label),
+    deliverableSuggestions: [],
     availableCollaborators,
     projectCollaboratorIds: project.collaborators.map(
       (collaborator) => collaborator.userId,
@@ -523,6 +470,124 @@ export async function getProjectInquiryPageData(
     canEdit: hasProjectPermission(user, toPermissionContext(project), "project.update"),
     canInviteCollaborator: hasPermission(user, "collaboration.createUser"),
   };
+}
+
+async function assertProjectInquiryOptionsAccess(
+  user: ProjectAccessUser,
+  projectId: string,
+) {
+  const project = await getProjectAccessRecord(projectId);
+
+  if (
+    !project ||
+    !hasProjectPermission(user, toPermissionContext(project), "stage.view")
+  ) {
+    throw new Error("Project Inquiry is unavailable.");
+  }
+}
+
+export async function searchProjectInquiryPartyOptions(
+  user: ProjectAccessUser,
+  projectId: string,
+  query: string,
+) {
+  await assertProjectInquiryOptionsAccess(user, projectId);
+  const search = query.trim().slice(0, MAX_LABEL_LENGTH);
+  const userWhere = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { email: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { department: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { jobTitle: { contains: search, mode: Prisma.QueryMode.insensitive } },
+        ],
+      }
+    : undefined;
+  const contactWhere = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { company: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { position: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { email: { contains: search, mode: Prisma.QueryMode.insensitive } },
+        ],
+      }
+    : undefined;
+  const [users, contacts] = await Promise.all([
+    withPrismaRetry(() =>
+      prisma.user.findMany({
+        where: userWhere,
+        orderBy: [{ name: "asc" }, { email: "asc" }],
+        take: 30,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          department: true,
+          jobTitle: true,
+          phoneNumber: true,
+        },
+      }),
+    ),
+    withPrismaRetry(() =>
+      prisma.contactDirectoryEntry.findMany({
+        where: contactWhere,
+        orderBy: [{ name: "asc" }, { createdAt: "asc" }],
+        take: 30,
+        select: {
+          id: true,
+          name: true,
+          company: true,
+          position: true,
+          email: true,
+          phone: true,
+        },
+      }),
+    ),
+  ]);
+
+  return [...users.map(mapPartyOptionFromUser), ...contacts.map(mapPartyOptionFromContact)];
+}
+
+export async function searchProjectInquiryHistorySuggestions(
+  user: ProjectAccessUser,
+  projectId: string,
+  kind: "target-market" | "deliverable",
+  query: string,
+) {
+  await assertProjectInquiryOptionsAccess(user, projectId);
+  const normalizedQuery = normalizeProjectInquiryLabel(query).slice(
+    0,
+    MAX_LABEL_LENGTH,
+  );
+
+  if (kind === "target-market") {
+    const markets = await withPrismaRetry(() =>
+      prisma.projectInquiryTargetMarket.findMany({
+        where: normalizedQuery
+          ? { normalizedLabel: { contains: normalizedQuery } }
+          : undefined,
+        distinct: ["normalizedLabel"],
+        orderBy: [{ normalizedLabel: "asc" }, { createdAt: "desc" }],
+        take: 30,
+        select: { label: true },
+      }),
+    );
+    return markets.map((market) => market.label);
+  }
+
+  const deliverables = await withPrismaRetry(() =>
+    prisma.projectInquiryDeliverable.findMany({
+      where: normalizedQuery
+        ? { normalizedLabel: { contains: normalizedQuery } }
+        : undefined,
+      distinct: ["normalizedLabel"],
+      orderBy: [{ normalizedLabel: "asc" }, { createdAt: "desc" }],
+      take: 30,
+      select: { label: true },
+    }),
+  );
+  return deliverables.map((deliverable) => deliverable.label);
 }
 
 function validatePartyInput(

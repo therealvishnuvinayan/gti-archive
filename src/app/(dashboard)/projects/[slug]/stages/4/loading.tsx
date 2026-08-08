@@ -1,10 +1,10 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ConceptStageLoadingShell } from "@/components/projects/concept-stage-workspace";
+import { StageRouteInitialShell } from "@/components/projects/stage-route-shell";
 
 export default function StageFourLoading() {
   return (
     <DashboardLayout>
-      <ConceptStageLoadingShell />
+      <StageRouteInitialShell />
     </DashboardLayout>
   );
 }

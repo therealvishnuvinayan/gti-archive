@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "../.tmp/stage-performance-profile",
+    "rootDir": "..",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "isolatedModules": false,
+    "incremental": false
+  },
+  "include": ["stage-performance-profile.ts"]
+}

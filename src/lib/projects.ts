@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import { cache } from "react";
 import {
   AttachmentStatus,
   AttachmentAssetType,
@@ -61,6 +62,10 @@ import {
 } from "@/lib/permissions/resolver";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  getProjectStageAccessRecordById,
+  type ProjectStageAccessRecord,
+} from "@/lib/project-stage-data";
 import { ensureProjectResearchWorkspace } from "@/lib/project-research";
 import {
   defaultProjectStatusGroupSlugs,
@@ -450,6 +455,18 @@ export type ProjectFlowRecord = {
   chatEntries: ProjectChatEntry[];
   compareNotes: ProjectCompareNote[];
 };
+
+export type ProjectStageShellRecord = Pick<
+  ProjectFlowRecord,
+  | "id"
+  | "ownerId"
+  | "canEdit"
+  | "executors"
+  | "workflowStages"
+  | "canViewParticipants"
+  | "title"
+  | "collaborators"
+>;
 
 export type DashboardProjectCounts = {
   total: number;
@@ -3127,6 +3144,88 @@ export async function getProjectShellById(
   );
 }
 
+function mapProjectToStageShell(
+  project: ProjectStageAccessRecord,
+  currentUser: ProjectAccessUser,
+): ProjectStageShellRecord {
+  const canViewChatVisibilityState = hasProjectPermission(
+    currentUser,
+    project,
+    "collaborator.pauseVisibility",
+  );
+  const canViewParticipants = hasProjectPermission(
+    currentUser,
+    project,
+    "project.viewParticipants",
+  );
+  const rawExecutors = getProjectExecutorRecords(project);
+  const executorsWithVisibleState = canViewChatVisibilityState
+    ? rawExecutors
+    : rawExecutors.map(maskExecutorVisibilityState);
+  const executors = canViewParticipants
+    ? executorsWithVisibleState
+    : executorsWithVisibleState.filter((executor) => executor.id === currentUser.id);
+  const rawCollaborators = project.collaborators
+    .map(mapProjectCollaboratorAssignmentToRecord)
+    .filter(
+      (collaborator, index, records) =>
+        records.findIndex((record) => record.id === collaborator.id) === index,
+    );
+  const collaboratorsWithVisibleState = canViewChatVisibilityState
+    ? rawCollaborators
+    : rawCollaborators.map(maskCollaboratorVisibilityState);
+  const visibleCollaborators = canViewParticipants
+    ? collaboratorsWithVisibleState
+    : collaboratorsWithVisibleState.filter(
+        (collaborator) => collaborator.id === currentUser.id,
+      );
+  const ownerRecords = [
+    ...(project.owner
+      ? [mapProjectOwnerToRecord(project.owner, "Project Owner")]
+      : []),
+    ...project.coOwners.map(({ user }) =>
+      mapProjectOwnerToRecord(user, "Project Co-Owner"),
+    ),
+  ];
+  const visibleOwnerRecords = canViewParticipants
+    ? ownerRecords
+    : ownerRecords.filter((owner) => owner.id === currentUser.id);
+  const editingLocked = Boolean(
+    project.completedAt ||
+      project.archivedAt ||
+      isProjectStatusCompleted(project.status),
+  );
+
+  return {
+    id: project.id,
+    ownerId: project.ownerId,
+    canEdit:
+      !editingLocked &&
+      hasProjectPermission(currentUser, project, "project.update"),
+    executors,
+    workflowStages: project.workflowStages.map((stage) => ({
+      ...stage,
+      unlockedAt: toProjectIsoString(stage.unlockedAt),
+      completedAt: toProjectIsoString(stage.completedAt),
+    })),
+    canViewParticipants,
+    title: project.name,
+    collaborators: [...visibleOwnerRecords, ...visibleCollaborators],
+  };
+}
+
+export const getProjectStageShellById = cache(
+  async (id: string, currentUser: ProjectAccessUser) => {
+    const project = await getProjectStageAccessRecordById(id);
+
+    if (!project || !canAccessProjectRecord(project, currentUser)) {
+      return null;
+    }
+
+    return mapProjectToStageShell(project, currentUser);
+  },
+);
+
 export async function getProjectChatShellById(
   id: string,
   currentUser: ProjectAccessUser,
@@ -3189,6 +3288,10 @@ export async function getProjectChatShellById(
               },
             },
             stages: {
+              where:
+                taskerStageIds.length > 0
+                  ? { id: { in: taskerStageIds } }
+                  : undefined,
               orderBy: {
                 order: "asc",
               },
@@ -3240,6 +3343,10 @@ export async function getProjectChatShellById(
             },
             attachments: {
               where: {
+                stageId:
+                  taskerStageIds.length > 0
+                    ? { in: taskerStageIds }
+                    : undefined,
                 assetType: {
                   in: [
                     "GENERAL_PROJECT_ASSET" as AttachmentAssetType,

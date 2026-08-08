@@ -15,7 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ProjectFlowRecord } from "@/lib/projects";
+import type { ProjectStageShellRecord } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 
 export type ProjectSummaryPerson = {
@@ -215,7 +215,7 @@ export function ProjectFlowSummaryStrip({
   className,
   columns,
 }: {
-  project: ProjectFlowRecord;
+  project: ProjectStageShellRecord;
   className?: string;
   columns?: ProjectSummaryStripProps["columns"];
 }) {

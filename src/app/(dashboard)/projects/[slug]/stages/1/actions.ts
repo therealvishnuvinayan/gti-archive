@@ -6,6 +6,8 @@ import { requireUser } from "@/lib/auth";
 import {
   completeProjectInquiry,
   createContactDirectoryEntry,
+  searchProjectInquiryHistorySuggestions,
+  searchProjectInquiryPartyOptions,
   type CompleteProjectInquiryInput,
   type CompleteProjectInquiryResult,
   type CreateContactDirectoryEntryInput,
@@ -27,6 +29,23 @@ export async function createContactDirectoryEntryAction(
       error: "Unable to save the contact right now. Please try again.",
     };
   }
+}
+
+export async function searchProjectInquiryPartyOptionsAction(
+  projectId: string,
+  query: string,
+) {
+  const user = await requireUser();
+  return searchProjectInquiryPartyOptions(user, projectId, query);
+}
+
+export async function searchProjectInquiryHistorySuggestionsAction(
+  projectId: string,
+  kind: "target-market" | "deliverable",
+  query: string,
+) {
+  const user = await requireUser();
+  return searchProjectInquiryHistorySuggestions(user, projectId, kind, query);
 }
 
 export async function completeProjectInquiryAction(

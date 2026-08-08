@@ -227,7 +227,7 @@ assert(
   "The overview CTA should open the dedicated implemented stage route.",
 );
 assert(
-  stagePage.includes("getProjectShellById") &&
+  stagePage.includes("getProjectStageShellById") &&
     stagePage.includes("getProjectInquiryPageData") &&
     stagePage.includes("StageOneWorkspace"),
   "The Stage 1 route should load the project shell and persisted inquiry data.",

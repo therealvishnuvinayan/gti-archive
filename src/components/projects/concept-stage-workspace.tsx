@@ -35,7 +35,7 @@ import type {
   ConceptWorkflowStageKey,
   ProjectConceptFolderRecord,
 } from "@/lib/project-concepts";
-import type { ProjectFlowRecord } from "@/lib/projects";
+import type { ProjectStageShellRecord } from "@/lib/projects";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageFourHandoffFileRecord } from "@/lib/stage-five";
 
@@ -277,17 +277,19 @@ export function ConceptStageWorkspace({
   currentUserId,
   initialFolders,
   stageFourHandoffData,
+  showChrome = true,
 }: {
   stageNumber: 3 | 4;
   stageTitle: string;
   stageKey: ConceptWorkflowStageKey;
-  project: ProjectFlowRecord;
+  project: ProjectStageShellRecord;
   currentUserId: string;
   initialFolders: ProjectConceptFolderRecord[];
   stageFourHandoffData?: {
     files: StageFourHandoffFileRecord[];
     canHandoff: boolean;
   };
+  showChrome?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -343,9 +345,11 @@ export function ConceptStageWorkspace({
 
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-8">
-      <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      {showChrome ? (
+        <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      ) : null}
 
-      <header>
+      {showChrome ? <header>
         <div className="flex items-center gap-2 text-[11px] font-[780] uppercase tracking-[0.12em] text-[#2f8057]">
           <FolderKanban className="h-4 w-4" />
           Concept Workspace
@@ -356,9 +360,9 @@ export function ConceptStageWorkspace({
         <p className="mt-3 text-[14px] leading-6 text-[#68736b]">
           Create and manage concept folders.
         </p>
-      </header>
+      </header> : null}
 
-      <ProjectFlowSummaryStrip project={project} />
+      {showChrome ? <ProjectFlowSummaryStrip project={project} /> : null}
 
       {stageNumber === 4 && stageFourHandoffData?.canHandoff ? (
         <StageFourFinalFileHandoff

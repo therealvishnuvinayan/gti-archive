@@ -319,9 +319,11 @@ function NewFolderDialog({
 export function StageTwoWorkspace({
   data,
   currentUserId,
+  showChrome = true,
 }: {
   data: NonNullable<ProjectResearchPageData>;
   currentUserId: string;
+  showChrome?: boolean;
 }) {
   const router = useRouter();
   const [view, setView] = useState<FolderView>("grid");
@@ -456,18 +458,20 @@ export function StageTwoWorkspace({
         if (event.dataTransfer.types.includes("Files")) event.preventDefault();
       }}
     >
-      <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
+      {showChrome ? (
+        <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
+      ) : null}
       <Card className="overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
         <CardContent className="p-0">
           <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
-            <div className="flex items-center gap-2 text-[11px] font-[760] uppercase tracking-[0.13em] text-[#4d765d]">
+            {showChrome ? <div className="flex items-center gap-2 text-[11px] font-[760] uppercase tracking-[0.13em] text-[#4d765d]">
               <FolderKanban className="h-4 w-4" /> Shared research workspace
-            </div>
-            <h1 className="mt-3 text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
+            </div> : null}
+            {showChrome ? <h1 className="mt-3 text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
               Stage 2 - Project Research and Planning
-            </h1>
-            <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <ProjectSummary data={data} />
+            </h1> : null}
+            <div className={cn("grid gap-5", showChrome ? "mt-6 xl:grid-cols-[minmax(0,1fr)_340px]" : "xl:grid-cols-[minmax(0,1fr)_340px]")}>
+              {showChrome ? <ProjectSummary data={data} /> : <div />}
               <WorkspaceSwitch data={data} />
             </div>
           </div>

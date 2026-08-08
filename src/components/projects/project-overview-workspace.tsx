@@ -12,11 +12,11 @@ import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-s
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ProjectFlowRecord } from "@/lib/projects";
+import type { ProjectStageShellRecord } from "@/lib/projects";
 import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
 
 type ProjectOverviewWorkspaceProps = {
-  project: ProjectFlowRecord;
+  project: ProjectStageShellRecord;
   currentUserId: string;
   canBypassLockedStages: boolean;
 };
@@ -37,7 +37,7 @@ export function ProjectOverviewHeader({ projectName }: { projectName: string }) 
   );
 }
 
-export function ProjectSummaryCard({ project }: { project: ProjectFlowRecord }) {
+export function ProjectSummaryCard({ project }: { project: ProjectStageShellRecord }) {
   return <ProjectFlowSummaryStrip project={project} className="mt-5" />;
 }
 
@@ -49,7 +49,7 @@ export function StageOverviewCard({
 }: {
   stage: ProjectOverviewStage;
   projectId: string;
-  workflowStage: ProjectFlowRecord["workflowStages"][number] | null;
+  workflowStage: ProjectStageShellRecord["workflowStages"][number] | null;
   canBypassLockedStage?: boolean;
 }) {
   const status = workflowStage?.status ?? "LOCKED";
@@ -155,7 +155,7 @@ export function ProjectStageGrid({
   project,
   canBypassLockedStages = false,
 }: {
-  project: ProjectFlowRecord;
+  project: ProjectStageShellRecord;
   canBypassLockedStages?: boolean;
 }) {
   return (
