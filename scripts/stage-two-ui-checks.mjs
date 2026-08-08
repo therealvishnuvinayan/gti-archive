@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, actions, service, access, files, uploadClient, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
+const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, actions, service, access, files, uploadClient, textFile, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
   readFile("src/components/projects/stage-two-workspace.tsx", "utf8"),
   readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/components/projects/stage-two-folder-workspace.tsx", "utf8"),
@@ -13,6 +13,7 @@ const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, acti
   readFile("src/lib/project-research-access.ts", "utf8"),
   readFile("src/lib/project-research-files.ts", "utf8"),
   readFile("src/lib/project-research-upload-client.ts", "utf8"),
+  readFile("src/lib/project-research-text-file.ts", "utf8"),
   readFile("prisma/migrations/20260807210000_project_research_workspaces/migration.sql", "utf8"),
   readFile("prisma/schema.prisma", "utf8"),
   readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
@@ -127,8 +128,38 @@ assert(
   "Delete must use the custom destructive confirmation dialog instead of the browser prompt.",
 );
 assert(
+  folderWorkspace.includes("> New <") &&
+    folderWorkspace.includes("Upload Files") &&
+    folderWorkspace.includes("New Text File") &&
+    folderWorkspace.includes("Add to folder"),
+  "Writable opened folders must expose a compact New menu for uploads and text files.",
+);
+assert(
+  folderWorkspace.includes('new window.File([input.content], input.fileName') &&
+    folderWorkspace.includes('type: "text/plain"') &&
+    folderWorkspace.includes("createdTextFile: true") &&
+    folderWorkspace.includes("setFiles((current) => [uploadedFile as FolderFile, ...current])"),
+  "New text files must reuse the real upload pipeline and appear immediately.",
+);
+assert(
+  folderWorkspace.includes("normalizeProjectResearchTextFileName") &&
+    folderWorkspace.includes("validateProjectResearchTextContent") &&
+    folderWorkspace.includes("Plain UTF-8 text only. Line breaks are preserved.") &&
+    textFile.includes('endsWith(".txt")') &&
+    textFile.includes("invalidFileNameCharacters") &&
+    textFile.includes("new TextEncoder().encode(value).byteLength"),
+  "Text-file creation must validate safe .txt names and byte-limited multiline UTF-8 content.",
+);
+assert(
+  folderWorkspace.includes("!data.canWrite") &&
+    uploadRoute.includes("validatePreparedProjectResearchTextFile") &&
+    uploadClient.includes("createdTextFile") &&
+    access.includes("assertResearchFolderWriteAccess"),
+  "Text-file creation must retain both UI and server-side Stage 2 write authorization.",
+);
+assert(
   folderWorkspace.includes("No files yet") &&
-    folderWorkspace.includes("Drag files here or upload files") &&
+    folderWorkspace.includes("Drag files here or use New") &&
     folderWorkspace.includes("setFiles((current) => [uploadedFile as FolderFile, ...current])") &&
     !folderWorkspace.includes("router.refresh"),
   "Empty folders must guide upload and successful uploads must appear without a full refresh.",
@@ -154,6 +185,10 @@ assert(schema.includes("model ProjectResearchWorkspace") && schema.includes("mod
 assert(migration.includes("ON CONFLICT") && migration.includes('FROM "ProjectCollaborator"'), "Migration participant backfill must be idempotent and include ProjectCollaborator.");
 assert(migration.includes("'workflow:' || project.\"id\"") && migration.includes('ON CONFLICT ("projectId", "stageKey") DO NOTHING'), "Stage 2 migration must reconcile missing fixed-workflow rows idempotently.");
 assert(!schema.includes("parentFolderId") && !migration.includes('ALTER TABLE "ProjectStage"'), "Stage 2 must remain flat and must not mutate legacy ProjectStage.");
+assert(
+  !schema.includes("model TextDocument") && !schema.includes("model Note"),
+  "Plain-text files must not introduce a separate note or document model.",
+);
 assert(overview.includes("stage.number >= 1 && stage.number <= 7") && overview.includes("Available · Stage UI coming next"), "Overview must expose all seven implemented stage UI routes while retaining the safe fallback for any future non-linked stage.");
 
 console.log("Stage 2 connected UI and architecture checks passed.");

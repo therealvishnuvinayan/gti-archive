@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   Check,
@@ -28,6 +29,7 @@ import {
   Loader2,
   LockKeyhole,
   MoreVertical,
+  Plus,
   Presentation,
   Search,
   SlidersHorizontal,
@@ -49,6 +51,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  normalizeProjectResearchTextFileName,
+  PROJECT_RESEARCH_TEXT_FILE_MAX_BYTES,
+  validateProjectResearchTextContent,
+} from "@/lib/project-research-text-file";
 import { uploadProjectResearchFile } from "@/lib/project-research-upload-client";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -313,6 +321,147 @@ function FileGalleryCard({
   );
 }
 
+function NewTextFileDialog({
+  pending,
+  progress,
+  submitError,
+  onSave,
+  onClose,
+}: {
+  pending: boolean;
+  progress: number;
+  submitError?: string;
+  onSave: (input: { fileName: string; content: string }) => void;
+  onClose: () => void;
+}) {
+  const [fileName, setFileName] = useState("");
+  const [content, setContent] = useState("");
+  const [fileNameError, setFileNameError] = useState<string>();
+  const [contentError, setContentError] = useState<string>();
+
+  function save() {
+    const normalizedName = normalizeProjectResearchTextFileName(fileName);
+    const validatedContent = validateProjectResearchTextContent(content);
+    setFileNameError("error" in normalizedName ? normalizedName.error : undefined);
+    setContentError("error" in validatedContent ? validatedContent.error : undefined);
+
+    if ("error" in normalizedName || "error" in validatedContent) return;
+    onSave({ fileName: normalizedName.fileName, content });
+  }
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-text-file-title"
+    >
+      <Card className="flex max-h-[90vh] w-full max-w-[720px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
+        <CardContent className="min-h-0 overflow-y-auto p-6 sm:p-7">
+          <div className="flex items-start gap-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#eaf4ec] text-[#2e754f]">
+              <FileText className="h-5 w-5" />
+            </span>
+            <div>
+              <h2
+                id="new-text-file-title"
+                className="text-[22px] font-[760] tracking-[-0.03em] text-[#162019]"
+              >
+                New Text File
+              </h2>
+              <p className="mt-1 text-[12px] text-[#738078]">
+                Create a simple plain-text file in this folder.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-5">
+            <label className="block space-y-2">
+              <span className="text-[12px] font-[700] text-[#2d372f]">File Name</span>
+              <Input
+                autoFocus
+                value={fileName}
+                onChange={(event) => {
+                  setFileName(event.target.value);
+                  setFileNameError(undefined);
+                }}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") save();
+                }}
+                placeholder="e.g., Market research notes"
+                maxLength={180}
+                aria-invalid={Boolean(fileNameError)}
+                className={cn("h-11 rounded-[12px]", fileNameError && "border-[#c85c54]")}
+              />
+              <p className={cn("text-[11px]", fileNameError ? "text-[#b84e48]" : "text-[#7b867e]") }>
+                {fileNameError ?? "The .txt extension is added automatically."}
+              </p>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-[12px] font-[700] text-[#2d372f]">Content</span>
+              <Textarea
+                value={content}
+                onChange={(event) => {
+                  setContent(event.target.value);
+                  setContentError(undefined);
+                }}
+                placeholder="Type or paste plain text here..."
+                maxLength={PROJECT_RESEARCH_TEXT_FILE_MAX_BYTES}
+                aria-invalid={Boolean(contentError)}
+                className={cn(
+                  "min-h-[280px] resize-y rounded-[16px] border-[#dce3dc] font-mono text-[13px] leading-6",
+                  contentError && "border-[#c85c54]",
+                )}
+              />
+              <div className="flex items-center justify-between gap-3 text-[11px]">
+                <span className={contentError ? "text-[#b84e48]" : "text-[#7b867e]"}>
+                  {contentError ?? "Plain UTF-8 text only. Line breaks are preserved."}
+                </span>
+                <span className="shrink-0 text-[#8a948d]">Maximum 1 MB</span>
+              </div>
+            </label>
+          </div>
+
+          {submitError ? (
+            <div className="mt-5 rounded-[14px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] text-[#bb4d49]">
+              {submitError}
+            </div>
+          ) : null}
+
+          {pending ? (
+            <div className="mt-5">
+              <div className="mb-1.5 flex items-center justify-between text-[11px] text-[#657169]">
+                <span>Saving text file...</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[#e4eae5]">
+                <div
+                  className="h-full rounded-full bg-[#2b8056] transition-all"
+                  style={{ width: `${Math.max(5, progress)}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-7 flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={save} disabled={pending}>
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {pending ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>,
+    document.body,
+  );
+}
+
 export function StageTwoFolderWorkspace({
   data,
   currentUserId,
@@ -336,6 +485,10 @@ export function StageTwoFolderWorkspace({
   const [previewFile, setPreviewFile] = useState<FolderFile>();
   const [fileToDelete, setFileToDelete] = useState<FolderFile>();
   const [deleteError, setDeleteError] = useState<string>();
+  const [textFileDialogOpen, setTextFileDialogOpen] = useState(false);
+  const [textFilePending, setTextFilePending] = useState(false);
+  const [textFileProgress, setTextFileProgress] = useState(0);
+  const [textFileError, setTextFileError] = useState<string>();
   const baseApi = `/api/projects/${data.project.id}/research/folders/${data.folder.id}`;
 
   const visibleFiles = useMemo(() => {
@@ -431,6 +584,35 @@ export function StageTwoFolderWorkspace({
     }
   }
 
+  async function createTextFile(input: { fileName: string; content: string }) {
+    if (!data.canWrite) return;
+    setTextFilePending(true);
+    setTextFileProgress(0);
+    setTextFileError(undefined);
+
+    try {
+      const textFile = new window.File([input.content], input.fileName, {
+        type: "text/plain",
+      });
+      const uploadedFile = await uploadProjectResearchFile({
+        projectId: data.project.id,
+        folderId: data.folder.id,
+        file: textFile,
+        createdTextFile: true,
+        onProgress: setTextFileProgress,
+      });
+      setFiles((current) => [uploadedFile as FolderFile, ...current]);
+      setTextFileDialogOpen(false);
+      showSuccessToast("Text file created.", `${uploadedFile.name} was saved to this folder.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to create text file.";
+      setTextFileError(message);
+      showErrorToast(message);
+    } finally {
+      setTextFilePending(false);
+    }
+  }
+
   function isFileDrag(event: DragEvent<HTMLElement>) {
     return event.dataTransfer.types.includes("Files");
   }
@@ -474,9 +656,27 @@ export function StageTwoFolderWorkspace({
                     <LockKeyhole className="h-3.5 w-3.5" /> Read-only workspace
                   </span>
                 ) : (
-                  <Button type="button" className="h-10 rounded-[11px]" onClick={() => inputRef.current?.click()}>
-                    <Upload className="h-4 w-4" /> Upload Files
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" className="h-10 rounded-[11px]">
+                        <Plus className="h-4 w-4" /> New <ChevronDown className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[200px]">
+                      <DropdownMenuLabel>Add to folder</DropdownMenuLabel>
+                      <DropdownMenuItem onSelect={() => inputRef.current?.click()}>
+                        <Upload className="h-4 w-4" /> Upload Files
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setTextFileError(undefined);
+                          setTextFileDialogOpen(true);
+                        }}
+                      >
+                        <FileText className="h-4 w-4" /> New Text File
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
                 <div className="inline-flex rounded-[11px] border border-[#dce3dc] bg-white p-1">
                   {(["grid", "list"] as FileView[]).map((option) => (
@@ -608,14 +808,9 @@ export function StageTwoFolderWorkspace({
                   {query
                     ? "Try another file name."
                     : data.canWrite
-                      ? `Drag files here or upload files to ${data.folder.name}.`
+                      ? `Drag files here or use New to add files to ${data.folder.name}.`
                       : "This folder does not contain any files yet."}
                 </p>
-                {!query && data.canWrite ? (
-                  <Button type="button" className="mt-5 rounded-[11px]" onClick={() => inputRef.current?.click()}>
-                    <Upload className="h-4 w-4" /> Upload Files
-                  </Button>
-                ) : null}
               </div>
             ) : view === "grid" ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))] gap-4">
@@ -696,6 +891,20 @@ export function StageTwoFolderWorkspace({
           previewPath={`/api/project-assets/${previewFile.attachmentId}/preview`}
           downloadPath={`${baseApi}/files/${previewFile.id}/download`}
           onClose={() => setPreviewFile(undefined)}
+        />
+      ) : null}
+
+      {textFileDialogOpen ? (
+        <NewTextFileDialog
+          pending={textFilePending}
+          progress={textFileProgress}
+          submitError={textFileError}
+          onSave={(input) => void createTextFile(input)}
+          onClose={() => {
+            if (textFilePending) return;
+            setTextFileDialogOpen(false);
+            setTextFileError(undefined);
+          }}
         />
       ) : null}
 

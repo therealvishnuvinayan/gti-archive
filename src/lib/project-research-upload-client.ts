@@ -47,11 +47,13 @@ export async function uploadProjectResearchFile({
   folderId,
   file,
   onProgress,
+  createdTextFile = false,
 }: {
   projectId: string;
   folderId: string;
   file: File;
   onProgress: (progress: number) => void;
+  createdTextFile?: boolean;
 }) {
   const baseApi = `/api/projects/${projectId}/research/folders/${folderId}`;
   let attachmentId: string | undefined;
@@ -64,6 +66,7 @@ export async function uploadProjectResearchFile({
         originalFileName: file.name,
         mimeType: file.type || "application/octet-stream",
         fileSize: file.size,
+        createdTextFile,
       }),
     });
     const upload = (await response.json()) as UploadRequestPayload;
