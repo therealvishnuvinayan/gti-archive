@@ -13,6 +13,8 @@ export type ProjectContactForm = Required<CreateContactDirectoryEntryInput>;
 type ProjectContactDialogProps = {
   isOpen: boolean;
   title: string;
+  description: string;
+  submitLabel: string;
   form: ProjectContactForm;
   fieldErrors?: Partial<Record<keyof ProjectContactForm, string>>;
   error?: string;
@@ -28,6 +30,8 @@ type ProjectContactDialogProps = {
 export function ProjectContactDialog({
   isOpen,
   title,
+  description,
+  submitLabel,
   form,
   fieldErrors,
   error,
@@ -77,7 +81,7 @@ export function ProjectContactDialog({
                 {title}
               </h2>
               <p className="mt-1 text-[13px] leading-5 text-[#6a746d]">
-                Save this person or entity to the reusable contact directory.
+                {description}
               </p>
             </div>
             <Button
@@ -174,7 +178,7 @@ export function ProjectContactDialog({
               disabled={saving}
               className="rounded-[13px]"
             >
-              {saving ? "Saving..." : "Save contact"}
+              {saving ? "Adding..." : submitLabel}
             </Button>
           </div>
         </CardContent>

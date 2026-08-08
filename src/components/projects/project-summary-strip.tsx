@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   BriefcaseBusiness,
   Building2,
@@ -35,7 +36,9 @@ type ProjectSummaryStripProps = {
   className?: string;
 };
 
-const MAX_VISIBLE_PEOPLE = 2;
+const COMPACT_VISIBLE_PEOPLE = 1;
+const ROOMY_VISIBLE_PEOPLE = 2;
+const TWO_NAME_MINIMUM_WIDTH = 240;
 
 function getInitials(name: string) {
   return (
@@ -84,16 +87,41 @@ export function ProjectPeopleSummary({
   groupLabel: string;
   emptyLabel?: string;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [visibleLimit, setVisibleLimit] = useState(COMPACT_VISIBLE_PEOPLE);
+
+  useLayoutEffect(() => {
+    const element = rootRef.current;
+    if (!element) return;
+
+    function updateVisibleLimit(width: number) {
+      setVisibleLimit(
+        width >= TWO_NAME_MINIMUM_WIDTH
+          ? ROOMY_VISIBLE_PEOPLE
+          : COMPACT_VISIBLE_PEOPLE,
+      );
+    }
+
+    updateVisibleLimit(element.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) updateVisibleLimit(entry.contentRect.width);
+    });
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
   if (!people.length) {
     return <span className="text-[#89928b]">{emptyLabel}</span>;
   }
 
-  const visiblePeople = people.slice(0, MAX_VISIBLE_PEOPLE);
+  const visiblePeople = people.slice(0, visibleLimit);
   const remainingCount = people.length - visiblePeople.length;
   const visibleNames = visiblePeople.map((person) => person.name).join(", ");
 
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div ref={rootRef} className="flex min-w-0 items-center gap-2">
       <span className="min-w-0 truncate" title={visibleNames}>
         {visibleNames}
       </span>

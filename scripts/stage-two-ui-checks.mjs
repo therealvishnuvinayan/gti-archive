@@ -26,7 +26,8 @@ const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, acti
 assert(
   workspace.includes("ProjectSummaryStrip") &&
     workspace.includes('columns="two"') &&
-    summary.includes("const MAX_VISIBLE_PEOPLE = 2"),
+    summary.includes("const COMPACT_VISIBLE_PEOPLE = 1") &&
+    summary.includes("const ROOMY_VISIBLE_PEOPLE = 2"),
   "Stage 2 must reuse the compact shared participant summary in its two-column panel.",
 );
 
@@ -152,6 +153,12 @@ assert(
     folderWorkspace.includes("createdTextFile: true") &&
     folderWorkspace.includes("setFiles((current) => [uploadedFile as FolderFile, ...current])"),
   "New text files must reuse the real upload pipeline and appear immediately.",
+);
+assert(
+  folderWorkspace.includes("max-h-[calc(100dvh-2rem)]") &&
+    folderWorkspace.includes("min-h-0 flex-1 overflow-y-auto") &&
+    folderWorkspace.includes("flex shrink-0 justify-end gap-3 border-t"),
+  "The New Text File dialog must scroll only its content and keep Save/Cancel visible.",
 );
 assert(
   folderWorkspace.includes("normalizeProjectResearchTextFileName") &&

@@ -126,20 +126,30 @@ export function ProjectUserSelector({
   }, [mode, query, selectedIdSet, users]);
 
   useEffect(() => {
-    function handlePointerDown(event: MouseEvent) {
+    function handlePointerDown(event: PointerEvent) {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         setQuery("");
       }
     }
 
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, []);
 
   function openSelector() {
     setIsOpen(true);
     window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function toggleSelector() {
+    if (isOpen) {
+      setIsOpen(false);
+      setQuery("");
+      return;
+    }
+
+    openSelector();
   }
 
   function selectUser(userId: string) {
@@ -235,9 +245,9 @@ export function ProjectUserSelector({
 
         <button
           type="button"
-          onClick={openSelector}
+          onClick={toggleSelector}
           className="grid size-8 shrink-0 place-items-center rounded-full text-[#657068] hover:bg-[#f0f3ef]"
-          aria-label={`Open ${ariaLabel}`}
+          aria-label={`${isOpen ? "Close" : "Open"} ${ariaLabel}`}
         >
           <ChevronDown
             className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")}

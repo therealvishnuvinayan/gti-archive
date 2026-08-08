@@ -40,10 +40,12 @@ assert(
   "Project Overview must reuse the compact shared summary instead of a vertical local design.",
 );
 assert(
-  summary.includes("const MAX_VISIBLE_PEOPLE = 2") &&
-    summary.includes("people.slice(0, MAX_VISIBLE_PEOPLE)") &&
+  summary.includes("const COMPACT_VISIBLE_PEOPLE = 1") &&
+    summary.includes("const ROOMY_VISIBLE_PEOPLE = 2") &&
+    summary.includes("new ResizeObserver") &&
+    summary.includes("people.slice(0, visibleLimit)") &&
     summary.includes("+{remainingCount}"),
-  "Shared people summaries must display at most two names followed by +N.",
+  "Shared people summaries must responsively display one or two names followed by +N.",
 );
 assert(
   summary.includes("DropdownMenuTrigger asChild") &&

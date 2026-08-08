@@ -352,13 +352,14 @@ function NewTextFileDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-[#112118]/45 px-4 py-4 backdrop-blur-[2px] sm:items-center sm:py-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-text-file-title"
     >
-      <Card className="flex max-h-[90vh] w-full max-w-[720px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
-        <CardContent className="min-h-0 overflow-y-auto p-6 sm:p-7">
+      <Card className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[720px] flex-col overflow-hidden rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)] sm:max-h-[90dvh]">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+          <div className="min-h-0 flex-1 overflow-y-auto p-6 sm:p-7">
           <div className="flex items-start gap-3">
             <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#eaf4ec] text-[#2e754f]">
               <FileText className="h-5 w-5" />
@@ -444,8 +445,9 @@ function NewTextFileDialog({
               </div>
             </div>
           ) : null}
+          </div>
 
-          <div className="mt-7 flex justify-end gap-3">
+          <div className="flex shrink-0 justify-end gap-3 border-t border-[#e3e9e4] bg-white px-6 py-4 shadow-[0_-10px_24px_rgba(20,36,25,0.045)] sm:px-7">
             <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
               Cancel
             </Button>

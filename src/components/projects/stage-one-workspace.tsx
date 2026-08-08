@@ -377,6 +377,10 @@ function MultiEntryInput({
 }) {
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(
+    suggestions.length > 0 || !onSearchSuggestions,
+  );
   const rootRef = useRef<HTMLDivElement | null>(null);
   const normalizedValues = useMemo(
     () => new Set(values.map((value) => value.trim().toLocaleLowerCase("en"))),
@@ -391,7 +395,10 @@ function MultiEntryInput({
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        setSearching(false);
+      }
     }
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
@@ -401,7 +408,12 @@ function MultiEntryInput({
     if (!open || disabled || !onSearchSuggestions) return;
     let cancelled = false;
     const timeoutId = window.setTimeout(() => {
-      if (!cancelled) void onSearchSuggestions(draft);
+      void onSearchSuggestions(draft).finally(() => {
+        if (!cancelled) {
+          setSearching(false);
+          setSuggestionsLoaded(true);
+        }
+      });
     }, 180);
 
     return () => {
@@ -409,6 +421,24 @@ function MultiEntryInput({
       window.clearTimeout(timeoutId);
     };
   }, [disabled, draft, onSearchSuggestions, open]);
+
+  function openSuggestions() {
+    setOpen(true);
+    if (onSearchSuggestions) {
+      setSearching(true);
+      setSuggestionsLoaded(false);
+    }
+  }
+
+  function toggleSuggestions() {
+    if (open) {
+      setOpen(false);
+      setSearching(false);
+      return;
+    }
+
+    openSuggestions();
+  }
 
   function add(value: string) {
     const normalized = value.trim();
@@ -419,6 +449,7 @@ function MultiEntryInput({
     onChange([...values, normalized]);
     setDraft("");
     setOpen(false);
+    setSearching(false);
   }
 
   return (
@@ -454,9 +485,9 @@ function MultiEntryInput({
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
-            setOpen(true);
+            openSuggestions();
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={openSuggestions}
           onBlur={() => {
             window.setTimeout(() => {
               if (draft.trim()) add(draft);
@@ -474,27 +505,49 @@ function MultiEntryInput({
           placeholder={placeholder}
           className="h-7 min-w-[150px] flex-1 bg-transparent px-1 text-[13px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
         />
-        <ChevronDown className="h-4 w-4 shrink-0 text-[#59645d]" />
+        {!disabled &&
+        (filteredSuggestions.length > 0 || searching || !suggestionsLoaded) ? (
+          <button
+            type="button"
+            aria-label={`${open ? "Close" : "Open"} ${ariaLabel} suggestions`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={toggleSuggestions}
+            className="grid size-7 shrink-0 place-items-center rounded-full text-[#59645d] transition hover:bg-[#eef3ef]"
+          >
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          </button>
+        ) : null}
       </div>
-      {open && !disabled && filteredSuggestions.length ? (
+      {open && !disabled && (searching || filteredSuggestions.length > 0) ? (
         <div
           role="listbox"
           aria-label={`${ariaLabel} suggestions`}
           className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[250px] touch-pan-y overflow-y-auto overscroll-contain rounded-[16px] border border-[#dce3dc] bg-white p-1.5 [scrollbar-gutter:stable] shadow-[0_18px_44px_rgba(17,33,23,0.13)]"
         >
-          {filteredSuggestions.map((suggestion) => (
-            <button
-              key={suggestion.toLocaleLowerCase("en")}
-              type="button"
-              role="option"
-              aria-selected="false"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => add(suggestion)}
-              className="block w-full rounded-[11px] px-3 py-2 text-left text-[13px] text-[#2d372f] hover:bg-[#f2f6f2]"
-            >
-              {suggestion}
-            </button>
-          ))}
+          {searching ? (
+            <p className="px-3 py-5 text-center text-[12px] text-[#7b857e]">
+              Loading suggestions...
+            </p>
+          ) : (
+            filteredSuggestions.map((suggestion) => (
+              <button
+                key={suggestion.toLocaleLowerCase("en")}
+                type="button"
+                role="option"
+                aria-selected="false"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => add(suggestion)}
+                className="block w-full rounded-[11px] px-3 py-2 text-left text-[13px] text-[#2d372f] hover:bg-[#f2f6f2]"
+              >
+                {suggestion}
+              </button>
+            ))
+          )}
         </div>
       ) : null}
     </div>
@@ -958,7 +1011,7 @@ export function StageOneWorkspace({
 
     if (Object.keys(validation.fieldErrors).length > 0) {
       setContactErrors(validation.fieldErrors);
-      setContactError("Review the highlighted contact fields.");
+      setContactError("Review the highlighted details.");
       return;
     }
 
@@ -981,9 +1034,15 @@ export function StageOneWorkspace({
         clearFieldError("finalBeneficiary");
       }
       setContactTarget(null);
-      showSuccessToast("Contact saved to the directory.");
+      showSuccessToast(
+        contactTarget === "client"
+          ? "Client added."
+          : "Beneficiary added.",
+      );
     } catch {
-      setContactError("Unable to save the contact right now. Please try again.");
+      setContactError(
+        `Unable to add the ${contactTarget === "client" ? "client" : "beneficiary"} right now. Please try again.`,
+      );
     } finally {
       setContactSaving(false);
     }
@@ -1408,7 +1467,13 @@ export function StageOneWorkspace({
 
       <ProjectContactDialog
         isOpen={contactTarget !== null}
-        title={contactTarget === "client" ? "Add client manually" : "Add final beneficiary manually"}
+        title={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}
+        description={
+          contactTarget === "client"
+            ? "Enter the client details. The client will also be available in the contact directory."
+            : "Enter the beneficiary details. The beneficiary will also be available in the contact directory."
+        }
+        submitLabel={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}
         form={contactForm}
         fieldErrors={contactErrors}
         error={contactError}

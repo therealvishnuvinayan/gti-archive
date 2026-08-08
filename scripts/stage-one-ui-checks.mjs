@@ -77,6 +77,19 @@ assert(
   "Key Business Objectives must support multiple persisted tag-style entries in edit and view modes.",
 );
 assert(
+  workspace.includes("onClick={toggleSuggestions}") &&
+    workspace.includes("Loading suggestions...") &&
+    workspace.includes("!suggestionsLoaded") &&
+    workspace.includes("filteredSuggestions.length > 0"),
+  "Deliverable and target-market chevrons must open real suggestions and disappear after an empty result.",
+);
+assert(
+  workspace.includes('title={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}') &&
+    workspace.includes('submitLabel={contactTarget === "client" ? "Add Client" : "Add Beneficiary"}') &&
+    !workspace.includes("Save contact"),
+  "Manual client and beneficiary dialogs must use contextual headings and add actions.",
+);
+assert(
   workspace.includes('router.push(`/projects/${project.id}/stages/2`)') &&
     !workspace.includes('router.push(`/projects/${project.id}`)'),
   "Completing Stage 1 must open Stage 2 directly instead of the project overview.",
@@ -84,9 +97,11 @@ assert(
 
 assert(
   workspace.includes("ProjectFlowSummaryStrip") &&
-    summary.includes("const MAX_VISIBLE_PEOPLE = 2") &&
+    summary.includes("const COMPACT_VISIBLE_PEOPLE = 1") &&
+    summary.includes("const ROOMY_VISIBLE_PEOPLE = 2") &&
+    summary.includes("new ResizeObserver") &&
     summary.includes("DropdownMenuTrigger asChild"),
-  "Stage 1 must reuse the shared two-name participant overflow summary.",
+  "Stage 1 must reuse the shared responsive participant overflow summary.",
 );
 
 for (const field of [
