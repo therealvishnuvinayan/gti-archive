@@ -979,7 +979,7 @@ export function StageOneWorkspace({
         return;
       }
       showSuccessToast("Project Inquiry completed.", "Stage 2 is now available.");
-      router.push(`/projects/${project.id}`);
+      router.push(`/projects/${project.id}/stages/2`);
       router.refresh();
     });
   }

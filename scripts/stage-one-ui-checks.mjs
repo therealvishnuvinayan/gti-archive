@@ -76,6 +76,11 @@ assert(
     readOnlyView.includes("displayAsChips"),
   "Key Business Objectives must support multiple persisted tag-style entries in edit and view modes.",
 );
+assert(
+  workspace.includes('router.push(`/projects/${project.id}/stages/2`)') &&
+    !workspace.includes('router.push(`/projects/${project.id}`)'),
+  "Completing Stage 1 must open Stage 2 directly instead of the project overview.",
+);
 
 assert(
   workspace.includes("ProjectFlowSummaryStrip") &&

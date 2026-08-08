@@ -34,6 +34,11 @@ for (const text of ["Stage 2 - Project Research and Planning", "Viewing folder s
   assert(workspace.includes(text), `Missing connected Stage 2 UI content: ${text}`);
 }
 assert(workspace.includes("workspace=${encodeURIComponent(option.id)}"), "Workspace switching must use stable URL state.");
+assert(
+  workspace.includes('router.push(`/projects/${data.project.id}/stages/3`)') &&
+    !workspace.includes('router.push(`/projects/${data.project.id}`)'),
+  "Completing Stage 2 must open Stage 3 directly instead of the project overview.",
+);
 assert(workspace.includes("createProjectResearchFolderAction") && actions.includes("createProjectResearchFolder"), "New Folder must call the persisted server action.");
 assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Next Stage must call the real completion action.");
 assert(!workspace.includes("predefinedFolders") && !workspace.includes("setCustomFolders"), "Folder cards must not use mock/local folder state.");

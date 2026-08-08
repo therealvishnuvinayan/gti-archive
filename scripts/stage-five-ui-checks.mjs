@@ -82,10 +82,10 @@ assert(
   "The Request dialog must clearly remain a non-sending UI placeholder.",
 );
 assert(
-  workspace.includes("Stage 6 remains locked and no workflow status was changed.") &&
+  workspace.includes('href={`/projects/${project.id}/stages/6`}') &&
     !workspace.includes("completeProject") &&
-    !workspace.includes("router.push(`/projects/${project.id}/stages/6"),
-  "Next Stage must not complete Stage 5 or navigate to/unlock Stage 6.",
+    !workspace.includes("completeProjectStage"),
+  "Next Stage must open Stage 6 directly without mutating Stage 5 workflow state.",
 );
 assert(
   workspace.includes("href={`/projects/${project.id}`}") && workspace.includes("All Stages"),

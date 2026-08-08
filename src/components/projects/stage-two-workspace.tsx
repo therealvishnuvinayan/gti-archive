@@ -301,7 +301,7 @@ export function StageTwoWorkspace({
         return;
       }
       showSuccessToast("Stage 2 completed.", "Concept Creation is now available.");
-      router.push(`/projects/${data.project.id}`);
+      router.push(`/projects/${data.project.id}/stages/3`);
       router.refresh();
     });
   }

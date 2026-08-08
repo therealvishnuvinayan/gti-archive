@@ -75,10 +75,10 @@ assert(
   "Stage 6 must describe future email behavior without sending email.",
 );
 assert(
-  workspace.includes("Stage 7 remains locked.") &&
+  workspace.includes('href={`/projects/${project.id}/stages/7`}') &&
     !workspace.includes("completeProject") &&
-    !workspace.includes("stages/7"),
-  "Next Stage must not complete Stage 6 or open/unlock Stage 7.",
+    !workspace.includes("completeProjectStage"),
+  "Next Stage must open Stage 7 directly without mutating Stage 6 workflow state.",
 );
 assert(
   workspace.includes("href={`/projects/${project.id}`}") && workspace.includes("All Stages"),
