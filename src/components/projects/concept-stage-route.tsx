@@ -17,6 +17,7 @@ import {
 } from "@/lib/project-concepts";
 import { getProjectRouteAvailability, getProjectShellById } from "@/lib/projects";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import { getStageFourFinalFileHandoffData } from "@/lib/stage-five";
 
 type ConceptStageRouteUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -80,6 +81,11 @@ async function ConceptStageContent({
     return <ProjectAccessUnavailableState />;
   }
 
+  const stageFourHandoffData =
+    stageNumber === 4
+      ? await getStageFourFinalFileHandoffData(user, slug)
+      : undefined;
+
   return (
     <ConceptStageWorkspace
       stageNumber={stageNumber}
@@ -88,6 +94,7 @@ async function ConceptStageContent({
       project={project}
       currentUserId={user.id}
       initialFolders={folders}
+      stageFourHandoffData={stageFourHandoffData ?? undefined}
     />
   );
 }

@@ -31,6 +31,7 @@ export const workflowNotificationTypes = [
   "COPYRIGHT_DOCUMENT_UPLOADED",
   "INVOICE_REQUESTED",
   "INVOICE_UPLOADED",
+  "CHECKLIST_INFORMATION_REQUESTED",
 ] as const satisfies readonly PrismaNotificationType[];
 
 const workflowNotificationTypeSet = new Set<PrismaNotificationType>(workflowNotificationTypes);
@@ -76,6 +77,8 @@ export function mapTypeFilterToNotificationTypes(
       return ["COPYRIGHT_TRANSFER_REQUIRED", "COPYRIGHT_DOCUMENT_UPLOADED"];
     case "Invoice":
       return ["INVOICE_REQUESTED", "INVOICE_UPLOADED"];
+    case "Checklist":
+      return ["CHECKLIST_INFORMATION_REQUESTED"];
     case "All Types":
     default:
       return null;
@@ -112,6 +115,8 @@ function mapNotificationType(type: PrismaNotificationType): NotificationType {
     case "INVOICE_REQUESTED":
     case "INVOICE_UPLOADED":
       return "Invoice";
+    case "CHECKLIST_INFORMATION_REQUESTED":
+      return "Checklist";
     case "PROJECT_ASSIGNED":
     case "PROJECT_CREATED":
     case "PROJECT_UPDATED":
@@ -152,6 +157,8 @@ function mapNotificationContextLabel(type: PrismaNotificationType) {
     case "INVOICE_REQUESTED":
     case "INVOICE_UPLOADED":
       return "Invoice";
+    case "CHECKLIST_INFORMATION_REQUESTED":
+      return "Checklist";
     case "PROJECT_ASSIGNED":
     case "PROJECT_CREATED":
     case "PROJECT_UPDATED":
@@ -192,6 +199,8 @@ function mapNotificationContextTone(type: PrismaNotificationType): NotificationC
     case "INVOICE_REQUESTED":
     case "INVOICE_UPLOADED":
       return "invoice";
+    case "CHECKLIST_INFORMATION_REQUESTED":
+      return "review";
     case "PROJECT_ASSIGNED":
     case "PROJECT_CREATED":
     case "PROJECT_UPDATED":
@@ -236,6 +245,8 @@ function mapNotificationVisualKind(type: PrismaNotificationType): NotificationVi
     case "INVOICE_REQUESTED":
     case "INVOICE_UPLOADED":
       return "invoice-uploaded";
+    case "CHECKLIST_INFORMATION_REQUESTED":
+      return "checklist-requested";
     case "PROJECT_UPDATED":
       return "project-updated";
     case "PROJECT_CREATED":
