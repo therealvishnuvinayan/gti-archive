@@ -5,6 +5,7 @@ type ChecklistInformationRequestEmailInput = {
   fileName: string;
   fieldLabel: string;
   message?: string | null;
+  responseUrl: string;
 };
 
 function escapeHtml(value: string) {
@@ -56,8 +57,13 @@ export function buildChecklistInformationRequestEmail(
               ? `<div style="margin-top:20px;padding:16px;border-radius:12px;background:#f5f8f5;color:#4d5a51;font-size:14px;line-height:1.7;"><strong style="display:block;margin-bottom:6px;color:#2b4937;">Message</strong>${escapeHtml(message).replaceAll("\n", "<br>")}</div>`
               : ""
           }
-          <p style="margin:24px 0 0;font-size:14px;line-height:1.75;color:#4d5a51;">
-            Please reply to this email with the requested information or attachment. A secure external response link will be introduced in a later phase.
+          <div style="margin-top:26px;text-align:center;">
+            <a href="${escapeHtml(input.responseUrl)}" style="display:inline-block;padding:13px 22px;border-radius:12px;background:#26744d;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">
+              Provide Information
+            </a>
+          </div>
+          <p style="margin:22px 0 0;font-size:12px;line-height:1.7;color:#718078;word-break:break-all;">
+            If the button does not work, copy and paste this secure link into your browser:<br>${escapeHtml(input.responseUrl)}
           </p>
         </div>
       </div>
@@ -73,8 +79,8 @@ export function buildChecklistInformationRequestEmail(
     `Requested information: ${input.fieldLabel}`,
     ...(message ? ["", "Message:", message] : []),
     "",
-    "Please reply to this email with the requested information or attachment.",
-    "A secure external response link will be introduced in a later phase.",
+    "Provide Information:",
+    input.responseUrl,
   ].join("\n");
 
   return { subject, html, text };

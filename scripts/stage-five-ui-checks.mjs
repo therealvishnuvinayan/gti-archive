@@ -35,6 +35,21 @@ const [workspace, fieldDefinitions, filePicker, requestWorkspace, requestPage, r
     readFile("src/app/sign-in/actions.ts", "utf8"),
   ]);
 
+const [externalPage, externalWorkspace, externalService, externalToken, externalUploadClient, externalUploadRoute, externalSubmitRoute, externalDeclineRoute, externalMigration, rateLimit, nextConfig] =
+  await Promise.all([
+    readFile("src/app/external/checklist-request/[token]/page.tsx", "utf8"),
+    readFile("src/components/projects/stage-five-external-request-workspace.tsx", "utf8"),
+    readFile("src/lib/stage-five-external.ts", "utf8"),
+    readFile("src/lib/checklist-external-token.ts", "utf8"),
+    readFile("src/lib/stage-five-external-upload-client.ts", "utf8"),
+    readFile("src/app/api/external/checklist-request/[token]/upload-url/route.ts", "utf8"),
+    readFile("src/app/api/external/checklist-request/[token]/submit/route.ts", "utf8"),
+    readFile("src/app/api/external/checklist-request/[token]/decline/route.ts", "utf8"),
+    readFile("prisma/migrations/20260808200000_stage_five_external_checklist_requests/migration.sql", "utf8"),
+    readFile("src/lib/external-request-rate-limit.ts", "utf8"),
+    readFile("next.config.ts", "utf8"),
+  ]);
+
 const checklistItems = [
   "Output Name",
   "Technical Drawing",
@@ -251,17 +266,16 @@ assert(
     service.includes("clientRequestId") &&
     service.includes("recipientUserId") &&
     service.includes("ProjectFileChecklistRequestStatus.FAILED") &&
-    emailTemplate.includes("Please reply to this email") &&
-    emailTemplate.includes("secure external response link will be introduced in a later phase"),
-  "Checklist requests must persist, notify project participants, and send the approved reply-by-email template.",
+    emailTemplate.includes("Provide Information") &&
+    emailTemplate.includes("input.responseUrl"),
+  "Checklist requests must persist, notify project participants, and send the secure response-link email template.",
 );
 assert(
   !service.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     !service.includes("PRODUCTION_AND_HANDOVER") &&
     !actions.includes("completeProject") &&
-    !workspace.includes("response token") &&
-    !page.includes("public"),
-  "This phase must not complete Stage 5, unlock Stage 6, or add an external response portal.",
+    !externalService.includes("PRODUCTION_AND_HANDOVER"),
+  "Checklist responses must not complete Stage 5 or unlock Stage 6.",
 );
 assert(
   chatWorkspace.includes("ProjectChatWorkspace") && !workspace.includes("ProjectChatWorkspace"),
@@ -349,6 +363,82 @@ assert(
     page.includes("initialField") &&
     workspace.includes("scrollIntoView"),
   "The owner UI must show active request context and notification deep-links must focus the exact field.",
+);
+
+assert(
+  schema.includes("externalTokenHash") &&
+    schema.includes("externalTokenExpiresAt") &&
+    schema.includes("externalTokenRevokedAt") &&
+    schema.includes("externalResponderEmail") &&
+    schema.includes("ProjectFileChecklistResponseSource") &&
+    schema.includes("ProjectAttachmentUploadSource") &&
+    externalMigration.includes("ProjectFileChecklistRequest_active_email_recipient_key"),
+  "The existing checklist request and attachment models must store hashed-token lifecycle and external provenance.",
+);
+assert(
+  externalToken.includes("randomBytes(EXTERNAL_TOKEN_BYTES)") &&
+    externalToken.includes('createHash("sha256")') &&
+    externalToken.includes("CHECKLIST_EXTERNAL_REQUEST_EXPIRY_DAYS") &&
+    externalToken.includes("DEFAULT_EXPIRY_DAYS = 7") &&
+    !schema.includes("externalToken String"),
+  "External access must use a 32-byte random token, store only SHA-256 hash state, and default to seven-day expiry.",
+);
+assert(
+  service.includes("createExternalChecklistToken") &&
+    service.includes("buildExternalChecklistRequestUrl") &&
+    service.includes("resendStageFiveExternalChecklistRequest") &&
+    service.includes("externalTokenHash: access.tokenHash") &&
+    service.includes("externalTokenRevokedAt: new Date()") &&
+    workspace.includes("Resend email"),
+  "Manual dispatch and resend must generate fresh secure links, revoke failed links, and expose a safe internal resend action.",
+);
+assert(
+  externalPage.includes('dynamic = "force-dynamic"') &&
+    externalPage.includes("noStore()") &&
+    externalPage.includes("StageFiveExternalRequestWorkspace") &&
+    !externalPage.includes("requireUser") &&
+    !externalPage.includes("DashboardAppFrame") &&
+    !externalPage.includes("Sign In") &&
+    !externalWorkspace.includes("Dashboard") &&
+    nextConfig.includes('source: "/external/checklist-request/:token"') &&
+    nextConfig.includes('value: "private, no-store, max-age=0"'),
+  "The exact external route must be standalone, unauthenticated, request-scoped, and explicitly non-cacheable.",
+);
+assert(
+  externalWorkspace.includes("data.field.control") &&
+    externalWorkspace.includes("data.field.suggestions") &&
+    externalWorkspace.includes("Submit Response") &&
+    externalWorkspace.includes("Cannot provide this information") &&
+    externalService.includes("getStageFiveFieldDefinition") &&
+    externalService.includes("validateStageFiveChecklistResponse"),
+  "The external page must use the shared Stage 5 field definition and server response validator.",
+);
+assert(
+  externalUploadRoute.includes("prepareExternalChecklistAttachment") &&
+    externalUploadClient.includes("uploadExternalStageFiveAttachment") &&
+    externalService.includes("EXTERNAL_CHECKLIST_REQUEST") &&
+    externalService.includes("externalUploaderEmail") &&
+    externalService.includes("checklistResponseRequestId: request.id") &&
+    externalService.includes("fileChecklistItems: { none: {} }") &&
+    externalService.includes("projectId: request.projectId"),
+  "External uploads must derive scope from the token and retain explicit recipient/request provenance.",
+);
+assert(
+  externalSubmitRoute.includes("submitExternalChecklistResponse") &&
+    externalDeclineRoute.includes("declineExternalChecklistRequest") &&
+    externalService.includes("ProjectFileChecklistItemStatus.FILLED") &&
+    externalService.includes("ProjectFileChecklistRequestWorkflowStatus.COMPLETED") &&
+    externalService.includes("ProjectFileChecklistResponseSource.EXTERNAL_EMAIL") &&
+    externalService.includes("CHECKLIST_INFORMATION_COMPLETED") &&
+    externalService.includes("CHECKLIST_INFORMATION_DECLINED"),
+  "External completion/decline must update the real checklist lifecycle and notify the requester.",
+);
+assert(
+  rateLimit.includes("checkRateLimit") &&
+    externalUploadRoute.includes('scope: "upload"') &&
+    externalSubmitRoute.includes('scope: "submit"') &&
+    externalPage.includes('scope: "verify"'),
+  "Public token verification, upload, and submit surfaces must reuse bounded rate limiting.",
 );
 
 console.log("Stage 5 persistent per-file checklist UI checks passed.");

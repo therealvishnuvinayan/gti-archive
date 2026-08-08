@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 import {
   AttachmentAssetType,
   AttachmentStatus,
+  ProjectAttachmentUploadSource,
   ProjectFileChecklistField,
   ProjectFileChecklistItemStatus,
   ProjectFileChecklistRequestChannel,
   ProjectFileChecklistRequestStatus,
   ProjectFileChecklistRequestWorkflowStatus,
+  ProjectFileChecklistResponseSource,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
   StageStatus,
@@ -15,17 +17,26 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "../src/lib/prisma";
+import { hashExternalChecklistToken } from "../src/lib/checklist-external-token";
 import type { SendEmailInput } from "../src/lib/email/resend";
 import {
   acceptStageFiveChecklistRequest,
+  cancelStageFiveChecklistRequest,
   declineStageFiveChecklistRequest,
   getStageFiveChecklistRequestData,
   getStageFiveWorkspaceData,
   handoffStageFourFiles,
   requestStageFiveChecklistInformation,
+  resendStageFiveExternalChecklistRequest,
   saveStageFiveChecklist,
   submitStageFiveChecklistResponse,
 } from "../src/lib/stage-five";
+import {
+  declineExternalChecklistRequest,
+  getExternalChecklistRequestData,
+  prepareExternalChecklistAttachment,
+  submitExternalChecklistResponse,
+} from "../src/lib/stage-five-external";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 
 function check(condition: unknown, message: string): asserts condition {
@@ -34,6 +45,12 @@ function check(condition: unknown, message: string): asserts condition {
 
 function isError(value: unknown): value is { error: string } {
   return Boolean(value && typeof value === "object" && "error" in value);
+}
+
+function getExternalToken(email: SendEmailInput | null) {
+  const token = email?.text.match(/\/external\/checklist-request\/([A-Za-z0-9_-]{43})/)?.[1];
+  check(token, "manual email must contain a 32-byte base64url external token");
+  return token;
 }
 
 async function main() {
@@ -536,8 +553,121 @@ async function main() {
       deliveredEmail?.subject.includes("Tax Stamp") &&
         deliveredEmail.subject.includes(`Stage 5 Integration ${runId}`) &&
         deliveredEmail.html.includes("Package_Artwork_Final.ai") &&
-        deliveredEmail.text.includes("Please reply to this email"),
-      "email subject and HTML/text bodies must include project, file, field, and reply instructions",
+        deliveredEmail.html.includes("Provide Information") &&
+        deliveredEmail.text.includes("/external/checklist-request/"),
+      "email subject and HTML/text bodies must include project, file, field, and secure response link",
+    );
+    const externalToken = getExternalToken(deliveredEmail);
+    let duplicateEmailSent = false;
+    const duplicateExternal = await requestStageFiveChecklistInformation(
+      owner,
+      {
+        clientRequestId: `email_duplicate_${randomUUID()}`,
+        projectId,
+        handoffId: fileA.handoffId,
+        fieldKey: ProjectFileChecklistField.TAX_STAMP,
+        channel: ProjectFileChecklistRequestChannel.EMAIL,
+        recipientEmail: "reviewer@example.com",
+      },
+      {
+        sendEmail: async () => {
+          duplicateEmailSent = true;
+          return { ok: true };
+        },
+      },
+    );
+    check(
+      !isError(duplicateExternal) &&
+        duplicateExternal.duplicate &&
+        duplicateExternal.request.id === sentEmail.request.id &&
+        !duplicateEmailSent,
+      "the exact active email request must be reused without sending a duplicate link",
+    );
+    const sentExternalRecord = await prisma.projectFileChecklistRequest.findUnique({
+      where: { id: sentEmail.request.id },
+    });
+    check(
+      sentExternalRecord?.externalTokenHash === hashExternalChecklistToken(externalToken) &&
+        sentExternalRecord.externalTokenExpiresAt &&
+        sentExternalRecord.externalTokenCreatedAt &&
+        !JSON.stringify(sentExternalRecord).includes(externalToken),
+      "manual email requests must persist only the SHA-256 token hash and explicit expiry",
+    );
+    check(
+      (await getExternalChecklistRequestData("not-a-valid-token")).state === "invalid",
+      "an invalid external token must reveal no request information",
+    );
+    const activeExternalData = await getExternalChecklistRequestData(externalToken);
+    check(
+      activeExternalData.state === "active" &&
+        activeExternalData.projectName === `Stage 5 Integration ${runId}` &&
+        activeExternalData.file.name === "Package_Artwork_Final.ai" &&
+        activeExternalData.field.title === "Tax Stamp",
+      "a valid token must expose only its exact project file and requested field",
+    );
+    check(
+      isError(
+        await prepareExternalChecklistAttachment(externalToken, {
+          originalFileName: "malware.exe",
+          mimeType: "application/octet-stream",
+          fileSize: 1024,
+        }),
+      ),
+      "external uploads must preserve the normal executable/file-type restrictions",
+    );
+    check(
+      isError(
+        await prepareExternalChecklistAttachment(externalToken, {
+          originalFileName: "oversized-reference.png",
+          mimeType: "image/png",
+          fileSize: Number.MAX_SAFE_INTEGER,
+        }),
+      ),
+      "external uploads must preserve the configured project-asset size limit",
+    );
+    const externalTextResponse = await submitExternalChecklistResponse(externalToken, {
+      value: { text: "Approved external tax stamp reference" },
+      attachmentIds: [],
+    });
+    check(!isError(externalTextResponse), "an external text response must complete without login");
+    check(
+      isError(
+        await submitExternalChecklistResponse(externalToken, {
+          value: { text: "Second submission" },
+          attachmentIds: [],
+        }),
+      ),
+      "a completed external token must not be reusable for another submission",
+    );
+    check(
+      (await getExternalChecklistRequestData(externalToken)).state === "completed",
+      "refreshing a completed external link must return a read-only success state",
+    );
+    const completedExternalRecord = await prisma.projectFileChecklistRequest.findUnique({
+      where: { id: sentEmail.request.id },
+    });
+    check(
+      completedExternalRecord?.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.COMPLETED &&
+        completedExternalRecord.responseSource === ProjectFileChecklistResponseSource.EXTERNAL_EMAIL &&
+        completedExternalRecord.externalResponderName === "External Reviewer" &&
+        completedExternalRecord.externalResponderEmail === "reviewer@example.com" &&
+        completedExternalRecord.completedAt &&
+        completedExternalRecord.externalTokenRevokedAt,
+      "external completion must persist responder identity, source, timestamp, and token revocation",
+    );
+    const externalTextItem = await prisma.projectFileChecklistItem.findUnique({
+      where: {
+        checklistId_fieldKey: {
+          checklistId: fileA.checklistId,
+          fieldKey: ProjectFileChecklistField.TAX_STAMP,
+        },
+      },
+    });
+    check(
+      externalTextItem?.status === ProjectFileChecklistItemStatus.FILLED &&
+        (externalTextItem.value as { text?: string } | null)?.text ===
+          "Approved external tax stamp reference",
+      "external response data must update the real selected-file checklist item",
     );
     const failedClientRequestId = `failed_${randomUUID()}`;
     const failedEmail = await requestStageFiveChecklistInformation(
@@ -559,8 +689,9 @@ async function main() {
     check(
       recordedFailure?.status === ProjectFileChecklistRequestStatus.FAILED &&
         recordedFailure.failedAt &&
-        !recordedFailure.sentAt,
-      "failed delivery must be stored as FAILED and never SENT",
+        !recordedFailure.sentAt &&
+        recordedFailure.externalTokenRevokedAt,
+      "failed delivery must be stored as FAILED, never SENT, and its token must be revoked",
     );
     const qrItem = await prisma.projectFileChecklistItem.findUnique({
       where: {
@@ -571,30 +702,242 @@ async function main() {
       },
     });
     check(qrItem?.status === ProjectFileChecklistItemStatus.PENDING, "failed email must not mark the item REQUESTED");
+    const externalOwner = owner;
+    const externalFile = fileA;
+
+    async function createExternalRequest(
+      fieldKey: ProjectFileChecklistField,
+      recipientEmail: string,
+      recipientName = "External Test Recipient",
+    ) {
+      let email: SendEmailInput | null = null;
+      const result = await requestStageFiveChecklistInformation(
+        externalOwner,
+        {
+          clientRequestId: `external_${randomUUID()}`,
+          projectId,
+          handoffId: externalFile.handoffId,
+          fieldKey,
+          channel: ProjectFileChecklistRequestChannel.EMAIL,
+          recipientName,
+          recipientEmail,
+        },
+        {
+          sendEmail: async (input) => {
+            email = input;
+            return { ok: true, id: `external-${fieldKey}` };
+          },
+        },
+      );
+      check(!isError(result), `external ${fieldKey} request must be dispatched`);
+      return { request: result.request, token: getExternalToken(email) };
+    }
+
+    const invoiceExternal = await createExternalRequest(
+      ProjectFileChecklistField.INVOICE,
+      "invoice.external@example.com",
+    );
+    const invoiceAttachmentId = `stage-five-external-invoice-${runId}`;
+    const foreignInvoiceAttachmentId = `stage-five-external-invoice-foreign-${runId}`;
+    await prisma.projectAttachment.createMany({
+      data: [
+        [invoiceAttachmentId, projectId],
+        [foreignInvoiceAttachmentId, foreignProjectId],
+      ].map(([id, targetProjectId]) => ({
+        id,
+        projectId: targetProjectId,
+        uploadedById: owner.id,
+        fileName: `${id}.pdf`,
+        originalFileName: `${id}.pdf`,
+        mimeType: "application/pdf",
+        fileSize: 4096,
+        bucket: "stage-five-integration",
+        storageKey: `stage-five-integration/${id}`,
+        assetType: AttachmentAssetType.FILE_CHECKLIST_ATTACHMENT,
+        checklistResponseRequestId: invoiceExternal.request.id,
+        uploadSource: ProjectAttachmentUploadSource.EXTERNAL_CHECKLIST_REQUEST,
+        externalUploaderName: "External Test Recipient",
+        externalUploaderEmail: "invoice.external@example.com",
+        status: AttachmentStatus.READY,
+      })),
+    });
+    check(
+      isError(
+        await submitExternalChecklistResponse(invoiceExternal.token, {
+          value: {},
+          attachmentIds: [foreignInvoiceAttachmentId],
+        }),
+      ),
+      "cross-project external file injection must fail",
+    );
+    check(
+      !isError(
+        await submitExternalChecklistResponse(invoiceExternal.token, {
+          value: {},
+          attachmentIds: [invoiceAttachmentId],
+        }),
+      ),
+      "a valid request-bound external single-file response must complete",
+    );
+    const invoiceAttachment = await prisma.projectAttachment.findUnique({
+      where: { id: invoiceAttachmentId },
+    });
+    check(
+      invoiceAttachment?.uploadSource ===
+        ProjectAttachmentUploadSource.EXTERNAL_CHECKLIST_REQUEST &&
+        invoiceAttachment.externalUploaderEmail === "invoice.external@example.com" &&
+        invoiceAttachment.checklistResponseRequestId === invoiceExternal.request.id,
+      "external attachment provenance must retain source, recipient email, and exact request",
+    );
+
+    const multiExternal = await createExternalRequest(
+      ProjectFileChecklistField.RELATED_GRAPHICS,
+      "graphics.external@example.com",
+    );
+    const multiAttachmentIds = [
+      `stage-five-external-graphic-a-${runId}`,
+      `stage-five-external-graphic-b-${runId}`,
+    ];
+    await prisma.projectAttachment.createMany({
+      data: multiAttachmentIds.map((id) => ({
+        id,
+        projectId,
+        uploadedById: owner.id,
+        fileName: `${id}.png`,
+        originalFileName: `${id}.png`,
+        mimeType: "image/png",
+        fileSize: 4096,
+        bucket: "stage-five-integration",
+        storageKey: `stage-five-integration/${id}`,
+        assetType: AttachmentAssetType.FILE_CHECKLIST_ATTACHMENT,
+        checklistResponseRequestId: multiExternal.request.id,
+        uploadSource: ProjectAttachmentUploadSource.EXTERNAL_CHECKLIST_REQUEST,
+        externalUploaderName: "External Test Recipient",
+        externalUploaderEmail: "graphics.external@example.com",
+        status: AttachmentStatus.READY,
+      })),
+    });
+    check(
+      isError(
+        await submitExternalChecklistResponse(multiExternal.token, {
+          value: {},
+          attachmentIds: [invoiceAttachmentId],
+        }),
+      ),
+      "cross-request external file injection must fail even within the same project",
+    );
+    check(
+      !isError(
+        await submitExternalChecklistResponse(multiExternal.token, {
+          value: {},
+          attachmentIds: multiAttachmentIds,
+        }),
+      ),
+      "a request-bound external multi-file response must complete",
+    );
+
+    let initialResendEmail: SendEmailInput | null = null;
+    const resendRequest = await requestStageFiveChecklistInformation(
+      owner,
+      {
+        clientRequestId: `resend_${randomUUID()}`,
+        projectId,
+        handoffId: fileA.handoffId,
+        fieldKey: ProjectFileChecklistField.BARCODE,
+        channel: ProjectFileChecklistRequestChannel.EMAIL,
+        recipientEmail: "resend.external@example.com",
+      },
+      {
+        sendEmail: async (input) => {
+          initialResendEmail = input;
+          return { ok: true, id: "initial-resend-email" };
+        },
+      },
+    );
+    check(!isError(resendRequest), "resend-path request must be dispatched");
+    const initialResendToken = getExternalToken(initialResendEmail);
+    let replacementEmail: SendEmailInput | null = null;
+    const resent = await resendStageFiveExternalChecklistRequest(
+      owner,
+      resendRequest.request.id,
+      {
+        sendEmail: async (input) => {
+          replacementEmail = input;
+          return { ok: true, id: "replacement-email" };
+        },
+      },
+    );
+    check(!isError(resent), "an active manual-email request must support resend");
+    const replacementToken = getExternalToken(replacementEmail);
+    check(initialResendToken !== replacementToken, "resend must rotate the raw access token");
+    check(
+      (await getExternalChecklistRequestData(initialResendToken)).state === "invalid" &&
+        (await getExternalChecklistRequestData(replacementToken)).state === "active",
+      "resend must invalidate the prior token while activating the replacement",
+    );
+    check(
+      !isError(await cancelStageFiveChecklistRequest(owner, resendRequest.request.id)),
+      "the original requester must be able to cancel an active external request",
+    );
+    check(
+      (await getExternalChecklistRequestData(replacementToken)).state === "unavailable",
+      "cancel must revoke the replacement token",
+    );
+
+    const expiredExternal = await createExternalRequest(
+      ProjectFileChecklistField.QR_CODE,
+      "expired.external@example.com",
+    );
+    await prisma.projectFileChecklistRequest.update({
+      where: { id: expiredExternal.request.id },
+      data: { externalTokenExpiresAt: new Date(Date.now() - 1_000) },
+    });
+    check(
+      (await getExternalChecklistRequestData(expiredExternal.token)).state === "expired",
+      "expired tokens must show only the branded expired state",
+    );
+
+    const declinedExternal = await createExternalRequest(
+      ProjectFileChecklistField.TRACK_TRACE,
+      "decline.external@example.com",
+    );
+    check(
+      !isError(
+        await declineExternalChecklistRequest(
+          declinedExternal.token,
+          "The required tracking reference is unavailable.",
+        ),
+      ),
+      "an external recipient must be able to decline consistently",
+    );
+    check(
+      (await getExternalChecklistRequestData(declinedExternal.token)).state === "declined",
+      "declined external links must remain read-only",
+    );
 
     const finalData = await getStageFiveWorkspaceData(owner, projectId);
     check(
       finalData?.files
         .find((file) => file.handoffId === fileA.handoffId)
         ?.items.find((item) => item.fieldKey === ProjectFileChecklistField.TAX_STAMP)
-        ?.status === ProjectFileChecklistItemStatus.REQUESTED,
-      "successful dispatch must mark an empty item REQUESTED",
+        ?.status === ProjectFileChecklistItemStatus.FILLED,
+      "the owner Stage 5 view must immediately show the external response as FILLED",
     );
     check(
       (await prisma.notification.count({
         where: { projectId, type: "CHECKLIST_INFORMATION_COMPLETED" },
-      })) === 2,
-      "each completed collaborator response must notify the original requester",
+      })) === 5,
+      "each authenticated or external completed response must notify the original requester",
     );
     check(
       (await prisma.notification.count({
         where: { projectId, type: "CHECKLIST_INFORMATION_DECLINED" },
-      })) === 1,
-      "a declined collaborator request must notify the original requester",
+      })) === 2,
+      "authenticated and external declines must notify the original requester",
     );
     check(
-      (await prisma.projectFileChecklistRequest.count({ where: { projectId } })) === 5,
-      "request history must preserve completed, declined, successful email, and failed email records",
+      (await prisma.projectFileChecklistRequest.count({ where: { projectId } })) === 10,
+      "request history must preserve authenticated, completed, declined, failed, expired, cancelled, and external records",
     );
     const workflow = await prisma.projectWorkflowStage.findMany({
       where: {

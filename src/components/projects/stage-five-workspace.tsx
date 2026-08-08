@@ -42,6 +42,7 @@ import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import {
   requestStageFiveChecklistInformationAction,
+  resendStageFiveExternalChecklistRequestAction,
   saveStageFiveChecklistAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/5/actions";
 import { ProjectStageSummary } from "@/components/projects/project-stage-summary";
@@ -213,12 +214,16 @@ function ChecklistItemRow({
   latestRequest,
   children,
   onRequest,
+  onResend,
+  isResending,
 }: {
   item: ChecklistDefinition;
   status: ProjectFileChecklistItemStatus;
   latestRequest: StageFiveChecklistItemRecord["latestRequest"];
   children: React.ReactNode;
   onRequest: () => void;
+  onResend?: () => void;
+  isResending?: boolean;
 }) {
   const Icon = item.icon;
 
@@ -237,15 +242,27 @@ function ChecklistItemRow({
           {latestRequest &&
           (latestRequest.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.REQUESTED ||
             latestRequest.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED) ? (
-            <p className="mt-2 text-[10px] leading-4 text-[#47745a]">
-              Requested from <span className="font-[720]">{latestRequest.recipient}</span>
-              <br />
-              {new Intl.DateTimeFormat("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              }).format(new Date(latestRequest.requestedAt))}
-            </p>
+            <div className="mt-2 text-[10px] leading-4 text-[#47745a]">
+              <p>
+                Requested from <span className="font-[720]">{latestRequest.recipient}</span>
+                <br />
+                {new Intl.DateTimeFormat("en-GB", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                }).format(new Date(latestRequest.requestedAt))}
+              </p>
+              {latestRequest.channel === ProjectFileChecklistRequestChannel.EMAIL && onResend ? (
+                <button
+                  type="button"
+                  disabled={isResending}
+                  className="mt-1 font-[740] underline underline-offset-2 disabled:opacity-50"
+                  onClick={onResend}
+                >
+                  {isResending ? "Resending..." : "Resend email"}
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </div>
@@ -565,7 +582,7 @@ function RequestInformationDialog({
           </label>
 
           <p className="mt-4 rounded-[12px] bg-[#f4f7f4] px-3 py-2 text-[10px] leading-4 text-[#748078]">
-            Manual recipients receive a real email and can reply with the requested information. No external response portal is included yet.
+            Manual recipients receive a secure email link to provide the requested information without a GTI account.
           </p>
 
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -652,6 +669,7 @@ export function StageFiveWorkspace({
   );
   const [dirtyHandoffIds, setDirtyHandoffIds] = useState<Set<string>>(() => new Set());
   const [isSaving, startSaving] = useTransition();
+  const [isRequestActionPending, startRequestAction] = useTransition();
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
   const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
   const activeDraft = drafts[selectedHandoffId];
@@ -807,6 +825,21 @@ export function StageFiveWorkspace({
           error instanceof Error ? error.message : "Please try again.",
         );
       }
+    });
+  }
+
+  function resendExternalRequest(requestId: string) {
+    startRequestAction(async () => {
+      const result = await resendStageFiveExternalChecklistRequestAction({
+        projectId: project.id,
+        requestId,
+      });
+      if ("error" in result) {
+        showErrorToast("Unable to resend request.", result.error);
+        return;
+      }
+      showSuccessToast("A new secure request link was emailed.");
+      router.refresh();
     });
   }
 
@@ -1106,6 +1139,15 @@ export function StageFiveWorkspace({
                       ?.latestRequest ?? null
                   }
                   onRequest={() => setRequestField(item)}
+                  onResend={(() => {
+                    const latestRequest = activeFile.items.find(
+                      (activeItem) => activeItem.fieldKey === item.key,
+                    )?.latestRequest;
+                    return latestRequest?.channel === ProjectFileChecklistRequestChannel.EMAIL
+                      ? () => resendExternalRequest(latestRequest.id)
+                      : undefined;
+                  })()}
+                  isResending={isRequestActionPending}
                 >
                   {renderControl(item)}
                 </ChecklistItemRow>
