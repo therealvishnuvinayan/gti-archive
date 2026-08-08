@@ -22,6 +22,10 @@ import {
 } from "@/lib/project-collaborator-participant-types";
 import { normalizeProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
 import {
+  type ProjectContactInput,
+  validateProjectContactInput,
+} from "@/lib/project-contact-validation";
+import {
   isProjectInquiryCountryLabel,
   PROJECT_INQUIRY_COUNTRY_OPTIONS,
   PROJECT_INQUIRY_GLOBAL_MARKET_LABEL,
@@ -39,11 +43,6 @@ import {
   PROJECT_WORKFLOW_STAGE_DEFINITIONS,
 } from "@/lib/project-workflow";
 
-const MAX_CONTACT_NAME_LENGTH = 160;
-const MAX_CONTACT_COMPANY_LENGTH = 160;
-const MAX_CONTACT_POSITION_LENGTH = 160;
-const MAX_CONTACT_EMAIL_LENGTH = 254;
-const MAX_CONTACT_PHONE_LENGTH = 50;
 const MAX_TEXT_LENGTH = 10_000;
 const MAX_LABEL_LENGTH = 160;
 const MAX_SELECTION_COUNT = 50;
@@ -180,13 +179,7 @@ export type CompleteProjectInquiryResult =
   | { success: true }
   | { error: string; fieldErrors?: ProjectInquiryFieldErrors };
 
-export type CreateContactDirectoryEntryInput = {
-  name: string;
-  company?: string;
-  position?: string;
-  email?: string;
-  phone?: string;
-};
+export type CreateContactDirectoryEntryInput = ProjectContactInput;
 
 export type CreateContactDirectoryEntryResult =
   | { contact: ProjectInquiryPartyOption }
@@ -221,48 +214,6 @@ function normalizeOptionalText(
   }
 
   return normalized || null;
-}
-
-function validateContactInput(input: CreateContactDirectoryEntryInput) {
-  const fieldErrors: Partial<Record<keyof CreateContactDirectoryEntryInput, string>> = {};
-  const name = normalizeWhitespace(input.name);
-  const company = normalizeWhitespace(input.company ?? "");
-  const position = normalizeWhitespace(input.position ?? "");
-  const email = normalizeWhitespace(input.email ?? "").toLocaleLowerCase("en");
-  const phone = normalizeWhitespace(input.phone ?? "");
-
-  if (!name) {
-    fieldErrors.name = "Contact name is required.";
-  } else if (name.length > MAX_CONTACT_NAME_LENGTH) {
-    fieldErrors.name = `Keep the name under ${MAX_CONTACT_NAME_LENGTH} characters.`;
-  }
-
-  if (company.length > MAX_CONTACT_COMPANY_LENGTH) {
-    fieldErrors.company = `Keep the company under ${MAX_CONTACT_COMPANY_LENGTH} characters.`;
-  }
-
-  if (position.length > MAX_CONTACT_POSITION_LENGTH) {
-    fieldErrors.position = `Keep the position under ${MAX_CONTACT_POSITION_LENGTH} characters.`;
-  }
-
-  if (email && (!email.includes("@") || email.length > MAX_CONTACT_EMAIL_LENGTH)) {
-    fieldErrors.email = "Enter a valid email address.";
-  }
-
-  if (phone.length > MAX_CONTACT_PHONE_LENGTH) {
-    fieldErrors.phone = `Keep the phone number under ${MAX_CONTACT_PHONE_LENGTH} characters.`;
-  }
-
-  return {
-    fieldErrors,
-    data: {
-      name,
-      company: company || null,
-      position: position || null,
-      email: email || null,
-      phone: phone || null,
-    },
-  };
 }
 
 function parseDateOnly(
@@ -389,7 +340,7 @@ export async function createContactDirectoryEntry(
     return { error: "You do not have permission to edit Project Inquiry." };
   }
 
-  const validation = validateContactInput(input);
+  const validation = validateProjectContactInput(input);
 
   if (Object.keys(validation.fieldErrors).length > 0) {
     return {
@@ -401,7 +352,11 @@ export async function createContactDirectoryEntry(
   const contact = await withPrismaRetry(() =>
     prisma.contactDirectoryEntry.create({
       data: {
-        ...validation.data,
+        name: validation.data.name,
+        company: validation.data.company || null,
+        position: validation.data.position || null,
+        email: validation.data.email || null,
+        phone: validation.data.phone || null,
         createdById: user.id,
       },
       select: {

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, readOnlyView, summary, stagePage, stageActions, service, schema, overview] = await Promise.all([
+const [workspace, contactDialog, contactValidation, readOnlyView, summary, stagePage, stageActions, service, schema, overview] = await Promise.all([
   readFile("src/components/projects/stage-one-workspace.tsx", "utf8"),
+  readFile("src/components/projects/project-contact-dialog.tsx", "utf8"),
+  readFile("src/lib/project-contact-validation.ts", "utf8"),
   readFile("src/components/projects/stage-one-read-only-view.tsx", "utf8"),
   readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/1/page.tsx", "utf8"),
@@ -11,6 +13,30 @@ const [workspace, readOnlyView, summary, stagePage, stageActions, service, schem
   readFile("prisma/schema.prisma", "utf8"),
   readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
 ]);
+
+assert.equal(
+  workspace.match(/hover:bg-\[#eaf4ed\][^"]*hover:underline[^"]*focus-visible:ring-2/g)?.length,
+  2,
+  "Both Add manually actions must expose matching hover and keyboard-focus treatment.",
+);
+assert(
+  workspace.indexOf("validateProjectContactInput(contactForm)") <
+    workspace.indexOf("createContactDirectoryEntryAction(project.id, validation.data)"),
+  "Client validation must run before the Stage 1 contact server action.",
+);
+assert(
+  service.includes("validateProjectContactInput(input)") &&
+    contactValidation.includes('fieldErrors.email = "Enter a valid email address."') &&
+    contactValidation.includes('fieldErrors.phone =') &&
+    contactValidation.includes("E164_PHONE_PATTERN"),
+  "Server contact creation must enforce shared email and international-phone validation.",
+);
+assert(
+  contactDialog.includes("inputRefs.current[firstInvalidField]?.focus()") &&
+    contactDialog.includes('role="alert"') &&
+    contactDialog.includes("Include country code, e.g. +971, +91, +44."),
+  "Contact validation errors must be inline, focused, and explain the international phone format.",
+);
 
 assert(
   workspace.includes("ProjectFlowSummaryStrip") &&

@@ -53,6 +53,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import type { CollaboratorRecord } from "@/lib/collaboration";
+import { validateProjectContactInput } from "@/lib/project-contact-validation";
 import type {
   CompleteProjectInquiryInput,
   ProjectInquiryAttachmentRecord,
@@ -715,11 +716,19 @@ export function StageOneWorkspace({
 
   async function handleCreateContact() {
     if (!contactTarget) return;
+    const validation = validateProjectContactInput(contactForm);
+
+    if (Object.keys(validation.fieldErrors).length > 0) {
+      setContactErrors(validation.fieldErrors);
+      setContactError("Review the highlighted contact fields.");
+      return;
+    }
+
     setContactSaving(true);
     setContactError(undefined);
     setContactErrors({});
     try {
-      const result = await createContactDirectoryEntryAction(project.id, contactForm);
+      const result = await createContactDirectoryEntryAction(project.id, validation.data);
       if ("error" in result) {
         setContactError(result.error);
         setContactErrors(result.fieldErrors ?? {});
@@ -935,7 +944,7 @@ export function StageOneWorkspace({
                   }}
                 />
                 {!readOnly ? (
-                  <button type="button" onClick={() => openContactDialog("client")} className="mt-2 text-[12px] font-[650] text-[#2d7b51] hover:text-[#185d3a]">
+                  <button type="button" onClick={() => openContactDialog("client")} className="-ml-1 mt-1.5 cursor-pointer rounded-[6px] px-1 py-0.5 text-[12px] font-[650] text-[#2d7b51] transition-colors hover:bg-[#eaf4ed] hover:text-[#185d3a] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8057] focus-visible:ring-offset-2">
                     Add manually
                   </button>
                 ) : null}
@@ -983,7 +992,7 @@ export function StageOneWorkspace({
                   }}
                 />
                 {!readOnly ? (
-                  <button type="button" onClick={() => openContactDialog("finalBeneficiary")} className="mt-2 text-[12px] font-[650] text-[#2d7b51] hover:text-[#185d3a]">
+                  <button type="button" onClick={() => openContactDialog("finalBeneficiary")} className="-ml-1 mt-1.5 cursor-pointer rounded-[6px] px-1 py-0.5 text-[12px] font-[650] text-[#2d7b51] transition-colors hover:bg-[#eaf4ed] hover:text-[#185d3a] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8057] focus-visible:ring-offset-2">
                     Add manually
                   </button>
                 ) : null}

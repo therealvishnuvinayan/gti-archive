@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,20 @@ export function ProjectContactDialog({
   onSubmit,
   onChange,
 }: ProjectContactDialogProps) {
+  const inputRefs = useRef<
+    Partial<Record<keyof ProjectContactForm, HTMLInputElement | null>>
+  >({});
+
+  useEffect(() => {
+    const firstInvalidField = (
+      ["name", "company", "position", "email", "phone"] as const
+    ).find((field) => Boolean(fieldErrors?.[field]));
+
+    if (firstInvalidField) {
+      inputRefs.current[firstInvalidField]?.focus();
+    }
+  }, [fieldErrors]);
+
   if (!isOpen) {
     return null;
   }
@@ -103,18 +118,40 @@ export function ProjectContactDialog({
                   {required ? <span className="ml-1 text-[#bd4d48]">*</span> : null}
                 </span>
                 <Input
+                  ref={(element) => {
+                    inputRefs.current[field] = element;
+                  }}
                   type={field === "email" ? "email" : field === "phone" ? "tel" : "text"}
                   value={form[field]}
                   onChange={(event) => onChange(field, event.target.value)}
                   placeholder={placeholder}
                   aria-invalid={Boolean(fieldErrors?.[field])}
+                  aria-describedby={
+                    fieldErrors?.[field]
+                      ? `project-contact-${field}-error`
+                      : field === "phone"
+                        ? "project-contact-phone-help"
+                        : undefined
+                  }
                   className={`h-12 rounded-[14px] border bg-white shadow-none ${
                     fieldErrors?.[field] ? "border-[#c85c54]" : "border-[#dce3dc]"
                   }`}
                 />
                 {fieldErrors?.[field] ? (
-                  <span className="block text-[12px] text-[#b84e48]">
+                  <span
+                    id={`project-contact-${field}-error`}
+                    role="alert"
+                    className="block text-[12px] text-[#b84e48]"
+                  >
                     {fieldErrors[field]}
+                  </span>
+                ) : null}
+                {field === "phone" ? (
+                  <span
+                    id="project-contact-phone-help"
+                    className="block text-[11px] text-[#78837b]"
+                  >
+                    Include country code, e.g. +971, +91, +44.
                   </span>
                 ) : null}
               </label>
