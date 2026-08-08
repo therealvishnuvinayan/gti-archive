@@ -48,6 +48,7 @@ import { ProjectStageSummary } from "@/components/projects/project-stage-summary
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProjectStageShellRecord } from "@/lib/projects";
@@ -238,7 +239,7 @@ function ChecklistStatusBadge({ status }: { status: ProjectFileChecklistItemStat
   );
 }
 
-function ChecklistUploadField({
+function ChecklistFilePicker({
   fieldLabel,
   files,
   multiple = false,
@@ -251,7 +252,7 @@ function ChecklistUploadField({
   compact?: boolean;
   onChange: (files: LocalFileRecord[]) => void;
 }) {
-  const inputId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function selectFiles(event: React.ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.currentTarget.files ?? []).map((file) => ({
@@ -271,11 +272,10 @@ function ChecklistUploadField({
   return (
     <div className="min-w-0 space-y-2">
       <input
-        id={inputId}
+        ref={fileInputRef}
         type="file"
         multiple={multiple}
-        className="sr-only"
-        aria-label={`Choose ${fieldLabel} ${multiple ? "files" : "file"}`}
+        hidden
         onChange={selectFiles}
       />
       <div className="flex min-w-0 flex-wrap gap-2">
@@ -297,16 +297,19 @@ function ChecklistUploadField({
             </button>
           </span>
         ))}
-        <label
-          htmlFor={inputId}
+        <Button
+          type="button"
+          variant="outline"
+          aria-label={`Choose ${fieldLabel} ${multiple ? "files" : "file"}`}
           className={cn(
-            "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[11px] border border-dashed border-[#9dbba7] bg-[#f8fcf9] font-[680] text-[#347153] transition hover:border-[#6f9f80] hover:bg-[#f0f8f2]",
+            "rounded-[11px] border-dashed border-[#9dbba7] bg-[#f8fcf9] font-[680] text-[#347153] shadow-none hover:border-[#6f9f80] hover:bg-[#f0f8f2]",
             compact ? "min-h-10 px-3 text-[11px]" : "min-h-11 px-4 text-[12px]",
           )}
+          onClick={() => fileInputRef.current?.click()}
         >
           <Upload className="h-3.5 w-3.5" />
           {files.length > 0 && multiple ? "Add more" : multiple ? "Choose files" : "Choose file"}
-        </label>
+        </Button>
       </div>
       {files.length === 0 ? (
         <p className="text-[10px] text-[#8a948d]">New files are uploaded when you save changes.</p>
@@ -991,7 +994,7 @@ export function StageFiveWorkspace({
 
     if (item.control === "file" || item.control === "multi-file") {
       return (
-        <ChecklistUploadField
+        <ChecklistFilePicker
           fieldLabel={item.title}
           files={selectedFiles}
           multiple={item.control === "multi-file"}
@@ -1020,7 +1023,7 @@ export function StageFiveWorkspace({
             suggestions={item.suggestions}
             onChange={(nextValues) => updateMultiValues(item.key, nextValues)}
           />
-          <ChecklistUploadField
+          <ChecklistFilePicker
             fieldLabel={`${item.title} reference`}
             files={selectedFiles}
             multiple
@@ -1041,7 +1044,7 @@ export function StageFiveWorkspace({
             aria-label={item.title}
             onChange={(event) => updateText(item.key, event.target.value)}
           />
-          <ChecklistUploadField
+          <ChecklistFilePicker
             fieldLabel={`${item.title} reference`}
             files={selectedFiles}
             multiple
@@ -1062,7 +1065,7 @@ export function StageFiveWorkspace({
           onChange={(event) => updateText(item.key, event.target.value)}
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <ChecklistUploadField
+          <ChecklistFilePicker
             fieldLabel={`${item.title} reference`}
             files={selectedFiles}
             compact
@@ -1163,18 +1166,28 @@ export function StageFiveWorkspace({
               <div className="mt-5 flex flex-col gap-3 rounded-[16px] border border-[#dfe6df] bg-[#f8faf8] p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-[10px] font-[760] uppercase tracking-[0.1em] text-[#6e7a71]">File checklist for</p>
-                  <select
+                  <Select
                     value={selectedHandoffId}
-                    className="mt-2 min-h-11 w-full max-w-[560px] rounded-[12px] border border-[#d7e0d8] bg-white px-3 text-[13px] font-[680] text-[#263129] outline-none focus:border-[#82aa90] sm:min-w-[420px]"
-                    aria-label="Current Stage 5 final file"
-                    onChange={(event) => updateSelectedFile(event.target.value)}
+                    onValueChange={updateSelectedFile}
                   >
-                    {pageData.files.map((file, index) => (
-                      <option key={file.handoffId} value={file.handoffId}>
-                        {file.sourceAttachment.name} — File {index + 1} of {pageData.files.length}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      className="mt-2 h-11 w-full max-w-[560px] rounded-[12px] border border-[#d7e0d8] bg-white px-3 text-[13px] font-[680] text-[#263129] shadow-none focus-visible:border-[#82aa90] sm:min-w-[420px]"
+                      aria-label="Current Stage 5 final file"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-[16px]">
+                      {pageData.files.map((file, index) => (
+                        <SelectItem
+                          key={file.handoffId}
+                          value={file.handoffId}
+                          className="rounded-[11px] text-[12px] font-[620]"
+                        >
+                          {file.sourceAttachment.name} — File {index + 1} of {pageData.files.length}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="shrink-0 text-left sm:text-right">
                   <p className="text-[12px] font-[700] text-[#2f6548]">

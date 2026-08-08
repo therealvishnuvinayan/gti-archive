@@ -102,6 +102,14 @@ assert(
     workspace.includes("values.map"),
   "Stage 5 View mode must show selected file metadata and repeatable values.",
 );
+assert(
+  workspace.includes("<Select") &&
+    workspace.includes("<SelectTrigger") &&
+    workspace.includes("<SelectContent") &&
+    workspace.includes("<SelectItem") &&
+    workspace.includes("onValueChange={updateSelectedFile}"),
+  "Stage 5 file switching must use the themed GTI Select control.",
+);
 const readOnlyView = workspace.slice(
   workspace.indexOf("function StageFiveReadOnlyView"),
   workspace.indexOf("function RequestInformationDialog"),
@@ -110,13 +118,24 @@ assert(
   !readOnlyView.includes("<Input") &&
     !readOnlyView.includes("<Textarea") &&
     !readOnlyView.includes("<button") &&
-    !readOnlyView.includes("ChecklistUploadField") &&
+    !readOnlyView.includes("ChecklistFilePicker") &&
     !readOnlyView.includes("Request"),
   "Stage 5 View mode must not render editing, upload, removal, Add, or Request controls.",
 );
+const checklistFilePicker = workspace.slice(
+  workspace.indexOf("function ChecklistFilePicker"),
+  workspace.indexOf("function MultiValueChecklistInput"),
+);
 assert(
-  workspace.includes('type="file"') && workspace.includes("multiple={multiple}"),
-  "Stage 5 must support single and multiple checklist attachments.",
+  checklistFilePicker.includes("useRef<HTMLInputElement>(null)") &&
+    checklistFilePicker.includes('type="file"') &&
+    checklistFilePicker.includes("multiple={multiple}") &&
+    checklistFilePicker.includes("hidden") &&
+    checklistFilePicker.includes("fileInputRef.current?.click()") &&
+    checklistFilePicker.includes("<Button") &&
+    !checklistFilePicker.includes("htmlFor") &&
+    !checklistFilePicker.includes("sr-only"),
+  "Stage 5 must trigger single and multiple hidden file inputs through the shared GTI Button/ref picker.",
 );
 assert(
   workspace.includes("uploadStageFiveChecklistAttachment") &&
