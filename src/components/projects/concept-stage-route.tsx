@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { ProjectBackButton } from "@/components/projects/project-back-button";
 import {
   ConceptStageLoadingShell,
   ConceptStageWorkspace,
@@ -107,17 +106,7 @@ export function ConceptStageRoute({
   const userPromise = requireUser();
 
   return (
-    <DashboardLayout
-      topbarProps={{
-        showSearch: false,
-        leadingContent: (
-          <ProjectBackButton
-            href={`/projects/${slug}`}
-            label="Back to Project Overview"
-          />
-        ),
-      }}
-    >
+    <DashboardLayout>
       <Suspense fallback={<ConceptStageLoadingShell />}>
         <ConceptStageContent
           slug={slug}

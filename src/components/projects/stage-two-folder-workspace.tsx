@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import {
   type DragEvent,
   useMemo,
@@ -11,7 +10,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  ArrowLeft,
   Check,
   ChevronDown,
   Download,
@@ -39,6 +37,7 @@ import {
 } from "lucide-react";
 
 import { AssetPreviewDialog } from "@/components/projects/asset-preview-button";
+import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -628,14 +627,17 @@ export function StageTwoFolderWorkspace({
       <Card className="overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
         <CardContent className="p-0">
           <header className="border-b border-[#e6ece7] px-5 py-5 sm:px-8">
-            <Link
-              href={`/projects/${data.project.id}/stages/2?workspace=${encodeURIComponent(data.workspace.id)}`}
-              className="inline-flex items-center gap-2 text-[12px] font-[700] text-[#347452] hover:text-[#195c39]"
-            >
-              <ArrowLeft className="h-4 w-4" /> Research workspace
+            <div className="flex min-w-0 items-center gap-2">
+              <ProjectBackButton
+                href={`/projects/${data.project.id}/stages/2?workspace=${encodeURIComponent(data.workspace.id)}`}
+                label="Research workspace"
+                ariaLabel="Back to Stage 2 Research Workspace"
+              />
               <span className="text-[#a0aaa2]">/</span>
-              <span className="max-w-[220px] truncate text-[#536158]">{data.folder.name}</span>
-            </Link>
+              <span className="max-w-[220px] truncate text-[12px] font-[700] text-[#536158]">
+                {data.folder.name}
+              </span>
+            </div>
             <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#e7f3ea] text-[#2d7952]">

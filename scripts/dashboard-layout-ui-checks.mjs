@@ -94,8 +94,8 @@ assert(
   "The compact notification control must preserve its unread state and behavior.",
 );
 assert(
-  appFrame.includes('size="sm"') &&
-    appFrame.includes("min-h-9 rounded-[12px]") &&
+  appFrame.includes("getDashboardBackNavigation") &&
+    appFrame.includes("ProjectBackButton") &&
     backButton.includes('size="sm"') &&
     backButton.includes("min-h-9 rounded-[12px]"),
   "Shared back controls must retain their links in a more compact treatment.",

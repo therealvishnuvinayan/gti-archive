@@ -14,7 +14,6 @@ export default async function StageFourConceptChatPage({
     <ConceptChatRoute
       projectId={decodeRouteParam(slug)}
       folderId={decodeRouteParam(folderId)}
-      stageNumber={4}
       stageKey={ProjectWorkflowStageKey.PROJECT_DEVELOPMENT}
     />
   );
