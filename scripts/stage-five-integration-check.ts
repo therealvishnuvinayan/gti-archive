@@ -7,6 +7,7 @@ import {
   ProjectFileChecklistItemStatus,
   ProjectFileChecklistRequestChannel,
   ProjectFileChecklistRequestStatus,
+  ProjectFileChecklistRequestWorkflowStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
   StageStatus,
@@ -16,10 +17,14 @@ import {
 import { prisma } from "../src/lib/prisma";
 import type { SendEmailInput } from "../src/lib/email/resend";
 import {
+  acceptStageFiveChecklistRequest,
+  declineStageFiveChecklistRequest,
+  getStageFiveChecklistRequestData,
   getStageFiveWorkspaceData,
   handoffStageFourFiles,
   requestStageFiveChecklistInformation,
   saveStageFiveChecklist,
+  submitStageFiveChecklistResponse,
 } from "../src/lib/stage-five";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 
@@ -83,6 +88,8 @@ async function main() {
   const foreignAttachmentId = `stage-five-file-foreign-${runId}`;
   const checklistAttachmentId = `stage-five-checklist-file-${runId}`;
   const foreignChecklistAttachmentId = `stage-five-checklist-foreign-${runId}`;
+  const responseAttachmentId = `stage-five-response-file-${runId}`;
+  const foreignResponseAttachmentId = `stage-five-response-foreign-${runId}`;
 
   try {
     await prisma.project.createMany({
@@ -211,13 +218,15 @@ async function main() {
 
     const initial = await getStageFiveWorkspaceData(owner, projectId);
     check(initial?.files.length === 2, "Stage 5 must list every handed-off file");
-    check(
-      initial.files.every((file) => file.items.length === 15),
-      "every file must expose all 15 independent checklist fields",
-    );
     const fileA = initial.files.find((file) => file.sourceAttachment.id === attachmentAId);
     const fileB = initial.files.find((file) => file.sourceAttachment.id === attachmentBId);
     check(fileA && fileB, "both handed-off files must have checklists");
+    check(fileA.items.length === 15, "the selected file must expose all 15 checklist fields");
+    const selectedFileB = await getStageFiveWorkspaceData(owner, projectId, fileB.handoffId);
+    check(
+      selectedFileB?.files.find((file) => file.handoffId === fileB.handoffId)?.items.length === 15,
+      "each final file must expose its own 15-field checklist when selected",
+    );
 
     await prisma.projectAttachment.createMany({
       data: [
@@ -274,8 +283,9 @@ async function main() {
     check(!isError(savedB), "File B must save independently");
 
     const persisted = await getStageFiveWorkspaceData(owner, projectId);
+    const persistedFileBData = await getStageFiveWorkspaceData(owner, projectId, fileB.handoffId);
     const persistedA = persisted?.files.find((file) => file.handoffId === fileA.handoffId);
-    const persistedB = persisted?.files.find((file) => file.handoffId === fileB.handoffId);
+    const persistedB = persistedFileBData?.files.find((file) => file.handoffId === fileB.handoffId);
     check(
       persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.OUTPUT_NAME)?.value.text === "Carton Artwork",
       "File A Output Name must persist",
@@ -329,15 +339,165 @@ async function main() {
       recipientUserId: recipient.id,
     });
     check(!isError(repeatedInApp) && repeatedInApp.duplicate, "the same submission must be idempotent");
+    const activeDuplicate = await requestStageFiveChecklistInformation(owner, {
+      clientRequestId: `active_duplicate_${randomUUID()}`,
+      projectId,
+      handoffId: fileA.handoffId,
+      fieldKey: ProjectFileChecklistField.COMPULSORY_TEXT,
+      channel: ProjectFileChecklistRequestChannel.IN_APP,
+      recipientUserId: recipient.id,
+    });
+    check(
+      !isError(activeDuplicate) && activeDuplicate.duplicate,
+      "a second active request for the same checklist, file, field, and recipient must be reused",
+    );
     const notifications = await prisma.notification.findMany({
       where: { projectId, type: "CHECKLIST_INFORMATION_REQUESTED" },
     });
     check(notifications.length === 1, "one in-app submission must create exactly one notification");
     check(
-      notifications[0].url?.includes(`file=${fileA.handoffId}`) &&
-        notifications[0].url?.includes("field=COMPULSORY_TEXT") &&
-        notifications[0].url?.includes("mode=edit"),
-      "notification must deep-link to the correct file and field",
+      notifications[0].url === `/requests/checklist/${inApp.request.id}`,
+      "notification must deep-link to the dedicated authenticated request page",
+    );
+
+    check(
+      (await getStageFiveChecklistRequestData(outsider, inApp.request.id)) === null,
+      "an unrelated collaborator must not view another recipient's request",
+    );
+    check(
+      (await getStageFiveChecklistRequestData(superAdmin, inApp.request.id))?.status ===
+        ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+      "SUPER_ADMIN must have support visibility into the request",
+    );
+    check(
+      isError(await acceptStageFiveChecklistRequest(outsider, inApp.request.id)),
+      "an unrelated collaborator must not accept another recipient's request",
+    );
+    check(
+      isError(
+        await submitStageFiveChecklistResponse(recipient, {
+          requestId: inApp.request.id,
+          value: { text: "Approved compulsory copy" },
+          attachmentIds: [],
+        }),
+      ),
+      "a request must be accepted before a response is submitted",
+    );
+    const acceptedRequest = await acceptStageFiveChecklistRequest(recipient, inApp.request.id);
+    check(
+      !isError(acceptedRequest) &&
+        acceptedRequest.status === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+      "the exact recipient must be able to accept the request",
+    );
+    const completedTextResponse = await submitStageFiveChecklistResponse(recipient, {
+      requestId: inApp.request.id,
+      value: { text: "Approved compulsory copy" },
+      attachmentIds: [],
+    });
+    check(!isError(completedTextResponse), "the accepted recipient text response must complete");
+    const completedRequestData = await getStageFiveChecklistRequestData(recipient, inApp.request.id);
+    check(
+      completedRequestData?.status === ProjectFileChecklistRequestWorkflowStatus.COMPLETED &&
+        completedRequestData.completedAt &&
+        completedRequestData.acceptedAt &&
+        completedRequestData.response.value.text === "Approved compulsory copy",
+      "the completed request page must retain acceptance, completion, and response data",
+    );
+    const completedTextItem = await prisma.projectFileChecklistItem.findUnique({
+      where: {
+        checklistId_fieldKey: {
+          checklistId: fileA.checklistId,
+          fieldKey: ProjectFileChecklistField.COMPULSORY_TEXT,
+        },
+      },
+    });
+    check(
+      completedTextItem?.status === ProjectFileChecklistItemStatus.FILLED &&
+        (completedTextItem.value as { text?: string } | null)?.text === "Approved compulsory copy",
+      "the collaborator response must update the real per-file checklist item",
+    );
+
+    const graphicsRequest = await requestStageFiveChecklistInformation(owner, {
+      clientRequestId: `graphics_${randomUUID()}`,
+      projectId,
+      handoffId: fileA.handoffId,
+      fieldKey: ProjectFileChecklistField.RELATED_GRAPHICS,
+      channel: ProjectFileChecklistRequestChannel.IN_APP,
+      recipientUserId: recipient.id,
+    });
+    check(!isError(graphicsRequest), "a new field request must be allowed after completion");
+    check(
+      !isError(await acceptStageFiveChecklistRequest(recipient, graphicsRequest.request.id)),
+      "the graphics request must be accepted",
+    );
+    await prisma.projectAttachment.createMany({
+      data: [
+        [responseAttachmentId, projectId],
+        [foreignResponseAttachmentId, foreignProjectId],
+      ].map(([id, targetProjectId]) => ({
+        id,
+        projectId: targetProjectId,
+        uploadedById: recipient.id,
+        fileName: `${id}.png`,
+        originalFileName: `${id}.png`,
+        mimeType: "image/png",
+        fileSize: 4096,
+        bucket: "stage-five-integration",
+        storageKey: `stage-five-integration/${id}`,
+        assetType: AttachmentAssetType.FILE_CHECKLIST_ATTACHMENT,
+        checklistResponseRequestId: graphicsRequest.request.id,
+        status: AttachmentStatus.READY,
+      })),
+    });
+    check(
+      isError(
+        await submitStageFiveChecklistResponse(recipient, {
+          requestId: graphicsRequest.request.id,
+          value: {},
+          attachmentIds: [foreignResponseAttachmentId],
+        }),
+      ),
+      "cross-project response attachment injection must fail",
+    );
+    const graphicsResponse = await submitStageFiveChecklistResponse(recipient, {
+      requestId: graphicsRequest.request.id,
+      value: {},
+      attachmentIds: [responseAttachmentId],
+    });
+    check(!isError(graphicsResponse), "a READY same-project response attachment must complete");
+    check(
+      (await prisma.projectFileChecklistItemAttachment.count({
+        where: {
+          attachmentId: responseAttachmentId,
+          checklistItem: {
+            checklistId: fileA.checklistId,
+            fieldKey: ProjectFileChecklistField.RELATED_GRAPHICS,
+          },
+        },
+      })) === 1,
+      "the response attachment must associate only with the requested checklist field",
+    );
+
+    const declinedRequest = await requestStageFiveChecklistInformation(owner, {
+      clientRequestId: `decline_${randomUUID()}`,
+      projectId,
+      handoffId: fileA.handoffId,
+      fieldKey: ProjectFileChecklistField.BARCODE,
+      channel: ProjectFileChecklistRequestChannel.IN_APP,
+      recipientUserId: recipient.id,
+    });
+    check(!isError(declinedRequest), "a decline-path request must be created");
+    const declined = await declineStageFiveChecklistRequest(recipient, {
+      requestId: declinedRequest.request.id,
+      reason: "The approved barcode has not been issued yet.",
+    });
+    check(!isError(declined), "the exact recipient must be able to decline with a reason");
+    const declinedData = await getStageFiveChecklistRequestData(recipient, declinedRequest.request.id);
+    check(
+      declinedData?.status === ProjectFileChecklistRequestWorkflowStatus.DECLINED &&
+        declinedData.declinedAt &&
+        declinedData.declineReason === "The approved barcode has not been issued yet.",
+      "declined requests must remain readable with timestamp and reason",
     );
 
     const invalidEmail = await requestStageFiveChecklistInformation(owner, {
@@ -421,8 +581,20 @@ async function main() {
       "successful dispatch must mark an empty item REQUESTED",
     );
     check(
-      (await prisma.projectFileChecklistRequest.count({ where: { projectId } })) === 3,
-      "request history must preserve successful in-app, successful email, and failed email records",
+      (await prisma.notification.count({
+        where: { projectId, type: "CHECKLIST_INFORMATION_COMPLETED" },
+      })) === 2,
+      "each completed collaborator response must notify the original requester",
+    );
+    check(
+      (await prisma.notification.count({
+        where: { projectId, type: "CHECKLIST_INFORMATION_DECLINED" },
+      })) === 1,
+      "a declined collaborator request must notify the original requester",
+    );
+    check(
+      (await prisma.projectFileChecklistRequest.count({ where: { projectId } })) === 5,
+      "request history must preserve completed, declined, successful email, and failed email records",
     );
     const workflow = await prisma.projectWorkflowStage.findMany({
       where: {

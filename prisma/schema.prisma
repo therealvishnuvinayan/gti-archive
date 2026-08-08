@@ -136,6 +136,14 @@ enum ProjectFileChecklistRequestStatus {
   CANCELLED
 }
 
+enum ProjectFileChecklistRequestWorkflowStatus {
+  REQUESTED
+  ACCEPTED
+  COMPLETED
+  DECLINED
+  CANCELLED
+}
+
 enum CalendarEventType {
   PROJECTS
   EVENTS
@@ -249,6 +257,8 @@ enum NotificationType {
   INVOICE_REQUESTED
   INVOICE_UPLOADED
   CHECKLIST_INFORMATION_REQUESTED
+  CHECKLIST_INFORMATION_COMPLETED
+  CHECKLIST_INFORMATION_DECLINED
 }
 
 enum NotificationEntityType {
@@ -347,6 +357,7 @@ model User {
   updatedFileChecklistItems           ProjectFileChecklistItem[]           @relation("ProjectFileChecklistItemUpdater")
   fileChecklistRequestsMade           ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRequester")
   fileChecklistRequestsReceived       ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRecipient")
+  fileChecklistRequestsResponded      ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestResponder")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -765,30 +776,38 @@ model ProjectFileChecklistItemAttachment {
 }
 
 model ProjectFileChecklistRequest {
-  id              String                             @id @default(cuid())
-  clientRequestId String                             @unique
-  projectId       String
-  project         Project                            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  checklistId     String
-  checklist       ProjectFileChecklist               @relation(fields: [checklistId], references: [id], onDelete: Cascade)
-  checklistItemId String
-  checklistItem   ProjectFileChecklistItem           @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
-  fieldKey        ProjectFileChecklistField
-  requestedById   String
-  requestedBy     User                               @relation("ProjectFileChecklistRequestRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  channel         ProjectFileChecklistRequestChannel
-  recipientUserId String?
-  recipientUser   User?                              @relation("ProjectFileChecklistRequestRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
-  recipientName   String?
-  recipientEmail  String?
-  message         String?                            @db.Text
-  status          ProjectFileChecklistRequestStatus  @default(PENDING)
-  requestedAt     DateTime                           @default(now())
-  sentAt          DateTime?
-  failedAt        DateTime?
-  failureMessage  String?                            @db.Text
-  createdAt       DateTime                           @default(now())
-  updatedAt       DateTime                           @updatedAt
+  id                  String                                    @id @default(cuid())
+  clientRequestId     String                                    @unique
+  projectId           String
+  project             Project                                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  checklistId         String
+  checklist           ProjectFileChecklist                      @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  checklistItemId     String
+  checklistItem       ProjectFileChecklistItem                  @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  fieldKey            ProjectFileChecklistField
+  requestedById       String
+  requestedBy         User                                      @relation("ProjectFileChecklistRequestRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  channel             ProjectFileChecklistRequestChannel
+  recipientUserId     String?
+  recipientUser       User?                                     @relation("ProjectFileChecklistRequestRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recipientName       String?
+  recipientEmail      String?
+  message             String?                                   @db.Text
+  status              ProjectFileChecklistRequestStatus         @default(PENDING)
+  workflowStatus      ProjectFileChecklistRequestWorkflowStatus @default(REQUESTED)
+  requestedAt         DateTime                                  @default(now())
+  sentAt              DateTime?
+  failedAt            DateTime?
+  failureMessage      String?                                   @db.Text
+  acceptedAt          DateTime?
+  completedAt         DateTime?
+  declinedAt          DateTime?
+  declineReason       String?                                   @db.Text
+  respondedByUserId   String?
+  respondedByUser     User?                                     @relation("ProjectFileChecklistRequestResponder", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+  responseAttachments ProjectAttachment[]                       @relation("ProjectFileChecklistRequestResponseAttachments")
+  createdAt           DateTime                                  @default(now())
+  updatedAt           DateTime                                  @updatedAt
 
   @@index([projectId, requestedAt])
   @@index([checklistId, fieldKey, requestedAt])
@@ -796,6 +815,8 @@ model ProjectFileChecklistRequest {
   @@index([requestedById])
   @@index([recipientUserId])
   @@index([status, requestedAt])
+  @@index([workflowStatus, requestedAt])
+  @@index([respondedByUserId])
 }
 
 model ProjectCategory {
@@ -1150,44 +1171,46 @@ model FluxAiMessage {
 }
 
 model ProjectAttachment {
-  id                        String                                @id @default(cuid())
-  projectId                 String
-  project                   Project                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stageId                   String?
-  stage                     ProjectStage?                         @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  revisionId                String?
-  revision                  ProjectRevision?                      @relation(fields: [revisionId], references: [id], onDelete: SetNull)
-  commentId                 String?
-  comment                   ProjectComment?                       @relation(fields: [commentId], references: [id], onDelete: SetNull)
-  uploadedById              String
-  uploadedBy                User                                  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  reviewedById              String?
-  reviewedBy                User?                                 @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  baseComparisonComments    ComparisonComment[]                   @relation("ComparisonCommentBaseAttachment")
-  compareComparisonComments ComparisonComment[]                   @relation("ComparisonCommentCompareAttachment")
-  captionComparisonComments ComparisonComment[]                   @relation("ComparisonCommentCaptionAttachment")
-  fileFavorites             FileFavorite[]
-  fileName                  String
-  originalFileName          String
-  mimeType                  String
-  fileSize                  Int
-  bucket                    String
-  storageKey                String                                @unique
-  assetType                 AttachmentAssetType
-  status                    AttachmentStatus                      @default(UPLOADING)
-  submissionReviewStatus    SubmissionReviewStatus?
-  reviewedAt                DateTime?
-  reviewNote                String?
-  archivedFiles             ArchivedProjectFile[]                 @relation("ArchivedProjectFileSourceAttachment")
-  archiveArtworkMetadata    ArchiveArtworkMetadata[]              @relation("ArchiveArtworkMetadataSourceAttachment")
-  assetTags                 ProjectAttachmentAssetTagAssignment[]
-  inquiryAssociations       ProjectInquiryAttachment[]
-  researchFolderFile        ProjectResearchFolderFile?
-  stageFileHandoffs         ProjectStageFileHandoff[]             @relation("ProjectStageFileHandoffSourceAttachment")
-  sourceFileChecklists      ProjectFileChecklist[]                @relation("ProjectFileChecklistSourceAttachment")
-  fileChecklistItems        ProjectFileChecklistItemAttachment[]  @relation("ProjectFileChecklistItemAttachment")
-  createdAt                 DateTime                              @default(now())
-  updatedAt                 DateTime                              @updatedAt
+  id                         String                                @id @default(cuid())
+  projectId                  String
+  project                    Project                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId                    String?
+  stage                      ProjectStage?                         @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  revisionId                 String?
+  revision                   ProjectRevision?                      @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  commentId                  String?
+  comment                    ProjectComment?                       @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  uploadedById               String
+  uploadedBy                 User                                  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  reviewedById               String?
+  reviewedBy                 User?                                 @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  baseComparisonComments     ComparisonComment[]                   @relation("ComparisonCommentBaseAttachment")
+  compareComparisonComments  ComparisonComment[]                   @relation("ComparisonCommentCompareAttachment")
+  captionComparisonComments  ComparisonComment[]                   @relation("ComparisonCommentCaptionAttachment")
+  fileFavorites              FileFavorite[]
+  fileName                   String
+  originalFileName           String
+  mimeType                   String
+  fileSize                   Int
+  bucket                     String
+  storageKey                 String                                @unique
+  assetType                  AttachmentAssetType
+  status                     AttachmentStatus                      @default(UPLOADING)
+  submissionReviewStatus     SubmissionReviewStatus?
+  reviewedAt                 DateTime?
+  reviewNote                 String?
+  archivedFiles              ArchivedProjectFile[]                 @relation("ArchivedProjectFileSourceAttachment")
+  archiveArtworkMetadata     ArchiveArtworkMetadata[]              @relation("ArchiveArtworkMetadataSourceAttachment")
+  assetTags                  ProjectAttachmentAssetTagAssignment[]
+  inquiryAssociations        ProjectInquiryAttachment[]
+  researchFolderFile         ProjectResearchFolderFile?
+  stageFileHandoffs          ProjectStageFileHandoff[]             @relation("ProjectStageFileHandoffSourceAttachment")
+  sourceFileChecklists       ProjectFileChecklist[]                @relation("ProjectFileChecklistSourceAttachment")
+  fileChecklistItems         ProjectFileChecklistItemAttachment[]  @relation("ProjectFileChecklistItemAttachment")
+  checklistResponseRequestId String?
+  checklistResponseRequest   ProjectFileChecklistRequest?          @relation("ProjectFileChecklistRequestResponseAttachments", fields: [checklistResponseRequestId], references: [id], onDelete: SetNull)
+  createdAt                  DateTime                              @default(now())
+  updatedAt                  DateTime                              @updatedAt
 
   @@index([projectId, createdAt])
   @@index([stageId, createdAt])
@@ -1195,6 +1218,7 @@ model ProjectAttachment {
   @@index([commentId, createdAt])
   @@index([uploadedById])
   @@index([reviewedById])
+  @@index([checklistResponseRequestId])
   @@index([status])
   @@index([submissionReviewStatus])
 }

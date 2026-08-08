@@ -216,11 +216,11 @@ export const getCurrentUser = cache(async () => {
   };
 });
 
-export async function requireUser() {
+export async function requireUser(returnTo?: string) {
   const user = await getCurrentUser();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect(returnTo ? `/sign-in?returnTo=${encodeURIComponent(returnTo)}` : "/sign-in");
   }
 
   return user;

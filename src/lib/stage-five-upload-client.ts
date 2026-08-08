@@ -33,11 +33,15 @@ function putFile(
 export async function uploadStageFiveChecklistAttachment(
   projectId: string,
   file: File,
+  checklistRequestId?: string,
 ): Promise<StageFiveUploadedAttachment> {
   let attachmentId: string | undefined;
+  const requestBasePath = checklistRequestId
+    ? `/api/requests/checklist/${encodeURIComponent(checklistRequestId)}`
+    : null;
 
   try {
-    const response = await fetch("/api/project-assets/upload-url", {
+    const response = await fetch(requestBasePath ? `${requestBasePath}/upload-url` : "/api/project-assets/upload-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -62,7 +66,7 @@ export async function uploadStageFiveChecklistAttachment(
       },
     );
 
-    const completeResponse = await fetch("/api/project-assets/complete", {
+    const completeResponse = await fetch(requestBasePath ? `${requestBasePath}/complete` : "/api/project-assets/complete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ attachmentId, projectId }),
@@ -80,7 +84,7 @@ export async function uploadStageFiveChecklistAttachment(
     };
   } catch (error) {
     if (attachmentId) {
-      await fetch("/api/project-assets/complete", {
+      await fetch(requestBasePath ? `${requestBasePath}/complete` : "/api/project-assets/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ attachmentId, projectId, failed: true }),

@@ -5,7 +5,9 @@ import {
   ProjectFileChecklistItemStatus,
   ProjectFileChecklistRequestChannel,
   ProjectFileChecklistRequestStatus,
+  ProjectFileChecklistRequestWorkflowStatus,
   ProjectWorkflowStageKey,
+  UserRole,
 } from "@prisma/client";
 
 import { buildChecklistInformationRequestEmail } from "@/lib/email/checklist-information-request";
@@ -20,42 +22,18 @@ import {
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import {
+  getStageFiveFieldDefinition,
+  STAGE_FIVE_FIELD_KEYS,
+  STAGE_FIVE_FIELD_LABELS,
+  type StageFiveFieldDefinition,
+} from "@/lib/stage-five-fields";
+import {
+  createPresignedDownloadUrl,
+  createPresignedPreviewUrl,
+} from "@/lib/storage/s3";
 
-export const STAGE_FIVE_FIELD_KEYS = [
-  ProjectFileChecklistField.OUTPUT_NAME,
-  ProjectFileChecklistField.TECHNICAL_DRAWING,
-  ProjectFileChecklistField.HEALTH_WARNING,
-  ProjectFileChecklistField.TAR_NICOTINE,
-  ProjectFileChecklistField.COMPULSORY_TEXT,
-  ProjectFileChecklistField.MARKETING_COPY,
-  ProjectFileChecklistField.RELATED_GRAPHICS,
-  ProjectFileChecklistField.PRINTING_TECHNOLOGY,
-  ProjectFileChecklistField.FINISHES,
-  ProjectFileChecklistField.BARCODE,
-  ProjectFileChecklistField.TRACK_TRACE,
-  ProjectFileChecklistField.THREEDS,
-  ProjectFileChecklistField.TAX_STAMP,
-  ProjectFileChecklistField.QR_CODE,
-  ProjectFileChecklistField.INVOICE,
-] as const;
-
-export const STAGE_FIVE_FIELD_LABELS: Record<ProjectFileChecklistField, string> = {
-  OUTPUT_NAME: "Output Name",
-  TECHNICAL_DRAWING: "Technical Drawing",
-  HEALTH_WARNING: "Health Warning",
-  TAR_NICOTINE: "Tar / Nicotine",
-  COMPULSORY_TEXT: "Compulsory Text",
-  MARKETING_COPY: "Marketing Copy",
-  RELATED_GRAPHICS: "Related Graphics",
-  PRINTING_TECHNOLOGY: "Printing Technology",
-  FINISHES: "Finishes",
-  BARCODE: "Barcode",
-  TRACK_TRACE: "Track & Trace",
-  THREEDS: "3D's",
-  TAX_STAMP: "Tax Stamp",
-  QR_CODE: "QR Code",
-  INVOICE: "Invoice",
-};
+export { STAGE_FIVE_FIELD_KEYS, STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
 
 export type StageFiveChecklistValue = {
   text?: string;
@@ -82,6 +60,7 @@ export type StageFiveChecklistItemRecord = {
   attachments: StageFiveAttachmentRecord[];
   latestRequest: {
     status: ProjectFileChecklistRequestStatus;
+    workflowStatus: ProjectFileChecklistRequestWorkflowStatus;
     recipient: string;
     requestedAt: string;
   } | null;
@@ -106,6 +85,29 @@ export type StageFiveWorkspaceData = {
   files: StageFiveFileRecord[];
   participants: StageFiveParticipantRecord[];
   canEdit: boolean;
+};
+
+export type StageFiveChecklistRequestData = {
+  id: string;
+  project: { id: string; name: string };
+  handoffId: string;
+  file: StageFiveAttachmentRecord;
+  field: StageFiveFieldDefinition;
+  message: string | null;
+  status: ProjectFileChecklistRequestWorkflowStatus;
+  requestedAt: string;
+  acceptedAt: string | null;
+  completedAt: string | null;
+  declinedAt: string | null;
+  declineReason: string | null;
+  requestedBy: { id: string; name: string };
+  recipient: { id: string; name: string };
+  respondedBy: { id: string; name: string } | null;
+  response: {
+    value: StageFiveChecklistValue;
+    attachments: StageFiveAttachmentRecord[];
+  };
+  canRespond: boolean;
 };
 
 type StageFiveProject = ProjectStageAccessRecord;
@@ -331,10 +333,19 @@ function loadStageFiveChecklist(handoffId: string) {
               select: { attachment: { select: attachmentSelect } },
             },
             requests: {
+              where: {
+                workflowStatus: {
+                  in: [
+                    ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+                    ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+                  ],
+                },
+              },
               orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
               take: 1,
               select: {
                 status: true,
+                workflowStatus: true,
                 recipientName: true,
                 recipientEmail: true,
                 recipientUser: { select: { name: true, email: true } },
@@ -447,6 +458,7 @@ export async function getStageFiveWorkspaceData(
                 latestRequest: latestRequest
                   ? {
                       status: latestRequest.status,
+                      workflowStatus: latestRequest.workflowStatus,
                       recipient:
                         latestRequest.recipientName?.trim() ||
                         latestRequest.recipientUser?.name?.trim() ||
@@ -697,14 +709,29 @@ export async function requestStageFiveChecklistInformation(
   const existing = await withPrismaRetry(() =>
     prisma.projectFileChecklistRequest.findUnique({
       where: { clientRequestId: input.clientRequestId },
-      select: { id: true, status: true, projectId: true, checklistId: true, fieldKey: true },
+      select: {
+        id: true,
+        status: true,
+        workflowStatus: true,
+        projectId: true,
+        checklistId: true,
+        fieldKey: true,
+        channel: true,
+        recipientUserId: true,
+        recipientEmail: true,
+      },
     }),
   );
   if (existing) {
     if (
       existing.projectId !== input.projectId ||
       existing.checklistId !== checklist.id ||
-      existing.fieldKey !== input.fieldKey
+      existing.fieldKey !== input.fieldKey ||
+      existing.channel !== input.channel ||
+      (input.channel === ProjectFileChecklistRequestChannel.IN_APP &&
+        existing.recipientUserId !== input.recipientUserId?.trim()) ||
+      (input.channel === ProjectFileChecklistRequestChannel.EMAIL &&
+        existing.recipientEmail !== validateEmail(input.recipientEmail ?? ""))
     ) {
       return { error: "This request identifier is already in use." } as const;
     }
@@ -722,10 +749,31 @@ export async function requestStageFiveChecklistInformation(
     }
     const recipient = getParticipants(project).find((item) => item.id === recipientUserId);
     if (!recipient) return { error: "The selected participant is unavailable." } as const;
-    const url = `/projects/${input.projectId}/stages/5?file=${input.handoffId}&field=${input.fieldKey}&mode=edit`;
+    const activeRequest = await withPrismaRetry(() =>
+      prisma.projectFileChecklistRequest.findFirst({
+        where: {
+          checklistId: checklist.id,
+          fieldKey: input.fieldKey,
+          channel: ProjectFileChecklistRequestChannel.IN_APP,
+          recipientUserId,
+          workflowStatus: {
+            in: [
+              ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+              ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+            ],
+          },
+        },
+        orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
+        select: { id: true, status: true, workflowStatus: true },
+      }),
+    );
+    if (activeRequest) {
+      return { request: activeRequest, duplicate: true } as const;
+    }
 
-    const request = await withPrismaRetry(() =>
-      prisma.$transaction(async (tx) => {
+    try {
+      const request = await withPrismaRetry(() =>
+        prisma.$transaction(async (tx) => {
         const item = await tx.projectFileChecklistItem.upsert({
           where: { checklistId_fieldKey: { checklistId: checklist.id, fieldKey: input.fieldKey } },
           update: {},
@@ -745,9 +793,10 @@ export async function requestStageFiveChecklistInformation(
             recipientName: recipient.name,
             message,
             status: ProjectFileChecklistRequestStatus.SENT,
+            workflowStatus: ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
             sentAt: new Date(),
           },
-          select: { id: true, status: true },
+          select: { id: true, status: true, workflowStatus: true },
         });
         await tx.notification.create({
           data: {
@@ -759,7 +808,7 @@ export async function requestStageFiveChecklistInformation(
             entityId: created.id,
             projectId: input.projectId,
             attachmentId: checklist.sourceAttachment.id,
-            url,
+            url: `/requests/checklist/${created.id}`,
           },
         });
         if (item.status !== ProjectFileChecklistItemStatus.FILLED) {
@@ -769,9 +818,31 @@ export async function requestStageFiveChecklistInformation(
           });
         }
         return created;
-      }),
-    );
-    return { request, duplicate: false } as const;
+        }),
+      );
+      return { request, duplicate: false } as const;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const duplicate = await withPrismaRetry(() =>
+          prisma.projectFileChecklistRequest.findFirst({
+            where: {
+              checklistId: checklist.id,
+              fieldKey: input.fieldKey,
+              recipientUserId,
+              workflowStatus: {
+                in: [
+                  ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+                  ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+                ],
+              },
+            },
+            select: { id: true, status: true, workflowStatus: true },
+          }),
+        );
+        if (duplicate) return { request: duplicate, duplicate: true } as const;
+      }
+      throw error;
+    }
   }
 
   const recipientEmail = validateEmail(input.recipientEmail ?? "");
@@ -865,4 +936,522 @@ export async function requestStageFiveChecklistInformation(
     }),
   );
   return { request: sent, duplicate: false } as const;
+}
+
+const checklistRequestResponseSelect = {
+  id: true,
+  projectId: true,
+  fieldKey: true,
+  message: true,
+  channel: true,
+  workflowStatus: true,
+  requestedAt: true,
+  acceptedAt: true,
+  completedAt: true,
+  declinedAt: true,
+  declineReason: true,
+  recipientUserId: true,
+  project: { select: { id: true, name: true } },
+  requestedBy: { select: { id: true, name: true, email: true } },
+  recipientUser: { select: { id: true, name: true, email: true } },
+  respondedByUser: { select: { id: true, name: true, email: true } },
+  checklist: {
+    select: {
+      handoffId: true,
+      sourceAttachment: { select: attachmentSelect },
+    },
+  },
+  checklistItem: {
+    select: {
+      id: true,
+      value: true,
+      status: true,
+      attachments: {
+        orderBy: { createdAt: "asc" as const },
+        select: { attachment: { select: attachmentSelect } },
+      },
+    },
+  },
+} satisfies Prisma.ProjectFileChecklistRequestSelect;
+
+function canRespondToChecklistRequest(
+  user: PermissionUser,
+  request: { recipientUserId: string | null },
+) {
+  return user.role === UserRole.SUPER_ADMIN || request.recipientUserId === user.id;
+}
+
+function stageFiveOwnerUrl(input: {
+  projectId: string;
+  handoffId: string;
+  fieldKey: ProjectFileChecklistField;
+  mode: "edit" | "view";
+}) {
+  return `/projects/${input.projectId}/stages/5?file=${encodeURIComponent(input.handoffId)}&field=${input.fieldKey}&mode=${input.mode}`;
+}
+
+export async function getStageFiveChecklistRequestData(
+  user: PermissionUser,
+  requestId: string,
+): Promise<StageFiveChecklistRequestData | null> {
+  const request = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.findFirst({
+      where: {
+        id: requestId,
+        channel: ProjectFileChecklistRequestChannel.IN_APP,
+        recipientUserId: { not: null },
+      },
+      relationLoadStrategy: "join",
+      select: checklistRequestResponseSelect,
+    }),
+  );
+
+  if (!request || !request.recipientUser || !canRespondToChecklistRequest(user, request)) {
+    return null;
+  }
+
+  const field = getStageFiveFieldDefinition(request.fieldKey);
+  if (!field) return null;
+
+  return {
+    id: request.id,
+    project: request.project,
+    handoffId: request.checklist.handoffId,
+    file: mapAttachment(request.checklist.sourceAttachment),
+    field,
+    message: request.message,
+    status: request.workflowStatus,
+    requestedAt: request.requestedAt.toISOString(),
+    acceptedAt: request.acceptedAt?.toISOString() ?? null,
+    completedAt: request.completedAt?.toISOString() ?? null,
+    declinedAt: request.declinedAt?.toISOString() ?? null,
+    declineReason: request.declineReason,
+    requestedBy: {
+      id: request.requestedBy.id,
+      name: displayName(request.requestedBy),
+    },
+    recipient: {
+      id: request.recipientUser.id,
+      name: displayName(request.recipientUser),
+    },
+    respondedBy: request.respondedByUser
+      ? {
+          id: request.respondedByUser.id,
+          name: displayName(request.respondedByUser),
+        }
+      : null,
+    response: {
+      value: parseChecklistValue(request.checklistItem.value),
+      attachments: request.checklistItem.attachments.map(({ attachment }) =>
+        mapAttachment(attachment),
+      ),
+    },
+    canRespond: canRespondToChecklistRequest(user, request),
+  };
+}
+
+export async function getStageFiveChecklistRequestSourceFileUrl(
+  user: PermissionUser,
+  requestId: string,
+  mode: "preview" | "download",
+) {
+  const request = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.findFirst({
+      where: {
+        id: requestId,
+        channel: ProjectFileChecklistRequestChannel.IN_APP,
+        ...(user.role === UserRole.SUPER_ADMIN ? {} : { recipientUserId: user.id }),
+      },
+      select: {
+        checklist: {
+          select: {
+            sourceAttachment: {
+              select: {
+                bucket: true,
+                storageKey: true,
+                originalFileName: true,
+                mimeType: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  const attachment = request?.checklist.sourceAttachment;
+  if (!attachment || attachment.status !== AttachmentStatus.READY) {
+    throw new Error("Requested file not found.");
+  }
+
+  const input = {
+    bucket: attachment.bucket,
+    storageKey: attachment.storageKey,
+    fileName: attachment.originalFileName,
+    mimeType: attachment.mimeType,
+  };
+  return mode === "download"
+    ? createPresignedDownloadUrl(input)
+    : createPresignedPreviewUrl(input);
+}
+
+export async function getStageFiveChecklistRequestUploadContext(
+  user: PermissionUser,
+  requestId: string,
+) {
+  const request = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.findFirst({
+      where: {
+        id: requestId,
+        channel: ProjectFileChecklistRequestChannel.IN_APP,
+        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+      },
+      select: { id: true, projectId: true, recipientUserId: true },
+    }),
+  );
+  if (!request || !canRespondToChecklistRequest(user, request)) return null;
+  return { requestId: request.id, projectId: request.projectId };
+}
+
+export async function acceptStageFiveChecklistRequest(
+  user: PermissionUser,
+  requestId: string,
+) {
+  const request = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.findFirst({
+      where: { id: requestId, channel: ProjectFileChecklistRequestChannel.IN_APP },
+      select: { id: true, recipientUserId: true, workflowStatus: true },
+    }),
+  );
+  if (!request || !canRespondToChecklistRequest(user, request)) {
+    return { error: "This information request is unavailable." } as const;
+  }
+  if (request.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED) {
+    return { status: request.workflowStatus } as const;
+  }
+  if (request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.REQUESTED) {
+    return { error: "This information request can no longer be accepted." } as const;
+  }
+
+  const accepted = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.updateMany({
+      where: {
+        id: request.id,
+        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+      },
+      data: {
+        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+        acceptedAt: new Date(),
+      },
+    }),
+  );
+  if (accepted.count !== 1) {
+    return { error: "This information request changed before it could be accepted." } as const;
+  }
+  return { status: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED } as const;
+}
+
+export async function declineStageFiveChecklistRequest(
+  user: PermissionUser,
+  input: { requestId: string; reason: string },
+) {
+  const reason = input.reason.trim().replace(/\s+/g, " ");
+  if (reason.length < 3) return { error: "Enter a short reason for declining." } as const;
+  if (reason.length > 1_000) return { error: "The decline reason is too long." } as const;
+
+  const request = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.findFirst({
+      where: { id: input.requestId, channel: ProjectFileChecklistRequestChannel.IN_APP },
+      select: {
+        id: true,
+        projectId: true,
+        checklistItemId: true,
+        fieldKey: true,
+        requestedById: true,
+        recipientUserId: true,
+        workflowStatus: true,
+        checklist: {
+          select: {
+            handoffId: true,
+            sourceAttachment: { select: { originalFileName: true } },
+          },
+        },
+      },
+    }),
+  );
+  if (!request || !canRespondToChecklistRequest(user, request)) {
+    return { error: "This information request is unavailable." } as const;
+  }
+  if (
+    request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.REQUESTED &&
+    request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.ACCEPTED
+  ) {
+    return { error: "This information request can no longer be declined." } as const;
+  }
+
+  const actor = await withPrismaRetry(() =>
+    prisma.user.findUnique({ where: { id: user.id }, select: { name: true, email: true } }),
+  );
+  if (!actor) return { error: "The responding user was not found." } as const;
+
+  const declined = await withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const updated = await tx.projectFileChecklistRequest.updateMany({
+        where: {
+          id: request.id,
+          workflowStatus: {
+            in: [
+              ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+              ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+            ],
+          },
+        },
+        data: {
+          workflowStatus: ProjectFileChecklistRequestWorkflowStatus.DECLINED,
+          declinedAt: new Date(),
+          declineReason: reason,
+          respondedByUserId: user.id,
+        },
+      });
+      if (updated.count !== 1) return false;
+
+      const otherActiveRequests = await tx.projectFileChecklistRequest.count({
+        where: {
+          checklistItemId: request.checklistItemId,
+          workflowStatus: {
+            in: [
+              ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+              ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+            ],
+          },
+        },
+      });
+      if (otherActiveRequests === 0) {
+        await tx.projectFileChecklistItem.updateMany({
+          where: {
+            id: request.checklistItemId,
+            status: ProjectFileChecklistItemStatus.REQUESTED,
+          },
+          data: { status: ProjectFileChecklistItemStatus.PENDING },
+        });
+      }
+
+      if (request.requestedById !== user.id) {
+        await tx.notification.create({
+          data: {
+            userId: request.requestedById,
+            type: "CHECKLIST_INFORMATION_DECLINED",
+            title: "Information request declined",
+            message: `${displayName(actor)} declined the request for "${STAGE_FIVE_FIELD_LABELS[request.fieldKey]}". ${reason}`.slice(0, 500),
+            entityType: "CHECKLIST_REQUEST",
+            entityId: request.id,
+            projectId: request.projectId,
+            url: stageFiveOwnerUrl({
+              projectId: request.projectId,
+              handoffId: request.checklist.handoffId,
+              fieldKey: request.fieldKey,
+              mode: "edit",
+            }),
+          },
+        });
+      }
+      return true;
+    }),
+  );
+  if (!declined) {
+    return { error: "This information request changed before it could be declined." } as const;
+  }
+  return {
+    status: ProjectFileChecklistRequestWorkflowStatus.DECLINED,
+    projectId: request.projectId,
+    handoffId: request.checklist.handoffId,
+  } as const;
+}
+
+function validateStageFiveChecklistResponse(
+  fieldKey: ProjectFileChecklistField,
+  value: StageFiveChecklistValue,
+  attachmentIds: string[],
+): { error: string } | { value: StageFiveChecklistValue } {
+  const field = getStageFiveFieldDefinition(fieldKey);
+  if (!field) return { error: "Unknown checklist field." } as const;
+  const validated = validateChecklistValue(fieldKey, value);
+  if ("error" in validated) return validated;
+
+  const normalizedValue: StageFiveChecklistValue =
+    field.control === "text" || field.control === "textarea" || field.control === "text-attachment"
+      ? { ...(validated.value.text ? { text: validated.value.text } : {}) }
+      : field.control === "health-warning"
+        ? {
+            ...(validated.value.text ? { text: validated.value.text } : {}),
+            included: Boolean(validated.value.included),
+          }
+        : field.control === "multi-value" || field.control === "finishes"
+          ? { ...(validated.value.values?.length ? { values: validated.value.values } : {}) }
+          : {};
+
+  const hasText = Boolean(normalizedValue.text?.trim());
+  const hasValues = Boolean(normalizedValue.values?.length);
+  const hasFiles = attachmentIds.length > 0;
+  const hasIncluded = Boolean(normalizedValue.included);
+  const valid =
+    field.control === "file"
+      ? attachmentIds.length === 1
+      : field.control === "multi-file"
+        ? hasFiles
+        : field.control === "multi-value"
+          ? hasValues
+          : field.control === "finishes"
+            ? hasValues || hasFiles
+            : field.control === "text-attachment"
+              ? hasText || hasFiles
+              : field.control === "health-warning"
+                ? hasText || hasFiles || hasIncluded
+                : hasText;
+
+  if (!valid) {
+    return { error: `Provide the requested ${field.title.toLocaleLowerCase()}.` } as const;
+  }
+  return { value: normalizedValue } as const;
+}
+
+export async function submitStageFiveChecklistResponse(
+  user: PermissionUser,
+  input: {
+    requestId: string;
+    value: StageFiveChecklistValue;
+    attachmentIds: string[];
+  },
+) {
+  const attachmentIds = Array.from(
+    new Set(input.attachmentIds.map((id) => id.trim()).filter(Boolean)),
+  );
+  if (attachmentIds.length > 20) return { error: "Select no more than 20 files." } as const;
+
+  const request = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.findFirst({
+      where: { id: input.requestId, channel: ProjectFileChecklistRequestChannel.IN_APP },
+      select: {
+        id: true,
+        projectId: true,
+        checklistId: true,
+        checklistItemId: true,
+        fieldKey: true,
+        requestedById: true,
+        recipientUserId: true,
+        workflowStatus: true,
+        checklist: {
+          select: {
+            handoffId: true,
+            sourceAttachment: { select: { id: true, originalFileName: true } },
+          },
+        },
+      },
+    }),
+  );
+  if (!request || !canRespondToChecklistRequest(user, request)) {
+    return { error: "This information request is unavailable." } as const;
+  }
+  if (request.workflowStatus !== ProjectFileChecklistRequestWorkflowStatus.ACCEPTED) {
+    return { error: "Accept this request before submitting a response." } as const;
+  }
+
+  const validated = validateStageFiveChecklistResponse(
+    request.fieldKey,
+    input.value,
+    attachmentIds,
+  );
+  if ("error" in validated) return validated;
+
+  if (attachmentIds.length > 0) {
+    const attachments = await withPrismaRetry(() =>
+      prisma.projectAttachment.count({
+        where: {
+          id: { in: attachmentIds },
+          projectId: request.projectId,
+          uploadedById: user.id,
+          status: AttachmentStatus.READY,
+          assetType: "FILE_CHECKLIST_ATTACHMENT",
+          checklistResponseRequestId: request.id,
+          fileChecklistItems: { none: {} },
+        },
+      }),
+    );
+    if (attachments !== attachmentIds.length) {
+      return { error: "One or more response files are invalid or belong to another request." } as const;
+    }
+  }
+
+  const actor = await withPrismaRetry(() =>
+    prisma.user.findUnique({ where: { id: user.id }, select: { name: true, email: true } }),
+  );
+  if (!actor) return { error: "The responding user was not found." } as const;
+
+  const completed = await withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const updated = await tx.projectFileChecklistRequest.updateMany({
+        where: {
+          id: request.id,
+          workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+        },
+        data: {
+          workflowStatus: ProjectFileChecklistRequestWorkflowStatus.COMPLETED,
+          completedAt: new Date(),
+          respondedByUserId: user.id,
+        },
+      });
+      if (updated.count !== 1) return false;
+
+      await tx.projectFileChecklistItem.update({
+        where: { id: request.checklistItemId },
+        data: {
+          value: validated.value as Prisma.InputJsonValue,
+          status: ProjectFileChecklistItemStatus.FILLED,
+          updatedById: user.id,
+        },
+      });
+      await tx.projectFileChecklistItemAttachment.deleteMany({
+        where: { checklistItemId: request.checklistItemId },
+      });
+      if (attachmentIds.length > 0) {
+        await tx.projectFileChecklistItemAttachment.createMany({
+          data: attachmentIds.map((attachmentId) => ({
+            checklistItemId: request.checklistItemId,
+            attachmentId,
+          })),
+        });
+      }
+
+      if (request.requestedById !== user.id) {
+        await tx.notification.create({
+          data: {
+            userId: request.requestedById,
+            type: "CHECKLIST_INFORMATION_COMPLETED",
+            title: "Requested information received",
+            message: `${displayName(actor)} provided "${STAGE_FIVE_FIELD_LABELS[request.fieldKey]}" for "${request.checklist.sourceAttachment.originalFileName}".`,
+            entityType: "CHECKLIST_REQUEST",
+            entityId: request.id,
+            projectId: request.projectId,
+            attachmentId: request.checklist.sourceAttachment.id,
+            url: stageFiveOwnerUrl({
+              projectId: request.projectId,
+              handoffId: request.checklist.handoffId,
+              fieldKey: request.fieldKey,
+              mode: "view",
+            }),
+          },
+        });
+      }
+      return true;
+    }),
+  );
+  if (!completed) {
+    return { error: "This information request changed before the response was submitted." } as const;
+  }
+  return {
+    status: ProjectFileChecklistRequestWorkflowStatus.COMPLETED,
+    projectId: request.projectId,
+    handoffId: request.checklist.handoffId,
+  } as const;
 }

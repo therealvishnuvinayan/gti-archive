@@ -6,6 +6,8 @@ import {
   AttachmentStatus,
   Prisma,
   ProjectExecutionType,
+  ProjectFileChecklistRequestChannel,
+  ProjectFileChecklistRequestWorkflowStatus,
   ProjectRevisionStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
@@ -295,6 +297,8 @@ export type RequestUploadInput = {
   uploadEndpointMode?: S3UploadEndpointMode;
   /** Server-only context. Public upload routes must never forward this field. */
   researchFolderId?: string;
+  /** Server-only request scope used by the authenticated Stage 5 response route. */
+  checklistRequestId?: string;
 };
 
 type UploadRequestErrorResult = { error: string } | UploadFileTypeErrorPayload;
@@ -4842,6 +4846,26 @@ function getUploadAction(assetType: AttachmentAssetType) {
     : ActivityLogAction.ASSET_UPLOADED;
 }
 
+async function hasChecklistResponseUploadAccess(
+  user: AccessUser,
+  input: { requestId?: string; projectId: string },
+) {
+  if (!input.requestId) return false;
+  const request = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.findFirst({
+      where: {
+        id: input.requestId,
+        projectId: input.projectId,
+        channel: ProjectFileChecklistRequestChannel.IN_APP,
+        workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+        ...(user.role === UserRole.SUPER_ADMIN ? {} : { recipientUserId: user.id }),
+      },
+      select: { id: true },
+    }),
+  );
+  return Boolean(request);
+}
+
 export async function requestAttachmentUpload(
   user: AccessUser,
   input: RequestUploadInput,
@@ -5319,7 +5343,17 @@ export async function requestAttachmentUpload(
 
     const accessProject = await assertProjectAccess(user, input.projectId);
 
-    if (!hasProjectPermission(user, accessProject, getUploadPermissionKey(input.assetType))) {
+    const hasRequestScopedAccess =
+      input.assetType === AttachmentAssetType.FILE_CHECKLIST_ATTACHMENT &&
+      (await hasChecklistResponseUploadAccess(user, {
+        requestId: input.checklistRequestId,
+        projectId: input.projectId,
+      }));
+
+    if (
+      !hasRequestScopedAccess &&
+      !hasProjectPermission(user, accessProject, getUploadPermissionKey(input.assetType))
+    ) {
       return { error: getUploadPermissionErrorMessage(input.assetType) };
     }
 
@@ -5383,6 +5417,7 @@ export async function requestAttachmentUpload(
         bucket: getS3BucketName(),
         storageKey,
         assetType: input.assetType,
+        checklistResponseRequestId: input.checklistRequestId ?? null,
         status: AttachmentStatus.UPLOADING,
         submissionReviewStatus:
           input.assetType === AttachmentAssetType.STAGE_SUBMISSION
@@ -5438,7 +5473,7 @@ export async function completeAttachmentUpload(
   attachmentId: string,
   failed = false,
   uploadMetadata?: LibraryUploadMetadata,
-  options?: { researchFolderId?: string },
+  options?: { researchFolderId?: string; checklistRequestId?: string },
 ) {
   const attachment = await withPrismaRetry(() =>
     prisma.projectAttachment.findUnique({
@@ -5453,6 +5488,7 @@ export async function completeAttachmentUpload(
         commentId: true,
         uploadedById: true,
         assetType: true,
+        checklistResponseRequestId: true,
         status: true,
         submissionReviewStatus: true,
         bucket: true,
@@ -5542,9 +5578,19 @@ export async function completeAttachmentUpload(
     }
   }
 
+  const hasRequestScopedAccess =
+    attachment.assetType === AttachmentAssetType.FILE_CHECKLIST_ATTACHMENT &&
+    attachment.uploadedById === user.id &&
+    attachment.checklistResponseRequestId === options?.checklistRequestId &&
+    (await hasChecklistResponseUploadAccess(user, {
+      requestId: options?.checklistRequestId,
+      projectId: attachment.projectId,
+    }));
+
   if (
     !isProjectResearchFile &&
     attachment.assetType !== AttachmentAssetType.STAGE_INVOICE &&
+    !hasRequestScopedAccess &&
     !hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))
   ) {
     throw new Error("You do not have permission to complete this upload.");

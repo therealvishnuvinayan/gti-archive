@@ -32,6 +32,8 @@ export const workflowNotificationTypes = [
   "INVOICE_REQUESTED",
   "INVOICE_UPLOADED",
   "CHECKLIST_INFORMATION_REQUESTED",
+  "CHECKLIST_INFORMATION_COMPLETED",
+  "CHECKLIST_INFORMATION_DECLINED",
 ] as const satisfies readonly PrismaNotificationType[];
 
 const workflowNotificationTypeSet = new Set<PrismaNotificationType>(workflowNotificationTypes);
@@ -78,7 +80,11 @@ export function mapTypeFilterToNotificationTypes(
     case "Invoice":
       return ["INVOICE_REQUESTED", "INVOICE_UPLOADED"];
     case "Checklist":
-      return ["CHECKLIST_INFORMATION_REQUESTED"];
+      return [
+        "CHECKLIST_INFORMATION_REQUESTED",
+        "CHECKLIST_INFORMATION_COMPLETED",
+        "CHECKLIST_INFORMATION_DECLINED",
+      ];
     case "All Types":
     default:
       return null;
@@ -116,6 +122,8 @@ function mapNotificationType(type: PrismaNotificationType): NotificationType {
     case "INVOICE_UPLOADED":
       return "Invoice";
     case "CHECKLIST_INFORMATION_REQUESTED":
+    case "CHECKLIST_INFORMATION_COMPLETED":
+    case "CHECKLIST_INFORMATION_DECLINED":
       return "Checklist";
     case "PROJECT_ASSIGNED":
     case "PROJECT_CREATED":
@@ -158,6 +166,8 @@ function mapNotificationContextLabel(type: PrismaNotificationType) {
     case "INVOICE_UPLOADED":
       return "Invoice";
     case "CHECKLIST_INFORMATION_REQUESTED":
+    case "CHECKLIST_INFORMATION_COMPLETED":
+    case "CHECKLIST_INFORMATION_DECLINED":
       return "Checklist";
     case "PROJECT_ASSIGNED":
     case "PROJECT_CREATED":
@@ -200,6 +210,8 @@ function mapNotificationContextTone(type: PrismaNotificationType): NotificationC
     case "INVOICE_UPLOADED":
       return "invoice";
     case "CHECKLIST_INFORMATION_REQUESTED":
+    case "CHECKLIST_INFORMATION_COMPLETED":
+    case "CHECKLIST_INFORMATION_DECLINED":
       return "review";
     case "PROJECT_ASSIGNED":
     case "PROJECT_CREATED":
@@ -246,6 +258,8 @@ function mapNotificationVisualKind(type: PrismaNotificationType): NotificationVi
     case "INVOICE_UPLOADED":
       return "invoice-uploaded";
     case "CHECKLIST_INFORMATION_REQUESTED":
+    case "CHECKLIST_INFORMATION_COMPLETED":
+    case "CHECKLIST_INFORMATION_DECLINED":
       return "checklist-requested";
     case "PROJECT_UPDATED":
       return "project-updated";

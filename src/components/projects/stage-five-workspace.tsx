@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import {
   ProjectFileChecklistField,
   ProjectFileChecklistItemStatus,
   ProjectFileChecklistRequestChannel,
+  ProjectFileChecklistRequestWorkflowStatus,
 } from "@prisma/client";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -33,7 +34,6 @@ import {
   Sparkles,
   Stamp,
   ToggleLeft,
-  Upload,
   X,
   Download,
 } from "lucide-react";
@@ -45,6 +45,10 @@ import {
   saveStageFiveChecklistAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/5/actions";
 import { ProjectStageSummary } from "@/components/projects/project-stage-summary";
+import {
+  ChecklistFilePicker,
+  type ChecklistFileRecord,
+} from "@/components/projects/checklist-file-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -54,161 +58,47 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ProjectStageShellRecord } from "@/lib/projects";
 import type {
   StageFiveChecklistValue,
+  StageFiveChecklistItemRecord,
   StageFiveParticipantRecord,
   StageFiveWorkspaceData,
 } from "@/lib/stage-five";
+import {
+  STAGE_FIVE_FIELD_DEFINITIONS,
+  type StageFiveFieldDefinition,
+} from "@/lib/stage-five-fields";
 import { uploadStageFiveChecklistAttachment } from "@/lib/stage-five-upload-client";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 type ChecklistFieldKey = ProjectFileChecklistField;
 
-type ChecklistControl =
-  | "text"
-  | "textarea"
-  | "file"
-  | "multi-file"
-  | "health-warning"
-  | "multi-value"
-  | "finishes"
-  | "text-attachment";
-
-type ChecklistDefinition = {
-  key: ChecklistFieldKey;
-  title: string;
-  helper: string;
-  control: ChecklistControl;
-  placeholder?: string;
+type ChecklistDefinition = StageFiveFieldDefinition & {
   icon: LucideIcon;
-  suggestions?: string[];
 };
 
-type LocalFileRecord = {
-  id: string;
-  name: string;
-  size: number;
-  mimeType: string;
-  attachmentId?: string;
-  file?: File;
+type LocalFileRecord = ChecklistFileRecord;
+
+const CHECKLIST_ITEM_ICONS: Record<ProjectFileChecklistField, LucideIcon> = {
+  OUTPUT_NAME: FileOutput,
+  TECHNICAL_DRAWING: FileText,
+  HEALTH_WARNING: HeartPulse,
+  TAR_NICOTINE: Hash,
+  COMPULSORY_TEXT: ShieldCheck,
+  MARKETING_COPY: Palette,
+  RELATED_GRAPHICS: ImagePlus,
+  PRINTING_TECHNOLOGY: Sparkles,
+  FINISHES: ToggleLeft,
+  BARCODE: Barcode,
+  TRACK_TRACE: MapPin,
+  THREEDS: Box,
+  TAX_STAMP: Stamp,
+  QR_CODE: QrCode,
+  INVOICE: ReceiptText,
 };
 
-const CHECKLIST_ITEMS: ChecklistDefinition[] = [
-  {
-    key: ProjectFileChecklistField.OUTPUT_NAME,
-    title: "Output Name",
-    helper: "The name of the output file",
-    control: "text",
-    placeholder: "Enter output name",
-    icon: FileOutput,
-  },
-  {
-    key: ProjectFileChecklistField.TECHNICAL_DRAWING,
-    title: "Technical Drawing",
-    helper: "Upload the technical drawing file",
-    control: "file",
-    icon: FileText,
-  },
-  {
-    key: ProjectFileChecklistField.HEALTH_WARNING,
-    title: "Health Warning",
-    helper: "Add warning text, a reference file, or both",
-    control: "health-warning",
-    placeholder: "Enter the required health warning",
-    icon: HeartPulse,
-  },
-  {
-    key: ProjectFileChecklistField.TAR_NICOTINE,
-    title: "Tar / Nicotine",
-    helper: "The required tar and nicotine information",
-    control: "text",
-    placeholder: "Tar: 8 mg | Nicotine: 0.7 mg",
-    icon: Hash,
-  },
-  {
-    key: ProjectFileChecklistField.COMPULSORY_TEXT,
-    title: "Compulsory Text",
-    helper: "All mandatory text required for the pack",
-    control: "textarea",
-    placeholder: "Enter compulsory text",
-    icon: ShieldCheck,
-  },
-  {
-    key: ProjectFileChecklistField.MARKETING_COPY,
-    title: "Marketing Copy",
-    helper: "Add one or more lines of approved marketing copy",
-    control: "textarea",
-    placeholder: "Enter marketing copy",
-    icon: Palette,
-  },
-  {
-    key: ProjectFileChecklistField.RELATED_GRAPHICS,
-    title: "Related Graphics",
-    helper: "Add logos, illustrations, and other related graphics",
-    control: "multi-file",
-    icon: ImagePlus,
-  },
-  {
-    key: ProjectFileChecklistField.PRINTING_TECHNOLOGY,
-    title: "Printing Technology",
-    helper: "Select or enter the required printing technologies",
-    control: "multi-value",
-    icon: Sparkles,
-    suggestions: ["Offset Printing", "Digital Printing", "Flexographic", "Gravure"],
-  },
-  {
-    key: ProjectFileChecklistField.FINISHES,
-    title: "Finishes",
-    helper: "Add finishes and optional reference files",
-    control: "finishes",
-    icon: ToggleLeft,
-    suggestions: ["Matte Lamination", "Gloss Lamination", "Spot UV", "Embossing", "Foil"],
-  },
-  {
-    key: ProjectFileChecklistField.BARCODE,
-    title: "Barcode",
-    helper: "Enter the barcode number",
-    control: "text",
-    placeholder: "Enter barcode number",
-    icon: Barcode,
-  },
-  {
-    key: ProjectFileChecklistField.TRACK_TRACE,
-    title: "Track & Trace",
-    helper: "Add dimensions, location, placement, or a reference file",
-    control: "text-attachment",
-    placeholder: "Describe track and trace placement",
-    icon: MapPin,
-  },
-  {
-    key: ProjectFileChecklistField.THREEDS,
-    title: "3D's",
-    helper: "Add 3D files, renders, or visualizations",
-    control: "multi-file",
-    icon: Box,
-  },
-  {
-    key: ProjectFileChecklistField.TAX_STAMP,
-    title: "Tax Stamp",
-    helper: "Add tax stamp details and an optional reference",
-    control: "text-attachment",
-    placeholder: "Enter tax stamp requirements",
-    icon: Stamp,
-  },
-  {
-    key: ProjectFileChecklistField.QR_CODE,
-    title: "QR Code",
-    helper: "Add the required QR code file",
-    control: "file",
-    icon: QrCode,
-  },
-  {
-    key: ProjectFileChecklistField.INVOICE,
-    title: "Invoice",
-    helper: "Add the invoice file for this project",
-    control: "file",
-    icon: ReceiptText,
-  },
-];
+const CHECKLIST_ITEMS: ChecklistDefinition[] = STAGE_FIVE_FIELD_DEFINITIONS.map(
+  (field) => ({ ...field, icon: CHECKLIST_ITEM_ICONS[field.key] }),
+);
 
 const CONTROL_CLASS =
   "min-h-11 rounded-[12px] border-[#dfe6df] bg-white shadow-none focus-visible:border-[#8db49a]";
@@ -236,85 +126,6 @@ function ChecklistStatusBadge({ status }: { status: ProjectFileChecklistItemStat
       {filled ? <Check className="h-3 w-3" /> : null}
       {filled ? "Filled" : requested ? "Requested" : "Pending"}
     </span>
-  );
-}
-
-function ChecklistFilePicker({
-  fieldLabel,
-  files,
-  multiple = false,
-  compact = false,
-  onChange,
-}: {
-  fieldLabel: string;
-  files: LocalFileRecord[];
-  multiple?: boolean;
-  compact?: boolean;
-  onChange: (files: LocalFileRecord[]) => void;
-}) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  function selectFiles(event: React.ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(event.currentTarget.files ?? []).map((file) => ({
-      id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
-      name: file.name,
-      size: file.size,
-      mimeType: file.type || "application/octet-stream",
-      file,
-    }));
-
-    if (selected.length > 0) {
-      onChange(multiple ? [...files, ...selected] : selected.slice(0, 1));
-    }
-    event.currentTarget.value = "";
-  }
-
-  return (
-    <div className="min-w-0 space-y-2">
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple={multiple}
-        hidden
-        onChange={selectFiles}
-      />
-      <div className="flex min-w-0 flex-wrap gap-2">
-        {files.map((file) => (
-          <span
-            key={file.id}
-            className="inline-flex max-w-full items-center gap-2 rounded-[10px] border border-[#dfe6df] bg-[#f7faf7] px-3 py-2 text-[11px] text-[#344038]"
-          >
-            <FileImage className="h-3.5 w-3.5 shrink-0 text-[#438060]" />
-            <span className="max-w-[220px] truncate font-[650]">{file.name}</span>
-            <span className="shrink-0 text-[#7c867f]">{formatFileSize(file.size)}</span>
-            <button
-              type="button"
-              className="grid size-5 place-items-center rounded-full text-[#7d8780] hover:bg-[#e5ebe6] hover:text-[#344038]"
-              aria-label={`Remove ${file.name}`}
-              onClick={() => onChange(files.filter((item) => item.id !== file.id))}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          aria-label={`Choose ${fieldLabel} ${multiple ? "files" : "file"}`}
-          className={cn(
-            "rounded-[11px] border-dashed border-[#9dbba7] bg-[#f8fcf9] font-[680] text-[#347153] shadow-none hover:border-[#6f9f80] hover:bg-[#f0f8f2]",
-            compact ? "min-h-10 px-3 text-[11px]" : "min-h-11 px-4 text-[12px]",
-          )}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload className="h-3.5 w-3.5" />
-          {files.length > 0 && multiple ? "Add more" : multiple ? "Choose files" : "Choose file"}
-        </Button>
-      </div>
-      {files.length === 0 ? (
-        <p className="text-[10px] text-[#8a948d]">New files are uploaded when you save changes.</p>
-      ) : null}
-    </div>
   );
 }
 
@@ -399,18 +210,23 @@ function MultiValueChecklistInput({
 function ChecklistItemRow({
   item,
   status,
+  latestRequest,
   children,
   onRequest,
 }: {
   item: ChecklistDefinition;
   status: ProjectFileChecklistItemStatus;
+  latestRequest: StageFiveChecklistItemRecord["latestRequest"];
   children: React.ReactNode;
   onRequest: () => void;
 }) {
   const Icon = item.icon;
 
   return (
-    <div className="grid gap-4 border-t border-[#e8ede8] px-4 py-5 first:border-t-0 sm:px-5 lg:px-6 xl:grid-cols-[230px_minmax(0,1fr)_86px_108px] xl:items-start xl:gap-5">
+    <div
+      id={`stage-five-field-${item.key}`}
+      className="grid scroll-mt-6 gap-4 border-t border-[#e8ede8] px-4 py-5 first:border-t-0 sm:px-5 lg:px-6 xl:grid-cols-[230px_minmax(0,1fr)_86px_108px] xl:items-start xl:gap-5"
+    >
       <div className="flex min-w-0 items-start gap-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#eef5ef] text-[#3a7556]">
           <Icon className="h-4 w-4" />
@@ -418,6 +234,19 @@ function ChecklistItemRow({
         <div className="min-w-0">
           <h3 className="text-[13px] font-[740] text-[#253029]">{item.title}</h3>
           <p className="mt-1 text-[11px] leading-4 text-[#7b857e]">{item.helper}</p>
+          {latestRequest &&
+          (latestRequest.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.REQUESTED ||
+            latestRequest.workflowStatus === ProjectFileChecklistRequestWorkflowStatus.ACCEPTED) ? (
+            <p className="mt-2 text-[10px] leading-4 text-[#47745a]">
+              Requested from <span className="font-[720]">{latestRequest.recipient}</span>
+              <br />
+              {new Intl.DateTimeFormat("en-GB", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              }).format(new Date(latestRequest.requestedAt))}
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="min-w-0">{children}</div>
@@ -481,6 +310,7 @@ function StageFiveReadOnlyView({
           return (
             <article
               key={item.key}
+              id={`stage-five-field-${item.key}`}
               className="grid gap-4 border-t border-[#e8ede8] px-4 py-5 first:border-t-0 sm:px-5 lg:grid-cols-[230px_minmax(0,1fr)_86px] lg:px-6 lg:gap-5"
             >
               <div className="flex min-w-0 items-start gap-3">
@@ -685,19 +515,24 @@ function RequestInformationDialog({
             </div>
 
             {recipientMode === "existing" ? (
-              <select
+              <Select
                 value={participantId}
-                className={cn(CONTROL_CLASS, "mt-3 w-full px-4 text-[13px] text-[#344038] outline-none")}
-                aria-label="Select an existing collaborator"
-                onChange={(event) => setParticipantId(event.target.value)}
+                onValueChange={setParticipantId}
               >
-                <option value="">Select a collaborator</option>
-                {participants.map((participant) => (
-                  <option key={participant.id} value={participant.id}>
-                    {participant.name} — {participant.role}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className="mt-3 h-11 w-full rounded-[12px] border border-[#dfe6df] bg-white px-4 text-[13px] text-[#344038] shadow-none"
+                  aria-label="Select an existing collaborator"
+                >
+                  <SelectValue placeholder="Select a collaborator" />
+                </SelectTrigger>
+                <SelectContent className="z-[190]">
+                  {participants.map((participant) => (
+                    <SelectItem key={participant.id} value={participant.id}>
+                      {participant.name} — {participant.role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <div className="mt-3 space-y-3">
                 <Input
@@ -753,6 +588,7 @@ export function StageFiveWorkspace({
   pageData,
   initialHandoffId,
   initialMode,
+  initialField,
   showChrome = true,
 }: {
   project: ProjectStageShellRecord;
@@ -760,6 +596,7 @@ export function StageFiveWorkspace({
   pageData: StageFiveWorkspaceData;
   initialHandoffId?: string;
   initialMode?: "edit" | "view";
+  initialField?: ProjectFileChecklistField;
   showChrome?: boolean;
 }) {
   const router = useRouter();
@@ -818,6 +655,16 @@ export function StageFiveWorkspace({
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
   const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
   const activeDraft = drafts[selectedHandoffId];
+
+  useEffect(() => {
+    if (!initialField) return;
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`stage-five-field-${initialField}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialField, selectedHandoffId, mode]);
 
   function updateSelectedFile(handoffId: string) {
     const params = new URLSearchParams(window.location.search);
@@ -1254,6 +1101,10 @@ export function StageFiveWorkspace({
                   key={item.key}
                   item={item}
                   status={getItemStatus(item)}
+                  latestRequest={
+                    activeFile.items.find((activeItem) => activeItem.fieldKey === item.key)
+                      ?.latestRequest ?? null
+                  }
                   onRequest={() => setRequestField(item)}
                 >
                   {renderControl(item)}
