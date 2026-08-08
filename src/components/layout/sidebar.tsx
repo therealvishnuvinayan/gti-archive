@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Archive,
@@ -14,6 +15,8 @@ import {
   Handshake,
   HelpCircle,
   LayoutDashboard,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   ShieldUser,
   Sparkles,
@@ -135,15 +138,32 @@ function clearCachedProjectBadgeCount() {
 }
 
 type SidebarProps = {
+  isCollapsed: boolean;
   isOpen: boolean;
   onClose: () => void;
+  onToggleCollapsed: () => void;
   projectBadgeCount?: number;
   visibility: SidebarVisibility;
 };
 
-function LogoMark() {
+function LogoMark({ compact = false }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="relative size-7 overflow-hidden rounded-[9px] bg-white/55">
+        <Image
+          src="/gti-logo.svg"
+          alt="GTI logo mark"
+          width={80}
+          height={57}
+          priority
+          className="absolute left-1/2 top-0 h-auto w-20 max-w-none -translate-x-1/2"
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="relative h-[86px] w-[178px]">
+    <div className="relative h-[76px] w-[166px]">
       <Image
         src="/gti-logo.svg"
         alt="GTI logo"
@@ -155,9 +175,120 @@ function LogoMark() {
   );
 }
 
+function SidebarNavigationLink({
+  item,
+  badge,
+  isActive,
+  isCollapsed,
+  onNavigate,
+}: {
+  item: SidebarItem;
+  badge?: string;
+  isActive: boolean;
+  isCollapsed: boolean;
+  onNavigate: () => void;
+}) {
+  const Icon = item.icon;
+  const tooltipId = useId();
+  const linkRef = useRef<HTMLAnchorElement | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  function showTooltip() {
+    if (!isCollapsed || !linkRef.current) {
+      return;
+    }
+
+    const rect = linkRef.current.getBoundingClientRect();
+    setTooltipPosition({ left: rect.right + 10, top: rect.top + rect.height / 2 });
+  }
+
+  function hideTooltip() {
+    setTooltipPosition(null);
+  }
+
+  return (
+    <li className="relative">
+      {isActive ? (
+        <span
+          className={`absolute inset-y-2 w-1 rounded-r-full bg-[linear-gradient(180deg,#2f8d5d,#147347)] shadow-[0_8px_18px_rgba(43,128,85,0.32)] ${
+            isCollapsed ? "-left-2" : "-left-4"
+          }`}
+        />
+      ) : null}
+      <Link
+        ref={linkRef}
+        href={item.href}
+        onClick={onNavigate}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
+        onFocus={showTooltip}
+        onBlur={hideTooltip}
+        aria-label={isCollapsed ? item.label : undefined}
+        aria-describedby={isCollapsed ? tooltipId : undefined}
+        className={`group relative grid min-h-[52px] grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[18px] px-2.5 py-2 text-[14px] transition-[background-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35 ${
+          isCollapsed
+            ? "xl:min-h-[50px] xl:grid-cols-1 xl:place-items-center xl:gap-0 xl:rounded-[16px] xl:px-1 xl:py-1"
+            : ""
+        } ${
+          isActive
+            ? "bg-white text-[#121714] shadow-[0_12px_30px_rgba(18,34,25,0.09)]"
+            : "text-[#59635c] hover:bg-white/70 hover:text-[#202a23]"
+        }`}
+      >
+        <span
+          className={`grid size-10 place-items-center rounded-[13px] transition-colors ${
+            isActive
+              ? "bg-[#eef8ef] text-brand"
+              : "text-[#758178] group-hover:bg-[#eef3ed] group-hover:text-brand"
+          }`}
+        >
+          <Icon className="h-5 w-5" strokeWidth={1.9} />
+        </span>
+        <span
+          className={`min-w-0 truncate ${isCollapsed ? "xl:sr-only" : ""} ${
+            isActive ? "font-[800]" : "font-[650]"
+          }`}
+        >
+          {item.label}
+        </span>
+        {badge ? (
+          <span
+            className={`grid min-h-6 min-w-6 shrink-0 place-items-center rounded-[9px] bg-[linear-gradient(180deg,#2f8d5d,#197448)] px-1.5 text-[11px] font-[800] leading-none text-white shadow-[0_8px_18px_rgba(43,128,85,0.24)] ${
+              isCollapsed
+                ? "xl:absolute xl:right-0 xl:top-0 xl:min-h-5 xl:min-w-5 xl:rounded-[7px] xl:px-1 xl:text-[9px]"
+                : ""
+            }`}
+          >
+            {badge}
+          </span>
+        ) : null}
+      </Link>
+
+      {tooltipPosition && typeof document !== "undefined"
+        ? createPortal(
+            <span
+              id={tooltipId}
+              role="tooltip"
+              className="pointer-events-none fixed z-[80] hidden -translate-y-1/2 whitespace-nowrap rounded-[9px] border border-[#dce5dc] bg-[#17231b] px-2.5 py-1.5 text-[11px] font-[700] text-white shadow-[0_12px_30px_rgba(14,28,19,0.2)] xl:block"
+              style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
+            >
+              {item.label}
+            </span>,
+            document.body,
+          )
+        : null}
+    </li>
+  );
+}
+
 export function Sidebar({
+  isCollapsed,
   isOpen,
   onClose,
+  onToggleCollapsed,
   projectBadgeCount,
   visibility,
 }: SidebarProps) {
@@ -232,7 +363,7 @@ export function Sidebar({
   return (
     <>
       <div
-        className={`fixed inset-0 z-30 bg-[#152119]/45 backdrop-blur-[2px] transition-opacity duration-200 lg:hidden ${
+        className={`fixed inset-0 z-30 bg-[#152119]/45 backdrop-blur-[2px] transition-opacity duration-200 xl:hidden ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         aria-hidden={!isOpen}
@@ -240,11 +371,17 @@ export function Sidebar({
       />
 
       <aside
-        className={`fixed inset-y-3 left-3 z-40 flex w-[min(86vw,330px)] flex-col overflow-hidden rounded-[32px] border border-white/70 bg-[linear-gradient(180deg,#f8faf5_0%,#eef2eb_100%)] px-6 py-7 shadow-[0_28px_90px_rgba(18,34,25,0.16)] transition-transform duration-300 sm:px-7 lg:static lg:inset-auto lg:z-0 lg:h-full lg:w-[326px] lg:translate-x-0 lg:shadow-[0_22px_60px_rgba(18,34,25,0.06)] ${
+        className={`fixed inset-y-2 left-2 z-40 flex w-[min(88vw,310px)] flex-col overflow-hidden rounded-[26px] border border-white/70 bg-[linear-gradient(180deg,#f8faf5_0%,#eef2eb_100%)] px-5 py-5 shadow-[0_28px_90px_rgba(18,34,25,0.16)] transition-transform duration-200 sm:inset-y-3 sm:left-3 sm:px-6 xl:static xl:inset-auto xl:z-0 xl:h-full xl:translate-x-0 xl:transition-[width,padding] xl:shadow-[0_18px_48px_rgba(18,34,25,0.055)] ${
+          isCollapsed ? "xl:w-[76px] xl:px-2" : "xl:w-[280px] xl:px-4"
+        } ${
           isOpen ? "translate-x-0" : "-translate-x-[115%]"
         }`}
       >
-        <div className="mb-9 flex items-start justify-center gap-3 lg:mb-10">
+        <div
+          className={`flex items-center justify-center ${
+            isCollapsed ? "mb-5 gap-1 xl:mb-5 xl:flex-col xl:gap-2" : "mb-7 gap-1"
+          }`}
+        >
           <Link
             href="/"
             onClick={onClose}
@@ -252,27 +389,46 @@ export function Sidebar({
             aria-label="Go to dashboard home"
             title="Go to dashboard home"
           >
-            <LogoMark />
+            <span className={isCollapsed ? "xl:hidden" : ""}>
+              <LogoMark />
+            </span>
+            {isCollapsed ? (
+              <span className="hidden xl:block">
+                <LogoMark compact />
+              </span>
+            ) : null}
           </Link>
           <button
             type="button"
+            onClick={onToggleCollapsed}
+            className="hidden size-7 shrink-0 place-items-center rounded-[9px] border border-[#dce4dc] bg-white/70 text-[#536057] transition hover:bg-white hover:text-[#234e37] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35 xl:grid"
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isCollapsed ? (
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            ) : (
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            )}
+          </button>
+          <button
+            type="button"
             onClick={onClose}
-            className="absolute right-5 top-5 grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#dfe6dc] bg-white text-[#344038] shadow-[0_12px_28px_rgba(18,34,25,0.08)] lg:hidden"
+            className="absolute right-4 top-4 grid h-9 w-9 shrink-0 place-items-center rounded-[12px] border border-[#dfe6dc] bg-white text-[#344038] shadow-[0_12px_28px_rgba(18,34,25,0.08)] xl:hidden"
             aria-label="Close sidebar"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <nav className="sidebar-scroll flex min-h-0 flex-1 flex-col gap-9 overflow-y-auto pb-1 pr-2">
+        <nav className={`sidebar-scroll flex min-h-0 flex-1 flex-col overflow-y-auto pb-1 ${isCollapsed ? "gap-6 pr-0" : "gap-8 pr-1"}`}>
           {sidebarSections.map((section) => (
             <div key={section.title}>
-              <p className="mb-4 px-4 text-[11px] font-[800] uppercase leading-5 text-[#6d7a70]">
+              <p className={`mb-3 px-3 text-[10px] font-[800] uppercase leading-5 text-[#6d7a70] ${isCollapsed ? "xl:sr-only" : ""}`}>
                 {section.title}
               </p>
-              <ul className="space-y-2">
+              <ul className="space-y-1.5">
                 {section.items.filter((item) => visibility[item.visibilityKey]).map((item) => {
-                  const Icon = item.icon;
                   const badge =
                     item.href === "/projects" && typeof resolvedProjectBadgeCount === "number"
                       ? String(resolvedProjectBadgeCount)
@@ -287,48 +443,21 @@ export function Sidebar({
                       (item.href !== "/" && pathname.startsWith(`${item.href}/`)));
 
                   return (
-                    <li key={item.label} className="relative">
-                      {isActive ? (
-                        <span className="absolute inset-y-3 -left-6 w-1.5 rounded-r-full bg-[linear-gradient(180deg,#2f8d5d,#147347)] shadow-[0_8px_18px_rgba(43,128,85,0.32)] sm:-left-7" />
-                      ) : null}
-                      <Link
-                        href={item.href}
-                        onClick={onClose}
-                        className={`group grid min-h-[58px] grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 rounded-[20px] px-3.5 py-2.5 text-[15px] transition-all ${
-                          isActive
-                            ? "bg-white text-[#121714] shadow-[0_16px_38px_rgba(18,34,25,0.09)]"
-                            : "text-[#59635c] hover:bg-white/70 hover:text-[#202a23]"
-                        }`}
-                      >
-                        <span
-                          className={`grid size-[42px] place-items-center rounded-[14px] transition-colors ${
-                            isActive
-                              ? "bg-[#eef8ef] text-brand"
-                              : "text-[#758178] group-hover:bg-[#eef3ed] group-hover:text-brand"
-                          }`}
-                        >
-                          <Icon className="h-[21px] w-[21px]" strokeWidth={1.9} />
-                        </span>
-                        <span
-                          className={`min-w-0 truncate ${
-                            isActive ? "font-[800]" : "font-[650]"
-                          }`}
-                        >
-                          {item.label}
-                        </span>
-                        {badge ? (
-                          <span className="grid min-h-7 min-w-7 shrink-0 place-items-center rounded-[10px] bg-[linear-gradient(180deg,#2f8d5d,#197448)] px-2 text-[12px] font-[800] leading-none text-white shadow-[0_8px_18px_rgba(43,128,85,0.24)]">
-                            {badge}
-                          </span>
-                        ) : null}
-                      </Link>
-                    </li>
+                    <SidebarNavigationLink
+                      key={item.label}
+                      item={item}
+                      badge={badge}
+                      isActive={isActive}
+                      isCollapsed={isCollapsed}
+                      onNavigate={onClose}
+                    />
                   );
                 })}
               </ul>
             </div>
           ))}
         </nav>
+
       </aside>
     </>
   );

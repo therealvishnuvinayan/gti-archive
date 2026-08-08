@@ -72,18 +72,18 @@ export function NotificationDropdown() {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="relative grid h-11 w-11 cursor-pointer place-items-center rounded-full bg-white text-[#1c241d] shadow-[0_10px_24px_rgba(15,26,20,0.05)] transition-transform hover:-translate-y-0.5 sm:h-[54px] sm:w-[54px]"
+        className="relative grid size-10 cursor-pointer place-items-center rounded-[13px] border border-[#e2e8e2] bg-white text-[#1c241d] shadow-[0_8px_20px_rgba(15,26,20,0.045)] transition-colors hover:bg-[#f9fbf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35"
         aria-label="Notifications"
         aria-expanded={open}
       >
         <Bell className="h-[18px] w-[18px]" />
         {unreadCount > 0 ? (
-          <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-brand ring-4 ring-white sm:right-2.5 sm:top-2.5" />
+          <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-brand ring-[3px] ring-white" />
         ) : null}
       </button>
 
       {open ? (
-        <div className="fixed left-4 right-4 top-[5.5rem] z-50 max-h-[min(72dvh,640px)] overflow-hidden rounded-[24px] border border-[#e4ebe5] bg-white shadow-[0_30px_90px_rgba(23,39,28,0.16)] sm:top-[8.75rem] md:absolute md:-right-14 md:left-auto md:top-[calc(100%+14px)] md:w-[min(calc(100vw-2rem),380px)] xl:right-0 xl:w-[420px]">
+        <div className="fixed left-3 right-3 top-[4.75rem] z-50 max-h-[min(72dvh,640px)] overflow-hidden rounded-[22px] border border-[#e4ebe5] bg-white shadow-[0_30px_90px_rgba(23,39,28,0.16)] md:absolute md:-right-12 md:left-auto md:top-[calc(100%+10px)] md:w-[min(calc(100vw-2rem),380px)] xl:right-0 xl:w-[420px]">
           <div className="flex items-center justify-between px-7 py-5">
             <div className="flex items-center gap-3">
               <h2 className="text-[18px] font-[700] text-[#173120]">Notifications</h2>

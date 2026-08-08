@@ -13,7 +13,7 @@ export function ProjectBackButton({
   label = "Back",
 }: ProjectBackButtonProps) {
   return (
-    <Button asChild size="lg" variant="secondary" className="min-w-[132px]">
+    <Button asChild size="sm" variant="secondary" className="min-h-9 rounded-[12px] px-3.5 shadow-none">
       <Link href={href}>
         <ChevronLeft className="h-4 w-4" />
         {label}

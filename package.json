@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "lint": "eslint",
     "typecheck": "tsc --noEmit --project tsconfig.typecheck.json",
+    "layout:ui-check": "node scripts/dashboard-layout-ui-checks.mjs",
     "archive:access-level-check": "node scripts/archive-access-level-checks.mjs",
     "archive:direct-wizard-check": "node scripts/archive-direct-wizard-checks.mjs",
     "flow:check": "node scripts/flow-regression-checks.mjs",
