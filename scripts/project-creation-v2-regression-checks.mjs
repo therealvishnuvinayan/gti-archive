@@ -34,6 +34,8 @@ for (const snippet of [
   '@relation("ProjectOwner"',
   "model ProjectCoOwner",
   "coOwners               ProjectCoOwner[]",
+  "model ProjectCollaborator",
+  "@@id([projectId, userId])",
 ]) {
   assertIncludes(schema, snippet, `Schema ownership contract ${snippet}`);
 }
@@ -57,13 +59,22 @@ for (const snippet of [
   "hasDuplicates(coOwnerIds)",
   "coOwnerIds.includes(ownerId)",
   "hasDuplicates(executorIds)",
+  "input.collaboratorIds ?? []",
+  "hasMalformedIds(rawCollaboratorIds)",
+  "new Set(normalizeIdList(rawCollaboratorIds))",
   "owner.role === UserRole.SUPER_ADMIN",
   "user.role === UserRole.SUPER_ADMIN",
   "UserRole.COLLABORATOR",
+  "invalidCollaborator",
   "prisma.$transaction",
   "coOwners:",
   "executors:",
   "collaborators:",
+  "membershipIds",
+  "isExecutor: executorIdSet.has(participant.id)",
+  "skipDuplicates: true",
+  "ensureProjectResearchWorkspaceTx",
+  'type: "COLLABORATOR_ADDED"',
   "tx.notification.createMany",
 ]) {
   assertIncludes(creation, snippet, `Creation service guard ${snippet}`);
@@ -92,6 +103,7 @@ for (const snippet of [
   "createProjectV2(user, input)",
   'revalidatePath("/projects")',
   "isCreating",
+  "collaboratorIds,",
   "router.push(`/projects/${result.projectId}`)",
   "fieldErrors",
 ]) {
@@ -99,11 +111,38 @@ for (const snippet of [
 }
 
 for (const snippet of [
+  "Project Collaborators",
+  "Add people who will participate in or access this project.",
+  'ariaLabel="Project collaborators"',
+  "CollaboratorDialog",
+  "Invite collaborator",
+]) {
+  assertIncludes(form, snippet, `Project collaborator UI ${snippet}`);
+}
+
+const executorFieldIndex = form.indexOf("Project Executors");
+const collaboratorFieldIndex = form.indexOf("Project Collaborators");
+const inviteCollaboratorIndex = form.indexOf("Invite collaborator");
+assert(
+  executorFieldIndex >= 0 && collaboratorFieldIndex > executorFieldIndex,
+  "Project Collaborators must appear after Project Executors.",
+);
+assert(
+  inviteCollaboratorIndex > collaboratorFieldIndex,
+  "Invite collaborator must appear under the Project Collaborators field.",
+);
+assert(
+  !form.includes("Add collaborator"),
+  "The redundant Add collaborator button must not be rendered.",
+);
+
+for (const snippet of [
   "isProjectOwnerOrCoOwner",
   "isProjectExecutor",
   "UserRole.SUPER_ADMIN",
   "ownerId: user.id",
   "coOwners:",
+  "collaborators:",
 ]) {
   assertIncludes(resolver, snippet, `Access resolver rule ${snippet}`);
 }
