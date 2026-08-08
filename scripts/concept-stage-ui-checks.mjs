@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const [
   workspace,
+  summary,
   route,
   actions,
   concepts,
@@ -19,6 +20,7 @@ const [
   migration,
 ] = await Promise.all([
   readFile("src/components/projects/concept-stage-workspace.tsx", "utf8"),
+  readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/components/projects/concept-stage-route.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/concept-actions.ts", "utf8"),
   readFile("src/lib/project-concepts.ts", "utf8"),
@@ -47,8 +49,18 @@ for (const label of [
   "Concept Folders",
   "Manage your concept folders.",
 ]) {
-  assert(workspace.includes(label), `Missing concept-stage overview content: ${label}`);
+  assert(
+    workspace.includes(label) || summary.includes(label),
+    `Missing concept-stage overview content: ${label}`,
+  );
 }
+
+assert(
+  workspace.includes("ProjectFlowSummaryStrip") &&
+    summary.includes("const MAX_VISIBLE_PEOPLE = 2") &&
+    summary.includes("people.map((person)"),
+  "Stages 3 and 4 must reuse the shared compact summary and complete people menu.",
+);
 
 assert.equal(
   workspace.match(/New Folder/g)?.length,

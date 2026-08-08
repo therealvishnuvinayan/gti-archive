@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 
-const [workspace, summary, page, workflowAccess, overview, schema, chatWorkspace] =
+const [workspace, summaryAlias, summary, page, workflowAccess, overview, schema, chatWorkspace] =
   await Promise.all([
     readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
     readFile("src/components/projects/project-stage-summary.tsx", "utf8"),
+    readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/7/page.tsx", "utf8"),
     readFile("src/lib/workflow-stage-access.ts", "utf8"),
     readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
@@ -41,7 +42,9 @@ for (const label of ["Project Name", "Project Owner", "Project Co-Owners", "Proj
   assert(summary.includes(label), `Missing shared project summary label: ${label}`);
 }
 assert(
-  workspace.includes("ProjectStageSummary") && workspace.includes('from "@/components/projects/project-stage-summary"'),
+  workspace.includes("ProjectStageSummary") &&
+    workspace.includes('from "@/components/projects/project-stage-summary"') &&
+    summaryAlias.includes("ProjectFlowSummaryStrip"),
   "Stage 7 must reuse the shared authenticated project summary.",
 );
 

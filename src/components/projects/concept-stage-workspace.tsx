@@ -4,20 +4,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
-  BriefcaseBusiness,
-  Building2,
   ChevronRight,
   Folder,
   FolderKanban,
   MoreVertical,
   Pencil,
   Plus,
-  UserRound,
-  Users,
   X,
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
 import {
   createProjectConceptFolderAction,
   renameProjectConceptFolderAction,
@@ -44,54 +41,6 @@ type FolderDialogState =
   | { mode: "create" }
   | { mode: "rename"; folderId: string; currentName: string }
   | null;
-
-function getProjectDetails(project: ProjectFlowRecord) {
-  const owner = project.collaborators.find(
-    (collaborator) => collaborator.role === "Project Owner",
-  );
-  const coOwners = project.collaborators
-    .filter((collaborator) => collaborator.role === "Project Co-Owner")
-    .map((collaborator) => collaborator.name);
-  const executors = project.executors.map((executor) => executor.name);
-  const unavailableLabel = project.canViewParticipants ? "None assigned" : "Restricted";
-
-  return {
-    projectName: project.title,
-    ownerName:
-      owner?.name ??
-      (project.ownerId ? "Restricted" : "Operational owner not assigned"),
-    coOwnerNames: coOwners.join(", ") || unavailableLabel,
-    executorNames: executors.join(", ") || unavailableLabel,
-  };
-}
-
-function ProjectDetailCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <Card className="min-w-0 rounded-[20px] border-[#dfe6df] shadow-[0_12px_30px_rgba(23,39,28,0.045)]">
-      <CardContent className="flex min-h-[126px] items-start gap-4 p-5 sm:p-6">
-        <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#eaf4ed] text-[#2e8057]">
-          {icon}
-        </span>
-        <span className="min-w-0 pt-0.5">
-          <span className="block text-[10px] font-[760] uppercase tracking-[0.1em] text-[#77827a]">
-            {label}
-          </span>
-          <span className="mt-2 block whitespace-pre-line text-[14px] font-[720] leading-5 text-[#202a23]">
-            {value}
-          </span>
-        </span>
-      </CardContent>
-    </Card>
-  );
-}
 
 function FolderNameDialog({
   state,
@@ -192,7 +141,6 @@ export function ConceptStageWorkspace({
   const [isPending, startTransition] = useTransition();
   const [folders, setFolders] = useState<ConceptFolder[]>(initialFolders);
   const [dialog, setDialog] = useState<FolderDialogState>(null);
-  const projectDetails = getProjectDetails(project);
 
   function submitFolderName(name: string) {
     if (!dialog) return;
@@ -258,30 +206,9 @@ export function ConceptStageWorkspace({
         </p>
       </header>
 
-      <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <ProjectDetailCard
-          icon={<Building2 className="h-[19px] w-[19px]" />}
-          label="Project Name"
-          value={projectDetails.projectName}
-        />
-        <ProjectDetailCard
-          icon={<UserRound className="h-[19px] w-[19px]" />}
-          label="Project Owner"
-          value={projectDetails.ownerName}
-        />
-        <ProjectDetailCard
-          icon={<Users className="h-[19px] w-[19px]" />}
-          label="Project Co-Owners"
-          value={projectDetails.coOwnerNames}
-        />
-        <ProjectDetailCard
-          icon={<BriefcaseBusiness className="h-[19px] w-[19px]" />}
-          label="Project Executors"
-          value={projectDetails.executorNames}
-        />
-      </div>
+      <ProjectFlowSummaryStrip project={project} />
 
-      <section className="mt-7 border-t border-[#dfe6df] pt-7" aria-labelledby="concept-folders-heading">
+      <section className="mt-6 border-t border-[#dfe6df] pt-6" aria-labelledby="concept-folders-heading">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#eaf4ed] text-[#2e8057]">

@@ -1,15 +1,23 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, readOnlyView, stagePage, stageActions, service, schema, overview] = await Promise.all([
+const [workspace, readOnlyView, summary, stagePage, stageActions, service, schema, overview] = await Promise.all([
   readFile("src/components/projects/stage-one-workspace.tsx", "utf8"),
   readFile("src/components/projects/stage-one-read-only-view.tsx", "utf8"),
+  readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/1/page.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/1/actions.ts", "utf8"),
   readFile("src/lib/project-inquiry.ts", "utf8"),
   readFile("prisma/schema.prisma", "utf8"),
   readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
 ]);
+
+assert(
+  workspace.includes("ProjectFlowSummaryStrip") &&
+    summary.includes("const MAX_VISIBLE_PEOPLE = 2") &&
+    summary.includes("DropdownMenuTrigger asChild"),
+  "Stage 1 must reuse the shared two-name participant overflow summary.",
+);
 
 for (const field of [
   "Client Name",
@@ -55,7 +63,10 @@ for (const snippet of [
   "saveCollaboratorAction",
   'assetType: "GENERAL_PROJECT_ASSET"',
 ]) {
-  assert(workspace.includes(snippet) || overview.includes(snippet), `Missing UI behavior: ${snippet}`);
+  assert(
+    workspace.includes(snippet) || overview.includes(snippet) || summary.includes(snippet),
+    `Missing UI behavior: ${snippet}`,
+  );
 }
 
 for (const snippet of [

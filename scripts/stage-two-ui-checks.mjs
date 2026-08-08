@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, folderWorkspace, page, folderPage, actions, service, access, files, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
+const [workspace, summary, folderWorkspace, page, folderPage, actions, service, access, files, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
   readFile("src/components/projects/stage-two-workspace.tsx", "utf8"),
+  readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/components/projects/stage-two-folder-workspace.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/2/page.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/2/folders/[folderId]/page.tsx", "utf8"),
@@ -18,6 +19,13 @@ const [workspace, folderWorkspace, page, folderPage, actions, service, access, f
   readFile("src/app/api/projects/[projectId]/research/folders/[folderId]/files/[fileId]/route.ts", "utf8"),
   readFile("src/app/api/projects/[projectId]/research/folders/[folderId]/files/[fileId]/download/route.ts", "utf8"),
 ]);
+
+assert(
+  workspace.includes("ProjectSummaryStrip") &&
+    workspace.includes('columns="two"') &&
+    summary.includes("const MAX_VISIBLE_PEOPLE = 2"),
+  "Stage 2 must reuse the compact shared participant summary in its two-column panel.",
+);
 
 for (const folderName of ["Brief", "Market & Competition", "Tech", "Vendors", "Finance", "Legal", "Pitch"]) {
   assert(service.includes(`name: "${folderName}"`), `Missing predefined Stage 2 folder: ${folderName}`);

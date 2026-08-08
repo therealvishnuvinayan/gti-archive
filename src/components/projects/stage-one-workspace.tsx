@@ -9,18 +9,14 @@ import type {
 } from "@prisma/client";
 import {
   ArrowRight,
-  BriefcaseBusiness,
   Check,
   ChevronDown,
   FileText,
-  FolderKanban,
   ListChecks,
   Loader2,
   Paperclip,
   Search,
   UserPlus,
-  UserRound,
-  Users,
   X,
 } from "lucide-react";
 
@@ -35,6 +31,7 @@ import {
   type CollaboratorForm,
 } from "@/components/collaboration/collaborator-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
+import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
 import { StageOneReadOnlyView } from "@/components/projects/stage-one-read-only-view";
 import {
   ProjectContactDialog,
@@ -620,52 +617,6 @@ function AttachmentTextarea({
   );
 }
 
-function StageOneSummaryItem({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#f0f6f1] text-[#377253]">
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <p className="text-[11px] font-[650] text-[#778179]">{label}</p>
-        <p className="mt-0.5 truncate text-[13px] font-[680] text-[#273129]" title={value}>
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-export function StageOneProjectSummary({ project }: { project: ProjectFlowRecord }) {
-  const owner = project.collaborators.find(
-    (collaborator) => collaborator.role === "Project Owner",
-  );
-  const coOwners = project.collaborators
-    .filter((collaborator) => collaborator.role === "Project Co-Owner")
-    .map((collaborator) => collaborator.name);
-  const executors = project.executors.map((executor) => executor.name);
-  const restrictedLabel = project.canViewParticipants ? "None" : "Restricted";
-
-  return (
-    <Card className="mt-6 rounded-[20px] border-[#dfe6df] shadow-[0_12px_30px_rgba(23,39,28,0.04)]">
-      <CardContent className="grid gap-5 px-5 py-5 sm:grid-cols-2 lg:grid-cols-4 lg:px-6">
-        <StageOneSummaryItem icon={<FolderKanban className="h-[18px] w-[18px]" />} label="Project Name" value={project.title} />
-        <StageOneSummaryItem icon={<UserRound className="h-[18px] w-[18px]" />} label="Project Owner" value={owner?.name ?? (project.ownerId ? "Restricted" : "Not assigned")} />
-        <StageOneSummaryItem icon={<Users className="h-[18px] w-[18px]" />} label="Project Co-Owners" value={coOwners.length ? coOwners.join(", ") : restrictedLabel} />
-        <StageOneSummaryItem icon={<BriefcaseBusiness className="h-[18px] w-[18px]" />} label="Project Executors" value={executors.length ? executors.join(", ") : restrictedLabel} />
-      </CardContent>
-    </Card>
-  );
-}
-
 export function StageOneWorkspace({
   project,
   currentUserId,
@@ -940,7 +891,7 @@ export function StageOneWorkspace({
           </button>
         </div>
       </div>
-      <StageOneProjectSummary project={project} />
+      <ProjectFlowSummaryStrip project={project} className="mt-5" />
 
       {mode === "view" ? (
         <StageOneReadOnlyView
