@@ -30,6 +30,13 @@ assert(
     summary.includes("const ROOMY_VISIBLE_PEOPLE = 2"),
   "Stage 2 must reuse the compact shared participant summary in its two-column panel.",
 );
+assert(
+  workspace.includes("<WorkspaceSwitch data={data} compact />") &&
+    workspace.includes("compact = false") &&
+    !workspace.includes("{showChrome ? <ProjectSummary data={data} /> : <div />}") &&
+    workspace.includes('!showChrome && "mt-5"'),
+  "Streamed Stage 2 must use a compact folder-set switch without an empty header column.",
+);
 
 for (const folderName of ["Brief", "Market & Competition", "Tech", "Vendors", "Finance", "Legal", "Pitch"]) {
   assert(service.includes(`name: "${folderName}"`), `Missing predefined Stage 2 folder: ${folderName}`);

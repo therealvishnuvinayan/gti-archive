@@ -94,14 +94,27 @@ function ProjectSummary({ data }: { data: NonNullable<ProjectResearchPageData> }
   );
 }
 
-function WorkspaceSwitch({ data }: { data: NonNullable<ProjectResearchPageData> }) {
+function WorkspaceSwitch({
+  data,
+  compact = false,
+}: {
+  data: NonNullable<ProjectResearchPageData>;
+  compact?: boolean;
+}) {
   const router = useRouter();
   const selected = data.selectedWorkspace;
 
   return (
-    <div className="relative overflow-hidden rounded-[20px] border border-[#dce6dd] bg-[linear-gradient(145deg,#f9fcf9_0%,#f1f8f3_100%)] p-5 shadow-[0_14px_34px_rgba(31,78,51,0.07)]">
+    <div
+      className={cn(
+        "relative overflow-hidden border border-[#dce6dd] bg-[linear-gradient(145deg,#f9fcf9_0%,#f1f8f3_100%)]",
+        compact
+          ? "rounded-[14px] px-2.5 py-2 shadow-none"
+          : "rounded-[20px] p-5 shadow-[0_14px_34px_rgba(31,78,51,0.07)]",
+      )}
+    >
       <div className="relative">
-        <div className="flex items-center justify-between gap-3">
+        <div className={cn("items-center justify-between gap-3", compact ? "hidden" : "flex")}>
           <p className="text-[10px] font-[760] uppercase tracking-[0.13em] text-[#718078]">
             Viewing folder set
           </p>
@@ -111,15 +124,15 @@ function WorkspaceSwitch({ data }: { data: NonNullable<ProjectResearchPageData> 
             </span>
           ) : null}
         </div>
-        <div className="mt-4 flex items-center gap-3">
-          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#3b9666,#17613e)] text-[13px] font-[760] text-white">
+        <div className={cn("flex items-center", compact ? "gap-2" : "mt-4 gap-3")}>
+          <span className={cn("grid shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#3b9666,#17613e)] font-[760] text-white", compact ? "size-8 text-[10px]" : "size-11 text-[13px]")}>
             {getInitials(selected.ownerName)}
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[14px] font-[740] text-[#1d2821]">
+          <div className={cn("min-w-0 flex-1", compact && "max-w-[160px]")}>
+            <p className={cn("truncate font-[740] text-[#1d2821]", compact ? "text-[12px]" : "text-[14px]")}>
               {selected.ownerName}
             </p>
-            <p className="mt-0.5 truncate text-[11px] text-[#718078]">{selected.role}</p>
+            <p className={cn("truncate text-[#718078]", compact ? "text-[10px]" : "mt-0.5 text-[11px]")}>{selected.role}</p>
           </div>
           {data.workspaceOptions.length > 1 ? (
             <DropdownMenu>
@@ -461,28 +474,34 @@ export function StageTwoWorkspace({
       {showChrome ? (
         <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
       ) : null}
-      <Card className="overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
+      <Card
+        className={cn(
+          "overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]",
+          !showChrome && "mt-5",
+        )}
+      >
         <CardContent className="p-0">
-          <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
+          {showChrome ? <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
             {showChrome ? <div className="flex items-center gap-2 text-[11px] font-[760] uppercase tracking-[0.13em] text-[#4d765d]">
               <FolderKanban className="h-4 w-4" /> Shared research workspace
             </div> : null}
             {showChrome ? <h1 className="mt-3 text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
               Stage 2 - Project Research and Planning
             </h1> : null}
-            <div className={cn("grid gap-5", showChrome ? "mt-6 xl:grid-cols-[minmax(0,1fr)_340px]" : "xl:grid-cols-[minmax(0,1fr)_340px]")}>
-              {showChrome ? <ProjectSummary data={data} /> : <div />}
+            <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <ProjectSummary data={data} />
               <WorkspaceSwitch data={data} />
             </div>
-          </div>
+          </div> : null}
 
-          <div className="border-t border-[#e9eee9] bg-[#fbfcfb] px-5 py-6 sm:px-7 lg:px-9 lg:py-7">
+          <div className={cn("bg-[#fbfcfb] px-5 py-6 sm:px-7 lg:px-9 lg:py-7", showChrome && "border-t border-[#e9eee9]")}>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-start gap-3">
                 <span className="grid size-10 place-items-center rounded-[12px] bg-[#eaf4ec] text-[#2e754f]"><Folder className="h-5 w-5" /></span>
                 <div><h2 className="text-[18px] font-[750] text-[#1b261f]">Shared folders</h2><p className="mt-0.5 text-[12px] text-[#758078]">Files and folders in {data.selectedWorkspace.ownerName}&apos;s workspace.</p></div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {!showChrome ? <WorkspaceSwitch data={data} compact /> : null}
                 <div className="inline-flex rounded-[12px] border border-[#dce3dc] bg-white p-1">
                   {(["grid", "list"] as FolderView[]).map((option) => (
                     <button key={option} type="button" aria-label={`${option} view`} aria-pressed={view === option} onClick={() => setView(option)} className={cn("grid size-9 place-items-center rounded-[9px]", view === option ? "bg-[#24764e] text-white" : "text-[#68736b]")}>
