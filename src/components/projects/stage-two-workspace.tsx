@@ -336,9 +336,22 @@ export function StageTwoWorkspace({
 
   const folders = useMemo(() => {
     const next = [...folderRecords];
-    if (sort === "business") return next.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
-    if (sort === "files-desc") return next.sort((a, b) => b.fileCount - a.fileCount || a.name.localeCompare(b.name));
-    return next.sort((a, b) => (sort === "name-desc" ? -1 : 1) * a.name.localeCompare(b.name));
+    const compareBusinessOrder = (left: FolderRecord, right: FolderRecord) =>
+      left.sortOrder - right.sortOrder || left.name.localeCompare(right.name);
+
+    if (sort === "business") return next.sort(compareBusinessOrder);
+    if (sort === "files-desc") {
+      return next.sort(
+        (left, right) =>
+          right.fileCount - left.fileCount || compareBusinessOrder(left, right),
+      );
+    }
+
+    return next.sort((left, right) => {
+      const nameOrder =
+        (sort === "name-desc" ? -1 : 1) * left.name.localeCompare(right.name);
+      return nameOrder || compareBusinessOrder(left, right);
+    });
   }, [folderRecords, sort]);
 
   async function uploadFilesToFolder(folder: FolderRecord, files: File[]) {

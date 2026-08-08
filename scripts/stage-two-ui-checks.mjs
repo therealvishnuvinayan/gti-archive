@@ -51,6 +51,12 @@ assert(
     !workspace.includes("custom={!folder.isSystem}"),
   "Persisted system and custom folders must share one folder treatment while New Folder remains distinct.",
 );
+assert(
+  workspace.includes("compareBusinessOrder") &&
+    workspace.includes("right.fileCount - left.fileCount || compareBusinessOrder(left, right)") &&
+    workspace.includes("nameOrder || compareBusinessOrder(left, right)"),
+  "Folder sorting must preserve business order whenever the selected sort values are tied.",
+);
 
 assert(
   workspace.includes("onDropFiles(folder, Array.from(event.dataTransfer.files))") &&
