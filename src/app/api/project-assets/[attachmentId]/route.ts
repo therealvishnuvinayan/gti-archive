@@ -24,7 +24,6 @@ export async function DELETE(
 
     if (projectId) {
       revalidatePath(`/projects/${projectId}`);
-      revalidatePath(`/projects/${projectId}/edit`);
     }
 
     return NextResponse.json({ success: true });

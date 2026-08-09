@@ -5,32 +5,47 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
   ArrowRight,
-  CalendarDays,
-  Pencil,
+  Clock3,
+  Ellipsis,
   Pin,
   PinOff,
   Trash2,
-  UserRound,
 } from "lucide-react";
 
-import { toggleProjectPinAction } from "@/app/(dashboard)/projects/actions";
-import { deleteProjectAction } from "@/app/(dashboard)/projects/new/actions";
-import { Badge } from "@/components/ui/badge";
+import {
+  deleteProjectAction,
+  toggleProjectPinAction,
+} from "@/app/(dashboard)/projects/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+type ProjectCardPerson = {
+  id: string;
+  name: string;
+  email: string;
+};
 
 export type ProjectCardItem = {
   id: string;
-  stage: string;
-  category: string;
-  tags: string[];
   title: string;
-  createdOn: string;
-  createdBy: string;
+  status: "ACTIVE" | "COMPLETED" | "SETUP_NEEDED";
+  statusLabel: "Active" | "Completed" | "Setup Needed";
+  currentStageNumber: number;
+  currentStageName: string;
+  stageStatuses: Array<"LOCKED" | "AVAILABLE" | "COMPLETED">;
+  owner: ProjectCardPerson | null;
+  executors: ProjectCardPerson[];
+  updatedLabel: string;
+  updatedAt: string;
   isPinned: boolean;
   canPin: boolean;
-  canEdit: boolean;
   canDelete: boolean;
 };
 
@@ -38,6 +53,74 @@ type ProjectCardProps = {
   project: ProjectCardItem;
   returnHref?: string;
 };
+
+const avatarColors = [
+  "bg-[#27905b]",
+  "bg-[#55708b]",
+  "bg-[#825f83]",
+  "bg-[#8a674b]",
+] as const;
+
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "U"
+  );
+}
+
+function avatarColor(id: string) {
+  const sum = [...id].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return avatarColors[sum % avatarColors.length];
+}
+
+function PersonAvatar({ person, size = "md" }: { person: ProjectCardPerson; size?: "sm" | "md" }) {
+  return (
+    <span
+      className={`grid shrink-0 place-items-center rounded-full font-[700] text-white ${
+        size === "sm" ? "size-7 text-[9px]" : "size-8 text-[10px]"
+      } ${avatarColor(person.id)}`}
+      title={`${person.name} · ${person.email}`}
+      aria-label={person.name}
+    >
+      {initials(person.name)}
+    </span>
+  );
+}
+
+function WorkflowProgress({ project }: { project: ProjectCardItem }) {
+  return (
+    <div className="relative mt-4 grid grid-cols-7 items-center" aria-label={`Stage ${project.currentStageNumber || 0} of 7`}>
+      <span className="absolute left-[7%] right-[7%] top-[13px] h-px bg-[#dce3dc]" aria-hidden="true" />
+      {project.stageStatuses.map((stageStatus, index) => {
+        const stageNumber = index + 1;
+        const completed = stageStatus === "COMPLETED";
+        const current = project.currentStageNumber === stageNumber;
+        const reached = completed || current;
+
+        return (
+          <div key={stageNumber} className="relative z-[1] flex flex-col items-center gap-1.5">
+            <span
+              className={`grid size-[27px] place-items-center rounded-full border text-[10px] font-[700] transition-colors ${
+                current
+                  ? "border-[#177143] bg-[#207d4d] text-white ring-2 ring-white outline outline-1 outline-[#177143]"
+                  : reached
+                    ? "border-[#2a9259] bg-[#2a9259] text-white"
+                    : "border-[#d7ddd7] bg-[#f1f3f1] text-[#737a74]"
+              }`}
+            >
+              {stageNumber}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function ProjectCard({ project, returnHref }: ProjectCardProps) {
   const router = useRouter();
@@ -48,8 +131,12 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
   const projectHref = returnHref
     ? `/projects/${project.id}?returnTo=${encodeURIComponent(returnHref)}`
     : `/projects/${project.id}`;
-  const visibleTags = project.tags.slice(0, 3);
-  const hiddenTagCount = Math.max(project.tags.length - visibleTags.length, 0);
+  const visibleExecutors = project.executors.slice(0, 3);
+  const hiddenExecutorCount = Math.max(0, project.executors.length - visibleExecutors.length);
+  const statusClass =
+    project.status === "SETUP_NEEDED"
+      ? "border-[#f0dfb9] bg-[#fff7e8] text-[#a36a12]"
+      : "border-[#d1ead9] bg-[#eaf7ee] text-[#197143]";
 
   function handleTogglePin() {
     setPinError(undefined);
@@ -58,7 +145,7 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
         await toggleProjectPinAction(project.id);
         router.refresh();
       } catch {
-        setPinError("Unable to update the pinned project right now.");
+        setPinError("Unable to update the pin right now.");
       }
     });
   }
@@ -78,189 +165,118 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
 
   return (
     <>
-      <Card
-        className={`h-full rounded-[26px] border p-5 shadow-[0_18px_42px_rgba(23,39,28,0.05)] transition-transform hover:-translate-y-0.5 ${
-          project.isPinned
-            ? "border-[#7eb496] bg-[radial-gradient(circle_at_top_right,rgba(193,239,204,0.28),transparent_35%),linear-gradient(135deg,#456c58,#78bf93)] text-white"
-            : "border-[#e8eee8] bg-card"
-        }`}
-      >
+      <Card className="h-full rounded-[22px] border border-[#e1e7e0] bg-white p-5 shadow-[0_14px_36px_rgba(23,39,28,0.045)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(23,39,28,0.07)]">
         <CardContent className="flex h-full flex-col p-0">
-          <div className="mb-5 space-y-3 overflow-hidden">
-            <div className="flex min-w-0 items-start justify-between gap-3">
-              <Badge
-                variant={project.isPinned ? "secondary" : "outline"}
-                className={`min-w-0 max-w-full whitespace-normal px-3 py-1.5 text-left leading-5 ${
-                  project.isPinned
-                    ? "border-white/15 bg-white/14 text-[#ecfff0]"
-                    : "border-[#d5e3d6] bg-[#fbfdfb] text-brand"
-                }`}
-              >
-                <span className="line-clamp-2 min-w-0">{project.stage}</span>
-              </Badge>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={`rounded-full border px-3 py-1 text-[11px] font-[700] ${statusClass}`}>
+                {project.statusLabel}
+              </span>
+              {project.isPinned ? <Pin className="size-3.5 text-[#267c4f]" aria-label="Pinned" /> : null}
+            </div>
 
-              {project.canPin || project.canEdit || project.canDelete ? (
-                <div className="flex shrink-0 items-center gap-2">
-                  {project.canPin ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon"
-                      onClick={handleTogglePin}
-                      disabled={isPending}
-                      aria-pressed={project.isPinned}
-                      className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
-                        project.isPinned
-                          ? "border border-white/35 bg-white/10 text-[#a6ef9b] hover:bg-white/18"
-                          : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
-                      }`}
-                      aria-label={`${project.isPinned ? "Unpin" : "Pin"} ${project.title}`}
-                      title={project.isPinned ? "Unpin project" : "Pin project"}
-                    >
-                      {project.isPinned ? (
-                        <PinOff className="h-4 w-4" />
-                      ) : (
-                        <Pin className="h-4 w-4" />
-                      )}
-                    </Button>
-                  ) : null}
-                  {project.canEdit ? (
-                    <Button
-                      asChild
-                      type="button"
-                      variant="secondary"
-                      size="icon"
-                      className={`h-9 w-9 rounded-[12px] ${
-                        project.isPinned
-                          ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
-                          : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
-                      }`}
-                      aria-label={`Edit ${project.title}`}
-                      title="Edit project"
-                    >
-                      <Link href={`/projects/${project.id}/edit`}>
-                        <Pencil className="h-4 w-4" />
-                      </Link>
-                    </Button>
-                  ) : null}
-                {project.canDelete ? (
+            {project.canPin || project.canDelete ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="ghost"
                     size="icon"
-                    onClick={() => {
-                      setDeleteError(undefined);
-                      setConfirmOpen(true);
-                    }}
                     disabled={isPending}
-                    className={`h-9 w-9 rounded-[12px] disabled:cursor-not-allowed ${
-                      project.isPinned
-                        ? "border border-white/35 bg-white/10 text-white hover:bg-white/18"
-                        : "border border-[#e1e8e2] bg-white text-[#566158] hover:bg-[#f6faf7]"
-                    }`}
-                    aria-label={`Delete ${project.title}`}
-                    title="Delete project"
+                    className="size-8 rounded-[10px] text-[#4f5951] hover:bg-[#f2f6f2]"
+                    aria-label={`Project actions for ${project.title}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Ellipsis className="size-4" />
                   </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-            <p
-              className={`truncate text-[13px] font-[600] ${
-                project.isPinned ? "text-[#dff6e3]" : "text-[#64aa76]"
-              }`}
-            >
-              {project.category}
-            </p>
-            {project.tags.length > 0 ? (
-              <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5">
-                {visibleTags.map((tag) => (
-                  <span
-                    key={tag}
-                    className={`max-w-[138px] truncate rounded-full px-2.5 py-1 text-[11px] font-[700] ${
-                      project.isPinned
-                        ? "bg-white/14 text-[#ecfff0]"
-                        : "bg-[#edf7ef] text-[#2d8055]"
-                    }`}
-                    title={tag}
-                  >
-                    {tag}
-                  </span>
-                ))}
-                {hiddenTagCount > 0 ? (
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-[800] ${
-                      project.isPinned
-                        ? "bg-white/14 text-[#ecfff0]"
-                        : "bg-[#f4f7f4] text-[#5d685f]"
-                    }`}
-                    title={project.tags.join(", ")}
-                  >
-                    +{hiddenTagCount}
-                  </span>
-                ) : null}
-              </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[190px] rounded-[16px]">
+                  {project.canPin ? (
+                    <DropdownMenuItem onSelect={handleTogglePin}>
+                      {project.isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+                      {project.isPinned ? "Unpin project" : "Pin project"}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {project.canDelete ? (
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() => {
+                        setDeleteError(undefined);
+                        setConfirmOpen(true);
+                      }}
+                    >
+                      <Trash2 className="size-4" /> Delete project
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
           </div>
 
-          <h3
-            className={`min-h-[78px] text-[31px] font-semibold leading-[1.08] tracking-tight sm:text-[33px] ${
-              project.isPinned ? "text-white" : "text-[#18211a]"
-            }`}
-          >
+          <h2 className="mt-3 line-clamp-2 min-h-[30px] text-[20px] font-[700] leading-[1.25] tracking-[-0.025em] text-[#111612]">
             {project.title}
-          </h3>
+          </h2>
+          <p className="mt-1 text-[12px] text-[#6c746d]">
+            {project.currentStageNumber > 0
+              ? `Stage ${project.currentStageNumber} of 7 · ${project.currentStageName}`
+              : project.currentStageName}
+          </p>
 
-          <div
-            className={`mt-6 space-y-3 border-t pt-5 text-[14px] ${
-              project.isPinned
-                ? "border-white/15 text-[#e7f8eb]"
-                : "border-[#edf2ec] text-[#4e5950]"
-            }`}
-          >
-            <p className="flex items-center gap-2.5">
-              <CalendarDays className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 truncate">Created on {project.createdOn}</span>
-            </p>
-            <p className="flex min-w-0 items-center gap-2.5">
-              <UserRound className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 truncate">Created by {project.createdBy}</span>
-            </p>
+          <WorkflowProgress project={project} />
+
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] gap-4 border-t border-[#edf0ed] pt-3.5">
+            <div className="min-w-0">
+              <p className="text-[10px] font-[600] text-[#747c75]">Owner</p>
+              {project.owner ? (
+                <div className="mt-1.5 flex min-w-0 items-center gap-2">
+                  <PersonAvatar person={project.owner} />
+                  <span className="truncate text-[12px] font-[500] text-[#303831]">{project.owner.name}</span>
+                </div>
+              ) : (
+                <p className="mt-2 text-[12px] text-[#9a6a24]">Unassigned</p>
+              )}
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-[10px] font-[600] text-[#747c75]">Executors ({project.executors.length})</p>
+              <div className="mt-1.5 flex min-h-8 items-center">
+                {visibleExecutors.length > 0 ? (
+                  <>
+                    {visibleExecutors.map((executor, index) => (
+                      <span key={executor.id} className={index > 0 ? "-ml-1" : ""}>
+                        <PersonAvatar person={executor} size="sm" />
+                      </span>
+                    ))}
+                    {hiddenExecutorCount > 0 ? (
+                      <span className="-ml-1 grid size-7 place-items-center rounded-full border border-[#cfd6cf] bg-[#f2f4f2] text-[9px] font-[700] text-[#566057]">
+                        +{hiddenExecutorCount}
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-[12px] text-[#9a6a24]">None assigned</span>
+                )}
+              </div>
+            </div>
           </div>
 
-          <Button
-            asChild
-            size="lg"
-            variant={project.isPinned ? "default" : "outline"}
-            className={`mt-6 w-full ${
-              project.isPinned
-                ? "bg-[#184e36] text-white shadow-[0_14px_34px_rgba(11,42,28,0.24)]"
-                : "border-brand/35 bg-white text-brand"
-            }`}
-          >
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-[#7a827b]" title={project.updatedAt}>
+            <Clock3 className="size-3.5" /> {project.updatedLabel}
+          </p>
+
+          <Button asChild variant="outline" className="mt-3 h-10 w-full rounded-[10px] border-[#c7d9cd] bg-white text-[12px] font-[700] text-[#16653d] hover:bg-[#f3faf5]">
             <Link href={projectHref}>
-              View Project
-              <ArrowRight className="ml-auto h-4 w-4" />
+              View Project <ArrowRight className="ml-auto size-3.5" />
             </Link>
           </Button>
-          {pinError ? (
-            <p
-              className={`mt-3 text-[13px] font-[600] ${
-                project.isPinned ? "text-[#ffe6e2]" : "text-[#b44d45]"
-              }`}
-            >
-              {pinError}
-            </p>
-          ) : null}
+
+          {pinError ? <p className="mt-2 text-[11px] font-[600] text-[#b44d45]">{pinError}</p> : null}
         </CardContent>
       </Card>
 
       <ConfirmationDialog
         isOpen={confirmOpen}
         title="Delete Project"
-        description={`Delete project "${project.title}"? This action cannot be undone.`}
+        description={`Delete project “${project.title}”? This action cannot be undone.`}
         confirmLabel="Delete Project"
         cancelLabel="Keep Project"
         tone="destructive"

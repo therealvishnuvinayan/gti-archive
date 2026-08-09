@@ -32,7 +32,6 @@ import {
 import {
   DEFAULT_PROJECT_PRIORITY,
   formatProjectPriority,
-  type ProjectPriorityValue,
 } from "@/lib/project-priority";
 import {
   DEFAULT_PROJECT_CURRENCY,
@@ -60,6 +59,13 @@ import {
   type ProjectPermissionContext,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import {
+  buildProjectListStageWhere,
+  buildProjectListStatusWhere,
+  deriveProjectListWorkflowState,
+  type ProjectListRole,
+  type ProjectListStatus,
+} from "@/lib/project-list-workflow";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
@@ -70,10 +76,8 @@ import { ensureProjectResearchWorkspace } from "@/lib/project-research";
 import { canViewProjectConcept } from "@/lib/project-concept-access";
 import {
   defaultProjectStatusGroupSlugs,
-  getActiveProjectStatusOptions,
   getProjectStatusDisplay,
   isProjectStatusCompleted,
-  type ActiveProjectStatusOption,
 } from "@/lib/project-statuses";
 
 export const PROJECTS_CACHE_TAG = "projects";
@@ -183,78 +187,39 @@ type ProjectCardProject = Pick<
   Project,
   | "id"
   | "name"
-  | "category"
-  | "currentStageName"
-  | "createdAt"
+  | "updatedAt"
   | "completedAt"
-  | "archivedAt"
   | "ownerId"
   | "isPinned"
 > & {
-  createdBy: Pick<User, "name" | "email">;
-  status: ProjectStatusRelation;
-  stages?: Array<Pick<ProjectStage, "name" | "status" | "order">>;
-  tags?: Array<{
-    tag: Pick<ProjectTag, "name">;
-  }>;
+  owner: Pick<User, "id" | "name" | "email"> | null;
+  closure: { id: string } | null;
+  workflowStages: Array<
+    Pick<ProjectWorkflowStage, "stageKey" | "status">
+  >;
   coOwners?: Array<{ userId: string }>;
-  executors?: Array<{ userId: string }>;
+  executors: Array<{
+    userId: string;
+    user: Pick<User, "id" | "name" | "email">;
+  }>;
   collaborators?: Array<Pick<ProjectCollaborator, "userId">>;
 };
 
 export type ProjectCardRecord = {
   id: string;
-  stage: string;
-  category: string;
-  tags: string[];
   title: string;
-  createdOn: string;
-  createdBy: string;
+  status: "ACTIVE" | "COMPLETED" | "SETUP_NEEDED";
+  statusLabel: "Active" | "Completed" | "Setup Needed";
+  currentStageNumber: number;
+  currentStageName: string;
+  stageStatuses: ProjectWorkflowStage["status"][];
+  owner: ProjectListUserFilterOption | null;
+  executors: ProjectListUserFilterOption[];
+  updatedLabel: string;
+  updatedAt: string;
   isPinned: boolean;
   canPin: boolean;
-  canEdit: boolean;
   canDelete: boolean;
-};
-
-export type ProjectEditorRecord = {
-  id: string;
-  ownerId: string | null;
-  name: string;
-  category: string;
-  executorDisplayName: string;
-  executors: ProjectExecutorRecord[];
-  tags: string[];
-  priority: ProjectPriorityValue;
-  description: string;
-  executionType: ProjectExecutionType;
-  budgetRequired: boolean;
-  budget: string;
-  currency: string | null;
-  canViewBudget: boolean;
-  canManageStages: boolean;
-  statusId: string | null;
-  statusName: string;
-  statusColor: string;
-  statusGroupId: string | null;
-  statusGroupName: string;
-  statusGroupSlug: string;
-  statusGroupColor: string;
-  statusGroupIsActive: boolean;
-  statusIsActive: boolean;
-  startDate: string;
-  endDate: string;
-  stages: Array<{
-    id: string;
-    name: string;
-    invoiceRequired: boolean;
-    budget: string;
-    description: string;
-    plannedStartAt: string;
-    plannedDueAt: string;
-    attachments: ProjectAttachmentRecord[];
-  }>;
-  collaborators: ProjectCollaboratorRecord[];
-  attachments: ProjectAttachmentRecord[];
 };
 
 export type ProjectStageVisualStatus =
@@ -479,20 +444,14 @@ export type DashboardProjectCounts = {
 };
 
 export type ProjectsListFilter = {
-  status?: string;
+  status?: ProjectListStatus;
   query?: string;
-  category?: string;
-  tag?: string;
-  sort?: "newest" | "oldest" | "name";
+  sort?: "updated" | "newest" | "oldest" | "name-asc" | "name-desc";
   page?: number;
+  stage?: number;
   ownerId?: string;
   executorId?: string;
-  createdFrom?: string;
-  createdTo?: string;
-  budgetRequired?: "true" | "false";
-  budgetMin?: string;
-  budgetMax?: string;
-  budgetCurrency?: string;
+  myRole?: ProjectListRole;
 };
 
 export type ProjectListUserFilterOption = {
@@ -502,9 +461,6 @@ export type ProjectListUserFilterOption = {
 };
 
 export type ProjectListFilterOptions = {
-  statuses: ActiveProjectStatusOption[];
-  categories: string[];
-  tags: string[];
   owners: ProjectListUserFilterOption[];
   executors: ProjectListUserFilterOption[];
 };
@@ -847,83 +803,6 @@ function maskCollaboratorVisibilityState(collaborator: ProjectCollaboratorRecord
   };
 }
 
-function buildProjectStatusWhere(statusFilter?: string): Prisma.ProjectWhereInput | null {
-  if (!statusFilter || statusFilter === "ALL") {
-    return null;
-  }
-
-  const normalizedFilter = statusFilter.trim();
-  const groupFilterPrefix = "group:";
-
-  if (normalizedFilter.startsWith(groupFilterPrefix)) {
-    const groupSlug = normalizedFilter.slice(groupFilterPrefix.length);
-
-    if (!groupSlug) {
-      return null;
-    }
-
-    return {
-      status: {
-        is: {
-          group: {
-            is: {
-              slug: groupSlug,
-            },
-          },
-        },
-      },
-    };
-  }
-
-  const groupSlugByLegacyFilter: Record<string, string> = {
-    ONGOING: defaultProjectStatusGroupSlugs.active,
-    ACTIVE: defaultProjectStatusGroupSlugs.active,
-    PENDING: defaultProjectStatusGroupSlugs.pending,
-    ON_HOLD: defaultProjectStatusGroupSlugs.onHold,
-    ARCHIVED: defaultProjectStatusGroupSlugs.archived,
-    CANCELLED: defaultProjectStatusGroupSlugs.cancelled,
-  };
-
-  if (normalizedFilter === "COMPLETED") {
-    return {
-      status: {
-        is: {
-          group: {
-            is: {
-              slug: {
-                in: [
-                  defaultProjectStatusGroupSlugs.completed,
-                  defaultProjectStatusGroupSlugs.archived,
-                ],
-              },
-            },
-          },
-        },
-      },
-    };
-  }
-
-  const legacyGroupSlug = groupSlugByLegacyFilter[normalizedFilter];
-
-  if (legacyGroupSlug) {
-    return {
-      status: {
-        is: {
-          group: {
-            is: {
-              slug: legacyGroupSlug,
-            },
-          },
-        },
-      },
-    };
-  }
-
-  return {
-    statusId: normalizedFilter,
-  };
-}
-
 function canAccessProjectRecord(
   project: Pick<Project, "ownerId"> & {
     coOwners?: Array<{ userId: string }>;
@@ -1219,54 +1098,53 @@ function mapProjectToCard(
   project: ProjectCardProject,
   currentUser: ProjectAccessUser,
 ): ProjectCardRecord {
-  const tags = getProjectTagNames(project);
-  const editingLocked = Boolean(
-    project.completedAt || project.archivedAt || isProjectStatusCompleted(project.status),
-  );
+  const workflowState = deriveProjectListWorkflowState(project);
+  const updatedAt = toProjectDate(project.updatedAt);
 
   return {
     id: project.id,
-    stage: formatProjectStageLabel(project),
-    category: project.category?.trim() || "Setup pending",
-    tags,
     title: project.name,
-    createdOn: formatProjectDate(project.createdAt),
-    createdBy: getCreatorName(project.createdBy),
+    ...workflowState,
+    owner: project.owner
+      ? {
+          id: project.owner.id,
+          name: getCreatorName(project.owner),
+          email: project.owner.email,
+        }
+      : null,
+    executors: project.executors.map(({ user }) => ({
+      id: user.id,
+      name: getCreatorName(user),
+      email: user.email,
+    })),
+    updatedLabel: formatProjectListRelativeTime(updatedAt),
+    updatedAt: Number.isNaN(updatedAt.getTime()) ? "" : updatedAt.toISOString(),
     isPinned: project.isPinned,
     canPin: hasProjectPermission(currentUser, project, "project.update"),
-    canEdit:
-      !editingLocked &&
-      hasProjectPermission(currentUser, project, "project.update"),
     canDelete:
-      !editingLocked &&
+      workflowState.status !== "COMPLETED" &&
       hasProjectPermission(currentUser, project, "project.delete"),
   };
 }
 
-const projectNameCollator = new Intl.Collator("en", {
-  numeric: true,
-  sensitivity: "base",
-});
+function formatProjectListRelativeTime(value: Date | string | number) {
+  const normalizedValue = toProjectDate(value);
 
-function compareProjectsByName(
-  left: Pick<Project, "id" | "name" | "createdAt" | "isPinned">,
-  right: Pick<Project, "id" | "name" | "createdAt" | "isPinned">,
-) {
-  if (left.isPinned !== right.isPinned) {
-    return left.isPinned ? -1 : 1;
-  }
+  if (Number.isNaN(normalizedValue.getTime())) return "Updated recently";
 
-  const nameDifference = projectNameCollator.compare(left.name.trim(), right.name.trim());
-  if (nameDifference !== 0) {
-    return nameDifference;
-  }
+  const elapsedMs = Math.max(0, Date.now() - normalizedValue.getTime());
+  const minutes = Math.floor(elapsedMs / 60_000);
 
-  const createdAtDifference = left.createdAt.getTime() - right.createdAt.getTime();
-  if (createdAtDifference !== 0) {
-    return createdAtDifference;
-  }
+  if (minutes < 1) return "Updated just now";
+  if (minutes < 60) return `Updated ${minutes}m ago`;
 
-  return left.id.localeCompare(right.id);
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Updated ${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `Updated ${days}d ago`;
+
+  return `Updated ${formatProjectDate(normalizedValue)}`;
 }
 
 function mapStageToCard(
@@ -1511,134 +1389,6 @@ function mapProjectToFlow(
     attachments: allowBriefView ? projectBriefAttachments : [],
     chatEntries: [],
     compareNotes: [],
-  };
-}
-
-function formatProjectInputDate(date: Date | string | number | null | undefined) {
-  if (!date) {
-    return "";
-  }
-
-  const normalizedDate = toProjectDate(date);
-
-  if (Number.isNaN(normalizedDate.getTime())) {
-    return "";
-  }
-
-  const year = normalizedDate.getFullYear();
-  const month = `${normalizedDate.getMonth() + 1}`.padStart(2, "0");
-  const day = `${normalizedDate.getDate()}`.padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatProjectInputDateTime(date: Date | string | number | null | undefined) {
-  if (!date) {
-    return "";
-  }
-
-  const normalizedDate = toProjectDate(date);
-
-  if (Number.isNaN(normalizedDate.getTime())) {
-    return "";
-  }
-
-  const year = normalizedDate.getFullYear();
-  const month = `${normalizedDate.getMonth() + 1}`.padStart(2, "0");
-  const day = `${normalizedDate.getDate()}`.padStart(2, "0");
-  const hours = `${normalizedDate.getHours()}`.padStart(2, "0");
-  const minutes = `${normalizedDate.getMinutes()}`.padStart(2, "0");
-
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-function mapProjectToEditor(
-  project: ProjectWithCreator,
-  currentUser: ProjectAccessUser,
-  favoritedAttachmentIds?: ReadonlySet<string>,
-): ProjectEditorRecord {
-  const stages = getProjectStages(project);
-  const executorRecords = getProjectExecutorRecords(project);
-  const executorDisplayName = getProjectExecutorDisplayName(executorRecords);
-  const allowBudgetView = canViewProjectBudget(project, currentUser);
-  const allowBriefView = canViewBriefContent(project, currentUser);
-  const canManageStages = hasProjectPermission(
-    currentUser,
-    project,
-    "stage.manageDefinitions",
-  );
-  const tags = getProjectTagNames(project);
-  const statusDisplay = getProjectStatusDisplay(project.status);
-  const projectBriefAttachments = project.attachments
-    .filter(isProjectBriefAttachment)
-    .map((attachment) => mapAttachmentToRecord(attachment, favoritedAttachmentIds));
-  const stageBriefAttachmentMap = new Map<string, ProjectAttachmentRecord[]>();
-
-  project.attachments
-    .filter(isStageBriefAttachment)
-    .forEach((attachment) => {
-      if (!attachment.stageId) {
-        return;
-      }
-
-      const existingAttachments = stageBriefAttachmentMap.get(attachment.stageId) ?? [];
-      stageBriefAttachmentMap.set(attachment.stageId, [
-        ...existingAttachments,
-        mapAttachmentToRecord(attachment, favoritedAttachmentIds),
-      ]);
-    });
-
-  return {
-    id: project.id,
-    ownerId: project.ownerId,
-    name: project.name,
-    category: project.category ?? "",
-    executorDisplayName,
-    executors: executorRecords,
-    tags,
-    priority: project.priority ?? DEFAULT_PROJECT_PRIORITY,
-    description: allowBriefView ? project.description ?? "" : "",
-    executionType: project.executionType ?? ProjectExecutionType.EXTERNAL,
-    budgetRequired: project.budgetRequired ?? false,
-    budget:
-      allowBudgetView && project.budget && project.budget > 0
-        ? String(project.budget)
-        : "",
-    currency: allowBudgetView ? project.currency : null,
-    canViewBudget: allowBudgetView,
-    canManageStages,
-    statusId: statusDisplay.id,
-    statusName: statusDisplay.name,
-    statusColor: statusDisplay.color,
-    statusGroupId: statusDisplay.group?.id ?? null,
-    statusGroupName: statusDisplay.group?.name ?? "No group",
-    statusGroupSlug: statusDisplay.group?.slug ?? "",
-    statusGroupColor: statusDisplay.group?.color ?? "",
-    statusGroupIsActive: statusDisplay.group?.isActive ?? true,
-    statusIsActive: project.status?.isActive ?? true,
-    startDate: formatProjectInputDate(project.startDate),
-    endDate: formatProjectInputDate(project.endDate),
-    stages: stages.map((stage, index) => ({
-      id: stage.id,
-      name: stage.name,
-      invoiceRequired: isInternalExecutionProject(project) ? false : stage.invoiceRequired,
-      budget:
-        allowBudgetView && ((stage.budget ?? 0) > 0 || (index === 0 && (project.budget ?? 0) > 0))
-          ? stage.budget && stage.budget > 0
-            ? String(stage.budget)
-            : index === 0
-              ? String(project.budget ?? "")
-              : ""
-          : "",
-      description: allowBriefView ? stage.description?.trim() || "" : "",
-      plannedStartAt: formatProjectInputDateTime(stage.plannedStartAt ?? project.startDate),
-      plannedDueAt: formatProjectInputDateTime(stage.plannedDueAt ?? project.endDate),
-      attachments: allowBriefView ? stageBriefAttachmentMap.get(stage.id) ?? [] : [],
-    })),
-    collaborators: (project.collaborators ?? []).map((assignment) => ({
-      ...mapProjectCollaboratorAssignmentToRecord(assignment),
-    })),
-    attachments: allowBriefView ? projectBriefAttachments : [],
   };
 }
 
@@ -2201,31 +1951,15 @@ export async function setProjectCollaboratorChatVisibility(
 
 function buildProjectsWhere(
   filter: ProjectsListFilter,
-  options: { canUseBudgetFilters?: boolean } = {},
+  currentUserId: string,
 ) {
   const query = filter.query?.trim();
-  const category = filter.category?.trim();
-  const tag = filter.tag?.trim();
   const ownerId = filter.ownerId?.trim();
   const executorId = filter.executorId?.trim();
-  const createdFrom = parseProjectListDate(filter.createdFrom, "start");
-  const createdTo = parseProjectListDate(filter.createdTo, "end");
-  const canUseBudgetFilters = options.canUseBudgetFilters === true;
-  const budgetMin = canUseBudgetFilters
-    ? parseProjectBudgetFilterValue(filter.budgetMin)
-    : null;
-  const budgetMax = canUseBudgetFilters
-    ? parseProjectBudgetFilterValue(filter.budgetMax)
-    : null;
-  const budgetCurrency = canUseBudgetFilters
-    ? resolveProjectCurrency(filter.budgetCurrency ?? "")
-    : null;
-  const statusWhere = buildProjectStatusWhere(filter.status);
-  const clauses: Prisma.ProjectWhereInput[] = [];
-
-  if (statusWhere) {
-    clauses.push(statusWhere);
-  }
+  const clauses: Prisma.ProjectWhereInput[] = [
+    buildProjectListStatusWhere(filter.status ?? "ALL"),
+    buildProjectListStageWhere(filter.stage ?? null),
+  ];
 
   if (query) {
     clauses.push({
@@ -2237,64 +1971,24 @@ function buildProjectsWhere(
           },
         },
         {
-          category: {
-            contains: query,
-            mode: "insensitive",
-          },
-        },
-        {
-          tags: {
-            some: {
-              tag: {
-                is: {
-                  name: {
-                    contains: query,
-                    mode: "insensitive",
-                  },
-                },
-              },
-            },
-          },
-        },
-        {
-          status: {
-            is: {
-              name: {
-                contains: query,
-                mode: "insensitive",
-              },
-            },
-          },
-        },
-        {
           owner: {
             is: {
-              name: {
-                contains: query,
-                mode: "insensitive",
-              },
+              OR: [
+                { name: { contains: query, mode: "insensitive" } },
+                { email: { contains: query, mode: "insensitive" } },
+              ],
             },
           },
         },
         {
-          owner: {
-            is: {
-              email: {
-                contains: query,
-                mode: "insensitive",
-              },
-            },
-          },
-        },
-        {
-          executors: {
+          coOwners: {
             some: {
               user: {
                 is: {
-                  name: {
-                    contains: query,
-                    mode: "insensitive",
-                  },
+                  OR: [
+                    { name: { contains: query, mode: "insensitive" } },
+                    { email: { contains: query, mode: "insensitive" } },
+                  ],
                 },
               },
             },
@@ -2305,10 +1999,10 @@ function buildProjectsWhere(
             some: {
               user: {
                 is: {
-                  email: {
-                    contains: query,
-                    mode: "insensitive",
-                  },
+                  OR: [
+                    { name: { contains: query, mode: "insensitive" } },
+                    { email: { contains: query, mode: "insensitive" } },
+                  ],
                 },
               },
             },
@@ -2318,36 +2012,8 @@ function buildProjectsWhere(
     });
   }
 
-  if (category) {
-    clauses.push({
-      category: {
-        equals: category,
-        mode: "insensitive",
-      },
-    });
-  }
-
-  if (tag) {
-    clauses.push({
-      tags: {
-        some: {
-          tag: {
-            is: {
-              name: {
-                equals: tag,
-                mode: "insensitive",
-              },
-            },
-          },
-        },
-      },
-    });
-  }
-
   if (ownerId) {
-    clauses.push({
-      ownerId,
-    });
+    clauses.push({ ownerId });
   }
 
   if (executorId) {
@@ -2360,97 +2026,18 @@ function buildProjectsWhere(
     });
   }
 
-  if (createdFrom && createdTo) {
-    if (createdFrom <= createdTo) {
-      clauses.push({
-        createdAt: {
-          gte: createdFrom,
-          lte: createdTo,
-        },
-      });
-    }
-  } else if (createdFrom) {
-    clauses.push({
-      createdAt: {
-        gte: createdFrom,
-      },
-    });
-  } else if (createdTo) {
-    clauses.push({
-      createdAt: {
-        lte: createdTo,
-      },
-    });
+  if (filter.myRole && filter.myRole !== "ALL") {
+    const roleWhere: Record<Exclude<ProjectListRole, "ALL">, Prisma.ProjectWhereInput> = {
+      OWNER: { ownerId: currentUserId },
+      CO_OWNER: { coOwners: { some: { userId: currentUserId } } },
+      EXECUTOR: { executors: { some: { userId: currentUserId } } },
+      COLLABORATOR: { collaborators: { some: { userId: currentUserId } } },
+    };
+
+    clauses.push(roleWhere[filter.myRole]);
   }
 
-  if (canUseBudgetFilters) {
-    if (filter.budgetRequired === "true") {
-      clauses.push({
-        budgetRequired: true,
-      });
-    } else if (filter.budgetRequired === "false") {
-      clauses.push({
-        budgetRequired: false,
-      });
-    }
-  }
-
-  if (budgetMin !== null || budgetMax !== null) {
-    if (budgetMin === null || budgetMax === null || budgetMin <= budgetMax) {
-      clauses.push({
-        budget: {
-          not: null,
-          ...(budgetMin !== null ? { gte: budgetMin } : {}),
-          ...(budgetMax !== null ? { lte: budgetMax } : {}),
-        },
-      });
-    }
-  }
-
-  if (budgetCurrency) {
-    clauses.push({
-      currency: budgetCurrency,
-    });
-  }
-
-  return clauses.length > 0 ? { AND: clauses } : {};
-}
-
-function parseProjectListDate(
-  value: string | null | undefined,
-  boundary: "start" | "end",
-) {
-  const normalizedValue = value?.trim();
-
-  if (!normalizedValue || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
-    return null;
-  }
-
-  const [year, month, day] = normalizedValue.split("-").map(Number);
-  const parsedDate =
-    boundary === "start"
-      ? new Date(year, month - 1, day, 0, 0, 0, 0)
-      : new Date(year, month - 1, day, 23, 59, 59, 999);
-
-  return parsedDate.getFullYear() === year &&
-    parsedDate.getMonth() === month - 1 &&
-    parsedDate.getDate() === day
-    ? parsedDate
-    : null;
-}
-
-function parseProjectBudgetFilterValue(value: string | null | undefined) {
-  const normalizedValue = value?.trim();
-
-  if (!normalizedValue) {
-    return null;
-  }
-
-  const parsedValue = Number(normalizedValue);
-
-  return Number.isFinite(parsedValue) && parsedValue >= 0
-    ? Math.floor(parsedValue)
-    : null;
+  return { AND: clauses };
 }
 
 export async function getProjectListFilterOptions(
@@ -2458,9 +2045,6 @@ export async function getProjectListFilterOptions(
 ): Promise<ProjectListFilterOptions> {
   if (!hasPermission(currentUser, "project.list")) {
     return {
-      statuses: await getActiveProjectStatusOptions(),
-      categories: [],
-      tags: [],
       owners: [],
       executors: [],
     };
@@ -2471,70 +2055,45 @@ export async function getProjectListFilterOptions(
   const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
   logProjectTiming("filter accessible where", accessibleWhereStartedAt);
   const queryStartedAt = performance.now();
-  const [projects, statuses] = await Promise.all([
-    unstable_cache(
-      async () =>
-        withPrismaRetry(() =>
-          prisma.project.findMany({
-            where: accessibleWhere,
-            select: {
-              category: true,
-              owner: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                },
+  const projects = await unstable_cache(
+    async () =>
+      withPrismaRetry(() =>
+        prisma.project.findMany({
+          where: accessibleWhere,
+          select: {
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
               },
-              executors: {
-                select: {
-                  user: {
-                    select: {
-                      id: true,
-                      name: true,
-                      email: true,
-                    },
-                  },
-                },
-              },
-              tags: {
-                select: {
-                  tag: {
-                    select: {
-                      name: true,
-                    },
+            },
+            executors: {
+              select: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
                   },
                 },
               },
             },
-          }),
-        ),
-      [
-        "project-list-filter-options",
-        currentUser.id,
-        currentUser.role,
-      ],
-      { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-    )(),
-    getActiveProjectStatusOptions(),
-  ]);
+          },
+        }),
+      ),
+    ["project-list-v2-filter-options", currentUser.id, currentUser.role],
+    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
+  )();
   logProjectTiming("filter options query", queryStartedAt, {
     projects: projects.length,
-    statuses: statuses.length,
   });
 
   const mappingStartedAt = performance.now();
-  const categories = new Map<string, string>();
-  const tags = new Map<string, string>();
   const owners = new Map<string, ProjectListUserFilterOption>();
   const executors = new Map<string, ProjectListUserFilterOption>();
 
   for (const project of projects) {
-    const normalizedCategory = project.category?.trim() ?? "";
-    if (normalizedCategory) {
-      categories.set(normalizedCategory.toLowerCase(), normalizedCategory);
-    }
-
     if (project.owner) {
       owners.set(project.owner.id, {
         id: project.owner.id,
@@ -2551,25 +2110,13 @@ export async function getProjectListFilterOptions(
       });
     }
 
-    for (const normalizedTag of getProjectTagNames(project)) {
-      tags.set(normalizedTag.toLowerCase(), normalizedTag);
-    }
   }
 
   const options = {
-    statuses,
-    categories: [...categories.values()].sort((left, right) =>
-      left.localeCompare(right, undefined, { sensitivity: "base" }),
-    ),
-    tags: [...tags.values()].sort((left, right) =>
-      left.localeCompare(right, undefined, { sensitivity: "base" }),
-    ),
     owners: sortProjectListUserFilterOptions([...owners.values()]),
     executors: sortProjectListUserFilterOptions([...executors.values()]),
   };
   logProjectTiming("filter options mapping", mappingStartedAt, {
-    categories: categories.size,
-    tags: tags.size,
     owners: owners.size,
     executors: executors.size,
   });
@@ -2747,7 +2294,7 @@ export async function getProjectsList(
   currentUser: ProjectAccessUser,
 ) {
   if (!hasPermission(currentUser, "project.list")) {
-    return [];
+    return { projects: [], total: 0 };
   }
 
   const startedAt = performance.now();
@@ -2756,114 +2303,81 @@ export async function getProjectsList(
   logProjectTiming("accessible where", accessibleWhereStartedAt);
 
   const filterWhereStartedAt = performance.now();
-  const canUseBudgetFilters = isProjectAdmin(currentUser);
-  const filterWhere = buildProjectsWhere(filter, { canUseBudgetFilters });
+  const filterWhere = buildProjectsWhere(filter, currentUser.id);
   logProjectTiming("filter where", filterWhereStartedAt);
 
   const page = Math.max(1, Math.floor(filter.page ?? 1));
   const skip = (page - 1) * PROJECT_LIST_PAGE_SIZE;
-  const orderBy =
-    filter.sort === "oldest"
-      ? [{ isPinned: "desc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }]
-      : filter.sort === "name"
-        ? [
-            { isPinned: "desc" as const },
-            { name: "asc" as const },
-            { createdAt: "asc" as const },
-            { id: "asc" as const },
-          ]
-        : [{ isPinned: "desc" as const }, { createdAt: "desc" as const }, { id: "asc" as const }];
+  const orderBy: Prisma.ProjectOrderByWithRelationInput[] = [
+    { isPinned: "desc" },
+    ...(filter.sort === "oldest"
+      ? [{ createdAt: "asc" as const }]
+      : filter.sort === "newest"
+        ? [{ createdAt: "desc" as const }]
+        : filter.sort === "name-asc"
+          ? [{ name: "asc" as const }]
+          : filter.sort === "name-desc"
+            ? [{ name: "desc" as const }]
+            : [{ updatedAt: "desc" as const }]),
+    { id: "asc" },
+  ];
 
   const queryStartedAt = performance.now();
-  const projects = await unstable_cache(
+  const where = { AND: [accessibleWhere, filterWhere] };
+  const [projects, total] = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
-        prisma.project.findMany({
-          where: {
-            AND: [
-              accessibleWhere,
-              filterWhere,
-            ],
-          },
-          select: {
-            id: true,
-            name: true,
-            category: true,
-            currentStageName: true,
-            createdAt: true,
-            completedAt: true,
-            archivedAt: true,
-            ownerId: true,
-            isPinned: true,
-            coOwners: {
-              select: { userId: true },
-            },
-            executors: {
-              select: { userId: true },
-            },
-            collaborators: {
-              select: { userId: true },
-            },
-            status: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                color: true,
-                group: {
-                  select: projectStatusGroupSelect,
-                },
+        Promise.all([
+          prisma.project.findMany({
+            where,
+            select: {
+              id: true,
+              name: true,
+              updatedAt: true,
+              completedAt: true,
+              ownerId: true,
+              isPinned: true,
+              owner: {
+                select: { id: true, name: true, email: true },
               },
-            },
-            stages: {
-              select: {
-                name: true,
-                status: true,
-                order: true,
+              closure: {
+                select: { id: true },
               },
-              orderBy: {
-                order: "asc",
+              workflowStages: {
+                select: { stageKey: true, status: true },
               },
-            },
-            tags: {
-              select: {
-                tag: {
-                  select: {
-                    name: true,
+              coOwners: {
+                select: { userId: true },
+              },
+              executors: {
+                orderBy: { createdAt: "asc" },
+                select: {
+                  userId: true,
+                  user: {
+                    select: { id: true, name: true, email: true },
                   },
                 },
               },
-            },
-            createdBy: {
-              select: {
-                name: true,
-                email: true,
+              collaborators: {
+                select: { userId: true },
               },
             },
-          },
-          orderBy,
-          skip,
-          take: PROJECT_LIST_PAGE_SIZE,
-        }),
+            orderBy,
+            skip,
+            take: PROJECT_LIST_PAGE_SIZE,
+          }),
+          prisma.project.count({ where }),
+        ]),
       ),
     [
-      "projects-list",
-      "stage-status-v2",
+      "projects-list-v2-dashboard",
       filter.status ?? "all",
       filter.query?.trim().toLowerCase() ?? "",
-      filter.category?.trim().toLowerCase() ?? "",
-      filter.tag?.trim().toLowerCase() ?? "",
+      String(filter.stage ?? "all"),
       filter.ownerId?.trim() ?? "",
       filter.executorId?.trim() ?? "",
-      filter.createdFrom?.trim() ?? "",
-      filter.createdTo?.trim() ?? "",
-      filter.budgetRequired ?? "all",
-      canUseBudgetFilters ? filter.budgetMin?.trim() ?? "" : "",
-      canUseBudgetFilters ? filter.budgetMax?.trim() ?? "" : "",
-      canUseBudgetFilters
-        ? resolveProjectCurrency(filter.budgetCurrency ?? "") ?? "all"
-        : "all",
-      filter.sort ?? "newest",
+      filter.myRole ?? "all",
+      filter.sort ?? "updated",
       String(page),
       String(PROJECT_LIST_PAGE_SIZE),
       currentUser.id,
@@ -2873,15 +2387,13 @@ export async function getProjectsList(
   )();
   logProjectTiming("project query", queryStartedAt, {
     projects: projects.length,
+    total,
     page,
     pageSize: PROJECT_LIST_PAGE_SIZE,
   });
 
   const mappingStartedAt = performance.now();
-  const sortedProjects =
-    filter.sort === "name" ? [...projects].sort(compareProjectsByName) : projects;
-
-  const mappedProjects = sortedProjects.map((project) =>
+  const mappedProjects = projects.map((project) =>
     mapProjectToCard(project, currentUser),
   );
   logProjectTiming("mapping", mappingStartedAt, {
@@ -2889,7 +2401,7 @@ export async function getProjectsList(
   });
   logProjectTiming("total", startedAt);
 
-  return mappedProjects;
+  return { projects: mappedProjects, total };
 }
 
 export async function getProjectById(
@@ -3487,219 +2999,6 @@ export async function getProjectChatShellById(
     favoritedAttachmentIds,
     taskerStageIds.length > 0 ? { taskerStageIds } : undefined,
   );
-}
-
-export async function getProjectEditorById(
-  id: string,
-  currentUser: ProjectAccessUser,
-) {
-  const project = await unstable_cache(
-    async () =>
-      withPrismaRetry(() =>
-        prisma.project.findUnique({
-          where: { id },
-          include: {
-            status: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                color: true,
-                group: {
-                  select: projectStatusGroupSelect,
-                },
-                isActive: true,
-              },
-            },
-            tags: {
-              include: {
-                tag: true,
-              },
-            },
-            createdBy: {
-              select: {
-                name: true,
-                email: true,
-              },
-            },
-            owner: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                collaboratorType: true,
-              },
-            },
-            coOwners: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    collaboratorType: true,
-                  },
-                },
-              },
-            },
-            executors: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    collaboratorType: true,
-                  },
-                },
-              },
-            },
-            stages: {
-              include: {
-                startedBy: {
-                  select: {
-                    name: true,
-                    email: true,
-                  },
-                },
-                invoiceRequests: {
-                  include: {
-                    requestedBy: {
-                      select: {
-                        name: true,
-                        email: true,
-                      },
-                    },
-                    requestedFrom: {
-                      select: {
-                        name: true,
-                        email: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            collaborators: {
-              orderBy: {
-                createdAt: "asc",
-              },
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    collaboratorType: true,
-                  },
-                },
-              },
-            },
-            attachments: {
-              where: {
-                assetType: {
-                  in: [
-                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
-                    "STAGE_INVOICE" as AttachmentAssetType,
-                  ],
-                },
-                status: "READY" as AttachmentStatus,
-              },
-              orderBy: {
-                createdAt: "desc",
-              },
-              select: {
-                id: true,
-                stageId: true,
-                revisionId: true,
-                commentId: true,
-                assetType: true,
-                originalFileName: true,
-                mimeType: true,
-                fileSize: true,
-                createdAt: true,
-                uploadedBy: {
-                  select: {
-                    name: true,
-                    email: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-      ),
-    ["project-editor-by-id", id, currentUser.id, currentUser.role],
-    { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
-  )();
-
-  if (!project) {
-    return null;
-  }
-
-  if (!canAccessProjectRecord(project, currentUser)) {
-    return null;
-  }
-
-  const favoritedAttachmentIds = await getFavoriteAttachmentIdSetForUser(
-    currentUser.id,
-    project.attachments.map((attachment) => attachment.id),
-  );
-
-  return mapProjectToEditor(project, currentUser, favoritedAttachmentIds);
-}
-
-export async function getProjectEditAccessById(
-  id: string,
-  currentUser: ProjectAccessUser,
-) {
-  const project = await withPrismaRetry(() =>
-    prisma.project.findUnique({
-      where: { id },
-      select: {
-        completedAt: true,
-        archivedAt: true,
-        status: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            color: true,
-            group: {
-              select: projectStatusGroupSelect,
-            },
-          },
-        },
-        ownerId: true,
-        coOwners: {
-          select: { userId: true },
-        },
-        executors: {
-          select: {
-            userId: true,
-          },
-        },
-        collaborators: {
-          select: projectCollaboratorPermissionSelect,
-        },
-      },
-    }),
-  );
-
-  if (!project || !canAccessProjectRecord(project, currentUser)) {
-    return null;
-  }
-
-  const editingLocked = Boolean(
-    project.completedAt || project.archivedAt || isProjectStatusCompleted(project.status),
-  );
-
-  return {
-    canEdit:
-      !editingLocked &&
-      hasProjectPermission(currentUser, project, "project.update"),
-    editingLocked,
-  };
 }
 
 export async function getProjectRouteAvailability(

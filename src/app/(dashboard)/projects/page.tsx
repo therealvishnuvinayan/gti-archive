@@ -1,70 +1,70 @@
 import { redirect } from "next/navigation";
 
-import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { ProjectsBrowser } from "@/components/projects/projects-browser";
 import { requireUser } from "@/lib/auth";
-import { resolveProjectCurrency } from "@/lib/project-currencies";
+import {
+  PROJECT_LIST_ROLES,
+  PROJECT_LIST_STATUSES,
+  type ProjectListRole,
+  type ProjectListStatus,
+} from "@/lib/project-list-workflow";
+import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
 import {
   getDashboardProjectCounts,
   getProjectListFilterOptions,
   getProjectsList,
 } from "@/lib/projects";
-import { hasPermission, isProjectAdmin } from "@/lib/permissions/resolver";
+import { hasPermission } from "@/lib/permissions/resolver";
 
-type ProjectFilter = {
-  label: string;
-  value: "ALL" | "ACTIVE" | "PENDING" | "ON_HOLD" | "COMPLETED";
-};
+type ProjectSortValue =
+  | "updated"
+  | "newest"
+  | "oldest"
+  | "name-asc"
+  | "name-desc";
 
-type ProjectSortValue = "newest" | "oldest" | "name";
-
-const projectFilters: ProjectFilter[] = [
+const projectFilters: Array<{ label: string; value: ProjectListStatus }> = [
   { label: "All", value: "ALL" },
   { label: "Active", value: "ACTIVE" },
-  { label: "Pending", value: "PENDING" },
-  { label: "On Hold", value: "ON_HOLD" },
   { label: "Completed", value: "COMPLETED" },
+  { label: "Setup Needed", value: "SETUP_NEEDED" },
 ];
 
 function logProjectsPageTiming(label: string, startedAt: number) {
-  if (process.env.NODE_ENV === "production") {
-    return;
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[projects:list] ${label}`, {
+      ms: Math.round(performance.now() - startedAt),
+    });
   }
-
-  console.log(`[projects:list] ${label}`, {
-    ms: Math.round(performance.now() - startedAt),
-  });
 }
 
-function normalizeDateSearchParam(value: string | undefined) {
-  const normalizedValue = value?.trim();
-
-  if (!normalizedValue || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
-    return "";
-  }
-
-  const [year, month, day] = normalizedValue.split("-").map(Number);
-  const parsedDate = new Date(year, month - 1, day);
-
-  return parsedDate.getFullYear() === year &&
-    parsedDate.getMonth() === month - 1 &&
-    parsedDate.getDate() === day
-    ? normalizedValue
-    : "";
+function normalizeStatus(value: string | undefined): ProjectListStatus {
+  return PROJECT_LIST_STATUSES.includes(value as ProjectListStatus)
+    ? (value as ProjectListStatus)
+    : "ALL";
 }
 
-function normalizeBudgetAmountSearchParam(value: string | undefined) {
-  const normalizedValue = value?.trim();
+function normalizeRole(value: string | undefined): ProjectListRole {
+  return PROJECT_LIST_ROLES.includes(value as ProjectListRole)
+    ? (value as ProjectListRole)
+    : "ALL";
+}
 
-  if (!normalizedValue) {
-    return "";
-  }
+function normalizeStage(value: string | undefined) {
+  const stage = Number.parseInt(value ?? "", 10);
+  return stage >= 1 && stage <= PROJECT_WORKFLOW_STAGE_DEFINITIONS.length
+    ? stage
+    : null;
+}
 
-  const parsedValue = Number(normalizedValue);
-
-  return Number.isFinite(parsedValue) && parsedValue >= 0
-    ? String(Math.floor(parsedValue))
-    : "";
+function normalizeSort(value: string | undefined): ProjectSortValue {
+  return value === "newest" ||
+    value === "oldest" ||
+    value === "name-asc" ||
+    value === "name-desc"
+    ? value
+    : "updated";
 }
 
 export default async function ProjectsPage({
@@ -76,32 +76,27 @@ export default async function ProjectsPage({
 
   return (
     <DashboardLayout>
-      <section className="space-y-6">
-        <ProjectsBrowser
-          projects={data.projects}
-          hasAnyProjects={data.hasAnyProjects}
-          canCreateProject={data.canCreateProject}
-          activeStatus={data.activeStatus}
-          activeSort={data.activeSort}
-          query={data.query}
-          activeCategory={data.activeCategory}
-          activeTag={data.activeTag}
-          activeOwnerId={data.activeOwnerId}
-          activeExecutorId={data.activeExecutorId}
-          activeCreatedFrom={data.activeCreatedFrom}
-          activeCreatedTo={data.activeCreatedTo}
-          activeBudgetRequired={data.activeBudgetRequired}
-          activeBudgetMin={data.activeBudgetMin}
-          activeBudgetMax={data.activeBudgetMax}
-          activeBudgetCurrency={data.activeBudgetCurrency}
-          categoryOptions={data.filterOptions.categories}
-          statusOptions={data.filterOptions.statuses}
-          tagOptions={data.filterOptions.tags}
-          ownerOptions={data.filterOptions.owners}
-          executorOptions={data.filterOptions.executors}
-          filters={projectFilters}
-        />
-      </section>
+      <ProjectsBrowser
+        projects={data.projects}
+        projectCount={data.projectCount}
+        currentPage={data.currentPage}
+        hasAnyProjects={data.hasAnyProjects}
+        canCreateProject={data.canCreateProject}
+        activeStatus={data.activeStatus}
+        activeSort={data.activeSort}
+        activeStage={data.activeStage}
+        activeOwnerId={data.activeOwnerId}
+        activeExecutorId={data.activeExecutorId}
+        activeMyRole={data.activeMyRole}
+        query={data.query}
+        ownerOptions={data.filterOptions.owners}
+        executorOptions={data.filterOptions.executors}
+        stageOptions={PROJECT_WORKFLOW_STAGE_DEFINITIONS.map((stage) => ({
+          number: stage.number,
+          name: stage.name,
+        }))}
+        filters={projectFilters}
+      />
     </DashboardLayout>
   );
 }
@@ -110,16 +105,10 @@ type ProjectSearchParams = {
   status?: string;
   q?: string;
   sort?: string;
-  category?: string;
-  tag?: string;
+  stage?: string;
   ownerId?: string;
   executorId?: string;
-  createdFrom?: string;
-  createdTo?: string;
-  budgetRequired?: string;
-  budgetMin?: string;
-  budgetMax?: string;
-  budgetCurrency?: string;
+  myRole?: string;
   page?: string;
 };
 
@@ -128,28 +117,13 @@ async function loadProjectsPageData(
 ) {
   const pageStartedAt = performance.now();
   const resolvedSearchParams = await searchParams;
-  const activeStatus = resolvedSearchParams.status?.trim() || "ACTIVE";
-  const query = resolvedSearchParams.q?.trim() ?? "";
-  const activeSort: ProjectSortValue =
-    resolvedSearchParams.sort === "oldest" ||
-    resolvedSearchParams.sort === "name"
-      ? resolvedSearchParams.sort
-      : "newest";
-  const activeCategory = resolvedSearchParams.category?.trim() ?? "";
-  const activeTag = resolvedSearchParams.tag?.trim() ?? "";
+  const activeStatus = normalizeStatus(resolvedSearchParams.status);
+  const activeSort = normalizeSort(resolvedSearchParams.sort);
+  const activeStage = normalizeStage(resolvedSearchParams.stage);
+  const activeMyRole = normalizeRole(resolvedSearchParams.myRole);
   const activeOwnerId = resolvedSearchParams.ownerId?.trim() ?? "";
   const activeExecutorId = resolvedSearchParams.executorId?.trim() ?? "";
-  const activeCreatedFrom = normalizeDateSearchParam(resolvedSearchParams.createdFrom);
-  const activeCreatedTo = normalizeDateSearchParam(resolvedSearchParams.createdTo);
-  const activeBudgetRequired =
-    resolvedSearchParams.budgetRequired === "true" ||
-    resolvedSearchParams.budgetRequired === "false"
-      ? resolvedSearchParams.budgetRequired
-      : "";
-  const activeBudgetMin = normalizeBudgetAmountSearchParam(resolvedSearchParams.budgetMin);
-  const activeBudgetMax = normalizeBudgetAmountSearchParam(resolvedSearchParams.budgetMax);
-  const activeBudgetCurrency =
-    resolveProjectCurrency(resolvedSearchParams.budgetCurrency ?? "") ?? "";
+  const query = resolvedSearchParams.q?.trim() ?? "";
   const activePage = Math.max(
     1,
     Number.parseInt(resolvedSearchParams.page ?? "1", 10) || 1,
@@ -160,53 +134,39 @@ async function loadProjectsPageData(
     redirect("/no-access");
   }
 
-  const canUseBudgetFilters = isProjectAdmin(user);
-  const budgetRequiredFilter = canUseBudgetFilters ? activeBudgetRequired : "";
-  const budgetMinFilter = canUseBudgetFilters ? activeBudgetMin : "";
-  const budgetMaxFilter = canUseBudgetFilters ? activeBudgetMax : "";
-  const budgetCurrencyFilter = canUseBudgetFilters ? activeBudgetCurrency : "";
-
-  const [projects, projectCounts, filterOptions] = await Promise.all([
-    getProjectsList({
-      status: activeStatus,
-      query,
-      category: activeCategory,
-      tag: activeTag,
-      ownerId: activeOwnerId,
-      executorId: activeExecutorId,
-      createdFrom: activeCreatedFrom,
-      createdTo: activeCreatedTo,
-      budgetRequired: budgetRequiredFilter || undefined,
-      budgetMin: budgetMinFilter,
-      budgetMax: budgetMaxFilter,
-      budgetCurrency: budgetCurrencyFilter,
-      sort: activeSort,
-      page: activePage,
-    }, user),
+  const [projectResult, projectCounts, filterOptions] = await Promise.all([
+    getProjectsList(
+      {
+        status: activeStatus,
+        query,
+        sort: activeSort,
+        stage: activeStage ?? undefined,
+        ownerId: activeOwnerId,
+        executorId: activeExecutorId,
+        myRole: activeMyRole,
+        page: activePage,
+      },
+      user,
+    ),
     getDashboardProjectCounts(user),
     getProjectListFilterOptions(user),
   ]);
-  const hasAnyProjects = projectCounts.total > 0;
-  const canCreateProject = hasPermission(user, "project.create");
+
   logProjectsPageTiming("page total", pageStartedAt);
 
   return {
-    projects,
-    hasAnyProjects,
-    canCreateProject,
+    projects: projectResult.projects,
+    projectCount: projectResult.total,
+    hasAnyProjects: projectCounts.total > 0,
+    canCreateProject: hasPermission(user, "project.create"),
     activeStatus,
     activeSort,
-    query,
-    activeCategory,
-    activeTag,
+    activeStage,
     activeOwnerId,
     activeExecutorId,
-    activeCreatedFrom,
-    activeCreatedTo,
-    activeBudgetRequired: budgetRequiredFilter,
-    activeBudgetMin: budgetMinFilter,
-    activeBudgetMax: budgetMaxFilter,
-    activeBudgetCurrency: budgetCurrencyFilter,
+    activeMyRole,
+    query,
+    currentPage: activePage,
     filterOptions,
   };
 }

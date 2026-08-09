@@ -93,12 +93,12 @@ assert(
 );
 
 const projects = read("src/lib/projects.ts");
-assertIncludes(projects, "canUseBudgetFilters", "budget filter gate");
 assertIncludes(
   projects,
-  "const canUseBudgetFilters = isProjectAdmin(currentUser);",
-  "budget filters restricted to admin list queries",
+  "buildProjectListStatusWhere(filter.status ?? \"ALL\")",
+  "V2 workflow status filter",
 );
+assert(!projects.includes("filter.budgetMin"), "project list must not retain legacy budget filters");
 assertIncludes(
   projects,
   "visibleCollaboratorRecords",
@@ -299,31 +299,11 @@ for (const resolverCheck of [
   assertIncludes(resolver, resolverCheck, `resolver grant ${resolverCheck}`);
 }
 
-const newProjectActions = read("src/app/(dashboard)/projects/new/actions.ts");
-for (const field of [
-  "collaboratorCanInteract",
-  "collaboratorCanAddCaptions",
-  "collaboratorCanDownloadFiles",
-  "collaboratorCanViewBudget",
-  "collaboratorCanViewVendorInfo",
-  "collaboratorCanAccessProjectArchives",
-]) {
-  assertIncludes(newProjectActions, field, `project form action field ${field}`);
-}
+const projectCreation = read("src/lib/project-creation.ts");
 assertIncludes(
-  newProjectActions,
+  projectCreation,
   "normalizeProjectCollaboratorPermissions(",
-  "project create/edit permission persistence",
-);
-assertIncludes(
-  newProjectActions,
-  "approvalSelectedProjectFileIds: []",
-  "execution type reset clears pre-archive approval selections",
-);
-assertIncludes(
-  newProjectActions,
-  "invoiceContactUserId: null",
-  "execution type reset clears final invoice contact",
+  "V2 project creation permission persistence",
 );
 
 const projectActions = read("src/app/(dashboard)/projects/actions.ts");
@@ -337,21 +317,16 @@ for (const requiredSnippet of [
   assertIncludes(projectActions, requiredSnippet, `project action ${requiredSnippet}`);
 }
 
-const createWorkspace = read("src/components/projects/create-project-workspace.tsx");
+const createProjectForm = read("src/components/projects/create-project-form.tsx");
 assertIncludes(
-  createWorkspace,
-  "projectCollaboratorPermissionLabels",
-  "project collaborator permission labels",
+  createProjectForm,
+  "ProjectUserSelector",
+  "V2 project participant selector",
 );
 assertIncludes(
-  createWorkspace,
-  "isClientOfGtiParticipantType",
-  "CLIENT_OF_GTI archive checkbox disable",
-);
-assertIncludes(
-  createWorkspace,
-  "buildCollaboratorSavePayload",
-  "collaborator quick-save permission payload",
+  createProjectForm,
+  "createProjectV2Action",
+  "V2 project creation action",
 );
 
 const completionChecklist = read("src/components/projects/project-completion-checklist.tsx");

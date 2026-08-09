@@ -138,24 +138,24 @@ assertIncludesAll(
     "hasProjectPermission(currentUser, project, \"project.updateBudget\")",
     "budget: allowBudgetView",
     "currency: allowBudgetView ? project.currency : null",
-    "const canUseBudgetFilters = options.canUseBudgetFilters === true;",
-    "const budgetMin = canUseBudgetFilters",
-    "if (canUseBudgetFilters)",
+    "buildProjectListStatusWhere(filter.status ?? \"ALL\")",
+    "buildProjectListStageWhere(filter.stage ?? null)",
   ],
-  "budget visibility and filter gates",
+  "budget visibility and V2 project list filters",
 );
 
 const projectsPage = read("src/app/(dashboard)/projects/page.tsx");
 assertIncludesAll(
   projectsPage,
   [
-    "const canUseBudgetFilters = isProjectAdmin(user);",
-    "const budgetRequiredFilter = canUseBudgetFilters ? activeBudgetRequired : \"\";",
-    "const budgetMinFilter = canUseBudgetFilters ? activeBudgetMin : \"\";",
-    "const budgetMaxFilter = canUseBudgetFilters ? activeBudgetMax : \"\";",
+    "activeStage",
+    "activeOwnerId",
+    "activeExecutorId",
+    "activeMyRole",
   ],
-  "projects page budget filter stripping",
+  "projects page V2 workflow filters",
 );
+assert(!projectsPage.includes("budgetMin"), "projects page must not retain legacy budget filters");
 
 const projectHistory = read("src/lib/project-history.ts");
 assertIncludesAll(

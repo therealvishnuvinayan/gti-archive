@@ -9,7 +9,6 @@ import {
   FileText,
   FolderKanban,
   Leaf,
-  Pencil,
   UserRound,
   WalletCards,
 } from "lucide-react";
@@ -279,15 +278,7 @@ export function ProjectDetailWorkspace({
                   <span className="min-w-0 truncate">{project.currentStageName}</span>
                   <span className="shrink-0 text-[#83db71]">· {project.statusLabel}</span>
                 </span>
-                {project.canEdit ? (
-                  <Link
-                    href={`/projects/${project.id}/edit`}
-                    className="inline-flex h-11 shrink-0 items-center justify-center rounded-full border border-white bg-white px-5 text-[13px] font-[900] leading-5 text-[#145232] shadow-[0_14px_30px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#f6fff7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit Project
-                  </Link>
-                ) : project.isCompleted ? (
+                {project.isCompleted ? (
                   <span className="inline-flex rounded-full border border-white/18 bg-white/10 px-3.5 py-2 text-[12px] font-[800] leading-5 text-white/78 backdrop-blur">
                     Completed project · editing locked
                   </span>

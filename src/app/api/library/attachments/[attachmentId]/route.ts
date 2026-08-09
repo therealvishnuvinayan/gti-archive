@@ -23,7 +23,6 @@ export async function DELETE(
     revalidatePath("/library");
     revalidatePath(`/projects/${result.projectId}`);
     revalidatePath(`/projects/${result.projectId}/chat`);
-    revalidatePath(`/projects/${result.projectId}/edit`);
 
     return NextResponse.json({ success: true });
   } catch (error) {

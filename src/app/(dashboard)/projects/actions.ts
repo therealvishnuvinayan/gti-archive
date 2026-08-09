@@ -67,9 +67,14 @@ import {
 } from "@/lib/realtime/server";
 import type { StageChatRealtimeTimelineUpdatedPayload } from "@/lib/realtime/events";
 import { logStageChatTiming } from "@/lib/stage-chat-timing";
-import { SubmissionReviewStatus } from "@prisma/client";
+import {
+  ProjectWorkflowStageKey,
+  ProjectWorkflowStageStatus,
+  SubmissionReviewStatus,
+} from "@prisma/client";
 import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 import type { ProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
+import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
 type StageRevisionInput = {
   projectId: string;
@@ -231,6 +236,81 @@ export async function toggleProjectPinAction(projectId: string) {
   revalidateProjectFlow();
 
   return updatedProject;
+}
+
+export async function deleteProjectAction(projectId: string) {
+  const user = await requireUser();
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      completedAt: true,
+      closure: { select: { id: true } },
+      workflowStages: {
+        where: {
+          stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+          status: ProjectWorkflowStageStatus.COMPLETED,
+        },
+        select: { id: true },
+      },
+      status: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          color: true,
+          group: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              color: true,
+              isActive: true,
+            },
+          },
+        },
+      },
+      ownerId: true,
+      coOwners: { select: { userId: true } },
+      executors: { select: { userId: true } },
+      collaborators: { select: { userId: true } },
+      stages: { select: { id: true } },
+    },
+  });
+
+  if (!project) throw new Error("Project not found.");
+
+  if (!hasProjectPermission(user, project, "project.delete")) {
+    throw new Error("You are not allowed to delete projects.");
+  }
+
+  if (
+    project.completedAt ||
+    project.closure ||
+    project.workflowStages.length > 0 ||
+    isProjectStatusCompleted(project.status)
+  ) {
+    throw new Error("Completed projects cannot be deleted.");
+  }
+
+  const stageIds = project.stages.map((stage) => stage.id);
+
+  await prisma.$transaction([
+    prisma.notification.deleteMany({
+      where: {
+        OR: [
+          { projectId },
+          ...(stageIds.length > 0 ? [{ stageId: { in: stageIds } }] : []),
+        ],
+      },
+    }),
+    prisma.project.delete({ where: { id: projectId } }),
+  ]);
+
+  revalidatePath("/");
+  revalidatePath("/notifications");
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  revalidateTag(PROJECTS_CACHE_TAG, "max");
 }
 
 function revalidateArchiveFlow(projectId: string, categorySlug?: string) {
@@ -1122,7 +1202,6 @@ export async function saveProjectCollaboratorsAction(
     );
 
     revalidateProjectFlow();
-    revalidatePath(`/projects/${projectId}/edit`);
 
     const nextCollaboratorIds = updatedCollaborators.map((collaborator) => collaborator.id);
     const removedCollaboratorIds = previousCollaboratorIds.filter(
@@ -1178,7 +1257,6 @@ export async function removeProjectCollaboratorAction(
     );
 
     revalidateProjectFlow();
-    revalidatePath(`/projects/${projectId}/edit`);
 
     const nextCollaboratorIds = updatedCollaborators.map((collaborator) => collaborator.id);
     const removedCollaboratorIds = previousCollaboratorIds.filter(
@@ -1230,7 +1308,6 @@ export async function setProjectCollaboratorChatVisibilityAction(input: {
     const updatedCollaborators = await setProjectCollaboratorChatVisibility(user, input);
 
     revalidateProjectFlow();
-    revalidatePath(`/projects/${input.projectId}/edit`);
 
     if (input.paused) {
       publishProjectAccessRevocation({
