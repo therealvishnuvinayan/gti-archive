@@ -37,6 +37,14 @@ assert(
     workspace.includes('!showChrome && "mt-5"'),
   "Streamed Stage 2 must use a compact folder-set switch without an empty header column.",
 );
+assert(
+  workspace.includes("gap-4 xl:flex-row xl:items-center xl:justify-between") &&
+    workspace.includes("min-w-0 sm:flex-1 xl:flex-none") &&
+    workspace.includes("flex w-full min-w-0 items-center gap-2 sm:w-auto") &&
+    workspace.includes("min-w-0 flex-1 justify-between rounded-[12px]") &&
+    workspace.includes('<span className="truncate">{sortLabels[sort]}</span>'),
+  "The workspace, view, and sort controls must form a responsive toolbar without stranding the sort control on its own row.",
+);
 
 for (const folderName of ["Brief", "Market & Competition", "Tech", "Vendors", "Finance", "Legal", "Pitch"]) {
   assert(service.includes(`name: "${folderName}"`), `Missing predefined Stage 2 folder: ${folderName}`);

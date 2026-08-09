@@ -503,24 +503,30 @@ export function StageTwoWorkspace({
           </div> : null}
 
           <div className={cn("bg-[#fbfcfb] px-5 py-6 sm:px-7 lg:px-9 lg:py-7", showChrome && "border-t border-[#e9eee9]")}>
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex items-start gap-3">
                 <span className="grid size-10 place-items-center rounded-[12px] bg-[#eaf4ec] text-[#2e754f]"><Folder className="h-5 w-5" /></span>
                 <div><h2 className="text-[18px] font-[750] text-[#1b261f]">Shared folders</h2><p className="mt-0.5 text-[12px] text-[#758078]">Files and folders in {data.selectedWorkspace.ownerName}&apos;s workspace.</p></div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {!showChrome ? <WorkspaceSwitch data={data} compact /> : null}
-                <div className="inline-flex rounded-[12px] border border-[#dce3dc] bg-white p-1">
-                  {(["grid", "list"] as FolderView[]).map((option) => (
-                    <button key={option} type="button" aria-label={`${option} view`} aria-pressed={view === option} onClick={() => setView(option)} className={cn("grid size-9 place-items-center rounded-[9px]", view === option ? "bg-[#24764e] text-white" : "text-[#68736b]")}>
-                      {option === "grid" ? <Grid2X2 className="h-4 w-4" /> : <List className="h-4 w-4" />}
-                    </button>
-                  ))}
+              <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end xl:w-auto xl:flex-nowrap">
+                {!showChrome ? (
+                  <div className="min-w-0 sm:flex-1 xl:flex-none">
+                    <WorkspaceSwitch data={data} compact />
+                  </div>
+                ) : null}
+                <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+                  <div className="inline-flex shrink-0 rounded-[12px] border border-[#dce3dc] bg-white p-1">
+                    {(["grid", "list"] as FolderView[]).map((option) => (
+                      <button key={option} type="button" aria-label={`${option} view`} aria-pressed={view === option} onClick={() => setView(option)} className={cn("grid size-9 place-items-center rounded-[9px]", view === option ? "bg-[#24764e] text-white" : "text-[#68736b]")}>
+                        {option === "grid" ? <Grid2X2 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+                      </button>
+                    ))}
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild><Button type="button" variant="secondary" className="min-w-0 flex-1 justify-between rounded-[12px] shadow-none sm:min-w-[175px] sm:flex-none"><SlidersHorizontal className="h-4 w-4" /><span className="truncate">{sortLabels[sort]}</span><ChevronDown className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
+                    <DropdownMenuContent align="end"><DropdownMenuLabel>Sort folders</DropdownMenuLabel>{(Object.keys(sortLabels) as FolderSort[]).map((option) => <DropdownMenuItem key={option} onSelect={() => setSort(option)}><span className="flex-1">{sortLabels[option]}</span>{sort === option ? <Check className="h-4 w-4 text-brand" /> : null}</DropdownMenuItem>)}</DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild><Button type="button" variant="secondary" className="min-w-[175px] justify-between rounded-[12px] shadow-none"><SlidersHorizontal className="h-4 w-4" />{sortLabels[sort]}<ChevronDown className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
-                  <DropdownMenuContent align="end"><DropdownMenuLabel>Sort folders</DropdownMenuLabel>{(Object.keys(sortLabels) as FolderSort[]).map((option) => <DropdownMenuItem key={option} onSelect={() => setSort(option)}><span className="flex-1">{sortLabels[option]}</span>{sort === option ? <Check className="h-4 w-4 text-brand" /> : null}</DropdownMenuItem>)}</DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
             <div className={cn("mt-5", view === "grid" ? "grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "space-y-3")}>
