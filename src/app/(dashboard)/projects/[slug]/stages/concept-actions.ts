@@ -5,18 +5,21 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import {
   notifyConceptFileApproved,
+  notifyStageFiveActivated,
+  notifyStageFourFinalFileApproved,
   notifyStageFourConceptsActivated,
   runNotificationTask,
 } from "@/lib/notification-center";
 import {
+  completeStageFourConcepts,
   completeStageThreeConcepts,
   createProjectConceptFolder,
   editProjectConceptFolder,
   markProjectConceptApprovedAttachment,
+  markStageFourFinalApprovedAttachment,
   renameProjectConceptFolder,
   type ConceptWorkflowStageKey,
 } from "@/lib/project-concepts";
-import { handoffStageFourFiles } from "@/lib/stage-five";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 function getConceptStageNumber(stageKey: ConceptWorkflowStageKey) {
@@ -180,17 +183,69 @@ export async function completeStageThreeConceptsAction(input: {
   }
 }
 
-export async function handoffStageFourFilesAction(input: {
+export async function markStageFourFinalApprovedAttachmentAction(input: {
   projectId: string;
-  attachmentIds: string[];
+  folderId: string;
+  attachmentId: string;
 }) {
   const user = await requireUser();
-  const result = await handoffStageFourFiles(user, input);
 
-  if (!("error" in result)) {
-    revalidatePath(`/projects/${input.projectId}/stages/4`);
-    revalidatePath(`/projects/${input.projectId}/stages/5`);
+  try {
+    const result = await markStageFourFinalApprovedAttachment(user, input);
+
+    if (!("error" in result)) {
+      revalidateConceptStage(input.projectId, "PROJECT_DEVELOPMENT");
+      revalidatePath(
+        `/projects/${input.projectId}/stages/4/concepts/${input.folderId}`,
+      );
+      revalidatePath(`/projects/${input.projectId}/stages/5`);
+
+      if (result.changed) {
+        await runNotificationTask("stage-four-final-file-approved", () =>
+          notifyStageFourFinalFileApproved({
+            ...input,
+            actorId: user.id,
+          }),
+        );
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] Stage 4 final approval failed", error);
+    return {
+      error: "Unable to approve this final Stage 4 file right now.",
+    } as const;
   }
+}
 
-  return result;
+export async function completeStageFourConceptsAction(input: {
+  projectId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await completeStageFourConcepts(user, input);
+
+    if (!("error" in result)) {
+      revalidateConceptStage(input.projectId, "PROJECT_DEVELOPMENT");
+      revalidatePath(`/projects/${input.projectId}/stages/5`);
+      revalidatePath(`/projects/${input.projectId}`);
+
+      if (result.transitioned) {
+        await runNotificationTask("stage-five-activated", () =>
+          notifyStageFiveActivated({
+            projectId: input.projectId,
+            finalFileCount: result.finalApprovedCount,
+            actorId: user.id,
+          }),
+        );
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] Stage 4 completion failed", error);
+    return { error: "Unable to complete Stage 4 right now." } as const;
+  }
 }

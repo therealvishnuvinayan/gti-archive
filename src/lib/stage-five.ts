@@ -53,11 +53,6 @@ export type StageFiveAttachmentRecord = {
   size: number;
 };
 
-export type StageFourHandoffFileRecord = StageFiveAttachmentRecord & {
-  handedOff: boolean;
-  handoffId: string | null;
-};
-
 export type StageFiveChecklistItemRecord = {
   fieldKey: ProjectFileChecklistField;
   value: StageFiveChecklistValue;
@@ -148,27 +143,6 @@ async function getAuthorizedProject(
   return project;
 }
 
-const stageFourAttachmentWhere = (projectId: string) =>
-  ({
-    projectId,
-    status: AttachmentStatus.READY,
-    stage: {
-      is: {
-        projectId,
-        isTasker: true,
-        conceptFolder: {
-          is: {
-            projectId,
-            workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-          },
-        },
-      },
-    },
-    assetType: {
-      notIn: ["REVISION_PREVIEW", "REVISION_THUMBNAIL"],
-    },
-  }) satisfies Prisma.ProjectAttachmentWhereInput;
-
 const attachmentSelect = {
   id: true,
   originalFileName: true,
@@ -190,126 +164,69 @@ function mapAttachment(attachment: {
   };
 }
 
-export async function getStageFourFinalFileHandoffData(
-  user: PermissionUser,
-  projectId: string,
-) {
-  const project = await getAuthorizedProject(
-    user,
-    projectId,
-    ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+function hasMeaningfulChecklistValue(
+  value: Prisma.JsonValue | null | undefined,
+): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return Boolean(value.trim());
+  if (typeof value === "number") return true;
+  if (typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return value.some((entry) => hasMeaningfulChecklistValue(entry));
+  }
+
+  return Object.values(value).some((entry) =>
+    hasMeaningfulChecklistValue(entry),
   );
+}
 
-  if (!project) return null;
-
-  const canHandoff = hasProjectPermission(user, project, "project.update");
-  if (!canHandoff) return { canHandoff: false, files: [] };
-
-  const [attachments, handoffs] = await Promise.all([
-    withPrismaRetry(() =>
-      prisma.projectAttachment.findMany({
-        where: stageFourAttachmentWhere(projectId),
-        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-        select: attachmentSelect,
-      }),
-    ),
-    withPrismaRetry(() =>
-      prisma.projectStageFileHandoff.findMany({
-        where: {
-          projectId,
-          sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-          targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+export async function hasStageFiveDownstreamActivityForAttachment(
+  tx: Prisma.TransactionClient,
+  input: { projectId: string; attachmentId: string },
+) {
+  const handoff = await tx.projectStageFileHandoff.findFirst({
+    where: {
+      projectId: input.projectId,
+      sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      sourceAttachmentId: input.attachmentId,
+      targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+    },
+    select: {
+      id: true,
+      checklist: {
+        select: {
+          id: true,
+          _count: { select: { requests: true } },
+          items: {
+            select: {
+              value: true,
+              status: true,
+              _count: { select: { attachments: true, requests: true } },
+            },
+          },
         },
-        select: { id: true, sourceAttachmentId: true },
-      }),
-    ),
-  ]);
-  const handoffByAttachmentId = new Map(
-    handoffs.map((handoff) => [handoff.sourceAttachmentId, handoff.id]),
+      },
+    },
+  });
+
+  const checklist = handoff?.checklist;
+  const hasActivity = Boolean(
+    checklist &&
+      (checklist._count.requests > 0 ||
+        checklist.items.some(
+          (item) =>
+            item.status !== ProjectFileChecklistItemStatus.PENDING ||
+            item._count.attachments > 0 ||
+            item._count.requests > 0 ||
+            hasMeaningfulChecklistValue(item.value),
+        )),
   );
 
   return {
-    canHandoff,
-    files: attachments.map((attachment) => ({
-      ...mapAttachment(attachment),
-      handedOff: handoffByAttachmentId.has(attachment.id),
-      handoffId: handoffByAttachmentId.get(attachment.id) ?? null,
-    })),
+    hasActivity,
+    handoffId: handoff?.id ?? null,
+    checklistId: checklist?.id ?? null,
   };
-}
-
-export async function handoffStageFourFiles(
-  user: PermissionUser,
-  input: { projectId: string; attachmentIds: string[] },
-) {
-  const project = await getAuthorizedProject(
-    user,
-    input.projectId,
-    ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-  );
-
-  if (!project || !hasProjectPermission(user, project, "project.update")) {
-    return { error: "You do not have permission to designate final Stage 4 files." } as const;
-  }
-
-  const attachmentIds = Array.from(
-    new Set(input.attachmentIds.map((id) => id.trim()).filter(Boolean)),
-  );
-  if (attachmentIds.length === 0) return { error: "Select at least one Stage 4 file." } as const;
-  if (attachmentIds.length > 100) return { error: "Select no more than 100 files at once." } as const;
-
-  const validAttachments = await withPrismaRetry(() =>
-    prisma.projectAttachment.findMany({
-      where: { ...stageFourAttachmentWhere(input.projectId), id: { in: attachmentIds } },
-      select: { id: true },
-    }),
-  );
-  if (validAttachments.length !== attachmentIds.length) {
-    return { error: "One or more selected files do not belong to this project's Stage 4 workspace." } as const;
-  }
-
-  const handoffs = await withPrismaRetry(() =>
-    prisma.$transaction(
-      async (tx) => {
-        await tx.projectStageFileHandoff.createMany({
-          data: attachmentIds.map((sourceAttachmentId) => ({
-            projectId: input.projectId,
-            sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-            sourceAttachmentId,
-            targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
-            handedOffById: user.id,
-          })),
-          skipDuplicates: true,
-        });
-
-        const designated = await tx.projectStageFileHandoff.findMany({
-          where: {
-            projectId: input.projectId,
-            sourceAttachmentId: { in: attachmentIds },
-            targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
-          },
-          select: { id: true, sourceAttachmentId: true },
-        });
-
-        for (const handoff of designated) {
-          await tx.projectFileChecklist.upsert({
-            where: { handoffId: handoff.id },
-            update: {},
-            create: {
-              projectId: input.projectId,
-              handoffId: handoff.id,
-              sourceAttachmentId: handoff.sourceAttachmentId,
-            },
-          });
-        }
-
-        return designated;
-      },
-      { maxWait: 5_000, timeout: 20_000 },
-    ),
-  );
-
-  return { handoffs } as const;
 }
 
 function parseChecklistValue(value: Prisma.JsonValue | null): StageFiveChecklistValue {

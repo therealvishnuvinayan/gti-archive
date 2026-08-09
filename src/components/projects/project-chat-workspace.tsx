@@ -50,7 +50,10 @@ import {
   saveProjectCollaboratorsAction,
   setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
-import { markProjectConceptApprovedAttachmentAction } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
+import {
+  markProjectConceptApprovedAttachmentAction,
+  markStageFourFinalApprovedAttachmentAction,
+} from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
   DEFAULT_CHAT_LANGUAGE,
@@ -1694,6 +1697,8 @@ function AttachmentHistoryList({
   showCaptionAction = true,
   currentUserDisplayName,
   approvedConceptAttachmentId,
+  approvedFileLabel = "Approved Concept",
+  markApprovedFileLabel = "Mark as Approved Concept",
   canApproveConceptFile = false,
   approvingConceptAttachmentId,
   onApproveConceptFile,
@@ -1707,6 +1712,8 @@ function AttachmentHistoryList({
   showCaptionAction?: boolean;
   currentUserDisplayName?: string;
   approvedConceptAttachmentId?: string | null;
+  approvedFileLabel?: string;
+  markApprovedFileLabel?: string;
   canApproveConceptFile?: boolean;
   approvingConceptAttachmentId?: string | null;
   onApproveConceptFile?: (attachment: DisplayAttachmentRecord) => void;
@@ -1815,7 +1822,7 @@ function AttachmentHistoryList({
                     ) : null}
                     {isApprovedConcept ? (
                       <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-[#dff2e5] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-wide leading-none text-[#1f7145]">
-                        <CheckCircle2 className="h-3 w-3" /> Approved Concept
+                        <CheckCircle2 className="h-3 w-3" /> {approvedFileLabel}
                       </span>
                     ) : null}
                   </div>
@@ -1907,7 +1914,7 @@ function AttachmentHistoryList({
                     ) : (
                       <CheckCircle2 className="h-3.5 w-3.5" />
                     )}
-                    Mark as Approved Concept
+                    {markApprovedFileLabel}
                   </Button>
                 </div>
               ) : null}
@@ -2480,6 +2487,14 @@ export function ProjectChatWorkspace({
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const isConceptMode = conceptMode?.type === "concept";
+  const isStageFourConceptMode =
+    conceptMode?.workflowStageKey === "PROJECT_DEVELOPMENT";
+  const approvedFileLabel = isStageFourConceptMode
+    ? "Final Approved File"
+    : "Approved Concept";
+  const markApprovedFileLabel = isStageFourConceptMode
+    ? "Mark Final Approved File"
+    : "Mark as Approved Concept";
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
     project.collaborators,
   );
@@ -5846,11 +5861,14 @@ export function ProjectChatWorkspace({
     setApprovingConceptAttachmentId(conceptApprovalTarget.id);
 
     try {
-      const result = await markProjectConceptApprovedAttachmentAction({
+      const actionInput = {
         projectId: project.id,
         folderId: conceptMode.folderId,
         attachmentId: conceptApprovalTarget.id,
-      });
+      };
+      const result = isStageFourConceptMode
+        ? await markStageFourFinalApprovedAttachmentAction(actionInput)
+        : await markProjectConceptApprovedAttachmentAction(actionInput);
 
       if ("error" in result) {
         throw new Error(result.error);
@@ -5860,8 +5878,10 @@ export function ProjectChatWorkspace({
       setConceptApprovalTarget(null);
       showSuccessToast(
         result.changed
-          ? "Approved Concept updated."
-          : "This file is already the Approved Concept.",
+          ? isStageFourConceptMode
+            ? "Final Approved File updated."
+            : "Approved Concept updated."
+          : `This file is already the ${approvedFileLabel}.`,
       );
       router.refresh();
     } catch (error) {
@@ -8061,6 +8081,8 @@ export function ProjectChatWorkspace({
                             <AttachmentHistoryList
                               attachments={message.attachments}
                               approvedConceptAttachmentId={approvedConceptAttachmentId}
+                              approvedFileLabel={approvedFileLabel}
+                              markApprovedFileLabel={markApprovedFileLabel}
                               actionsDisabled={isProjectCompleted}
                               tone={revisionAlignment === "right" ? "sent" : "received"}
                               projectCategory={project.category}
@@ -10340,20 +10362,28 @@ export function ProjectChatWorkspace({
         title={
           approvedConceptAttachmentId &&
           approvedConceptAttachmentId !== conceptApprovalTarget?.id
-            ? "Replace the currently approved concept file?"
-            : "Mark as Approved Concept?"
+            ? isStageFourConceptMode
+              ? "Replace the currently approved final file?"
+              : "Replace the currently approved concept file?"
+            : isStageFourConceptMode
+              ? "Mark Final Approved File?"
+              : "Mark as Approved Concept?"
         }
         description={
           approvedConceptAttachmentId &&
           approvedConceptAttachmentId !== conceptApprovalTarget?.id
-            ? `This replaces the current Approved Concept with ${conceptApprovalTarget?.originalFileName ?? "this file"}. The revision review status is not changed.`
-            : `${conceptApprovalTarget?.originalFileName ?? "This file"} will become the one formal Approved Concept for this concept. The revision review status is not changed.`
+            ? isStageFourConceptMode
+              ? `This replaces the current Final Approved File with ${conceptApprovalTarget?.originalFileName ?? "this file"}. The previous file, revision, chat, and comparison history remain unchanged.`
+              : `This replaces the current Approved Concept with ${conceptApprovalTarget?.originalFileName ?? "this file"}. The revision review status is not changed.`
+            : `${conceptApprovalTarget?.originalFileName ?? "This file"} will become the one formal ${approvedFileLabel} for this concept. The revision review status is not changed.`
         }
         confirmLabel={
           approvedConceptAttachmentId &&
           approvedConceptAttachmentId !== conceptApprovalTarget?.id
-            ? "Replace Approved Concept"
-            : "Mark as Approved Concept"
+            ? isStageFourConceptMode
+              ? "Replace Final Approved File"
+              : "Replace Approved Concept"
+            : markApprovedFileLabel
         }
         pending={Boolean(approvingConceptAttachmentId)}
         error={conceptApprovalError ?? undefined}
@@ -10377,7 +10407,9 @@ export function ProjectChatWorkspace({
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
                   {isConceptMode
-                    ? "Inspect the concept submission, compare files, add review markers, or request changes. Concept approval is introduced in a later workflow round."
+                    ? isStageFourConceptMode
+                      ? "Inspect the final concept submission, compare files, add review markers, request changes, or designate the Final Approved File."
+                      : "Inspect the concept submission, compare files, add review markers, request changes, or designate the Approved Concept."
                     : reviewCompletionIsFinalStage
                     ? "Review the submitted revision. Approval completes the final stage; project completion and final archive are handled after all stages are complete."
                     : "Review the submitted revision and decide whether to mark this stage as complete or request another revision."}
@@ -10460,8 +10492,11 @@ export function ProjectChatWorkspace({
                   <AttachmentHistoryList
                     attachments={reviewRevisionMessage.attachments}
                     approvedConceptAttachmentId={approvedConceptAttachmentId}
+                    approvedFileLabel={approvedFileLabel}
+                    markApprovedFileLabel={markApprovedFileLabel}
                     canApproveConceptFile={Boolean(
-                      conceptMode?.stageNumber === 3 &&
+                      (conceptMode?.stageNumber === 3 ||
+                        conceptMode?.stageNumber === 4) &&
                         conceptMode.canReview &&
                         !conceptMode.isWorkflowCompleted &&
                         (revisionReviewOverrides[reviewRevisionId ?? ""]?.status ??

@@ -25,6 +25,7 @@ import {
 } from "@/lib/project-stage-data";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
+import { hasStageFiveDownstreamActivityForAttachment } from "@/lib/stage-five";
 
 export type ProjectConceptAttachmentReference = {
   id: string;
@@ -369,14 +370,13 @@ export async function getProjectConceptFolders(
     folders: displayedFolders.map(mapConceptFolder),
     canManage,
     workflowStatus: getWorkflowStageStatus(project, stageKey) ?? null,
-    completionConcepts:
-      canManage && stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
-        ? visibleFolders.map((folder) => ({
-            id: folder.id,
-            name: folder.name,
-            isApproved: Boolean(folder.approvedAttachment),
-          }))
-        : [],
+    completionConcepts: canManage
+      ? visibleFolders.map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+          isApproved: Boolean(folder.approvedAttachment),
+        }))
+      : [],
     selectedExecutorId: requestedExecutorId,
     executors: canManage
       ? project.executors.map((executor) => ({
@@ -725,6 +725,7 @@ function getFormalConceptAttachmentError(input: {
   projectId: string;
   taskerStageId: string;
   projectCategory: string | null;
+  workflowStageKey: ConceptWorkflowStageKey;
 }) {
   const attachment = input.attachment;
 
@@ -750,7 +751,9 @@ function getFormalConceptAttachmentError(input: {
       projectCategory: input.projectCategory,
     })
   ) {
-    return "Only a ready formal revision file from this Stage 3 concept can be marked as the Approved Concept.";
+    return input.workflowStageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+      ? "Only a ready formal revision file from this Stage 3 concept can be marked as the Approved Concept."
+      : "Only a ready formal revision file from this exact Stage 4 concept can be marked as the Final Approved File.";
   }
 
   return null;
@@ -837,6 +840,7 @@ export async function markProjectConceptApprovedAttachment(
             projectId: input.projectId,
             taskerStageId: folder.taskerStageId,
             projectCategory: folder.project.category,
+            workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
           });
 
           if (attachmentError || !attachment) {
@@ -893,6 +897,178 @@ export async function markProjectConceptApprovedAttachment(
       if (error.code === "P2034") {
         return {
           error: "The concept changed at the same time. Please try again.",
+        } as const;
+      }
+    }
+
+    throw error;
+  }
+}
+
+export async function markStageFourFinalApprovedAttachment(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    attachmentId: string;
+  },
+) {
+  try {
+    return await withPrismaRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const folder = await tx.projectConceptFolder.findFirst({
+            where: {
+              id: input.folderId,
+              projectId: input.projectId,
+              workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+              taskerStage: { projectId: input.projectId, isTasker: true },
+            },
+            select: {
+              id: true,
+              taskerStageId: true,
+              assignedExecutorId: true,
+              approvedAttachmentId: true,
+              project: {
+                select: {
+                  category: true,
+                  ownerId: true,
+                  coOwners: { select: { userId: true } },
+                  workflowStages: {
+                    where: {
+                      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                    },
+                    select: { status: true },
+                  },
+                },
+              },
+            },
+          });
+
+          if (!folder) {
+            return { error: "Stage 4 concept not found." } as const;
+          }
+
+          const accessContext: ConceptAccessContext = {
+            folderId: folder.id,
+            projectId: input.projectId,
+            taskerStageId: folder.taskerStageId,
+            workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            assignedExecutorId: folder.assignedExecutorId,
+            ownerId: folder.project.ownerId,
+            coOwnerIds: folder.project.coOwners.map((coOwner) => coOwner.userId),
+          };
+
+          if (!canManageProjectConcept(user, accessContext)) {
+            return {
+              error: "You do not have permission to approve final Stage 4 files.",
+            } as const;
+          }
+
+          const stageFourStatus = folder.project.workflowStages[0]?.status;
+
+          if (stageFourStatus === ProjectWorkflowStageStatus.COMPLETED) {
+            return {
+              error: "Final Approved File selection is locked because Stage 4 is completed.",
+            } as const;
+          }
+
+          if (stageFourStatus !== ProjectWorkflowStageStatus.AVAILABLE) {
+            return { error: "Stage 4 is not currently available." } as const;
+          }
+
+          const attachment = await tx.projectAttachment.findUnique({
+            where: { id: input.attachmentId },
+            select: formalConceptAttachmentSelect,
+          });
+          const attachmentError = getFormalConceptAttachmentError({
+            attachment,
+            projectId: input.projectId,
+            taskerStageId: folder.taskerStageId,
+            projectCategory: folder.project.category,
+            workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          });
+
+          if (attachmentError || !attachment) {
+            return {
+              error:
+                attachmentError ?? "The selected Stage 4 file was not found.",
+            } as const;
+          }
+
+          if (folder.approvedAttachmentId === attachment.id) {
+            return {
+              changed: false,
+              folderId: folder.id,
+              taskerStageId: folder.taskerStageId,
+              assignedExecutorId: folder.assignedExecutorId,
+              removedUnusedHandoff: false,
+              attachment: mapConceptAttachmentReference(attachment),
+            } as const;
+          }
+
+          let removedUnusedHandoff = false;
+
+          if (folder.approvedAttachmentId) {
+            const downstream =
+              await hasStageFiveDownstreamActivityForAttachment(tx, {
+                projectId: input.projectId,
+                attachmentId: folder.approvedAttachmentId,
+              });
+
+            if (downstream.hasActivity) {
+              return {
+                error:
+                  "This final file already has Stage 5 activity and cannot be replaced directly.",
+              } as const;
+            }
+
+            if (downstream.handoffId) {
+              await tx.projectStageFileHandoff.delete({
+                where: { id: downstream.handoffId },
+              });
+              removedUnusedHandoff = true;
+            }
+          }
+
+          const approvedAt = new Date();
+          await tx.projectConceptFolder.update({
+            where: { id: folder.id },
+            data: {
+              approvedAttachmentId: attachment.id,
+              approvedById: user.id,
+              approvedAt,
+            },
+          });
+
+          return {
+            changed: true,
+            folderId: folder.id,
+            taskerStageId: folder.taskerStageId,
+            assignedExecutorId: folder.assignedExecutorId,
+            approvedAt,
+            removedUnusedHandoff,
+            attachment: mapConceptAttachmentReference(attachment),
+          } as const;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 20_000,
+        },
+      ),
+    );
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return {
+          error: "This file is already designated for another concept.",
+        } as const;
+      }
+
+      if (error.code === "P2034") {
+        return {
+          error: "The final file changed at the same time. Please try again.",
         } as const;
       }
     }
@@ -1023,6 +1199,7 @@ export async function completeStageThreeConcepts(
               projectId: project.id,
               taskerStageId: concept.taskerStageId,
               projectCategory: project.category,
+              workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
             });
 
             if (attachmentError) {
@@ -1193,6 +1370,327 @@ export async function completeStageThreeConcepts(
       if (error.code === "P2002" || error.code === "P2034") {
         return {
           error: "Stage 3 changed at the same time. Please try completion again.",
+        } as const;
+      }
+    }
+
+    throw error;
+  }
+}
+
+type StageFourCompletionResult = {
+  transitioned: boolean;
+  finalApprovedCount: number;
+  conceptsWithoutFinalFile: Array<{ id: string; name: string }>;
+  handoffs: Array<{
+    id: string;
+    sourceAttachmentId: string;
+    checklistId: string;
+  }>;
+};
+
+export async function completeStageFourConcepts(
+  user: PermissionUser,
+  input: { projectId: string },
+  conflictRetryCount = 0,
+) {
+  try {
+    return await withPrismaRetry(() =>
+      prisma.$transaction(
+        async (tx): Promise<StageFourCompletionResult | { error: string }> => {
+          const project = await tx.project.findUnique({
+            where: { id: input.projectId },
+            select: {
+              id: true,
+              category: true,
+              ownerId: true,
+              coOwners: { select: { userId: true } },
+              workflowStages: {
+                where: {
+                  stageKey: {
+                    in: [
+                      ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                      ProjectWorkflowStageKey.FINAL_LAYOUT,
+                    ],
+                  },
+                },
+                select: {
+                  id: true,
+                  stageKey: true,
+                  status: true,
+                  completedAt: true,
+                  unlockedAt: true,
+                },
+              },
+              conceptFolders: {
+                where: {
+                  workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                },
+                orderBy: [
+                  { sortOrder: "asc" },
+                  { createdAt: "asc" },
+                  { id: "asc" },
+                ],
+                select: {
+                  id: true,
+                  name: true,
+                  taskerStageId: true,
+                  approvedAttachmentId: true,
+                  approvedAttachment: {
+                    select: formalConceptAttachmentSelect,
+                  },
+                },
+              },
+            },
+          });
+
+          if (!project) {
+            return { error: "Project not found." };
+          }
+
+          const managerContext: ConceptAccessContext = {
+            folderId: "",
+            projectId: project.id,
+            taskerStageId: "",
+            workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            assignedExecutorId: null,
+            ownerId: project.ownerId,
+            coOwnerIds: project.coOwners.map((coOwner) => coOwner.userId),
+          };
+
+          if (!canManageProjectConcept(user, managerContext)) {
+            return {
+              error: "You do not have permission to complete Stage 4.",
+            };
+          }
+
+          const stageFourWorkflow = project.workflowStages.find(
+            (stage) =>
+              stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          );
+          const stageFiveWorkflow = project.workflowStages.find(
+            (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
+          );
+
+          if (!stageFourWorkflow || !stageFiveWorkflow) {
+            return {
+              error: "Stage 4 and Stage 5 workflow records are required before completion.",
+            };
+          }
+
+          if (
+            stageFourWorkflow.status !== ProjectWorkflowStageStatus.AVAILABLE &&
+            stageFourWorkflow.status !== ProjectWorkflowStageStatus.COMPLETED
+          ) {
+            return { error: "Stage 4 is not currently available." };
+          }
+
+          const finalConcepts = project.conceptFolders.filter(
+            (folder) => Boolean(folder.approvedAttachmentId),
+          );
+          const conceptsWithoutFinalFile = project.conceptFolders
+            .filter((folder) => !folder.approvedAttachmentId)
+            .map((folder) => ({ id: folder.id, name: folder.name }));
+
+          if (finalConcepts.length === 0) {
+            return {
+              error:
+                "At least one concept must have a Final Approved File before Stage 4 can be completed.",
+            };
+          }
+
+          for (const concept of finalConcepts) {
+            const attachmentError = getFormalConceptAttachmentError({
+              attachment: concept.approvedAttachment,
+              projectId: project.id,
+              taskerStageId: concept.taskerStageId,
+              projectCategory: project.category,
+              workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            });
+
+            if (attachmentError) {
+              return {
+                error: `The Final Approved File for “${concept.name}” is no longer eligible. Select a valid formal Stage 4 revision file before completing Stage 4.`,
+              };
+            }
+          }
+
+          const finalAttachmentIds = finalConcepts.map(
+            (concept) => concept.approvedAttachmentId!,
+          );
+          const [existingHandoffs, existingChecklists] = await Promise.all([
+            tx.projectStageFileHandoff.findMany({
+              where: {
+                projectId: project.id,
+                sourceAttachmentId: { in: finalAttachmentIds },
+                targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+              },
+              select: {
+                id: true,
+                sourceWorkflowStageKey: true,
+              },
+            }),
+            tx.projectFileChecklist.findMany({
+              where: {
+                projectId: project.id,
+                sourceAttachmentId: { in: finalAttachmentIds },
+              },
+              select: {
+                id: true,
+                sourceAttachmentId: true,
+                handoff: {
+                  select: {
+                    id: true,
+                    projectId: true,
+                    sourceAttachmentId: true,
+                    sourceWorkflowStageKey: true,
+                    targetWorkflowStageKey: true,
+                  },
+                },
+              },
+            }),
+          ]);
+
+          if (
+            existingHandoffs.some(
+              (handoff) =>
+                handoff.sourceWorkflowStageKey !==
+                ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            )
+          ) {
+            return {
+              error:
+                "An existing Stage 5 handoff conflicts with its final file source stage. Stage 4 was not completed.",
+            };
+          }
+
+          for (const checklist of existingChecklists) {
+            if (
+              checklist.handoff.projectId !== project.id ||
+              checklist.handoff.sourceAttachmentId !==
+                checklist.sourceAttachmentId ||
+              checklist.handoff.sourceWorkflowStageKey !==
+                ProjectWorkflowStageKey.PROJECT_DEVELOPMENT ||
+              checklist.handoff.targetWorkflowStageKey !==
+                ProjectWorkflowStageKey.FINAL_LAYOUT
+            ) {
+              return {
+                error:
+                  "An existing Stage 5 checklist conflicts with its final file handoff. Stage 4 was not completed.",
+              };
+            }
+          }
+
+          const handoffs: StageFourCompletionResult["handoffs"] = [];
+
+          for (const concept of finalConcepts) {
+            const sourceAttachmentId = concept.approvedAttachmentId!;
+            const handoff = await tx.projectStageFileHandoff.upsert({
+              where: {
+                projectId_sourceAttachmentId_targetWorkflowStageKey: {
+                  projectId: project.id,
+                  sourceAttachmentId,
+                  targetWorkflowStageKey:
+                    ProjectWorkflowStageKey.FINAL_LAYOUT,
+                },
+              },
+              update: {},
+              create: {
+                projectId: project.id,
+                sourceWorkflowStageKey:
+                  ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                sourceAttachmentId,
+                targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+                handedOffById: user.id,
+              },
+              select: { id: true, sourceAttachmentId: true },
+            });
+            const checklist = await tx.projectFileChecklist.upsert({
+              where: { handoffId: handoff.id },
+              update: {},
+              create: {
+                projectId: project.id,
+                handoffId: handoff.id,
+                sourceAttachmentId,
+              },
+              select: {
+                id: true,
+                projectId: true,
+                sourceAttachmentId: true,
+              },
+            });
+
+            if (
+              checklist.projectId !== project.id ||
+              checklist.sourceAttachmentId !== sourceAttachmentId
+            ) {
+              throw new Error(
+                "Existing Stage 5 checklist does not match its final file.",
+              );
+            }
+
+            handoffs.push({
+              id: handoff.id,
+              sourceAttachmentId,
+              checklistId: checklist.id,
+            });
+          }
+
+          const transitioned =
+            stageFourWorkflow.status !== ProjectWorkflowStageStatus.COMPLETED;
+          const completedAt = new Date();
+
+          if (transitioned) {
+            await tx.projectWorkflowStage.update({
+              where: { id: stageFourWorkflow.id },
+              data: {
+                status: ProjectWorkflowStageStatus.COMPLETED,
+                completedAt,
+              },
+            });
+          }
+
+          if (stageFiveWorkflow.status === ProjectWorkflowStageStatus.LOCKED) {
+            await tx.projectWorkflowStage.update({
+              where: { id: stageFiveWorkflow.id },
+              data: {
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+                unlockedAt: completedAt,
+              },
+            });
+          }
+
+          return {
+            transitioned,
+            finalApprovedCount: finalConcepts.length,
+            conceptsWithoutFinalFile,
+            handoffs,
+          };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 30_000,
+        },
+      ),
+    );
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (
+        (error.code === "P2002" || error.code === "P2034") &&
+        conflictRetryCount < 1
+      ) {
+        return completeStageFourConcepts(
+          user,
+          input,
+          conflictRetryCount + 1,
+        );
+      }
+
+      if (error.code === "P2002" || error.code === "P2034") {
+        return {
+          error:
+            "Stage 4 changed at the same time. Please try completion again.",
         } as const;
       }
     }

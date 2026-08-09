@@ -246,12 +246,12 @@ assert(
   "Stage 5 attachment relations must preserve project deletion integrity.",
 );
 assert(
-  stageFourWorkspace.includes("Final files for Stage 5") &&
-    stageFourWorkspace.includes("Send to Stage 5") &&
-    conceptActions.includes("handoffStageFourFiles") &&
-    service.includes("stageFourAttachmentWhere") &&
-    service.includes("skipDuplicates: true"),
-  "Stage 4 must expose a minimal idempotent final-file designation surface.",
+  !stageFourWorkspace.includes("Final files for Stage 5") &&
+    !stageFourWorkspace.includes("Send to Stage 5") &&
+    !conceptActions.includes("handoffStageFourFiles") &&
+    !service.includes("handoffStageFourFiles") &&
+    conceptActions.includes("completeStageFourConceptsAction"),
+  "The temporary manual Stage 4 handoff product surface must be retired in favor of real Stage 4 completion.",
 );
 assert(
   workspace.includes("selectedHandoffId") &&

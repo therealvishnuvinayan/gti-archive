@@ -11,5 +11,8 @@
     "rootDir": "..",
     "target": "ES2022"
   },
-  "include": ["project-concept-integration-check.ts"]
+  "include": [
+    "project-concept-integration-check.ts",
+    "project-concept-round-four-integration-check.ts"
+  ]
 }

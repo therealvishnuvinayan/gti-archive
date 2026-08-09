@@ -1,0 +1,790 @@
+import { randomUUID } from "node:crypto";
+
+import {
+  AttachmentAssetType,
+  AttachmentStatus,
+  ProjectFileChecklistField,
+  ProjectRevisionStatus,
+  ProjectWorkflowStageKey,
+  ProjectWorkflowStageStatus,
+  StageStatus,
+  UserRole,
+} from "@prisma/client";
+
+import {
+  completeStageFourConcepts,
+  markStageFourFinalApprovedAttachment,
+} from "../src/lib/project-concepts";
+import { reviewStageSubmission } from "../src/lib/project-history";
+import {
+  notifyStageFiveActivated,
+  notifyStageFourFinalFileApproved,
+} from "../src/lib/notification-center/triggers";
+import { prisma } from "../src/lib/prisma";
+import {
+  getStageFiveWorkspaceData,
+  saveStageFiveChecklist,
+} from "../src/lib/stage-five";
+import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
+
+function check(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(`Concept Round 4 integration check failed: ${message}`);
+}
+
+function isError(value: unknown): value is { error: string } {
+  return Boolean(value && typeof value === "object" && "error" in value);
+}
+
+async function expectRejected(task: Promise<unknown>, message: string) {
+  let rejected = false;
+  try {
+    await task;
+  } catch {
+    rejected = true;
+  }
+  check(rejected, message);
+}
+
+async function main() {
+  const runId = randomUUID();
+  const projectId = `concept-round-four-${runId}`;
+  const foreignProjectId = `concept-round-four-foreign-${runId}`;
+  const userSpecs = [
+    ["super", UserRole.SUPER_ADMIN],
+    ["owner", UserRole.COLLABORATOR],
+    ["coowner", UserRole.ADMIN],
+    ["executor", UserRole.COLLABORATOR],
+    ["collaborator", UserRole.COLLABORATOR],
+    ["admin-outsider", UserRole.ADMIN],
+  ] as const;
+  const userIds = userSpecs.map(([label]) => `round-four-${label}-${runId}`);
+
+  try {
+    await prisma.user.createMany({
+      data: userSpecs.map(([label, role], index) => ({
+        id: userIds[index],
+        email: `${label}-${runId}@example.test`,
+        name: `Round Four ${label}`,
+        passwordHash: "round-four-test-only",
+        role,
+      })),
+    });
+    const [superAdmin, owner, coOwner, executor, collaborator, adminOutsider] =
+      await Promise.all(
+        userIds.map((id) =>
+          prisma.user.findUniqueOrThrow({
+            where: { id },
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              role: true,
+              collaboratorType: true,
+            },
+          }),
+        ),
+      );
+
+    const now = new Date();
+    await prisma.project.create({
+      data: {
+        id: projectId,
+        name: `Concept Round 4 ${runId}`,
+        ownerId: owner.id,
+        createdById: superAdmin.id,
+        coOwners: { create: [{ userId: coOwner.id, addedById: superAdmin.id }] },
+        executors: { create: [{ userId: executor.id, addedById: owner.id }] },
+        collaborators: {
+          create: [{ userId: collaborator.id, addedById: owner.id }],
+        },
+        workflowStages: {
+          create: getInitialProjectWorkflowStageData().map((stage) => ({
+            ...stage,
+            status:
+              stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING ||
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? ProjectWorkflowStageStatus.COMPLETED
+                : stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT
+                  ? ProjectWorkflowStageStatus.AVAILABLE
+                  : ProjectWorkflowStageStatus.LOCKED,
+            completedAt:
+              stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY ||
+              stage.stageKey ===
+                ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING ||
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? now
+                : null,
+            unlockedAt:
+              stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT
+                ? now
+                : stage.unlockedAt,
+          })),
+        },
+      },
+    });
+    await prisma.project.create({
+      data: {
+        id: foreignProjectId,
+        name: `Foreign Round 4 ${runId}`,
+        ownerId: owner.id,
+        createdById: superAdmin.id,
+      },
+    });
+
+    const [stageThreeTasker, taskerA, taskerB, taskerC, foreignTasker] =
+      await Promise.all([
+        prisma.projectStage.create({
+          data: {
+            projectId,
+            name: "Approved Stage 3 Source",
+            invoiceRequired: false,
+            isTasker: true,
+            status: StageStatus.ONGOING,
+            order: 30_001,
+          },
+        }),
+        ...["Final Concept A", "Final Concept B", "Final Concept C"].map(
+          (name, index) =>
+            prisma.projectStage.create({
+              data: {
+                projectId,
+                name,
+                invoiceRequired: false,
+                isTasker: true,
+                actualStartedAt: now,
+                startedById: executor.id,
+                status: StageStatus.ONGOING,
+                order: 40_001 + index,
+              },
+            }),
+        ),
+        prisma.projectStage.create({
+          data: {
+            projectId: foreignProjectId,
+            name: "Foreign Final Concept",
+            invoiceRequired: false,
+            isTasker: true,
+            status: StageStatus.ONGOING,
+            order: 40_001,
+          },
+        }),
+      ]);
+
+    const [sourceRevision, revisionA, revisionB, foreignRevision] =
+      await Promise.all([
+        prisma.projectRevision.create({
+          data: {
+            projectId,
+            stageId: stageThreeTasker.id,
+            createdById: executor.id,
+            revisionNumber: 1,
+            title: "Approved source",
+            status: ProjectRevisionStatus.PENDING_REVIEW,
+          },
+        }),
+        prisma.projectRevision.create({
+          data: {
+            projectId,
+            stageId: taskerA.id,
+            createdById: executor.id,
+            revisionNumber: 1,
+            title: "Final A submission",
+            status: ProjectRevisionStatus.PENDING_REVIEW,
+          },
+        }),
+        prisma.projectRevision.create({
+          data: {
+            projectId,
+            stageId: taskerB.id,
+            createdById: executor.id,
+            revisionNumber: 1,
+            title: "Final B submission",
+            status: ProjectRevisionStatus.PENDING_REVIEW,
+          },
+        }),
+        prisma.projectRevision.create({
+          data: {
+            projectId: foreignProjectId,
+            stageId: foreignTasker.id,
+            createdById: executor.id,
+            revisionNumber: 1,
+            title: "Foreign submission",
+            status: ProjectRevisionStatus.PENDING_REVIEW,
+          },
+        }),
+      ]);
+
+    const createAttachment = (input: {
+      id: string;
+      targetProjectId?: string;
+      stageId: string;
+      revisionId?: string | null;
+      commentId?: string | null;
+      assetType: AttachmentAssetType;
+      name: string;
+    }) =>
+      prisma.projectAttachment.create({
+        data: {
+          id: input.id,
+          projectId: input.targetProjectId ?? projectId,
+          stageId: input.stageId,
+          revisionId: input.revisionId ?? null,
+          commentId: input.commentId ?? null,
+          uploadedById: executor.id,
+          fileName: input.name,
+          originalFileName: input.name,
+          mimeType: "image/png",
+          fileSize: 64,
+          bucket: "round-four-integration",
+          storageKey: `round-four/${runId}/${input.id}.png`,
+          assetType: input.assetType,
+          status: AttachmentStatus.READY,
+        },
+      });
+
+    const sourceFile = await createAttachment({
+      id: `round-four-source-${runId}`,
+      stageId: stageThreeTasker.id,
+      revisionId: sourceRevision.id,
+      assetType: AttachmentAssetType.REVISION_ORIGINAL,
+      name: "approved-stage-three-source.png",
+    });
+    const stageThreeConcept = await prisma.projectConceptFolder.create({
+      data: {
+        projectId,
+        workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+        taskerStageId: stageThreeTasker.id,
+        assignedExecutorId: executor.id,
+        approvedAttachmentId: sourceFile.id,
+        approvedById: owner.id,
+        approvedAt: now,
+        name: "Approved Stage 3 Source",
+        normalizedName: "approved stage 3 source",
+        sortOrder: 1,
+        createdById: owner.id,
+      },
+    });
+    const [conceptA, conceptB, conceptC] = await Promise.all(
+      [taskerA, taskerB, taskerC].map((tasker, index) =>
+        prisma.projectConceptFolder.create({
+          data: {
+            projectId,
+            workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            taskerStageId: tasker.id,
+            assignedExecutorId: executor.id,
+            name: `Final Concept ${String.fromCharCode(65 + index)}`,
+            normalizedName: `final concept ${String.fromCharCode(97 + index)}`,
+            sortOrder: index + 1,
+            createdById: owner.id,
+            ...(index === 0
+              ? {
+                  sourceStage3ConceptId: stageThreeConcept.id,
+                  sourceStage3ApprovedAttachmentId: sourceFile.id,
+                }
+              : {}),
+          },
+        }),
+      ),
+    );
+
+    const chatComment = await prisma.projectComment.create({
+      data: {
+        projectId,
+        stageId: taskerA.id,
+        authorId: executor.id,
+        body: "Chat attachment fixture",
+      },
+    });
+    const [finalA, alternateA, finalB, briefAttachment, chatAttachment, foreignFile] =
+      await Promise.all([
+        createAttachment({
+          id: `round-four-final-a-${runId}`,
+          stageId: taskerA.id,
+          revisionId: revisionA.id,
+          assetType: AttachmentAssetType.REVISION_ORIGINAL,
+          name: "final-a.png",
+        }),
+        createAttachment({
+          id: `round-four-alternate-a-${runId}`,
+          stageId: taskerA.id,
+          revisionId: revisionA.id,
+          assetType: AttachmentAssetType.STAGE_SUBMISSION,
+          name: "final-a-alternate.png",
+        }),
+        createAttachment({
+          id: `round-four-final-b-${runId}`,
+          stageId: taskerB.id,
+          revisionId: revisionB.id,
+          assetType: AttachmentAssetType.REVISION_ORIGINAL,
+          name: "final-b.png",
+        }),
+        createAttachment({
+          id: `round-four-brief-${runId}`,
+          stageId: taskerA.id,
+          assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+          name: "concept-brief.png",
+        }),
+        createAttachment({
+          id: `round-four-chat-${runId}`,
+          stageId: taskerA.id,
+          commentId: chatComment.id,
+          assetType: AttachmentAssetType.COMMENT_ATTACHMENT,
+          name: "chat-file.png",
+        }),
+        createAttachment({
+          id: `round-four-foreign-${runId}`,
+          targetProjectId: foreignProjectId,
+          stageId: foreignTasker.id,
+          revisionId: foreignRevision.id,
+          assetType: AttachmentAssetType.REVISION_ORIGINAL,
+          name: "foreign-file.png",
+        }),
+      ]);
+
+    check(
+      isError(await completeStageFourConcepts(owner, { projectId })),
+      "Stage 4 completion must be blocked with zero final files",
+    );
+    for (const actor of [executor, collaborator, adminOutsider]) {
+      check(
+        isError(
+          await markStageFourFinalApprovedAttachment(actor, {
+            projectId,
+            folderId: conceptA.id,
+            attachmentId: finalA.id,
+          }),
+        ),
+        "executor, collaborator, and ADMIN alone must not mark a final file",
+      );
+      check(
+        isError(await completeStageFourConcepts(actor, { projectId })),
+        "executor, collaborator, and ADMIN alone must not complete Stage 4",
+      );
+    }
+
+    for (const attachmentId of [
+      sourceFile.id,
+      briefAttachment.id,
+      chatAttachment.id,
+      finalB.id,
+      foreignFile.id,
+    ]) {
+      check(
+        isError(
+          await markStageFourFinalApprovedAttachment(owner, {
+            projectId,
+            folderId: conceptA.id,
+            attachmentId,
+          }),
+        ),
+        "starting references, brief/chat files, other concepts, and cross-project files must be rejected",
+      );
+    }
+
+    const ownerApproval = await markStageFourFinalApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: finalA.id,
+    });
+    check(!isError(ownerApproval) && ownerApproval.changed, "owner must mark a final file");
+    const coOwnerApproval = await markStageFourFinalApprovedAttachment(coOwner, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: alternateA.id,
+    });
+    check(!isError(coOwnerApproval) && coOwnerApproval.changed, "co-owner must replace a final file before completion");
+    const superApproval = await markStageFourFinalApprovedAttachment(superAdmin, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: finalA.id,
+    });
+    check(!isError(superApproval) && superApproval.changed, "SUPER_ADMIN must mark a final file");
+    const repeatedApproval = await markStageFourFinalApprovedAttachment(superAdmin, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: finalA.id,
+    });
+    check(!isError(repeatedApproval) && !repeatedApproval.changed, "same final designation must be idempotent");
+
+    const preCompletion = await prisma.$transaction([
+      prisma.projectConceptFolder.findUniqueOrThrow({
+        where: { id: conceptA.id },
+        select: { approvedAttachmentId: true, approvedById: true, approvedAt: true },
+      }),
+      prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId,
+            stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          },
+        },
+      }),
+      prisma.projectStageFileHandoff.count({ where: { projectId } }),
+      prisma.projectCompletionWorkflow.count({ where: { projectId } }),
+      prisma.projectAttachment.count({
+        where: { id: { in: [finalA.id, alternateA.id] } },
+      }),
+    ]);
+    check(
+      preCompletion[0].approvedAttachmentId === finalA.id &&
+        preCompletion[0].approvedById === superAdmin.id &&
+        preCompletion[0].approvedAt !== null &&
+        preCompletion[1].status === ProjectWorkflowStageStatus.AVAILABLE &&
+        preCompletion[2] === 0 &&
+        preCompletion[3] === 0,
+      "marking final must only update the audited designation",
+    );
+    check(preCompletion[4] === 2, "replacement must preserve previous files and revisions");
+
+    await notifyStageFourFinalFileApproved({
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: finalA.id,
+      actorId: owner.id,
+    });
+    check(
+      (await prisma.notification.count({
+        where: {
+          projectId,
+          userId: executor.id,
+          attachmentId: finalA.id,
+          title: "Final concept file approved",
+        },
+      })) === 1,
+      "final approval notification must target the assigned executor",
+    );
+
+    const emptyHandoff = await prisma.projectStageFileHandoff.create({
+      data: {
+        projectId,
+        sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        sourceAttachmentId: finalA.id,
+        targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+        handedOffById: owner.id,
+      },
+    });
+    await prisma.projectFileChecklist.create({
+      data: {
+        projectId,
+        handoffId: emptyHandoff.id,
+        sourceAttachmentId: finalA.id,
+      },
+    });
+    const emptyReplacement = await markStageFourFinalApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: alternateA.id,
+    });
+    check(
+      !isError(emptyReplacement) && emptyReplacement.removedUnusedHandoff,
+      "an untouched initialized Stage 5 checklist must be safely reconciled",
+    );
+    check(
+      (await prisma.projectStageFileHandoff.count({ where: { id: emptyHandoff.id } })) === 0,
+      "safe replacement must remove only the unused old handoff/checklist",
+    );
+
+    const activeHandoff = await prisma.projectStageFileHandoff.create({
+      data: {
+        projectId,
+        sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        sourceAttachmentId: alternateA.id,
+        targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+        handedOffById: owner.id,
+      },
+    });
+    const activeChecklist = await prisma.projectFileChecklist.create({
+      data: {
+        projectId,
+        handoffId: activeHandoff.id,
+        sourceAttachmentId: alternateA.id,
+      },
+    });
+    await prisma.projectFileChecklistItem.create({
+      data: {
+        checklistId: activeChecklist.id,
+        fieldKey: ProjectFileChecklistField.OUTPUT_NAME,
+        value: { text: "Meaningful Stage 5 work" },
+        status: "FILLED",
+        updatedById: owner.id,
+      },
+    });
+    const protectedReplacement = await markStageFourFinalApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: finalA.id,
+    });
+    check(
+      isError(protectedReplacement) &&
+        protectedReplacement.error ===
+          "This final file already has Stage 5 activity and cannot be replaced directly.",
+      "meaningful Stage 5 activity must block replacement",
+    );
+    check(
+      (await prisma.projectConceptFolder.findUniqueOrThrow({ where: { id: conceptA.id } }))
+        .approvedAttachmentId === alternateA.id,
+      "blocked replacement must preserve the current final designation",
+    );
+    await prisma.projectStageFileHandoff.delete({ where: { id: activeHandoff.id } });
+    const finalReplacement = await markStageFourFinalApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: finalA.id,
+    });
+    check(!isError(finalReplacement) && finalReplacement.changed, "replacement must resume after the test activity fixture is removed");
+    check(
+      !isError(
+        await markStageFourFinalApprovedAttachment(coOwner, {
+          projectId,
+          folderId: conceptB.id,
+          attachmentId: finalB.id,
+        }),
+      ),
+      "a second concept must retain its own final file",
+    );
+
+    await prisma.projectConceptFolder.update({
+      where: { id: conceptC.id },
+      data: {
+        approvedAttachmentId: foreignFile.id,
+        approvedById: owner.id,
+        approvedAt: now,
+      },
+    });
+    const invalidCompletion = await completeStageFourConcepts(owner, { projectId });
+    check(isError(invalidCompletion), "completion must revalidate every designated final file");
+    check(
+      (await prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId,
+            stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          },
+        },
+      })).status === ProjectWorkflowStageStatus.AVAILABLE &&
+        (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 0,
+      "an invalid final file must not partially hand off or complete Stage 4",
+    );
+    await prisma.projectConceptFolder.update({
+      where: { id: conceptC.id },
+      data: { approvedAttachmentId: null, approvedById: null, approvedAt: null },
+    });
+
+    const conflictingHandoff = await prisma.projectStageFileHandoff.create({
+      data: {
+        projectId,
+        sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        sourceAttachmentId: briefAttachment.id,
+        targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+        handedOffById: owner.id,
+      },
+    });
+    await prisma.projectFileChecklist.create({
+      data: {
+        projectId,
+        handoffId: conflictingHandoff.id,
+        sourceAttachmentId: finalA.id,
+      },
+    });
+    const checklistFailure = await completeStageFourConcepts(owner, { projectId });
+    check(isError(checklistFailure), "a conflicting checklist must abort Stage 4 completion");
+    check(
+      (await prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId,
+            stageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+          },
+        },
+      })).status === ProjectWorkflowStageStatus.LOCKED &&
+        (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 1,
+      "a checklist failure must not unlock Stage 5 or create partial final handoffs",
+    );
+    await prisma.projectStageFileHandoff.delete({ where: { id: conflictingHandoff.id } });
+
+    const attachmentCountBeforeCompletion = await prisma.projectAttachment.count({
+      where: { id: { in: [finalA.id, finalB.id] } },
+    });
+    const [completion, concurrentCompletion] = await Promise.all([
+      completeStageFourConcepts(owner, { projectId }),
+      completeStageFourConcepts(coOwner, { projectId }),
+    ]);
+    check(!isError(completion) && !isError(concurrentCompletion), "concurrent Stage 4 completion must retry idempotently");
+    check(
+      (completion.transitioned || concurrentCompletion.transitioned) &&
+        completion.finalApprovedCount === 2 &&
+        completion.conceptsWithoutFinalFile.some((concept) => concept.id === conceptC.id),
+      "completion must report two final files and warn about the concept without one",
+    );
+
+    const handoffs = await prisma.projectStageFileHandoff.findMany({
+      where: { projectId },
+      include: { checklist: true },
+      orderBy: { sourceAttachmentId: "asc" },
+    });
+    check(
+      handoffs.length === 2 &&
+        handoffs.every((handoff) => handoff.checklist) &&
+        new Set(handoffs.map((handoff) => handoff.sourceAttachmentId)).size === 2 &&
+        handoffs.every((handoff) =>
+          [finalA.id, finalB.id].includes(handoff.sourceAttachmentId),
+        ),
+      "only final-approved files must receive one handoff and one checklist each",
+    );
+    check(
+      attachmentCountBeforeCompletion === 2 &&
+        (await prisma.projectAttachment.count({
+          where: { id: { in: [finalA.id, finalB.id] } },
+        })) === 2,
+      "handoff must reuse original ProjectAttachment rows without binary duplication",
+    );
+
+    const workflow = await prisma.projectWorkflowStage.findMany({
+      where: {
+        projectId,
+        stageKey: {
+          in: [
+            ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            ProjectWorkflowStageKey.FINAL_LAYOUT,
+            ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+            ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+          ],
+        },
+      },
+      select: { stageKey: true, status: true, completedAt: true, unlockedAt: true },
+    });
+    const stageFour = workflow.find(
+      (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+    );
+    const stageFive = workflow.find(
+      (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
+    );
+    check(
+      stageFour?.status === ProjectWorkflowStageStatus.COMPLETED &&
+        stageFour.completedAt !== null &&
+        stageFive?.status === ProjectWorkflowStageStatus.AVAILABLE &&
+        stageFive.unlockedAt !== null &&
+        workflow
+          .filter((stage) =>
+            stage.stageKey === ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER ||
+            stage.stageKey ===
+              ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+          )
+          .every((stage) => stage.status === ProjectWorkflowStageStatus.LOCKED),
+      "Stage 4 must complete, Stage 5 must unlock, and Stage 6/7 must stay locked",
+    );
+
+    const firstUnlockedAt = stageFive.unlockedAt!.getTime();
+    const repeatedCompletion = await completeStageFourConcepts(superAdmin, { projectId });
+    check(!isError(repeatedCompletion) && !repeatedCompletion.transitioned, "completion retry must be idempotent");
+    check(
+      (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 2 &&
+        (await prisma.projectFileChecklist.count({ where: { projectId } })) === 2 &&
+        (await prisma.projectWorkflowStage.findUniqueOrThrow({
+          where: {
+            projectId_stageKey: {
+              projectId,
+              stageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+            },
+          },
+        })).unlockedAt?.getTime() === firstUnlockedAt,
+      "retry must not duplicate handoffs/checklists or reset Stage 5 unlockedAt",
+    );
+
+    const lockedReplacement = await markStageFourFinalApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.id,
+      attachmentId: alternateA.id,
+    });
+    check(isError(lockedReplacement), "final designation must lock after Stage 4 completion");
+
+    const stageFiveData = await getStageFiveWorkspaceData(owner, projectId);
+    check(
+      stageFiveData?.files.length === 2 &&
+        stageFiveData.files.every((file) =>
+          [finalA.id, finalB.id].includes(file.sourceAttachment.id),
+        ),
+      "Stage 5 selector must immediately show the real final-approved files",
+    );
+    const handoffA = stageFiveData.files.find(
+      (file) => file.sourceAttachment.id === finalA.id,
+    )!;
+    const handoffB = stageFiveData.files.find(
+      (file) => file.sourceAttachment.id === finalB.id,
+    )!;
+    const saved = await saveStageFiveChecklist(owner, {
+      projectId,
+      handoffId: handoffA.handoffId,
+      items: [
+        {
+          fieldKey: ProjectFileChecklistField.OUTPUT_NAME,
+          value: { text: "Final A output" },
+          attachmentIds: [],
+        },
+      ],
+    });
+    check(!isError(saved), "existing Stage 5 Edit persistence must work for a real final handoff");
+    const selectedB = await getStageFiveWorkspaceData(owner, projectId, handoffB.handoffId);
+    check(
+      selectedB?.files
+        .find((file) => file.handoffId === handoffB.handoffId)
+        ?.items.find((item) => item.fieldKey === ProjectFileChecklistField.OUTPUT_NAME)
+        ?.value.text !== "Final A output",
+      "Checklist A values must not leak into Checklist B",
+    );
+
+    await notifyStageFiveActivated({
+      projectId,
+      finalFileCount: 2,
+      actorId: superAdmin.id,
+    });
+    const stageFiveNotificationRecipients = await prisma.notification.findMany({
+      where: { projectId, title: "Stage 5 available" },
+      select: { userId: true },
+    });
+    check(
+      stageFiveNotificationRecipients.some((item) => item.userId === owner.id) &&
+        stageFiveNotificationRecipients.some((item) => item.userId === coOwner.id) &&
+        !stageFiveNotificationRecipients.some((item) => item.userId === executor.id) &&
+        !stageFiveNotificationRecipients.some((item) => item.userId === collaborator.id),
+      "Stage 5 activation notification must stay owner/co-owner scoped",
+    );
+
+    const legacySubmission = await createAttachment({
+      id: `round-four-legacy-${runId}`,
+      stageId: taskerA.id,
+      revisionId: revisionA.id,
+      assetType: AttachmentAssetType.STAGE_SUBMISSION,
+      name: "legacy-tasker-approval.png",
+    });
+    await expectRejected(
+      reviewStageSubmission(owner, {
+        attachmentId: legacySubmission.id,
+        status: "APPROVED",
+      }),
+      "legacy tasker Approve Submission must remain blocked",
+    );
+    check(
+      (await prisma.projectCompletionWorkflow.count({ where: { projectId } })) === 0,
+      "Round 4 must not initialize completion/archive workflow",
+    );
+  } finally {
+    await prisma.project.deleteMany({
+      where: { id: { in: [projectId, foreignProjectId] } },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  }
+}
+
+main()
+  .then(async () => {
+    await prisma.$disconnect();
+    console.log("Stage 3/4 Round 4 final-file and Stage 5 handoff integration checks passed.");
+  })
+  .catch(async (error) => {
+    console.error(error);
+    await prisma.$disconnect();
+    process.exitCode = 1;
+  });

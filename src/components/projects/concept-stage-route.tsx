@@ -22,7 +22,6 @@ import {
 } from "@/lib/project-concepts";
 import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
-import { getStageFourFinalFileHandoffData } from "@/lib/stage-five";
 
 type ConceptStageRouteUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -124,14 +123,9 @@ async function ConceptStageDataContent({
   project: NonNullable<Awaited<ReturnType<typeof getProjectStageShellById>>>;
   executorFilter?: string;
 }) {
-  const [folders, stageFourHandoffData] = await Promise.all([
-    getProjectConceptFolders(user, slug, stageKey, {
-      executorId: stageNumber === 3 ? executorFilter : null,
-    }),
-    stageNumber === 4
-      ? getStageFourFinalFileHandoffData(user, slug)
-      : Promise.resolve(undefined),
-  ]);
+  const folders = await getProjectConceptFolders(user, slug, stageKey, {
+    executorId: stageNumber === 3 ? executorFilter : null,
+  });
 
   if (!folders) {
     return <ProjectAccessUnavailableState />;
@@ -151,7 +145,6 @@ async function ConceptStageDataContent({
       completionConcepts={folders.completionConcepts}
       executors={folders.executors}
       selectedExecutorId={folders.selectedExecutorId}
-      stageFourHandoffData={stageFourHandoffData ?? undefined}
       showChrome={false}
     />
   );

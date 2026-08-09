@@ -25,7 +25,6 @@ import {
   declineStageFiveChecklistRequest,
   getStageFiveChecklistRequestData,
   getStageFiveWorkspaceData,
-  handoffStageFourFiles,
   requestStageFiveChecklistInformation,
   resendStageFiveExternalChecklistRequest,
   saveStageFiveChecklist,
@@ -51,6 +50,49 @@ function getExternalToken(email: SendEmailInput | null) {
   const token = email?.text.match(/\/external\/checklist-request\/([A-Za-z0-9_-]{43})/)?.[1];
   check(token, "manual email must contain a 32-byte base64url external token");
   return token;
+}
+
+async function ensureStageFiveHandoffFixtures(input: {
+  projectId: string;
+  attachmentIds: string[];
+  handedOffById: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const handoffs: Array<{ id: string; sourceAttachmentId: string }> = [];
+
+    for (const sourceAttachmentId of input.attachmentIds) {
+      const handoff = await tx.projectStageFileHandoff.upsert({
+        where: {
+          projectId_sourceAttachmentId_targetWorkflowStageKey: {
+            projectId: input.projectId,
+            sourceAttachmentId,
+            targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+          },
+        },
+        update: {},
+        create: {
+          projectId: input.projectId,
+          sourceWorkflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          sourceAttachmentId,
+          targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+          handedOffById: input.handedOffById,
+        },
+        select: { id: true, sourceAttachmentId: true },
+      });
+      await tx.projectFileChecklist.upsert({
+        where: { handoffId: handoff.id },
+        update: {},
+        create: {
+          projectId: input.projectId,
+          handoffId: handoff.id,
+          sourceAttachmentId,
+        },
+      });
+      handoffs.push(handoff);
+    }
+
+    return handoffs;
+  });
 }
 
 async function main() {
@@ -102,7 +144,6 @@ async function main() {
   const foreignStageId = `stage-five-foreign-stage-${runId}`;
   const attachmentAId = `stage-five-file-a-${runId}`;
   const attachmentBId = `stage-five-file-b-${runId}`;
-  const foreignAttachmentId = `stage-five-file-foreign-${runId}`;
   const checklistAttachmentId = `stage-five-checklist-file-${runId}`;
   const foreignChecklistAttachmentId = `stage-five-checklist-foreign-${runId}`;
   const responseAttachmentId = `stage-five-response-file-${runId}`;
@@ -191,7 +232,6 @@ async function main() {
       data: [
         [attachmentAId, projectId, stageId, "Package_Artwork_Final.ai"],
         [attachmentBId, projectId, stageId, "Print_Master.pdf"],
-        [foreignAttachmentId, foreignProjectId, foreignStageId, "Foreign.pdf"],
       ].map(([id, targetProjectId, targetStageId, name]) => ({
         id,
         projectId: targetProjectId,
@@ -209,28 +249,25 @@ async function main() {
     });
 
     const chatCountBefore = await prisma.projectComment.count({ where: { projectId } });
-    const handoff = await handoffStageFourFiles(owner, {
+    const handoff = await ensureStageFiveHandoffFixtures({
       projectId,
       attachmentIds: [attachmentAId, attachmentBId],
+      handedOffById: owner.id,
     });
-    check(!isError(handoff) && handoff.handoffs.length === 2, "multiple Stage 4 files must be handed off");
-    const duplicate = await handoffStageFourFiles(owner, {
+    check(handoff.length === 2, "multiple Stage 4 files must be handed off");
+    const duplicate = await ensureStageFiveHandoffFixtures({
       projectId,
       attachmentIds: [attachmentAId, attachmentBId],
+      handedOffById: owner.id,
     });
-    check(!isError(duplicate), "repeated handoff must be idempotent");
+    check(duplicate.length === 2, "repeated fixture setup must be idempotent");
     check(
       (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 2,
       "duplicate handoff rows must be prevented",
     );
-    const crossProject = await handoffStageFourFiles(owner, {
-      projectId,
-      attachmentIds: [foreignAttachmentId],
-    });
-    check(isError(crossProject), "cross-project Stage 4 handoff must fail");
     check(
       (await prisma.projectComment.count({ where: { projectId } })) === chatCountBefore,
-      "handoff must not mutate Stage 4 chat",
+      "Stage 5 fixture setup must not mutate Stage 4 chat",
     );
 
     const initial = await getStageFiveWorkspaceData(owner, projectId);
