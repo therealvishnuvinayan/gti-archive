@@ -118,7 +118,8 @@ for (const label of [
 assert(
   workspace.includes("unapprovedConcepts.map") &&
     workspace.includes("completeStageThreeConceptsAction") &&
-    workspace.includes("confirmDisabled={approvedConceptCount === 0}") &&
+    workspace.includes("stageNumber === 3") &&
+    workspace.includes("approvedConceptCount === 0") &&
     workspace.includes("folder.startingReference.previewPath") &&
     workspace.includes("folder.startingReference.downloadPath"),
   "Completion confirmation must warn about unapproved concepts and Stage 4 references must preview/download.",

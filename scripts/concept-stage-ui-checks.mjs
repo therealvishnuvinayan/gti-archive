@@ -122,7 +122,8 @@ assert(
 );
 assert(
   workspace.includes("canCompleteStage && !managementLocked") &&
-    workspace.includes("isOpen={canCompleteStage && completionDialogOpen}") &&
+    workspace.includes("canCompleteStage &&") &&
+    workspace.includes("completionDialogOpen &&") &&
     concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
     concepts.includes("Only the Project Owner or Super Admin can complete Stage 3."),
   "Stage completion must be rendered and enforced separately from concept management.",

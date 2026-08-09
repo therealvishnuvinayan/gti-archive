@@ -89,16 +89,19 @@ for (const label of [
   "Stage 4 Completed",
   "Final Approved File",
   "will continue to Stage 5",
-  "will not continue",
+  "Every Stage 4 concept must receive Final Approval",
 ]) {
   assert(workspace.includes(label), `Missing Round 4 Stage 4 UI label: ${label}`);
 }
 assert(
   workspace.includes("completeStageFourConceptsAction") &&
-    workspace.includes("confirmDisabled={approvedConceptCount === 0}") &&
+    workspace.includes("allStageFourConceptsApproved") &&
+    workspace.includes("!allStageFourConceptsApproved") &&
+    concepts.includes("conceptsWithoutFinalFile.length > 0") &&
+    concepts.includes("Every Stage 4 concept must receive Final Approval") &&
     !workspace.includes("Final files for Stage 5") &&
     !workspace.includes("Send to Stage 5"),
-  "Stage 4 overview must use explicit completion and retire the temporary file-picker handoff UI.",
+  "Stage 4 completion must stay disabled until every concept is finally approved and retire the temporary file-picker handoff UI.",
 );
 
 for (const label of [

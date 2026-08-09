@@ -364,11 +364,20 @@ export function ConceptStageWorkspace({
   const unapprovedConcepts = completionConcepts.filter(
     (concept) => !concept.isApproved,
   );
+  const allStageFourConceptsApproved =
+    completionConcepts.length > 0 && unapprovedConcepts.length === 0;
 
   function completeCurrentStage() {
     if (!canCompleteStage) {
       setCompletionError(
         `Only the Project Owner or Super Admin can complete Stage ${stageNumber}.`,
+      );
+      return;
+    }
+
+    if (stageNumber === 4 && !allStageFourConceptsApproved) {
+      setCompletionError(
+        "Every Stage 4 concept must receive Final Approval before Stage 4 can be completed.",
       );
       return;
     }
@@ -570,7 +579,15 @@ export function ConceptStageWorkspace({
               <Button
                 type="button"
                 className="h-11 rounded-[12px] px-5 font-[720]"
-                disabled={isCompleting}
+                disabled={
+                  isCompleting ||
+                  (stageNumber === 4 && !allStageFourConceptsApproved)
+                }
+                title={
+                  stageNumber === 4 && !allStageFourConceptsApproved
+                    ? "Every concept requires Final Approval before Stage 4 can be completed."
+                    : undefined
+                }
                 onClick={() => {
                   setCompletionError(null);
                   setCompletionDialogOpen(true);
@@ -741,7 +758,11 @@ export function ConceptStageWorkspace({
       ) : null}
 
       <ConfirmationDialog
-        isOpen={canCompleteStage && completionDialogOpen}
+        isOpen={
+          canCompleteStage &&
+          completionDialogOpen &&
+          (stageNumber === 3 || allStageFourConceptsApproved)
+        }
         title={`Complete Stage ${stageNumber}?`}
         description={
           stageNumber === 3
@@ -753,12 +774,16 @@ export function ConceptStageWorkspace({
             : approvedConceptCount === 0
               ? "At least one concept must have a Final Approved File before Stage 4 can be completed."
               : unapprovedConcepts.length > 0
-                ? `${approvedConceptCount} final file${approvedConceptCount === 1 ? "" : "s"} will continue to Stage 5. ${unapprovedConcepts.length} concept${unapprovedConcepts.length === 1 ? " has" : "s have"} no Final Approved File and will not continue: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
+                ? `Every Stage 4 concept must receive Final Approval before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
                 : `${approvedConceptCount} final approved file${approvedConceptCount === 1 ? "" : "s"} will continue to Stage 5.`
         }
         confirmLabel={`Complete Stage ${stageNumber}`}
         pending={isCompleting}
-        confirmDisabled={approvedConceptCount === 0}
+        confirmDisabled={
+          stageNumber === 3
+            ? approvedConceptCount === 0
+            : !allStageFourConceptsApproved
+        }
         error={completionError ?? undefined}
         onConfirm={completeCurrentStage}
         onClose={() => {

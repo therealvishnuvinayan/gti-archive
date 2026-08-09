@@ -1002,6 +1002,15 @@ async function main() {
       "starting references, briefs, and other concept files must not become Final A",
     );
   }
+  const incompleteStageFourCompletion = await completeStageFourConcepts(owner, {
+    projectId,
+  });
+  check(
+    isError(incompleteStageFourCompletion) &&
+      incompleteStageFourCompletion.error.includes("Every Stage 4 concept") &&
+      incompleteStageFourCompletion.error.includes(stageFourB.name),
+    "Project Owner must not complete Stage 4 while another concept is still In Progress",
+  );
 
   const stageFourBEdit = await editProjectConceptFolder(owner, {
     projectId,

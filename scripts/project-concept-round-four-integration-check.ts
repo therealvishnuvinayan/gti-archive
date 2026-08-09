@@ -172,7 +172,7 @@ async function main() {
         }),
       ]);
 
-    const [sourceRevision, revisionA, revisionB, foreignRevision] =
+    const [sourceRevision, revisionA, revisionB, revisionC, foreignRevision] =
       await Promise.all([
         prisma.projectRevision.create({
           data: {
@@ -201,6 +201,16 @@ async function main() {
             createdById: executor.id,
             revisionNumber: 1,
             title: "Final B submission",
+            status: ProjectRevisionStatus.PENDING_REVIEW,
+          },
+        }),
+        prisma.projectRevision.create({
+          data: {
+            projectId,
+            stageId: taskerC.id,
+            createdById: executor.id,
+            revisionNumber: 1,
+            title: "Final C submission",
             status: ProjectRevisionStatus.PENDING_REVIEW,
           },
         }),
@@ -297,7 +307,7 @@ async function main() {
         body: "Chat attachment fixture",
       },
     });
-    const [finalA, alternateA, finalB, briefAttachment, chatAttachment, foreignFile] =
+    const [finalA, alternateA, finalB, finalC, briefAttachment, chatAttachment, foreignFile] =
       await Promise.all([
         createAttachment({
           id: `round-four-final-a-${runId}`,
@@ -319,6 +329,13 @@ async function main() {
           revisionId: revisionB.id,
           assetType: AttachmentAssetType.REVISION_ORIGINAL,
           name: "final-b.png",
+        }),
+        createAttachment({
+          id: `round-four-final-c-${runId}`,
+          stageId: taskerC.id,
+          revisionId: revisionC.id,
+          assetType: AttachmentAssetType.REVISION_ORIGINAL,
+          name: "final-c.png",
         }),
         createAttachment({
           id: `round-four-brief-${runId}`,
@@ -571,6 +588,27 @@ async function main() {
       ),
       "a second concept must retain its own final file",
     );
+    const prematureCompletion = await completeStageFourConcepts(owner, {
+      projectId,
+    });
+    check(
+      isError(prematureCompletion) &&
+        prematureCompletion.error.includes("Every Stage 4 concept") &&
+        prematureCompletion.error.includes(conceptC.name),
+      "Stage 4 completion must identify and reject concepts still awaiting Final Approval",
+    );
+    check(
+      (await prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId,
+            stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          },
+        },
+      })).status === ProjectWorkflowStageStatus.AVAILABLE &&
+        (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 0,
+      "premature Stage 4 completion must not change workflow state or create handoffs",
+    );
 
     await prisma.projectConceptFolder.update({
       where: { id: conceptC.id },
@@ -594,10 +632,36 @@ async function main() {
         (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 0,
       "an invalid final file must not partially hand off or complete Stage 4",
     );
-    await prisma.projectConceptFolder.update({
-      where: { id: conceptC.id },
-      data: { approvedAttachmentId: null, approvedById: null, approvedAt: null },
-    });
+    await prisma.$transaction([
+      prisma.projectConceptFolder.update({
+        where: { id: conceptC.id },
+        data: {
+          approvedAttachmentId: finalC.id,
+          approvedById: owner.id,
+          approvedAt: now,
+        },
+      }),
+      prisma.projectRevision.update({
+        where: { id: revisionC.id },
+        data: {
+          status: ProjectRevisionStatus.APPROVED,
+          reviewedById: owner.id,
+          reviewedAt: now,
+        },
+      }),
+      prisma.projectAttachment.update({
+        where: { id: finalC.id },
+        data: {
+          submissionReviewStatus: "APPROVED",
+          reviewedById: owner.id,
+          reviewedAt: now,
+        },
+      }),
+      prisma.projectStage.update({
+        where: { id: taskerC.id },
+        data: { status: StageStatus.COMPLETED, completedAt: now },
+      }),
+    ]);
 
     const conflictingHandoff = await prisma.projectStageFileHandoff.create({
       data: {
@@ -632,7 +696,7 @@ async function main() {
     await prisma.projectStageFileHandoff.delete({ where: { id: conflictingHandoff.id } });
 
     const attachmentCountBeforeCompletion = await prisma.projectAttachment.count({
-      where: { id: { in: [finalA.id, finalB.id] } },
+      where: { id: { in: [finalA.id, finalB.id, finalC.id] } },
     });
     const [completion, concurrentCompletion] = await Promise.all([
       completeStageFourConcepts(owner, { projectId }),
@@ -641,9 +705,9 @@ async function main() {
     check(!isError(completion) && !isError(concurrentCompletion), "concurrent Stage 4 completion must retry idempotently");
     check(
       (completion.transitioned || concurrentCompletion.transitioned) &&
-        completion.finalApprovedCount === 2 &&
-        completion.conceptsWithoutFinalFile.some((concept) => concept.id === conceptC.id),
-      "completion must report two final files and warn about the concept without one",
+        completion.finalApprovedCount === 3 &&
+        completion.conceptsWithoutFinalFile.length === 0,
+      "completion must include all three finally approved concepts",
     );
 
     const handoffs = await prisma.projectStageFileHandoff.findMany({
@@ -652,19 +716,19 @@ async function main() {
       orderBy: { sourceAttachmentId: "asc" },
     });
     check(
-      handoffs.length === 2 &&
+      handoffs.length === 3 &&
         handoffs.every((handoff) => handoff.checklist) &&
-        new Set(handoffs.map((handoff) => handoff.sourceAttachmentId)).size === 2 &&
+        new Set(handoffs.map((handoff) => handoff.sourceAttachmentId)).size === 3 &&
         handoffs.every((handoff) =>
-          [finalA.id, finalB.id].includes(handoff.sourceAttachmentId),
+          [finalA.id, finalB.id, finalC.id].includes(handoff.sourceAttachmentId),
         ),
       "only final-approved files must receive one handoff and one checklist each",
     );
     check(
-      attachmentCountBeforeCompletion === 2 &&
+      attachmentCountBeforeCompletion === 3 &&
         (await prisma.projectAttachment.count({
-          where: { id: { in: [finalA.id, finalB.id] } },
-        })) === 2,
+          where: { id: { in: [finalA.id, finalB.id, finalC.id] } },
+        })) === 3,
       "handoff must reuse original ProjectAttachment rows without binary duplication",
     );
 
@@ -707,8 +771,8 @@ async function main() {
     const repeatedCompletion = await completeStageFourConcepts(superAdmin, { projectId });
     check(!isError(repeatedCompletion) && !repeatedCompletion.transitioned, "completion retry must be idempotent");
     check(
-      (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 2 &&
-        (await prisma.projectFileChecklist.count({ where: { projectId } })) === 2 &&
+      (await prisma.projectStageFileHandoff.count({ where: { projectId } })) === 3 &&
+        (await prisma.projectFileChecklist.count({ where: { projectId } })) === 3 &&
         (await prisma.projectWorkflowStage.findUniqueOrThrow({
           where: {
             projectId_stageKey: {
@@ -729,9 +793,9 @@ async function main() {
 
     const stageFiveData = await getStageFiveWorkspaceData(owner, projectId);
     check(
-      stageFiveData?.files.length === 2 &&
+      stageFiveData?.files.length === 3 &&
         stageFiveData.files.every((file) =>
-          [finalA.id, finalB.id].includes(file.sourceAttachment.id),
+          [finalA.id, finalB.id, finalC.id].includes(file.sourceAttachment.id),
         ),
       "Stage 5 selector must immediately show the real final-approved files",
     );
@@ -764,7 +828,7 @@ async function main() {
 
     await notifyStageFiveActivated({
       projectId,
-      finalFileCount: 2,
+      finalFileCount: 3,
       actorId: superAdmin.id,
     });
     const stageFiveNotificationRecipients = await prisma.notification.findMany({

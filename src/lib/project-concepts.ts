@@ -1621,6 +1621,12 @@ export async function completeStageFourConcepts(
             };
           }
 
+          if (conceptsWithoutFinalFile.length > 0) {
+            return {
+              error: `Every Stage 4 concept must receive Final Approval before Stage 4 can be completed. Pending: ${conceptsWithoutFinalFile.map((concept) => concept.name).join(", ")}.`,
+            };
+          }
+
           for (const concept of finalConcepts) {
             const attachmentError = getFormalConceptAttachmentError({
               attachment: concept.approvedAttachment,
