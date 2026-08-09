@@ -141,8 +141,16 @@ function WorkspaceSwitch({
                   Switch <ChevronDown className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[250px]">
-                <DropdownMenuLabel>View folder set</DropdownMenuLabel>
+              <DropdownMenuContent
+                align="end"
+                collisionPadding={16}
+                className="min-w-[250px] overscroll-contain"
+                style={{
+                  maxHeight: "min(420px, var(--radix-dropdown-menu-content-available-height))",
+                  overflowY: "auto",
+                }}
+              >
+                <DropdownMenuLabel className="sticky top-0 z-10 bg-white">View folder set</DropdownMenuLabel>
                 {data.workspaceOptions.map((option) => (
                   <DropdownMenuItem
                     key={option.id}

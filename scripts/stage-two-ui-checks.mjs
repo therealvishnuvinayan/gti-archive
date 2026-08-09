@@ -46,6 +46,14 @@ for (const text of ["Stage 2 - Project Research and Planning", "Viewing folder s
 }
 assert(workspace.includes("workspace=${encodeURIComponent(option.id)}"), "Workspace switching must use stable URL state.");
 assert(
+  workspace.includes("collisionPadding={16}") &&
+    workspace.includes('maxHeight: "min(420px, var(--radix-dropdown-menu-content-available-height))"') &&
+    workspace.includes('overflowY: "auto"') &&
+    workspace.includes("overscroll-contain") &&
+    workspace.includes('className="sticky top-0 z-10 bg-white"'),
+  "The workspace switch menu must remain inside the viewport with an independently scrollable user list.",
+);
+assert(
   workspace.includes('router.push(`/projects/${data.project.id}/stages/3`)') &&
     !workspace.includes('router.push(`/projects/${data.project.id}`)'),
   "Completing Stage 2 must open Stage 3 directly instead of the project overview.",
