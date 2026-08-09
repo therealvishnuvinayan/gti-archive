@@ -93,9 +93,10 @@ export type DashboardRecentProject = {
   id: string;
   name: string;
   href: string;
-  stageNumber: number;
-  stageName: string;
-  status: ProjectListWorkflowState["status"];
+  stageNumber: number | null;
+  stageName: string | null;
+  businessStatus: ProjectListWorkflowState["businessStatus"];
+  workflowDiagnosticLabel: ProjectListWorkflowState["workflowDiagnosticLabel"];
   ownerName: string;
   ownerInitials: string;
   updatedLabel: string;
@@ -313,10 +314,11 @@ function buildKpis(input: {
 }) {
   const { user, summaries } = input;
   const active = summaries.filter(
-    (item) => item.workflow.status === "ACTIVE" && !item.project.archivedAt,
+    (item) =>
+      item.workflow.businessStatus === "ACTIVE" && !item.project.archivedAt,
   ).length;
   const completed = summaries.filter(
-    (item) => item.workflow.status === "COMPLETED",
+    (item) => item.workflow.businessStatus === "COMPLETED",
   ).length;
   const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
   const isManager = summaries.some(
@@ -428,7 +430,8 @@ export async function getDashboardSnapshot(
   const projectById = new Map(summaries.map((item) => [item.project.id, item]));
   const activeProjectIds = summaries
     .filter(
-      (item) => item.workflow.status === "ACTIVE" && !item.project.archivedAt,
+      (item) =>
+        item.workflow.businessStatus === "ACTIVE" && !item.project.archivedAt,
     )
     .map((item) => item.project.id);
 
@@ -565,12 +568,13 @@ export async function getDashboardSnapshot(
   let openRequestCount = 0;
   let completedRequestCount = 0;
 
-  // SETUP_NEEDED remains visible in project state and Recent Projects, but it
-  // is not an attention item: the current V2 app has no supported repair
-  // screen after project creation, so linking one would not be actionable.
-
   for (const { project, workflow } of summaries) {
-    if (workflow.status !== "ACTIVE" || !project.inquiry?.deadline) continue;
+    if (
+      workflow.businessStatus !== "ACTIVE" ||
+      !project.inquiry?.deadline
+    ) {
+      continue;
+    }
     if (!hasProjectPermission(user, project, "stage.updateTimeline")) continue;
 
     const dueAt = toDate(project.inquiry.deadline);
@@ -1025,7 +1029,7 @@ export async function getDashboardSnapshot(
     name: stage.name,
     count: summaries.filter(
       ({ project, workflow }) =>
-        workflow.status === "ACTIVE" &&
+        workflow.businessStatus === "ACTIVE" &&
         !project.archivedAt &&
         workflow.currentStageNumber === stage.number,
     ).length,
@@ -1033,7 +1037,11 @@ export async function getDashboardSnapshot(
   }));
 
   const recentProjects = summaries
-    .filter(({ project }) => !project.archivedAt)
+    .filter(
+      ({ project, workflow }) =>
+        !project.archivedAt &&
+        (workflow.businessStatus !== null || user.role === UserRole.SUPER_ADMIN),
+    )
     .slice(0, 6)
     .map(({ project, workflow }) => {
       const ownerName = displayName(project.owner);
@@ -1043,7 +1051,11 @@ export async function getDashboardSnapshot(
         href: `/projects/${project.id}`,
         stageNumber: workflow.currentStageNumber,
         stageName: workflow.currentStageName,
-        status: workflow.status,
+        businessStatus: workflow.businessStatus,
+        workflowDiagnosticLabel:
+          user.role === UserRole.SUPER_ADMIN
+            ? workflow.workflowDiagnosticLabel
+            : null,
         ownerName,
         ownerInitials: initials(ownerName),
         updatedLabel: formatRecentTime(project.updatedAt, now),

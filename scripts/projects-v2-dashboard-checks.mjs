@@ -17,9 +17,20 @@ const projects = read("src/lib/projects.ts");
 const workflow = read("src/lib/project-list-workflow.ts");
 const actions = read("src/app/(dashboard)/projects/actions.ts");
 
-for (const status of ["ALL", "ACTIVE", "COMPLETED", "SETUP_NEEDED"]) {
+for (const status of ["ALL", "ACTIVE", "COMPLETED"]) {
   includes(workflow, `\"${status}\"`, `workflow status ${status}`);
 }
+assert(!workflow.includes('"SETUP_NEEDED"'), "Setup Needed must not remain a project status.");
+assert(!page.includes("Setup Needed"), "Projects page must only show All, Active, and Completed tabs.");
+assert(!card.includes("Stage 0"), "Project cards must never render Stage 0.");
+includes(workflow, 'businessStatus: ProjectBusinessStatus | null', "separate business status");
+includes(workflow, 'ProjectWorkflowHealth = "VALID" | "MISSING" | "INVALID"', "workflow health diagnostic");
+includes(card, "Workflow Missing", "SUPER_ADMIN workflow diagnostic");
+includes(
+  card,
+  "This project was created before the current workflow or has incomplete workflow data.",
+  "legacy project diagnostic tooltip",
+);
 
 for (const role of ["OWNER", "CO_OWNER", "EXECUTOR", "COLLABORATOR"]) {
   includes(projects, `${role}:`, `My Role predicate ${role}`);

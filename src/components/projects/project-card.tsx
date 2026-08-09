@@ -35,10 +35,13 @@ type ProjectCardPerson = {
 export type ProjectCardItem = {
   id: string;
   title: string;
-  status: "ACTIVE" | "COMPLETED" | "SETUP_NEEDED";
-  statusLabel: "Active" | "Completed" | "Setup Needed";
-  currentStageNumber: number;
-  currentStageName: string;
+  businessStatus: "ACTIVE" | "COMPLETED" | null;
+  statusLabel: "Active" | "Completed" | null;
+  workflowHealth: "VALID" | "MISSING" | "INVALID";
+  workflowDiagnosticLabel: "Workflow Missing" | "Legacy Project" | null;
+  showWorkflowDiagnostic: boolean;
+  currentStageNumber: number | null;
+  currentStageName: string | null;
   stageStatuses: Array<"LOCKED" | "AVAILABLE" | "COMPLETED">;
   owner: ProjectCardPerson | null;
   executors: ProjectCardPerson[];
@@ -94,7 +97,7 @@ function PersonAvatar({ person, size = "md" }: { person: ProjectCardPerson; size
 
 function WorkflowProgress({ project }: { project: ProjectCardItem }) {
   return (
-    <div className="relative mt-4 grid grid-cols-7 items-center" aria-label={`Stage ${project.currentStageNumber || 0} of 7`}>
+    <div className="relative mt-4 grid grid-cols-7 items-center" aria-label={`Stage ${project.currentStageNumber} of 7`}>
       <span className="absolute left-[7%] right-[7%] top-[13px] h-px bg-[#dce3dc]" aria-hidden="true" />
       {project.stageStatuses.map((stageStatus, index) => {
         const stageNumber = index + 1;
@@ -133,10 +136,7 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
     : `/projects/${project.id}`;
   const visibleExecutors = project.executors.slice(0, 3);
   const hiddenExecutorCount = Math.max(0, project.executors.length - visibleExecutors.length);
-  const statusClass =
-    project.status === "SETUP_NEEDED"
-      ? "border-[#f0dfb9] bg-[#fff7e8] text-[#a36a12]"
-      : "border-[#d1ead9] bg-[#eaf7ee] text-[#197143]";
+  const statusClass = "border-[#d1ead9] bg-[#eaf7ee] text-[#197143]";
 
   function handleTogglePin() {
     setPinError(undefined);
@@ -169,9 +169,19 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
         <CardContent className="flex h-full flex-col p-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <span className={`rounded-full border px-3 py-1 text-[11px] font-[700] ${statusClass}`}>
-                {project.statusLabel}
-              </span>
+              {project.statusLabel ? (
+                <span className={`rounded-full border px-3 py-1 text-[11px] font-[700] ${statusClass}`}>
+                  {project.statusLabel}
+                </span>
+              ) : null}
+              {project.showWorkflowDiagnostic && project.workflowDiagnosticLabel ? (
+                <span
+                  className="rounded-full border border-[#ded9c9] bg-[#f7f5ed] px-3 py-1 text-[11px] font-[700] text-[#736748]"
+                  title="This project was created before the current workflow or has incomplete workflow data."
+                >
+                  {project.workflowDiagnosticLabel}
+                </span>
+              ) : null}
               {project.isPinned ? <Pin className="size-3.5 text-[#267c4f]" aria-label="Pinned" /> : null}
             </div>
 
@@ -215,13 +225,15 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
           <h2 className="mt-3 line-clamp-2 min-h-[30px] text-[20px] font-[700] leading-[1.25] tracking-[-0.025em] text-[#111612]">
             {project.title}
           </h2>
-          <p className="mt-1 text-[12px] text-[#6c746d]">
-            {project.currentStageNumber > 0
-              ? `Stage ${project.currentStageNumber} of 7 · ${project.currentStageName}`
-              : project.currentStageName}
-          </p>
+          {project.currentStageNumber && project.currentStageName ? (
+            <p className="mt-1 text-[12px] text-[#6c746d]">
+              Stage {project.currentStageNumber} of 7 · {project.currentStageName}
+            </p>
+          ) : null}
 
-          <WorkflowProgress project={project} />
+          {project.workflowHealth === "VALID" && project.currentStageNumber ? (
+            <WorkflowProgress project={project} />
+          ) : null}
 
           <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] gap-4 border-t border-[#edf0ed] pt-3.5">
             <div className="min-w-0">

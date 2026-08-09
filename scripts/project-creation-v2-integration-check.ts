@@ -1,6 +1,11 @@
-import { PrismaClient, UserRole } from "@prisma/client";
+import {
+  PrismaClient,
+  ProjectWorkflowStageStatus,
+  UserRole,
+} from "@prisma/client";
 
 import { createProjectV2 } from "../src/lib/project-creation";
+import { deriveProjectListWorkflowState } from "../src/lib/project-list-workflow";
 import { hasProjectPermission } from "../src/lib/permissions/resolver";
 import { prisma as servicePrisma } from "../src/lib/prisma";
 
@@ -184,6 +189,56 @@ async function main() {
       .filter((stage) => stage.stageKey !== "PROJECT_INQUIRY")
       .every((stage) => stage.status === "LOCKED"),
     "Stages 2-7 must start LOCKED.",
+  );
+  const createdWorkflowState = deriveProjectListWorkflowState(created);
+  assert(
+    createdWorkflowState.businessStatus === "ACTIVE" &&
+      createdWorkflowState.workflowHealth === "VALID" &&
+      createdWorkflowState.currentStageNumber === 1 &&
+      createdWorkflowState.currentStageName === "Project Inquiry",
+    "A newly created V2 project must immediately be Active at Stage 1.",
+  );
+
+  for (let currentStageNumber = 2; currentStageNumber <= 7; currentStageNumber += 1) {
+    const activeWorkflowState = deriveProjectListWorkflowState({
+      ...created,
+      workflowStages: created.workflowStages.map((stage, index) => ({
+        ...stage,
+        status:
+          index + 1 < currentStageNumber
+            ? ProjectWorkflowStageStatus.COMPLETED
+            : index + 1 === currentStageNumber
+              ? ProjectWorkflowStageStatus.AVAILABLE
+              : ProjectWorkflowStageStatus.LOCKED,
+      })),
+    });
+    assert(
+      activeWorkflowState.businessStatus === "ACTIVE" &&
+        activeWorkflowState.workflowHealth === "VALID" &&
+        activeWorkflowState.currentStageNumber === currentStageNumber,
+      `A valid Stage ${currentStageNumber} project must remain Active.`,
+    );
+  }
+
+  const completedWorkflowState = deriveProjectListWorkflowState({
+    ...created,
+    completedAt: new Date(),
+  });
+  assert(
+    completedWorkflowState.businessStatus === "COMPLETED" &&
+      completedWorkflowState.statusLabel === "Completed",
+    "A completed V2 project must appear as Completed.",
+  );
+
+  const missingWorkflowState = deriveProjectListWorkflowState({
+    ...created,
+    workflowStages: [],
+  });
+  assert(
+    missingWorkflowState.businessStatus === null &&
+      missingWorkflowState.workflowHealth === "MISSING" &&
+      missingWorkflowState.currentStageNumber === null,
+    "A malformed legacy project must return a diagnostic instead of a business status.",
   );
   assert(
     created.researchWorkspaces.length === 6,

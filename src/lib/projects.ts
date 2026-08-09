@@ -208,10 +208,13 @@ type ProjectCardProject = Pick<
 export type ProjectCardRecord = {
   id: string;
   title: string;
-  status: "ACTIVE" | "COMPLETED" | "SETUP_NEEDED";
-  statusLabel: "Active" | "Completed" | "Setup Needed";
-  currentStageNumber: number;
-  currentStageName: string;
+  businessStatus: "ACTIVE" | "COMPLETED" | null;
+  statusLabel: "Active" | "Completed" | null;
+  workflowHealth: "VALID" | "MISSING" | "INVALID";
+  workflowDiagnosticLabel: "Workflow Missing" | "Legacy Project" | null;
+  showWorkflowDiagnostic: boolean;
+  currentStageNumber: number | null;
+  currentStageName: string | null;
   stageStatuses: ProjectWorkflowStage["status"][];
   owner: ProjectListUserFilterOption | null;
   executors: ProjectListUserFilterOption[];
@@ -1081,7 +1084,7 @@ export function formatProjectStageLabel(
   const stages = [...(project.stages ?? [])].sort((left, right) => left.order - right.order);
 
   if (stages.length === 0 && !project.currentStageName?.trim()) {
-    return "Project setup pending";
+    return "Workflow unavailable";
   }
   const currentStage =
     stages.find((stage) => stage.name === project.currentStageName) ?? stages[0] ?? null;
@@ -1105,6 +1108,7 @@ function mapProjectToCard(
     id: project.id,
     title: project.name,
     ...workflowState,
+    showWorkflowDiagnostic: currentUser.role === UserRole.SUPER_ADMIN,
     owner: project.owner
       ? {
           id: project.owner.id,
@@ -1122,7 +1126,7 @@ function mapProjectToCard(
     isPinned: project.isPinned,
     canPin: hasProjectPermission(currentUser, project, "project.update"),
     canDelete:
-      workflowState.status !== "COMPLETED" &&
+      workflowState.businessStatus !== "COMPLETED" &&
       hasProjectPermission(currentUser, project, "project.delete"),
   };
 }
@@ -1163,7 +1167,7 @@ function mapStageToCard(
     label: `${stage.name} : ${mapStageStatusToDisplayLabel(stage.status)}`,
     name: stage.name,
     statusLabel: mapStageStatusToDisplayLabel(stage.status),
-    subtitle: project.category?.trim() || "Project setup pending",
+    subtitle: project.category?.trim() || "Uncategorized",
     description: canViewBrief ? stage.description?.trim() || "" : "",
     title: project.name,
     createdOn: formatProjectDate(stage.createdAt),
@@ -1349,7 +1353,7 @@ function mapProjectToFlow(
     canRemoveCollaborators,
     canViewBudget: allowBudgetView,
     title: project.name,
-    category: project.category ?? "Setup pending",
+    category: project.category ?? "Uncategorized",
     executorDisplayName,
     description: allowBriefView ? project.description ?? "" : "",
     executionType: project.executionType,
@@ -1362,7 +1366,7 @@ function mapProjectToFlow(
       ? "Completed"
       : getProjectStatusDisplay(project.status).name,
     currentStageName:
-      currentStage?.name ?? project.currentStageName?.trim() ?? "Project setup pending",
+      currentStage?.name ?? project.currentStageName?.trim() ?? "Workflow unavailable",
     currentStageId: currentStage?.id ?? null,
     stageCount: stages.length,
     startDate: formatProjectDate(project.startDate),

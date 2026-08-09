@@ -661,7 +661,7 @@ function mapProjectForFluxAI(
     slug: project.id,
     name: project.name,
     href: `/projects/${project.id}`,
-    category: project.category ?? "Setup pending",
+    category: project.category ?? "Uncategorized",
     status: statusDisplay.name,
     statusGroup: statusDisplay.group?.name ?? null,
     currentStage: getCurrentStageLabel(project),

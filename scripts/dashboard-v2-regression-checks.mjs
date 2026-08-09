@@ -50,9 +50,20 @@ assert(
   service.includes("deriveProjectListWorkflowState(project)"),
   "Dashboard must reuse centralized V2 project state derivation.",
 );
-for (const state of ["SETUP_NEEDED", "ACTIVE", "COMPLETED"]) {
+for (const state of ["ACTIVE", "COMPLETED"]) {
   assert(projectWorkflow.includes(`"${state}"`), `Shared V2 state is missing: ${state}`);
 }
+assert(
+  !service.includes("SETUP_NEEDED") &&
+    !workspace.includes("SETUP_NEEDED") &&
+    !workspace.includes("Setup Needed"),
+  "Dashboard must not expose Setup Needed as a business status.",
+);
+assert(
+  service.includes("workflow.businessStatus") &&
+    service.includes("workflow.workflowDiagnosticLabel"),
+  "Dashboard must keep business state separate from SUPER_ADMIN workflow diagnostics.",
+);
 
 assert(
   service.includes("if (user.role === UserRole.SUPER_ADMIN) return {};") &&

@@ -10,7 +10,6 @@ export const PROJECT_LIST_STATUSES = [
   "ALL",
   "ACTIVE",
   "COMPLETED",
-  "SETUP_NEEDED",
 ] as const;
 
 export type ProjectListStatus = (typeof PROJECT_LIST_STATUSES)[number];
@@ -25,20 +24,23 @@ export const PROJECT_LIST_ROLES = [
 
 export type ProjectListRole = (typeof PROJECT_LIST_ROLES)[number];
 
+export type ProjectBusinessStatus = Exclude<ProjectListStatus, "ALL">;
+export type ProjectWorkflowHealth = "VALID" | "MISSING" | "INVALID";
+
 export type ProjectListWorkflowState = {
-  status: Exclude<ProjectListStatus, "ALL">;
-  statusLabel: "Active" | "Completed" | "Setup Needed";
-  currentStageNumber: number;
-  currentStageName: string;
+  businessStatus: ProjectBusinessStatus | null;
+  statusLabel: "Active" | "Completed" | null;
+  workflowHealth: ProjectWorkflowHealth;
+  workflowDiagnosticLabel: "Workflow Missing" | "Legacy Project" | null;
+  currentStageNumber: number | null;
+  currentStageName: string | null;
   stageStatuses: ProjectWorkflowStageStatus[];
 };
 
 type ProjectListWorkflowInput = {
   id?: string;
-  ownerId: string | null;
   completedAt?: Date | null;
   closure?: { id: string } | null;
-  executors: Array<{ userId: string }>;
   workflowStages: Array<{
     stageKey: ProjectWorkflowStageKey;
     status: ProjectWorkflowStageStatus;
@@ -73,6 +75,41 @@ function buildInitializedWorkflowWhere(): Prisma.ProjectWhereInput {
   };
 }
 
+function buildValidActiveWorkflowWhere(): Prisma.ProjectWhereInput {
+  const completedWhere = buildCompletedWhere();
+
+  return {
+    AND: [
+      { NOT: completedWhere },
+      buildInitializedWorkflowWhere(),
+      {
+        OR: stageKeys.map((availableStageKey) => ({
+          AND: [
+            {
+              workflowStages: {
+                some: {
+                  stageKey: availableStageKey,
+                  status: ProjectWorkflowStageStatus.AVAILABLE,
+                },
+              },
+            },
+            ...stageKeys
+              .filter((stageKey) => stageKey !== availableStageKey)
+              .map((stageKey) => ({
+                workflowStages: {
+                  none: {
+                    stageKey,
+                    status: ProjectWorkflowStageStatus.AVAILABLE,
+                  },
+                },
+              })),
+          ],
+        })),
+      },
+    ],
+  };
+}
+
 /**
  * Builds the server-side predicate from the same V2 workflow rules used by the
  * card mapper below. Listing projects never repairs or advances workflow rows.
@@ -83,30 +120,9 @@ export function buildProjectListStatusWhere(
   if (status === "ALL") return {};
 
   const completedWhere = buildCompletedWhere();
-  const initializedWorkflowWhere = buildInitializedWorkflowWhere();
-  const requiredSetupWhere: Prisma.ProjectWhereInput = {
-    ownerId: { not: null },
-    executors: { some: {} },
-    workflowStages: {
-      some: { status: ProjectWorkflowStageStatus.AVAILABLE },
-    },
-    ...initializedWorkflowWhere,
-  };
 
   if (status === "COMPLETED") return completedWhere;
-
-  if (status === "ACTIVE") {
-    return {
-      AND: [{ NOT: completedWhere }, requiredSetupWhere],
-    };
-  }
-
-  return {
-    AND: [
-      { NOT: completedWhere },
-      { NOT: requiredSetupWhere },
-    ],
-  };
+  return buildValidActiveWorkflowWhere();
 }
 
 export function buildProjectListStageWhere(
@@ -125,24 +141,34 @@ export function buildProjectListStageWhere(
       OR: [
         buildCompletedWhere(),
         {
-          workflowStages: {
-            some: {
-              stageKey: definition.key,
-              status: ProjectWorkflowStageStatus.AVAILABLE,
+          AND: [
+            buildValidActiveWorkflowWhere(),
+            {
+              workflowStages: {
+                some: {
+                  stageKey: definition.key,
+                  status: ProjectWorkflowStageStatus.AVAILABLE,
+                },
+              },
             },
-          },
+          ],
         },
       ],
     };
   }
 
   return {
-    workflowStages: {
-      some: {
-        stageKey: definition.key,
-        status: ProjectWorkflowStageStatus.AVAILABLE,
+    AND: [
+      buildValidActiveWorkflowWhere(),
+      {
+        workflowStages: {
+          some: {
+            stageKey: definition.key,
+            status: ProjectWorkflowStageStatus.AVAILABLE,
+          },
+        },
       },
-    },
+    ],
   };
 }
 
@@ -163,10 +189,33 @@ export function deriveProjectListWorkflowState(
       finalStage?.status === ProjectWorkflowStageStatus.COMPLETED,
   );
 
+  const hasCompleteStageSet =
+    project.workflowStages.length === stageKeys.length &&
+    stageKeys.every((stageKey) => stageByKey.has(stageKey));
+  const availableStages = PROJECT_WORKFLOW_STAGE_DEFINITIONS.filter(
+    (definition) =>
+      stageByKey.get(definition.key)?.status ===
+      ProjectWorkflowStageStatus.AVAILABLE,
+  );
+  const workflowHealth: ProjectWorkflowHealth =
+    project.workflowStages.length === 0
+      ? "MISSING"
+      : !hasCompleteStageSet || (!isCompleted && availableStages.length !== 1)
+        ? "INVALID"
+        : "VALID";
+  const workflowDiagnosticLabel =
+    workflowHealth === "MISSING"
+      ? "Workflow Missing"
+      : workflowHealth === "INVALID"
+        ? "Legacy Project"
+        : null;
+
   if (isCompleted) {
     return {
-      status: "COMPLETED",
+      businessStatus: "COMPLETED",
       statusLabel: "Completed",
+      workflowHealth,
+      workflowDiagnosticLabel,
       currentStageNumber: PROJECT_WORKFLOW_STAGE_DEFINITIONS.length,
       currentStageName:
         PROJECT_WORKFLOW_STAGE_DEFINITIONS[
@@ -176,42 +225,31 @@ export function deriveProjectListWorkflowState(
     };
   }
 
-  const hasCompleteStageSet =
-    project.workflowStages.length === stageKeys.length &&
-    stageKeys.every((stageKey) => stageByKey.has(stageKey));
-  const availableStages = PROJECT_WORKFLOW_STAGE_DEFINITIONS.filter(
-    (definition) =>
-      stageByKey.get(definition.key)?.status ===
-      ProjectWorkflowStageStatus.AVAILABLE,
-  );
-  const setupIncomplete =
-    !project.ownerId ||
-    project.executors.length === 0 ||
-    !hasCompleteStageSet ||
-    availableStages.length === 0;
-
-  if (setupIncomplete) {
-    return {
-      status: "SETUP_NEEDED",
-      statusLabel: "Setup Needed",
-      currentStageNumber: 0,
-      currentStageName: "Project Setup",
-      stageStatuses,
-    };
-  }
-
-  if (availableStages.length > 1) {
-    console.warn("[projects:list] Multiple AVAILABLE workflow stages", {
+  if (workflowHealth !== "VALID") {
+    console.warn("[projects:list] Invalid or missing V2 workflow", {
       projectId: project.id,
+      workflowHealth,
       stageKeys: availableStages.map((stage) => stage.key),
     });
+
+    return {
+      businessStatus: null,
+      statusLabel: null,
+      workflowHealth,
+      workflowDiagnosticLabel,
+      currentStageNumber: null,
+      currentStageName: null,
+      stageStatuses,
+    };
   }
 
   const currentStage = availableStages[0];
 
   return {
-    status: "ACTIVE",
+    businessStatus: "ACTIVE",
     statusLabel: "Active",
+    workflowHealth,
+    workflowDiagnosticLabel,
     currentStageNumber: currentStage.number,
     currentStageName: currentStage.name,
     stageStatuses,

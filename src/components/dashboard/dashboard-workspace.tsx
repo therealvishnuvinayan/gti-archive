@@ -402,19 +402,35 @@ function RecentProjects({
                       {project.name}
                     </span>
                   </span>
-                  <span>
+                  <span className="flex min-w-0 items-center gap-1.5">
                     <span
                       className={`inline-flex max-w-full truncate rounded-md px-2 py-1 font-semibold ${
-                        project.status === "COMPLETED"
+                        project.businessStatus === "COMPLETED"
                           ? "bg-[#e6f3e9] text-[#287d51]"
-                          : project.status === "SETUP_NEEDED"
-                            ? "bg-[#fff0dc] text-[#b76306]"
-                            : "bg-[#edf5ef] text-[#2c8053]"
+                          : project.businessStatus === "ACTIVE"
+                            ? "bg-[#edf5ef] text-[#2c8053]"
+                            : "bg-[#f7f5ed] text-[#736748]"
                       }`}
+                      title={
+                        project.workflowDiagnosticLabel
+                          ? "This project was created before the current workflow or has incomplete workflow data."
+                          : undefined
+                      }
                     >
-                      {project.stageNumber > 0 ? `Stage ${project.stageNumber} · ` : ""}
-                      {project.stageName}
+                      {project.businessStatus === "COMPLETED"
+                        ? "Completed"
+                        : project.stageNumber && project.stageName
+                          ? `Stage ${project.stageNumber} · ${project.stageName}`
+                          : project.workflowDiagnosticLabel}
                     </span>
+                    {project.businessStatus && project.workflowDiagnosticLabel ? (
+                      <span
+                        className="shrink-0 rounded-md border border-[#ded9c9] bg-[#f7f5ed] px-1.5 py-1 text-[9px] font-semibold text-[#736748]"
+                        title="This project was created before the current workflow or has incomplete workflow data."
+                      >
+                        {project.workflowDiagnosticLabel}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="flex min-w-0 items-center gap-2 text-[#303833]">
                     <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#e8d3c0] text-[8px] font-bold text-[#8c5d38]">

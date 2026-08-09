@@ -28,7 +28,6 @@ const projectFilters: Array<{ label: string; value: ProjectListStatus }> = [
   { label: "All", value: "ALL" },
   { label: "Active", value: "ACTIVE" },
   { label: "Completed", value: "COMPLETED" },
-  { label: "Setup Needed", value: "SETUP_NEEDED" },
 ];
 
 function logProjectsPageTiming(label: string, startedAt: number) {
