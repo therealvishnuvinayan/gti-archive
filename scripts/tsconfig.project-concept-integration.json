@@ -13,6 +13,7 @@
   },
   "include": [
     "project-concept-integration-check.ts",
-    "project-concept-round-four-integration-check.ts"
+    "project-concept-round-four-integration-check.ts",
+    "stage-three-five-e2e-qa.ts"
   ]
 }
