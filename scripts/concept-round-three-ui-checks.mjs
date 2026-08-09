@@ -65,11 +65,20 @@ assert(
   "Only owner, co-owner, and SUPER_ADMIN may manage concept approval.",
 );
 assert(
-  concepts.includes("folder.approvedAttachmentId === attachment.id") &&
+  concepts.includes("const changed = folder.approvedAttachmentId !== attachment.id") &&
     concepts.includes("approvedById: user.id") &&
     concepts.includes("approvedAt") &&
     concepts.includes("Approved Concept selection is locked because Stage 3 is completed"),
   "Designation must be idempotent, audited, replaceable before completion, and locked afterward.",
+);
+assert(
+  concepts.includes("approveConceptRevision") &&
+    concepts.includes("status: ProjectRevisionStatus.APPROVED") &&
+    concepts.includes("submissionReviewStatus: SubmissionReviewStatus.APPROVED") &&
+    concepts.includes("status: StageStatus.COMPLETED") &&
+    concepts.includes("allConceptsApproved: unapprovedConceptCount === 0") &&
+    concepts.includes("const stageTransition = await completeStageThreeConcepts"),
+  "Designating the approved file must approve its revision and files, complete the concept tasker, and advance automatically after every concept is approved.",
 );
 
 assert(
@@ -118,10 +127,14 @@ assert(
     chatWorkspace.includes("Replace the currently approved concept file?") &&
     chatWorkspace.includes("markProjectConceptApprovedAttachmentAction") &&
     chatWorkspace.includes("approvedConceptAttachmentId") &&
+    chatWorkspace.includes("getEffectiveRevisionStatus") &&
+    chatWorkspace.includes("approvedConceptRevisionNeedingRepair") &&
+    chatWorkspace.includes("legacyConceptApprovalRepairRef") &&
+    chatWorkspace.includes('status: "APPROVED"') &&
     chatWorkspace.includes("conceptMode.isWorkflowCompleted") &&
     chatWorkspace.includes("Read-only approved Stage 3 reference") &&
     chatWorkspace.includes("!activeStage?.isTasker"),
-  "Concept chat must expose the new designation separately while the legacy tasker approval remains hidden.",
+  "Concept chat must immediately show designated submissions as approved while the legacy tasker approval remains hidden.",
 );
 
 assert(
@@ -138,6 +151,7 @@ assert(
   actions.includes("markProjectConceptApprovedAttachmentAction") &&
     actions.includes("completeStageThreeConceptsAction") &&
     actions.includes("result.changed") &&
+    actions.includes('"stageTransition" in result') &&
     actions.includes("result.transitioned || result.createdFolderIds.length > 0") &&
     notifications.includes("notifyConceptFileApproved") &&
     notifications.includes("notifyStageFourConceptsActivated") &&

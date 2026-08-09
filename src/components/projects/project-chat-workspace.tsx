@@ -1733,8 +1733,12 @@ function AttachmentHistoryList({
     <div className={compact ? "mt-3 min-w-0 max-w-full space-y-2" : "mt-3 min-w-0 max-w-full space-y-2.5"}>
       {attachments.map((attachment) => (
         (() => {
+          const isApprovedConcept =
+            approvedConceptAttachmentId === attachment.id;
           const effectiveSubmissionStatus = attachment.isSubmission
-            ? (attachment.submissionReviewStatus ?? "PENDING_REVIEW")
+            ? isApprovedConcept
+              ? "APPROVED"
+              : (attachment.submissionReviewStatus ?? "PENDING_REVIEW")
             : null;
           const canShowFileActions =
             !actionsDisabled &&
@@ -1746,8 +1750,6 @@ function AttachmentHistoryList({
             showCaptionAction &&
             Boolean(onOpenCaptions) &&
             isCaptionableStageSubmissionAttachment(attachment, projectCategory);
-          const isApprovedConcept =
-            approvedConceptAttachmentId === attachment.id;
           const canMarkApprovedConcept =
             canApproveConceptFile &&
             !isApprovedConcept &&
@@ -2682,6 +2684,7 @@ export function ProjectChatWorkspace({
   const [realtimeWatermark, setRealtimeWatermark] = useState<string | null>(null);
   const confirmedClientTempIdsRef = useRef<Set<string>>(new Set());
   const failedClientTempIdsRef = useRef<Set<string>>(new Set());
+  const legacyConceptApprovalRepairRef = useRef<string | null>(null);
   const draftRef = useRef(draft);
   const autoTranslateTimeoutRef = useRef<number | null>(null);
   const translationRequestIdRef = useRef(0);
@@ -2916,14 +2919,100 @@ export function ProjectChatWorkspace({
     [displayedMessages],
   );
   const latestRevisionMessage = revisionMessages.at(-1) ?? null;
+  const getEffectiveRevisionStatus = useCallback(
+    (message: DisplayChatEntry): RevisionReviewState => {
+      const reviewOverride =
+        revisionReviewOverrides[getRevisionEntryId(message)];
+      const containsApprovedConceptFile = Boolean(
+        approvedConceptAttachmentId &&
+          message.attachments?.some(
+            (attachment) => attachment.id === approvedConceptAttachmentId,
+          ),
+      );
+
+      return (
+        reviewOverride?.status ??
+        (containsApprovedConceptFile
+          ? "APPROVED"
+          : message.revisionStatus ?? "PENDING_REVIEW")
+      );
+    },
+    [approvedConceptAttachmentId, revisionReviewOverrides],
+  );
   const latestRevisionEntryId = latestRevisionMessage
     ? getRevisionEntryId(latestRevisionMessage)
     : null;
   const latestRevisionStatus = latestRevisionMessage
-    ? revisionReviewOverrides[getRevisionEntryId(latestRevisionMessage)]?.status ??
-      latestRevisionMessage.revisionStatus ??
-      "PENDING_REVIEW"
+    ? getEffectiveRevisionStatus(latestRevisionMessage)
     : null;
+  const approvedConceptRevisionNeedingRepair = useMemo(() => {
+    if (!approvedConceptAttachmentId) {
+      return null;
+    }
+
+    return (
+      revisionMessages.find(
+        (message) =>
+          message.revisionStatus !== "APPROVED" &&
+          message.attachments?.some(
+            (attachment) => attachment.id === approvedConceptAttachmentId,
+          ),
+      ) ?? null
+    );
+  }, [approvedConceptAttachmentId, revisionMessages]);
+
+  useEffect(() => {
+    if (
+      !conceptMode?.canReview ||
+      !approvedConceptAttachmentId ||
+      !approvedConceptRevisionNeedingRepair
+    ) {
+      return;
+    }
+
+    const repairKey = `${conceptMode.folderId}:${approvedConceptAttachmentId}:${getRevisionEntryId(approvedConceptRevisionNeedingRepair)}`;
+
+    if (legacyConceptApprovalRepairRef.current === repairKey) {
+      return;
+    }
+
+    legacyConceptApprovalRepairRef.current = repairKey;
+    const repairInput = {
+      projectId: project.id,
+      folderId: conceptMode.folderId,
+      attachmentId: approvedConceptAttachmentId,
+    };
+
+    void (async () => {
+      try {
+        const result = isStageFourConceptMode
+          ? await markStageFourFinalApprovedAttachmentAction(repairInput)
+          : await markProjectConceptApprovedAttachmentAction(repairInput);
+
+        if ("error" in result) {
+          return;
+        }
+
+        if ("stageTransition" in result) {
+          router.replace(
+            `/projects/${project.id}/stages/${isStageFourConceptMode ? 5 : 4}`,
+          );
+          return;
+        }
+
+        router.refresh();
+      } catch {
+        // The effective approved state still prevents legacy rows from exposing review actions.
+      }
+    })();
+  }, [
+    approvedConceptAttachmentId,
+    approvedConceptRevisionNeedingRepair,
+    conceptMode,
+    isStageFourConceptMode,
+    project.id,
+    router,
+  ]);
   const latestRevisionLabel = latestRevisionMessage
     ? getRevisionLabel(latestRevisionMessage)
     : null;
@@ -3159,7 +3248,10 @@ export function ProjectChatWorkspace({
     !completionState.allStagesCompleted &&
     completionState.incompleteStages.length > 0 &&
     isProjectOwner;
-  const isStageCompleted = isProjectCompleted || activeStage?.status === "completed";
+  const isStageCompleted =
+    isProjectCompleted ||
+    activeStage?.status === "completed" ||
+    Boolean(isConceptMode && approvedConceptAttachmentId);
   const isChatReadOnly = isProjectCompleted || isStageCompleted;
   const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
   const isProjectExecutor = useMemo(
@@ -3459,10 +3551,7 @@ export function ProjectChatWorkspace({
       if (message.kind === "revision") {
         const revisionEntryId = getRevisionEntryId(message);
         const reviewOverride = revisionReviewOverrides[revisionEntryId];
-        const revisionStatus =
-          reviewOverride?.status ??
-          message.revisionStatus ??
-          "PENDING_REVIEW";
+        const revisionStatus = getEffectiveRevisionStatus(message);
         const revisionStatusMeta = getRevisionStatusMeta(revisionStatus);
 
         addSegment("workSubmittedLabel", "Work submitted");
@@ -3531,7 +3620,12 @@ export function ProjectChatWorkspace({
       addSegment("body", message.body);
       return segments;
     },
-    [currentUserDisplayName, getVisibleSystemBody, revisionReviewOverrides],
+    [
+      currentUserDisplayName,
+      getEffectiveRevisionStatus,
+      getVisibleSystemBody,
+      revisionReviewOverrides,
+    ],
   );
 
   const getTranslatedStageChatText = useCallback(
@@ -5878,14 +5972,42 @@ export function ProjectChatWorkspace({
       }
 
       setApprovedConceptAttachmentId(result.attachment.id);
+      setRevisionReviewOverrides((current) => ({
+        ...current,
+        [result.revisionId]: {
+          status: "APPROVED",
+          rejectionReason: null,
+          reviewedBy: currentUserDisplayName,
+          reviewedAt: "Just now",
+        },
+      }));
       setConceptApprovalTarget(null);
+      closeRevisionReviewDialog();
+
+      if ("transitionError" in result) {
+        showErrorToast(
+          "Submission approved, but the next stage could not be activated.",
+          typeof result.transitionError === "string"
+            ? result.transitionError
+            : undefined,
+        );
+      }
+
       showSuccessToast(
-        result.changed
+        "stageTransition" in result
           ? isStageFourConceptMode
-            ? "Final Approved File updated."
-            : "Approved Concept updated."
-          : `This file is already the ${approvedFileLabel}.`,
+            ? "Submission approved. Stage 5 is now available."
+            : "Submission approved. Stage 4 is now available."
+          : result.changed
+            ? "Submission approved."
+            : `This submission is already approved as the ${approvedFileLabel}.`,
       );
+
+      if ("stageTransition" in result) {
+        router.push(
+          `/projects/${project.id}/stages/${isStageFourConceptMode ? 5 : 4}`,
+        );
+      }
       router.refresh();
     } catch (error) {
       const message =
@@ -7964,10 +8086,7 @@ export function ProjectChatWorkspace({
                 );
                 const revisionEntryId = getRevisionEntryId(message);
                 const reviewOverride = revisionReviewOverrides[revisionEntryId];
-                const effectiveRevisionStatus =
-                  reviewOverride?.status ??
-                  message.revisionStatus ??
-                  "PENDING_REVIEW";
+                const effectiveRevisionStatus = getEffectiveRevisionStatus(message);
                 const effectiveRejectionReason =
                   reviewOverride?.rejectionReason ??
                   message.rejectionReason ??
@@ -10424,9 +10543,9 @@ export function ProjectChatWorkspace({
           approvedConceptAttachmentId &&
           approvedConceptAttachmentId !== conceptApprovalTarget?.id
             ? isStageFourConceptMode
-              ? `This replaces the current Final Approved File with ${conceptApprovalTarget?.originalFileName ?? "this file"}. The previous file, revision, chat, and comparison history remain unchanged.`
-              : `This replaces the current Approved Concept with ${conceptApprovalTarget?.originalFileName ?? "this file"}. The revision review status is not changed.`
-            : `${conceptApprovalTarget?.originalFileName ?? "This file"} will become the one formal ${approvedFileLabel} for this concept. The revision review status is not changed.`
+              ? `This replaces the current Final Approved File with ${conceptApprovalTarget?.originalFileName ?? "this file"}. The selected revision will be approved and this concept will be completed.`
+              : `This replaces the current Approved Concept with ${conceptApprovalTarget?.originalFileName ?? "this file"}. The selected revision will be approved and this concept will be completed.`
+            : `${conceptApprovalTarget?.originalFileName ?? "This file"} will become the one formal ${approvedFileLabel} for this concept. Its revision will be approved and this concept will be completed.`
         }
         confirmLabel={
           approvedConceptAttachmentId &&
@@ -10501,17 +10620,13 @@ export function ProjectChatWorkspace({
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
                         getRevisionStatusMeta(
-                          revisionReviewOverrides[reviewRevisionId ?? ""]?.status ??
-                            reviewRevisionMessage.revisionStatus ??
-                            "PENDING_REVIEW",
+                          getEffectiveRevisionStatus(reviewRevisionMessage),
                         ).badgeClassName
                       }`}
                     >
                       {
                         getRevisionStatusMeta(
-                          revisionReviewOverrides[reviewRevisionId ?? ""]?.status ??
-                            reviewRevisionMessage.revisionStatus ??
-                            "PENDING_REVIEW",
+                          getEffectiveRevisionStatus(reviewRevisionMessage),
                         ).label
                       }
                     </span>
@@ -10550,9 +10665,8 @@ export function ProjectChatWorkspace({
                         conceptMode?.stageNumber === 4) &&
                         conceptMode.canReview &&
                         !conceptMode.isWorkflowCompleted &&
-                        (revisionReviewOverrides[reviewRevisionId ?? ""]?.status ??
-                          reviewRevisionMessage.revisionStatus ??
-                          "PENDING_REVIEW") !== "REJECTED"
+                        getEffectiveRevisionStatus(reviewRevisionMessage) !==
+                          "REJECTED"
                     )}
                     approvingConceptAttachmentId={approvingConceptAttachmentId}
                     onApproveConceptFile={openConceptApprovalConfirmation}

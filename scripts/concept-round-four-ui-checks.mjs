@@ -47,6 +47,15 @@ assert(
     concepts.includes("removedUnusedHandoff"),
   "Replacement must lock after completion, protect meaningful Stage 5 work, and remove only an unused initialized handoff.",
 );
+assert(
+  concepts.includes("approveConceptRevision") &&
+    concepts.includes("status: ProjectRevisionStatus.APPROVED") &&
+    concepts.includes("submissionReviewStatus: SubmissionReviewStatus.APPROVED") &&
+    concepts.includes("status: StageStatus.COMPLETED") &&
+    concepts.includes("allConceptsApproved: conceptsWithoutFinalFile === 0") &&
+    concepts.includes("const stageTransition = await completeStageFourConcepts"),
+  "Final-file approval must approve its revision and files, complete the concept tasker, and advance automatically after every final concept is approved.",
+);
 
 assert(
   stageFive.includes("hasStageFiveDownstreamActivityForAttachment") &&
@@ -110,6 +119,7 @@ assert(
   actions.includes("markStageFourFinalApprovedAttachmentAction") &&
     actions.includes("completeStageFourConceptsAction") &&
     actions.includes("result.changed") &&
+    actions.includes('"stageTransition" in result') &&
     actions.includes("result.transitioned") &&
     notifications.includes("notifyStageFourFinalFileApproved") &&
     notifications.includes("notifyStageFiveActivated") &&

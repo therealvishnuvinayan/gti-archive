@@ -1020,13 +1020,6 @@ async function main() {
     summary: "Stage 4 B final revision",
     fileNames: ["final-b.png"],
   });
-  const finalBApproval = await markStageFourFinalApprovedAttachment(coOwner, {
-    projectId,
-    folderId: stageFourB.id,
-    attachmentId: stageFourBRevision.attachmentIds[0],
-  });
-  check(!isError(finalBApproval), "co-owner must mark Final B");
-
   const stageFiveBefore = await prisma.projectWorkflowStage.findUniqueOrThrow({
     where: {
       projectId_stageKey: {
@@ -1035,6 +1028,18 @@ async function main() {
       },
     },
   });
+  const finalBApproval = await markStageFourFinalApprovedAttachment(coOwner, {
+    projectId,
+    folderId: stageFourB.id,
+    attachmentId: stageFourBRevision.attachmentIds[0],
+  });
+  check(
+    !isError(finalBApproval) &&
+      "stageTransition" in finalBApproval &&
+      finalBApproval.stageTransition.transitioned,
+    "approving the final outstanding Stage 4 concept must automatically activate Stage 5",
+  );
+
   const [stageFourCompletionA, stageFourCompletionB] = await Promise.all([
     completeStageFourConcepts(owner, { projectId }),
     completeStageFourConcepts(coOwner, { projectId }),
@@ -1042,12 +1047,11 @@ async function main() {
   check(
     !isError(stageFourCompletionA) &&
       !isError(stageFourCompletionB) &&
-      (stageFourCompletionA.transitioned || stageFourCompletionB.transitioned),
-    "double Complete Stage 4 must converge successfully",
+      !stageFourCompletionA.transitioned &&
+      !stageFourCompletionB.transitioned,
+    "manual Stage 4 completion retries must remain idempotent after automatic progression",
   );
-  const stageFourCompletion = stageFourCompletionA.transitioned
-    ? stageFourCompletionA
-    : stageFourCompletionB;
+  const stageFourCompletion = finalBApproval.stageTransition;
   await notifyStageFiveActivated({
     projectId,
     finalFileCount: stageFourCompletion.finalApprovedCount,

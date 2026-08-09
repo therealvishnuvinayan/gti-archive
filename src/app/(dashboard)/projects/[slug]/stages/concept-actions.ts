@@ -132,6 +132,27 @@ export async function markProjectConceptApprovedAttachmentAction(input: {
           }),
         );
       }
+
+      if ("stageTransition" in result) {
+        revalidateConceptStage(input.projectId, "PROJECT_DEVELOPMENT");
+        for (const folderId of result.stageTransition.promotedFolderIds) {
+          revalidatePath(
+            `/projects/${input.projectId}/stages/4/concepts/${folderId}`,
+          );
+        }
+        if (
+          result.stageTransition.transitioned ||
+          result.stageTransition.createdFolderIds.length > 0
+        ) {
+          await runNotificationTask("stage-four-concepts-activated", () =>
+            notifyStageFourConceptsActivated({
+              projectId: input.projectId,
+              folderIds: result.stageTransition.promotedFolderIds,
+              actorId: user.id,
+            }),
+          );
+        }
+      }
     }
 
     return result;
@@ -204,6 +225,16 @@ export async function markStageFourFinalApprovedAttachmentAction(input: {
         await runNotificationTask("stage-four-final-file-approved", () =>
           notifyStageFourFinalFileApproved({
             ...input,
+            actorId: user.id,
+          }),
+        );
+      }
+
+      if ("stageTransition" in result && result.stageTransition.transitioned) {
+        await runNotificationTask("stage-five-activated", () =>
+          notifyStageFiveActivated({
+            projectId: input.projectId,
+            finalFileCount: result.stageTransition.finalApprovedCount,
             actorId: user.id,
           }),
         );

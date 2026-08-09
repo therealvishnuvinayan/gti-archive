@@ -426,6 +426,20 @@ async function main() {
       prisma.projectAttachment.count({
         where: { id: { in: [finalA.id, alternateA.id] } },
       }),
+      prisma.projectStage.findUniqueOrThrow({
+        where: { id: taskerA.id },
+        select: { status: true, completedAt: true },
+      }),
+      prisma.projectRevision.findUniqueOrThrow({
+        where: { id: revisionA.id },
+        select: { status: true, reviewedById: true, reviewedAt: true },
+      }),
+      prisma.projectAttachment.count({
+        where: {
+          revisionId: revisionA.id,
+          submissionReviewStatus: "APPROVED",
+        },
+      }),
     ]);
     check(
       preCompletion[0].approvedAttachmentId === finalA.id &&
@@ -433,10 +447,19 @@ async function main() {
         preCompletion[0].approvedAt !== null &&
         preCompletion[1].status === ProjectWorkflowStageStatus.AVAILABLE &&
         preCompletion[2] === 0 &&
-        preCompletion[3] === 0,
-      "marking final must only update the audited designation",
+        preCompletion[3] === 0 &&
+        preCompletion[5].status === StageStatus.COMPLETED &&
+        preCompletion[5].completedAt !== null,
+      "approving a final submission must complete its tasker while leaving the overall workflow available for remaining concepts",
     );
     check(preCompletion[4] === 2, "replacement must preserve previous files and revisions");
+    check(
+      preCompletion[6].status === ProjectRevisionStatus.APPROVED &&
+        preCompletion[6].reviewedById === superAdmin.id &&
+        preCompletion[6].reviewedAt !== null &&
+        preCompletion[7] === 2,
+      "the final submission revision and all of its formal files must be approved together",
+    );
 
     await notifyStageFourFinalFileApproved({
       projectId,

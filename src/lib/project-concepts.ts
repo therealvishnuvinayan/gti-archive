@@ -6,6 +6,7 @@ import {
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
   StageStatus,
+  SubmissionReviewStatus,
 } from "@prisma/client";
 
 import {
@@ -721,6 +722,49 @@ const formalConceptAttachmentSelect = {
   },
 } satisfies Prisma.ProjectAttachmentSelect;
 
+async function approveConceptRevision(
+  tx: Prisma.TransactionClient,
+  input: {
+    projectId: string;
+    taskerStageId: string;
+    revisionId: string;
+    reviewedById: string;
+    approvedAt: Date;
+  },
+) {
+  await tx.projectRevision.update({
+    where: { id: input.revisionId },
+    data: {
+      status: ProjectRevisionStatus.APPROVED,
+      reviewedById: input.reviewedById,
+      reviewedAt: input.approvedAt,
+      rejectionReason: null,
+    },
+  });
+  await tx.projectAttachment.updateMany({
+    where: {
+      projectId: input.projectId,
+      stageId: input.taskerStageId,
+      revisionId: input.revisionId,
+      status: AttachmentStatus.READY,
+      assetType: { in: formalConceptAttachmentTypes },
+    },
+    data: {
+      submissionReviewStatus: SubmissionReviewStatus.APPROVED,
+      reviewedById: input.reviewedById,
+      reviewedAt: input.approvedAt,
+      reviewNote: null,
+    },
+  });
+  await tx.projectStage.update({
+    where: { id: input.taskerStageId },
+    data: {
+      status: StageStatus.COMPLETED,
+      completedAt: input.approvedAt,
+    },
+  });
+}
+
 function getFormalConceptAttachmentError(input: {
   attachment: FormalConceptAttachment | null;
   projectId: string;
@@ -769,7 +813,7 @@ export async function markProjectConceptApprovedAttachment(
   },
 ) {
   try {
-    return await withPrismaRetry(() =>
+    const designation = await withPrismaRetry(() =>
       prisma.$transaction(
         async (tx) => {
           const folder = await tx.projectConceptFolder.findFirst({
@@ -784,6 +828,8 @@ export async function markProjectConceptApprovedAttachment(
               taskerStageId: true,
               assignedExecutorId: true,
               approvedAttachmentId: true,
+              approvedById: true,
+              approvedAt: true,
               project: {
                 select: {
                   category: true,
@@ -822,13 +868,19 @@ export async function markProjectConceptApprovedAttachment(
 
           const stageThreeStatus = folder.project.workflowStages[0]?.status;
 
-          if (stageThreeStatus === ProjectWorkflowStageStatus.COMPLETED) {
+          if (
+            stageThreeStatus === ProjectWorkflowStageStatus.COMPLETED &&
+            folder.approvedAttachmentId !== input.attachmentId
+          ) {
             return {
               error: "Approved Concept selection is locked because Stage 3 is completed.",
             } as const;
           }
 
-          if (stageThreeStatus !== ProjectWorkflowStageStatus.AVAILABLE) {
+          if (
+            stageThreeStatus !== ProjectWorkflowStageStatus.AVAILABLE &&
+            stageThreeStatus !== ProjectWorkflowStageStatus.COMPLETED
+          ) {
             return { error: "Stage 3 is not currently available." } as const;
           }
 
@@ -851,32 +903,49 @@ export async function markProjectConceptApprovedAttachment(
             } as const;
           }
 
-          if (folder.approvedAttachmentId === attachment.id) {
-            return {
-              changed: false,
-              folderId: folder.id,
-              taskerStageId: folder.taskerStageId,
-              assignedExecutorId: folder.assignedExecutorId,
-              attachment: mapConceptAttachmentReference(attachment),
-            } as const;
+          const changed = folder.approvedAttachmentId !== attachment.id;
+          const approvedAt = changed
+            ? new Date()
+            : (folder.approvedAt ?? new Date());
+          const reviewedById = changed
+            ? user.id
+            : (folder.approvedById ?? user.id);
+
+          if (changed) {
+            await tx.projectConceptFolder.update({
+              where: { id: folder.id },
+              data: {
+                approvedAttachmentId: attachment.id,
+                approvedById: user.id,
+                approvedAt,
+              },
+            });
           }
 
-          const approvedAt = new Date();
-          await tx.projectConceptFolder.update({
-            where: { id: folder.id },
-            data: {
-              approvedAttachmentId: attachment.id,
-              approvedById: user.id,
-              approvedAt,
+          await approveConceptRevision(tx, {
+            projectId: input.projectId,
+            taskerStageId: folder.taskerStageId,
+            revisionId: attachment.revisionId!,
+            reviewedById,
+            approvedAt,
+          });
+          const unapprovedConceptCount = await tx.projectConceptFolder.count({
+            where: {
+              projectId: input.projectId,
+              workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+              approvedAttachmentId: null,
             },
           });
 
           return {
-            changed: true,
+            changed,
             folderId: folder.id,
             taskerStageId: folder.taskerStageId,
             assignedExecutorId: folder.assignedExecutorId,
             approvedAt,
+            revisionId: attachment.revisionId!,
+            revisionStatus: ProjectRevisionStatus.APPROVED,
+            allConceptsApproved: unapprovedConceptCount === 0,
             attachment: mapConceptAttachmentReference(attachment),
           } as const;
         },
@@ -887,6 +956,18 @@ export async function markProjectConceptApprovedAttachment(
         },
       ),
     );
+
+    if ("error" in designation || !designation.allConceptsApproved) {
+      return designation;
+    }
+
+    const stageTransition = await completeStageThreeConcepts(user, {
+      projectId: input.projectId,
+    });
+
+    return "error" in stageTransition
+      ? { ...designation, transitionError: stageTransition.error }
+      : { ...designation, stageTransition };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
@@ -915,7 +996,7 @@ export async function markStageFourFinalApprovedAttachment(
   },
 ) {
   try {
-    return await withPrismaRetry(() =>
+    const designation = await withPrismaRetry(() =>
       prisma.$transaction(
         async (tx) => {
           const folder = await tx.projectConceptFolder.findFirst({
@@ -930,6 +1011,8 @@ export async function markStageFourFinalApprovedAttachment(
               taskerStageId: true,
               assignedExecutorId: true,
               approvedAttachmentId: true,
+              approvedById: true,
+              approvedAt: true,
               project: {
                 select: {
                   category: true,
@@ -968,13 +1051,19 @@ export async function markStageFourFinalApprovedAttachment(
 
           const stageFourStatus = folder.project.workflowStages[0]?.status;
 
-          if (stageFourStatus === ProjectWorkflowStageStatus.COMPLETED) {
+          if (
+            stageFourStatus === ProjectWorkflowStageStatus.COMPLETED &&
+            folder.approvedAttachmentId !== input.attachmentId
+          ) {
             return {
               error: "Final Approved File selection is locked because Stage 4 is completed.",
             } as const;
           }
 
-          if (stageFourStatus !== ProjectWorkflowStageStatus.AVAILABLE) {
+          if (
+            stageFourStatus !== ProjectWorkflowStageStatus.AVAILABLE &&
+            stageFourStatus !== ProjectWorkflowStageStatus.COMPLETED
+          ) {
             return { error: "Stage 4 is not currently available." } as const;
           }
 
@@ -997,20 +1086,10 @@ export async function markStageFourFinalApprovedAttachment(
             } as const;
           }
 
-          if (folder.approvedAttachmentId === attachment.id) {
-            return {
-              changed: false,
-              folderId: folder.id,
-              taskerStageId: folder.taskerStageId,
-              assignedExecutorId: folder.assignedExecutorId,
-              removedUnusedHandoff: false,
-              attachment: mapConceptAttachmentReference(attachment),
-            } as const;
-          }
-
+          const changed = folder.approvedAttachmentId !== attachment.id;
           let removedUnusedHandoff = false;
 
-          if (folder.approvedAttachmentId) {
+          if (changed && folder.approvedAttachmentId) {
             const downstream =
               await hasStageFiveDownstreamActivityForAttachment(tx, {
                 projectId: input.projectId,
@@ -1032,23 +1111,48 @@ export async function markStageFourFinalApprovedAttachment(
             }
           }
 
-          const approvedAt = new Date();
-          await tx.projectConceptFolder.update({
-            where: { id: folder.id },
-            data: {
-              approvedAttachmentId: attachment.id,
-              approvedById: user.id,
-              approvedAt,
+          const approvedAt = changed
+            ? new Date()
+            : (folder.approvedAt ?? new Date());
+          const reviewedById = changed
+            ? user.id
+            : (folder.approvedById ?? user.id);
+          if (changed) {
+            await tx.projectConceptFolder.update({
+              where: { id: folder.id },
+              data: {
+                approvedAttachmentId: attachment.id,
+                approvedById: user.id,
+                approvedAt,
+              },
+            });
+          }
+
+          await approveConceptRevision(tx, {
+            projectId: input.projectId,
+            taskerStageId: folder.taskerStageId,
+            revisionId: attachment.revisionId!,
+            reviewedById,
+            approvedAt,
+          });
+          const conceptsWithoutFinalFile = await tx.projectConceptFolder.count({
+            where: {
+              projectId: input.projectId,
+              workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+              approvedAttachmentId: null,
             },
           });
 
           return {
-            changed: true,
+            changed,
             folderId: folder.id,
             taskerStageId: folder.taskerStageId,
             assignedExecutorId: folder.assignedExecutorId,
             approvedAt,
             removedUnusedHandoff,
+            revisionId: attachment.revisionId!,
+            revisionStatus: ProjectRevisionStatus.APPROVED,
+            allConceptsApproved: conceptsWithoutFinalFile === 0,
             attachment: mapConceptAttachmentReference(attachment),
           } as const;
         },
@@ -1059,6 +1163,18 @@ export async function markStageFourFinalApprovedAttachment(
         },
       ),
     );
+
+    if ("error" in designation || !designation.allConceptsApproved) {
+      return designation;
+    }
+
+    const stageTransition = await completeStageFourConcepts(user, {
+      projectId: input.projectId,
+    });
+
+    return "error" in stageTransition
+      ? { ...designation, transitionError: stageTransition.error }
+      : { ...designation, stageTransition };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {

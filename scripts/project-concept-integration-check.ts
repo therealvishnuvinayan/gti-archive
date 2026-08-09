@@ -1109,16 +1109,33 @@ async function main() {
       prisma.projectAttachment.count({
         where: { id: { in: [firstRevisionFile.id, secondRevisionFile.id] } },
       }),
+      prisma.projectRevision.findUniqueOrThrow({
+        where: { id: secondRevision.id },
+        select: { status: true, reviewedById: true, reviewedAt: true },
+      }),
+      prisma.projectAttachment.count({
+        where: {
+          revisionId: secondRevision.id,
+          submissionReviewStatus: "APPROVED",
+        },
+      }),
     ]);
     check(
-      preCompletionState[0].status === StageStatus.ONGOING &&
+      preCompletionState[0].status === StageStatus.COMPLETED &&
         preCompletionState[1].status === ProjectWorkflowStageStatus.AVAILABLE &&
         preCompletionState[2] === 0,
-      "Mark as Approved Concept must not complete the tasker/workflow or initialize project completion",
+      "approving a concept submission must complete its tasker without completing the overall workflow while other concepts remain",
     );
     check(
       preCompletionState[3] === 2 && preCompletionState[4] === 2,
       "replacing the designation must preserve prior revisions and files",
+    );
+    check(
+      preCompletionState[5].status === ProjectRevisionStatus.APPROVED &&
+        preCompletionState[5].reviewedById === owner.id &&
+        preCompletionState[5].reviewedAt !== null &&
+        preCompletionState[6] === 2,
+      "the designated submission revision and all of its formal files must be approved together",
     );
 
     await notifyConceptFileApproved({
@@ -1364,20 +1381,62 @@ async function main() {
       ),
       "new Stage 3 concepts must be blocked after completion",
     );
-    const postCompletionComment = await createStageTextCommentFast(executorA, {
+    await prisma.$transaction([
+      prisma.projectRevision.update({
+        where: { id: secondRevision.id },
+        data: {
+          status: ProjectRevisionStatus.PENDING_REVIEW,
+          reviewedById: null,
+          reviewedAt: null,
+        },
+      }),
+      prisma.projectAttachment.updateMany({
+        where: { revisionId: secondRevision.id },
+        data: {
+          submissionReviewStatus: "PENDING_REVIEW",
+          reviewedById: null,
+          reviewedAt: null,
+        },
+      }),
+      prisma.projectStage.update({
+        where: { id: conceptA.folder.taskerStageId },
+        data: { status: StageStatus.ONGOING, completedAt: null },
+      }),
+    ]);
+    const legacyApprovalRepair = await markProjectConceptApprovedAttachment(owner, {
       projectId,
-      stageId: conceptA.folder.taskerStageId,
-      body: "Stage 3 history remains available after completion",
+      folderId: conceptA.folder.id,
+      attachmentId: replacementFile.id,
     });
     check(
-      Boolean(postCompletionComment.id),
-      "existing Stage 3 chat behavior must remain available after completion",
+      !isErrorResult(legacyApprovalRepair) && !legacyApprovalRepair.changed,
+      "the already-designated file must reconcile stale pending data after workflow completion",
+    );
+    check(
+      (await prisma.projectStage.findUniqueOrThrow({
+        where: { id: conceptA.folder.taskerStageId },
+      })).status === StageStatus.COMPLETED &&
+        (await prisma.projectAttachment.count({
+          where: {
+            revisionId: secondRevision.id,
+            submissionReviewStatus: "APPROVED",
+          },
+        })) === 2,
+      "legacy reconciliation must restore the completed tasker and approved file statuses",
+    );
+    await expectRejected(
+      createStageTextCommentFast(executorA, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        body: "Approved concept chat must be read-only",
+      }),
+      "an approved concept tasker must be read-only while preserving its existing history",
     );
     check(
       (await prisma.projectRevision.findUniqueOrThrow({
         where: { id: secondRevision.id },
-      })).status === ProjectRevisionStatus.PENDING_REVIEW,
-      "formal concept designation/completion must not mutate ProjectRevision status",
+      })).status === ProjectRevisionStatus.APPROVED,
+      "formal concept approval must persist the approved revision status",
     );
 
     const countsBeforeRetry = await prisma.$transaction([
@@ -1462,6 +1521,16 @@ async function main() {
       assignedExecutorId: executorA.id,
     });
     check(!isErrorResult(collisionConcept), "collision fixture concept must be created");
+    const collisionControlConcept = await createProjectConceptFolder(owner, {
+      projectId: conflictProjectId,
+      stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      name: "Unapproved Collision Control",
+      assignedExecutorId: executorA.id,
+    });
+    check(
+      !isErrorResult(collisionControlConcept),
+      "collision fixture must retain an unapproved concept so automatic progression waits",
+    );
     const zeroApprovalCompletion = await completeStageThreeConcepts(owner, {
       projectId: conflictProjectId,
     });
@@ -1519,7 +1588,7 @@ async function main() {
         order: 40_001,
       },
     });
-    await prisma.projectConceptFolder.create({
+    const collisionStageFourFolder = await prisma.projectConceptFolder.create({
       data: {
         projectId: conflictProjectId,
         workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
@@ -1555,6 +1624,73 @@ async function main() {
           },
         })) === 0,
       "a collision must leave Stage 3 available without a partial promotion",
+    );
+
+    await prisma.projectConceptFolder.delete({
+      where: { id: collisionStageFourFolder.id },
+    });
+    await prisma.projectStage.delete({
+      where: { id: collisionStageFourTasker.id },
+    });
+    await prisma.projectStage.update({
+      where: { id: collisionControlConcept.folder.taskerStageId },
+      data: { actualStartedAt: new Date(), startedById: executorA.id },
+    });
+    const collisionControlRevision = await prisma.projectRevision.create({
+      data: {
+        projectId: conflictProjectId,
+        stageId: collisionControlConcept.folder.taskerStageId,
+        createdById: executorA.id,
+        revisionNumber: 1,
+        title: "Automatic progression submission",
+        status: ProjectRevisionStatus.PENDING_REVIEW,
+      },
+    });
+    const collisionControlFile = await prisma.projectAttachment.create({
+      data: {
+        projectId: conflictProjectId,
+        stageId: collisionControlConcept.folder.taskerStageId,
+        revisionId: collisionControlRevision.id,
+        uploadedById: executorA.id,
+        fileName: `automatic-progression-${runId}.png`,
+        originalFileName: "automatic-progression.png",
+        mimeType: "image/png",
+        fileSize: 16,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/automatic-progression.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.READY,
+      },
+    });
+    const automaticCompletion = await markProjectConceptApprovedAttachment(owner, {
+      projectId: conflictProjectId,
+      folderId: collisionControlConcept.folder.id,
+      attachmentId: collisionControlFile.id,
+    });
+    check(
+      !isErrorResult(automaticCompletion) &&
+        "stageTransition" in automaticCompletion &&
+        automaticCompletion.stageTransition.transitioned,
+      "approving the final pending concept must automatically complete Stage 3 and activate Stage 4",
+    );
+    check(
+      (await prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId: conflictProjectId,
+            stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+          },
+        },
+      })).status === ProjectWorkflowStageStatus.COMPLETED &&
+        (await prisma.projectWorkflowStage.findUniqueOrThrow({
+          where: {
+            projectId_stageKey: {
+              projectId: conflictProjectId,
+              stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            },
+          },
+        })).status === ProjectWorkflowStageStatus.AVAILABLE,
+      "automatic concept completion must persist the Stage 3 to Stage 4 workflow transition",
     );
 
     const normalStage = await prisma.projectStage.create({
