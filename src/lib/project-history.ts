@@ -1535,14 +1535,25 @@ export async function getProjectStageChatMessages(
   }
 
   const requiredPermissionKey = options.requiredPermissionKey ?? "chat.view";
-  assertProjectWorkflowPermission(
-    user,
-    project,
-    requiredPermissionKey,
-    requiredPermissionKey === "compare.view"
-      ? "You do not have permission to compare project submissions."
-      : "You do not have permission to view project chat.",
-  );
+  const conceptComparisonAccess =
+    requiredPermissionKey === "compare.view" && preferredStageId
+      ? await assertConceptTaskerAccessIfNeeded(user, {
+          projectId,
+          stageId: preferredStageId,
+          mode: "view",
+        })
+      : null;
+
+  if (!conceptComparisonAccess) {
+    assertProjectWorkflowPermission(
+      user,
+      project,
+      requiredPermissionKey,
+      requiredPermissionKey === "compare.view"
+        ? "You do not have permission to compare project submissions."
+        : "You do not have permission to view project chat.",
+    );
+  }
   logStageChatTiming("init", "permission check", permissionStartedAt);
 
   const stageLookupStartedAt = performance.now();
@@ -2841,6 +2852,7 @@ export async function createStageRevision(
     projectId: string;
     stageId: string;
     summary?: string;
+    attachmentIds?: string[];
   },
 ) {
   const project = await assertProjectAccess(user, input.projectId, input.stageId);
@@ -2875,6 +2887,110 @@ export async function createStageRevision(
 
   if (!stage.actualStartedAt) {
     throw new Error("Please accept the brief before submitting work.");
+  }
+
+  const concept = await assertConceptTaskerAccessIfNeeded(user, {
+    projectId: input.projectId,
+    stageId: stage.id,
+    mode: "work",
+  });
+  const stagedAttachmentIds = Array.from(
+    new Set((input.attachmentIds ?? []).map((id) => id.trim()).filter(Boolean)),
+  );
+
+  if (concept && stagedAttachmentIds.length === 0) {
+    throw new Error("Concept revisions require at least one submitted file.");
+  }
+
+  if (!concept && stagedAttachmentIds.length > 0) {
+    throw new Error("Staged attachments are only supported for concept revisions.");
+  }
+
+  if (concept) {
+    return withPrismaRetry(async () => {
+      const reviewState = await getStageReviewState(input.projectId, stage.id);
+
+      if (reviewState.pendingReview) {
+        throw new Error(getPendingStageReviewMessage(reviewState.pendingReview));
+      }
+
+      const revisionNumber = reviewState.latestRevisionNumber + 1;
+
+      return prisma.$transaction(async (tx) => {
+        const stagedAttachmentCount = await tx.projectAttachment.count({
+          where: {
+            id: { in: stagedAttachmentIds },
+            projectId: input.projectId,
+            stageId: stage.id,
+            revisionId: null,
+            commentId: null,
+            uploadedById: user.id,
+            assetType: AttachmentAssetType.REVISION_ORIGINAL,
+            status: AttachmentStatus.READY,
+          },
+        });
+
+        if (stagedAttachmentCount !== stagedAttachmentIds.length) {
+          throw new Error(
+            "Every concept revision file must be uploaded successfully before submission.",
+          );
+        }
+
+        const revision = await tx.projectRevision.create({
+          data: {
+            projectId: input.projectId,
+            stageId: stage.id,
+            createdById: user.id,
+            revisionNumber,
+            title: `Revision ${revisionNumber}`,
+            summary: input.summary?.trim() || null,
+            status: ProjectRevisionStatus.PENDING_REVIEW,
+            reviewedById: null,
+            reviewedAt: null,
+            rejectionReason: null,
+          },
+          select: {
+            id: true,
+            title: true,
+            revisionNumber: true,
+            status: true,
+          },
+        });
+        const attached = await tx.projectAttachment.updateMany({
+          where: {
+            id: { in: stagedAttachmentIds },
+            projectId: input.projectId,
+            stageId: stage.id,
+            revisionId: null,
+            commentId: null,
+            uploadedById: user.id,
+            assetType: AttachmentAssetType.REVISION_ORIGINAL,
+            status: AttachmentStatus.READY,
+          },
+          data: { revisionId: revision.id },
+        });
+
+        if (attached.count !== stagedAttachmentIds.length) {
+          throw new Error("Concept revision files changed before submission. Please retry.");
+        }
+
+        await tx.projectActivityLog.create({
+          data: {
+            projectId: input.projectId,
+            stageId: stage.id,
+            revisionId: revision.id,
+            actorId: user.id,
+            action: ActivityLogAction.REVISION_CREATED,
+            metadata: {
+              title: revision.title,
+              stageName: stage.name,
+            },
+          },
+        });
+
+        return revision;
+      });
+    });
   }
 
   const revision = await withPrismaRetry(async () => {
@@ -4078,6 +4194,59 @@ export async function cancelStageRevisionSubmission(
   );
 }
 
+export async function cancelStagedConceptRevisionAttachments(
+  user: AccessUser,
+  input: {
+    projectId: string;
+    stageId: string;
+    attachmentIds: string[];
+  },
+) {
+  await assertConceptTaskerAccessIfNeeded(user, {
+    projectId: input.projectId,
+    stageId: input.stageId,
+    mode: "work",
+  });
+  const attachmentIds = Array.from(
+    new Set(input.attachmentIds.map((id) => id.trim()).filter(Boolean)),
+  );
+
+  if (attachmentIds.length === 0) {
+    return { count: 0 };
+  }
+
+  const attachments = await withPrismaRetry(() =>
+    prisma.projectAttachment.findMany({
+      where: {
+        id: { in: attachmentIds },
+        projectId: input.projectId,
+        stageId: input.stageId,
+        revisionId: null,
+        commentId: null,
+        uploadedById: user.id,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+      },
+      select: { id: true, bucket: true, storageKey: true },
+    }),
+  );
+
+  await Promise.allSettled(
+    attachments.map((attachment) =>
+      deleteObjectIfNeeded(attachment.storageKey, attachment.bucket),
+    ),
+  );
+
+  return withPrismaRetry(() =>
+    prisma.projectAttachment.updateMany({
+      where: {
+        id: { in: attachments.map((attachment) => attachment.id) },
+        revisionId: null,
+      },
+      data: { status: AttachmentStatus.DELETED },
+    }),
+  );
+}
+
 export async function startProjectStageWork(
   user: AccessUser,
   input: {
@@ -4983,7 +5152,11 @@ export async function requestAttachmentUpload(
       const concept = await assertConceptTaskerAccessIfNeeded(user, {
         projectId: input.projectId,
         stageId: input.stageId,
-        mode: isConceptBriefAttachment ? "manage" : "view",
+        mode: isConceptBriefAttachment
+          ? "manage"
+          : input.assetType === AttachmentAssetType.REVISION_ORIGINAL
+            ? "work"
+            : "view",
       });
 
       if (concept && isConceptBriefAttachment) {
@@ -5011,12 +5184,60 @@ export async function requestAttachmentUpload(
   let stageSubmissionProjectCategory: string | null = null;
 
   if (input.assetType === AttachmentAssetType.REVISION_ORIGINAL) {
-    if (!input.revisionId || !input.stageId) {
-      return { error: "Stage uploads require a valid stage and revision." };
+    if (!input.stageId) {
+      return { error: "Stage uploads require a valid stage." };
     }
 
-    const revisionId = input.revisionId;
     const stageId = input.stageId;
+
+    if (!input.revisionId) {
+      try {
+        const project = await assertProjectAccess(user, input.projectId, stageId);
+        const stage = project.stages.find((item) => item.id === stageId);
+        const concept = await assertConceptTaskerAccessIfNeeded(user, {
+          projectId: input.projectId,
+          stageId,
+          mode: "work",
+        });
+
+        if (!concept || !stage?.isTasker) {
+          return { error: "Stage uploads require a valid revision." };
+        }
+
+        assertProjectWorkflowPermission(
+          user,
+          project,
+          getUploadPermissionKey(input.assetType),
+          "Only the assigned concept executor can submit work for review.",
+        );
+
+        if (!stage.actualStartedAt) {
+          return { error: "Please accept the brief before submitting work." };
+        }
+
+        if (stage.status === StageStatus.COMPLETED) {
+          return { error: "This stage is already completed." };
+        }
+
+        if (isProjectStatusCompleted(project.status)) {
+          return { error: "This project is already completed." };
+        }
+
+        if (project.archivedAt) {
+          return { error: "This project has already been archived." };
+        }
+
+        stageSubmissionProjectCategory = project.category;
+      } catch (error) {
+        return {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Only the assigned concept executor can submit work for review.",
+        };
+      }
+    } else {
+    const revisionId = input.revisionId;
 
     const revision = await withPrismaRetry(() =>
       prisma.projectRevision.findFirst({
@@ -5117,6 +5338,7 @@ export async function requestAttachmentUpload(
 
     if (revision.stage.status === StageStatus.COMPLETED) {
       return { error: "This stage is already completed." };
+    }
     }
   } else if (input.assetType === AttachmentAssetType.STAGE_INVOICE) {
     if (!input.stageId) {
@@ -5649,7 +5871,11 @@ export async function completeAttachmentUpload(
     const concept = await assertConceptTaskerAccessIfNeeded(user, {
       projectId: attachment.projectId,
       stageId: attachment.stageId,
-      mode: isConceptBriefAttachment ? "manage" : "view",
+      mode: isConceptBriefAttachment
+        ? "manage"
+        : attachment.assetType === AttachmentAssetType.REVISION_ORIGINAL
+          ? "work"
+          : "view",
     });
 
     if (concept && isConceptBriefAttachment) {

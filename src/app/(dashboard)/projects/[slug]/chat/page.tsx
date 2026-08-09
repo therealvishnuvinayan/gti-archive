@@ -29,10 +29,7 @@ import {
   shouldLogStageChatTimings,
 } from "@/lib/stage-chat-timing";
 import { getLockedStageInfo } from "@/lib/stage-locking";
-import {
-  getProjectConceptAccessContext,
-  getProjectConceptParticipantUserIds,
-} from "@/lib/project-concept-access";
+import type { ProjectConceptChatMode } from "@/lib/project-concepts";
 
 type ProjectChatPageUser = Awaited<ReturnType<typeof requireUser>>;
 type ProjectChatShellProject = NonNullable<
@@ -150,21 +147,20 @@ async function ProjectChatDeferredContent({
   user,
   project,
   pageStartedAt,
+  conceptMode,
 }: {
   slug: string;
   stage?: string;
   user: ProjectChatPageUser;
   project: ProjectChatShellProject;
   pageStartedAt: number;
+  conceptMode?: ProjectConceptChatMode;
 }) {
   const history = await getProjectStageChatMessages(user, slug, stage, {
     projectAccessRecord: getProjectStageChatAccessRecord(project),
   });
-  const conceptContext = stage
-    ? await getProjectConceptAccessContext({ projectId: slug, taskerStageId: stage })
-    : null;
-  const conceptParticipantIds = conceptContext
-    ? new Set(getProjectConceptParticipantUserIds(conceptContext))
+  const conceptParticipantIds = conceptMode
+    ? new Set(conceptMode.participantUserIds)
     : null;
   const workspaceProject = conceptParticipantIds
     ? {
@@ -199,22 +195,18 @@ async function ProjectChatDeferredContent({
   }
 
   const projectContext = getProjectPermissionContext(project);
-  const canManageCollaborators = hasProjectPermission(
-    user,
-    projectContext,
-    "project.manageCollaborators",
-  );
-  const canManageChatVisibility = hasProjectPermission(
-    user,
-    projectContext,
-    "collaborator.pauseVisibility",
-  );
-  const canViewCompareSubmissions = hasProjectPermission(
-    user,
-    projectContext,
-    "compare.view",
-  );
-  const canAddCaptions = canAddProjectCaptions(user, projectContext);
+  const canManageCollaborators = conceptMode
+    ? false
+    : hasProjectPermission(user, projectContext, "project.manageCollaborators");
+  const canManageChatVisibility = conceptMode
+    ? false
+    : hasProjectPermission(user, projectContext, "collaborator.pauseVisibility");
+  const canViewCompareSubmissions = conceptMode
+    ? true
+    : hasProjectPermission(user, projectContext, "compare.view");
+  const canAddCaptions = conceptMode
+    ? conceptMode.canReview
+    : canAddProjectCaptions(user, projectContext);
   const currentUserAvatarSrc = user.avatarUrl
     ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`
     : null;
@@ -238,6 +230,7 @@ async function ProjectChatDeferredContent({
       completionSummary={completionSummary}
       completionWorkflow={null}
       deferCompletionData
+      conceptMode={conceptMode}
     />
   );
 }
@@ -247,11 +240,13 @@ async function ProjectChatShellContent({
   stage,
   taskerStageId,
   userPromise,
+  conceptMode,
 }: {
   slug: string;
   stage?: string;
   taskerStageId?: string;
   userPromise: Promise<ProjectChatPageUser>;
+  conceptMode?: ProjectConceptChatMode;
 }) {
   const pageStartedAt = getStageChatTimingStart();
   const authStartedAt = getStageChatTimingStart();
@@ -261,7 +256,13 @@ async function ProjectChatShellContent({
   const project = await getProjectChatShellById(
     slug,
     user,
-    taskerStageId ? { taskerStageIds: [taskerStageId] } : undefined,
+    taskerStageId
+      ? {
+          taskerStageIds: [taskerStageId],
+          participantUserIds: conceptMode?.participantUserIds,
+          includeStageInvoiceData: !conceptMode,
+        }
+      : undefined,
   );
   logStageChatTiming("init", "project chat shell lookup", projectLookupStartedAt, {
     projectId: slug,
@@ -305,6 +306,7 @@ async function ProjectChatShellContent({
         user={user}
         project={project}
         pageStartedAt={pageStartedAt}
+        conceptMode={conceptMode}
       />
     </Suspense>
   );
@@ -329,10 +331,12 @@ export function ProjectChatRoute({
   slug,
   stage,
   taskerStageId,
+  conceptMode,
 }: {
   slug: string;
   stage?: string;
   taskerStageId?: string;
+  conceptMode?: ProjectConceptChatMode;
 }) {
   const userPromise = requireUser();
 
@@ -348,6 +352,7 @@ export function ProjectChatRoute({
           stage={stage}
           taskerStageId={taskerStageId}
           userPromise={userPromise}
+          conceptMode={conceptMode}
         />
       </Suspense>
     </DashboardLayout>

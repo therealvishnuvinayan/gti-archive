@@ -10,6 +10,7 @@ import {
 import {
   canManageProjectConcept,
   canViewProjectConcept,
+  getProjectConceptParticipantUserIds,
   type ConceptAccessContext,
 } from "@/lib/project-concept-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -44,6 +45,27 @@ export type ProjectConceptFolderRecord = {
     mimeType: string;
     fileSize: number;
   }>;
+};
+
+export type ProjectConceptChatMode = {
+  type: "concept";
+  folderId: string;
+  workflowStageKey: ConceptWorkflowStageKey;
+  stageNumber: 3 | 4;
+  stageLabel: "Stage 3 - Initial Concept" | "Stage 4 - Final Concept";
+  conceptName: string;
+  assignedExecutor: {
+    id: string;
+    name: string | null;
+    email: string;
+    avatarUrl: string | null;
+  } | null;
+  canManage: boolean;
+  canReview: boolean;
+  isAssignedExecutor: boolean;
+  participantUserIds: string[];
+  backHref: string;
+  compareHref: string;
 };
 
 export const DEFAULT_CONCEPT_FOLDER_NAME = "Concept 1";
@@ -568,6 +590,13 @@ export async function getProjectConceptChatContext(
         name: true,
         taskerStageId: true,
         assignedExecutorId: true,
+        assignedExecutor: {
+          select: {
+            user: {
+              select: { id: true, name: true, email: true, avatarUrl: true },
+            },
+          },
+        },
         project: { select: projectStageAccessSelect },
       },
     }),
@@ -588,6 +617,16 @@ export async function getProjectConceptChatContext(
     return null;
   }
 
+  const accessContext = getConceptAccessContext(
+    record.project,
+    record,
+    input.stageKey,
+  );
+  const stageNumber =
+    input.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION ? 3 : 4;
+  const conceptPath = `/projects/${encodeURIComponent(input.projectId)}/stages/${stageNumber}/concepts/${encodeURIComponent(record.id)}`;
+  const canManage = canManageProjectConcept(user, accessContext);
+
   return {
     projectId: input.projectId,
     workflowStageKey: input.stageKey,
@@ -596,5 +635,23 @@ export async function getProjectConceptChatContext(
       name: record.name,
       taskerStageId: record.taskerStageId,
     },
+    chatMode: {
+      type: "concept",
+      folderId: record.id,
+      workflowStageKey: input.stageKey,
+      stageNumber,
+      stageLabel:
+        stageNumber === 3
+          ? "Stage 3 - Initial Concept"
+          : "Stage 4 - Final Concept",
+      conceptName: record.name,
+      assignedExecutor: record.assignedExecutor?.user ?? null,
+      canManage,
+      canReview: canManage,
+      isAssignedExecutor: record.assignedExecutorId === user.id,
+      participantUserIds: getProjectConceptParticipantUserIds(accessContext),
+      backHref: `/projects/${encodeURIComponent(input.projectId)}/stages/${stageNumber}`,
+      compareHref: `${conceptPath}/compare`,
+    } satisfies ProjectConceptChatMode,
   };
 }

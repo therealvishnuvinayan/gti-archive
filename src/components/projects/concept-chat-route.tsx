@@ -35,6 +35,7 @@ export async function ConceptChatRoute({
       slug={projectId}
       stage={context.folder.taskerStageId}
       taskerStageId={context.folder.taskerStageId}
+      conceptMode={context.chatMode}
     />
   );
 }

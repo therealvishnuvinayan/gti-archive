@@ -1165,6 +1165,8 @@ function buildSyntheticStages(project: ProjectWithCreator): ProjectStageWithStar
 
 type ProjectStageSelection = {
   taskerStageIds?: readonly string[];
+  participantUserIds?: readonly string[];
+  includeStageInvoiceData?: boolean;
 };
 
 function getProjectStages(
@@ -3282,6 +3284,9 @@ export async function getProjectChatShellById(
   options: ProjectStageSelection = {},
 ) {
   const taskerStageIds = [...(options.taskerStageIds ?? [])].sort();
+  const participantUserIds = [...(options.participantUserIds ?? [])].sort();
+  const limitParticipants = options.participantUserIds !== undefined;
+  const includeStageInvoiceData = options.includeStageInvoiceData !== false;
   const project = await unstable_cache(
     async () =>
       withPrismaRetry(() =>
@@ -3314,6 +3319,9 @@ export async function getProjectChatShellById(
               },
             },
             coOwners: {
+              where: limitParticipants
+                ? { userId: { in: participantUserIds } }
+                : undefined,
               include: {
                 user: {
                   select: {
@@ -3326,6 +3334,9 @@ export async function getProjectChatShellById(
               },
             },
             executors: {
+              where: limitParticipants
+                ? { userId: { in: participantUserIds } }
+                : undefined,
               include: {
                 user: {
                   select: {
@@ -3359,6 +3370,9 @@ export async function getProjectChatShellById(
                   },
                 },
                 invoiceRequests: {
+                  where: includeStageInvoiceData
+                    ? undefined
+                    : { id: { in: [] } },
                   include: {
                     requestedBy: {
                       select: {
@@ -3377,6 +3391,9 @@ export async function getProjectChatShellById(
               },
             },
             collaborators: {
+              where: limitParticipants
+                ? { userId: { in: participantUserIds } }
+                : undefined,
               orderBy: {
                 createdAt: "asc",
               },
@@ -3398,10 +3415,12 @@ export async function getProjectChatShellById(
                     ? { in: taskerStageIds }
                     : undefined,
                 assetType: {
-                  in: [
-                    "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
-                    "STAGE_INVOICE" as AttachmentAssetType,
-                  ],
+                  in: includeStageInvoiceData
+                    ? [
+                        "GENERAL_PROJECT_ASSET" as AttachmentAssetType,
+                        "STAGE_INVOICE" as AttachmentAssetType,
+                      ]
+                    : ["GENERAL_PROJECT_ASSET" as AttachmentAssetType],
                 },
                 status: "READY" as AttachmentStatus,
               },
@@ -3435,6 +3454,8 @@ export async function getProjectChatShellById(
       currentUser.id,
       currentUser.role,
       taskerStageIds.join(",") || "workflow-stages",
+      participantUserIds.join(",") || "all-participants",
+      includeStageInvoiceData ? "with-stage-invoices" : "without-stage-invoices",
     ],
     { revalidate: 20, tags: [PROJECTS_CACHE_TAG] },
   )();

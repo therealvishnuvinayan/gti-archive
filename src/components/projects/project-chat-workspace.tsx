@@ -15,6 +15,7 @@ import { flushSync } from "react-dom";
 import { useDropzone, type Accept } from "react-dropzone";
 import {
   CheckCircle2,
+  ArrowLeft,
   Download,
   FileText,
   GitCompare,
@@ -36,6 +37,7 @@ import {
 import {
   acceptStageBriefAction,
   cancelStageRevisionSubmissionAction,
+  cancelStagedConceptRevisionAttachmentsAction,
   completeProjectArchiveAction,
   createStageRevisionAction,
   deleteStageCommentAction,
@@ -116,6 +118,7 @@ import type {
 import type { ProjectCompletionWorkflowRecord } from "@/lib/project-completion";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageHistoryRecord } from "@/lib/project-history";
+import type { ProjectConceptChatMode } from "@/lib/project-concepts";
 import type {
   StageChatRealtimeMessageCreatedPayload,
   StageChatRealtimeMessageDeletedPayload,
@@ -156,6 +159,7 @@ type ProjectChatWorkspaceProps = {
   completionSummary: ProjectCompletionSummary;
   completionWorkflow: ProjectCompletionWorkflowRecord | null;
   deferCompletionData?: boolean;
+  conceptMode?: ProjectConceptChatMode;
 };
 
 type PendingFile = {
@@ -187,6 +191,26 @@ function isInvoiceUploadedEntry(entry: ProjectChatEntry) {
     (entry.title === "Invoice uploaded" ||
       entry.body.toLowerCase().includes("uploaded invoice for"))
   );
+}
+
+function isConceptIrrelevantSystemEntry(entry: ProjectChatEntry) {
+  if (entry.kind !== "system") {
+    return false;
+  }
+
+  const text = `${entry.title ?? ""} ${entry.body}`.toLowerCase();
+
+  return [
+    "invoice requested",
+    "invoice uploaded",
+    "project completion",
+    "authority approval",
+    "copyright transfer",
+    "archive preparation",
+    "project archived",
+    "stage completed",
+    "next stage",
+  ].some((phrase) => text.includes(phrase));
 }
 
 type DeletedMessageOverride = {
@@ -1051,17 +1075,19 @@ function buildComparisonHref(
   stageId: string | null | undefined,
   baseAttachmentId: string,
   compareAttachmentId: string,
+  conceptCompareHref?: string,
 ) {
   const searchParams = new URLSearchParams();
 
-  if (stageId) {
+  if (stageId && !conceptCompareHref) {
     searchParams.set("stage", stageId);
   }
 
   searchParams.set("base", baseAttachmentId);
   searchParams.set("compare", compareAttachmentId);
 
-  return `/projects/${projectId}/compare?${searchParams.toString()}`;
+  const basePath = conceptCompareHref ?? `/projects/${projectId}/compare`;
+  return `${basePath}?${searchParams.toString()}`;
 }
 
 function getRevisionStatusMeta(status: RevisionReviewState) {
@@ -1561,6 +1587,61 @@ function StageBriefContextCard({
               </span>
             )}
           </div>
+        </CardContent>
+      </Card>
+    </TimelineFrame>
+  );
+}
+
+function ConceptBriefContextCard({
+  brief,
+  attachments,
+  assignedExecutorName,
+  hasAcceptedBrief,
+}: {
+  brief: string;
+  attachments: DisplayAttachmentRecord[];
+  assignedExecutorName: string;
+  hasAcceptedBrief: boolean;
+}) {
+  return (
+    <TimelineFrame
+      alignment="left"
+      width="wide"
+      gutterIcon={<FileText className="h-4 w-4" />}
+    >
+      <Card className="w-full overflow-hidden rounded-[20px] rounded-bl-[7px] border border-[#cfe3d2] bg-white shadow-[0_12px_30px_rgba(18,35,23,0.07)]">
+        <div className="flex flex-col gap-3 border-b border-[#e4ece5] bg-[linear-gradient(135deg,#f4fbf5,#ffffff)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div>
+            <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-brand">
+              Concept Brief
+            </p>
+            <p className="mt-1 text-[12px] text-[#5d6b61]">
+              Assigned to {assignedExecutorName}
+            </p>
+          </div>
+          <span
+            className={`w-fit rounded-full px-3 py-1.5 text-[10px] font-[800] uppercase tracking-[0.08em] ${
+              hasAcceptedBrief
+                ? "bg-[#e7f5eb] text-[#247247]"
+                : "bg-[#fff3d6] text-[#8a5718]"
+            }`}
+          >
+            {hasAcceptedBrief ? "Accepted · Work started" : "Awaiting acceptance"}
+          </span>
+        </div>
+        <CardContent className="space-y-4 px-4 py-4 sm:px-5">
+          <p className="whitespace-pre-wrap break-words text-[13px] leading-6 text-[#26312a]">
+            {brief || "No concept brief has been added."}
+          </p>
+          {attachments.length > 0 ? (
+            <div>
+              <p className="mb-2 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#718076]">
+                Brief Attachments
+              </p>
+              <AttachmentHistoryList attachments={attachments} compact />
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </TimelineFrame>
@@ -2317,8 +2398,10 @@ export function ProjectChatWorkspace({
   completionSummary,
   completionWorkflow,
   deferCompletionData = false,
+  conceptMode,
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
+  const isConceptMode = conceptMode?.type === "concept";
   const [collaborators, setCollaborators] = useState<ProjectCollaboratorRecord[]>(
     project.collaborators,
   );
@@ -2456,7 +2539,7 @@ export function ProjectChatWorkspace({
     workflow: completionWorkflow,
   });
   const [isCompletionDataLoading, setIsCompletionDataLoading] =
-    useState(deferCompletionData);
+    useState(deferCompletionData && !isConceptMode);
   const [projectCompletionError, setProjectCompletionError] = useState<string | null>(null);
   const [completionChecklistOpen, setCompletionChecklistOpen] = useState(false);
   const [isPreparingProjectCompletion, setIsPreparingProjectCompletion] = useState(false);
@@ -2695,7 +2778,8 @@ export function ProjectChatWorkspace({
             attachments: [],
           };
         })
-        .filter((message) => !isLegacyBriefContextMessage(message));
+        .filter((message) => !isLegacyBriefContextMessage(message))
+        .filter((message) => !isConceptMode || !isConceptIrrelevantSystemEntry(message));
     },
     [
       deletedMessageOverrides,
@@ -2703,6 +2787,7 @@ export function ProjectChatWorkspace({
       serverEntryIdsWithLocalOverrides,
       visibleConfirmedComments,
       visibleOptimisticComments,
+      isConceptMode,
     ],
   );
   const stageSubmissions = useMemo(
@@ -2808,7 +2893,7 @@ export function ProjectChatWorkspace({
     let cancelled = false;
     const controller = new AbortController();
 
-    if (!deferCompletionData) {
+    if (isConceptMode || !deferCompletionData) {
       setCompletionData({
         summary: completionSummary,
         workflow: completionWorkflow,
@@ -2839,6 +2924,7 @@ export function ProjectChatWorkspace({
     completionSummary,
     completionWorkflow,
     deferCompletionData,
+    isConceptMode,
     loadCompletionData,
   ]);
 
@@ -2875,11 +2961,13 @@ export function ProjectChatWorkspace({
       ),
     [currentUserId, project.collaborators],
   );
-  const canReviewSubmissions = project.ownerId === currentUserId;
+  const canReviewSubmissions = conceptMode
+    ? conceptMode.canReview
+    : project.ownerId === currentUserId;
   const isProjectCompleted = completionState.isCompleted;
   const isFinalStage =
     Boolean(activeStage?.id) && activeStage?.id === completionState.finalStageId;
-  const canArchiveProject = project.ownerId === currentUserId;
+  const canArchiveProject = !isConceptMode && project.ownerId === currentUserId;
   const canCompleteProject =
     canArchiveProject && completionState.canCompleteProject && !isProjectCompleted;
   const shouldExpectCompletionWorkflow =
@@ -2908,7 +2996,9 @@ export function ProjectChatWorkspace({
         (stage) => `${stage.name} is ${stage.status.toLowerCase()}.`,
       );
   const showProjectCompletionStickyAction =
-    canUseProjectCompletionWorkflow && Boolean(effectiveCompletionWorkflow);
+    !isConceptMode &&
+    canUseProjectCompletionWorkflow &&
+    Boolean(effectiveCompletionWorkflow);
   const projectCompletionStickyAction = (() => {
     if (
       effectiveCompletionWorkflow?.canUploadApprovalProof &&
@@ -2954,6 +3044,7 @@ export function ProjectChatWorkspace({
     };
   })();
   const showProjectCompletionLockedNotice =
+    !isConceptMode &&
     !isProjectCompleted &&
     !completionState.allStagesCompleted &&
     completionState.incompleteStages.length > 0 &&
@@ -2963,8 +3054,10 @@ export function ProjectChatWorkspace({
   const stageInvoiceAttachment = activeStage?.invoiceAttachment ?? null;
   const isProjectExecutor = useMemo(
     () =>
-      project.executors.some((executor) => executor.id === currentUserId),
-    [currentUserId, project.executors],
+      conceptMode
+        ? conceptMode.isAssignedExecutor
+        : project.executors.some((executor) => executor.id === currentUserId),
+    [conceptMode, currentUserId, project.executors],
   );
   const canSubmitWorkAsProjectExecutor = isProjectExecutor;
   const stageInvoiceRequired = Boolean(activeStage?.invoiceRequired);
@@ -2977,6 +3070,7 @@ export function ProjectChatWorkspace({
   const isRequestedStageInvoiceUploader =
     Boolean(stageInvoiceRequest) && stageInvoiceRequest?.requestedFromId === currentUserId;
   const canUploadStageInvoice =
+    !isConceptMode &&
     Boolean(activeStage?.id) &&
     stageInvoiceRequired &&
     !stageInvoiceAttachment &&
@@ -2996,7 +3090,7 @@ export function ProjectChatWorkspace({
       isRequestedStageInvoiceUploader ||
       isStageInvoiceUploader);
   const canRequestStageInvoice =
-    isProjectOwner && stageInvoiceMissing && hasApprovedStageSubmission;
+    !isConceptMode && isProjectOwner && stageInvoiceMissing && hasApprovedStageSubmission;
   const showPostApprovalInvoiceAction =
     canRequestStageInvoice && !stageInvoiceRequest && !isStageCompleted;
   const canCompleteStageAfterInvoice =
@@ -3006,6 +3100,7 @@ export function ProjectChatWorkspace({
     !isStageCompleted &&
     !isProjectCompleted;
   const showInvoiceUploadedNextAction =
+    !isConceptMode &&
     Boolean(stageInvoiceAttachment) &&
     (isProjectOwner || canReviewSubmissions) &&
     !completionState.allStagesCompleted &&
@@ -3081,9 +3176,9 @@ export function ProjectChatWorkspace({
     Boolean(activeStage) &&
     !isStageCompleted &&
     !isProjectCompleted;
-  const projectBriefText = project.description.trim();
+  const projectBriefText = isConceptMode ? "" : project.description.trim();
   const stageBriefText = activeStage?.description.trim() ?? "";
-  const projectBriefAttachments = project.attachments;
+  const projectBriefAttachments = isConceptMode ? [] : project.attachments;
   const stageBriefAttachments = activeStage?.briefAttachments ?? [];
   const hasRevisionEntries = displayedMessages.some((message) => message.kind === "revision");
   const hasBriefAcceptedSystemMessage = displayedMessages.some(
@@ -6267,6 +6362,11 @@ export function ProjectChatWorkspace({
       return;
     }
 
+    if (isConceptMode && pendingRevisionFiles.length === 0) {
+      setRevisionDialogError("Attach at least one concept submission file before submitting.");
+      return;
+    }
+
     setRevisionDialogError(null);
     setComposerError(null);
     setIsUploadingRevision(true);
@@ -6310,30 +6410,13 @@ export function ProjectChatWorkspace({
     ]);
 
     try {
-      const revisionResult = await createStageRevisionAction({
-        projectId: project.id,
-        stageId: activeStageId,
-        summary,
-      });
-
-      if ("error" in revisionResult) {
-        throw new Error(revisionResult.error);
-      }
-
-      updateOptimisticComment(optimisticRevisionId, (entry) => ({
-        ...entry,
-        title: revisionResult.title,
-        revisionNumber: revisionResult.revisionNumber,
-        serverEntryId: revisionResult.revisionId,
-      }));
-
-      const uploadResults = await Promise.allSettled(
+      const uploadRevisionFiles = (revisionId?: string) => Promise.allSettled(
         filesToUpload.map((pendingFile) => {
           return uploadAssetFile({
             file: pendingFile.file,
             projectId: project.id,
             stageId: activeStageId,
-            revisionId: revisionResult.revisionId,
+            revisionId,
             assetType: "REVISION_ORIGINAL",
             onUploadStart: (uploadFile) => {
               updateOptimisticAttachment(optimisticRevisionId, pendingFile.id, (attachment) => ({
@@ -6383,29 +6466,99 @@ export function ProjectChatWorkspace({
             });
         }),
       );
+      let revisionResult: {
+        revisionId: string;
+        title: string;
+        revisionNumber: number;
+      };
+      let successfulUploads: Array<{
+        pendingFile: PendingFile;
+        attachmentId: string;
+        uploadedFile: File;
+      }>;
 
-      const failedUploads = uploadResults.filter(
-        (result): result is PromiseRejectedResult => result.status === "rejected",
-      );
-      const successfulUploads = uploadResults.flatMap((result) =>
-        result.status === "fulfilled" ? [result.value] : [],
-      );
+      if (isConceptMode) {
+        const uploadResults = await uploadRevisionFiles();
+        const failedUploads = uploadResults.filter(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
+        );
+        successfulUploads = uploadResults.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value] : [],
+        );
 
-      if (failedUploads.length > 0) {
-        const cancelResult = await cancelStageRevisionSubmissionAction({
-          projectId: project.id,
-          stageId: activeStageId,
-          revisionId: revisionResult.revisionId,
-        });
-
-        if ("error" in cancelResult) {
-          throw new Error(cancelResult.error);
+        if (failedUploads.length > 0) {
+          if (successfulUploads.length > 0) {
+            await cancelStagedConceptRevisionAttachmentsAction({
+              projectId: project.id,
+              stageId: activeStageId,
+              attachmentIds: successfulUploads.map((result) => result.attachmentId),
+            });
+          }
+          throw new Error(
+            "Revision was not submitted because one or more files failed to upload. Please retry.",
+          );
         }
 
-        throw new Error(
-          "Revision was not created because one or more file uploads failed. Please try again.",
+        const createdRevision = await createStageRevisionAction({
+          projectId: project.id,
+          stageId: activeStageId,
+          summary,
+          attachmentIds: successfulUploads.map((result) => result.attachmentId),
+        });
+
+        if ("error" in createdRevision) {
+          await cancelStagedConceptRevisionAttachmentsAction({
+            projectId: project.id,
+            stageId: activeStageId,
+            attachmentIds: successfulUploads.map((result) => result.attachmentId),
+          });
+          throw new Error(createdRevision.error);
+        }
+
+        revisionResult = createdRevision;
+      } else {
+        const createdRevision = await createStageRevisionAction({
+          projectId: project.id,
+          stageId: activeStageId,
+          summary,
+        });
+
+        if ("error" in createdRevision) {
+          throw new Error(createdRevision.error);
+        }
+
+        revisionResult = createdRevision;
+        const uploadResults = await uploadRevisionFiles(revisionResult.revisionId);
+        const failedUploads = uploadResults.filter(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
         );
+        successfulUploads = uploadResults.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value] : [],
+        );
+
+        if (failedUploads.length > 0) {
+          const cancelResult = await cancelStageRevisionSubmissionAction({
+            projectId: project.id,
+            stageId: activeStageId,
+            revisionId: revisionResult.revisionId,
+          });
+
+          if ("error" in cancelResult) {
+            throw new Error(cancelResult.error);
+          }
+
+          throw new Error(
+            "Revision was not created because one or more file uploads failed. Please try again.",
+          );
+        }
       }
+
+      updateOptimisticComment(optimisticRevisionId, (entry) => ({
+        ...entry,
+        title: revisionResult.title,
+        revisionNumber: revisionResult.revisionNumber,
+        serverEntryId: revisionResult.revisionId,
+      }));
 
       setConfirmedComments((current) => [
         ...current,
@@ -6956,7 +7109,47 @@ export function ProjectChatWorkspace({
   return (
     <section className="min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-11rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
-      <div className="grid min-h-0 gap-4 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]">
+      {conceptMode ? (
+        <div className="mb-3 rounded-[22px] border border-[#dbe7dd] bg-white/94 px-3 py-3 shadow-[0_10px_26px_rgba(18,35,23,0.05)] sm:px-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <Button asChild variant="secondary" size="sm" className="w-fit rounded-full">
+              <Link href={conceptMode.backHref}>
+                <ArrowLeft className="h-4 w-4" />
+                Back to Stage {conceptMode.stageNumber}
+              </Link>
+            </Button>
+            <dl className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ["Project", project.title],
+                ["Stage", conceptMode.stageLabel],
+                ["Concept", conceptMode.conceptName],
+                [
+                  "Assigned Executor",
+                  conceptMode.assignedExecutor?.name?.trim() ||
+                    conceptMode.assignedExecutor?.email ||
+                    "Unassigned",
+                ],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0 rounded-[14px] bg-[#f7faf6] px-3 py-2">
+                  <dt className="text-[9px] font-[800] uppercase tracking-[0.08em] text-[#718076]">
+                    {label}
+                  </dt>
+                  <dd className="mt-1 truncate text-[12px] font-[750] text-[#1c2a21]">
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+      ) : null}
+      <div
+        className={`grid min-h-0 gap-4 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full ${
+          isConceptMode
+            ? "[@media_(min-width:1680px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]"
+            : "[@media_(min-width:1536px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]"
+        }`}
+      >
         <div className="flex min-h-0 min-w-0 flex-col gap-2 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:gap-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
           <div
             ref={chatScrollRef}
@@ -6977,6 +7170,8 @@ export function ProjectChatWorkspace({
                   <span>{realtimeStatusLabel}</span>
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                  {!isConceptMode ? (
+                    <>
                   <Button
                     type="button"
                     variant={translateAllEnabled ? "default" : "secondary"}
@@ -7007,6 +7202,8 @@ export function ProjectChatWorkspace({
                     disabled={isTranslatingAll || isLoadingEarlierMessages}
                     onSelect={(language) => setSelectedOutputLanguageCode(language.code)}
                   />
+                    </>
+                  ) : null}
                   {realtimeEnabled || onlineUsers.length > 0 ? (
                     <div
                       className="flex min-w-0 items-center gap-2 rounded-full border border-[#cfe0d4] bg-white/88 px-2.5 py-1 text-[#2f6f4b] shadow-[0_8px_18px_rgba(18,35,23,0.06)]"
@@ -7038,7 +7235,7 @@ export function ProjectChatWorkspace({
                   ) : null}
                 </div>
               </div>
-              {translateAllError ? (
+              {!isConceptMode && translateAllError ? (
                 <div className="mb-2 rounded-[16px] border border-[#f0d4d2] bg-[#fff5f4] px-4 py-3 text-left text-[12px] font-semibold text-[#a64038]">
                   {translateAllError}
                 </div>
@@ -7051,7 +7248,7 @@ export function ProjectChatWorkspace({
                         Action required
                       </p>
                       <p className="mt-1 text-[14px] font-[800] leading-5 text-[#173120]">
-                        Accept the brief to start work on {activeStage?.label ?? "this stage"}.
+                      Accept the brief to start work on {activeStage?.label ?? "this stage"}.
                       </p>
                     </div>
                     <Button
@@ -7066,7 +7263,34 @@ export function ProjectChatWorkspace({
                       {isAcceptingBrief ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : null}
-                      Accept Brief
+                      {isConceptMode ? "Accept Brief / Start Work" : "Accept Brief"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              {isConceptMode && showSubmitWorkAction && hasAcceptedBrief ? (
+                <div className="sticky top-[56px] z-20 mb-2 flex flex-col gap-2 rounded-[18px] border border-[#dbe7dd] bg-white/96 p-2.5 shadow-[0_14px_32px_rgba(22,93,56,0.1)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+                  <p className="min-w-0 text-[12px] font-[650] text-[#536158]">
+                    {submitWorkDisabledReason ?? "Submit the next concept revision for review."}
+                  </p>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {canCompareSubmissions && conceptMode ? (
+                      <Button asChild variant="secondary" size="sm" className="rounded-full">
+                        <Link href={conceptMode.compareHref}>
+                          <GitCompare className="h-4 w-4" />
+                          Compare
+                        </Link>
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={openRevisionDialog}
+                      disabled={!canSubmitNewRevision || isUploadingRevision}
+                    >
+                      <Upload className="h-4 w-4" />
+                      Submit Work
                     </Button>
                   </div>
                 </div>
@@ -7437,7 +7661,18 @@ export function ProjectChatWorkspace({
             />
           ) : null}
 
-          {showBriefContextCard && activeStage ? (
+          {isConceptMode && conceptMode && activeStage ? (
+            <ConceptBriefContextCard
+              brief={stageBriefText}
+              attachments={stageBriefAttachments}
+              assignedExecutorName={
+                conceptMode.assignedExecutor?.name?.trim() ||
+                conceptMode.assignedExecutor?.email ||
+                "Unassigned"
+              }
+              hasAcceptedBrief={hasAcceptedBriefInTimeline}
+            />
+          ) : showBriefContextCard && activeStage ? (
             <StageBriefContextCard
               projectBriefText={projectBriefText}
               stageBriefText={stageBriefText}
@@ -7828,6 +8063,7 @@ export function ProjectChatWorkspace({
                   activeStage?.id,
                   comparison.baseAttachmentId,
                   comparison.compareAttachmentId,
+                  conceptMode?.compareHref,
                 );
                 const translatedComparisonBody = getTranslatedStageChatText(
                   message.id,
@@ -8472,6 +8708,8 @@ export function ProjectChatWorkspace({
                   >
                     <Maximize2 className="h-4.5 w-4.5" />
                   </Button>
+                  {!isConceptMode ? (
+                    <>
                   <Button
                     type="button"
                     variant="ghost"
@@ -8516,6 +8754,8 @@ export function ProjectChatWorkspace({
                       <Mic className="h-5 w-5" />
                     )}
                   </Button>
+                    </>
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghost"
@@ -8548,7 +8788,84 @@ export function ProjectChatWorkspace({
           )}
         </div>
 
-        <aside className="no-scrollbar min-w-0 space-y-4 pr-1 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-y-auto [@media_(min-width:1536px)_and_(min-height:900px)]:overscroll-contain">
+        <aside
+          className={`no-scrollbar min-w-0 space-y-4 pr-1 ${
+            isConceptMode
+              ? "hidden [@media_(min-width:1680px)_and_(min-height:900px)]:block [@media_(min-width:1680px)_and_(min-height:900px)]:h-full [@media_(min-width:1680px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1680px)_and_(min-height:900px)]:overflow-y-auto"
+              : "[@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-y-auto [@media_(min-width:1536px)_and_(min-height:900px)]:overscroll-contain"
+          }`}
+        >
+          {conceptMode ? (
+            <>
+              <Card className="rounded-[20px] border border-brand/35">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-[18px] font-semibold tracking-tight text-brand">
+                    Concept Status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 pt-0">
+                  <dl className="space-y-2 text-[12px] text-[#344139]">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="font-semibold text-[#6b776e]">Assigned Executor</dt>
+                      <dd className="truncate font-[750]">
+                        {conceptMode.assignedExecutor?.name?.trim() ||
+                          conceptMode.assignedExecutor?.email ||
+                          "Unassigned"}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="font-semibold text-[#6b776e]">Work</dt>
+                      <dd className="font-[750]">{stageExecutionStatus}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="font-semibold text-[#6b776e]">Revisions</dt>
+                      <dd className="font-[750]">{stageRevisionCount}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="font-semibold text-[#6b776e]">Concept files</dt>
+                      <dd className="font-[750]">{stageSubmissions.length}</dd>
+                    </div>
+                  </dl>
+                  {showSubmitWorkAction ? (
+                    <div className="space-y-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="w-full rounded-full"
+                        onClick={openRevisionDialog}
+                        disabled={!canSubmitNewRevision || isUploadingRevision}
+                      >
+                        <Upload className="h-4 w-4" />
+                        Submit Work
+                      </Button>
+                      {submitWorkDisabledReason ? (
+                        <p className="text-[11px] leading-4 text-[#6f786f]">
+                          {submitWorkDisabledReason}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {canCompareSubmissions ? (
+                    <Button asChild size="sm" variant="secondary" className="w-full rounded-full">
+                      <Link href={conceptMode.compareHref}>
+                        <GitCompare className="h-4 w-4" />
+                        Compare Submissions
+                      </Link>
+                    </Button>
+                  ) : canViewCompareSubmissions ? (
+                    <p className="rounded-[14px] bg-[#f7faf6] px-3 py-2 text-[11px] leading-4 text-[#6f786f]">
+                      Upload at least two valid submissions to compare.
+                    </p>
+                  ) : null}
+                </CardContent>
+              </Card>
+              <StageTimeRemainingCard
+                actualStartedAt={activeStage?.actualStartedAtValue ?? null}
+                stageDueAt={activeStage?.plannedDueAtValue ?? null}
+              />
+            </>
+          ) : (
+            <>
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">
@@ -8866,6 +9183,8 @@ export function ProjectChatWorkspace({
               />
             </>
           ) : null}
+            </>
+          )}
         </aside>
       </div>
       {expandedMessageEditorOpen ? (
@@ -9019,8 +9338,12 @@ export function ProjectChatWorkspace({
       />
       <ConfirmationDialog
         isOpen={acceptBriefDialogOpen}
-        title="Accept brief and start work?"
-        description="This confirms that you have reviewed the Project Brief and Stage Brief and are starting work on this stage. The stage timer will start from this moment."
+        title={isConceptMode ? "Accept concept brief and start work?" : "Accept brief and start work?"}
+        description={
+          isConceptMode
+            ? "This confirms that you reviewed the Concept Brief and are starting work on this concept. The existing tasker timer starts from this moment."
+            : "This confirms that you have reviewed the Project Brief and Stage Brief and are starting work on this stage. The stage timer will start from this moment."
+        }
         confirmLabel="Accept & Start Work"
         pending={isAcceptingBrief}
         error={acceptBriefError ?? undefined}
@@ -9116,6 +9439,7 @@ export function ProjectChatWorkspace({
           void handleConfirmDeleteMessage();
         }}
       />
+      {!isConceptMode ? <>
       <BriefDialog
         isOpen={projectBriefDialogOpen}
         labelledById="project-brief-title"
@@ -9140,7 +9464,8 @@ export function ProjectChatWorkspace({
         attachments={stageBriefAttachments}
         onClose={() => setStageBriefDialogOpen(false)}
       />
-      {completionChecklistOpen ? (
+      </> : null}
+      {!isConceptMode && completionChecklistOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="flex h-full max-h-[90vh] w-full max-w-[1120px] flex-col rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 border-b border-[#e7ede7] p-6 sm:p-7">
@@ -9567,7 +9892,7 @@ export function ProjectChatWorkspace({
               </Button>
             </CardHeader>
             <CardContent className="space-y-4 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
-              {canUploadStageInvoice ? (
+              {!isConceptMode && canUploadStageInvoice ? (
                 <button
                   type="button"
                   onClick={openStageInvoiceUpload}
@@ -9636,7 +9961,7 @@ export function ProjectChatWorkspace({
           </Card>
         </div>
       ) : null}
-      {invoiceRequestDialogOpen ? (
+      {!isConceptMode && invoiceRequestDialogOpen ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="w-full max-w-[600px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
             <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
@@ -9745,7 +10070,9 @@ export function ProjectChatWorkspace({
                   Submit Work for Review
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  Describe the work submission and attach supporting files if needed.
+                  {isConceptMode
+                    ? "Describe the concept revision and attach at least one submission file. The review notification is sent only after every file is ready."
+                    : "Describe the work submission and attach supporting files if needed."}
                 </p>
               </div>
               <Button
@@ -9826,7 +10153,9 @@ export function ProjectChatWorkspace({
                     </div>
                   ) : (
                     <div className="rounded-[18px] border border-dashed border-[#d8e1d8] px-4 py-5 text-[13px] text-[#7a837b]">
-                      No files attached yet.
+                      {isConceptMode
+                        ? "At least one concept submission file is required."
+                        : "No files attached yet."}
                     </div>
                   )}
                 </div>
@@ -9847,7 +10176,11 @@ export function ProjectChatWorkspace({
                     onClick={() => {
                       void handleCreateRevision();
                     }}
-                    disabled={isUploadingRevision || !canSubmitNewRevision}
+                    disabled={
+                      isUploadingRevision ||
+                      !canSubmitNewRevision ||
+                      (isConceptMode && pendingRevisionFiles.length === 0)
+                    }
                   >
                     {isUploadingRevision ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -9871,7 +10204,9 @@ export function ProjectChatWorkspace({
                   Review Submission
                 </CardTitle>
                 <p className="mt-2 text-[14px] leading-6 text-[#6a706b]">
-                  {reviewCompletionIsFinalStage
+                  {isConceptMode
+                    ? "Inspect the concept submission, compare files, add review markers, or request changes. Concept approval is introduced in a later workflow round."
+                    : reviewCompletionIsFinalStage
                     ? "Review the submitted revision. Approval completes the final stage; project completion and final archive are handled after all stages are complete."
                     : "Review the submitted revision and decide whether to mark this stage as complete or request another revision."}
                 </p>
@@ -9994,7 +10329,7 @@ export function ProjectChatWorkspace({
                       }}
                       disabled={Boolean(pendingRevisionReviewId)}
                     >
-                      Request Revision
+                      {isConceptMode ? "Request Changes" : "Request Revision"}
                     </Button>
                     {!activeStage?.isTasker ? (
                       <Button
@@ -10023,7 +10358,7 @@ export function ProjectChatWorkspace({
                     {pendingRevisionReviewId ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : null}
-                    Request Revision
+                    {isConceptMode ? "Request Changes" : "Request Revision"}
                   </Button>
                 )}
               </div>

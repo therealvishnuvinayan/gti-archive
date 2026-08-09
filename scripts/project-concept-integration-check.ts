@@ -23,7 +23,12 @@ import {
   getProjectConceptAccessContext,
 } from "../src/lib/project-concept-access";
 import {
+  createComparisonComment,
+  getComparisonCommentsForPair,
+} from "../src/lib/comparison";
+import {
   assertProjectAttachmentVisibilityForUser,
+  createStageRevision,
   createStageTextCommentFast,
   getProjectStageChatMessages,
   reviewProjectRevision,
@@ -35,7 +40,7 @@ import { prisma } from "../src/lib/prisma";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 
 function check(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(`Concept Round 1 integration check failed: ${message}`);
+  if (!condition) throw new Error(`Concept Round 1/2 integration check failed: ${message}`);
 }
 
 function isErrorResult(value: unknown): value is { error: string } {
@@ -55,6 +60,7 @@ async function expectRejected(task: Promise<unknown>, message: string) {
 async function main() {
   const runId = randomUUID();
   const projectId = `concept-round-one-${runId}`;
+  const foreignProjectId = `concept-round-two-foreign-${runId}`;
   const userSpecs = [
     ["super", UserRole.SUPER_ADMIN],
     ["owner", UserRole.COLLABORATOR],
@@ -196,6 +202,44 @@ async function main() {
     });
     check(!isErrorResult(conceptB), "co-owner must create a concept");
 
+    const stageFourTasker = await prisma.projectStage.create({
+      data: {
+        projectId,
+        name: "Final Concept Direction",
+        description: "Stage 4 final concept brief",
+        invoiceRequired: false,
+        isTasker: true,
+        actualStartedAt: null,
+        startedById: null,
+        status: StageStatus.ONGOING,
+        order: 4_001,
+      },
+    });
+    const stageFourConcept = await prisma.projectConceptFolder.create({
+      data: {
+        projectId,
+        workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        taskerStageId: stageFourTasker.id,
+        assignedExecutorId: executorA.id,
+        name: "Final Concept Direction",
+        normalizedName: "final concept direction",
+        sortOrder: 1,
+        createdById: owner.id,
+      },
+    });
+    const stageFourContext = await getProjectConceptChatContext(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      folderId: stageFourConcept.id,
+    });
+    check(
+      stageFourContext?.chatMode.stageLabel === "Stage 4 - Final Concept" &&
+        stageFourContext.chatMode.compareHref.endsWith(
+          `/stages/4/concepts/${stageFourConcept.id}/compare`,
+        ),
+      "Stage 4 must reuse concept mode and preserve its comparison route",
+    );
+
     const ownerView = await getProjectConceptFolders(owner, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION);
     const coOwnerView = await getProjectConceptFolders(coOwner, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION);
     const superView = await getProjectConceptFolders(superAdmin, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION);
@@ -240,13 +284,33 @@ async function main() {
     check(!canViewProjectConcept(executorB, accessA), "other executor must not view");
     check(!canViewProjectConcept(adminOutsider, accessA), "unrelated ADMIN must not view");
 
+    const [ownerChatContext, coOwnerChatContext, superChatContext, executorChatContext] =
+      await Promise.all(
+        [owner, coOwner, superAdmin, executorA].map((actor) =>
+          getProjectConceptChatContext(actor, {
+            projectId,
+            stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+            folderId: conceptA.folder.id,
+          }),
+        ),
+      );
+    check(executorChatContext, "assigned executor must open its folder route");
     check(
-      await getProjectConceptChatContext(executorA, {
-        projectId,
-        stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
-        folderId: conceptA.folder.id,
-      }),
-      "assigned executor must open its folder route",
+      ownerChatContext?.chatMode.canReview &&
+        coOwnerChatContext?.chatMode.canReview &&
+        superChatContext?.chatMode.canReview,
+      "owner, co-owner, and SUPER_ADMIN must receive concept review UI",
+    );
+    check(
+      !executorChatContext.chatMode.canReview &&
+        executorChatContext.chatMode.isAssignedExecutor,
+      "assigned executor must receive work controls without review controls",
+    );
+    check(
+      ownerChatContext?.chatMode.stageLabel === "Stage 3 - Initial Concept" &&
+        ownerChatContext.chatMode.conceptName === conceptA.folder.name &&
+        ownerChatContext.chatMode.assignedExecutor?.id === executorA.id,
+      "Stage 3 concept context must include stage, concept, and assigned executor",
     );
     check(
       (await getProjectConceptChatContext(executorA, {
@@ -259,6 +323,22 @@ async function main() {
     await expectRejected(
       getProjectStageChatMessages(executorA, projectId, conceptB.folder.taskerStageId),
       "executor must not guess another taskerStageId",
+    );
+
+    await expectRejected(
+      createStageRevision(executorA, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        summary: "Must not submit before acceptance",
+        attachmentIds: [],
+      }),
+      "assigned executor must not submit before accepting the brief",
+    );
+    check(
+      (await prisma.projectRevision.count({
+        where: { projectId, stageId: conceptA.folder.taskerStageId },
+      })) === 0,
+      "a rejected pre-acceptance submission must not create a revision",
     );
 
     await expectRejected(
@@ -277,6 +357,87 @@ async function main() {
     });
     check(startedA.actualStartedAt !== null, "acceptance must set actualStartedAt");
     check(startedA.startedById === executorA.id, "acceptance must record assigned executor");
+
+    await expectRejected(
+      createStageRevision(executorA, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        summary: "Empty concept revision",
+        attachmentIds: [],
+      }),
+      "accepted concept revisions must still require a file",
+    );
+    const incompleteUpload = await prisma.projectAttachment.create({
+      data: {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        uploadedById: executorA.id,
+        fileName: `incomplete-concept-${runId}.png`,
+        originalFileName: "incomplete-concept.png",
+        mimeType: "image/png",
+        fileSize: 12,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/incomplete-concept.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.UPLOADING,
+      },
+    });
+    await expectRejected(
+      createStageRevision(executorA, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        summary: "Upload did not finish",
+        attachmentIds: [incompleteUpload.id],
+      }),
+      "an unfinished upload must not become a reviewable revision",
+    );
+    check(
+      (await prisma.projectRevision.count({
+        where: { projectId, stageId: conceptA.folder.taskerStageId },
+      })) === 0,
+      "a failed file validation must not leave a false pending revision",
+    );
+
+    const firstRevisionFile = await prisma.projectAttachment.create({
+      data: {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        uploadedById: executorA.id,
+        fileName: `concept-revision-one-${runId}.png`,
+        originalFileName: "concept-revision-one.png",
+        mimeType: "image/png",
+        fileSize: 12,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/concept-revision-one.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.READY,
+      },
+    });
+    await expectRejected(
+      createStageRevision(executorB, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        summary: "Unauthorized concept work",
+        attachmentIds: [firstRevisionFile.id],
+      }),
+      "a non-assigned executor must not submit through the server service",
+    );
+    const firstRevision = await createStageRevision(executorA, {
+      projectId,
+      stageId: conceptA.folder.taskerStageId,
+      summary: "First valid concept submission",
+      attachmentIds: [firstRevisionFile.id],
+    });
+    check(
+      firstRevision.status === ProjectRevisionStatus.PENDING_REVIEW,
+      "a valid file-backed revision must become PENDING_REVIEW",
+    );
+    check(
+      (await prisma.projectAttachment.findUniqueOrThrow({
+        where: { id: firstRevisionFile.id },
+      })).revisionId === firstRevision.id,
+      "the READY file must be atomically linked to its revision",
+    );
 
     const lockedEdit = await editProjectConceptFolder(owner, {
       projectId,
@@ -406,41 +567,336 @@ async function main() {
       "legacy attachment rejection must remain available",
     );
 
-    const taskerRevision = await prisma.projectRevision.create({
-      data: {
-        projectId,
-        stageId: conceptA.folder.taskerStageId,
-        createdById: executorA.id,
-        revisionNumber: 1,
-        title: "Concept A submission",
-        status: ProjectRevisionStatus.PENDING_REVIEW,
-      },
-    });
     await expectRejected(
       reviewProjectRevision(owner, {
         projectId,
         stageId: conceptA.folder.taskerStageId,
-        revisionId: taskerRevision.id,
+        revisionId: firstRevision.id,
         status: "APPROVED",
       }),
       "legacy tasker approval must be blocked",
     );
     const stillPending = await prisma.projectRevision.findUniqueOrThrow({
-      where: { id: taskerRevision.id },
+      where: { id: firstRevision.id },
     });
     check(stillPending.status === ProjectRevisionStatus.PENDING_REVIEW, "blocked approval must not mutate revision");
     check(
       (await prisma.projectCompletionWorkflow.count({ where: { projectId } })) === 0,
       "blocked tasker approval must not initialize project completion",
     );
-    const requestedChanges = await reviewProjectRevision(owner, {
+    await expectRejected(
+      reviewProjectRevision(adminOutsider, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        revisionId: firstRevision.id,
+        status: "REJECTED",
+        reason: "ADMIN role alone must not review.",
+      }),
+      "ADMIN role alone must not review a concept",
+    );
+    await expectRejected(
+      reviewProjectRevision(collaborator, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        revisionId: firstRevision.id,
+        status: "REJECTED",
+        reason: "Normal collaborators must not review.",
+      }),
+      "normal collaborators must not review a concept",
+    );
+    await expectRejected(
+      reviewProjectRevision(executorA, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        revisionId: firstRevision.id,
+        status: "REJECTED",
+        reason: "Executors must not review their own concept.",
+      }),
+      "assigned executor must not review their own concept",
+    );
+    const requestedChanges = await reviewProjectRevision(coOwner, {
       projectId,
       stageId: conceptA.folder.taskerStageId,
-      revisionId: taskerRevision.id,
+      revisionId: firstRevision.id,
       status: "REJECTED",
       reason: "Please revise this direction.",
     });
     check(requestedChanges.status === ProjectRevisionStatus.REJECTED, "Request Changes must remain available");
+    const rejectedRevision = await prisma.projectRevision.findUniqueOrThrow({
+      where: { id: firstRevision.id },
+    });
+    check(
+      rejectedRevision.reviewedById === coOwner.id &&
+        rejectedRevision.reviewedAt !== null &&
+        rejectedRevision.rejectionReason === "Please revise this direction.",
+      "Request Changes must persist reviewer, reviewedAt, and reason",
+    );
+    const requestChangesRecipients = await getVisibleStageEventRecipientUserIds(
+      projectId,
+      new Date(),
+      {
+        stageId: conceptA.folder.taskerStageId,
+        excludeUserId: coOwner.id,
+        includeOwner: false,
+        includeExecutor: true,
+        includeCollaborators: false,
+      },
+    );
+    check(
+      requestChangesRecipients.length === 1 &&
+        requestChangesRecipients[0] === executorA.id,
+      "Request Changes notifications must target only the assigned executor",
+    );
+
+    const secondRevisionFile = await prisma.projectAttachment.create({
+      data: {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        uploadedById: executorA.id,
+        fileName: `concept-revision-two-${runId}.png`,
+        originalFileName: "concept-revision-two.png",
+        mimeType: "image/png",
+        fileSize: 12,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/concept-revision-two.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.READY,
+      },
+    });
+    const secondRevision = await createStageRevision(executorA, {
+      projectId,
+      stageId: conceptA.folder.taskerStageId,
+      summary: "Second valid concept submission",
+      attachmentIds: [secondRevisionFile.id],
+    });
+    check(
+      secondRevision.status === ProjectRevisionStatus.PENDING_REVIEW &&
+        secondRevision.revisionNumber === firstRevision.revisionNumber + 1,
+      "assigned executor must be able to resubmit after Request Changes",
+    );
+
+    const ownerMarker = await createComparisonComment(owner, {
+      projectId,
+      stageId: conceptA.folder.taskerStageId,
+      baseAttachmentId: firstRevisionFile.id,
+      compareAttachmentId: secondRevisionFile.id,
+      xPercent: 25,
+      yPercent: 35,
+      body: "Owner review marker",
+      opacity: 70,
+    });
+    const coOwnerMarker = await createComparisonComment(coOwner, {
+      projectId,
+      stageId: conceptA.folder.taskerStageId,
+      baseAttachmentId: firstRevisionFile.id,
+      compareAttachmentId: secondRevisionFile.id,
+      xPercent: 55,
+      yPercent: 65,
+      body: "Co-owner review marker",
+      opacity: 60,
+    });
+    const executorVisibleMarkers = await getComparisonCommentsForPair(executorA, {
+      projectId,
+      stageId: conceptA.folder.taskerStageId,
+      baseAttachmentId: firstRevisionFile.id,
+      compareAttachmentId: secondRevisionFile.id,
+    });
+    check(
+      executorVisibleMarkers.some((marker) => marker.id === ownerMarker.id) &&
+        executorVisibleMarkers.some((marker) => marker.id === coOwnerMarker.id),
+      "assigned executor must be able to view owner/co-owner review markers",
+    );
+    await expectRejected(
+      createComparisonComment(executorA, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        baseAttachmentId: firstRevisionFile.id,
+        compareAttachmentId: secondRevisionFile.id,
+        xPercent: 20,
+        yPercent: 20,
+        body: "Executor must not create this marker",
+      }),
+      "assigned executor must not create concept review markers",
+    );
+
+    const conceptBFile = await prisma.projectAttachment.create({
+      data: {
+        projectId,
+        stageId: conceptB.folder.taskerStageId,
+        uploadedById: executorB.id,
+        fileName: `concept-b-cross-scope-${runId}.png`,
+        originalFileName: "concept-b-cross-scope.png",
+        mimeType: "image/png",
+        fileSize: 12,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/concept-b-cross-scope.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.READY,
+      },
+    });
+    check(
+      (
+        await getComparisonCommentsForPair(owner, {
+          projectId,
+          stageId: conceptA.folder.taskerStageId,
+          baseAttachmentId: secondRevisionFile.id,
+          compareAttachmentId: conceptBFile.id,
+        })
+      ).length === 0,
+      "comparison must reject a submission from another concept tasker",
+    );
+    await expectRejected(
+      createComparisonComment(owner, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        baseAttachmentId: secondRevisionFile.id,
+        compareAttachmentId: conceptBFile.id,
+        xPercent: 10,
+        yPercent: 10,
+        body: "Cross-concept marker",
+      }),
+      "comparison marker creation must reject another concept's file",
+    );
+
+    await startProjectStageWork(executorA, {
+      projectId,
+      stageId: stageFourTasker.id,
+    });
+    const stageFourBase = await prisma.projectAttachment.create({
+      data: {
+        projectId,
+        stageId: stageFourTasker.id,
+        uploadedById: executorA.id,
+        fileName: `stage-four-base-${runId}.png`,
+        originalFileName: "stage-four-base.png",
+        mimeType: "image/png",
+        fileSize: 12,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/stage-four-base.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.READY,
+        createdAt: new Date(Date.now() - 1_000),
+      },
+    });
+    const stageFourCompare = await prisma.projectAttachment.create({
+      data: {
+        projectId,
+        stageId: stageFourTasker.id,
+        uploadedById: executorA.id,
+        fileName: `stage-four-compare-${runId}.png`,
+        originalFileName: "stage-four-compare.png",
+        mimeType: "image/png",
+        fileSize: 12,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/stage-four-compare.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.READY,
+        createdAt: new Date(),
+      },
+    });
+    const stageFourMarker = await createComparisonComment(owner, {
+      projectId,
+      stageId: stageFourTasker.id,
+      baseAttachmentId: stageFourBase.id,
+      compareAttachmentId: stageFourCompare.id,
+      xPercent: 40,
+      yPercent: 50,
+      body: "Stage 4 review marker",
+    });
+    check(
+      (
+        await getComparisonCommentsForPair(executorA, {
+          projectId,
+          stageId: stageFourTasker.id,
+          baseAttachmentId: stageFourBase.id,
+          compareAttachmentId: stageFourCompare.id,
+        })
+      ).some((marker) => marker.id === stageFourMarker.id),
+      "Stage 4 tasker comparison and executor marker visibility must work",
+    );
+
+    await prisma.project.create({
+      data: {
+        id: foreignProjectId,
+        name: `Foreign Concept Project ${runId}`,
+        ownerId: owner.id,
+        createdById: superAdmin.id,
+        executors: {
+          create: [{ userId: executorA.id, addedById: owner.id }],
+        },
+        workflowStages: {
+          create: getInitialProjectWorkflowStageData().map((stage) => ({
+            ...stage,
+            status:
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? ProjectWorkflowStageStatus.AVAILABLE
+                : stage.status,
+            unlockedAt:
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? new Date()
+                : stage.unlockedAt,
+          })),
+        },
+      },
+    });
+    const foreignTasker = await prisma.projectStage.create({
+      data: {
+        projectId: foreignProjectId,
+        name: "Foreign Concept",
+        invoiceRequired: false,
+        isTasker: true,
+        status: StageStatus.ONGOING,
+        actualStartedAt: new Date(),
+        startedById: executorA.id,
+        order: 3_001,
+      },
+    });
+    const foreignFolder = await prisma.projectConceptFolder.create({
+      data: {
+        projectId: foreignProjectId,
+        workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+        taskerStageId: foreignTasker.id,
+        assignedExecutorId: executorA.id,
+        name: "Foreign Concept",
+        normalizedName: "foreign concept",
+        sortOrder: 1,
+        createdById: owner.id,
+      },
+    });
+    const foreignFile = await prisma.projectAttachment.create({
+      data: {
+        projectId: foreignProjectId,
+        stageId: foreignTasker.id,
+        uploadedById: executorA.id,
+        fileName: `foreign-project-${runId}.png`,
+        originalFileName: "foreign-project.png",
+        mimeType: "image/png",
+        fileSize: 12,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/foreign-project.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.READY,
+      },
+    });
+    check(
+      (await getProjectConceptChatContext(owner, {
+        projectId,
+        stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+        folderId: foreignFolder.id,
+      })) === null,
+      "a folder ID from another project must not resolve on the current project route",
+    );
+    check(
+      (
+        await getComparisonCommentsForPair(owner, {
+          projectId,
+          stageId: conceptA.folder.taskerStageId,
+          baseAttachmentId: secondRevisionFile.id,
+          compareAttachmentId: foreignFile.id,
+        })
+      ).length === 0,
+      "comparison must reject another project's file",
+    );
 
     const normalStage = await prisma.projectStage.create({
       data: {
@@ -472,7 +928,9 @@ async function main() {
     });
     check(normalApproval.status === ProjectRevisionStatus.APPROVED, "normal stage approval must remain healthy");
   } finally {
-    await prisma.project.deleteMany({ where: { id: projectId } });
+    await prisma.project.deleteMany({
+      where: { id: { in: [projectId, foreignProjectId] } },
+    });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
 }
@@ -480,7 +938,7 @@ async function main() {
 main()
   .then(async () => {
     await prisma.$disconnect();
-    console.log("Stage 3/4 Round 1 concept integration checks passed.");
+    console.log("Stage 3/4 Round 1/2 concept integration checks passed.");
   })
   .catch(async (error) => {
     console.error(error);
