@@ -58,6 +58,20 @@ assert(
   "Executor controls must use the themed select component rather than a native select.",
 );
 assert(
+  workspace.includes("max-h-[calc(100dvh-1.5rem)]") &&
+    workspace.includes("min-h-0 flex-1 overflow-y-auto overscroll-contain") &&
+    workspace.includes("flex shrink-0 flex-col-reverse gap-3 border-t"),
+  "The concept details dialog must fit the viewport, scroll its fields, and keep actions accessible.",
+);
+assert(
+  workspace.includes("border-[#cfdad1] bg-[#fbfdfb]") &&
+    workspace.includes("min-h-[112px] resize-y rounded-[14px]") &&
+    workspace.includes("border border-dashed border-[#b9c9bc]") &&
+    workspace.includes('className="sr-only"') &&
+    workspace.includes("Selected brief attachments"),
+  "Concept fields and brief attachments must use clearly bordered, aligned containers.",
+);
+assert(
   workspace.includes('assetType: "GENERAL_PROJECT_ASSET"') &&
     workspace.includes("/api/project-assets/upload-url") &&
     workspace.includes("/api/project-assets/complete") &&

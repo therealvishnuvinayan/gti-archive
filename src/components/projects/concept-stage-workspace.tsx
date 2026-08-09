@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import {
   ChevronRight,
   Folder,
   FolderKanban,
   MoreVertical,
+  Paperclip,
   Pencil,
   Plus,
   X,
@@ -93,6 +94,7 @@ function ConceptDetailsDialog({
   const [existingAttachments, setExistingAttachments] = useState(
     state.mode === "edit" ? state.folder.briefAttachments : [],
   );
+  const attachmentInputId = useId();
   const cleanName = name.trim().replace(/\s+/g, " ");
   const detailsLocked = state.mode === "edit" && Boolean(state.folder.actualStartedAt);
   const assignmentLocked =
@@ -100,14 +102,14 @@ function ConceptDetailsDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[160] flex items-center justify-center bg-[#112118]/35 px-4 py-8 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[160] flex items-center justify-center overflow-hidden bg-[#112118]/35 p-3 backdrop-blur-[2px] sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="concept-folder-dialog-title"
     >
-      <Card className="w-full max-w-[460px] rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.2)]">
-        <CardContent className="p-6 sm:p-7">
-          <div className="flex items-start justify-between gap-4">
+      <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[540px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.2)] sm:max-h-[calc(100dvh-2.5rem)]">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e5ebe6] px-5 py-4 sm:px-6 sm:py-5">
             <div>
               <h2
                 id="concept-folder-dialog-title"
@@ -130,114 +132,150 @@ function ConceptDetailsDialog({
             </Button>
           </div>
 
-          <label className="mt-6 block space-y-2">
-            <span className="text-[12px] font-[700] text-[#2d372f]">Concept Name *</span>
-            <Input
-              autoFocus
-              value={name}
-              maxLength={120}
-              placeholder="e.g., Concept 2"
-              className="h-12 rounded-[14px]"
-              onChange={(event) => setName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") onClose();
-              }}
-            />
-          </label>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+            <div className="grid gap-5">
+              <label className="block space-y-2">
+                <span className="text-[12px] font-[700] text-[#2d372f]">Concept Name *</span>
+                <Input
+                  autoFocus
+                  value={name}
+                  maxLength={120}
+                  placeholder="e.g., Concept 2"
+                  className="h-12 rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 shadow-none focus-visible:border-[#46906a]"
+                  onChange={(event) => setName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") onClose();
+                  }}
+                />
+              </label>
 
-          <label className="mt-4 block space-y-2">
-            <span className="text-[12px] font-[700] text-[#2d372f]">Assigned Executor *</span>
-            <Select
-              value={assignedExecutorId}
-              onValueChange={setAssignedExecutorId}
-              disabled={assignmentLocked}
-            >
-              <SelectTrigger className="h-12 rounded-[14px] border border-[#dfe6df]">
-                <SelectValue placeholder="Select a project executor" />
-              </SelectTrigger>
-              <SelectContent className="z-[180]">
-                {executors.map((executor) => (
-                  <SelectItem key={executor.id} value={executor.id}>
-                    <span className="flex items-center gap-2">
-                      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#e7f2ea] text-[10px] font-[760] text-[#2f8057]">
-                        {(executor.name?.trim() || executor.email).slice(0, 1).toUpperCase()}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate">{executor.name?.trim() || executor.email}</span>
-                        <span className="block truncate text-[10px] text-[#7a857d]">{executor.email}</span>
-                      </span>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+              <label className="block space-y-2">
+                <span className="text-[12px] font-[700] text-[#2d372f]">Assigned Executor *</span>
+                <Select
+                  value={assignedExecutorId}
+                  onValueChange={setAssignedExecutorId}
+                  disabled={assignmentLocked}
+                >
+                  <SelectTrigger className="h-12 rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 shadow-none focus-visible:border-[#46906a]">
+                    <SelectValue placeholder="Select a project executor" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[180]">
+                    {executors.map((executor) => (
+                      <SelectItem key={executor.id} value={executor.id}>
+                        <span className="flex items-center gap-2">
+                          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#e7f2ea] text-[10px] font-[760] text-[#2f8057]">
+                            {(executor.name?.trim() || executor.email).slice(0, 1).toUpperCase()}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate">{executor.name?.trim() || executor.email}</span>
+                            <span className="block truncate text-[10px] text-[#7a857d]">{executor.email}</span>
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
 
-          <label className="mt-4 block space-y-2">
-            <span className="text-[12px] font-[700] text-[#2d372f]">Concept Brief</span>
-            <Textarea
-              value={brief}
-              onChange={(event) => setBrief(event.target.value)}
-              disabled={detailsLocked}
-              placeholder="Describe the direction, requirements, and expected outcome."
-              className="min-h-[112px] rounded-[14px]"
-            />
-          </label>
+              <label className="block space-y-2">
+                <span className="text-[12px] font-[700] text-[#2d372f]">Concept Brief</span>
+                <Textarea
+                  value={brief}
+                  onChange={(event) => setBrief(event.target.value)}
+                  disabled={detailsLocked}
+                  placeholder="Describe the direction, requirements, and expected outcome."
+                  className="min-h-[112px] resize-y rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 py-3 shadow-none focus-visible:border-[#46906a]"
+                />
+              </label>
 
-          <label className="mt-4 block space-y-2">
-            <span className="text-[12px] font-[700] text-[#2d372f]">Brief Attachments</span>
-            <Input
-              type="file"
-              multiple
-              disabled={detailsLocked}
-              className="h-auto min-h-12 rounded-[14px] py-2.5"
-              onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
-            />
-            {state.mode === "edit" && existingAttachments.length ? (
-              <div className="flex flex-wrap gap-2">
-                {existingAttachments.map((file) => (
-                  <span key={file.id} className="inline-flex items-center gap-1.5 rounded-full bg-[#edf4ee] px-3 py-1.5 text-[11px] text-[#526057]">
-                    {file.name}
-                    {!detailsLocked ? (
-                      <button
-                        type="button"
-                        aria-label={`Remove ${file.name}`}
-                        onClick={async () => {
-                          const response = await fetch(`/api/project-assets/${file.id}`, {
-                            method: "DELETE",
-                          });
-                          const payload = (await response.json()) as { error?: string };
-                          if (!response.ok) {
-                            showErrorToast(payload.error || "Unable to remove the attachment.");
-                            return;
-                          }
-                          setExistingAttachments((current) =>
-                            current.filter((attachment) => attachment.id !== file.id),
-                          );
-                        }}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    ) : null}
+              <div className="space-y-2">
+                <span className="block text-[12px] font-[700] text-[#2d372f]">Brief Attachments</span>
+                <Input
+                  id={attachmentInputId}
+                  type="file"
+                  multiple
+                  disabled={detailsLocked}
+                  className="sr-only"
+                  onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+                />
+                <label
+                  htmlFor={attachmentInputId}
+                  aria-disabled={detailsLocked}
+                  className={`flex min-h-[76px] items-center gap-3 rounded-[14px] border border-dashed border-[#b9c9bc] bg-[#f8fbf8] px-4 py-3 transition ${detailsLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#65a47d] hover:bg-[#f3f9f5]"}`}
+                >
+                  <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#e7f2ea] text-[#2f8057]">
+                    <Paperclip className="h-4 w-4" />
                   </span>
-                ))}
-              </div>
-            ) : null}
-            {detailsLocked ? (
-              <p className="text-[11px] text-[#8a6b36]">
-                {assignmentLocked
-                  ? "Executor, brief, and brief attachments are locked because work has started."
-                  : "Assign this legacy concept before executor access can begin. Brief and attachments stay locked."}
-              </p>
-            ) : null}
-          </label>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-[700] text-[#2b3730]">
+                      {files.length ? `${files.length} ${files.length === 1 ? "file" : "files"} selected` : "Choose files"}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-[#7a857d]">Attach concept references or supporting documents.</span>
+                  </span>
+                  <span className="shrink-0 rounded-full border border-[#cfdad1] bg-white px-3 py-1.5 text-[11px] font-[700] text-[#356d4e]">Browse</span>
+                </label>
 
-          <div className="mt-7 flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={onClose}>
+                {files.length ? (
+                  <div className="flex flex-wrap gap-2" aria-label="Selected brief attachments">
+                    {files.map((file, index) => (
+                      <span key={`${file.name}-${file.lastModified}-${index}`} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#d8e2da] bg-[#f3f7f3] py-1.5 pl-3 pr-2 text-[11px] text-[#526057]">
+                        <span className="max-w-[260px] truncate">{file.name}</span>
+                        <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {state.mode === "edit" && existingAttachments.length ? (
+                  <div className="flex flex-wrap gap-2" aria-label="Existing brief attachments">
+                    {existingAttachments.map((file) => (
+                      <span key={file.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#d8e2da] bg-[#edf4ee] py-1.5 pl-3 pr-2 text-[11px] text-[#526057]">
+                        <span className="max-w-[260px] truncate">{file.name}</span>
+                        {!detailsLocked ? (
+                          <button
+                            type="button"
+                            aria-label={`Remove ${file.name}`}
+                            onClick={async () => {
+                              const response = await fetch(`/api/project-assets/${file.id}`, {
+                                method: "DELETE",
+                              });
+                              const payload = (await response.json()) as { error?: string };
+                              if (!response.ok) {
+                                showErrorToast(payload.error || "Unable to remove the attachment.");
+                                return;
+                              }
+                              setExistingAttachments((current) =>
+                                current.filter((attachment) => attachment.id !== file.id),
+                              );
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        ) : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {detailsLocked ? (
+                  <p className="text-[11px] text-[#8a6b36]">
+                    {assignmentLocked
+                      ? "Executor, brief, and brief attachments are locked because work has started."
+                      : "Assign this legacy concept before executor access can begin. Brief and attachments stay locked."}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e5ebe6] bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+            <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="button"
+              className="w-full sm:w-auto"
               disabled={!cleanName || !assignedExecutorId}
               onClick={() =>
                 onSubmit({ name: cleanName, assignedExecutorId, brief, files })
