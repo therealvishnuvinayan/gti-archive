@@ -67,6 +67,7 @@ import {
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
 import { ensureProjectResearchWorkspace } from "@/lib/project-research";
+import { canViewProjectConcept } from "@/lib/project-concept-access";
 import {
   defaultProjectStatusGroupSlugs,
   getActiveProjectStatusOptions,
@@ -264,6 +265,7 @@ export type ProjectStageVisualStatus =
 
 export type ProjectStageRecord = {
   id: string;
+  isTasker: boolean;
   order: number;
   label: string;
   name: string;
@@ -978,11 +980,58 @@ async function getProjectAttachmentsVisibleToUser(
   currentUser: ProjectAccessUser,
   project: Pick<ProjectWithCreator, "id" | "ownerId" | "coOwners" | "executors" | "attachments">,
 ) {
+  const taskerStageIds = Array.from(
+    new Set(
+      project.attachments
+        .map((attachment) => attachment.stageId)
+        .filter((stageId): stageId is string => Boolean(stageId)),
+    ),
+  );
+  const concepts = taskerStageIds.length
+    ? await withPrismaRetry(() =>
+        prisma.projectConceptFolder.findMany({
+          where: {
+            projectId: project.id,
+            taskerStageId: { in: taskerStageIds },
+          },
+          select: {
+            id: true,
+            projectId: true,
+            taskerStageId: true,
+            workflowStageKey: true,
+            assignedExecutorId: true,
+          },
+        }),
+      )
+    : [];
+  const conceptByTaskerStageId = new Map(
+    concepts.map((concept) => [concept.taskerStageId, concept] as const),
+  );
+  const coOwnerIds = project.coOwners?.map((coOwner) => coOwner.userId) ?? [];
+  const conceptAccessFilteredAttachments = project.attachments.filter((attachment) => {
+    const concept = attachment.stageId
+      ? conceptByTaskerStageId.get(attachment.stageId)
+      : null;
+
+    return (
+      !concept ||
+      canViewProjectConcept(currentUser, {
+        folderId: concept.id,
+        projectId: concept.projectId,
+        taskerStageId: concept.taskerStageId,
+        workflowStageKey: concept.workflowStageKey,
+        assignedExecutorId: concept.assignedExecutorId,
+        ownerId: project.ownerId,
+        coOwnerIds,
+      })
+    );
+  });
+
   if (
     canBypassCollaboratorVisibility(currentUser, project.ownerId ?? "") ||
     hasProjectPermission(currentUser, project, "collaborator.pauseVisibility")
   ) {
-    return project.attachments;
+    return conceptAccessFilteredAttachments;
   }
 
   const visibilityState = await getProjectCollaboratorVisibilityState(
@@ -991,7 +1040,7 @@ async function getProjectAttachmentsVisibleToUser(
   );
 
   if (!visibilityState) {
-    return project.attachments;
+    return conceptAccessFilteredAttachments;
   }
 
   if (
@@ -1001,7 +1050,7 @@ async function getProjectAttachmentsVisibleToUser(
     return [];
   }
 
-  return project.attachments.filter(
+  return conceptAccessFilteredAttachments.filter(
     (attachment) =>
       !isTimestampHiddenByPauseWindows(
         attachment.createdAt,
@@ -1229,6 +1278,7 @@ function mapStageToCard(
 
   return {
     id: stage.id,
+    isTasker: stage.isTasker,
     order: stage.order,
     label: `${stage.name} : ${mapStageStatusToDisplayLabel(stage.status)}`,
     name: stage.name,

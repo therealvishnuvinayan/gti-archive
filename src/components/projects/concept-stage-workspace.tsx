@@ -19,7 +19,7 @@ import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access
 import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
 import {
   createProjectConceptFolderAction,
-  renameProjectConceptFolderAction,
+  editProjectConceptFolderAction,
   handoffStageFourFilesAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type {
   ConceptWorkflowStageKey,
   ProjectConceptFolderRecord,
@@ -40,25 +48,53 @@ import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import type { StageFourHandoffFileRecord } from "@/lib/stage-five";
 
 type ConceptFolder = ProjectConceptFolderRecord;
+type ConceptExecutor = {
+  id: string;
+  name: string | null;
+  email: string;
+  avatarUrl: string | null;
+};
 
 type FolderDialogState =
   | { mode: "create" }
-  | { mode: "rename"; folderId: string; currentName: string }
+  | { mode: "edit"; folder: ConceptFolder }
   | null;
 
-function FolderNameDialog({
+function ConceptDetailsDialog({
   state,
+  executors,
+  defaultName,
   onClose,
   onSubmit,
 }: {
   state: Exclude<FolderDialogState, null>;
+  executors: ConceptExecutor[];
+  defaultName: string;
   onClose: () => void;
-  onSubmit: (name: string) => void;
+  onSubmit: (input: {
+    name: string;
+    assignedExecutorId: string;
+    brief: string;
+    files: File[];
+  }) => void;
 }) {
   const [name, setName] = useState(
-    state.mode === "rename" ? state.currentName : "",
+    state.mode === "edit" ? state.folder.name : defaultName,
+  );
+  const [assignedExecutorId, setAssignedExecutorId] = useState(
+    state.mode === "edit" ? state.folder.assignedExecutorId ?? "" : "",
+  );
+  const [brief, setBrief] = useState(
+    state.mode === "edit" ? state.folder.brief ?? "" : "",
+  );
+  const [files, setFiles] = useState<File[]>([]);
+  const [existingAttachments, setExistingAttachments] = useState(
+    state.mode === "edit" ? state.folder.briefAttachments : [],
   );
   const cleanName = name.trim().replace(/\s+/g, " ");
+  const detailsLocked = state.mode === "edit" && Boolean(state.folder.actualStartedAt);
+  const assignmentLocked =
+    detailsLocked && state.mode === "edit" && Boolean(state.folder.assignedExecutorId);
 
   return (
     <div
@@ -75,10 +111,10 @@ function FolderNameDialog({
                 id="concept-folder-dialog-title"
                 className="text-[21px] font-[760] tracking-[-0.03em] text-[#162019]"
               >
-                {state.mode === "create" ? "Create concept folder" : "Rename concept folder"}
+                {state.mode === "create" ? "Create Concept" : "Edit Concept"}
               </h2>
               <p className="mt-1 text-[12px] leading-5 text-[#6f7a72]">
-                Folder names must be unique within this project stage.
+                Assign one project executor and keep the concept brief with its tasker.
               </p>
             </div>
             <Button
@@ -93,7 +129,7 @@ function FolderNameDialog({
           </div>
 
           <label className="mt-6 block space-y-2">
-            <span className="text-[12px] font-[700] text-[#2d372f]">Folder Name</span>
+            <span className="text-[12px] font-[700] text-[#2d372f]">Concept Name *</span>
             <Input
               autoFocus
               value={name}
@@ -103,9 +139,95 @@ function FolderNameDialog({
               onChange={(event) => setName(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Escape") onClose();
-                if (event.key === "Enter" && cleanName) onSubmit(cleanName);
               }}
             />
+          </label>
+
+          <label className="mt-4 block space-y-2">
+            <span className="text-[12px] font-[700] text-[#2d372f]">Assigned Executor *</span>
+            <Select
+              value={assignedExecutorId}
+              onValueChange={setAssignedExecutorId}
+              disabled={assignmentLocked}
+            >
+              <SelectTrigger className="h-12 rounded-[14px] border border-[#dfe6df]">
+                <SelectValue placeholder="Select a project executor" />
+              </SelectTrigger>
+              <SelectContent className="z-[180]">
+                {executors.map((executor) => (
+                  <SelectItem key={executor.id} value={executor.id}>
+                    <span className="flex items-center gap-2">
+                      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#e7f2ea] text-[10px] font-[760] text-[#2f8057]">
+                        {(executor.name?.trim() || executor.email).slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate">{executor.name?.trim() || executor.email}</span>
+                        <span className="block truncate text-[10px] text-[#7a857d]">{executor.email}</span>
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          <label className="mt-4 block space-y-2">
+            <span className="text-[12px] font-[700] text-[#2d372f]">Concept Brief</span>
+            <Textarea
+              value={brief}
+              onChange={(event) => setBrief(event.target.value)}
+              disabled={detailsLocked}
+              placeholder="Describe the direction, requirements, and expected outcome."
+              className="min-h-[112px] rounded-[14px]"
+            />
+          </label>
+
+          <label className="mt-4 block space-y-2">
+            <span className="text-[12px] font-[700] text-[#2d372f]">Brief Attachments</span>
+            <Input
+              type="file"
+              multiple
+              disabled={detailsLocked}
+              className="h-auto min-h-12 rounded-[14px] py-2.5"
+              onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+            />
+            {state.mode === "edit" && existingAttachments.length ? (
+              <div className="flex flex-wrap gap-2">
+                {existingAttachments.map((file) => (
+                  <span key={file.id} className="inline-flex items-center gap-1.5 rounded-full bg-[#edf4ee] px-3 py-1.5 text-[11px] text-[#526057]">
+                    {file.name}
+                    {!detailsLocked ? (
+                      <button
+                        type="button"
+                        aria-label={`Remove ${file.name}`}
+                        onClick={async () => {
+                          const response = await fetch(`/api/project-assets/${file.id}`, {
+                            method: "DELETE",
+                          });
+                          const payload = (await response.json()) as { error?: string };
+                          if (!response.ok) {
+                            showErrorToast(payload.error || "Unable to remove the attachment.");
+                            return;
+                          }
+                          setExistingAttachments((current) =>
+                            current.filter((attachment) => attachment.id !== file.id),
+                          );
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    ) : null}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {detailsLocked ? (
+              <p className="text-[11px] text-[#8a6b36]">
+                {assignmentLocked
+                  ? "Executor, brief, and brief attachments are locked because work has started."
+                  : "Assign this legacy concept before executor access can begin. Brief and attachments stay locked."}
+              </p>
+            ) : null}
           </label>
 
           <div className="mt-7 flex justify-end gap-3">
@@ -114,16 +236,83 @@ function FolderNameDialog({
             </Button>
             <Button
               type="button"
-              disabled={!cleanName}
-              onClick={() => onSubmit(cleanName)}
+              disabled={!cleanName || !assignedExecutorId}
+              onClick={() =>
+                onSubmit({ name: cleanName, assignedExecutorId, brief, files })
+              }
             >
-              {state.mode === "create" ? "Create Folder" : "Save Name"}
+              {state.mode === "create" ? "Create Concept" : "Save Changes"}
             </Button>
           </div>
         </CardContent>
       </Card>
     </div>
   );
+}
+
+async function uploadConceptBriefAttachment(input: {
+  projectId: string;
+  taskerStageId: string;
+  file: File;
+}) {
+  const prepareResponse = await fetch("/api/project-assets/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId: input.projectId,
+      stageId: input.taskerStageId,
+      revisionId: null,
+      commentId: null,
+      originalFileName: input.file.name,
+      mimeType: input.file.type || "application/octet-stream",
+      fileSize: input.file.size,
+      assetType: "GENERAL_PROJECT_ASSET",
+    }),
+  });
+  const prepared = (await prepareResponse.json()) as {
+    error?: string;
+    attachmentId?: string;
+    uploadUrl?: string;
+  };
+
+  if (!prepareResponse.ok || !prepared.attachmentId || !prepared.uploadUrl) {
+    throw new Error(prepared.error || "Unable to prepare the brief attachment upload.");
+  }
+
+  try {
+    const uploadResponse = await fetch(prepared.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": input.file.type || "application/octet-stream" },
+      body: input.file,
+    });
+    if (!uploadResponse.ok) {
+      throw new Error(`Upload failed with status ${uploadResponse.status}.`);
+    }
+
+    const completeResponse = await fetch("/api/project-assets/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        attachmentId: prepared.attachmentId,
+        projectId: input.projectId,
+      }),
+    });
+    const completed = (await completeResponse.json()) as { error?: string };
+    if (!completeResponse.ok) {
+      throw new Error(completed.error || "Unable to finalize the brief attachment.");
+    }
+  } catch (error) {
+    await fetch("/api/project-assets/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        attachmentId: prepared.attachmentId,
+        projectId: input.projectId,
+        failed: true,
+      }),
+    }).catch(() => undefined);
+    throw error;
+  }
 }
 
 function StageFourFinalFileHandoff({
@@ -276,6 +465,9 @@ export function ConceptStageWorkspace({
   project,
   currentUserId,
   initialFolders,
+  canManageConcepts,
+  executors,
+  selectedExecutorId,
   stageFourHandoffData,
   showChrome = true,
 }: {
@@ -285,6 +477,9 @@ export function ConceptStageWorkspace({
   project: ProjectStageShellRecord;
   currentUserId: string;
   initialFolders: ProjectConceptFolderRecord[];
+  canManageConcepts: boolean;
+  executors: ConceptExecutor[];
+  selectedExecutorId: string | null;
   stageFourHandoffData?: {
     files: StageFourHandoffFileRecord[];
     canHandoff: boolean;
@@ -296,37 +491,56 @@ export function ConceptStageWorkspace({
   const [folders, setFolders] = useState<ConceptFolder[]>(initialFolders);
   const [dialog, setDialog] = useState<FolderDialogState>(null);
 
-  function submitFolderName(name: string) {
+  function submitConceptDetails(input: {
+    name: string;
+    assignedExecutorId: string;
+    brief: string;
+    files: File[];
+  }) {
     if (!dialog) return;
 
     const submittedDialog = dialog;
     startTransition(async () => {
-      if (submittedDialog.mode === "rename") {
-        const result = await renameProjectConceptFolderAction({
+      let taskerStageId: string;
+
+      if (submittedDialog.mode === "edit") {
+        const result = await editProjectConceptFolderAction({
           projectId: project.id,
           stageKey,
-          folderId: submittedDialog.folderId,
-          name,
+          folderId: submittedDialog.folder.id,
+          name: input.name,
+          assignedExecutorId: input.assignedExecutorId,
+          brief: input.brief,
         });
 
         if ("error" in result) {
-          showErrorToast(result.error ?? "Unable to rename the concept folder.");
+          showErrorToast(result.error ?? "Unable to edit the concept.");
           return;
         }
 
+        taskerStageId = submittedDialog.folder.taskerStageId;
+        const assignedExecutor =
+          executors.find((executor) => executor.id === input.assignedExecutorId) ?? null;
         setFolders((current) =>
           current.map((folder) =>
             folder.id === result.folder.id
-              ? { ...folder, name: result.folder.name }
+              ? {
+                  ...folder,
+                  name: result.folder.name,
+                  assignedExecutorId: input.assignedExecutorId,
+                  assignedExecutor,
+                  brief: input.brief.trim() || null,
+                }
               : folder,
           ),
         );
-        showSuccessToast("Concept folder renamed.");
       } else {
         const result = await createProjectConceptFolderAction({
           projectId: project.id,
           stageKey,
-          name,
+          name: input.name,
+          assignedExecutorId: input.assignedExecutorId,
+          brief: input.brief,
         });
 
         if ("error" in result) {
@@ -334,12 +548,35 @@ export function ConceptStageWorkspace({
           return;
         }
 
+        taskerStageId = result.folder.taskerStageId;
         setFolders((current) => [...current, result.folder]);
-        showSuccessToast("Concept folder created.");
       }
+
+      const uploadResults = await Promise.allSettled(
+        input.files.map((file) =>
+          uploadConceptBriefAttachment({
+            projectId: project.id,
+            taskerStageId,
+            file,
+          }),
+        ),
+      );
+      const failedFiles = input.files.filter(
+        (_file, index) => uploadResults[index]?.status === "rejected",
+      );
 
       setDialog(null);
       router.refresh();
+      if (failedFiles.length) {
+        showErrorToast(
+          "Concept saved, but some attachments failed.",
+          `Retry: ${failedFiles.map((file) => file.name).join(", ")}`,
+        );
+      } else {
+        showSuccessToast(
+          submittedDialog.mode === "create" ? "Concept created." : "Concept updated.",
+        );
+      }
     });
   }
 
@@ -390,19 +627,58 @@ export function ConceptStageWorkspace({
               </p>
             </div>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 rounded-[12px] border-[#39835d] bg-white px-5 font-[720] text-[#27704b] hover:bg-[#f1f8f3]"
-            disabled={isPending}
-            onClick={() => setDialog({ mode: "create" })}
-          >
-            <Plus className="h-4 w-4" />
-            New Folder
-          </Button>
+          <div className="flex flex-wrap items-end gap-3">
+            {stageNumber === 3 && canManageConcepts ? (
+              <label className="min-w-[220px] space-y-1.5">
+                <span className="text-[11px] font-[720] uppercase tracking-[0.08em] text-[#748078]">
+                  Viewing Executor
+                </span>
+                <Select
+                  value={selectedExecutorId ?? "all"}
+                  onValueChange={(value) => {
+                    const query = value === "all" ? "" : `?executor=${encodeURIComponent(value)}`;
+                    router.replace(`/projects/${project.id}/stages/3${query}`);
+                  }}
+                >
+                  <SelectTrigger className="rounded-[12px] border border-[#dfe6df] bg-white">
+                    <SelectValue placeholder="All Executors" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Executors</SelectItem>
+                    {executors.map((executor) => (
+                      <SelectItem key={executor.id} value={executor.id}>
+                        {executor.name?.trim() || executor.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : null}
+            {stageNumber === 3 && canManageConcepts ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-[12px] border-[#39835d] bg-white px-5 font-[720] text-[#27704b] hover:bg-[#f1f8f3]"
+                disabled={isPending || executors.length === 0}
+                onClick={() => setDialog({ mode: "create" })}
+              >
+                <Plus className="h-4 w-4" />
+                Create Concept
+              </Button>
+            ) : null}
+          </div>
         </div>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {folders.length === 0 ? (
+          <div className="mt-6 rounded-[20px] border border-dashed border-[#cfdacf] bg-[#f8faf8] px-6 py-10 text-center">
+            <p className="text-[16px] font-[740] text-[#273129]">No concepts yet</p>
+            <p className="mt-1 text-[12px] text-[#748078]">
+              {stageNumber === 3 && canManageConcepts
+                ? "Create the first concept when the name, executor, and brief are ready."
+                : "No concepts are available in this stage."}
+            </p>
+          </div>
+        ) : <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {folders.map((folder) => (
             <Card
               key={folder.id}
@@ -417,10 +693,15 @@ export function ConceptStageWorkspace({
                 <span className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-[#e7f2ea] text-[#30845a]">
                   <Folder className="h-7 w-7 fill-current" />
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[15px] font-[740] text-[#202a23]">
-                  {folder.name}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[15px] font-[740] text-[#202a23]">{folder.name}</span>
+                  {canManageConcepts ? (
+                    <span className="mt-1 block truncate text-[11px] text-[#748078]">
+                      Assigned to: {folder.assignedExecutor?.name || folder.assignedExecutor?.email || "Unassigned"}
+                    </span>
+                  ) : null}
                 </span>
-                <DropdownMenu>
+                {canManageConcepts ? <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
@@ -436,30 +717,31 @@ export function ConceptStageWorkspace({
                     <DropdownMenuItem
                       onSelect={() =>
                         setDialog({
-                          mode: "rename",
-                          folderId: folder.id,
-                          currentName: folder.name,
+                          mode: "edit",
+                          folder,
                         })
                       }
                     >
                       <Pencil className="h-4 w-4" />
-                      Rename
+                      Edit Concept
                     </DropdownMenuItem>
                   </DropdownMenuContent>
-                </DropdownMenu>
+                </DropdownMenu> : null}
                 <ChevronRight className="h-4 w-4 shrink-0 text-[#8b958e]" aria-hidden="true" />
               </CardContent>
             </Card>
           ))}
-        </div>
+        </div>}
       </section>
 
       {dialog ? (
-        <FolderNameDialog
-          key={dialog.mode === "rename" ? dialog.folderId : "create"}
+        <ConceptDetailsDialog
+          key={dialog.mode === "edit" ? dialog.folder.id : "create"}
           state={dialog}
+          executors={executors}
+          defaultName={folders.length === 0 ? "Concept 1" : `Concept ${folders.length + 1}`}
           onClose={() => setDialog(null)}
-          onSubmit={submitFolderName}
+          onSubmit={submitConceptDetails}
         />
       ) : null}
     </section>

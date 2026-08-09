@@ -1,8 +1,10 @@
 import {
   AttachmentAssetType,
+  ProjectWorkflowStageKey,
 } from "@prisma/client";
 import { after } from "next/server";
 
+import { getProjectConceptAccessContext } from "@/lib/project-concept-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 import {
@@ -53,6 +55,31 @@ async function getProjectStageContext(projectId: string, stageId?: string | null
       },
     }),
   );
+}
+
+async function buildProjectStageNotificationUrl(
+  projectId: string,
+  stageId: string,
+) {
+  const concept = await getProjectConceptAccessContext({
+    projectId,
+    taskerStageId: stageId,
+  });
+
+  if (!concept) {
+    return buildNotificationUrl({
+      kind: "project-stage",
+      projectId,
+      stageId,
+    });
+  }
+
+  const stageNumber =
+    concept.workflowStageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+      ? 3
+      : 4;
+
+  return `/projects/${encodeURIComponent(projectId)}/stages/${stageNumber}/concepts/${encodeURIComponent(concept.folderId)}`;
 }
 
 export async function runNotificationTask(
@@ -238,11 +265,7 @@ export async function notifyBriefAccepted(
     entityId: stage.id,
     projectId: project.id,
     stageId: stage.id,
-    url: buildNotificationUrl({
-      kind: "project-stage",
-      projectId: project.id,
-      stageId: stage.id,
-    }),
+    url: await buildProjectStageNotificationUrl(project.id, stage.id),
   });
 }
 
@@ -297,11 +320,10 @@ export async function notifyRevisionSubmitted(
     projectId: revision.project.id,
     stageId: revision.stage.id,
     revisionId: revision.id,
-    url: buildNotificationUrl({
-      kind: "project-stage",
-      projectId: revision.project.id,
-      stageId: revision.stage.id,
-    }),
+    url: await buildProjectStageNotificationUrl(
+      revision.project.id,
+      revision.stage.id,
+    ),
   });
 }
 
@@ -342,11 +364,14 @@ export async function notifyStageSubmissionReviewDecision(
     return;
   }
 
-  const executorRecipients = getProjectExecutorRecipientUserIds(attachment.project);
-  const recipients = await filterRecipientsVisibleForStageEvent(
+  const recipients = await getVisibleStageEventRecipientUserIds(
     attachment.project.id,
-    executorRecipients,
     new Date(),
+    {
+      includeOwner: false,
+      includeCollaborators: false,
+      stageId: attachment.stageId,
+    },
   );
 
   await createNotificationsForUsers({
@@ -364,11 +389,10 @@ export async function notifyStageSubmissionReviewDecision(
     projectId: attachment.project.id,
     stageId: attachment.stageId,
     attachmentId: attachment.id,
-    url: buildNotificationUrl({
-      kind: "project-stage",
-      projectId: attachment.project.id,
-      stageId: attachment.stageId,
-    }),
+    url: await buildProjectStageNotificationUrl(
+      attachment.project.id,
+      attachment.stageId,
+    ),
   });
 }
 
@@ -385,13 +409,15 @@ export async function notifySubmissionWorkflowDecision(input: {
     return;
   }
 
-  const executorRecipients = getProjectExecutorRecipientUserIds(project, {
-    excludeUserId: input.actorId,
-  });
-  const recipients = await filterRecipientsVisibleForStageEvent(
+  const recipients = await getVisibleStageEventRecipientUserIds(
     project.id,
-    executorRecipients,
     new Date(),
+    {
+      excludeUserId: input.actorId,
+      includeOwner: false,
+      includeCollaborators: false,
+      stageId: input.stageId,
+    },
   );
 
   await createNotificationsForUsers({
@@ -412,11 +438,7 @@ export async function notifySubmissionWorkflowDecision(input: {
     entityId: stage.id,
     projectId: project.id,
     stageId: stage.id,
-    url: buildNotificationUrl({
-      kind: "project-stage",
-      projectId: project.id,
-      stageId: stage.id,
-    }),
+    url: await buildProjectStageNotificationUrl(project.id, stage.id),
   });
 }
 
@@ -516,11 +538,7 @@ export async function notifyStageTransition(input: {
     entityId: nextStage.id,
     projectId: project.id,
     stageId: nextStage.id,
-    url: buildNotificationUrl({
-      kind: "project-stage",
-      projectId: project.id,
-      stageId: nextStage.id,
-    }),
+    url: await buildProjectStageNotificationUrl(project.id, nextStage.id),
   });
 }
 
@@ -559,6 +577,7 @@ export async function notifyCommentAdded(
     comment.createdAt,
     {
       excludeUserId: input.actorId,
+      stageId: input.stageId,
     },
   );
   const excludedRecipientUserIds = new Set(
@@ -577,11 +596,7 @@ export async function notifyCommentAdded(
     projectId: project.id,
     stageId: stage.id,
     commentId: input.commentId,
-    url: buildNotificationUrl({
-      kind: "project-stage",
-      projectId: project.id,
-      stageId: stage.id,
-    }),
+    url: await buildProjectStageNotificationUrl(project.id, stage.id),
   });
 }
 
@@ -618,10 +633,14 @@ export async function notifyCommentMentioned(
   const mentionedRecipients = dedupeRecipients(input.mentionedUserIds).filter(
     (recipientUserId) => recipientUserId !== input.actorId,
   );
-  const recipients = await filterRecipientsVisibleForStageEvent(
-    project.id,
-    mentionedRecipients,
-    comment.createdAt,
+  const allowedRecipients = new Set(
+    await getVisibleStageEventRecipientUserIds(project.id, comment.createdAt, {
+      excludeUserId: input.actorId,
+      stageId: input.stageId,
+    }),
+  );
+  const recipients = mentionedRecipients.filter((recipientUserId) =>
+    allowedRecipients.has(recipientUserId),
   );
 
   await createNotificationsForUsers({
@@ -634,11 +653,7 @@ export async function notifyCommentMentioned(
     projectId: project.id,
     stageId: stage.id,
     commentId: input.commentId,
-    url: buildNotificationUrl({
-      kind: "project-stage",
-      projectId: project.id,
-      stageId: stage.id,
-    }),
+    url: await buildProjectStageNotificationUrl(project.id, stage.id),
   });
 }
 
@@ -679,13 +694,13 @@ export async function notifyFileUploaded(
     return;
   }
 
-  const baseRecipients = await getProjectParticipantUserIds(project.id, {
-    excludeUserId: input.actorId,
-  });
-  const recipients = await filterRecipientsVisibleForStageEvent(
+  const recipients = await getVisibleStageEventRecipientUserIds(
     project.id,
-    baseRecipients,
     attachment.createdAt,
+    {
+      excludeUserId: input.actorId,
+      stageId: input.stageId,
+    },
   );
 
   await createNotificationsForUsers({
@@ -701,11 +716,7 @@ export async function notifyFileUploaded(
     stageId: input.stageId ?? undefined,
     attachmentId: input.attachmentId,
     url: input.stageId
-      ? buildNotificationUrl({
-          kind: "project-stage",
-          projectId: project.id,
-          stageId: input.stageId,
-        })
+      ? await buildProjectStageNotificationUrl(project.id, input.stageId)
       : buildNotificationUrl({
           kind: "project",
           projectId: project.id,
@@ -915,11 +926,7 @@ export async function notifyStageInvoiceRequested(input: {
     entityId: stage.id,
     projectId: project.id,
     stageId: stage.id,
-    url: buildNotificationUrl({
-      kind: "project-stage",
-      projectId: project.id,
-      stageId: stage.id,
-    }),
+    url: await buildProjectStageNotificationUrl(project.id, stage.id),
   });
 }
 
@@ -982,11 +989,7 @@ export async function notifyInvoiceUploaded(input: {
     attachmentId: input.attachmentId,
     url:
       input.stageId && stage
-        ? buildNotificationUrl({
-            kind: "project-stage",
-            projectId: project.id,
-            stageId: input.stageId,
-          })
+        ? await buildProjectStageNotificationUrl(project.id, input.stageId)
         : buildNotificationUrl({
             kind: "project",
             projectId: project.id,

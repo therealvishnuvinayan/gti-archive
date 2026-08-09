@@ -2,6 +2,7 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   UserRole,
+  type ProjectWorkflowStageKey,
   type User,
 } from "@prisma/client";
 
@@ -37,6 +38,7 @@ import {
   type S3UploadEndpointMode,
 } from "@/lib/storage/s3";
 import { canUploadLibraryAssets, canViewLibrary } from "@/lib/library-access";
+import { canViewProjectConcept } from "@/lib/project-concept-access";
 import {
   type LibraryDateFilter,
   type LibraryItemRecord,
@@ -97,11 +99,21 @@ type LibraryUser = Pick<
 type RawLibraryAttachment = {
   id: string;
   projectId: string;
+  stageId: string | null;
   originalFileName: string;
   mimeType: string;
   createdAt: Date;
   uploadedById: string;
   assetType: AttachmentAssetType;
+  stage: {
+    conceptFolder: {
+      id: string;
+      projectId: string;
+      taskerStageId: string;
+      workflowStageKey: ProjectWorkflowStageKey;
+      assignedExecutorId: string | null;
+    } | null;
+  } | null;
   assetTags: AssetTagAssignmentRecord[];
   project: {
     id: string;
@@ -388,6 +400,22 @@ function isAttachmentVisibleToUser(
   user: LibraryUser,
   attachment: RawLibraryAttachment,
 ) {
+  const concept = attachment.stage?.conceptFolder;
+  if (
+    concept &&
+    !canViewProjectConcept(user, {
+      folderId: concept.id,
+      projectId: concept.projectId,
+      taskerStageId: concept.taskerStageId,
+      workflowStageKey: concept.workflowStageKey,
+      assignedExecutorId: concept.assignedExecutorId,
+      ownerId: attachment.project.ownerId,
+      coOwnerIds: attachment.project.coOwners.map((coOwner) => coOwner.userId),
+    })
+  ) {
+    return false;
+  }
+
   if (
     canBypassCollaboratorVisibility(user, attachment.project.ownerId ?? "") ||
     attachment.project.coOwners.some((coOwner) => coOwner.userId === user.id)
@@ -640,11 +668,25 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
       select: {
         id: true,
         projectId: true,
+        stageId: true,
         originalFileName: true,
         mimeType: true,
         createdAt: true,
         uploadedById: true,
         assetType: true,
+        stage: {
+          select: {
+            conceptFolder: {
+              select: {
+                id: true,
+                projectId: true,
+                taskerStageId: true,
+                workflowStageKey: true,
+                assignedExecutorId: true,
+              },
+            },
+          },
+        },
         assetTags: {
           include: {
             tag: {

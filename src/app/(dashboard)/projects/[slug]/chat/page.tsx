@@ -29,6 +29,10 @@ import {
   shouldLogStageChatTimings,
 } from "@/lib/stage-chat-timing";
 import { getLockedStageInfo } from "@/lib/stage-locking";
+import {
+  getProjectConceptAccessContext,
+  getProjectConceptParticipantUserIds,
+} from "@/lib/project-concept-access";
 
 type ProjectChatPageUser = Awaited<ReturnType<typeof requireUser>>;
 type ProjectChatShellProject = NonNullable<
@@ -81,6 +85,7 @@ function getProjectStageChatAccessRecord(
       })),
     stages: project.stageCards.map((stageCard) => ({
       id: stageCard.id,
+      isTasker: stageCard.isTasker,
       name: stageCard.name,
       order: stageCard.order,
       status: stageCard.status,
@@ -155,6 +160,20 @@ async function ProjectChatDeferredContent({
   const history = await getProjectStageChatMessages(user, slug, stage, {
     projectAccessRecord: getProjectStageChatAccessRecord(project),
   });
+  const conceptContext = stage
+    ? await getProjectConceptAccessContext({ projectId: slug, taskerStageId: stage })
+    : null;
+  const conceptParticipantIds = conceptContext
+    ? new Set(getProjectConceptParticipantUserIds(conceptContext))
+    : null;
+  const workspaceProject = conceptParticipantIds
+    ? {
+        ...project,
+        mentionParticipants: project.mentionParticipants.filter((participant) =>
+          conceptParticipantIds.has(participant.id),
+        ),
+      }
+    : project;
   const completionSummary = getInitialCompletionSummary(
     project,
     history.activeStageId ?? stage,
@@ -206,7 +225,7 @@ async function ProjectChatDeferredContent({
 
   return (
     <ProjectChatWorkspace
-      project={project}
+      project={workspaceProject}
       stageId={history.activeStageId ?? stage}
       history={history}
       availableCollaborators={[]}

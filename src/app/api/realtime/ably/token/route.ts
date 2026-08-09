@@ -17,6 +17,7 @@ import {
 } from "@/lib/realtime/server";
 import { getLockedStageInfo } from "@/lib/stage-locking";
 import { canOpenProjectStageChatContainer } from "@/lib/workflow-stage-access";
+import { assertConceptTaskerAccessIfNeeded } from "@/lib/project-concept-access";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -262,6 +263,31 @@ export async function GET(request: Request) {
   ) {
     return NextResponse.json(
       { error: "This workflow stage is locked." },
+      { status: 403 },
+    );
+  }
+
+  try {
+    await assertConceptTaskerAccessIfNeeded(user, {
+      projectId,
+      stageId: activeStageId,
+      mode: "view",
+    });
+  } catch (error) {
+    logAblyToken("token denied", {
+      reason: "Concept participant access denied.",
+      userId: user.id,
+      projectId,
+      stageId,
+      channelName,
+    });
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "You do not have permission to view this concept chat.",
+      },
       { status: 403 },
     );
   }

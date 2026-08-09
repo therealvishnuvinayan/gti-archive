@@ -15,6 +15,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { assertConceptTaskerAccessIfNeeded } from "@/lib/project-concept-access";
 
 type FavoriteAccessUser = Pick<
   User,
@@ -38,6 +39,7 @@ async function assertAttachmentFavoriteAccess(
           select: {
             id: true,
             projectId: true,
+            stageId: true,
             status: true,
             createdAt: true,
             project: {
@@ -80,6 +82,14 @@ async function assertAttachmentFavoriteAccess(
 
   if (!attachment || attachment.status !== AttachmentStatus.READY) {
     throw new Error("Attachment not found.");
+  }
+
+  if (attachment.stageId) {
+    await assertConceptTaskerAccessIfNeeded(user, {
+      projectId: attachment.projectId,
+      stageId: attachment.stageId,
+      mode: "view",
+    });
   }
 
   const projectPermissionContext = {

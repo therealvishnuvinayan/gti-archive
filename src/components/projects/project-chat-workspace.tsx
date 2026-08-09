@@ -9033,7 +9033,7 @@ export function ProjectChatWorkspace({
         }}
       />
       <ConfirmationDialog
-        isOpen={reviewCompleteDialogOpen}
+        isOpen={reviewCompleteDialogOpen && !activeStage?.isTasker}
         title={reviewCompletionIsFinalStage ? "Approve final submission?" : "Approve submission?"}
         description={
           stageInvoiceMissing
@@ -9996,16 +9996,18 @@ export function ProjectChatWorkspace({
                     >
                       Request Revision
                     </Button>
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        setReviewDialogError(null);
-                        setReviewCompleteDialogOpen(true);
-                      }}
-                      disabled={Boolean(pendingRevisionReviewId)}
-                    >
-                      Approve Submission
-                    </Button>
+                    {!activeStage?.isTasker ? (
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setReviewDialogError(null);
+                          setReviewCompleteDialogOpen(true);
+                        }}
+                        disabled={Boolean(pendingRevisionReviewId)}
+                      >
+                        Approve Submission
+                      </Button>
+                    ) : null}
                   </>
                 ) : (
                   <Button

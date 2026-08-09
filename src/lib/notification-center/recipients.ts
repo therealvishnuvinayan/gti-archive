@@ -1,5 +1,9 @@
 import { withPrismaRetry, prisma } from "@/lib/prisma";
 import { isTimestampHiddenByPauseWindows } from "@/lib/project-collaborator-visibility";
+import {
+  getProjectConceptAccessContext,
+  getProjectConceptParticipantUserIds,
+} from "@/lib/project-concept-access";
 
 type ProjectNotificationContext = {
   id: string;
@@ -207,8 +211,33 @@ export async function getVisibleStageEventRecipientUserIds(
     includeOwner?: boolean;
     includeExecutor?: boolean;
     includeCollaborators?: boolean;
+    stageId?: string | null;
   } = {},
 ) {
+  if (options.stageId) {
+    const concept = await getProjectConceptAccessContext({
+      projectId,
+      taskerStageId: options.stageId,
+    });
+
+    if (concept) {
+      const conceptRecipients = getProjectConceptParticipantUserIds(concept, {
+        excludeUserId: options.excludeUserId,
+      }).filter((recipientUserId) => {
+        if (
+          recipientUserId === concept.ownerId ||
+          concept.coOwnerIds.includes(recipientUserId)
+        ) {
+          return options.includeOwner !== false;
+        }
+
+        return options.includeExecutor !== false;
+      });
+
+      return conceptRecipients;
+    }
+  }
+
   const recipientUserIds = await getProjectParticipantUserIds(projectId, options);
   return filterRecipientsVisibleForStageEvent(projectId, recipientUserIds, eventCreatedAt);
 }

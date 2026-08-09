@@ -15,7 +15,7 @@ const researchAccessProjectSelect = {
   collaborators: { select: { userId: true } },
   workflowStages: {
     where: { stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING },
-    select: { status: true },
+    select: { stageKey: true, status: true },
     take: 1,
   },
 } satisfies Prisma.ProjectSelect;
@@ -57,7 +57,10 @@ export function getProjectResearchAccess(
   const isOwnWorkspace = context.workspaceOwnerUserId === user.id;
   const isProjectParticipant =
     isProjectOwner || isProjectCoOwner || isExecutor || isCollaborator;
-  const workflowStatus = context.project.workflowStages[0]?.status;
+  const workflowStatus = context.project.workflowStages.find(
+    (stage) =>
+      stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+  )?.status;
   const stageAvailable =
     workflowStatus === ProjectWorkflowStageStatus.AVAILABLE ||
     workflowStatus === ProjectWorkflowStageStatus.COMPLETED;

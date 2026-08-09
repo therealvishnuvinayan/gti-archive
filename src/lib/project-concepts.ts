@@ -5,9 +5,13 @@ import {
 } from "@prisma/client";
 
 import {
-  hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import {
+  canManageProjectConcept,
+  canViewProjectConcept,
+  type ConceptAccessContext,
+} from "@/lib/project-concept-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   getProjectStageAccessRecordById,
@@ -25,9 +29,24 @@ export type ProjectConceptFolderRecord = {
   name: string;
   sortOrder: number;
   taskerStageId: string;
+  assignedExecutorId: string | null;
+  assignedExecutor: {
+    id: string;
+    name: string | null;
+    email: string;
+    avatarUrl: string | null;
+  } | null;
+  brief: string | null;
+  actualStartedAt: Date | null;
+  briefAttachments: Array<{
+    id: string;
+    name: string;
+    mimeType: string;
+    fileSize: number;
+  }>;
 };
 
-const DEFAULT_CONCEPT_FOLDER_NAME = "Concept 1";
+export const DEFAULT_CONCEPT_FOLDER_NAME = "Concept 1";
 export const CONCEPT_FOLDER_NAME_MAX_LENGTH = 120;
 
 type ConceptProject = ProjectStageAccessRecord;
@@ -88,7 +107,7 @@ async function getAuthorizedConceptProject(
 
   const project = await getProjectStageAccessRecordById(projectId);
 
-  if (!project || !hasProjectPermission(user, project, "project.view")) {
+  if (!project) {
     return null;
   }
 
@@ -112,150 +131,146 @@ function getTaskerStageOrder(stageKey: ConceptWorkflowStageKey, sortOrder: numbe
   return stageBase + sortOrder;
 }
 
-function getDefaultTaskerStageId(
-  projectId: string,
-  stageKey: ConceptWorkflowStageKey,
-) {
-  return `concept-tasker:${projectId}:${stageKey.toLowerCase()}:concept-1`;
-}
-
 const conceptFolderSelect = {
   id: true,
   name: true,
   sortOrder: true,
   taskerStageId: true,
+  assignedExecutorId: true,
+  assignedExecutor: {
+    select: {
+      user: {
+        select: { id: true, name: true, email: true, avatarUrl: true },
+      },
+    },
+  },
+  taskerStage: {
+    select: {
+      description: true,
+      actualStartedAt: true,
+      attachments: {
+        where: {
+          revisionId: null,
+          commentId: null,
+          assetType: "GENERAL_PROJECT_ASSET",
+          status: "READY",
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          originalFileName: true,
+          mimeType: true,
+          fileSize: true,
+        },
+      },
+    },
+  },
 } satisfies Prisma.ProjectConceptFolderSelect;
 
-async function findExistingConceptFolder(
-  projectId: string,
+function getConceptAccessContext(
+  project: ConceptProject,
+  folder: { id: string; taskerStageId: string; assignedExecutorId: string | null },
   stageKey: ConceptWorkflowStageKey,
-) {
-  return withPrismaRetry(() =>
-    prisma.projectConceptFolder.findFirst({
-      where: {
-        projectId,
-        workflowStageKey: stageKey,
-      },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-      select: conceptFolderSelect,
-    }),
-  );
+): ConceptAccessContext {
+  return {
+    folderId: folder.id,
+    projectId: project.id,
+    taskerStageId: folder.taskerStageId,
+    workflowStageKey: stageKey,
+    assignedExecutorId: folder.assignedExecutorId,
+    ownerId: project.ownerId,
+    coOwnerIds: project.coOwners.map((coOwner) => coOwner.userId),
+  };
 }
 
-export async function ensureDefaultProjectConceptFolder(
-  user: PermissionUser,
-  projectId: string,
-  stageKey: ConceptWorkflowStageKey,
-  options: { skipExistingLookup?: boolean } = {},
-) {
-  const project = await getAuthorizedConceptProject(user, projectId, stageKey);
-
-  if (!project) {
-    return null;
-  }
-
-  const existing = options.skipExistingLookup
-    ? null
-    : await findExistingConceptFolder(projectId, stageKey);
-
-  if (existing) {
-    return existing;
-  }
-
-  const normalizedName = normalizeConceptFolderName(DEFAULT_CONCEPT_FOLDER_NAME);
-  const taskerStageId = getDefaultTaskerStageId(projectId, stageKey);
-
-  try {
-    return await withPrismaRetry(() =>
-      prisma.$transaction(
-        async (tx) => {
-          const concurrentExisting = await tx.projectConceptFolder.findFirst({
-            where: {
-              projectId,
-              workflowStageKey: stageKey,
-            },
-            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-            select: conceptFolderSelect,
-          });
-
-          if (concurrentExisting) {
-            return concurrentExisting;
-          }
-
-          await tx.projectStage.upsert({
-            where: { id: taskerStageId },
-            update: { isTasker: true },
-            create: {
-              id: taskerStageId,
-              projectId,
-              name: DEFAULT_CONCEPT_FOLDER_NAME,
-              description: "Discussion thread for this concept.",
-              invoiceRequired: false,
-              isTasker: true,
-              actualStartedAt: new Date(),
-              startedById: user.id,
-              status: StageStatus.ONGOING,
-              order: getTaskerStageOrder(stageKey, 1),
-            },
-          });
-
-          return tx.projectConceptFolder.create({
-            data: {
-              projectId,
-              workflowStageKey: stageKey,
-              taskerStageId,
-              name: DEFAULT_CONCEPT_FOLDER_NAME,
-              normalizedName,
-              sortOrder: 1,
-              createdById: user.id,
-            },
-            select: conceptFolderSelect,
-          });
-        },
-        { maxWait: 5_000, timeout: 15_000 },
-      ),
-    );
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return findExistingConceptFolder(projectId, stageKey);
-    }
-
-    throw error;
-  }
+function mapConceptFolder(
+  folder: Prisma.ProjectConceptFolderGetPayload<{
+    select: typeof conceptFolderSelect;
+  }>,
+): ProjectConceptFolderRecord {
+  return {
+    id: folder.id,
+    name: folder.name,
+    sortOrder: folder.sortOrder,
+    taskerStageId: folder.taskerStageId,
+    assignedExecutorId: folder.assignedExecutorId,
+    assignedExecutor: folder.assignedExecutor?.user ?? null,
+    brief: folder.taskerStage.description,
+    actualStartedAt: folder.taskerStage.actualStartedAt,
+    briefAttachments: folder.taskerStage.attachments.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.originalFileName,
+      mimeType: attachment.mimeType,
+      fileSize: attachment.fileSize,
+    })),
+  };
 }
 
 export async function getProjectConceptFolders(
   user: PermissionUser,
   projectId: string,
   stageKey: ConceptWorkflowStageKey,
+  options: { executorId?: string | null } = {},
 ) {
   const project = await getAuthorizedConceptProject(user, projectId, stageKey);
   if (!project) {
     return null;
   }
 
+  const managerContext: ConceptAccessContext = {
+    folderId: "",
+    projectId,
+    taskerStageId: "",
+    workflowStageKey: stageKey,
+    assignedExecutorId: null,
+    ownerId: project.ownerId,
+    coOwnerIds: project.coOwners.map((coOwner) => coOwner.userId),
+  };
+  const canManage = canManageProjectConcept(user, managerContext);
+  const requestedExecutor = options.executorId?.trim() || null;
+  const requestedExecutorId = canManage
+    ? requestedExecutor &&
+      project.executors.some((executor) => executor.userId === requestedExecutor)
+      ? requestedExecutor
+      : null
+    : user.id;
   const folders = await withPrismaRetry(() =>
     prisma.projectConceptFolder.findMany({
       where: {
         projectId,
         workflowStageKey: stageKey,
+        ...(requestedExecutorId
+          ? { assignedExecutorId: requestedExecutorId }
+          : canManage
+            ? {}
+            : { assignedExecutorId: user.id }),
       },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
       select: conceptFolderSelect,
     }),
   );
 
-  if (folders.length > 0) {
-    return folders;
+  const visibleFolders = folders.filter((folder) =>
+    canViewProjectConcept(user, getConceptAccessContext(project, folder, stageKey)),
+  );
+
+  if (!canManage && visibleFolders.length === 0) {
+    return null;
   }
 
-  const defaultFolder = await ensureDefaultProjectConceptFolder(
-    user,
-    projectId,
-    stageKey,
-    { skipExistingLookup: true },
-  );
-  return defaultFolder ? [defaultFolder] : null;
+  return {
+    folders: visibleFolders.map(mapConceptFolder),
+    canManage,
+    selectedExecutorId: requestedExecutorId,
+    executors: canManage
+      ? project.executors.map((executor) => ({
+          id: executor.user.id,
+          name: executor.user.name,
+          email: executor.user.email,
+          avatarUrl: executor.user.avatarUrl,
+        }))
+      : [],
+  };
 }
 
 export async function createProjectConceptFolder(
@@ -264,6 +279,8 @@ export async function createProjectConceptFolder(
     projectId: string;
     stageKey: ConceptWorkflowStageKey;
     name: string;
+    assignedExecutorId: string;
+    brief?: string | null;
   },
 ) {
   const validatedName = validateConceptFolderName(input.name);
@@ -278,9 +295,38 @@ export async function createProjectConceptFolder(
     input.stageKey,
   );
 
-  if (!project || !hasProjectPermission(user, project, "project.update")) {
+  const managerContext: ConceptAccessContext | null = project
+    ? {
+        folderId: "",
+        projectId: input.projectId,
+        taskerStageId: "",
+        workflowStageKey: input.stageKey,
+        assignedExecutorId: null,
+        ownerId: project.ownerId,
+        coOwnerIds: project.coOwners.map((coOwner) => coOwner.userId),
+      }
+    : null;
+
+  if (!project || !managerContext || !canManageProjectConcept(user, managerContext)) {
     return { error: "You do not have permission to create concept folders." } as const;
   }
+
+  if (input.stageKey !== ProjectWorkflowStageKey.CONCEPT_CREATION) {
+    return {
+      error: "Stage 4 concepts are created from approved Stage 3 concepts in a later workflow round.",
+    } as const;
+  }
+
+  const assignedExecutorId = input.assignedExecutorId.trim();
+  if (!assignedExecutorId) {
+    return { error: "Assigned Executor is required." } as const;
+  }
+
+  if (!project.executors.some((executor) => executor.userId === assignedExecutorId)) {
+    return { error: "Assigned Executor must be a current project executor." } as const;
+  }
+
+  const brief = input.brief?.trim() || null;
 
   try {
     const folder = await withPrismaRetry(() =>
@@ -314,11 +360,11 @@ export async function createProjectConceptFolder(
             data: {
               projectId: input.projectId,
               name: validatedName.name,
-              description: "Discussion thread for this concept.",
+              description: brief,
               invoiceRequired: false,
               isTasker: true,
-              actualStartedAt: new Date(),
-              startedById: user.id,
+              actualStartedAt: null,
+              startedById: null,
               status: StageStatus.ONGOING,
               order: getTaskerStageOrder(input.stageKey, sortOrder),
             },
@@ -330,6 +376,7 @@ export async function createProjectConceptFolder(
               projectId: input.projectId,
               workflowStageKey: input.stageKey,
               taskerStageId: taskerStage.id,
+              assignedExecutorId,
               name: validatedName.name,
               normalizedName: validatedName.normalizedName,
               sortOrder,
@@ -342,7 +389,7 @@ export async function createProjectConceptFolder(
       ),
     );
 
-    return { folder } as const;
+    return { folder: mapConceptFolder(folder) } as const;
   } catch (error) {
     if (
       (error instanceof Error && error.message === "DUPLICATE_CONCEPT_FOLDER") ||
@@ -370,13 +417,33 @@ export async function renameProjectConceptFolder(
     return validatedName;
   }
 
+  return editProjectConceptFolder(user, input);
+}
+
+export async function editProjectConceptFolder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    stageKey: ConceptWorkflowStageKey;
+    folderId: string;
+    name: string;
+    assignedExecutorId?: string;
+    brief?: string | null;
+  },
+) {
+  const validatedName = validateConceptFolderName(input.name);
+
+  if ("error" in validatedName) {
+    return validatedName;
+  }
+
   const project = await getAuthorizedConceptProject(
     user,
     input.projectId,
     input.stageKey,
   );
 
-  if (!project || !hasProjectPermission(user, project, "project.update")) {
+  if (!project) {
     return { error: "You do not have permission to rename concept folders." } as const;
   }
 
@@ -390,12 +457,50 @@ export async function renameProjectConceptFolder(
       select: {
         id: true,
         taskerStageId: true,
+        assignedExecutorId: true,
+        taskerStage: {
+          select: {
+            actualStartedAt: true,
+            description: true,
+          },
+        },
       },
     }),
   );
 
   if (!folder) {
     return { error: "Concept folder not found." } as const;
+  }
+
+  const accessContext = getConceptAccessContext(project, folder, input.stageKey);
+  if (!canManageProjectConcept(user, accessContext)) {
+    return { error: "You do not have permission to edit concept folders." } as const;
+  }
+
+  const requestedExecutorId = input.assignedExecutorId?.trim();
+  const assignmentChanged =
+    requestedExecutorId !== undefined &&
+    requestedExecutorId !== folder.assignedExecutorId;
+  const requestedBrief =
+    input.brief === undefined ? undefined : input.brief?.trim() || null;
+  const briefChanged =
+    requestedBrief !== undefined && requestedBrief !== folder.taskerStage.description;
+
+  if (requestedExecutorId === "") {
+    return { error: "Assigned Executor is required." } as const;
+  }
+
+  if (
+    requestedExecutorId &&
+    !project.executors.some((executor) => executor.userId === requestedExecutorId)
+  ) {
+    return { error: "Assigned Executor must be a current project executor." } as const;
+  }
+
+  if (folder.taskerStage.actualStartedAt && (briefChanged || (assignmentChanged && folder.assignedExecutorId))) {
+    return {
+      error: "Assigned Executor and Concept Brief are locked after work starts.",
+    } as const;
   }
 
   try {
@@ -406,11 +511,17 @@ export async function renameProjectConceptFolder(
           data: {
             name: validatedName.name,
             normalizedName: validatedName.normalizedName,
+            ...(requestedExecutorId !== undefined
+              ? { assignedExecutorId: requestedExecutorId }
+              : {}),
           },
         }),
         prisma.projectStage.update({
           where: { id: folder.taskerStageId },
-          data: { name: validatedName.name },
+          data: {
+            name: validatedName.name,
+            ...(requestedBrief !== undefined ? { description: requestedBrief } : {}),
+          },
         }),
       ]),
     );
@@ -420,6 +531,7 @@ export async function renameProjectConceptFolder(
         id: folder.id,
         name: validatedName.name,
         taskerStageId: folder.taskerStageId,
+        assignedExecutorId: requestedExecutorId ?? folder.assignedExecutorId,
       },
     } as const;
   } catch (error) {
@@ -455,6 +567,7 @@ export async function getProjectConceptChatContext(
         id: true,
         name: true,
         taskerStageId: true,
+        assignedExecutorId: true,
         project: { select: projectStageAccessSelect },
       },
     }),
@@ -462,7 +575,10 @@ export async function getProjectConceptChatContext(
 
   if (
     !record ||
-    !hasProjectPermission(user, record.project, "chat.view") ||
+    !canViewProjectConcept(
+      user,
+      getConceptAccessContext(record.project, record, input.stageKey),
+    ) ||
     !canOpenImplementedWorkflowStage({
       user,
       stageKey: input.stageKey,

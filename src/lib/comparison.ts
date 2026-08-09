@@ -206,7 +206,7 @@ async function resolveComparableSubmissionPair(
     throwOnInvalidPair?: boolean;
   } = {},
 ) {
-  const project = await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(user, input.projectId, input.stageId);
 
   if (!hasProjectPermission(user, project, "compare.view")) {
     throw new Error("You do not have permission to compare project submissions.");
@@ -285,6 +285,7 @@ async function resolveComparableSubmissionPair(
   for (const attachment of attachments) {
     await assertProjectAttachmentVisibilityForUser(user, {
       projectId: attachment.projectId,
+      stageId: input.stageId,
       createdAt: attachment.createdAt,
       project: {
         ownerId: project.ownerId,
@@ -345,6 +346,7 @@ async function getVisibleSubmissionCaptionContext(
 
   await assertProjectAttachmentVisibilityForUser(user, {
     projectId: attachment.projectId,
+    stageId: attachment.stageId,
     createdAt: attachment.createdAt,
     project: {
       ownerId: project.ownerId,

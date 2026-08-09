@@ -46,6 +46,9 @@ import {
   assertProjectResearchFileAccess,
   assertResearchFolderWriteAccess,
 } from "@/lib/project-research-access";
+import {
+  assertConceptTaskerAccessIfNeeded,
+} from "@/lib/project-concept-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { logChatSendFastTiming, logStageChatTiming } from "@/lib/stage-chat-timing";
@@ -1035,6 +1038,16 @@ async function getStageChatAccessRecord(
     return null;
   }
 
+  try {
+    await assertConceptTaskerAccessIfNeeded(user, {
+      projectId,
+      stageId,
+      mode: "view",
+    });
+  } catch {
+    return null;
+  }
+
   return {
     id: stage.project.id,
     ownerId: stage.project.ownerId,
@@ -1101,6 +1114,14 @@ export async function assertProjectAccess(
     throw new Error("This workflow stage is locked.");
   }
 
+  if (selectedStage) {
+    await assertConceptTaskerAccessIfNeeded(user, {
+      projectId,
+      stageId: selectedStage.id,
+      mode: "view",
+    });
+  }
+
   if (hasProjectPermission(user, project, "project.view")) {
     return project;
   }
@@ -1160,6 +1181,12 @@ export async function assertStageChatWriteAccess(
 ) {
   const permissionKey = input.permissionKey ?? "chat.createComment";
   const project = assertProjectAccessFromContext(user, input.stage.project);
+
+  await assertConceptTaskerAccessIfNeeded(user, {
+    projectId: input.projectId,
+    stageId: input.stage.id,
+    mode: "view",
+  });
 
   if (
     !canOpenProjectStageChatContainer({
@@ -1445,6 +1472,7 @@ export async function assertProjectAttachmentVisibilityForUser(
   user: AccessUser,
   attachment: {
     projectId: string;
+    stageId?: string | null;
     createdAt: Date;
     project: {
       ownerId: string | null;
@@ -1452,6 +1480,14 @@ export async function assertProjectAttachmentVisibilityForUser(
     };
   },
 ) {
+  if (attachment.stageId) {
+    await assertConceptTaskerAccessIfNeeded(user, {
+      projectId: attachment.projectId,
+      stageId: attachment.stageId,
+      mode: "view",
+    });
+  }
+
   if (hasProjectPermission(user, attachment.project, "collaborator.pauseVisibility")) {
     return;
   }
@@ -3021,6 +3057,7 @@ export async function createStageComment(
             includeOwner: true,
             includeExecutor: true,
             includeCollaborators: true,
+            stageId: input.stageId,
           })
         ).filter(
           (recipientUserId) =>
@@ -3249,6 +3286,7 @@ export async function createStageTextCommentFast(
             includeOwner: true,
             includeExecutor: true,
             includeCollaborators: true,
+            stageId: input.stageId,
           })
         ).filter(
           (recipientUserId) =>
@@ -3673,6 +3711,7 @@ export async function prepareStageCommentUploads(
             includeOwner: true,
             includeExecutor: true,
             includeCollaborators: true,
+            stageId: input.stageId,
           })
         ).filter(
           (recipientUserId) =>
@@ -4053,6 +4092,12 @@ export async function startProjectStageWork(
     throw new Error("Stage not found.");
   }
 
+  await assertConceptTaskerAccessIfNeeded(user, {
+    projectId: input.projectId,
+    stageId: input.stageId,
+    mode: "work",
+  });
+
   assertProjectWorkflowPermission(
     user,
     project,
@@ -4327,6 +4372,20 @@ export async function reviewStageSubmission(
     throw new Error("Submission not found.");
   }
 
+  const concept = attachment.stageId
+    ? await assertConceptTaskerAccessIfNeeded(user, {
+        projectId: attachment.projectId,
+        stageId: attachment.stageId,
+        mode: "manage",
+      })
+    : null;
+
+  if (concept && input.status === "APPROVED") {
+    throw new Error(
+      "Concept taskers cannot use the legacy approve/complete action. Request changes remains available.",
+    );
+  }
+
   if (
     !hasProjectPermission(
       user,
@@ -4396,6 +4455,7 @@ export async function reviewProjectRevision(
             id: true,
             name: true,
             order: true,
+            isTasker: true,
             status: true,
             invoiceRequired: true,
           },
@@ -4416,6 +4476,18 @@ export async function reviewProjectRevision(
 
   if (!revision) {
     throw new Error("Submission not found.");
+  }
+
+  await assertConceptTaskerAccessIfNeeded(user, {
+    projectId: input.projectId,
+    stageId: input.stageId,
+    mode: "manage",
+  });
+
+  if (revision.stage.isTasker && input.status === "APPROVED") {
+    throw new Error(
+      "Concept taskers cannot use the legacy approve/complete action. Request changes remains available.",
+    );
   }
 
   assertProjectWorkflowPermission(
@@ -4899,6 +4971,41 @@ export async function requestAttachmentUpload(
 
   if (input.fileSize > getMaxAssetUploadBytes()) {
     return { error: "This file exceeds the allowed size limit." };
+  }
+
+  if (input.stageId) {
+    const isConceptBriefAttachment =
+      input.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+      !input.revisionId &&
+      !input.commentId;
+
+    try {
+      const concept = await assertConceptTaskerAccessIfNeeded(user, {
+        projectId: input.projectId,
+        stageId: input.stageId,
+        mode: isConceptBriefAttachment ? "manage" : "view",
+      });
+
+      if (concept && isConceptBriefAttachment) {
+        const tasker = await withPrismaRetry(() =>
+          prisma.projectStage.findUnique({
+            where: { id: input.stageId ?? "" },
+            select: { actualStartedAt: true },
+          }),
+        );
+
+        if (tasker?.actualStartedAt) {
+          return { error: "Concept Brief attachments are locked after work starts." };
+        }
+      }
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "You do not have permission to upload to this concept.",
+      };
+    }
   }
 
   let stageSubmissionProjectCategory: string | null = null;
@@ -5534,6 +5641,30 @@ export async function completeAttachmentUpload(
     throw new Error("Attachment not found.");
   }
 
+  if (attachment.stageId) {
+    const isConceptBriefAttachment =
+      attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+      !attachment.revisionId &&
+      !attachment.commentId;
+    const concept = await assertConceptTaskerAccessIfNeeded(user, {
+      projectId: attachment.projectId,
+      stageId: attachment.stageId,
+      mode: isConceptBriefAttachment ? "manage" : "view",
+    });
+
+    if (concept && isConceptBriefAttachment) {
+      const tasker = await withPrismaRetry(() =>
+        prisma.projectStage.findUnique({
+          where: { id: attachment.stageId ?? "" },
+          select: { actualStartedAt: true },
+        }),
+      );
+      if (tasker?.actualStartedAt) {
+        throw new Error("Concept Brief attachments are locked after work starts.");
+      }
+    }
+  }
+
   const project = assertProjectAccessFromContext(user, attachment.project);
 
   const isProjectResearchFile =
@@ -5972,6 +6103,7 @@ export async function getAttachmentDownloadUrlForUser(
       select: {
         id: true,
         projectId: true,
+        stageId: true,
         bucket: true,
         storageKey: true,
         originalFileName: true,
@@ -6033,6 +6165,9 @@ export async function getAttachmentPreviewUrlForUser(
       select: {
         id: true,
         projectId: true,
+        stageId: true,
+        revisionId: true,
+        commentId: true,
         bucket: true,
         storageKey: true,
         originalFileName: true,
@@ -6094,6 +6229,9 @@ export async function deleteAttachmentForUser(
       select: {
         id: true,
         projectId: true,
+        stageId: true,
+        revisionId: true,
+        commentId: true,
         bucket: true,
         storageKey: true,
         status: true,
@@ -6141,6 +6279,30 @@ export async function deleteAttachmentForUser(
     "You do not have permission to delete this file.",
   );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
+
+  if (
+    attachment.stageId &&
+    attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
+    !attachment.revisionId &&
+    !attachment.commentId
+  ) {
+    const concept = await assertConceptTaskerAccessIfNeeded(user, {
+      projectId: attachment.projectId,
+      stageId: attachment.stageId,
+      mode: "manage",
+    });
+    if (concept) {
+      const tasker = await withPrismaRetry(() =>
+        prisma.projectStage.findUnique({
+          where: { id: attachment.stageId ?? "" },
+          select: { actualStartedAt: true },
+        }),
+      );
+      if (tasker?.actualStartedAt) {
+        throw new Error("Concept Brief attachments are locked after work starts.");
+      }
+    }
+  }
 
   await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(() => undefined);
 

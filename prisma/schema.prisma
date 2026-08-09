@@ -697,22 +697,25 @@ model ProjectResearchFolderFile {
 }
 
 model ProjectConceptFolder {
-  id               String                  @id @default(cuid())
-  projectId        String
-  project          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  workflowStageKey ProjectWorkflowStageKey @default(CONCEPT_CREATION)
-  taskerStageId    String                  @unique
-  taskerStage      ProjectStage            @relation(fields: [taskerStageId], references: [id], onDelete: Cascade)
-  name             String
-  normalizedName   String
-  sortOrder        Int                     @default(1)
-  createdById      String?
-  createdBy        User?                   @relation("ProjectConceptFolderCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  id                 String                  @id @default(cuid())
+  projectId          String
+  project            Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workflowStageKey   ProjectWorkflowStageKey @default(CONCEPT_CREATION)
+  taskerStageId      String                  @unique
+  taskerStage        ProjectStage            @relation(fields: [taskerStageId], references: [id], onDelete: Cascade)
+  assignedExecutorId String?
+  assignedExecutor   ProjectExecutor?        @relation("ProjectConceptFolderAssignedExecutor", fields: [projectId, assignedExecutorId], references: [projectId, userId], onDelete: Restrict, onUpdate: Cascade)
+  name               String
+  normalizedName     String
+  sortOrder          Int                     @default(1)
+  createdById        String?
+  createdBy          User?                   @relation("ProjectConceptFolderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   @@unique([projectId, workflowStageKey, normalizedName])
   @@index([projectId, workflowStageKey, sortOrder])
+  @@index([projectId, workflowStageKey, assignedExecutorId, sortOrder])
   @@index([createdById])
 }
 
@@ -1017,14 +1020,15 @@ model ProjectCollaborator {
 }
 
 model ProjectExecutor {
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation("ProjectExecutorUser", fields: [userId], references: [id], onDelete: Cascade)
-  addedById String?
-  addedBy   User?    @relation("ProjectExecutorAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  projectId              String
+  project                Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId                 String
+  user                   User                   @relation("ProjectExecutorUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedConceptFolders ProjectConceptFolder[] @relation("ProjectConceptFolderAssignedExecutor")
+  addedById              String?
+  addedBy                User?                  @relation("ProjectExecutorAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
 
   @@id([projectId, userId])
   @@index([userId])
