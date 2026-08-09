@@ -1,842 +1,1075 @@
 import {
-  CalendarEventType,
+  ProductionApprovalStepStatus,
+  ProductionDispatchStatus,
+  ProductionHandoverDeliveryStatus,
+  ProductionSampleRoundStatus,
+  ProjectFileChecklistRequestChannel,
+  ProjectFileChecklistRequestWorkflowStatus,
+  ProjectProductionUnitStatus,
+  ProjectRevisionStatus,
+  ProjectWorkflowStageKey,
   StageStatus,
   UserRole,
   type Prisma,
   type User,
 } from "@prisma/client";
 
-import { getCalendarAccessState } from "@/lib/calendar";
-import { mapNotificationToView } from "@/lib/notification-center/presenter";
 import {
-  buildAccessibleProjectsWhere,
-  getDashboardProjectCounts,
-  getRecentProjects,
-  type DashboardProjectCounts,
-} from "@/lib/projects";
-import { hasPermission, type PermissionUser } from "@/lib/permissions/resolver";
+  deriveProjectListWorkflowState,
+  type ProjectListWorkflowState,
+} from "@/lib/project-list-workflow";
+import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
+import {
+  hasPermission,
+  hasProjectPermission,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
+import { STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
 
-type DashboardUser = Pick<User, "id" | "role"> & PermissionUser;
+type DashboardUser = Pick<User, "id" | "role" | "collaboratorType"> &
+  PermissionUser;
 
-type DashboardCollaborationProjectRecord = {
-  id: string;
-  name: string;
-  status: {
-    group: {
-      slug: string;
-    } | null;
-  } | null;
-  owner: {
-    id: string;
-    name: string | null;
-    email: string;
-  } | null;
-  coOwners: Array<{
-    user: { id: string; name: string | null; email: string };
-  }>;
-  executors: Array<{
-    user: {
-      id: string;
-      name: string | null;
-      email: string;
-    };
-  }>;
-  collaborators: Array<{
-    user: {
-      id: string;
-      name: string | null;
-      email: string;
-    };
-  }>;
+export type DashboardKpiIcon =
+  | "projects"
+  | "active"
+  | "attention"
+  | "completed";
+
+export type DashboardKpi = {
+  label: string;
+  value: number;
+  note: string;
+  href: string;
+  icon: DashboardKpiIcon;
+  tone: "green" | "amber";
 };
 
-type DashboardCalendarReminderRecord = {
+export type DashboardAttentionItem = {
   id: string;
+  severity: "critical" | "warning" | "info";
+  kind:
+    | "deadline"
+    | "review"
+    | "revision"
+    | "request"
+    | "approval";
   title: string;
-  details: string | null;
-  startAt: Date;
+  detail: string;
+  projectName: string;
+  href: string;
+  actionLabel: string;
+  sortAt: string;
 };
 
-type DashboardDeadlineCandidate = {
+export type DashboardDeadlineItem = {
+  id: string;
   projectName: string;
   detail: string;
-  dueAt: Date;
-  actionHref: string;
+  stageLabel: string;
+  dateLabel: string;
+  statusLabel: string;
+  tone: "critical" | "warning" | "standard";
+  href: string;
+  dueAt: string;
 };
 
-type DashboardNotificationCandidate = {
-  id: string;
-  type: Parameters<typeof mapNotificationToView>[0]["type"];
-  title: string;
-  message: string;
-  url: string | null;
-  isRead: boolean;
-  createdAt: Date;
-  projectId: string | null;
-  stageId: string | null;
-};
-
-type ProjectUrlTarget = {
-  projectId: string;
-  stageId: string | null;
-};
-
-const activeProjectStatusWhere: Prisma.ProjectWhereInput = {
-  OR: [
-    {
-      status: {
-        is: null,
-      },
-    },
-    {
-      status: {
-        is: {
-          group: {
-            is: null,
-          },
-        },
-      },
-    },
-    {
-      status: {
-        is: {
-          group: {
-            is: {
-              slug: {
-                notIn: [
-                  defaultProjectStatusGroupSlugs.completed,
-                  defaultProjectStatusGroupSlugs.archived,
-                ],
-              },
-            },
-          },
-        },
-      },
-    },
-  ],
-};
-
-export type DashboardUpdateRecord = {
-  id: string;
-  title: string;
-  detail: string;
-  tone: "critical" | "success" | "warning";
-  href?: string;
-};
-
-export type DashboardReminderRecord = {
-  id: string;
-  headline: string;
-  detail: string;
-  context?: string;
-  dateTimeLabel: string;
-  statusLabel?: string;
-  actionHref: string;
-  actionLabel: string;
-};
-
-export type DashboardCollaboratorRecord = {
+export type DashboardStageSummary = {
+  number: number;
   name: string;
-  task: string;
-  project: string;
-  href?: string;
+  count: number;
+  href: string;
 };
 
-export type DashboardProgressRecord = {
-  percentage: number;
-  subtitle: string;
-  segments: ReadonlyArray<{
-    label: string;
-    value: number;
-    count: number;
-    tone: "ongoing" | "pending" | "onHold" | "completed";
-  }>;
+export type DashboardWorkSummaryItem = {
+  id: string;
+  label: string;
+  count: number;
+  href: string;
+  tone: "blue" | "amber" | "red" | "green";
 };
 
-export type DashboardDeadlineRecord = {
-  project: string;
-  detail: string;
-  timeLabel: string;
-  actionHref: string;
-  overdue: boolean;
+export type DashboardRecentProject = {
+  id: string;
+  name: string;
+  href: string;
+  stageNumber: number;
+  stageName: string;
+  status: ProjectListWorkflowState["status"];
+  ownerName: string;
+  ownerInitials: string;
+  updatedLabel: string;
 };
 
 export type DashboardSnapshot = {
-  counts: Awaited<ReturnType<typeof getDashboardProjectCounts>>;
-  recentProjects: Awaited<ReturnType<typeof getRecentProjects>>;
-  updates: DashboardUpdateRecord[];
-  reminders: DashboardReminderRecord[];
-  collaborators: DashboardCollaboratorRecord[];
-  progress: DashboardProgressRecord;
-  deadlines: DashboardDeadlineRecord[];
+  kpis: DashboardKpi[];
+  attention: DashboardAttentionItem[];
+  attentionCount: number;
+  deadlines: DashboardDeadlineItem[];
+  stages: DashboardStageSummary[];
+  myWork: DashboardWorkSummaryItem[];
+  recentProjects: DashboardRecentProject[];
+  scopeLabel: string;
 };
 
-function getDisplayName(person: { name: string | null; email: string }) {
-  return person.name?.trim() || person.email;
-}
-
-function pluralizeDurationUnit(value: number, unit: string) {
-  return `${value} ${unit}${value === 1 ? "" : "s"}`;
-}
-
-function formatReadableDuration(milliseconds: number) {
-  const totalMinutes = Math.max(1, Math.floor(milliseconds / 60_000));
-  const totalHours = Math.floor(totalMinutes / 60);
-  const totalDays = Math.floor(totalHours / 24);
-
-  if (totalDays >= 365) {
-    const years = Math.floor(totalDays / 365);
-    const months = Math.floor((totalDays % 365) / 30);
-    const segments = [pluralizeDurationUnit(years, "year")];
-
-    if (months > 0) {
-      segments.push(pluralizeDurationUnit(months, "month"));
-    }
-
-    return segments.join(", ");
-  }
-
-  if (totalDays >= 60) {
-    const months = Math.floor(totalDays / 30);
-    const days = totalDays % 30;
-    const segments = [pluralizeDurationUnit(months, "month")];
-
-    if (days > 0) {
-      segments.push(pluralizeDurationUnit(days, "day"));
-    }
-
-    return segments.join(", ");
-  }
-
-  if (totalDays > 0) {
-    const hours = totalHours % 24;
-    const segments = [pluralizeDurationUnit(totalDays, "day")];
-
-    if (hours > 0) {
-      segments.push(pluralizeDurationUnit(hours, "hour"));
-    }
-
-    return segments.join(", ");
-  }
-
-  if (totalHours > 0) {
-    const minutes = totalMinutes % 60;
-    const segments = [pluralizeDurationUnit(totalHours, "hour")];
-
-    if (minutes > 0) {
-      segments.push(pluralizeDurationUnit(minutes, "minute"));
-    }
-
-    return segments.join(", ");
-  }
-
-  return pluralizeDurationUnit(totalMinutes, "minute");
-}
-
-function formatTimeDistance(target: Date) {
-  const diffMs = target.getTime() - Date.now();
-  const overdue = diffMs < 0;
-  const duration = formatReadableDuration(Math.abs(diffMs));
-
-  return {
-    overdue,
-    label: overdue ? `Overdue by ${duration}` : `Due in ${duration}`,
-  };
-}
-
-function formatDateTime(value: Date | null) {
-  if (!value) {
-    return "No date set";
-  }
-
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
-}
-
-function mapNotificationTone(visualKind: string): DashboardUpdateRecord["tone"] {
-  switch (visualKind) {
-    case "revision-rejected":
-    case "submission-pending":
-    case "approval-required":
-    case "copyright-transfer":
-      return "critical";
-    case "revision-approved":
-    case "archive-created":
-    case "approval-received":
-    case "invoice-uploaded":
-    case "stage-completed":
-      return "success";
-    default:
-      return "warning";
-  }
-}
-
-function parseProjectUrlTarget(url: string | null): ProjectUrlTarget | null {
-  if (!url) {
-    return null;
-  }
-
-  try {
-    const parsedUrl = new URL(url, "http://gti.local");
-    const segments = parsedUrl.pathname.split("/").filter(Boolean);
-
-    if (segments[0] !== "projects" || !segments[1]) {
-      return null;
-    }
-
-    return {
-      projectId: decodeURIComponent(segments[1]),
-      stageId: parsedUrl.searchParams.get("stage"),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function getNotificationProjectTarget(
-  notification: DashboardNotificationCandidate,
-): ProjectUrlTarget | null {
-  const urlTarget = parseProjectUrlTarget(notification.url);
-  const projectId = notification.projectId ?? urlTarget?.projectId ?? null;
-  const stageId = notification.stageId ?? urlTarget?.stageId ?? null;
-
-  if (!projectId) {
-    return null;
-  }
-
-  return {
-    projectId,
-    stageId,
-  };
-}
-
-function toDashboardDateKey(value: Date) {
-  const year = value.getFullYear();
-  const month = `${value.getMonth() + 1}`.padStart(2, "0");
-  const day = `${value.getDate()}`.padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function mapDashboardReminder(
-  event: DashboardCalendarReminderRecord,
-): DashboardReminderRecord {
-  const isOverdue = event.startAt.getTime() < Date.now();
-  const dateKey = toDashboardDateKey(event.startAt);
-
-  return {
-    id: event.id,
-    headline: event.title,
-    detail: event.details || "Calendar reminder",
-    context: "Calendar",
-    dateTimeLabel: formatDateTime(event.startAt),
-    statusLabel: isOverdue ? "Overdue" : undefined,
-    actionHref: `/calendar?view=day&date=${dateKey}&event=${event.id}`,
-    actionLabel: "View Reminder",
-  };
-}
-
-const emptyDashboardCounts: DashboardProjectCounts = {
-  total: 0,
-  ongoing: 0,
-  onHold: 0,
-  pending: 0,
-  completed: 0,
-};
-
-export async function getDashboardCounts(
-  currentUser: DashboardUser,
-): Promise<DashboardProjectCounts> {
-  if (!hasPermission(currentUser, "dashboard.viewProjectCounts")) {
-    return emptyDashboardCounts;
-  }
-
-  return getDashboardProjectCounts(currentUser);
-}
-
-export async function getDashboardUpdates(
-  currentUser: DashboardUser,
-  limit = 4,
-): Promise<DashboardUpdateRecord[]> {
-  if (!hasPermission(currentUser, "notification.view")) {
-    return [];
-  }
-
-  const candidates = await withPrismaRetry(() =>
-    prisma.notification.findMany({
-      where: {
-        userId: currentUser.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: Math.max(limit * 10, 20),
-      select: {
-        id: true,
-        type: true,
-        title: true,
-        message: true,
-        url: true,
-        isRead: true,
-        createdAt: true,
-        projectId: true,
-        stageId: true,
-      },
-    }),
-  );
-  const targets = candidates.map(getNotificationProjectTarget);
-  const projectIds = [
-    ...new Set(targets.map((target) => target?.projectId).filter(Boolean)),
-  ] as string[];
-  const stageIds = [
-    ...new Set(targets.map((target) => target?.stageId).filter(Boolean)),
-  ] as string[];
-  const accessibleProjects =
-    projectIds.length > 0
-      ? await withPrismaRetry(() =>
-          prisma.project.findMany({
-            where: {
-              AND: [
-                buildAccessibleProjectsWhere(currentUser),
-                {
-                  id: {
-                    in: projectIds,
-                  },
-                },
-              ],
-            },
-            select: {
-              id: true,
-            },
-          }),
-        )
-      : [];
-  const accessibleProjectIds = new Set(accessibleProjects.map((project) => project.id));
-  const validStageIds =
-    stageIds.length > 0
-      ? new Set(
-          (
-            await withPrismaRetry(() =>
-              prisma.projectStage.findMany({
-                where: {
-                  id: {
-                    in: stageIds,
-                  },
-                  projectId: {
-                    in: [...accessibleProjectIds],
-                  },
-                },
-                select: {
-                  id: true,
-                },
-              }),
-            )
-          ).map((stage) => stage.id),
-        )
-      : new Set<string>();
-
-  return candidates
-    .filter((notification) => {
-      const target = getNotificationProjectTarget(notification);
-
-      if (!target) {
-        return true;
-      }
-
-      if (!accessibleProjectIds.has(target.projectId)) {
-        return false;
-      }
-
-      return !target.stageId || validStageIds.has(target.stageId);
-    })
-    .slice(0, limit)
-    .map((notification) => {
-      const view = mapNotificationToView(notification);
-
-      return {
-        id: view.id,
-        title: view.title,
-        detail: view.description,
-        tone: mapNotificationTone(view.visualKind),
-        href: view.targetHref,
-      };
-    });
-}
-
-export async function getDashboardReminders(
-  currentUser: DashboardUser,
-  limit = 8,
-): Promise<DashboardReminderRecord[]> {
-  if (!hasPermission(currentUser, "calendar.view")) {
-    return [];
-  }
-
-  const access =
-    currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.ADMIN
-      ? { canViewSharedSchedule: true }
-      : await getCalendarAccessState(currentUser);
-  const now = new Date();
-  const baseWhere: Prisma.CalendarEventWhereInput = {
-    type: CalendarEventType.REMINDERS,
-    ...(access.canViewSharedSchedule ? {} : { createdById: currentUser.id }),
-  };
-
-  const [future, overdue] = await withPrismaRetry(() =>
-    Promise.all([
-      prisma.calendarEvent.findMany({
-        where: {
-          ...baseWhere,
-          startAt: {
-            gte: now,
-          },
-        },
-        orderBy: {
-          startAt: "asc",
-        },
-        take: limit,
-        select: {
-          id: true,
-          title: true,
-          details: true,
-          startAt: true,
-        },
-      }),
-      prisma.calendarEvent.findMany({
-        where: {
-          ...baseWhere,
-          startAt: {
-            lt: now,
-          },
-        },
-        orderBy: {
-          startAt: "desc",
-        },
-        take: limit,
-        select: {
-          id: true,
-          title: true,
-          details: true,
-          startAt: true,
-        },
-      }),
-    ]),
-  );
-
-  return [...future, ...overdue].slice(0, limit).map(mapDashboardReminder);
-}
-
-function buildCollaborationItems(
-  projects: DashboardCollaborationProjectRecord[],
-  currentUser: DashboardUser,
-): DashboardCollaboratorRecord[] {
-  const activeProjects = projects.filter(
-    (project) => {
-      const groupSlug = project.status?.group?.slug;
-
-      return (
-        groupSlug !== defaultProjectStatusGroupSlugs.completed &&
-        groupSlug !== defaultProjectStatusGroupSlugs.archived
-      );
+const projectSelect = {
+  id: true,
+  name: true,
+  ownerId: true,
+  completedAt: true,
+  archivedAt: true,
+  updatedAt: true,
+  owner: { select: { id: true, name: true, email: true } },
+  closure: { select: { id: true } },
+  inquiry: { select: { deadline: true } },
+  coOwners: { select: { userId: true } },
+  executors: { select: { userId: true } },
+  collaborators: {
+    select: {
+      userId: true,
+      canInteract: true,
+      canAddCaptions: true,
+      canDownloadFiles: true,
+      canViewBudget: true,
+      canViewVendorInfo: true,
+      canAccessProjectArchives: true,
     },
-  );
-  const seen = new Set<string>();
-  const items: DashboardCollaboratorRecord[] = [];
+  },
+  workflowStages: { select: { stageKey: true, status: true } },
+} satisfies Prisma.ProjectSelect;
 
-  for (const project of activeProjects) {
-    const executorPeople = project.executors
-      .map((assignment) => ({
-        id: assignment.user.id,
-        name: getDisplayName(assignment.user),
-        task: "Executor",
-      }))
-      .sort((left, right) =>
-        left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
-      );
-    const people = [
-      ...(project.owner
-        ? [{
-            id: project.owner.id,
-            name: getDisplayName(project.owner),
-            task: "Project Owner",
-          }]
-        : []),
-      ...project.coOwners.map((assignment) => ({
-        id: assignment.user.id,
-        name: getDisplayName(assignment.user),
-        task: "Project Co-Owner",
-      })),
-      ...executorPeople,
-      ...project.collaborators.map((assignment) => ({
-        id: assignment.user.id,
-        name: getDisplayName(assignment.user),
-        task: "Collaborator",
-      })),
-    ];
+type DashboardProject = Prisma.ProjectGetPayload<{ select: typeof projectSelect }>;
 
-    for (const person of people) {
-      if (person.id === currentUser.id || seen.has(person.id)) {
-        continue;
-      }
+type ProjectSummary = {
+  project: DashboardProject;
+  workflow: ProjectListWorkflowState;
+};
 
-      seen.add(person.id);
-      items.push({
-        name: person.name,
-        task: person.task,
-        project: project.name,
-        href: `/projects/${project.id}`,
-      });
+type DeadlineCandidate = Omit<DashboardDeadlineItem, "dateLabel" | "statusLabel" | "tone"> & {
+  dueAtDate: Date;
+};
 
-      if (items.length >= 5) {
-        return items;
-      }
-    }
+type WorkCounter = {
+  id: string;
+  label: string;
+  count: number;
+  href: string;
+  tone: DashboardWorkSummaryItem["tone"];
+};
+
+const attentionRank: Record<DashboardAttentionItem["severity"], number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+};
+
+function dashboardProjectWhere(user: DashboardUser): Prisma.ProjectWhereInput {
+  if (
+    !hasPermission(user, "project.list") &&
+    !hasPermission(user, "project.view")
+  ) {
+    return { id: "__dashboard_permission_denied__" };
   }
 
-  return items;
-}
-
-export function buildProgressRecord(counts: DashboardProjectCounts): DashboardProgressRecord {
-  const activeTotal = counts.ongoing + counts.pending + counts.onHold;
-  const total = counts.total;
-  const toPercent = (value: number) => (total > 0 ? Math.round((value / total) * 100) : 0);
+  if (user.role === UserRole.SUPER_ADMIN) return {};
 
   return {
-    percentage: toPercent(activeTotal),
-    subtitle: total > 0 ? "Projects currently active" : "No projects yet.",
-    segments: [
-      { label: "Ongoing", value: toPercent(counts.ongoing), count: counts.ongoing, tone: "ongoing" },
-      { label: "Pending", value: toPercent(counts.pending), count: counts.pending, tone: "pending" },
-      { label: "On Hold", value: toPercent(counts.onHold), count: counts.onHold, tone: "onHold" },
-      { label: "Completed", value: toPercent(counts.completed), count: counts.completed, tone: "completed" },
+    OR: [
+      { ownerId: user.id },
+      { coOwners: { some: { userId: user.id } } },
+      { executors: { some: { userId: user.id } } },
+      { collaborators: { some: { userId: user.id } } },
     ],
   };
 }
 
-function buildDeadlineRecords(
-  candidates: DashboardDeadlineCandidate[],
-  limit = 8,
-): DashboardDeadlineRecord[] {
-  const now = Date.now();
-  return candidates
-    .sort((left, right) => {
-      const leftOverdue = left.dueAt.getTime() < now;
-      const rightOverdue = right.dueAt.getTime() < now;
-
-      if (leftOverdue !== rightOverdue) {
-        return leftOverdue ? -1 : 1;
-      }
-
-      return left.dueAt.getTime() - right.dueAt.getTime();
-    })
-    .slice(0, limit)
-    .map((deadline) => {
-      const { overdue, label } = formatTimeDistance(deadline.dueAt);
-
-      return {
-        project: deadline.projectName,
-        detail: deadline.detail,
-        timeLabel: label,
-        actionHref: deadline.actionHref,
-        overdue,
-      };
-    });
+function toDate(value: Date | string | number) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date(0) : date;
 }
 
-function withAccessibleProjectScope(
-  accessibleWhere: Prisma.ProjectWhereInput,
-  ...clauses: Prisma.ProjectWhereInput[]
-): Prisma.ProjectWhereInput {
+function startOfDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function dayDifference(from: Date, to: Date) {
+  return Math.round(
+    (startOfDay(to).getTime() - startOfDay(from).getTime()) / 86_400_000,
+  );
+}
+
+function formatDeadline(dueAt: Date, now: Date) {
+  const days = dayDifference(now, dueAt);
+  const dateLabel =
+    days === 0
+      ? "Today"
+      : days === 1
+        ? "Tomorrow"
+        : dueAt.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            ...(dueAt.getFullYear() !== now.getFullYear()
+              ? { year: "numeric" as const }
+              : {}),
+          });
+
+  if (days < 0) {
+    const overdueDays = Math.abs(days);
+    return {
+      dateLabel,
+      statusLabel: `Overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}`,
+      tone: "critical" as const,
+    };
+  }
+
+  if (days === 0) {
+    return { dateLabel, statusLabel: "Due today", tone: "critical" as const };
+  }
+
+  if (days === 1) {
+    return { dateLabel, statusLabel: "Due tomorrow", tone: "warning" as const };
+  }
+
   return {
-    AND: [accessibleWhere, ...clauses],
+    dateLabel,
+    statusLabel: `Due in ${days} days`,
+    tone: "standard" as const,
   };
 }
 
-export async function getDashboardCollaboration(
-  currentUser: DashboardUser,
-): Promise<DashboardCollaboratorRecord[]> {
-  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
+function formatRecentTime(value: Date | string | number, now: Date) {
+  const date = toDate(value);
+  const days = dayDifference(now, date);
+  const time = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  if (days === 0) return `Today, ${time}`;
+  if (days === -1) return `Yesterday, ${time}`;
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function displayName(person: { name: string | null; email: string } | null) {
+  return person?.name?.trim() || person?.email || "Unassigned";
+}
+
+function initials(name: string) {
+  const value = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+  return value || "—";
+}
+
+function stageNumberForConcept(key: ProjectWorkflowStageKey) {
+  return key === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT ? 4 : 3;
+}
+
+function sampleRoundLabel(round: {
+  sequence: number;
+  type: string;
+  customTypeName: string | null;
+}) {
+  if (round.customTypeName?.trim()) return round.customTypeName.trim();
+  const label = round.type
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+  return `${label} ${round.sequence}`;
+}
+
+function addWork(counter: Map<string, WorkCounter>, item: WorkCounter) {
+  const existing = counter.get(item.id);
+  counter.set(item.id, {
+    ...item,
+    count: (existing?.count ?? 0) + item.count,
+    href: existing?.href ?? item.href,
+  });
+}
+
+function addAttention(
+  items: DashboardAttentionItem[],
+  item: DashboardAttentionItem,
+) {
+  if (!items.some((existing) => existing.id === item.id)) items.push(item);
+}
+
+function buildKpis(input: {
+  user: DashboardUser;
+  summaries: ProjectSummary[];
+  attentionCount: number;
+  assignedConceptCount: number;
+  openRequestCount: number;
+  completedRequestCount: number;
+}) {
+  const { user, summaries } = input;
+  const active = summaries.filter(
+    (item) => item.workflow.status === "ACTIVE" && !item.project.archivedAt,
+  ).length;
+  const completed = summaries.filter(
+    (item) => item.workflow.status === "COMPLETED",
+  ).length;
+  const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
+  const isManager = summaries.some(
+    ({ project }) =>
+      project.ownerId === user.id ||
+      project.coOwners.some((coOwner) => coOwner.userId === user.id),
+  );
+  const isExecutor = summaries.some(({ project }) =>
+    project.executors.some((executor) => executor.userId === user.id),
+  );
+  const isCollaborator = summaries.some(({ project }) =>
+    project.collaborators.some((collaborator) => collaborator.userId === user.id),
+  );
+  const relationshipCount = [isManager, isExecutor, isCollaborator].filter(Boolean).length;
+
+  let totalLabel = "Accessible Projects";
+  let activeLabel = "Active Work";
+  let activeValue = active;
+  let activeNote = "Across your project relationships";
+  let completedLabel = "Completed Work";
+  let completedValue = completed;
+  let completedNote = "Finished accessible projects";
+
+  if (isSuperAdmin) {
+    totalLabel = "Total Projects";
+    activeLabel = "Active Projects";
+    activeNote = "Currently in progress";
+    completedLabel = "Completed";
+    completedNote = "Finished projects";
+  } else if (relationshipCount === 1 && isManager) {
+    totalLabel = "My Projects";
+    activeLabel = "Active Projects";
+    activeNote = "You own or co-own";
+    completedLabel = "Completed";
+    completedNote = "Delivered projects";
+  } else if (relationshipCount === 1 && isExecutor) {
+    activeLabel = "Active Assignments";
+    activeValue = input.assignedConceptCount;
+    activeNote = "Concept briefs and revisions";
+    completedNote = "Finished project assignments";
+  } else if (relationshipCount === 1 && isCollaborator) {
+    activeLabel = "Open Requests";
+    activeValue = input.openRequestCount;
+    activeNote = "Waiting for your response";
+    completedLabel = "Completed Requests";
+    completedValue = input.completedRequestCount;
+    completedNote = "Requests you have finished";
+  }
+
+  return [
+    {
+      label: totalLabel,
+      value: summaries.length,
+      note: isSuperAdmin ? "Global V2 portfolio" : "Based on your relationships",
+      href: "/projects?status=ALL&sort=updated",
+      icon: "projects" as const,
+      tone: "green" as const,
+    },
+    {
+      label: activeLabel,
+      value: activeValue,
+      note: activeNote,
+      href: "/projects?status=ACTIVE&sort=updated",
+      icon: "active" as const,
+      tone: "green" as const,
+    },
+    {
+      label: "Needs Attention",
+      value: input.attentionCount,
+      note:
+        input.attentionCount === 0
+          ? "Nothing waiting on you"
+          : "Actionable by you now",
+      href: "#needs-attention",
+      icon: "attention" as const,
+      tone: "amber" as const,
+    },
+    {
+      label: completedLabel,
+      value: completedValue,
+      note: completedNote,
+      href: "/projects?status=COMPLETED&sort=updated",
+      icon: "completed" as const,
+      tone: "green" as const,
+    },
+  ];
+}
+
+/**
+ * Builds the V2 operational dashboard from the same workflow rows used by the
+ * project workspaces. ADMIN is deliberately relationship-scoped here; only
+ * SUPER_ADMIN receives a global portfolio.
+ */
+export async function getDashboardSnapshot(
+  user: DashboardUser,
+  now = new Date(),
+): Promise<DashboardSnapshot> {
   const projects = await withPrismaRetry(() =>
     prisma.project.findMany({
-      where: withAccessibleProjectScope(accessibleWhere, {
-        ...activeProjectStatusWhere,
-      }),
-      orderBy: {
-        updatedAt: "desc",
-      },
-      take: 12,
-      select: {
-        id: true,
-        name: true,
-        status: {
-          select: {
-            group: {
-              select: {
-                slug: true,
-              },
-            },
-          },
-        },
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        coOwners: {
-          select: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        },
-        executors: {
-          select: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        },
-        collaborators: {
-          select: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        },
-      },
+      where: dashboardProjectWhere(user),
+      select: projectSelect,
+      orderBy: { updatedAt: "desc" },
     }),
   );
+  const summaries: ProjectSummary[] = projects.map((project) => ({
+    project,
+    workflow: deriveProjectListWorkflowState(project),
+  }));
+  const projectById = new Map(summaries.map((item) => [item.project.id, item]));
+  const activeProjectIds = summaries
+    .filter(
+      (item) => item.workflow.status === "ACTIVE" && !item.project.archivedAt,
+    )
+    .map((item) => item.project.id);
 
-  return buildCollaborationItems(projects, currentUser);
-}
+  const [conceptFolders, checklistRequests, productionUnits, sampleRounds] =
+    activeProjectIds.length === 0
+      ? [[], [], [], []] as const
+      : await Promise.all([
+          withPrismaRetry(() =>
+            prisma.projectConceptFolder.findMany({
+              where: {
+                projectId: { in: activeProjectIds },
+                workflowStageKey: {
+                  in: [
+                    ProjectWorkflowStageKey.CONCEPT_CREATION,
+                    ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                  ],
+                },
+              },
+              select: {
+                id: true,
+                projectId: true,
+                name: true,
+                workflowStageKey: true,
+                assignedExecutorId: true,
+                approvedAt: true,
+                taskerStage: {
+                  select: {
+                    actualStartedAt: true,
+                    plannedDueAt: true,
+                    status: true,
+                    revisions: {
+                      orderBy: { revisionNumber: "desc" },
+                      take: 1,
+                      select: {
+                        id: true,
+                        revisionNumber: true,
+                        status: true,
+                        rejectionReason: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        createdBy: { select: { name: true, email: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+          withPrismaRetry(() =>
+            prisma.projectFileChecklistRequest.findMany({
+              where: { projectId: { in: activeProjectIds } },
+              select: {
+                id: true,
+                projectId: true,
+                fieldKey: true,
+                channel: true,
+                recipientUserId: true,
+                workflowStatus: true,
+                requestedAt: true,
+                completedAt: true,
+                updatedAt: true,
+                checklist: {
+                  select: {
+                    handoffId: true,
+                    sourceAttachment: { select: { originalFileName: true } },
+                  },
+                },
+              },
+            }),
+          ),
+          withPrismaRetry(() =>
+            prisma.projectProductionUnit.findMany({
+              where: { projectId: { in: activeProjectIds } },
+              select: {
+                id: true,
+                projectId: true,
+                status: true,
+                updatedAt: true,
+                sourceAttachment: { select: { originalFileName: true } },
+                approvalSteps: {
+                  select: {
+                    id: true,
+                    status: true,
+                    dispatchStatus: true,
+                    recipientUserId: true,
+                    updatedAt: true,
+                    failureMessage: true,
+                  },
+                  orderBy: { sequence: "asc" },
+                },
+                handover: {
+                  select: {
+                    deliveryStatus: true,
+                    failedAt: true,
+                    failureMessage: true,
+                    updatedAt: true,
+                  },
+                },
+              },
+            }),
+          ),
+          withPrismaRetry(() =>
+            prisma.productionSampleRound.findMany({
+              where: {
+                projectId: { in: activeProjectIds },
+                status: { not: ProductionSampleRoundStatus.COMPLETED },
+              },
+              select: {
+                id: true,
+                projectId: true,
+                sequence: true,
+                type: true,
+                customTypeName: true,
+                submissionDueAt: true,
+                submittedAt: true,
+                reviewDueAt: true,
+                reviewedAt: true,
+                revisionSignoffDueAt: true,
+                revisionSignedOffAt: true,
+                deliveryDueAt: true,
+                deliveredAt: true,
+                updatedAt: true,
+                participants: { select: { userId: true } },
+                supervision: { select: { productionUnitId: true } },
+              },
+            }),
+          ),
+        ]);
 
-export async function getDashboardDeadlines(
-  currentUser: DashboardUser,
-  limit = 8,
-): Promise<DashboardDeadlineRecord[]> {
-  const accessibleWhere = buildAccessibleProjectsWhere(currentUser);
-  const activeProjectWhere = withAccessibleProjectScope(
-    accessibleWhere,
-    activeProjectStatusWhere,
-  );
-  const stageDeadlines = await withPrismaRetry(() =>
-    prisma.projectStage.findMany({
-      where: {
-        isTasker: false,
-        status: {
-          not: StageStatus.COMPLETED,
-        },
-        plannedDueAt: {
-          not: null,
-        },
-        project: {
-          is: activeProjectWhere,
-        },
-      },
-      orderBy: {
-        plannedDueAt: "asc",
-      },
-      take: Math.max(limit * 2, limit),
-      select: {
-        id: true,
-        name: true,
-        plannedDueAt: true,
-        project: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-    }),
-  );
-  const projectIdsWithStageDeadlines = [
-    ...new Set(stageDeadlines.map((stage) => stage.project.id)),
-  ];
-  const projectFallbackWhere = withAccessibleProjectScope(
-    accessibleWhere,
-    activeProjectStatusWhere,
-    ...(projectIdsWithStageDeadlines.length > 0
-      ? [{ id: { notIn: projectIdsWithStageDeadlines } }]
-      : []),
-  );
-  const fallbackProjects = await withPrismaRetry(() =>
-    prisma.project.findMany({
-      where: projectFallbackWhere,
-      orderBy: {
-        endDate: "asc",
-      },
-      take: limit,
-      select: {
-        id: true,
-        name: true,
-        endDate: true,
-      },
-    }),
-  );
-  const candidates: DashboardDeadlineCandidate[] = [
-    ...stageDeadlines.map((stage) => ({
-      projectName: stage.project.name,
-      detail: `${stage.name} • ${formatDateTime(stage.plannedDueAt)}`,
-      dueAt: stage.plannedDueAt as Date,
-      actionHref: `/projects/${stage.project.id}/chat?stage=${stage.id}`,
-    })),
-    ...fallbackProjects.flatMap((project) =>
-      project.endDate
-        ? [{
-            projectName: project.name,
-            detail: `Project deadline • ${formatDateTime(project.endDate)}`,
-            dueAt: project.endDate,
-            actionHref: `/projects/${project.id}`,
-          }]
-        : [],
-    ),
-  ];
+  const attention: DashboardAttentionItem[] = [];
+  const deadlineCandidates: DeadlineCandidate[] = [];
+  const work = new Map<string, WorkCounter>();
+  let assignedConceptCount = 0;
+  let openRequestCount = 0;
+  let completedRequestCount = 0;
 
-  return buildDeadlineRecords(candidates, limit);
-}
+  // SETUP_NEEDED remains visible in project state and Recent Projects, but it
+  // is not an attention item: the current V2 app has no supported repair
+  // screen after project creation, so linking one would not be actionable.
 
-export async function getDashboardSnapshot(
-  currentUser: DashboardUser,
-): Promise<DashboardSnapshot> {
-  const canViewRecentProjects = hasPermission(currentUser, "dashboard.viewRecentProjects");
-  const [counts, recentProjects, updates, reminders, collaborators, deadlines] =
-    await Promise.all([
-      getDashboardCounts(currentUser),
-      canViewRecentProjects ? getRecentProjects(5, currentUser) : Promise.resolve([]),
-      getDashboardUpdates(currentUser),
-      getDashboardReminders(currentUser),
-      getDashboardCollaboration(currentUser),
-      getDashboardDeadlines(currentUser),
-    ]);
+  for (const { project, workflow } of summaries) {
+    if (workflow.status !== "ACTIVE" || !project.inquiry?.deadline) continue;
+    if (!hasProjectPermission(user, project, "stage.updateTimeline")) continue;
+
+    const dueAt = toDate(project.inquiry.deadline);
+    const href = `/projects/${project.id}/stages/1`;
+    deadlineCandidates.push({
+      id: `inquiry:${project.id}`,
+      projectName: project.name,
+      detail: "Project inquiry deadline",
+      stageLabel: "Stage 1",
+      href,
+      dueAt: dueAt.toISOString(),
+      dueAtDate: dueAt,
+    });
+
+    if (dueAt.getTime() < startOfDay(now).getTime()) {
+      addAttention(attention, {
+        id: `inquiry-overdue:${project.id}`,
+        severity: "critical",
+        kind: "deadline",
+        title: "Project inquiry deadline overdue",
+        detail: "Review the inquiry timeline and update the deadline.",
+        projectName: project.name,
+        href,
+        actionLabel: "Open stage",
+        sortAt: dueAt.toISOString(),
+      });
+      addWork(work, {
+        id: "overdue",
+        label: "Overdue deadlines",
+        count: 1,
+        href,
+        tone: "red",
+      });
+    }
+  }
+
+  for (const folder of conceptFolders) {
+    const summary = projectById.get(folder.projectId);
+    if (!summary) continue;
+    const { project } = summary;
+    const stageNumber = stageNumberForConcept(folder.workflowStageKey);
+    const href = `/projects/${project.id}/stages/${stageNumber}/concepts/${folder.id}`;
+    const latestRevision = folder.taskerStage.revisions[0] ?? null;
+    const isAssigned = folder.assignedExecutorId === user.id;
+    const canReview = hasProjectPermission(user, project, "stage.reviewSubmission");
+    const isOpen =
+      !folder.approvedAt && folder.taskerStage.status !== StageStatus.COMPLETED;
+
+    if (isAssigned && isOpen) assignedConceptCount += 1;
+
+    if (isAssigned && isOpen) {
+      addWork(work, {
+        id: "assigned-concepts",
+        label: "Assigned concepts",
+        count: 1,
+        href,
+        tone: "blue",
+      });
+    }
+
+    if (isAssigned && isOpen && !folder.taskerStage.actualStartedAt) {
+      addAttention(attention, {
+        id: `brief:${folder.id}`,
+        severity: "info",
+        kind: "request",
+        title: "Brief waiting to be accepted",
+        detail: `${folder.name} · Stage ${stageNumber}`,
+        projectName: project.name,
+        href,
+        actionLabel: "Review brief",
+        sortAt: project.updatedAt.toISOString(),
+      });
+      addWork(work, {
+        id: "briefs",
+        label: "Briefs to accept",
+        count: 1,
+        href,
+        tone: "amber",
+      });
+    }
+
+    if (
+      isAssigned &&
+      isOpen &&
+      latestRevision?.status === ProjectRevisionStatus.REJECTED
+    ) {
+      addAttention(attention, {
+        id: `revision:${latestRevision.id}`,
+        severity: "warning",
+        kind: "revision",
+        title: "Changes requested",
+        detail:
+          latestRevision.rejectionReason?.trim() ||
+          `${folder.name} · Revision ${latestRevision.revisionNumber}`,
+        projectName: project.name,
+        href,
+        actionLabel: "Open revision",
+        sortAt: latestRevision.updatedAt.toISOString(),
+      });
+      addWork(work, {
+        id: "changes",
+        label: "Changes requested",
+        count: 1,
+        href,
+        tone: "red",
+      });
+    }
+
+    if (
+      canReview &&
+      isOpen &&
+      latestRevision?.status === ProjectRevisionStatus.PENDING_REVIEW
+    ) {
+      addAttention(attention, {
+        id: `review:${latestRevision.id}`,
+        severity: "info",
+        kind: "review",
+        title: "Revision awaiting review",
+        detail: `${folder.name} · Revision ${latestRevision.revisionNumber} by ${displayName(latestRevision.createdBy)}`,
+        projectName: project.name,
+        href,
+        actionLabel: "Review",
+        sortAt: latestRevision.createdAt.toISOString(),
+      });
+      addWork(work, {
+        id: "reviews",
+        label: "Revisions awaiting review",
+        count: 1,
+        href,
+        tone: "blue",
+      });
+    }
+
+    if (
+      isAssigned &&
+      latestRevision?.status === ProjectRevisionStatus.PENDING_REVIEW
+    ) {
+      addWork(work, {
+        id: "submitted",
+        label: "Submissions in review",
+        count: 1,
+        href,
+        tone: "blue",
+      });
+    }
+
+    if (
+      isOpen &&
+      folder.taskerStage.plannedDueAt &&
+      (isAssigned || hasProjectPermission(user, project, "stage.updateTimeline"))
+    ) {
+      const dueAt = toDate(folder.taskerStage.plannedDueAt);
+      deadlineCandidates.push({
+        id: `concept:${folder.id}`,
+        projectName: project.name,
+        detail: folder.name,
+        stageLabel: `Stage ${stageNumber}`,
+        href,
+        dueAt: dueAt.toISOString(),
+        dueAtDate: dueAt,
+      });
+
+      if (dueAt.getTime() < startOfDay(now).getTime()) {
+        addAttention(attention, {
+          id: `concept-overdue:${folder.id}`,
+          severity: "critical",
+          kind: "deadline",
+          title: `Stage ${stageNumber} deadline overdue`,
+          detail: folder.name,
+          projectName: project.name,
+          href,
+          actionLabel: isAssigned ? "Open work" : "Review timeline",
+          sortAt: dueAt.toISOString(),
+        });
+        addWork(work, {
+          id: "overdue",
+          label: "Overdue deadlines",
+          count: 1,
+          href,
+          tone: "red",
+        });
+      }
+    }
+  }
+
+  for (const request of checklistRequests) {
+    const summary = projectById.get(request.projectId);
+    if (!summary) continue;
+    const { project, workflow } = summary;
+    const fieldLabel = STAGE_FIVE_FIELD_LABELS[request.fieldKey];
+    const fileName = request.checklist.sourceAttachment.originalFileName;
+    const personalRequest =
+      request.channel === ProjectFileChecklistRequestChannel.IN_APP &&
+      request.recipientUserId === user.id;
+    const isOpen =
+      request.workflowStatus ===
+        ProjectFileChecklistRequestWorkflowStatus.REQUESTED ||
+      request.workflowStatus ===
+        ProjectFileChecklistRequestWorkflowStatus.ACCEPTED;
+
+    if (personalRequest && isOpen) {
+      const href = `/requests/checklist/${request.id}`;
+      openRequestCount += 1;
+      addAttention(attention, {
+        id: `checklist:${request.id}`,
+        severity: "warning",
+        kind: "request",
+        title: "Information requested",
+        detail: `${fieldLabel} · ${fileName}`,
+        projectName: project.name,
+        href,
+        actionLabel: "Respond",
+        sortAt: request.requestedAt.toISOString(),
+      });
+      addWork(work, {
+        id: "checklist",
+        label: "Checklist requests pending",
+        count: 1,
+        href,
+        tone: "green",
+      });
+    }
+
+    if (
+      personalRequest &&
+      request.workflowStatus ===
+        ProjectFileChecklistRequestWorkflowStatus.COMPLETED
+    ) {
+      completedRequestCount += 1;
+      addWork(work, {
+        id: "responses-submitted",
+        label: "Responses submitted",
+        count: 1,
+        href: `/requests/checklist/${request.id}`,
+        tone: "green",
+      });
+    }
+
+    if (
+      workflow.currentStageNumber === 5 &&
+      request.workflowStatus ===
+        ProjectFileChecklistRequestWorkflowStatus.COMPLETED &&
+      hasProjectPermission(user, project, "stage.markStageComplete")
+    ) {
+      const href = `/projects/${project.id}/stages/5?file=${encodeURIComponent(request.checklist.handoffId)}&field=${encodeURIComponent(request.fieldKey)}&mode=view`;
+      addAttention(attention, {
+        id: `checklist-response:${request.id}`,
+        severity: "info",
+        kind: "request",
+        title: "Requested information received",
+        detail: `${fieldLabel} · ${fileName}`,
+        projectName: project.name,
+        href,
+        actionLabel: "Review response",
+        sortAt: (request.completedAt ?? request.updatedAt).toISOString(),
+      });
+      addWork(work, {
+        id: "responses",
+        label: "Checklist responses to review",
+        count: 1,
+        href,
+        tone: "green",
+      });
+    }
+  }
+
+  for (const unit of productionUnits) {
+    const summary = projectById.get(unit.projectId);
+    if (!summary) continue;
+    const { project } = summary;
+    const unitHref = `/projects/${project.id}/stages/6?unit=${encodeURIComponent(unit.id)}`;
+    const fileName = unit.sourceAttachment.originalFileName;
+    const canManage = hasProjectPermission(
+      user,
+      project,
+      "stage.markStageComplete",
+    );
+
+    for (const step of unit.approvalSteps) {
+      const personal = step.recipientUserId === user.id;
+      if (
+        personal &&
+        step.status === ProductionApprovalStepStatus.ACTIVE &&
+        step.dispatchStatus === ProductionDispatchStatus.SENT
+      ) {
+        const href = `/production-approvals/${step.id}`;
+        openRequestCount += 1;
+        addAttention(attention, {
+          id: `approval:${step.id}`,
+          severity: "warning",
+          kind: "approval",
+          title: "Approval waiting for your decision",
+          detail: fileName,
+          projectName: project.name,
+          href,
+          actionLabel: "Review approval",
+          sortAt: step.updatedAt.toISOString(),
+        });
+        addWork(work, {
+          id: "approvals",
+          label: "Approvals to decide",
+          count: 1,
+          href,
+          tone: "amber",
+        });
+      }
+
+      if (
+        personal &&
+        (step.status === ProductionApprovalStepStatus.APPROVED ||
+          step.status === ProductionApprovalStepStatus.REJECTED)
+      ) {
+        completedRequestCount += 1;
+      }
+
+      if (
+        canManage &&
+        step.dispatchStatus === ProductionDispatchStatus.FAILED
+      ) {
+        addAttention(attention, {
+          id: `approval-failed:${step.id}`,
+          severity: "critical",
+          kind: "approval",
+          title: "Approval delivery failed",
+          detail: step.failureMessage?.trim() || fileName,
+          projectName: project.name,
+          href: unitHref,
+          actionLabel: "Resolve",
+          sortAt: step.updatedAt.toISOString(),
+        });
+      }
+    }
+
+    if (canManage && unit.status === ProjectProductionUnitStatus.REJECTED) {
+      addAttention(attention, {
+        id: `unit-rejected:${unit.id}`,
+        severity: "warning",
+        kind: "revision",
+        title: "Production approval rejected",
+        detail: fileName,
+        projectName: project.name,
+        href: unitHref,
+        actionLabel: "Review decision",
+        sortAt: unit.updatedAt.toISOString(),
+      });
+    }
+
+    if (
+      canManage &&
+      unit.handover?.deliveryStatus ===
+        ProductionHandoverDeliveryStatus.FAILED
+    ) {
+      addAttention(attention, {
+        id: `handover-failed:${unit.id}`,
+        severity: "critical",
+        kind: "approval",
+        title: "Production handover failed",
+        detail: unit.handover.failureMessage?.trim() || fileName,
+        projectName: project.name,
+        href: unitHref,
+        actionLabel: "Resolve",
+        sortAt: (unit.handover.failedAt ?? unit.handover.updatedAt).toISOString(),
+      });
+    }
+
+    if (canManage && unit.status === ProjectProductionUnitStatus.APPROVAL_PENDING) {
+      addWork(work, {
+        id: "approval-progress",
+        label: "Approvals in progress",
+        count: 1,
+        href: unitHref,
+        tone: "amber",
+      });
+    }
+  }
+
+  const sampleMilestones = [
+    ["Submission", "submissionDueAt", "submittedAt"],
+    ["Review", "reviewDueAt", "reviewedAt"],
+    ["Revision sign-off", "revisionSignoffDueAt", "revisionSignedOffAt"],
+    ["Delivery", "deliveryDueAt", "deliveredAt"],
+  ] as const;
+
+  for (const round of sampleRounds) {
+    const summary = projectById.get(round.projectId);
+    if (!summary) continue;
+    const { project } = summary;
+    const isParticipant = round.participants.some(
+      (participant) => participant.userId === user.id,
+    );
+    const canManage = hasProjectPermission(
+      user,
+      project,
+      "stage.markStageComplete",
+    );
+    if (!isParticipant && !canManage) continue;
+
+    const href = `/projects/${project.id}/stages/7?unit=${encodeURIComponent(round.supervision.productionUnitId)}&round=${encodeURIComponent(round.id)}`;
+    const roundLabel = sampleRoundLabel(round);
+    for (const [milestoneLabel, dueKey, actualKey] of sampleMilestones) {
+      if (round[actualKey]) continue;
+      const dueAt = toDate(round[dueKey]);
+      deadlineCandidates.push({
+        id: `sample:${round.id}:${dueKey}`,
+        projectName: project.name,
+        detail: `${roundLabel} · ${milestoneLabel}`,
+        stageLabel: "Stage 7",
+        href,
+        dueAt: dueAt.toISOString(),
+        dueAtDate: dueAt,
+      });
+
+      if (canManage && dueAt.getTime() < startOfDay(now).getTime()) {
+        addAttention(attention, {
+          id: `sample-overdue:${round.id}:${dueKey}`,
+          severity: "critical",
+          kind: "deadline",
+          title: `${milestoneLabel} milestone overdue`,
+          detail: roundLabel,
+          projectName: project.name,
+          href,
+          actionLabel: "Open milestone",
+          sortAt: dueAt.toISOString(),
+        });
+        addWork(work, {
+          id: "overdue",
+          label: "Overdue deadlines",
+          count: 1,
+          href,
+          tone: "red",
+        });
+      }
+    }
+  }
+
+  attention.sort((left, right) => {
+    const severity = attentionRank[left.severity] - attentionRank[right.severity];
+    if (severity !== 0) return severity;
+    return toDate(left.sortAt).getTime() - toDate(right.sortAt).getTime();
+  });
+
+  const deadlines = deadlineCandidates
+    .sort((left, right) => left.dueAtDate.getTime() - right.dueAtDate.getTime())
+    .slice(0, 5)
+    .map(({ dueAtDate, ...candidate }) => ({
+      ...candidate,
+      ...formatDeadline(dueAtDate, now),
+    }));
+
+  const stages = PROJECT_WORKFLOW_STAGE_DEFINITIONS.map((stage) => ({
+    number: stage.number,
+    name: stage.name,
+    count: summaries.filter(
+      ({ project, workflow }) =>
+        workflow.status === "ACTIVE" &&
+        !project.archivedAt &&
+        workflow.currentStageNumber === stage.number,
+    ).length,
+    href: `/projects?status=ACTIVE&stage=${stage.number}&sort=updated`,
+  }));
+
+  const recentProjects = summaries
+    .filter(({ project }) => !project.archivedAt)
+    .slice(0, 6)
+    .map(({ project, workflow }) => {
+      const ownerName = displayName(project.owner);
+      return {
+        id: project.id,
+        name: project.name,
+        href: `/projects/${project.id}`,
+        stageNumber: workflow.currentStageNumber,
+        stageName: workflow.currentStageName,
+        status: workflow.status,
+        ownerName,
+        ownerInitials: initials(ownerName),
+        updatedLabel: formatRecentTime(project.updatedAt, now),
+      };
+    });
 
   return {
-    counts,
-    recentProjects,
-    updates,
-    reminders,
-    collaborators,
-    progress: buildProgressRecord(counts),
+    kpis: buildKpis({
+      user,
+      summaries,
+      attentionCount: attention.length,
+      assignedConceptCount,
+      openRequestCount,
+      completedRequestCount,
+    }),
+    attention: attention.slice(0, 6),
+    attentionCount: attention.length,
     deadlines,
+    stages,
+    myWork: Array.from(work.values())
+      .filter((item) => item.count > 0)
+      .slice(0, 5),
+    recentProjects,
+    scopeLabel:
+      user.role === UserRole.SUPER_ADMIN
+        ? "Global portfolio"
+        : "Projects connected to you",
   };
 }

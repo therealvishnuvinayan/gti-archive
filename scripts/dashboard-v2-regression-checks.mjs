@@ -1,0 +1,125 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const [page, workspace, service, stats, projectWorkflow, schema] =
+  await Promise.all([
+    readFile("src/app/(dashboard)/page.tsx", "utf8"),
+    readFile("src/components/dashboard/dashboard-workspace.tsx", "utf8"),
+    readFile("src/lib/dashboard.ts", "utf8"),
+    readFile("src/components/dashboard/stat-card.tsx", "utf8"),
+    readFile("src/lib/project-list-workflow.ts", "utf8"),
+    readFile("prisma/schema.prisma", "utf8"),
+  ]);
+
+for (const removed of [
+  "Pending Projects",
+  "On Hold Projects",
+  "ProjectProgressCard",
+  "CollaborationCard",
+  "ReminderCard",
+  "ArchiveUploadButton",
+  "No status",
+]) {
+  assert(!page.includes(removed), `Legacy dashboard content remains: ${removed}`);
+}
+
+assert(page.includes("snapshot.kpis.map"), "Dashboard KPI cards must share one snapshot.");
+assert(
+  service.match(/label:/g)?.length && service.includes('label: "Needs Attention"'),
+  "Dashboard KPI definitions are missing.",
+);
+assert(
+  /return \[\s*[\s\S]*?icon: "projects"[\s\S]*?icon: "active"[\s\S]*?icon: "attention"[\s\S]*?icon: "completed"[\s\S]*?\];/.test(
+    service,
+  ),
+  "Dashboard must return exactly the four primary KPI definitions.",
+);
+assert(stats.includes("KPI_ICONS"), "KPI cards must use the shared visual component.");
+
+for (const panel of [
+  "Needs Attention",
+  "Upcoming Deadlines",
+  "Projects by Stage",
+  "My Work",
+  "Recent Projects",
+]) {
+  assert(workspace.includes(panel), `Dashboard panel is missing: ${panel}`);
+}
+
+assert(
+  service.includes("deriveProjectListWorkflowState(project)"),
+  "Dashboard must reuse centralized V2 project state derivation.",
+);
+for (const state of ["SETUP_NEEDED", "ACTIVE", "COMPLETED"]) {
+  assert(projectWorkflow.includes(`"${state}"`), `Shared V2 state is missing: ${state}`);
+}
+
+assert(
+  service.includes("if (user.role === UserRole.SUPER_ADMIN) return {};") &&
+    service.includes("{ ownerId: user.id }") &&
+    service.includes("coOwners: { some: { userId: user.id } }") &&
+    service.includes("executors: { some: { userId: user.id } }") &&
+    service.includes("collaborators: { some: { userId: user.id } }") &&
+    !service.includes("user.role === UserRole.ADMIN) return {}"),
+  "Dashboard scope must be global only for SUPER_ADMIN and relationship-based for everyone else.",
+);
+assert(
+  service.includes("projectId: { in: activeProjectIds }"),
+  "Operational dashboard queries must begin from authorized active project IDs.",
+);
+
+for (const actionType of [
+  "Brief waiting to be accepted",
+  "Changes requested",
+  "Revision awaiting review",
+  "Information requested",
+  "Requested information received",
+  "Approval waiting for your decision",
+  "Production approval rejected",
+  "Production handover failed",
+  "milestone overdue",
+]) {
+  assert(service.includes(actionType), `Attention source is missing: ${actionType}`);
+}
+assert(
+  service.includes("attentionCount: attention.length") &&
+    service.includes("attention: attention.slice(0, 6)"),
+  "Needs Attention KPI and panel must share the same normalized feed.",
+);
+
+for (const deepLink of [
+  "/concepts/${folder.id}",
+  "/requests/checklist/${request.id}",
+  "/production-approvals/${step.id}",
+  "stages/6?unit=",
+  "stages/7?unit=",
+]) {
+  assert(service.includes(deepLink), `Action deep link is missing: ${deepLink}`);
+}
+assert(
+  service.includes("/projects?status=ACTIVE&stage=${stage.number}&sort=updated"),
+  "Stage distribution must use the Projects V2 stage filter convention.",
+);
+
+assert(
+  workspace.includes("No actions currently require your attention.") &&
+    workspace.includes("No upcoming deadlines") &&
+    workspace.includes("No open work assigned to you.") &&
+    workspace.includes("No projects available."),
+  "Dashboard empty states are incomplete.",
+);
+assert(
+  service.includes(".slice(0, 6)") && service.includes("updatedAt"),
+  "Recent Projects must be bounded and use Project.updatedAt recency.",
+);
+assert(
+  page.includes('hasPermission(user, "project.create")'),
+  "New Project visibility must use the existing create permission.",
+);
+assert(
+  !schema.includes("DashboardAttentionItem") &&
+    !schema.includes("DashboardWorkSummaryItem"),
+  "Dashboard derived state must not add Prisma persistence models.",
+);
+
+console.log("Dashboard V2 regression checks passed.");
