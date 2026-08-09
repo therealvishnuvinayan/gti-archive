@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [shell, sidebar, topbar, notifications, appFrame, backButton, chat, schema] =
+const [shell, sidebar, topbar, notifications, appFrame, backButton, chat, schema, dashboardCountRoute] =
   await Promise.all([
     readFile("src/components/layout/dashboard-shell.tsx", "utf8"),
     readFile("src/components/layout/sidebar.tsx", "utf8"),
@@ -11,6 +11,7 @@ const [shell, sidebar, topbar, notifications, appFrame, backButton, chat, schema
     readFile("src/components/projects/project-back-button.tsx", "utf8"),
     readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
     readFile("prisma/schema.prisma", "utf8"),
+    readFile("src/app/api/projects/dashboard-count/route.ts", "utf8"),
   ]);
 
 assert(
@@ -76,6 +77,13 @@ assert(
     sidebar.includes("xl:absolute xl:right-0 xl:top-0") &&
     sidebar.includes("unreadCount"),
   "Collapsed navigation must preserve active styling and compact project/notification badges.",
+);
+assert(
+  sidebar.includes("payload.total") &&
+    !sidebar.includes("payload.ongoing") &&
+    dashboardCountRoute.includes("{ total: counts.total }") &&
+    !dashboardCountRoute.includes("{ ongoing: counts.ongoing }"),
+  "The Projects sidebar badge must use the same accessible total-project count as the Dashboard KPI.",
 );
 
 assert(

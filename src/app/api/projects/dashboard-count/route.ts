@@ -22,7 +22,7 @@ export async function GET() {
     timer.end("dashboard count/sidebar request skipped", {
       reason: "Missing dashboard.viewProjectCounts permission.",
     });
-    return NextResponse.json({ ongoing: 0 }, {
+    return NextResponse.json({ total: 0 }, {
       headers: {
         "Cache-Control": "no-store",
       },
@@ -32,11 +32,11 @@ export async function GET() {
   try {
     const counts = await getDashboardProjectCounts(user);
     timer.end("dashboard count/sidebar request", {
-      ongoing: counts.ongoing,
+      total: counts.total,
     });
 
     return NextResponse.json(
-      { ongoing: counts.ongoing },
+      { total: counts.total },
       {
         headers: {
           "Cache-Control": "no-store",

@@ -89,25 +89,25 @@ function readCachedProjectBadgeCount() {
     }
 
     const payload = JSON.parse(cachedValue) as {
-      ongoing?: unknown;
+      total?: unknown;
       cachedAt?: unknown;
     };
 
     if (
-      typeof payload.ongoing !== "number" ||
+      typeof payload.total !== "number" ||
       typeof payload.cachedAt !== "number" ||
       Date.now() - payload.cachedAt > PROJECT_BADGE_COUNT_CACHE_TTL_MS
     ) {
       return null;
     }
 
-    return payload.ongoing;
+    return payload.total;
   } catch {
     return null;
   }
 }
 
-function cacheProjectBadgeCount(ongoing: number) {
+function cacheProjectBadgeCount(total: number) {
   if (typeof window === "undefined") {
     return;
   }
@@ -116,7 +116,7 @@ function cacheProjectBadgeCount(ongoing: number) {
     window.sessionStorage.setItem(
       PROJECT_BADGE_COUNT_CACHE_KEY,
       JSON.stringify({
-        ongoing,
+        total,
         cachedAt: Date.now(),
       }),
     );
@@ -335,12 +335,12 @@ export function Sidebar({
             return null;
           }
 
-          return (await response.json()) as { ongoing?: unknown };
+          return (await response.json()) as { total?: unknown };
         })
         .then((payload) => {
-          if (typeof payload?.ongoing === "number") {
-            setFetchedProjectBadgeCount(payload.ongoing);
-            cacheProjectBadgeCount(payload.ongoing);
+          if (typeof payload?.total === "number") {
+            setFetchedProjectBadgeCount(payload.total);
+            cacheProjectBadgeCount(payload.total);
           }
         })
         .catch((error) => {
