@@ -88,7 +88,7 @@ for (const actionType of [
   "Approval waiting for your decision",
   "Production approval rejected",
   "Production handover failed",
-  "milestone overdue",
+  "Physical sample request overdue",
 ]) {
   assert(service.includes(actionType), `Attention source is missing: ${actionType}`);
 }

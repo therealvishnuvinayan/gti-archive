@@ -186,6 +186,11 @@ enum ProductionSampleDecision {
   CONDITIONAL
 }
 
+enum PhysicalSampleDecision {
+  ACCEPTED
+  REJECTED
+}
+
 enum ProductionSampleCriterion {
   MATERIAL_QUALITY
   GRAPHIC_REPRODUCTION
@@ -468,6 +473,7 @@ model User {
   signedOffProductionSupervisions     ProjectProductionSupervision[]       @relation("ProjectProductionSupervisionSigner")
   createdProductionSampleRounds       ProductionSampleRound[]              @relation("ProductionSampleRoundCreator")
   completedProductionSampleRounds     ProductionSampleRound[]              @relation("ProductionSampleRoundCompleter")
+  decidedPhysicalSampleRounds         ProductionSampleRound[]              @relation("ProductionSampleRoundDecider")
   productionSampleRoundParticipations ProductionSampleRoundParticipant[]   @relation("ProductionSampleRoundParticipantUser")
   addedProductionSampleParticipants   ProductionSampleRoundParticipant[]   @relation("ProductionSampleRoundParticipantAdder")
   addedProductionSampleEvidence       ProductionSampleRoundEvidence[]      @relation("ProductionSampleRoundEvidenceAdder")
@@ -1013,41 +1019,61 @@ model ProjectProductionSupervision {
 }
 
 model ProductionSampleRound {
-  id                   String                             @id @default(cuid())
-  clientRequestId      String?                            @unique
-  projectId            String
-  project              Project                            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  supervisionId        String
-  supervision          ProjectProductionSupervision       @relation(fields: [supervisionId], references: [id], onDelete: Cascade)
-  sequence             Int
-  type                 ProductionSampleRoundType
-  customTypeName       String?
-  submissionDueAt      DateTime
-  submittedAt          DateTime?
-  reviewDueAt          DateTime
-  reviewedAt           DateTime?
-  revisionSignoffDueAt DateTime
-  revisionSignedOffAt  DateTime?
-  deliveryDueAt        DateTime
-  deliveredAt          DateTime?
-  status               ProductionSampleRoundStatus        @default(PENDING)
-  overallDecision      ProductionSampleDecision?
-  overallNotes         String?                            @db.Text
-  completedById        String?
-  completedBy          User?                              @relation("ProductionSampleRoundCompleter", fields: [completedById], references: [id], onDelete: SetNull)
-  completedAt          DateTime?
-  createdById          String
-  createdBy            User                               @relation("ProductionSampleRoundCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  evaluations          ProductionSampleEvaluation[]
-  participants         ProductionSampleRoundParticipant[]
-  evidence             ProductionSampleRoundEvidence[]
-  feedback             ProductionSampleFeedback[]
-  createdAt            DateTime                           @default(now())
-  updatedAt            DateTime                           @updatedAt
+  id                      String                             @id @default(cuid())
+  clientRequestId         String?                            @unique
+  projectId               String
+  project                 Project                            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supervisionId           String
+  supervision             ProjectProductionSupervision       @relation(fields: [supervisionId], references: [id], onDelete: Cascade)
+  sequence                Int
+  name                    String
+  type                    ProductionSampleRoundType
+  customTypeName          String?
+  deadline                DateTime                           @db.Date
+  recipientName           String?
+  recipientEmail          String?
+  requestNote             String?                            @db.Text
+  requestReferenceFileIds String[]                           @default([])
+  emailStatus             ProductionDispatchStatus           @default(NOT_SENT)
+  emailSentAt             DateTime?
+  emailError              String?                            @db.Text
+  emailProviderMessageId  String?
+  emailAttemptCount       Int                                @default(0)
+  decision                PhysicalSampleDecision?
+  decisionNote            String?                            @db.Text
+  decidedById             String?
+  decidedBy               User?                              @relation("ProductionSampleRoundDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt               DateTime?
+  submissionDueAt         DateTime?
+  submittedAt             DateTime?
+  reviewDueAt             DateTime?
+  reviewedAt              DateTime?
+  revisionSignoffDueAt    DateTime?
+  revisionSignedOffAt     DateTime?
+  deliveryDueAt           DateTime?
+  deliveredAt             DateTime?
+  status                  ProductionSampleRoundStatus        @default(PENDING)
+  overallDecision         ProductionSampleDecision?
+  overallNotes            String?                            @db.Text
+  completedById           String?
+  completedBy             User?                              @relation("ProductionSampleRoundCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+  completedAt             DateTime?
+  createdById             String
+  createdBy               User                               @relation("ProductionSampleRoundCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  evaluations             ProductionSampleEvaluation[]
+  participants            ProductionSampleRoundParticipant[]
+  evidence                ProductionSampleRoundEvidence[]
+  feedback                ProductionSampleFeedback[]
+  createdAt               DateTime                           @default(now())
+  updatedAt               DateTime                           @updatedAt
 
   @@unique([supervisionId, sequence])
   @@index([projectId, status, createdAt])
+  @@index([projectId, deadline, status])
+  @@index([projectId, decision, deadline])
+  @@index([emailStatus, updatedAt])
   @@index([supervisionId, status, sequence])
+  @@index([decidedById])
   @@index([completedById])
   @@index([createdById])
 }

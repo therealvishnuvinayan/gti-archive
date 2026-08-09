@@ -25,6 +25,7 @@ type AppDatePickerProps = {
   triggerClassName?: string;
   minDate?: Date | null;
   maxDate?: Date | null;
+  popoverZIndex?: number;
 };
 
 type PickerPosition = {
@@ -97,6 +98,7 @@ export function AppDatePicker({
   triggerClassName,
   minDate = null,
   maxDate = null,
+  popoverZIndex = 140,
 }: AppDatePickerProps) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => getDatePickerMonth(value));
@@ -108,6 +110,13 @@ export function AppDatePicker({
   useEffect(() => {
     if (!open) {
       return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        containerRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      }
     }
 
     function handlePointerDown(event: MouseEvent) {
@@ -126,7 +135,11 @@ export function AppDatePicker({
     }
 
     document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -184,6 +197,7 @@ export function AppDatePicker({
               left: position.left,
               width: position.width,
               maxHeight: "calc(100vh - 32px)",
+              zIndex: popoverZIndex,
             }}
           >
             <Card className="rounded-[22px] border border-line p-4 shadow-[0_20px_50px_rgba(23,39,28,0.16)]">

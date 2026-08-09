@@ -2,7 +2,6 @@ import {
   ProductionApprovalStepStatus,
   ProductionDispatchStatus,
   ProductionHandoverDeliveryStatus,
-  ProductionSampleRoundStatus,
   ProjectFileChecklistRequestChannel,
   ProjectFileChecklistRequestWorkflowStatus,
   ProjectProductionUnitStatus,
@@ -276,16 +275,9 @@ function stageNumberForConcept(key: ProjectWorkflowStageKey) {
 
 function sampleRoundLabel(round: {
   sequence: number;
-  type: string;
-  customTypeName: string | null;
+  name: string;
 }) {
-  if (round.customTypeName?.trim()) return round.customTypeName.trim();
-  const label = round.type
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-  return `${label} ${round.sequence}`;
+  return `${round.name} · Round ${round.sequence}`;
 }
 
 function addWork(counter: Map<string, WorkCounter>, item: WorkCounter) {
@@ -537,24 +529,15 @@ export async function getDashboardSnapshot(
             prisma.productionSampleRound.findMany({
               where: {
                 projectId: { in: activeProjectIds },
-                status: { not: ProductionSampleRoundStatus.COMPLETED },
+                decision: null,
               },
               select: {
                 id: true,
                 projectId: true,
                 sequence: true,
-                type: true,
-                customTypeName: true,
-                submissionDueAt: true,
-                submittedAt: true,
-                reviewDueAt: true,
-                reviewedAt: true,
-                revisionSignoffDueAt: true,
-                revisionSignedOffAt: true,
-                deliveryDueAt: true,
-                deliveredAt: true,
+                name: true,
+                deadline: true,
                 updatedAt: true,
-                participants: { select: { userId: true } },
                 supervision: { select: { productionUnitId: true } },
               },
             }),
@@ -951,62 +934,49 @@ export async function getDashboardSnapshot(
     }
   }
 
-  const sampleMilestones = [
-    ["Submission", "submissionDueAt", "submittedAt"],
-    ["Review", "reviewDueAt", "reviewedAt"],
-    ["Revision sign-off", "revisionSignoffDueAt", "revisionSignedOffAt"],
-    ["Delivery", "deliveryDueAt", "deliveredAt"],
-  ] as const;
-
   for (const round of sampleRounds) {
     const summary = projectById.get(round.projectId);
     if (!summary) continue;
     const { project } = summary;
-    const isParticipant = round.participants.some(
-      (participant) => participant.userId === user.id,
-    );
     const canManage = hasProjectPermission(
       user,
       project,
       "stage.markStageComplete",
     );
-    if (!isParticipant && !canManage) continue;
+    if (!canManage) continue;
 
     const href = `/projects/${project.id}/stages/7?unit=${encodeURIComponent(round.supervision.productionUnitId)}&round=${encodeURIComponent(round.id)}`;
     const roundLabel = sampleRoundLabel(round);
-    for (const [milestoneLabel, dueKey, actualKey] of sampleMilestones) {
-      if (round[actualKey]) continue;
-      const dueAt = toDate(round[dueKey]);
-      deadlineCandidates.push({
-        id: `sample:${round.id}:${dueKey}`,
-        projectName: project.name,
-        detail: `${roundLabel} · ${milestoneLabel}`,
-        stageLabel: "Stage 7",
-        href,
-        dueAt: dueAt.toISOString(),
-        dueAtDate: dueAt,
-      });
+    const dueAt = toDate(round.deadline);
+    deadlineCandidates.push({
+      id: `sample:${round.id}:deadline`,
+      projectName: project.name,
+      detail: roundLabel,
+      stageLabel: "Stage 7",
+      href,
+      dueAt: dueAt.toISOString(),
+      dueAtDate: dueAt,
+    });
 
-      if (canManage && dueAt.getTime() < startOfDay(now).getTime()) {
-        addAttention(attention, {
-          id: `sample-overdue:${round.id}:${dueKey}`,
-          severity: "critical",
-          kind: "deadline",
-          title: `${milestoneLabel} milestone overdue`,
-          detail: roundLabel,
-          projectName: project.name,
-          href,
-          actionLabel: "Open milestone",
-          sortAt: dueAt.toISOString(),
-        });
-        addWork(work, {
-          id: "overdue",
-          label: "Overdue deadlines",
-          count: 1,
-          href,
-          tone: "red",
-        });
-      }
+    if (canManage && dueAt.getTime() < startOfDay(now).getTime()) {
+      addAttention(attention, {
+        id: `sample-overdue:${round.id}:deadline`,
+        severity: "critical",
+        kind: "deadline",
+        title: "Physical sample request overdue",
+        detail: roundLabel,
+        projectName: project.name,
+        href,
+        actionLabel: "Open request",
+        sortAt: dueAt.toISOString(),
+      });
+      addWork(work, {
+        id: "overdue",
+        label: "Overdue deadlines",
+        count: 1,
+        href,
+        tone: "red",
+      });
     }
   }
 

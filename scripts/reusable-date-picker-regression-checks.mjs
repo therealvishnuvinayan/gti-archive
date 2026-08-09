@@ -24,7 +24,7 @@ function assertNotIncludes(source, value, label) {
 
 const appDatePicker = read("src/components/calendar/app-date-picker.tsx");
 const fluxWorkspace = read("src/components/flux-ai/flux-ai-workspace.tsx");
-const projectChatWorkspace = read("src/components/projects/project-chat-workspace.tsx");
+const archiveMetadataForm = read("src/components/archives/archive-artwork-metadata-form.tsx");
 
 for (const snippet of [
   "CalendarMonthGrid",
@@ -66,18 +66,21 @@ assertNotIncludes(fluxWorkspace, 'type="date"', "Flux AI native date input");
 
 for (const snippet of [
   'import { AppDatePicker } from "@/components/calendar/app-date-picker";',
-  'input.type === "date"',
+  'type === "date"',
   "<AppDatePicker",
-  "clearable={!input.required}",
+  "clearable={!required}",
   "creationDate",
   "lastModifiedDate",
   "goLiveOnShelfDate",
   "expirySunsetDate",
   "approvedAt",
 ]) {
-  assertIncludes(projectChatWorkspace, snippet, `Archive metadata date picker usage ${snippet}`);
+  assertIncludes(archiveMetadataForm, snippet, `Archive metadata date picker usage ${snippet}`);
 }
 
-assertNotIncludes(projectChatWorkspace, 'type="date"', "Archive wizard native date input");
+assert(
+  !/<(?:Input|input)[^>]*type="date"/s.test(archiveMetadataForm),
+  "Archive wizard native date input must not be present.",
+);
 
 console.log("Reusable date picker regression checks passed.");

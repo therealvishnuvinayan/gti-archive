@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import {
   AttachmentAssetType,
   AttachmentStatus,
-  ProductionApprovalRecipientType,
+  PhysicalSampleDecision,
   ProductionDispatchStatus,
-  ProductionSampleCriterion,
-  ProductionSampleDecision,
+  ProductionSampleRoundStatus,
   ProductionSampleRoundType,
   ProductionSupervisionStatus,
+  ProjectFileChecklistField,
   ProjectProductionUnitStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
@@ -16,22 +16,13 @@ import {
 
 import type { SendEmailInput } from "../src/lib/email/resend";
 import { prisma } from "../src/lib/prisma";
-import { requestAttachmentUpload } from "../src/lib/project-history";
 import {
-  addProductionSampleEvidence,
-  addProductionSampleParticipant,
   closeStageSevenProject,
-  completeProductionSampleMilestone,
-  completeProductionSampleRound,
   createProductionSampleRound,
-  getStageSevenFeedbackDraft,
+  decidePhysicalSampleRound,
   getStageSevenWorkspaceData,
   processStageSevenOverdueDeadlines,
-  sendStageSevenFeedback,
-  signOffProductionUnit,
-  STAGE_SEVEN_CRITERIA,
-  updateProductionSampleEvaluation,
-  updateProductionSampleRoundDecision,
+  retryProductionSampleRequestEmail,
 } from "../src/lib/stage-seven";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 
@@ -48,14 +39,41 @@ async function expectRejected(task: Promise<unknown>, message: string) {
   throw new Error(`Stage 7 integration check failed: ${message}`);
 }
 
-function dueDates(offsetHours = 24) {
-  const base = Date.now() + offsetHours * 60 * 60 * 1000;
-  return {
-    submissionDueAt: new Date(base).toISOString(),
-    reviewDueAt: new Date(base + 60 * 60 * 1000).toISOString(),
-    revisionSignoffDueAt: new Date(base + 2 * 60 * 60 * 1000).toISOString(),
-    deliveryDueAt: new Date(base + 3 * 60 * 60 * 1000).toISOString(),
-  };
+function deadlineDate(offsetDays = 1) {
+  const value = new Date();
+  value.setUTCHours(0, 0, 0, 0);
+  value.setUTCDate(value.getUTCDate() + offsetDays);
+  return value.toISOString().slice(0, 10);
+}
+
+type FixtureUnit = {
+  id: string;
+  sourceAttachmentId: string;
+  referenceAttachmentId: string;
+  outputName: string;
+  rawFileName: string;
+};
+
+async function createReadyAttachment(input: {
+  projectId: string;
+  uploadedById: string;
+  runId: string;
+  name: string;
+}) {
+  return prisma.projectAttachment.create({
+    data: {
+      projectId: input.projectId,
+      uploadedById: input.uploadedById,
+      fileName: input.name.replaceAll(" ", "-").toLocaleLowerCase("en-US"),
+      originalFileName: input.name,
+      mimeType: "application/pdf",
+      fileSize: 1024,
+      bucket: "stage-seven-integration",
+      storageKey: `stage-seven/${input.runId}/${input.projectId}/${randomUUID()}`,
+      assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+      status: AttachmentStatus.READY,
+    },
+  });
 }
 
 async function createProjectFixture(input: {
@@ -64,13 +82,13 @@ async function createProjectFixture(input: {
   coOwnerId: string;
   executorId: string;
   collaboratorId: string;
-  unitCount: number;
+  unitNames: string[];
   runId: string;
 }) {
   await prisma.project.create({
     data: {
       id: input.id,
-      name: `Stage 7 ${input.id}`,
+      name: `Stage 7 Physical Sample ${input.id}`,
       createdById: input.ownerId,
       ownerId: input.ownerId,
       coOwners: { create: [{ userId: input.coOwnerId, addedById: input.ownerId }] },
@@ -94,21 +112,21 @@ async function createProjectFixture(input: {
       },
     },
   });
-  const units = [];
-  for (let index = 0; index < input.unitCount; index += 1) {
-    const source = await prisma.projectAttachment.create({
-      data: {
-        projectId: input.id,
-        uploadedById: input.ownerId,
-        fileName: `unit-${index}.pdf`,
-        originalFileName: `Production Unit ${index + 1}.pdf`,
-        mimeType: "application/pdf",
-        fileSize: 1024,
-        bucket: "stage-seven-integration",
-        storageKey: `stage-seven/${input.runId}/${input.id}/unit-${index}`,
-        assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
-        status: AttachmentStatus.READY,
-      },
+
+  const units: FixtureUnit[] = [];
+  for (const [index, outputName] of input.unitNames.entries()) {
+    const rawFileName = `unit-${index + 1}-source.pdf`;
+    const source = await createReadyAttachment({
+      projectId: input.id,
+      uploadedById: input.ownerId,
+      runId: input.runId,
+      name: rawFileName,
+    });
+    const reference = await createReadyAttachment({
+      projectId: input.id,
+      uploadedById: input.ownerId,
+      runId: input.runId,
+      name: `unit-${index + 1}-production-reference.pdf`,
     });
     const handoff = await prisma.projectStageFileHandoff.create({
       data: {
@@ -124,56 +142,42 @@ async function createProjectFixture(input: {
         projectId: input.id,
         handoffId: handoff.id,
         sourceAttachmentId: source.id,
+        items: {
+          create: {
+            fieldKey: ProjectFileChecklistField.OUTPUT_NAME,
+            value: { text: outputName },
+            updatedById: input.ownerId,
+          },
+        },
       },
     });
-    units.push(
-      await prisma.projectProductionUnit.create({
-        data: {
-          projectId: input.id,
-          sourceHandoffId: handoff.id,
-          sourceChecklistId: checklist.id,
-          sourceAttachmentId: source.id,
-          status: ProjectProductionUnitStatus.HANDED_OVER,
-          createdById: input.ownerId,
-          approvedAt: new Date(),
-          handedOverAt: new Date(),
+    const unit = await prisma.projectProductionUnit.create({
+      data: {
+        projectId: input.id,
+        sourceHandoffId: handoff.id,
+        sourceChecklistId: checklist.id,
+        sourceAttachmentId: source.id,
+        status: ProjectProductionUnitStatus.HANDED_OVER,
+        createdById: input.ownerId,
+        approvedAt: new Date(),
+        handedOverAt: new Date(),
+        files: {
+          create: {
+            attachmentId: reference.id,
+            addedById: input.ownerId,
+          },
         },
-      }),
-    );
-  }
-  return units;
-}
-
-async function evaluateRound(
-  actor: { id: string; role: UserRole },
-  input: { projectId: string; productionUnitId: string; sampleRoundId: string },
-  overallDecision: ProductionSampleDecision,
-) {
-  await addProductionSampleParticipant(actor, {
-    ...input,
-    participantUserId: actor.id,
-  });
-  for (const [index, criterion] of STAGE_SEVEN_CRITERIA.entries()) {
-    await updateProductionSampleEvaluation(actor, {
-      ...input,
-      criterion,
-      decision:
-        index === 1
-          ? ProductionSampleDecision.CONDITIONAL
-          : index === 2
-            ? ProductionSampleDecision.FAIL
-            : ProductionSampleDecision.PASS,
-      comment: `Criterion ${index + 1} audited`,
+      },
+    });
+    units.push({
+      id: unit.id,
+      sourceAttachmentId: source.id,
+      referenceAttachmentId: reference.id,
+      outputName,
+      rawFileName,
     });
   }
-  await updateProductionSampleRoundDecision(actor, {
-    ...input,
-    decision: overallDecision,
-    notes: `Independent ${overallDecision} decision`,
-  });
-  for (const milestone of ["SUBMISSION", "REVIEW", "REVISION_SIGNOFF", "DELIVERY"] as const) {
-    await completeProductionSampleMilestone(actor, { ...input, milestone });
-  }
+  return units;
 }
 
 async function main() {
@@ -182,6 +186,7 @@ async function main() {
   process.env.AWS_SECRET_ACCESS_KEY ||= "stage-seven-test-secret";
   process.env.AWS_S3_BUCKET ||= "stage-seven-integration";
   process.env.S3_USE_ACCELERATE_ENDPOINT ||= "false";
+
   const runId = randomUUID();
   const ids = {
     owner: `s7-owner-${runId}`,
@@ -202,12 +207,15 @@ async function main() {
   const collaborator = { id: ids.collaborator, role: UserRole.COLLABORATOR };
   const admin = { id: ids.admin, role: UserRole.ADMIN };
   const superAdmin = { id: ids.superAdmin, role: UserRole.SUPER_ADMIN };
-  const emailLog: SendEmailInput[] = [];
+  const sentEmails: SendEmailInput[] = [];
+  const sentEmailCount = () => sentEmails.length;
   const sendSuccess = async (email: SendEmailInput) => {
-    emailLog.push(email);
-    return { ok: true as const, id: `stage-seven-${emailLog.length}` };
+    sentEmails.push(email);
+    return { ok: true as const, id: `sample-email-${sentEmails.length}` };
   };
-  const sendFailure = async () => ({ ok: false as const, error: "Mock email failure" });
+  const sendFailure = async (): Promise<{ ok: true; id?: string } | { ok: false; error: string }> => {
+    throw new Error("Mock Resend delivery failure");
+  };
 
   try {
     await prisma.user.createMany({
@@ -227,117 +235,141 @@ async function main() {
         role: role as UserRole,
       })),
     });
-    const units = await createProjectFixture({ id: ids.project, ownerId: ids.owner, coOwnerId: ids.coOwner, executorId: ids.executor, collaboratorId: ids.collaborator, unitCount: 2, runId });
-    const foreignUnits = await createProjectFixture({ id: ids.foreignProject, ownerId: ids.outsider, coOwnerId: ids.coOwner, executorId: ids.executor, collaboratorId: ids.collaborator, unitCount: 1, runId });
+
+    const units = await createProjectFixture({
+      id: ids.project,
+      ownerId: ids.owner,
+      coOwnerId: ids.coOwner,
+      executorId: ids.executor,
+      collaboratorId: ids.collaborator,
+      unitNames: ["Retail Carton", "Master Shipping Case"],
+      runId,
+    });
+    const foreignUnits = await createProjectFixture({
+      id: ids.foreignProject,
+      ownerId: ids.outsider,
+      coOwnerId: ids.coOwner,
+      executorId: ids.executor,
+      collaboratorId: ids.collaborator,
+      unitNames: ["Foreign Pack"],
+      runId,
+    });
+
     const initial = await getStageSevenWorkspaceData(owner, ids.project);
-    check(initial?.units.length === 2, "loader must derive only real Stage 6 HANDED_OVER units");
-    check(initial.units.every((unit) => unit.status === ProductionSupervisionStatus.NOT_STARTED), "missing supervision must derive NOT_STARTED without writes");
-    check((await prisma.projectProductionSupervision.count({ where: { projectId: ids.project } })) === 0, "loader must not create supervision rows");
-    const [ownerUploadActor, adminUploadActor, executorUploadActor] = await Promise.all(
-      [ids.owner, ids.admin, ids.executor].map((id) =>
-        prisma.user.findUniqueOrThrow({ where: { id } }),
-      ),
-    );
-    const imagePreparation = await requestAttachmentUpload(ownerUploadActor, { projectId: ids.project, originalFileName: "Evidence.jpg", mimeType: "image/jpeg", fileSize: 100, assetType: AttachmentAssetType.SAMPLE_ROUND_EVIDENCE });
-    const videoPreparation = await requestAttachmentUpload(ownerUploadActor, { projectId: ids.project, originalFileName: "Evidence.mp4", mimeType: "video/mp4", fileSize: 200, assetType: AttachmentAssetType.SAMPLE_ROUND_EVIDENCE });
-    check(!("error" in imagePreparation) && !("error" in videoPreparation), "manager must be able to prepare image and video evidence uploads");
-    check("error" in await requestAttachmentUpload(adminUploadActor, { projectId: ids.project, originalFileName: "Admin.jpg", mimeType: "image/jpeg", fileSize: 100, assetType: AttachmentAssetType.SAMPLE_ROUND_EVIDENCE }), "ADMIN alone must not prepare Stage 7 evidence uploads");
-    check("error" in await requestAttachmentUpload(executorUploadActor, { projectId: ids.project, originalFileName: "Executor.mp4", mimeType: "video/mp4", fileSize: 100, assetType: AttachmentAssetType.SAMPLE_ROUND_EVIDENCE }), "executor must not prepare Stage 7 evidence uploads");
+    check(initial?.units.length === 2, "the loader must derive handed-over Stage 6 units");
+    check(initial.units[0].name === "Retail Carton" && initial.units[0].rawFileName === "unit-1-source.pdf", "OUTPUT_NAME must be primary and raw filename secondary");
+    check(initial.units.every((unit) => unit.status === ProductionSupervisionStatus.NOT_STARTED), "missing supervision must display Not Started");
+    check((await prisma.projectProductionSupervision.count({ where: { projectId: ids.project } })) === 0, "read-only loading must not create supervision rows");
 
-    await expectRejected(createProductionSampleRound(admin, { projectId: ids.project, productionUnitId: units[0].id, clientRequestId: `admin-round-${runId}`, type: ProductionSampleRoundType.PRODUCTION_SAMPLE, ...dueDates() }), "ADMIN alone must not manage Stage 7");
-    await expectRejected(createProductionSampleRound(executor, { projectId: ids.project, productionUnitId: units[0].id, clientRequestId: `exec-round-${runId}`, type: ProductionSampleRoundType.PRODUCTION_SAMPLE, ...dueDates() }), "executor must not manage Stage 7");
-    await expectRejected(createProductionSampleRound(collaborator, { projectId: ids.project, productionUnitId: units[0].id, clientRequestId: `collab-round-${runId}`, type: ProductionSampleRoundType.PRODUCTION_SAMPLE, ...dueDates() }), "collaborator must not manage Stage 7");
-    await expectRejected(createProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, clientRequestId: `bad-date-${runId}`, type: ProductionSampleRoundType.PRODUCTION_SAMPLE, ...dueDates(), reviewDueAt: new Date(Date.now() - 1000).toISOString() }), "server must reject invalid deadline chronology");
+    const baseInput = {
+      projectId: ids.project,
+      productionUnitId: units[0].id,
+      name: "Retail carton courier sample",
+      type: ProductionSampleRoundType.PRODUCTION_SAMPLE,
+      deadline: deadlineDate(2),
+      recipientName: "ABC Packaging",
+      recipientEmail: "supplier.external@example.test",
+      requestNote: "Please courier one physical sample before the deadline.",
+    };
+    await expectRejected(createProductionSampleRound(admin, { ...baseInput, clientRequestId: `admin-${runId}` }, { sendEmail: sendSuccess }), "ADMIN alone must not manage Stage 7");
+    await expectRejected(createProductionSampleRound(executor, { ...baseInput, clientRequestId: `executor-${runId}` }, { sendEmail: sendSuccess }), "an executor must not manage Stage 7");
+    await expectRejected(createProductionSampleRound(collaborator, { ...baseInput, clientRequestId: `collab-${runId}` }, { sendEmail: sendSuccess }), "a collaborator must not manage Stage 7");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `blank-name-${runId}`, name: " " }, { sendEmail: sendSuccess }), "Round Name must be required");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `bad-date-${runId}`, deadline: "not-a-date" }, { sendEmail: sendSuccess }), "Deadline must be a valid date");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `bad-email-${runId}`, recipientEmail: "invalid" }, { sendEmail: sendSuccess }), "Recipient Email must be valid");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `custom-${runId}`, type: ProductionSampleRoundType.CUSTOM }, { sendEmail: sendSuccess }), "Custom Sample Type must require a label");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `foreign-ref-${runId}`, referenceFileIds: [foreignUnits[0].sourceAttachmentId] }, { sendEmail: sendSuccess }), "reference files must not cross projects or Production Units");
 
-    const roundOne = await createProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, clientRequestId: `round-one-${runId}`, type: ProductionSampleRoundType.CUSTOM, customTypeName: "Colour-corrected proof", initialNotes: "Initial note", ...dueDates(-48) });
-    check(!roundOne.duplicate, "custom Round 1 must be created");
-    const roundOneRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: roundOne.id }, include: { evaluations: true } });
-    check(roundOneRow.sequence === 1 && roundOneRow.customTypeName === "Colour-corrected proof", "custom name and per-unit sequence must persist");
-    check(roundOneRow.evaluations.length === 7 && new Set(roundOneRow.evaluations.map((item) => item.criterion)).size === 7, "exactly seven unique criteria must be created");
-    check((await prisma.projectProductionSupervision.count({ where: { productionUnitId: units[0].id } })) === 1, "first action must create exactly one supervision");
-    await expectRejected(completeProductionSampleMilestone(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, milestone: "REVIEW" }), "out-of-order milestone must be rejected");
-    await expectRejected(completeProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id }), "completion must require criteria, overall decision, participant, and milestones");
-    await addProductionSampleParticipant(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, participantUserId: ids.owner });
-    await expectRejected(addProductionSampleParticipant(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, participantUserId: ids.owner }), "duplicate participant must be rejected");
+    const failedClientRequestId = `failed-request-${runId}`;
+    const failed = await createProductionSampleRound(owner, {
+      ...baseInput,
+      clientRequestId: failedClientRequestId,
+    }, { sendEmail: sendFailure });
+    check(!failed.duplicate && failed.emailStatus === ProductionDispatchStatus.FAILED, "a delivery failure must return FAILED without deleting the request");
+    const failedRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: failed.id } });
+    check(failedRow.emailStatus === ProductionDispatchStatus.FAILED && failedRow.emailAttemptCount === 1 && failedRow.emailSentAt === null, "the request must persist before email and retain its failed audit");
+    check(failedRow.requestReferenceFileIds.length === 2 && failedRow.requestReferenceFileIds.includes(units[0].sourceAttachmentId) && failedRow.requestReferenceFileIds.includes(units[0].referenceAttachmentId), "the request snapshot must contain only this unit's source and production files");
+    check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.NOT_STARTED, "failed delivery must not claim that GTI is waiting for a sample");
+    const duplicateFailure = await createProductionSampleRound(owner, { ...baseInput, clientRequestId: failedClientRequestId }, { sendEmail: sendSuccess });
+    check(duplicateFailure.duplicate && sentEmailCount() === 0, "the create idempotency key must not duplicate or silently resend a failed request");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `blocked-pending-${runId}` }, { sendEmail: sendSuccess }), "a pending/failed latest request must block a new round until retry and decision");
 
-    const image = await prisma.projectAttachment.create({ data: { projectId: ids.project, uploadedById: ids.owner, fileName: "proof.jpg", originalFileName: "Proof.jpg", mimeType: "image/jpeg", fileSize: 2048, bucket: "stage-seven-integration", storageKey: `stage-seven/${runId}/proof.jpg`, assetType: AttachmentAssetType.SAMPLE_ROUND_EVIDENCE, status: AttachmentStatus.READY } });
-    const video = await prisma.projectAttachment.create({ data: { projectId: ids.project, uploadedById: ids.owner, fileName: "test.mp4", originalFileName: "Test.mp4", mimeType: "video/mp4", fileSize: 4096, bucket: "stage-seven-integration", storageKey: `stage-seven/${runId}/test.mp4`, assetType: AttachmentAssetType.SAMPLE_ROUND_EVIDENCE, status: AttachmentStatus.READY } });
-    const foreignEvidence = await prisma.projectAttachment.create({ data: { projectId: ids.foreignProject, uploadedById: ids.outsider, fileName: "foreign.jpg", originalFileName: "Foreign.jpg", mimeType: "image/jpeg", fileSize: 100, bucket: "stage-seven-integration", storageKey: `stage-seven/${runId}/foreign.jpg`, assetType: AttachmentAssetType.SAMPLE_ROUND_EVIDENCE, status: AttachmentStatus.READY } });
-    await addProductionSampleEvidence(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, attachmentId: image.id, criterion: ProductionSampleCriterion.GRAPHIC_REPRODUCTION });
-    await addProductionSampleEvidence(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, attachmentId: video.id });
-    await expectRejected(addProductionSampleEvidence(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, attachmentId: foreignEvidence.id }), "cross-project evidence must be rejected");
+    const retried = await retryProductionSampleRequestEmail(owner, {
+      projectId: ids.project,
+      productionUnitId: units[0].id,
+      sampleRoundId: failed.id,
+    }, { sendEmail: sendSuccess });
+    check(!retried.duplicate && retried.emailStatus === ProductionDispatchStatus.SENT && sentEmailCount() === 1, "retry must send the same persisted round exactly once");
+    const retriedRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: failed.id } });
+    check(retriedRow.emailStatus === ProductionDispatchStatus.SENT && retriedRow.emailAttemptCount === 2 && Boolean(retriedRow.emailSentAt), "retry success must persist SENT, sentAt, and attempt count");
+    check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.IN_REVIEW, "successful send must move the unit to Waiting for Sample");
+    const firstEmail = sentEmails[0];
+    check(firstEmail.to === "supplier.external@example.test", "the request must send to the arbitrary external recipient email");
+    check(firstEmail.text.includes("Retail Carton") && firstEmail.text.includes("Retail carton courier sample") && firstEmail.text.includes("Production Sample") && firstEmail.text.includes("Please courier one physical sample"), "the professional email must include project-unit-round-type-deadline-note context");
+    check(firstEmail.text.includes("unit-1-source.pdf") && firstEmail.text.includes("unit-1-production-reference.pdf") && !firstEmail.text.includes("unit-2-source.pdf") && !firstEmail.text.includes("Foreign Pack"), "email links must be scoped to the selected Stage 6 unit");
+    check((firstEmail.text.match(/X-Amz-/g) ?? []).length >= 2, "reference files must use expiring signed download links");
+    const duplicateRetry = await retryProductionSampleRequestEmail(coOwner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id }, { sendEmail: sendSuccess });
+    check(duplicateRetry.duplicate && sentEmailCount() === 1, "retrying an already sent request must be idempotent");
 
-    for (const criterion of STAGE_SEVEN_CRITERIA) {
-      await updateProductionSampleEvaluation(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, criterion, decision: ProductionSampleDecision.PASS, comment: `${criterion} comment` });
-    }
-    await updateProductionSampleEvaluation(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, criterion: ProductionSampleCriterion.CONSTRUCTION, decision: ProductionSampleDecision.CONDITIONAL, comment: "Construction conditional" });
-    await updateProductionSampleEvaluation(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, criterion: ProductionSampleCriterion.GRAPHIC_ELEMENTS, decision: ProductionSampleDecision.FAIL, comment: "Graphic failure" });
-    await updateProductionSampleRoundDecision(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, decision: ProductionSampleDecision.FAIL, notes: "Overall fail is independent" });
-    for (const milestone of ["SUBMISSION", "REVIEW", "REVISION_SIGNOFF", "DELIVERY"] as const) await completeProductionSampleMilestone(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, milestone });
-    await completeProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id });
-    check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.REVISIONS_NEEDED, "FAIL must set REVISIONS_NEEDED");
-    check((await completeProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id })).duplicate, "double Round Complete must be idempotent");
-    await expectRejected(updateProductionSampleRoundDecision(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, decision: ProductionSampleDecision.PASS }), "completed round must be locked");
+    await expectRejected(decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Executor cannot decide." }), "executors must not decide physical sample requests");
+    await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED }), "rejection must require a physical review note");
+    await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Wrong unit." }), "a decision must not cross Production Units");
+    const rejected = await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Colour is outside the approved tolerance." });
+    check(!rejected.duplicate, "the manager must be able to reject the delivered physical sample");
+    const rejectedRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: failed.id } });
+    check(rejectedRow.decision === PhysicalSampleDecision.REJECTED && rejectedRow.decisionNote === "Colour is outside the approved tolerance." && rejectedRow.decidedById === ids.owner && Boolean(rejectedRow.decidedAt), "rejection must persist immutable decision audit fields");
+    check(rejectedRow.status === ProductionSampleRoundStatus.COMPLETED && (await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.REVISIONS_NEEDED, "rejection must map to Rejected while preserving the legacy status field");
+    check((await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Ignored duplicate note" })).duplicate, "the same final decision must be idempotent");
+    await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.ACCEPTED }), "a rejected round must never be overwritten as accepted");
 
-    const concurrent = await Promise.all([
-      createProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, clientRequestId: `concurrent-a-${runId}`, type: ProductionSampleRoundType.PRODUCTION_SAMPLE, ...dueDates() }),
-      createProductionSampleRound(coOwner, { projectId: ids.project, productionUnitId: units[0].id, clientRequestId: `concurrent-b-${runId}`, type: ProductionSampleRoundType.FINAL_MASS_PRODUCTION_SIGN_OFF, ...dueDates() }),
-    ]);
-    const concurrentRows = await prisma.productionSampleRound.findMany({ where: { id: { in: concurrent.map((item) => item.id) } }, orderBy: { sequence: "asc" } });
-    check(concurrentRows.length === 2 && concurrentRows[0].sequence !== concurrentRows[1].sequence, "concurrent creation must allocate unique per-unit sequences");
-    check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.IN_REVIEW, "new round after revisions must return unit to IN_REVIEW");
-    const finalRoundA = concurrentRows.at(-1)!;
-    await prisma.productionSampleRound.delete({ where: { id: concurrentRows[0].id } });
-    await evaluateRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: finalRoundA.id }, ProductionSampleDecision.PASS);
-    await completeProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: finalRoundA.id });
-    check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.IN_REVIEW, "PASS must not auto-sign-off unit");
-    await signOffProductionUnit(owner, { projectId: ids.project, productionUnitId: units[0].id });
-    check((await signOffProductionUnit(owner, { projectId: ids.project, productionUnitId: units[0].id })).duplicate, "double sign-off must be idempotent");
-    check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: units[0].id } })).status === ProjectProductionUnitStatus.HANDED_OVER, "Stage 6 HANDED_OVER status must remain unchanged");
-    await expectRejected(createProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, clientRequestId: `signed-round-${runId}`, type: ProductionSampleRoundType.PRODUCTION_SAMPLE, ...dueDates() }), "signed-off unit must be read-only");
+    const acceptedRound = await createProductionSampleRound(coOwner, {
+      ...baseInput,
+      clientRequestId: `accepted-round-${runId}`,
+      name: "Retail carton corrected final sample",
+      type: ProductionSampleRoundType.FINAL_MASS_PRODUCTION_SIGN_OFF,
+      deadline: deadlineDate(3),
+    }, { sendEmail: sendSuccess });
+    check(!acceptedRound.duplicate && acceptedRound.emailStatus === ProductionDispatchStatus.SENT, "rejection must allow a new independent sample request");
+    check((await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Old round" })).duplicate, "replaying the same decision on an earlier round must be a no-op");
+    const accepted = await decidePhysicalSampleRound(superAdmin, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: acceptedRound.id, decision: PhysicalSampleDecision.ACCEPTED, decisionNote: "Physical sample matches approved production artwork." });
+    check(!accepted.duplicate, "SUPER_ADMIN must be able to accept a physical sample");
+    const acceptedSupervision = await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } });
+    check(acceptedSupervision.status === ProductionSupervisionStatus.SIGNED_OFF && acceptedSupervision.signedOffById === ids.superAdmin && Boolean(acceptedSupervision.signedOffAt), "acceptance must mark the unit Accepted with signer audit");
+    check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: units[0].id } })).status === ProjectProductionUnitStatus.HANDED_OVER, "Stage 7 must not mutate the Stage 6 HANDED_OVER state");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `locked-unit-${runId}` }, { sendEmail: sendSuccess }), "accepted units must lock further sample requests");
 
-    const unitBRound = await createProductionSampleRound(superAdmin, { projectId: ids.project, productionUnitId: units[1].id, clientRequestId: `unit-b-${runId}`, type: ProductionSampleRoundType.PRODUCTION_SAMPLE, ...dueDates(-24) });
-    await expectRejected(updateProductionSampleRoundDecision(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: unitBRound.id, decision: ProductionSampleDecision.PASS }), "cross-unit manipulation must be rejected");
-    await expectRejected(updateProductionSampleRoundDecision(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: roundOne.id, decision: ProductionSampleDecision.PASS }), "round cannot cross Production Units");
-    await expectRejected(updateProductionSampleRoundDecision(owner, { projectId: ids.foreignProject, productionUnitId: foreignUnits[0].id, sampleRoundId: unitBRound.id, decision: ProductionSampleDecision.PASS }), "cross-project manipulation must be rejected");
-
-    await completeProductionSampleMilestone(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: unitBRound.id, milestone: "SUBMISSION" });
-    const overdueBefore = await processStageSevenOverdueDeadlines(new Date());
-    check(overdueBefore.attemptedNotifications >= 3, "overdue processor must find only uncompleted due milestones");
+    const overdueRound = await createProductionSampleRound(superAdmin, {
+      projectId: ids.project,
+      productionUnitId: units[1].id,
+      clientRequestId: `overdue-${runId}`,
+      name: "Master case physical proof",
+      type: ProductionSampleRoundType.PRE_PRODUCTION_SAMPLE,
+      deadline: deadlineDate(-1),
+      recipientEmail: "factory@example.test",
+      requestNote: "Courier the physical shipping case proof.",
+    }, { sendEmail: sendSuccess });
+    await expectRejected(closeStageSevenProject(owner, { projectId: ids.project }), "project closure must remain blocked while any unit is not accepted");
+    const overdueFirst = await processStageSevenOverdueDeadlines(new Date());
+    check(overdueFirst.attemptedNotifications >= 2, "a pending past-deadline request must be processed as overdue");
     await processStageSevenOverdueDeadlines(new Date());
-    const overdueNotifications = await prisma.notification.findMany({ where: { type: "STAGE_SEVEN_OVERDUE", entityId: unitBRound.id } });
-    check(overdueNotifications.length === 6, "three overdue milestones must notify owner and co-owner exactly once");
-    check(overdueNotifications.every((item) => item.userId === ids.owner || item.userId === ids.coOwner), "overdue alerts must target only Owner and Co-Owners");
-    check(overdueNotifications.every((item) => item.userId !== ids.superAdmin), "SUPER_ADMIN must not be auto-notified");
+    const overdueNotifications = await prisma.notification.findMany({ where: { type: "STAGE_SEVEN_OVERDUE", entityId: overdueRound.id } });
+    check(overdueNotifications.length === 2, "owner and co-owner must each receive one deduplicated overdue notification");
+    check(overdueNotifications.every((item) => item.userId === ids.owner || item.userId === ids.coOwner), "supplier, executor, collaborators, and SUPER_ADMIN must not receive the automatic overdue alert");
+    const overdueWorkspace = await getStageSevenWorkspaceData(owner, ids.project, units[1].id, overdueRound.id);
+    check(overdueWorkspace?.summary.totalUnits === 2 && overdueWorkspace.summary.waitingUnits === 1 && overdueWorkspace.summary.overdueRounds === 1 && overdueWorkspace.summary.acceptedUnits === 1, "summary must report Production Units, Waiting, Overdue, and Accepted from persisted physical-sample state");
 
-    await evaluateRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: unitBRound.id }, ProductionSampleDecision.PASS);
-    await completeProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: unitBRound.id });
-    await expectRejected(closeStageSevenProject(owner, { projectId: ids.project }), "closure must be blocked while a unit is unsigned");
-    await signOffProductionUnit(coOwner, { projectId: ids.project, productionUnitId: units[1].id });
-
-    const draft = await getStageSevenFeedbackDraft(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, selectedEvidenceIds: [image.id].filter(() => false) });
-    check(draft.text.includes("Production Unit 1.pdf") && !draft.text.includes("Production Unit 2.pdf"), "feedback draft must contain only selected unit/round data");
-    const evidenceDraft = await getStageSevenFeedbackDraft(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id });
-    check(evidenceDraft.evidenceLinks.length === 2 && evidenceDraft.evidenceLinks.every((item) => item.url.includes("X-Amz-")), "feedback must use expiring signed evidence links");
-    await expectRejected(sendStageSevenFeedback(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, clientRequestId: `feedback-fail-${runId}`, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Purchase", recipientEmail: "purchase@example.test" }, { sendEmail: sendFailure }), "failed feedback email must return failure");
-    check((await prisma.productionSampleFeedback.findUniqueOrThrow({ where: { clientRequestId: `feedback-fail-${runId}` } })).status === ProductionDispatchStatus.FAILED, "failed feedback must not be marked SENT");
-    await sendStageSevenFeedback(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, clientRequestId: `feedback-fail-${runId}`, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Purchase", recipientEmail: "purchase@example.test", subject: "Edited subject", message: "Edited professional message" }, { sendEmail: sendSuccess });
-    check((await prisma.productionSampleFeedback.findUniqueOrThrow({ where: { clientRequestId: `feedback-fail-${runId}` } })).status === ProductionDispatchStatus.SENT, "failed feedback retry must become SENT");
-    const internal = await sendStageSevenFeedback(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, clientRequestId: `feedback-internal-${runId}`, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.collaborator }, { sendEmail: sendSuccess });
-    check(!internal.duplicate && emailLog.at(-1)?.to === `${ids.collaborator}@example.test`, "internal Purchase feedback must use saved validated email");
-    check((await sendStageSevenFeedback(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: roundOne.id, clientRequestId: `feedback-internal-${runId}`, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.collaborator }, { sendEmail: sendSuccess })).duplicate, "double feedback-send must not resend");
-
-    const workspace = await getStageSevenWorkspaceData(owner, ids.project, units[1].id, unitBRound.id);
-    check(workspace?.summary.totalUnits === 2 && workspace.summary.signedOffUnits === 2 && workspace.summary.activeRounds === 0, "real summary and selected-unit data must reflect persisted state");
+    await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: overdueRound.id, decision: PhysicalSampleDecision.ACCEPTED });
+    check((await processStageSevenOverdueDeadlines(new Date())).scannedRounds === 0, "a decided past-deadline request must no longer be overdue");
     const archiveCount = await prisma.projectArchive.count({ where: { projectId: ids.project } });
     const closure = await closeStageSevenProject(owner, { projectId: ids.project });
-    check(!closure.duplicate, "all signed-off units must permit project closure");
-    check((await closeStageSevenProject(owner, { projectId: ids.project })).duplicate, "double Close Project must be idempotent");
+    check(!closure.duplicate, "all accepted units must permit manual project closure");
+    check((await closeStageSevenProject(owner, { projectId: ids.project })).duplicate, "manual project closure must be idempotent");
     const closedProject = await prisma.project.findUniqueOrThrow({ where: { id: ids.project }, include: { closure: true, workflowStages: true } });
-    check(Boolean(closedProject.closure && closedProject.completedAt), "manual project closure audit and completedAt must persist");
-    check(closedProject.archivedAt === null && (await prisma.projectArchive.count({ where: { projectId: ids.project } })) === archiveCount, "project closure must not archive or mutate archive records");
-    check(closedProject.workflowStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION)?.status === ProjectWorkflowStageStatus.COMPLETED, "Stage 7 must become COMPLETED");
-    console.log("Stage 7 supervision, security, evidence, overdue, feedback, sign-off, and manual closure integration checks passed.");
+    check(Boolean(closedProject.closure && closedProject.completedAt), "closure audit and project completion time must persist");
+    check(closedProject.archivedAt === null && (await prisma.projectArchive.count({ where: { projectId: ids.project } })) === archiveCount, "closing Stage 7 must not archive the project");
+    check(closedProject.workflowStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION)?.status === ProjectWorkflowStageStatus.COMPLETED, "Stage 7 must become COMPLETED only after manual closure");
+
+    console.log("Stage 7 physical-sample request, scoped email/retry, permissions, decisions, overdue, and manual closure integration checks passed.");
   } finally {
     await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
