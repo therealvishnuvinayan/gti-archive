@@ -59,6 +59,7 @@ import { hasProjectPermission } from "@/lib/permissions/resolver";
 import { prisma } from "@/lib/prisma";
 import {
   publishProjectAccessRevoked,
+  publishProjectActivityUpdatedAfterResponse,
   publishStageChatMessageCreated,
   publishStageChatMessageDeleted,
   publishStageChatTimelineUpdated,
@@ -124,6 +125,7 @@ function publishStageChatTimelineInvalidation(input: {
   changedEntityId?: string | null;
 }) {
   publishStageChatTimelineUpdatedAfterResponse(input);
+  publishProjectActivityUpdatedAfterResponse(input);
 }
 
 function publishProjectStageTimelineInvalidation(input: {
@@ -132,6 +134,7 @@ function publishProjectStageTimelineInvalidation(input: {
   eventType: StageChatRealtimeTimelineUpdatedPayload["eventType"];
   changedEntityId?: string | null;
 }) {
+  publishProjectActivityUpdatedAfterResponse(input);
   runStageChatRealtimeTaskAfterResponse(
     `stage-chat.timeline.updated:${input.eventType}`,
     async () => {
@@ -186,7 +189,7 @@ type ComparisonCommentInput = {
 };
 
 function revalidateProjectFlow() {
-  revalidateTag(PROJECTS_CACHE_TAG, "max");
+  revalidateTag(PROJECTS_CACHE_TAG, { expire: 0 });
 }
 
 function revalidateProjectFlowAfterResponse() {

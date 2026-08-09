@@ -272,6 +272,7 @@ export function NotificationCenterProvider({
               : "Unable to refresh notifications right now.",
           );
         });
+
     };
 
     void channel

@@ -24,11 +24,15 @@ export function ProjectAccessRealtimeGuard({
     router.replace("/projects");
     router.refresh();
   }, [router]);
+  const handleActivityUpdated = useCallback(() => {
+    router.refresh();
+  }, [router]);
 
   useProjectAccessRealtime({
     projectId,
     currentUserId,
     onAccessRevoked: handleAccessRevoked,
+    onActivityUpdated: handleActivityUpdated,
   });
 
   return null;

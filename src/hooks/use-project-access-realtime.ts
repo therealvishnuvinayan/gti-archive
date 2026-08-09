@@ -6,6 +6,7 @@ import type * as Ably from "ably";
 import {
   PROJECT_ACCESS_REALTIME_EVENTS,
   getProjectAccessChannelName,
+  type ProjectActivityUpdatedPayload,
   type ProjectAccessRevokedPayload,
 } from "@/lib/realtime/events";
 import {
@@ -17,10 +18,24 @@ type UseProjectAccessRealtimeInput = {
   projectId: string;
   currentUserId: string;
   onAccessRevoked: (payload: ProjectAccessRevokedPayload) => void;
+  onActivityUpdated: (payload: ProjectActivityUpdatedPayload) => void;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isProjectActivityUpdatedPayload(
+  value: unknown,
+): value is ProjectActivityUpdatedPayload {
+  return (
+    isRecord(value) &&
+    typeof value.eventId === "string" &&
+    typeof value.projectId === "string" &&
+    (typeof value.stageId === "string" || value.stageId === null) &&
+    typeof value.eventType === "string" &&
+    typeof value.updatedAt === "string"
+  );
 }
 
 function isProjectAccessRevokedPayload(
@@ -65,10 +80,12 @@ function runProjectAccessCleanup(label: string, task: () => unknown) {
 
 export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
   const onAccessRevokedRef = useRef(input.onAccessRevoked);
+  const onActivityUpdatedRef = useRef(input.onActivityUpdated);
 
   useEffect(() => {
     onAccessRevokedRef.current = input.onAccessRevoked;
-  }, [input.onAccessRevoked]);
+    onActivityUpdatedRef.current = input.onActivityUpdated;
+  }, [input.onAccessRevoked, input.onActivityUpdated]);
 
   useEffect(() => {
     if (!isStageChatRealtimeClientEnabled() || !input.projectId) {
@@ -94,9 +111,25 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
       onAccessRevokedRef.current(message.data);
     };
 
+    const handleActivityUpdated = (message: Ably.InboundMessage) => {
+      if (
+        cancelled ||
+        !isProjectActivityUpdatedPayload(message.data) ||
+        message.data.projectId !== input.projectId
+      ) {
+        return;
+      }
+
+      onActivityUpdatedRef.current(message.data);
+    };
+
     void channel.subscribe(
       PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
       handleAccessRevoked,
+    );
+    void channel.subscribe(
+      PROJECT_ACCESS_REALTIME_EVENTS.activityUpdated,
+      handleActivityUpdated,
     );
 
     return () => {
@@ -105,6 +138,12 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
         channel.unsubscribe(
           PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
           handleAccessRevoked,
+        ),
+      );
+      runProjectAccessCleanup("unsubscribe activity.updated", () =>
+        channel.unsubscribe(
+          PROJECT_ACCESS_REALTIME_EVENTS.activityUpdated,
+          handleActivityUpdated,
         ),
       );
     };

@@ -6,6 +6,7 @@ import {
   getProjectAccessChannelName,
   getStageChatChannelName,
   type NotificationRealtimeChangedPayload,
+  type ProjectActivityUpdatedPayload,
   type ProjectAccessRevokedPayload,
   type StageChatRealtimeMessageCreatedPayload,
   type StageChatRealtimeMessageDeletedPayload,
@@ -18,6 +19,7 @@ import {
   createAblyProjectAccessTokenRequest,
   isAblyServerConfigured,
   publishAblyNotificationChanged,
+  publishAblyProjectActivityUpdated,
   publishAblyProjectAccessRevoked,
   publishAblyStageChatMessageCreated,
   publishAblyStageChatMessageDeleted,
@@ -167,6 +169,34 @@ export async function publishProjectAccessRevoked(
   payload: ProjectAccessRevokedPayload,
 ) {
   return publishAblyProjectAccessRevoked(payload);
+}
+
+export async function publishProjectActivityUpdated(
+  payload: ProjectActivityUpdatedPayload,
+) {
+  return publishAblyProjectActivityUpdated(payload);
+}
+
+export function publishProjectActivityUpdatedAfterResponse(input: {
+  projectId: string;
+  stageId?: string | null;
+  eventType: ProjectActivityUpdatedPayload["eventType"];
+  changedEntityId?: string | null;
+  actorId?: string | null;
+}) {
+  runStageChatRealtimeTaskAfterResponse(
+    `project.activity.updated:${input.eventType}`,
+    () =>
+      publishProjectActivityUpdated({
+        eventId: randomUUID(),
+        projectId: input.projectId,
+        stageId: input.stageId ?? null,
+        eventType: input.eventType,
+        changedEntityId: input.changedEntityId ?? null,
+        actorId: input.actorId ?? null,
+        updatedAt: new Date().toISOString(),
+      }),
+  );
 }
 
 export async function publishNotificationChanges(input: {

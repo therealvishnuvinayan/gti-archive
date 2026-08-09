@@ -14,6 +14,7 @@ export const STAGE_CHAT_REALTIME_EVENTS = {
 
 export const PROJECT_ACCESS_REALTIME_EVENTS = {
   accessRevoked: "project-access.revoked",
+  activityUpdated: "project.activity.updated",
 } as const;
 
 export const NOTIFICATION_REALTIME_EVENTS = {
@@ -40,6 +41,16 @@ export type NotificationRealtimeChangedPayload = {
   recipientUserId: string;
   reason: "created" | "read-state-updated";
   changedAt: string;
+};
+
+export type ProjectActivityUpdatedPayload = {
+  eventId: string;
+  projectId: string;
+  stageId: string | null;
+  eventType: StageChatRealtimeTimelineUpdatedPayload["eventType"];
+  changedEntityId: string | null;
+  actorId: string | null;
+  updatedAt: string;
 };
 
 export type ProjectAccessRevokedPayload = {

@@ -8,6 +8,7 @@ import {
   getProjectAccessChannelName,
   getStageChatChannelName,
   type NotificationRealtimeChangedPayload,
+  type ProjectActivityUpdatedPayload,
   type ProjectAccessRevokedPayload,
   type StageChatRealtimeMessageCreatedPayload,
   type StageChatRealtimeMessageDeletedPayload,
@@ -253,6 +254,20 @@ export async function publishAblyProjectAccessRevoked(
 
   const channel = client.channels.get(channelName);
   await channel.publish(PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked, payload);
+  return true;
+}
+
+export async function publishAblyProjectActivityUpdated(
+  payload: ProjectActivityUpdatedPayload,
+) {
+  const client = getAblyRestClient();
+
+  if (!client) {
+    return false;
+  }
+
+  const channel = client.channels.get(getProjectAccessChannelName(payload.projectId));
+  await channel.publish(PROJECT_ACCESS_REALTIME_EVENTS.activityUpdated, payload);
   return true;
 }
 
