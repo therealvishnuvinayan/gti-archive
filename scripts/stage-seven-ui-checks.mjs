@@ -1,112 +1,61 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
-const [workspace, summaryAlias, summary, page, workflowAccess, overview, schema, chatWorkspace] =
+const [workspace, page, actions, service, schema, migration, uploadClient, cronRoute] =
   await Promise.all([
     readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
-    readFile("src/components/projects/project-stage-summary.tsx", "utf8"),
-    readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/7/page.tsx", "utf8"),
-    readFile("src/lib/workflow-stage-access.ts", "utf8"),
-    readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
+    readFile("src/app/(dashboard)/projects/[slug]/stages/7/actions.ts", "utf8"),
+    readFile("src/lib/stage-seven.ts", "utf8"),
     readFile("prisma/schema.prisma", "utf8"),
-    readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
+    readFile("prisma/migrations/20260809210000_stage_seven_production_supervision/migration.sql", "utf8"),
+    readFile("src/lib/stage-seven-upload-client.ts", "utf8"),
+    readFile("src/app/api/internal/stage-seven/overdue/route.ts", "utf8"),
   ]);
 
 for (const content of [
   "Stage 7 – Implementation &amp; Supervision",
   "Supervise production through sample rounds until final sign-off.",
-  "IN PROGRESS",
-  "Production Units",
-  "Primary Pack",
-  "Outer Pack",
-  "Master Carton",
-  "Tipping Paper",
-  "NOT STARTED",
-  "IN REVIEW",
-  "REVISIONS NEEDED",
-  "SIGNED OFF",
-]) {
-  assert(workspace.includes(content), `Missing Stage 7 header or Production Unit content: ${content}`);
-}
-
-for (const label of ["Project Name", "Project Owner", "Project Co-Owners", "Project Executors"]) {
-  assert(summary.includes(label), `Missing shared project summary label: ${label}`);
-}
-assert(
-  workspace.includes("ProjectStageSummary") &&
-    workspace.includes('from "@/components/projects/project-stage-summary"') &&
-    summaryAlias.includes("ProjectFlowSummaryStrip"),
-  "Stage 7 must reuse the compact authenticated project summary.",
-);
-
-assert(
-  workspace.includes("STAGE_SEVEN_UI_FIXTURE") &&
-    workspace.includes("useState") &&
-    workspace.includes("selectedUnitId") &&
-    workspace.includes("selectedRoundId") &&
-    workspace.includes("function selectUnit") &&
-    workspace.includes("onSelectRound={setSelectedRoundId}"),
-  "Production Unit and Sample Round switching must use isolated local UI state.",
-);
-
-for (const metric of [
   "Production Units",
   "Active Sample Rounds",
   "Overdue Deadlines",
   "Signed Off",
-]) {
-  assert(workspace.includes(metric), `Missing compact Stage 7 summary metric: ${metric}`);
-}
-
-for (const roundContent of [
   "Sample Rounds —",
   "New Sample Round",
-  "Pre-Production Sample",
-  "Production Sample",
-  "Final Mass-Production Sign-off",
-  "Round {round.number}",
-  "number: 1",
-  "number: 2",
-  "number: 3",
-  "UNDER REVIEW",
-  "PENDING",
-  "COMPLETED",
-  "View",
+  "Selected Round Details",
+  "Overall Decision",
+  "Participants in Review",
+  "Evaluation Criteria",
+  "Evidence",
+  "Overall Review Notes",
+  "Generate Feedback Email",
+  "Mark Round Complete",
+  "Sign Off Production Unit",
+  "Close Project",
 ]) {
-  assert(workspace.includes(roundContent), `Missing Sample Round list content: ${roundContent}`);
+  assert(workspace.includes(content), `Missing functional Stage 7 UI content: ${content}`);
 }
 
-for (const deadline of [
-  'label: "Submission"',
-  'label: "Review"',
-  'label: "Revision / Sign-off"',
-  'label: "Delivery"',
-  "Overdue 2 days",
-  "In 9 days",
-]) {
-  assert(workspace.includes(deadline), `Missing compact deadline/timeline state: ${deadline}`);
+assert(!workspace.includes("STAGE_SEVEN_UI_FIXTURE"), "Stage 7 fixture must be removed.");
+for (const fakeValue of ["Primary Pack", "Outer Pack", "Master Carton", "Tipping Paper", "Overdue 2 days", "In 9 days"]) {
+  assert(!workspace.includes(fakeValue), `Fixture/mock value remains in Stage 7: ${fakeValue}`);
 }
 assert(
-  workspace.includes("2 sample-round deadlines are overdue.") &&
-    workspace.match(/sample-round deadlines are overdue\./g)?.length === 1,
-  "Stage 7 must show one lightweight overdue information banner.",
+  page.includes("getStageSevenWorkspaceData") &&
+    page.includes("selectedUnitId={unit}") &&
+    page.includes("selectedRoundId={round}") &&
+    workspace.includes("URLSearchParams") &&
+    workspace.includes('params.set("round", roundId)'),
+  "Stage 7 must load persisted data and keep unit/round selection URL-backed.",
 );
 
-for (const detailsContent of [
-  "Selected Round Details",
-  "Production Unit",
-  "Round Type",
-  "Overall Decision",
-  "PASS",
-  "FAIL",
-  "CONDITIONAL",
-  "Participants in Review",
-  "Add Participants",
-  "Evaluation Criteria",
-  "Review Notes",
+for (const emptyState of [
+  "No handed-over Production Units are available.",
+  "No sample rounds yet.",
+  "No evidence added.",
+  "No review participants selected.",
 ]) {
-  assert(workspace.includes(detailsContent), `Missing selected-round detail content: ${detailsContent}`);
+  assert(workspace.includes(emptyState), `Missing Stage 7 empty state: ${emptyState}`);
 }
 
 for (const criterion of [
@@ -118,111 +67,100 @@ for (const criterion of [
   "Functionality",
   "Finishes",
 ]) {
-  assert(workspace.includes(`"${criterion}"`), `Missing evaluation criterion: ${criterion}`);
+  assert(workspace.includes(criterion), `Missing persisted evaluation criterion label: ${criterion}`);
 }
-assert(
-  workspace.includes("criterionDecisions") &&
-    workspace.includes("criterionComments") &&
-    workspace.includes("Optional comment") &&
-    workspace.includes("onCriterionDecisionChange") &&
-    workspace.includes("onCriterionCommentChange"),
-  "Evaluation decisions and per-criterion comments must be represented with local controls.",
-);
 
-assert(
-  workspace.includes("Evidence") &&
-    workspace.includes("Add Evidence") &&
-    workspace.includes('type: "photo"') &&
-    workspace.includes('type: "video"'),
-  "Round evidence must show compact photo/video items and a visual Add Evidence action.",
-);
 for (const action of [
-  "Generate Feedback Email",
-  "Mark Round Complete",
-  "Close Project",
-  "Project closure is manual once production supervision is complete.",
+  "createProductionSampleRoundAction",
+  "completeProductionSampleMilestoneAction",
+  "updateProductionSampleEvaluationAction",
+  "updateProductionSampleRoundDecisionAction",
+  "addProductionSampleParticipantAction",
+  "addProductionSampleEvidenceAction",
+  "completeProductionSampleRoundAction",
+  "signOffProductionUnitAction",
+  "sendStageSevenFeedbackAction",
+  "closeStageSevenProjectAction",
 ]) {
-  assert(workspace.includes(action), `Missing Stage 7 visual action: ${action}`);
+  assert(workspace.includes(action) && actions.includes(action), `Stage 7 action is not wired: ${action}`);
 }
+
 assert(
-  !workspace.includes("Archive") && !workspace.includes("Close & Archive Project"),
-  "Project closure must remain separate from archiving.",
+  workspace.includes('accept="image/*,video/*"') &&
+    workspace.includes("multiple") &&
+    workspace.includes("uploadStageSevenEvidence") &&
+    uploadClient.includes('assetType: "SAMPLE_ROUND_EVIDENCE"') &&
+    uploadClient.includes("request.upload.onprogress"),
+  "Evidence must reuse ProjectAttachment upload with multiple image/video files and progress.",
+);
+assert(
+  workspace.includes("Some evidence files were not added.") &&
+    workspace.includes("failures") &&
+    workspace.includes("uploaded += 1"),
+  "Evidence uploads must preserve successful files when another file fails.",
 );
 
-for (const removedOldUi of [
-  "Emails Sent",
-  "Email Tracking",
-  "File Handover Emails",
-  "Recent Activity",
-  "No new notifications",
-  "Complaint Resolution Emails",
-  "Documents",
-  "Communications",
-  "Approval Chain",
+for (const model of [
+  "ProjectProductionSupervision",
+  "ProductionSampleRound",
+  "ProductionSampleEvaluation",
+  "ProductionSampleRoundParticipant",
+  "ProductionSampleRoundEvidence",
+  "ProductionSampleFeedback",
+  "ProjectClosure",
 ]) {
-  assert(!workspace.includes(removedOldUi), `Removed/irrelevant Stage 7 UI is still present: ${removedOldUi}`);
+  assert(schema.includes(`model ${model}`), `Missing Stage 7 Prisma model: ${model}`);
+  assert(migration.includes(`CREATE TABLE "${model}"`), `Missing Stage 7 migration table: ${model}`);
 }
+assert(
+  migration.includes('UNIQUE INDEX "ProductionSampleRound_supervisionId_sequence_key"') &&
+    migration.includes('CONSTRAINT "ProductionSampleRound_deadline_order"') &&
+    migration.includes('UNIQUE INDEX "ProjectClosure_projectId_key"'),
+  "Stage 7 migration must protect round sequencing, deadline chronology, and closure idempotency.",
+);
 
+assert(
+  service.includes("status: ProjectProductionUnitStatus.HANDED_OVER") &&
+    service.includes("unit.supervision?.status ?? ProductionSupervisionStatus.NOT_STARTED") &&
+    !service.includes("projectProductionUnit.update"),
+  "Stage 7 must derive handed-over Stage 6 units without mutating Stage 6 status.",
+);
+assert(
+  service.includes("user.role === UserRole.SUPER_ADMIN") &&
+    service.includes("project.ownerId === user.id") &&
+    service.includes("project.coOwners.some") &&
+    !service.includes("user.role === UserRole.ADMIN ||"),
+  "Stage 7 management must be Owner/Co-Owner/SUPER_ADMIN only.",
+);
+assert(
+  service.includes("stage7-overdue:${round.id}:${milestone.key}:${userId}") &&
+    service.includes("skipDuplicates: true") &&
+    cronRoute.includes("CRON_SECRET") &&
+    cronRoute.includes("timingSafeEqual"),
+  "Overdue alerts must be centrally deduplicated behind a secure cron-compatible endpoint.",
+);
+assert(
+  service.includes("expiresInSeconds: 60 * 60 * 24 * 7") &&
+    service.includes("sendResendEmail") &&
+    service.includes("ProductionDispatchStatus.FAILED"),
+  "Feedback must use expiring evidence links and audited email failure/retry behavior.",
+);
+assert(
+  service.includes("projectClosure.create") &&
+    service.includes("ProjectWorkflowStageStatus.COMPLETED") &&
+    !service.includes("projectArchive.create") &&
+    workspace.includes("Archiving is a separate action."),
+  "Manual Stage 7 closure must remain separate from archive.",
+);
+
+for (const forbiddenUi of ["Approval Chain", "Communications", "Documents", "Stage 8"] ) {
+  assert(!workspace.includes(forbiddenUi), `Irrelevant Stage 7 UI remains: ${forbiddenUi}`);
+}
 assert(
   workspace.includes("overflow-x-auto") &&
     workspace.includes("min-[1360px]:grid-cols-[minmax(0,1.65fr)_minmax(380px,0.95fr)]") &&
-    workspace.includes("min-w-0"),
-  "Stage 7 must scroll Production Units on small screens, stack safely, and use a desktop two-column layout.",
-);
-assert(
-  !workspace.includes("ProjectBackButton") && !workspace.includes("All Stages"),
-  "Stage 7 content must not duplicate the route-level Project Overview back control.",
+    !workspace.includes("ProjectBackButton"),
+  "Approved Stage 7 switcher/two-column structure and single route-level back control must remain.",
 );
 
-assert(
-  page.includes("DashboardLayout") &&
-    page.includes("ProjectBackButton") &&
-    page.includes("getProjectStageShellById") &&
-    page.includes("requireUser") &&
-    page.includes("StageSevenWorkspace"),
-  "The Stage 7 route must preserve the existing authenticated shell and single back control.",
-);
-assert(
-  page.includes("ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION") &&
-    page.includes("canOpenImplementedWorkflowStage") &&
-    page.includes("StageLockedState"),
-  "Stage 7 must preserve centralized workflow access.",
-);
-assert(
-  workflowAccess.includes("ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION") &&
-    overview.includes("stage.number >= 1 && stage.number <= 7"),
-  "The centralized SUPER_ADMIN testing bypass and overview must still include Stage 7.",
-);
-
-for (const forbiddenModel of [
-  "ProjectSampleRound",
-  "SampleRoundEvaluation",
-  "SampleRoundEvidence",
-  "ImplementationEmail",
-  "StageSevenNotification",
-]) {
-  assert(!schema.includes(`model ${forbiddenModel}`), `Forbidden Stage 7 model found: ${forbiddenModel}`);
-}
-assert(
-  !page.includes('from "@/lib/prisma"') &&
-    !workspace.includes('from "@/lib/prisma"') &&
-    !workspace.includes("$transaction") &&
-    !workspace.includes("fetch(") &&
-    !workspace.includes('"use server"') &&
-    !workspace.includes("Action("),
-  "Stage 7 must remain UI-only with no database, API, or server-action behavior.",
-);
-assert(
-  workspace.includes("This UI preview does not change project data.") &&
-    workspace.includes("UI-only fixture") &&
-    chatWorkspace.includes("ProjectChatWorkspace") &&
-    !workspace.includes("ProjectChatWorkspace"),
-  "Stage 7 temporary data/actions must be explicit and must not embed or change project chat.",
-);
-
-const appEntries = await readdir("src/app");
-for (const forbiddenRoute of ["sample-round", "stage-seven-evidence", "implementation-email"]) {
-  assert(!appEntries.includes(forbiddenRoute), `Forbidden public Stage 7 route found: /${forbiddenRoute}`);
-}
-
-console.log("Stage 7 sample-supervision UI checks passed.");
+console.log("Stage 7 real supervision UI and service wiring checks passed.");

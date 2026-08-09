@@ -15,6 +15,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { decodeRouteParam } from "@/lib/route-params";
+import { getStageSevenWorkspaceData } from "@/lib/stage-seven";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 type StageSevenUser = Awaited<ReturnType<typeof requireUser>>;
@@ -38,9 +39,13 @@ async function StageSevenUnavailableContent({
 async function StageSevenContent({
   slug,
   userPromise,
+  selectedUnitId,
+  selectedRoundId,
 }: {
   slug: string;
   userPromise: Promise<StageSevenUser>;
+  selectedUnitId?: string;
+  selectedRoundId?: string;
 }) {
   const user = await userPromise;
   const project = await getProjectStageShellById(slug, user);
@@ -69,15 +74,35 @@ async function StageSevenContent({
     );
   }
 
-  return <StageSevenWorkspace project={project} currentUserId={user.id} />;
+  const data = await getStageSevenWorkspaceData(
+    user,
+    project.id,
+    selectedUnitId,
+    selectedRoundId,
+  );
+
+  if (!data) {
+    return <ProjectAccessUnavailableState />;
+  }
+
+  return (
+    <StageSevenWorkspace
+      project={project}
+      currentUserId={user.id}
+      data={data}
+    />
+  );
 }
 
 export default async function StageSevenPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ unit?: string; round?: string }>;
 }) {
   const { slug: rawSlug } = await params;
+  const { unit, round } = await searchParams;
   const slug = decodeRouteParam(rawSlug);
   const userPromise = requireUser();
 
@@ -94,7 +119,12 @@ export default async function StageSevenPage({
       }}
     >
       <Suspense fallback={<StageSevenLoadingShell />}>
-        <StageSevenContent slug={slug} userPromise={userPromise} />
+        <StageSevenContent
+          slug={slug}
+          userPromise={userPromise}
+          selectedUnitId={unit}
+          selectedRoundId={round}
+        />
       </Suspense>
     </DashboardLayout>
   );

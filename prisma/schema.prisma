@@ -160,6 +160,42 @@ enum ProjectProductionUnitStatus {
   HANDED_OVER
 }
 
+enum ProductionSupervisionStatus {
+  NOT_STARTED
+  IN_REVIEW
+  REVISIONS_NEEDED
+  SIGNED_OFF
+}
+
+enum ProductionSampleRoundType {
+  PRE_PRODUCTION_SAMPLE
+  PRODUCTION_SAMPLE
+  FINAL_MASS_PRODUCTION_SIGN_OFF
+  CUSTOM
+}
+
+enum ProductionSampleRoundStatus {
+  PENDING
+  UNDER_REVIEW
+  COMPLETED
+}
+
+enum ProductionSampleDecision {
+  PASS
+  FAIL
+  CONDITIONAL
+}
+
+enum ProductionSampleCriterion {
+  MATERIAL_QUALITY
+  GRAPHIC_REPRODUCTION
+  SIZE
+  CONSTRUCTION
+  GRAPHIC_ELEMENTS
+  FUNCTIONALITY
+  FINISHES
+}
+
 enum ProductionApprovalRecipientType {
   EXISTING_COLLABORATOR
   EXTERNAL_EMAIL
@@ -220,6 +256,7 @@ enum AttachmentAssetType {
   GENERAL_PROJECT_ASSET
   PROJECT_RESEARCH_FILE
   FILE_CHECKLIST_ATTACHMENT
+  SAMPLE_ROUND_EVIDENCE
 }
 
 enum ProjectResearchFolderSystemKey {
@@ -314,6 +351,8 @@ enum NotificationType {
   PRODUCTION_APPROVAL_APPROVED
   PRODUCTION_APPROVAL_REJECTED
   PRODUCTION_HANDOVER_COMPLETED
+  STAGE_SEVEN_OVERDUE
+  PRODUCTION_SAMPLE_FEEDBACK
 }
 
 enum NotificationEntityType {
@@ -328,6 +367,8 @@ enum NotificationEntityType {
   CHECKLIST_REQUEST
   PRODUCTION_UNIT
   PRODUCTION_APPROVAL
+  PRODUCTION_SUPERVISION
+  SAMPLE_ROUND
 }
 
 enum FluxAiConversationStatus {
@@ -424,6 +465,15 @@ model User {
   productionHandoversRequested        ProjectProductionHandover[]          @relation("ProjectProductionHandoverRequester")
   productionHandoverAssignments       ProjectProductionHandover[]          @relation("ProjectProductionHandoverRecipient")
   productionHandoversCompleted        ProjectProductionHandover[]          @relation("ProjectProductionHandoverCompleter")
+  signedOffProductionSupervisions     ProjectProductionSupervision[]       @relation("ProjectProductionSupervisionSigner")
+  createdProductionSampleRounds       ProductionSampleRound[]              @relation("ProductionSampleRoundCreator")
+  completedProductionSampleRounds     ProductionSampleRound[]              @relation("ProductionSampleRoundCompleter")
+  productionSampleRoundParticipations ProductionSampleRoundParticipant[]   @relation("ProductionSampleRoundParticipantUser")
+  addedProductionSampleParticipants   ProductionSampleRoundParticipant[]   @relation("ProductionSampleRoundParticipantAdder")
+  addedProductionSampleEvidence       ProductionSampleRoundEvidence[]      @relation("ProductionSampleRoundEvidenceAdder")
+  productionSampleFeedbackRecipients  ProductionSampleFeedback[]           @relation("ProductionSampleFeedbackRecipient")
+  productionSampleFeedbackSent        ProductionSampleFeedback[]           @relation("ProductionSampleFeedbackSender")
+  projectClosures                     ProjectClosure[]                     @relation("ProjectClosureCloser")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -517,7 +567,7 @@ model CollaboratorTypePermission {
 }
 
 model Project {
-  id                     String                        @id @default(cuid())
+  id                     String                         @id @default(cuid())
   name                   String
   category               String?
   description            String?
@@ -526,17 +576,17 @@ model Project {
   budget                 Int?
   currency               String?
   statusId               String?
-  status                 ProjectStatusOption?          @relation(fields: [statusId], references: [id], onDelete: SetNull)
+  status                 ProjectStatusOption?           @relation(fields: [statusId], references: [id], onDelete: SetNull)
   priority               ProjectPriority?
   startDate              DateTime?
   endDate                DateTime?
   currentStageName       String?
   stageCount             Int?
   ownerId                String?
-  owner                  User?                         @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  owner                  User?                          @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   createdById            String
-  createdBy              User                          @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  isPinned               Boolean                       @default(false)
+  createdBy              User                           @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  isPinned               Boolean                        @default(false)
   stages                 ProjectStage[]
   tags                   ProjectTagAssignment[]
   revisions              ProjectRevision[]
@@ -552,6 +602,9 @@ model Project {
   fileChecklists         ProjectFileChecklist[]
   fileChecklistRequests  ProjectFileChecklistRequest[]
   productionUnits        ProjectProductionUnit[]
+  productionSupervisions ProjectProductionSupervision[]
+  productionSampleRounds ProductionSampleRound[]
+  closure                ProjectClosure?
   archive                ProjectArchive?
   archivedFiles          ArchivedProjectFile[]
   archiveArtworkMetadata ArchiveArtworkMetadata[]
@@ -563,8 +616,8 @@ model Project {
   conceptFolders         ProjectConceptFolder[]
   completedAt            DateTime?
   archivedAt             DateTime?
-  createdAt              DateTime                      @default(now())
-  updatedAt              DateTime                      @updatedAt
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
 
   @@index([statusId])
   @@index([ownerId])
@@ -913,30 +966,176 @@ model ProjectFileChecklistRequest {
 }
 
 model ProjectProductionUnit {
-  id                 String                      @id @default(cuid())
+  id                 String                        @id @default(cuid())
   projectId          String
-  project            Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceHandoffId    String                      @unique
-  sourceHandoff      ProjectStageFileHandoff     @relation(fields: [sourceHandoffId], references: [id], onDelete: Cascade)
-  sourceChecklistId  String                      @unique
-  sourceChecklist    ProjectFileChecklist        @relation(fields: [sourceChecklistId], references: [id], onDelete: Cascade)
+  project            Project                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceHandoffId    String                        @unique
+  sourceHandoff      ProjectStageFileHandoff       @relation(fields: [sourceHandoffId], references: [id], onDelete: Cascade)
+  sourceChecklistId  String                        @unique
+  sourceChecklist    ProjectFileChecklist          @relation(fields: [sourceChecklistId], references: [id], onDelete: Cascade)
   sourceAttachmentId String
-  sourceAttachment   ProjectAttachment           @relation("ProjectProductionUnitSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Cascade)
-  status             ProjectProductionUnitStatus @default(PREPARATION)
+  sourceAttachment   ProjectAttachment             @relation("ProjectProductionUnitSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Cascade)
+  status             ProjectProductionUnitStatus   @default(PREPARATION)
   createdById        String
-  createdBy          User                        @relation("ProjectProductionUnitCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy          User                          @relation("ProjectProductionUnitCreator", fields: [createdById], references: [id], onDelete: Restrict)
   files              ProjectProductionUnitFile[]
   approvalSteps      ProductionApprovalStep[]
   handover           ProjectProductionHandover?
+  supervision        ProjectProductionSupervision?
   approvedAt         DateTime?
   handedOverAt       DateTime?
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
 
   @@unique([projectId, sourceAttachmentId])
   @@index([projectId, status, createdAt])
   @@index([sourceChecklistId])
   @@index([createdById])
+}
+
+model ProjectProductionSupervision {
+  id               String                      @id @default(cuid())
+  projectId        String
+  project          Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  productionUnitId String                      @unique
+  productionUnit   ProjectProductionUnit       @relation(fields: [productionUnitId], references: [id], onDelete: Cascade)
+  status           ProductionSupervisionStatus @default(NOT_STARTED)
+  signedOffById    String?
+  signedOffBy      User?                       @relation("ProjectProductionSupervisionSigner", fields: [signedOffById], references: [id], onDelete: SetNull)
+  signedOffAt      DateTime?
+  sampleRounds     ProductionSampleRound[]
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  @@unique([projectId, productionUnitId])
+  @@index([projectId, status, createdAt])
+  @@index([signedOffById])
+}
+
+model ProductionSampleRound {
+  id                   String                             @id @default(cuid())
+  clientRequestId      String?                            @unique
+  projectId            String
+  project              Project                            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supervisionId        String
+  supervision          ProjectProductionSupervision       @relation(fields: [supervisionId], references: [id], onDelete: Cascade)
+  sequence             Int
+  type                 ProductionSampleRoundType
+  customTypeName       String?
+  submissionDueAt      DateTime
+  submittedAt          DateTime?
+  reviewDueAt          DateTime
+  reviewedAt           DateTime?
+  revisionSignoffDueAt DateTime
+  revisionSignedOffAt  DateTime?
+  deliveryDueAt        DateTime
+  deliveredAt          DateTime?
+  status               ProductionSampleRoundStatus        @default(PENDING)
+  overallDecision      ProductionSampleDecision?
+  overallNotes         String?                            @db.Text
+  completedById        String?
+  completedBy          User?                              @relation("ProductionSampleRoundCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+  completedAt          DateTime?
+  createdById          String
+  createdBy            User                               @relation("ProductionSampleRoundCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  evaluations          ProductionSampleEvaluation[]
+  participants         ProductionSampleRoundParticipant[]
+  evidence             ProductionSampleRoundEvidence[]
+  feedback             ProductionSampleFeedback[]
+  createdAt            DateTime                           @default(now())
+  updatedAt            DateTime                           @updatedAt
+
+  @@unique([supervisionId, sequence])
+  @@index([projectId, status, createdAt])
+  @@index([supervisionId, status, sequence])
+  @@index([completedById])
+  @@index([createdById])
+}
+
+model ProductionSampleEvaluation {
+  id            String                    @id @default(cuid())
+  sampleRoundId String
+  sampleRound   ProductionSampleRound     @relation(fields: [sampleRoundId], references: [id], onDelete: Cascade)
+  criterion     ProductionSampleCriterion
+  decision      ProductionSampleDecision?
+  comment       String?                   @db.Text
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@unique([sampleRoundId, criterion])
+  @@index([sampleRoundId])
+}
+
+model ProductionSampleRoundParticipant {
+  sampleRoundId String
+  sampleRound   ProductionSampleRound @relation(fields: [sampleRoundId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User                  @relation("ProductionSampleRoundParticipantUser", fields: [userId], references: [id], onDelete: Cascade)
+  addedById     String
+  addedBy       User                  @relation("ProductionSampleRoundParticipantAdder", fields: [addedById], references: [id], onDelete: Restrict)
+  addedAt       DateTime              @default(now())
+
+  @@id([sampleRoundId, userId])
+  @@index([userId])
+  @@index([addedById])
+}
+
+model ProductionSampleRoundEvidence {
+  id            String                     @id @default(cuid())
+  sampleRoundId String
+  sampleRound   ProductionSampleRound      @relation(fields: [sampleRoundId], references: [id], onDelete: Cascade)
+  attachmentId  String                     @unique
+  attachment    ProjectAttachment          @relation("ProductionSampleRoundEvidenceAttachment", fields: [attachmentId], references: [id], onDelete: Cascade)
+  criterion     ProductionSampleCriterion?
+  addedById     String
+  addedBy       User                       @relation("ProductionSampleRoundEvidenceAdder", fields: [addedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime                   @default(now())
+
+  @@unique([sampleRoundId, attachmentId])
+  @@index([sampleRoundId, criterion, createdAt])
+  @@index([addedById])
+}
+
+model ProductionSampleFeedback {
+  id                String                          @id @default(cuid())
+  clientRequestId   String                          @unique
+  sampleRoundId     String
+  sampleRound       ProductionSampleRound           @relation(fields: [sampleRoundId], references: [id], onDelete: Cascade)
+  recipientType     ProductionApprovalRecipientType
+  recipientUserId   String?
+  recipientUser     User?                           @relation("ProductionSampleFeedbackRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
+  recipientName     String
+  recipientEmail    String
+  subject           String
+  messageSnapshot   String                          @db.Text
+  status            ProductionDispatchStatus        @default(PENDING)
+  providerMessageId String?
+  sentById          String
+  sentBy            User                            @relation("ProductionSampleFeedbackSender", fields: [sentById], references: [id], onDelete: Restrict)
+  sentAt            DateTime?
+  failedAt          DateTime?
+  error             String?                         @db.Text
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @updatedAt
+
+  @@index([sampleRoundId, createdAt])
+  @@index([recipientUserId])
+  @@index([sentById])
+  @@index([status, createdAt])
+}
+
+model ProjectClosure {
+  id         String   @id @default(cuid())
+  projectId  String   @unique
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  closedById String
+  closedBy   User     @relation("ProjectClosureCloser", fields: [closedById], references: [id], onDelete: Restrict)
+  closedAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([closedById])
+  @@index([closedAt])
 }
 
 model ProjectProductionUnitFile {
@@ -1425,6 +1624,7 @@ model ProjectAttachment {
   sourceFileChecklists       ProjectFileChecklist[]                @relation("ProjectFileChecklistSourceAttachment")
   sourceProductionUnits      ProjectProductionUnit[]               @relation("ProjectProductionUnitSourceAttachment")
   productionUnitFile         ProjectProductionUnitFile?            @relation("ProjectProductionUnitFileAttachment")
+  sampleRoundEvidence        ProductionSampleRoundEvidence?        @relation("ProductionSampleRoundEvidenceAttachment")
   approvedConceptFolder      ProjectConceptFolder?                 @relation("ProjectConceptApprovedAttachment")
   conceptStartingReference   ProjectConceptFolder?                 @relation("ProjectConceptStartingReference")
   fileChecklistItems         ProjectFileChecklistItemAttachment[]  @relation("ProjectFileChecklistItemAttachment")

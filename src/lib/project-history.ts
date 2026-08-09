@@ -75,9 +75,11 @@ import {
 } from "@/lib/storage/s3";
 import {
   PROJECT_ASSET_ALLOWED_EXTENSIONS,
+  STAGE_SEVEN_EVIDENCE_ALLOWED_EXTENSIONS,
   buildFileTypeNotAllowedPayload,
   getStageSubmissionAllowedExtensions,
   isAllowedStageSubmissionFile,
+  isAllowedStageSevenEvidenceFile,
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
 import { validateActiveAssetTagIds } from "@/lib/asset-tags";
@@ -5193,6 +5195,37 @@ async function hasChecklistResponseUploadAccess(
   return Boolean(request);
 }
 
+async function hasStageSevenEvidenceUploadAccess(
+  user: AccessUser,
+  projectId: string,
+) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findFirst({
+      where: {
+        id: projectId,
+        completedAt: null,
+        archivedAt: null,
+        workflowStages: {
+          some: {
+            stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+            status: ProjectWorkflowStageStatus.AVAILABLE,
+          },
+        },
+      },
+      select: {
+        ownerId: true,
+        coOwners: { where: { userId: user.id }, select: { userId: true } },
+      },
+    }),
+  );
+  return Boolean(
+    project &&
+      (user.role === UserRole.SUPER_ADMIN ||
+        project.ownerId === user.id ||
+        project.coOwners.length),
+  );
+}
+
 export async function requestAttachmentUpload(
   user: AccessUser,
   input: RequestUploadInput,
@@ -5207,10 +5240,13 @@ export async function requestAttachmentUpload(
 
   const isProjectResearchFile =
     input.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE;
+  const isStageSevenEvidence =
+    input.assetType === AttachmentAssetType.SAMPLE_ROUND_EVIDENCE;
 
   if (
     !isFormalStageSubmission &&
     !isProjectResearchFile &&
+    !isStageSevenEvidence &&
     !isAllowedAssetFile(input.originalFileName)
   ) {
     return buildFileTypeNotAllowedPayload({
@@ -5218,6 +5254,25 @@ export async function requestAttachmentUpload(
       mimeType: input.mimeType,
       allowedExtensions: PROJECT_ASSET_ALLOWED_EXTENSIONS,
     });
+  }
+
+  if (
+    isStageSevenEvidence &&
+    !isAllowedStageSevenEvidenceFile(input.originalFileName, input.mimeType)
+  ) {
+    return buildFileTypeNotAllowedPayload({
+      fileName: input.originalFileName,
+      mimeType: input.mimeType,
+      allowedExtensions: STAGE_SEVEN_EVIDENCE_ALLOWED_EXTENSIONS,
+      error: "Stage 7 evidence must be an image or video.",
+    });
+  }
+
+  if (
+    isStageSevenEvidence &&
+    !(await hasStageSevenEvidenceUploadAccess(user, input.projectId))
+  ) {
+    return { error: "Only a Stage 7 manager can upload sample-round evidence." };
   }
 
   if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
@@ -6063,6 +6118,14 @@ export async function completeAttachmentUpload(
     !hasProjectPermission(user, project, getUploadPermissionKey(attachment.assetType))
   ) {
     throw new Error("You do not have permission to complete this upload.");
+  }
+
+  if (
+    attachment.assetType === AttachmentAssetType.SAMPLE_ROUND_EVIDENCE &&
+    (attachment.uploadedById !== user.id ||
+      !(await hasStageSevenEvidenceUploadAccess(user, attachment.projectId)))
+  ) {
+    throw new Error("Only the Stage 7 evidence uploader can complete this upload.");
   }
 
   if (attachment.assetType === AttachmentAssetType.STAGE_INVOICE) {
