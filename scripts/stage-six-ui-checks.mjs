@@ -39,7 +39,13 @@ assert(workspace.includes("pageData.summary") && workspace.includes("unit.approv
 assert(workspace.includes("step.reviewHref") && workspace.includes("Review Approval"), "An assigned approver must have a direct review action on Stage 6.");
 assert(workspace.includes("max-h-[calc(100dvh-1.5rem)]") && workspace.includes("overflow-y-auto overscroll-contain"), "The approval request dialog must remain bounded by the viewport and scroll its form content.");
 assert(workspace.includes("shrink-0 flex-col-reverse") && workspace.includes("border-t border-[#e7ece8] bg-white"), "The approval request actions must remain in a persistent modal footer.");
-assert(workspace.includes("h-24 min-h-20 max-h-36 resize-y"), "The optional approval message must use a controlled responsive height.");
+assert(
+  workspace.includes("h-24 min-h-20 max-h-36 resize-y rounded-[14px]") &&
+    workspace.includes("border-[#c8d5cb] bg-[#fbfdfb]") &&
+    workspace.includes("focus-visible:border-[#46906a]") &&
+    workspace.includes("Add context or instructions for the approver (optional)."),
+  "The optional approval message must use a controlled height with visible resting and focus boundaries.",
+);
 assert(page.includes("getStageSixWorkspaceData") && page.includes("ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER"), "The route must load persisted Stage 6 data through workflow access.");
 
 for (const model of [

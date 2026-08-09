@@ -441,7 +441,12 @@ function ApproverDialog({
             </div>
             <label className="mt-4 block space-y-2">
               <span className="text-[12px] font-[720] text-[#2d372f]">Optional Message</span>
-              <Textarea value={message} className="h-24 min-h-20 max-h-36 resize-y" onChange={(event) => setMessage(event.target.value)} />
+              <Textarea
+                value={message}
+                placeholder="Add context or instructions for the approver (optional)."
+                className="h-24 min-h-20 max-h-36 resize-y rounded-[14px] border-[#c8d5cb] bg-[#fbfdfb] px-4 py-3 shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15"
+                onChange={(event) => setMessage(event.target.value)}
+              />
             </label>
           </div>
 
