@@ -329,7 +329,7 @@ async function main() {
 
   const zeroFileProjectId = await mustCreateProject("Stage 2 zero file completion");
   const zeroCompletion = await completeProjectResearchStage(users.superAdmin, zeroFileProjectId);
-  check(40, "success" in zeroCompletion, "Stage 2 must complete with zero files");
+  check(40, "success" in zeroCompletion && !zeroCompletion.alreadyCompleted, "Stage 2 must complete with zero files and report a new completion");
   const zeroStages = await prisma.projectWorkflowStage.findMany({ where: { projectId: zeroFileProjectId } });
   check(41, zeroStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING)?.status === ProjectWorkflowStageStatus.COMPLETED, "completion must mark Stage 2 complete");
   check(42, zeroStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION)?.status === ProjectWorkflowStageStatus.AVAILABLE, "completion must unlock Stage 3");
@@ -342,9 +342,9 @@ async function main() {
   check(44, expectError(lockedResult) && lockedStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING)?.status === ProjectWorkflowStageStatus.LOCKED && lockedStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION)?.status === ProjectWorkflowStageStatus.LOCKED, "failed completion must not corrupt workflow state");
   const firstStageTwo = zeroStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING)!;
   const firstStageThree = zeroStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION)!;
-  await completeProjectResearchStage(users.superAdmin, zeroFileProjectId);
+  const repeatedCompletion = await completeProjectResearchStage(users.superAdmin, zeroFileProjectId);
   const repeatedStages = await prisma.projectWorkflowStage.findMany({ where: { projectId: zeroFileProjectId } });
-  check(45, repeatedStages.find((stage) => stage.stageKey === firstStageTwo.stageKey)?.completedAt?.getTime() === firstStageTwo.completedAt?.getTime() && repeatedStages.find((stage) => stage.stageKey === firstStageThree.stageKey)?.unlockedAt?.getTime() === firstStageThree.unlockedAt?.getTime(), "repeated completion must preserve timestamps");
+  check(45, "success" in repeatedCompletion && repeatedCompletion.alreadyCompleted && repeatedStages.find((stage) => stage.stageKey === firstStageTwo.stageKey)?.completedAt?.getTime() === firstStageTwo.completedAt?.getTime() && repeatedStages.find((stage) => stage.stageKey === firstStageThree.stageKey)?.unlockedAt?.getTime() === firstStageThree.unlockedAt?.getTime(), "repeated completion must report the completed state and preserve timestamps");
   check(46, Boolean(await getProjectResearchPageData(users.owner, zeroFileProjectId)), "completed Stage 2 must remain openable");
   check(47, (await prisma.projectStage.count({ where: { projectId: { in: [projectId, zeroFileProjectId] } } })) === 0, "Stage 2 must not create legacy ProjectStage rows");
   check(48, !Object.keys(prisma).some((key) => /task|vendor/i.test(key)), "Stage 2 must not add task/chat/vendor-specific models");

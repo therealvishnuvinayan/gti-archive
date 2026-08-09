@@ -457,14 +457,23 @@ export function StageTwoWorkspace({
   }
 
   function completeStage() {
+    const stageThreeHref = `/projects/${data.project.id}/stages/3`;
+
+    if (data.workflowStatus === "COMPLETED") {
+      router.push(stageThreeHref);
+      return;
+    }
+
     startTransition(async () => {
       const result = await completeProjectResearchStageAction(data.project.id);
-      if ("error" in result && result.error) {
-        showErrorToast(result.error);
+      if ("error" in result) {
+        showErrorToast(result.error || "Unable to complete Stage 2.");
         return;
       }
-      showSuccessToast("Stage 2 completed.", "Concept Creation is now available.");
-      router.push(`/projects/${data.project.id}/stages/3`);
+      if (!result.alreadyCompleted) {
+        showSuccessToast("Stage 2 completed.", "Concept Creation is now available.");
+      }
+      router.push(stageThreeHref);
       router.refresh();
     });
   }

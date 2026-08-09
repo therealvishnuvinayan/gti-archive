@@ -502,6 +502,8 @@ export async function completeProjectResearchStage(
           return { error: "Project Research and Planning is not available yet." } as const;
         }
 
+        const alreadyCompleted =
+          stageTwo.status === ProjectWorkflowStageStatus.COMPLETED;
         const now = new Date();
         await tx.projectWorkflowStage.updateMany({
           where: {
@@ -541,7 +543,7 @@ export async function completeProjectResearchStage(
           });
         }
 
-        return { success: true, nextStage: 3 } as const;
+        return { success: true, nextStage: 3, alreadyCompleted } as const;
       },
       { timeout: 30_000 },
     ),

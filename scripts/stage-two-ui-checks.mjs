@@ -62,12 +62,21 @@ assert(
   "The workspace switch menu must remain inside the viewport with an independently scrollable user list.",
 );
 assert(
-  workspace.includes('router.push(`/projects/${data.project.id}/stages/3`)') &&
+  workspace.includes('const stageThreeHref = `/projects/${data.project.id}/stages/3`') &&
+    workspace.includes("router.push(stageThreeHref)") &&
     !workspace.includes('router.push(`/projects/${data.project.id}`)'),
   "Completing Stage 2 must open Stage 3 directly instead of the project overview.",
 );
 assert(workspace.includes("createProjectResearchFolderAction") && actions.includes("createProjectResearchFolder"), "New Folder must call the persisted server action.");
 assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Next Stage must call the real completion action.");
+assert(
+  workspace.includes('data.workflowStatus === "COMPLETED"') &&
+    workspace.includes("router.push(stageThreeHref)") &&
+    workspace.includes("if (!result.alreadyCompleted)") &&
+    service.includes("const alreadyCompleted =") &&
+    service.includes("{ success: true, nextStage: 3, alreadyCompleted }"),
+  "Next Stage must navigate directly from completed Stage 2 and suppress repeated completion notifications for stale pages.",
+);
 assert(!workspace.includes("predefinedFolders") && !workspace.includes("setCustomFolders"), "Folder cards must not use mock/local folder state.");
 assert(
   workspace.includes("<FolderArtwork />") &&
