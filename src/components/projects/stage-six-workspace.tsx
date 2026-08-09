@@ -375,76 +375,79 @@ function ApproverDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[170] flex items-start justify-center overflow-y-auto bg-[#112118]/45 px-4 py-6 backdrop-blur-[2px] sm:items-center" role="dialog" aria-modal="true" aria-labelledby="add-approver-title">
-      <Card className="w-full max-w-[720px] rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,.22)]">
-        <CardContent className="p-6 sm:p-7">
-          <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-hidden bg-[#112118]/45 p-3 backdrop-blur-[2px] sm:p-5" role="dialog" aria-modal="true" aria-labelledby="add-approver-title">
+      <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[720px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,.22)] sm:max-h-[calc(100dvh-2.5rem)]">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e7ece8] px-5 py-4 sm:px-6 sm:py-5">
             <div>
               <p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">Approval Chain</p>
-              <h2 id="add-approver-title" className="mt-2 text-[22px] font-[760] text-[#162019]">{mode === "marketing-director" ? "Assign Marketing Director" : "Add Approver"}</h2>
+              <h2 id="add-approver-title" className="mt-1.5 text-[20px] font-[760] text-[#162019] sm:text-[22px]">{mode === "marketing-director" ? "Assign Marketing Director" : "Add Approver"}</h2>
               {mode === "marketing-director" ? <p className="mt-1 text-[11px] font-[700] text-[#9a6a22]">Marketing Director — Required</p> : null}
             </div>
-            <Button type="button" variant="secondary" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+            <Button type="button" variant="secondary" size="icon" aria-label="Close approval request" onClick={onClose}><X className="h-4 w-4" /></Button>
           </div>
 
-          <fieldset className="mt-6">
-            <legend className="text-[12px] font-[720] text-[#2d372f]">Recipient Type</legend>
-            <div className="mt-2 flex flex-wrap gap-3">
-              {[
-                [ProductionApprovalRecipientType.EXISTING_COLLABORATOR, "Existing Collaborator"],
-                [ProductionApprovalRecipientType.EXTERNAL_EMAIL, "External Email"],
-              ].map(([value, label]) => (
-                <label key={value} className="flex items-center gap-2 rounded-[11px] border border-[#dfe6df] bg-white px-3 py-2 text-[11px] font-[650] text-[#455149]">
-                  <input type="radio" checked={recipientType === value} onChange={() => setRecipientType(value as ProductionApprovalRecipientType)} /> {label}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6 sm:py-5">
+            <fieldset>
+              <legend className="text-[12px] font-[720] text-[#2d372f]">Recipient Type</legend>
+              <div className="mt-2 flex flex-wrap gap-3">
+                {[
+                  [ProductionApprovalRecipientType.EXISTING_COLLABORATOR, "Existing Collaborator"],
+                  [ProductionApprovalRecipientType.EXTERNAL_EMAIL, "External Email"],
+                ].map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 rounded-[11px] border border-[#dfe6df] bg-white px-3 py-2 text-[11px] font-[650] text-[#455149]">
+                    <input type="radio" checked={recipientType === value} onChange={() => setRecipientType(value as ProductionApprovalRecipientType)} /> {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            {recipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR ? (
+              <Select value={recipientUserId} onValueChange={setRecipientUserId}>
+                <SelectTrigger className="mt-3 h-11 w-full rounded-[12px] border-[#dfe6df] bg-white" aria-label="Select project collaborator"><SelectValue placeholder="Search/select project collaborator" /></SelectTrigger>
+                <SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent>
+              </Select>
+            ) : (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Input value={recipientName} placeholder="Name" onChange={(event) => setRecipientName(event.target.value)} />
+                <Input type="email" value={recipientEmail} placeholder="name@example.com" onChange={(event) => setRecipientEmail(event.target.value)} />
+              </div>
+            )}
+
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <h3 className="text-[12px] font-[720] text-[#2d372f]">Information to share</h3>
+              <button type="button" className="text-[10px] font-[740] text-[#28714d]" onClick={() => {
+                setFieldKeys(allSelected ? [] : STAGE_FIVE_FIELD_DEFINITIONS.map((field) => field.key));
+                setFileIds(allSelected ? [] : availableFiles.map((file) => file.id));
+              }}>{allSelected ? "Clear All" : "Select All"}</button>
+            </div>
+            <div className="mt-3 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4">
+              <p className="text-[10px] font-[760] uppercase tracking-[.07em] text-[#78837b]">Production Files</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {availableFiles.map((file) => (
+                  <label key={file.id} className="flex min-w-0 items-center gap-2 text-[11px] text-[#455149]">
+                    <input type="checkbox" checked={fileIds.includes(file.id)} onChange={() => toggle(fileIds, file.id, setFileIds)} />
+                    <span className="truncate">{file.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">
+              {STAGE_FIVE_FIELD_DEFINITIONS.map((field) => (
+                <label key={field.key} className="flex items-center gap-2 text-[11px] text-[#455149]">
+                  <input type="checkbox" checked={fieldKeys.includes(field.key)} onChange={() => toggle(fieldKeys, field.key, setFieldKeys)} /> {field.title}
                 </label>
               ))}
             </div>
-          </fieldset>
+            <label className="mt-4 block space-y-2">
+              <span className="text-[12px] font-[720] text-[#2d372f]">Optional Message</span>
+              <Textarea value={message} className="h-24 min-h-20 max-h-36 resize-y" onChange={(event) => setMessage(event.target.value)} />
+            </label>
+          </div>
 
-          {recipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR ? (
-            <Select value={recipientUserId} onValueChange={setRecipientUserId}>
-              <SelectTrigger className="mt-3 h-11 w-full rounded-[12px] border-[#dfe6df] bg-white" aria-label="Select project collaborator"><SelectValue placeholder="Search/select project collaborator" /></SelectTrigger>
-              <SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent>
-            </Select>
-          ) : (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Input value={recipientName} placeholder="Name" onChange={(event) => setRecipientName(event.target.value)} />
-              <Input type="email" value={recipientEmail} placeholder="name@example.com" onChange={(event) => setRecipientEmail(event.target.value)} />
-            </div>
-          )}
-
-          <div className="mt-6 flex items-center justify-between gap-3">
-            <h3 className="text-[12px] font-[720] text-[#2d372f]">Information to share</h3>
-            <button type="button" className="text-[10px] font-[740] text-[#28714d]" onClick={() => {
-              setFieldKeys(allSelected ? [] : STAGE_FIVE_FIELD_DEFINITIONS.map((field) => field.key));
-              setFileIds(allSelected ? [] : availableFiles.map((file) => file.id));
-            }}>{allSelected ? "Clear All" : "Select All"}</button>
-          </div>
-          <div className="mt-3 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4">
-            <p className="text-[10px] font-[760] uppercase tracking-[.07em] text-[#78837b]">Production Files</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {availableFiles.map((file) => (
-                <label key={file.id} className="flex min-w-0 items-center gap-2 text-[11px] text-[#455149]">
-                  <input type="checkbox" checked={fileIds.includes(file.id)} onChange={() => toggle(fileIds, file.id, setFileIds)} />
-                  <span className="truncate">{file.name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="mt-3 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">
-            {STAGE_FIVE_FIELD_DEFINITIONS.map((field) => (
-              <label key={field.key} className="flex items-center gap-2 text-[11px] text-[#455149]">
-                <input type="checkbox" checked={fieldKeys.includes(field.key)} onChange={() => toggle(fieldKeys, field.key, setFieldKeys)} /> {field.title}
-              </label>
-            ))}
-          </div>
-          <label className="mt-5 block space-y-2">
-            <span className="text-[12px] font-[720] text-[#2d372f]">Optional Message</span>
-            <Textarea value={message} className="min-h-[100px]" onChange={(event) => setMessage(event.target.value)} />
-          </label>
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <Button type="button" variant="secondary" disabled={pending} onClick={onClose}>Cancel</Button>
-            <Button type="button" disabled={!canSubmit || pending} onClick={save}><Plus className="h-4 w-4" /> {pending ? "Saving..." : mode === "marketing-director" ? "Assign & Request Approval" : "Add Approver"}</Button>
+          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e7ece8] bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+            <Button type="button" className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={onClose}>Cancel</Button>
+            <Button type="button" className="w-full sm:w-auto" disabled={!canSubmit || pending} onClick={save}><Plus className="h-4 w-4" /> {pending ? "Saving..." : mode === "marketing-director" ? "Assign & Request Approval" : "Add Approver"}</Button>
           </div>
         </CardContent>
       </Card>
