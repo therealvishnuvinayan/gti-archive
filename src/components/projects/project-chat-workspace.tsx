@@ -7573,7 +7573,10 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
-              {isConceptMode && showSubmitWorkAction && hasAcceptedBrief ? (
+              {isConceptMode &&
+              showSubmitWorkAction &&
+              hasAcceptedBrief &&
+              (canSubmitNewRevision || isUploadingRevision) ? (
                 <div className="sticky top-[56px] z-20 mb-2 flex flex-col gap-2 rounded-[18px] border border-[#dbe7dd] bg-white/96 p-2.5 shadow-[0_14px_32px_rgba(22,93,56,0.1)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
                   <p className="min-w-0 text-[12px] font-[650] text-[#536158]">
                     {submitWorkDisabledReason ?? "Submit the next concept revision for review."}
@@ -7767,7 +7770,8 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
-              {showSubmitWorkAction &&
+              {!isConceptMode &&
+              showSubmitWorkAction &&
               hasAcceptedBrief &&
               (canSubmitNewRevision || isUploadingRevision) ? (
                 <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#acd9bd] bg-white/96 p-3 shadow-[0_18px_42px_rgba(22,93,56,0.14)] backdrop-blur">
@@ -9158,25 +9162,6 @@ export function ProjectChatWorkspace({
                       <dd className="font-[750]">{stageSubmissions.length}</dd>
                     </div>
                   </dl>
-                  {showSubmitWorkAction ? (
-                    <div className="space-y-1.5">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="w-full rounded-full"
-                        onClick={openRevisionDialog}
-                        disabled={!canSubmitNewRevision || isUploadingRevision}
-                      >
-                        <Upload className="h-4 w-4" />
-                        Submit Work
-                      </Button>
-                      {submitWorkDisabledReason ? (
-                        <p className="text-[11px] leading-4 text-[#6f786f]">
-                          {submitWorkDisabledReason}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
                   {canCompareSubmissions ? (
                     <Button asChild size="sm" variant="secondary" className="w-full rounded-full">
                       <Link href={conceptMode.compareHref}>

@@ -76,6 +76,16 @@ assert(
     workspace.includes("Stage Overview"),
   "Concept mode needs a lightweight collapsible panel while normal Stage Overview remains intact.",
 );
+const conceptStatusBlock = workspace.slice(
+  workspace.indexOf("Concept Status"),
+  workspace.indexOf("<StageTimeRemainingCard", workspace.indexOf("Concept Status")),
+);
+assert(
+  workspace.includes("{isConceptMode &&\n              showSubmitWorkAction &&\n              hasAcceptedBrief &&\n              (canSubmitNewRevision || isUploadingRevision) ? (") &&
+    workspace.includes("{!isConceptMode &&\n              showSubmitWorkAction &&") &&
+    !conceptStatusBlock.includes("Submit Work"),
+  "Concept mode must expose one canonical Submit Work action and exclude generic/sidebar duplicates.",
+);
 assert(
   workspace.includes("ProjectExecutorsPanel") &&
     workspace.includes("ProjectCollaboratorsPanel") &&
