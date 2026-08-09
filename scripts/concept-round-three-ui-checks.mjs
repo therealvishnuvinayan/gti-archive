@@ -83,6 +83,8 @@ assert(
 
 assert(
   concepts.includes("completeStageThreeConcepts") &&
+    concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
+    concepts.includes("Only the Project Owner or Super Admin can complete Stage 3.") &&
     concepts.includes("TransactionIsolationLevel.Serializable") &&
     concepts.includes("approvedConcepts.length === 0") &&
     concepts.includes("unapprovedConcepts") &&
@@ -93,7 +95,7 @@ assert(
     concepts.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     concepts.includes("ProjectWorkflowStageStatus.AVAILABLE") &&
     !concepts.includes("ProjectStageFileHandoff"),
-  "Stage 3 completion must atomically promote only approved concepts to fresh Stage 4 taskers without a Stage 5 handoff.",
+  "Owner/Super-Admin-only Stage 3 completion must atomically promote approved concepts to fresh Stage 4 taskers without a Stage 5 handoff.",
 );
 assert(
   concepts.includes("bySourceId") &&

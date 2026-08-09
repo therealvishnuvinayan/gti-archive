@@ -347,6 +347,10 @@ async function main() {
       isError(await completeStageFourConcepts(owner, { projectId })),
       "Stage 4 completion must be blocked with zero final files",
     );
+    check(
+      isError(await completeStageFourConcepts(coOwner, { projectId })),
+      "co-owner must not complete Stage 4",
+    );
     for (const actor of [executor, collaborator, adminOutsider]) {
       check(
         isError(
@@ -632,7 +636,7 @@ async function main() {
     });
     const [completion, concurrentCompletion] = await Promise.all([
       completeStageFourConcepts(owner, { projectId }),
-      completeStageFourConcepts(coOwner, { projectId }),
+      completeStageFourConcepts(superAdmin, { projectId }),
     ]);
     check(!isError(completion) && !isError(concurrentCompletion), "concurrent Stage 4 completion must retry idempotently");
     check(

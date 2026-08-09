@@ -68,6 +68,8 @@ assert(
 
 assert(
   concepts.includes("completeStageFourConcepts") &&
+    concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
+    concepts.includes("Only the Project Owner or Super Admin can complete Stage 4.") &&
     concepts.includes("At least one concept must have a Final Approved File before Stage 4 can be completed.") &&
     concepts.includes("projectStageFileHandoff.upsert") &&
     concepts.includes("projectFileChecklist.upsert") &&
@@ -76,7 +78,7 @@ assert(
     concepts.includes("ProjectWorkflowStageStatus.AVAILABLE") &&
     concepts.includes("stageFiveWorkflow.status === ProjectWorkflowStageStatus.LOCKED") &&
     !concepts.includes("PRODUCTION_AND_HANDOVER"),
-  "Stage 4 completion must atomically and idempotently hand off final files, complete Stage 4, unlock Stage 5, and leave Stage 6 untouched.",
+  "Owner/Super-Admin-only Stage 4 completion must atomically hand off final files, unlock Stage 5, and leave Stage 6 untouched.",
 );
 
 for (const label of [

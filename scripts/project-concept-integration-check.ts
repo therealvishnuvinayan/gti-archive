@@ -19,6 +19,7 @@ import {
   markProjectConceptApprovedAttachment,
 } from "../src/lib/project-concepts";
 import {
+  canCompleteProjectConceptStage,
   canManageProjectConcept,
   canReviewProjectConcept,
   canViewProjectConcept,
@@ -262,9 +263,19 @@ async function main() {
     check(ownerView?.folders.length === 2, "owner must see every concept");
     check(coOwnerView?.folders.length === 2, "co-owner must see every concept");
     check(superView?.folders.length === 2, "SUPER_ADMIN must see every concept");
+    check(ownerView?.canCompleteStage, "owner must be able to complete the concept stage");
+    check(superView?.canCompleteStage, "SUPER_ADMIN must be able to complete the concept stage");
+    check(
+      coOwnerView?.canCompleteStage === false,
+      "co-owner concept management must not grant stage completion",
+    );
     check(
       executorAView?.folders.length === 1 && executorAView.folders[0].id === conceptA.folder.id,
       "executor A must see only its assigned concept",
+    );
+    check(
+      executorAView.canCompleteStage === false,
+      "assigned executor must not receive stage completion permission",
     );
     check(
       executorATamperedView?.folders.length === 1 &&
@@ -288,6 +299,19 @@ async function main() {
     check(accessA, "concept access context must resolve");
     check(canManageProjectConcept(owner, accessA), "owner must manage concepts");
     check(canManageProjectConcept(coOwner, accessA), "co-owner must manage concepts");
+    check(
+      canCompleteProjectConceptStage(owner, accessA),
+      "owner must complete concept stages",
+    );
+    check(
+      canCompleteProjectConceptStage(superAdmin, accessA),
+      "SUPER_ADMIN must complete concept stages",
+    );
+    check(
+      !canCompleteProjectConceptStage(coOwner, accessA) &&
+        !canCompleteProjectConceptStage(executorA, accessA),
+      "co-owner and executor must not complete concept stages",
+    );
     check(canReviewProjectConcept(owner, accessA), "owner must review concepts");
     check(canReviewProjectConcept(coOwner, accessA), "co-owner must review concepts");
     check(
@@ -1173,9 +1197,13 @@ async function main() {
     const attachmentCountBeforePromotion = await prisma.projectAttachment.count({
       where: { id: replacementFile.id },
     });
+    check(
+      isErrorResult(await completeStageThreeConcepts(coOwner, { projectId })),
+      "co-owner must be rejected by the Stage 3 completion service",
+    );
     const [completion, concurrentCompletion] = await Promise.all([
       completeStageThreeConcepts(owner, { projectId }),
-      completeStageThreeConcepts(coOwner, { projectId }),
+      completeStageThreeConcepts(superAdmin, { projectId }),
     ]);
     check(!isErrorResult(completion), "owner must complete Stage 3 with one approved concept");
     check(

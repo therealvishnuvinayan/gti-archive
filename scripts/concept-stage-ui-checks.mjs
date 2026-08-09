@@ -72,6 +72,7 @@ assert(
 );
 assert(
   route.includes("folders.canManage") &&
+    route.includes("folders.canCompleteStage") &&
     route.includes("folders.selectedExecutorId") &&
     concepts.includes("requestedExecutorId") &&
     concepts.includes(": user.id"),
@@ -106,6 +107,7 @@ assert(
 for (const helper of [
   "canViewProjectConcept",
   "canManageProjectConcept",
+  "canCompleteProjectConceptStage",
   "canReviewProjectConcept",
   "canWorkOnProjectConcept",
   "assertConceptTaskerAccessIfNeeded",
@@ -117,6 +119,13 @@ assert(
   access.includes("user.role === UserRole.SUPER_ADMIN") &&
     !access.includes("UserRole.ADMIN ||"),
   "SUPER_ADMIN must be the sole implicit global concept role.",
+);
+assert(
+  workspace.includes("canCompleteStage && !managementLocked") &&
+    workspace.includes("isOpen={canCompleteStage && completionDialogOpen}") &&
+    concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
+    concepts.includes("Only the Project Owner or Super Admin can complete Stage 3."),
+  "Stage completion must be rendered and enforced separately from concept management.",
 );
 assert(
   history.includes('mode: "work"') &&

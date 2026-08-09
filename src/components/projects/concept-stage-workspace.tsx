@@ -325,6 +325,7 @@ export function ConceptStageWorkspace({
   currentUserId,
   initialFolders,
   canManageConcepts,
+  canCompleteStage,
   stageWorkflowStatus,
   completionConcepts,
   executors,
@@ -338,6 +339,7 @@ export function ConceptStageWorkspace({
   currentUserId: string;
   initialFolders: ProjectConceptFolderRecord[];
   canManageConcepts: boolean;
+  canCompleteStage: boolean;
   stageWorkflowStatus: "LOCKED" | "AVAILABLE" | "COMPLETED" | null;
   completionConcepts: Array<{
     id: string;
@@ -364,6 +366,13 @@ export function ConceptStageWorkspace({
   );
 
   function completeCurrentStage() {
+    if (!canCompleteStage) {
+      setCompletionError(
+        `Only the Project Owner or Super Admin can complete Stage ${stageNumber}.`,
+      );
+      return;
+    }
+
     setCompletionError(null);
     startCompletionTransition(async () => {
       const result =
@@ -557,7 +566,7 @@ export function ConceptStageWorkspace({
                 <CheckCircle2 className="h-4 w-4" /> Stage 4 Completed
               </span>
             ) : null}
-            {canManageConcepts && !managementLocked ? (
+            {canCompleteStage && !managementLocked ? (
               <Button
                 type="button"
                 className="h-11 rounded-[12px] px-5 font-[720]"
@@ -732,7 +741,7 @@ export function ConceptStageWorkspace({
       ) : null}
 
       <ConfirmationDialog
-        isOpen={completionDialogOpen}
+        isOpen={canCompleteStage && completionDialogOpen}
         title={`Complete Stage ${stageNumber}?`}
         description={
           stageNumber === 3

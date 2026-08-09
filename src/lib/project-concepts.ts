@@ -13,6 +13,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import {
+  canCompleteProjectConceptStage,
   canManageProjectConcept,
   canReviewProjectConcept,
   canViewProjectConcept,
@@ -336,6 +337,7 @@ export async function getProjectConceptFolders(
     coOwnerIds: project.coOwners.map((coOwner) => coOwner.userId),
   };
   const canManage = canManageProjectConcept(user, managerContext);
+  const canCompleteStage = canCompleteProjectConceptStage(user, managerContext);
   const requestedExecutor = options.executorId?.trim() || null;
   const requestedExecutorId = canManage
     ? requestedExecutor &&
@@ -371,8 +373,9 @@ export async function getProjectConceptFolders(
   return {
     folders: displayedFolders.map(mapConceptFolder),
     canManage,
+    canCompleteStage,
     workflowStatus: getWorkflowStageStatus(project, stageKey) ?? null,
-    completionConcepts: canManage
+    completionConcepts: canCompleteStage
       ? visibleFolders.map((folder) => ({
           id: folder.id,
           name: folder.name,
@@ -1267,9 +1270,10 @@ export async function completeStageThreeConcepts(
             coOwnerIds: project.coOwners.map((coOwner) => coOwner.userId),
           };
 
-          if (!canManageProjectConcept(user, managerContext)) {
+          if (!canCompleteProjectConceptStage(user, managerContext)) {
             return {
-              error: "You do not have permission to complete Stage 3.",
+              error:
+                "Only the Project Owner or Super Admin can complete Stage 3.",
             };
           }
 
@@ -1575,9 +1579,10 @@ export async function completeStageFourConcepts(
             coOwnerIds: project.coOwners.map((coOwner) => coOwner.userId),
           };
 
-          if (!canManageProjectConcept(user, managerContext)) {
+          if (!canCompleteProjectConceptStage(user, managerContext)) {
             return {
-              error: "You do not have permission to complete Stage 4.",
+              error:
+                "Only the Project Owner or Super Admin can complete Stage 4.",
             };
           }
 

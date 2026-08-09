@@ -781,10 +781,14 @@ async function main() {
     attachmentId: conceptBRevision.attachmentIds[0],
   });
   check(!isError(conceptBApproval), "co-owner must approve Concept B");
+  check(
+    isError(await completeStageThreeConcepts(coOwner, { projectId })),
+    "co-owner must not complete Stage 3",
+  );
 
   const [stageThreeCompletionA, stageThreeCompletionB] = await Promise.all([
     completeStageThreeConcepts(owner, { projectId }),
-    completeStageThreeConcepts(coOwner, { projectId }),
+    completeStageThreeConcepts(superAdmin, { projectId }),
   ]);
   check(
     !isError(stageThreeCompletionA) &&
@@ -1028,7 +1032,11 @@ async function main() {
       },
     },
   });
-  const finalBApproval = await markStageFourFinalApprovedAttachment(coOwner, {
+  check(
+    isError(await completeStageFourConcepts(coOwner, { projectId })),
+    "co-owner must not complete Stage 4",
+  );
+  const finalBApproval = await markStageFourFinalApprovedAttachment(owner, {
     projectId,
     folderId: stageFourB.id,
     attachmentId: stageFourBRevision.attachmentIds[0],
@@ -1037,12 +1045,12 @@ async function main() {
     !isError(finalBApproval) &&
       "stageTransition" in finalBApproval &&
       finalBApproval.stageTransition.transitioned,
-    "approving the final outstanding Stage 4 concept must automatically activate Stage 5",
+    "Project Owner approval of the final outstanding Stage 4 concept must automatically activate Stage 5",
   );
 
   const [stageFourCompletionA, stageFourCompletionB] = await Promise.all([
     completeStageFourConcepts(owner, { projectId }),
-    completeStageFourConcepts(coOwner, { projectId }),
+    completeStageFourConcepts(superAdmin, { projectId }),
   ]);
   check(
     !isError(stageFourCompletionA) &&
@@ -1296,9 +1304,8 @@ async function main() {
     attachmentId: stageFourBRevision.attachmentIds[0],
   });
   check(
-    isError(protectedReplacement) &&
-      protectedReplacement.error.includes("Stage 4 is completed"),
-    "even the same final designation must be locked after Stage 4 completion",
+    !isError(protectedReplacement) && !protectedReplacement.changed,
+    "the same final designation must remain idempotent for legacy status reconciliation after Stage 4 completion",
   );
   const postCompletionReplacement = await markStageFourFinalApprovedAttachment(owner, {
     projectId,

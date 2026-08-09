@@ -26,6 +26,15 @@ export function canManageProjectConcept(
   );
 }
 
+export function canCompleteProjectConceptStage(
+  user: ConceptAccessActor,
+  context: ConceptAccessContext,
+) {
+  return (
+    user.role === UserRole.SUPER_ADMIN || context.ownerId === user.id
+  );
+}
+
 export function canReviewProjectConcept(
   user: ConceptAccessActor,
   context: ConceptAccessContext,
