@@ -3,170 +3,168 @@ import { readFile } from "node:fs/promises";
 
 const [
   workspace,
-  summary,
   route,
   actions,
   concepts,
-  chatRoute,
+  access,
+  history,
+  realtime,
+  recipients,
+  notificationTriggers,
   chatPage,
+  chatWorkspace,
   stageThreePage,
   stageFourPage,
-  stageThreeConceptPage,
-  stageFourConceptPage,
-  overview,
-  workflowAccess,
-  workflow,
   schema,
   migration,
 ] = await Promise.all([
   readFile("src/components/projects/concept-stage-workspace.tsx", "utf8"),
-  readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/components/projects/concept-stage-route.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/concept-actions.ts", "utf8"),
   readFile("src/lib/project-concepts.ts", "utf8"),
-  readFile("src/components/projects/concept-chat-route.tsx", "utf8"),
+  readFile("src/lib/project-concept-access.ts", "utf8"),
+  readFile("src/lib/project-history.ts", "utf8"),
+  readFile("src/app/api/realtime/ably/token/route.ts", "utf8"),
+  readFile("src/lib/notification-center/recipients.ts", "utf8"),
+  readFile("src/lib/notification-center/triggers.ts", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/chat/page.tsx", "utf8"),
+  readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/3/page.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/4/page.tsx", "utf8"),
-  readFile("src/app/(dashboard)/projects/[slug]/stages/3/concepts/[folderId]/page.tsx", "utf8"),
-  readFile("src/app/(dashboard)/projects/[slug]/stages/4/concepts/[folderId]/page.tsx", "utf8"),
-  readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
-  readFile("src/lib/workflow-stage-access.ts", "utf8"),
-  readFile("src/lib/project-workflow.ts", "utf8"),
   readFile("prisma/schema.prisma", "utf8"),
   readFile(
-    "prisma/migrations/20260807235900_project_concept_folder_stage_scope/migration.sql",
+    "prisma/migrations/20260809120000_concept_executor_assignment_round_one/migration.sql",
     "utf8",
   ),
 ]);
 
 for (const label of [
-  "Concept Workspace",
-  "Project Name",
-  "Project Owner",
-  "Project Co-Owners",
-  "Project Executors",
-  "Concept Folders",
-  "Manage your concept folders.",
+  "Create Concept",
+  "Concept Name *",
+  "Assigned Executor *",
+  "Concept Brief",
+  "Brief Attachments",
+  "Viewing Executor",
+  "All Executors",
+  "No concepts yet",
+  "Concept 1",
+  "Edit Concept",
 ]) {
-  assert(
-    workspace.includes(label) || summary.includes(label),
-    `Missing concept-stage overview content: ${label}`,
-  );
+  assert(workspace.includes(label), `Missing Round 1 concept UI: ${label}`);
 }
 
 assert(
-  workspace.includes("ProjectFlowSummaryStrip") &&
-    summary.includes("const MAX_VISIBLE_PEOPLE = 2") &&
-    summary.includes("people.map((person)"),
-  "Stages 3 and 4 must reuse the shared compact summary and complete people menu.",
-);
-
-assert.equal(
-  workspace.match(/New Folder/g)?.length,
-  1,
-  "The concept overview must render exactly one New Folder action.",
+  workspace.includes("SelectTrigger") && workspace.includes("SelectContent"),
+  "Executor controls must use the themed select component rather than a native select.",
 );
 assert(
-  workspace.includes("initialFolders") &&
-    workspace.includes("createProjectConceptFolderAction") &&
-    workspace.includes("renameProjectConceptFolderAction") &&
-    workspace.includes("router.refresh()"),
-  "Folder create/rename must use persistent server actions and refreshable server state.",
+  workspace.includes('assetType: "GENERAL_PROJECT_ASSET"') &&
+    workspace.includes("/api/project-assets/upload-url") &&
+    workspace.includes("/api/project-assets/complete") &&
+    workspace.includes("Promise.allSettled"),
+  "Brief files must reuse the existing attachment upload pipeline and preserve partial successes.",
 );
 assert(
-  workspace.includes("/concepts/${folder.id}") && workspace.includes("Open ${folder.name}"),
-  "Every folder card must link to its dedicated persistent chat route.",
-);
-
-for (const forbiddenText of [
-  "ProjectChatWorkspace",
-  "Submit Revision",
-  "Request Changes",
-  "Approval",
-  "Assignee",
-]) {
-  assert(!workspace.includes(forbiddenText), `Forbidden overview UI found: ${forbiddenText}`);
-}
-
-assert(
-  stageThreePage.includes("ConceptStageRoute") &&
-    stageThreePage.includes('stageNumber={3}') &&
-    stageThreePage.includes('stageTitle="Initial Concept"'),
-  "Stage 3 must remain a thin route over the shared concept overview.",
+  stageThreePage.includes("searchParams") &&
+    stageThreePage.includes("executorFilter={executor}") &&
+    workspace.includes("?executor=${encodeURIComponent(value)}"),
+  "Stage 3 executor filtering must be URL-backed.",
 );
 assert(
-  stageFourPage.includes("ConceptStageRoute") &&
-    stageFourPage.includes('stageNumber={4}') &&
-    stageFourPage.includes('stageTitle="Final Concept"'),
-  "Stage 4 must remain a thin route over the shared concept overview.",
+  route.includes("folders.canManage") &&
+    route.includes("folders.selectedExecutorId") &&
+    concepts.includes("requestedExecutorId") &&
+    concepts.includes(": user.id"),
+  "Only concept managers may use the switcher; executor views must remain self-scoped.",
 );
 assert(
-  route.includes("getProjectConceptFolders") &&
-    route.includes("canOpenImplementedWorkflowStage") &&
-    route.includes("StageLockedState"),
-  "Concept routes must use persisted folders and centralized workflow access.",
-);
-
-for (const page of [stageThreeConceptPage, stageFourConceptPage]) {
-  assert(
-    page.includes("ConceptChatRoute") && page.includes("folderId"),
-    "Each stage must expose a dedicated folder chat route.",
-  );
-}
-assert(
-  chatRoute.includes("getProjectConceptChatContext") &&
-    chatRoute.includes("ProjectChatRoute") &&
-    chatRoute.includes("taskerStageId={context.folder.taskerStageId}"),
-  "Folder routes must authorize the exact mapping and reuse the existing chat route.",
+  concepts.includes("actualStartedAt: null") &&
+    concepts.includes("startedById: null") &&
+    concepts.includes("invoiceRequired: false") &&
+    concepts.includes("status: StageStatus.ONGOING"),
+  "New concept taskers must be ongoing but not accepted or started.",
 );
 assert(
-  chatPage.includes("ProjectChatWorkspace") &&
-    chatPage.includes("taskerStageId") &&
-    chatPage.includes("getProjectChatShellById"),
-  "Concept chats must reuse the existing ProjectChatWorkspace and select only their tasker.",
-);
-
-assert(
-  actions.includes('"use server"') &&
-    actions.includes("createProjectConceptFolder") &&
-    actions.includes("renameProjectConceptFolder"),
-  "Persistent create and rename actions must be server-side.",
+  !concepts.includes("ensureDefaultProjectConceptFolder") &&
+    !concepts.includes("getDefaultTaskerStageId") &&
+    stageFourPage.includes("ConceptStageRoute"),
+  "Stage 3/4 reads must never manufacture Concept 1.",
 );
 assert(
-  concepts.includes("projectId_workflowStageKey_normalizedName") &&
-    concepts.includes("normalizeConceptFolderName") &&
-    concepts.includes("isTasker: true") &&
+  concepts.includes("Assigned Executor must be a current project executor") &&
+    concepts.includes("project.executors.some") &&
+    concepts.includes("Assigned Executor is required"),
+  "Concept mutations must require a current ProjectExecutor.",
+);
+assert(
+  concepts.includes("locked after work starts") &&
+    concepts.includes("taskerStage.actualStartedAt") &&
     concepts.includes("taskerStageId: folder.taskerStageId"),
-  "Concept persistence must be stage-scoped, case-insensitive, and retain chat identity on rename.",
-);
-assert(
-  !concepts.includes("completeProjectStage") && !concepts.includes("handoff"),
-  "Concept folder persistence must not introduce completion or handoff behavior.",
+  "Accepted concepts must lock assignment/brief while retaining tasker identity.",
 );
 
+for (const helper of [
+  "canViewProjectConcept",
+  "canManageProjectConcept",
+  "canWorkOnProjectConcept",
+  "assertConceptTaskerAccessIfNeeded",
+  "getProjectConceptParticipantUserIds",
+]) {
+  assert(access.includes(helper), `Missing centralized concept policy helper: ${helper}`);
+}
 assert(
-  workflowAccess.includes("user.role === UserRole.SUPER_ADMIN") &&
-    workflowAccess.includes("IMPLEMENTED_WORKFLOW_STAGE_KEYS") &&
-    overview.includes("canBypassLockedStages"),
-  "The temporary SUPER_ADMIN workflow-lock bypass must be centralized and reflected on overview links.",
+  access.includes("user.role === UserRole.SUPER_ADMIN") &&
+    !access.includes("UserRole.ADMIN ||"),
+  "SUPER_ADMIN must be the sole implicit global concept role.",
 );
 assert(
-  workflow.includes('name: "Initial Concept"') && workflow.includes('name: "Final Concept"'),
-  "Overview stage labels must match the approved concept-stage names.",
+  history.includes('mode: "work"') &&
+    access.includes("Only the assigned concept executor") &&
+    history.includes("Concept taskers cannot use the legacy approve/complete action"),
+  "Accept Brief must be assigned-executor-only and legacy tasker approval must be blocked.",
 );
 assert(
-  schema.includes("model ProjectConceptFolder") &&
-    schema.includes("workflowStageKey ProjectWorkflowStageKey") &&
-    schema.includes("isTasker") &&
-    schema.includes("@@unique([projectId, workflowStageKey, normalizedName])"),
-  "The Prisma model must persist stage-scoped folder/tasker mappings.",
+  chatWorkspace.includes("!activeStage?.isTasker") &&
+    chatWorkspace.includes("Request Revision"),
+  "Concept mode must hide only legacy approval and retain Request Changes/Revision.",
 );
 assert(
-  migration.includes('DEFAULT \'CONCEPT_CREATION\'') &&
-    migration.includes("ProjectConceptFolder_projectId_workflowStageKey_normalizedName_key") &&
-    migration.includes("ProjectConceptFolder_workflowStageKey_check"),
-  "The additive migration must preserve Stage 3 rows and enforce stage-scoped integrity.",
+  realtime.includes("assertConceptTaskerAccessIfNeeded") &&
+    realtime.includes("Concept participant access denied"),
+  "Ably capability issuance must enforce concept participation.",
 );
+assert(
+  recipients.includes("getProjectConceptParticipantUserIds") &&
+    recipients.includes("stageId?: string | null") &&
+    chatPage.includes("conceptParticipantIds") &&
+    chatPage.includes("mentionParticipants.filter"),
+  "Notifications and mention suggestions must use the concept participant set.",
+);
+assert(
+  notificationTriggers.includes("buildProjectStageNotificationUrl") &&
+    notificationTriggers.includes("/stages/${stageNumber}/concepts/") &&
+    notificationTriggers.includes("getProjectConceptAccessContext"),
+  "Concept notifications must deep-link to the secured concept route.",
+);
+assert(
+  /assignedExecutorId\s+String\?/.test(schema) &&
+    schema.includes("ProjectConceptFolderAssignedExecutor") &&
+    schema.includes("references: [projectId, userId]") &&
+    migration.includes('REFERENCES "ProjectExecutor"("projectId", "userId")'),
+  "Concept assignment must use the ProjectExecutor composite database relationship.",
+);
+assert(
+  migration.includes('stage."startedById"') &&
+    migration.includes("HAVING COUNT(*) = 1") &&
+    !migration.includes("ORDER BY"),
+  "Legacy assignment backfill must use only a valid starter or exactly one executor.",
+);
+assert(
+  !concepts.includes("completeProjectStage") &&
+    !concepts.includes("ProjectStageFileHandoff") &&
+    !concepts.includes("ComparisonComment"),
+  "Round 1 must not add completion, handoff, or a replacement comparison system.",
+);
+assert(actions.includes('"use server"') && actions.includes("editProjectConceptFolder"));
 
-console.log("Stage 3/4 persistent concept-folder UI checks passed.");
+console.log("Stage 3/4 Round 1 concept UI/security checks passed.");

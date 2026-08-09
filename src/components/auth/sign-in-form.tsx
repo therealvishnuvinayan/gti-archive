@@ -15,6 +15,7 @@ import {
 
 type SignInFormProps = {
   hasAnyUsers: boolean;
+  returnTo?: string;
 };
 
 function SubmitButton() {
@@ -31,7 +32,7 @@ function SubmitButton() {
   );
 }
 
-export function SignInForm({ hasAnyUsers }: SignInFormProps) {
+export function SignInForm({ hasAnyUsers, returnTo }: SignInFormProps) {
   const [state, formAction] = useActionState<SignInState, FormData>(
     signInAction,
     initialSignInState,
@@ -40,6 +41,7 @@ export function SignInForm({ hasAnyUsers }: SignInFormProps) {
 
   return (
     <form action={formAction} className="space-y-8">
+      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
       <div className="space-y-2">
         <h1 className="text-[42px] font-[600] leading-[1.05] tracking-[-0.04em] text-[#19211b] sm:text-[52px]">
           Sign in to your account

@@ -22,7 +22,6 @@ import {
 } from "@/lib/project-concepts";
 import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
-import { getStageFourFinalFileHandoffData } from "@/lib/stage-five";
 
 type ConceptStageRouteUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -48,12 +47,14 @@ async function ConceptStageContent({
   stageTitle,
   stageKey,
   userPromise,
+  executorFilter,
 }: {
   slug: string;
   stageNumber: 3 | 4;
   stageTitle: string;
   stageKey: ConceptWorkflowStageKey;
   userPromise: Promise<ConceptStageRouteUser>;
+  executorFilter?: string;
 }) {
   const user = await userPromise;
   const project = await getProjectStageShellById(slug, user);
@@ -98,6 +99,7 @@ async function ConceptStageContent({
           stageKey={stageKey}
           user={user}
           project={project}
+          executorFilter={executorFilter}
         />
       </Suspense>
     </section>
@@ -111,6 +113,7 @@ async function ConceptStageDataContent({
   stageKey,
   user,
   project,
+  executorFilter,
 }: {
   slug: string;
   stageNumber: 3 | 4;
@@ -118,13 +121,11 @@ async function ConceptStageDataContent({
   stageKey: ConceptWorkflowStageKey;
   user: ConceptStageRouteUser;
   project: NonNullable<Awaited<ReturnType<typeof getProjectStageShellById>>>;
+  executorFilter?: string;
 }) {
-  const [folders, stageFourHandoffData] = await Promise.all([
-    getProjectConceptFolders(user, slug, stageKey),
-    stageNumber === 4
-      ? getStageFourFinalFileHandoffData(user, slug)
-      : Promise.resolve(undefined),
-  ]);
+  const folders = await getProjectConceptFolders(user, slug, stageKey, {
+    executorId: stageNumber === 3 ? executorFilter : null,
+  });
 
   if (!folders) {
     return <ProjectAccessUnavailableState />;
@@ -132,13 +133,18 @@ async function ConceptStageDataContent({
 
   return (
     <ConceptStageWorkspace
+      key={`${stageNumber}:${folders.selectedExecutorId ?? "all"}`}
       stageNumber={stageNumber}
       stageTitle={stageTitle}
       stageKey={stageKey}
       project={project}
       currentUserId={user.id}
-      initialFolders={folders}
-      stageFourHandoffData={stageFourHandoffData ?? undefined}
+      initialFolders={folders.folders}
+      canManageConcepts={folders.canManage}
+      stageWorkflowStatus={folders.workflowStatus}
+      completionConcepts={folders.completionConcepts}
+      executors={folders.executors}
+      selectedExecutorId={folders.selectedExecutorId}
       showChrome={false}
     />
   );
@@ -149,11 +155,13 @@ export function ConceptStageRoute({
   stageNumber,
   stageTitle,
   stageKey,
+  executorFilter,
 }: {
   slug: string;
   stageNumber: 3 | 4;
   stageTitle: string;
   stageKey: ConceptWorkflowStageKey;
+  executorFilter?: string;
 }) {
   const userPromise = requireUser();
 
@@ -166,6 +174,7 @@ export function ConceptStageRoute({
           stageTitle={stageTitle}
           stageKey={stageKey}
           userPromise={userPromise}
+          executorFilter={executorFilter}
         />
       </Suspense>
     </DashboardLayout>

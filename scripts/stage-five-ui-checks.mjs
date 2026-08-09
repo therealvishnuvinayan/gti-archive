@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, summaryAlias, summary, page, workflowAccess, overview, schema, chatWorkspace, service, actions, uploadClient, stageFourWorkspace, conceptActions, emailTemplate, migration, integrityMigration] =
+const [workspace, fieldDefinitions, filePicker, requestWorkspace, requestPage, requestActions, summaryAlias, summary, page, workflowAccess, overview, schema, chatWorkspace, service, actions, uploadClient, requestUploadRoute, requestCompleteRoute, requestSourcePreviewRoute, requestSourceDownloadRoute, stageFourWorkspace, conceptActions, emailTemplate, migration, integrityMigration, responseMigration, attachmentScopeMigration, auth, signInPage, signInActions] =
   await Promise.all([
     readFile("src/components/projects/stage-five-workspace.tsx", "utf8"),
+    readFile("src/lib/stage-five-fields.ts", "utf8"),
+    readFile("src/components/projects/checklist-file-picker.tsx", "utf8"),
+    readFile("src/components/projects/stage-five-request-workspace.tsx", "utf8"),
+    readFile("src/app/requests/checklist/[requestId]/page.tsx", "utf8"),
+    readFile("src/app/requests/checklist/[requestId]/actions.ts", "utf8"),
     readFile("src/components/projects/project-stage-summary.tsx", "utf8"),
     readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/5/page.tsx", "utf8"),
@@ -14,11 +19,35 @@ const [workspace, summaryAlias, summary, page, workflowAccess, overview, schema,
     readFile("src/lib/stage-five.ts", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/5/actions.ts", "utf8"),
     readFile("src/lib/stage-five-upload-client.ts", "utf8"),
+    readFile("src/app/api/requests/checklist/[requestId]/upload-url/route.ts", "utf8"),
+    readFile("src/app/api/requests/checklist/[requestId]/complete/route.ts", "utf8"),
+    readFile("src/app/api/requests/checklist/[requestId]/source/preview/route.ts", "utf8"),
+    readFile("src/app/api/requests/checklist/[requestId]/source/download/route.ts", "utf8"),
     readFile("src/components/projects/concept-stage-workspace.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/concept-actions.ts", "utf8"),
     readFile("src/lib/email/checklist-information-request.ts", "utf8"),
     readFile("prisma/migrations/20260808160000_stage_five_file_checklists/migration.sql", "utf8"),
     readFile("prisma/migrations/20260808170000_stage_five_attachment_delete_integrity/migration.sql", "utf8"),
+    readFile("prisma/migrations/20260808180000_stage_five_collaborator_responses/migration.sql", "utf8"),
+    readFile("prisma/migrations/20260808190000_stage_five_request_attachment_scope/migration.sql", "utf8"),
+    readFile("src/lib/auth.ts", "utf8"),
+    readFile("src/app/sign-in/page.tsx", "utf8"),
+    readFile("src/app/sign-in/actions.ts", "utf8"),
+  ]);
+
+const [externalPage, externalWorkspace, externalService, externalToken, externalUploadClient, externalUploadRoute, externalSubmitRoute, externalDeclineRoute, externalMigration, rateLimit, nextConfig] =
+  await Promise.all([
+    readFile("src/app/external/checklist-request/[token]/page.tsx", "utf8"),
+    readFile("src/components/projects/stage-five-external-request-workspace.tsx", "utf8"),
+    readFile("src/lib/stage-five-external.ts", "utf8"),
+    readFile("src/lib/checklist-external-token.ts", "utf8"),
+    readFile("src/lib/stage-five-external-upload-client.ts", "utf8"),
+    readFile("src/app/api/external/checklist-request/[token]/upload-url/route.ts", "utf8"),
+    readFile("src/app/api/external/checklist-request/[token]/submit/route.ts", "utf8"),
+    readFile("src/app/api/external/checklist-request/[token]/decline/route.ts", "utf8"),
+    readFile("prisma/migrations/20260808200000_stage_five_external_checklist_requests/migration.sql", "utf8"),
+    readFile("src/lib/external-request-rate-limit.ts", "utf8"),
+    readFile("next.config.ts", "utf8"),
   ]);
 
 const checklistItems = [
@@ -41,7 +70,7 @@ const checklistItems = [
 
 let lastPosition = -1;
 for (const item of checklistItems) {
-  const position = workspace.indexOf(`title: "${item}"`);
+  const position = fieldDefinitions.indexOf(`title: "${item}"`);
   assert(position > lastPosition, `Missing or out-of-order Stage 5 checklist item: ${item}`);
   lastPosition = position;
 }
@@ -102,6 +131,14 @@ assert(
     workspace.includes("values.map"),
   "Stage 5 View mode must show selected file metadata and repeatable values.",
 );
+assert(
+  workspace.includes("<Select") &&
+    workspace.includes("<SelectTrigger") &&
+    workspace.includes("<SelectContent") &&
+    workspace.includes("<SelectItem") &&
+    workspace.includes("onValueChange={updateSelectedFile}"),
+  "Stage 5 file switching must use the themed GTI Select control.",
+);
 const readOnlyView = workspace.slice(
   workspace.indexOf("function StageFiveReadOnlyView"),
   workspace.indexOf("function RequestInformationDialog"),
@@ -110,13 +147,30 @@ assert(
   !readOnlyView.includes("<Input") &&
     !readOnlyView.includes("<Textarea") &&
     !readOnlyView.includes("<button") &&
-    !readOnlyView.includes("ChecklistUploadField") &&
+    !readOnlyView.includes("ChecklistFilePicker") &&
     !readOnlyView.includes("Request"),
   "Stage 5 View mode must not render editing, upload, removal, Add, or Request controls.",
 );
+const checklistFilePicker = filePicker.slice(
+  filePicker.indexOf("function ChecklistFilePicker"),
+  filePicker.length,
+);
 assert(
-  workspace.includes('type="file"') && workspace.includes("multiple={multiple}"),
-  "Stage 5 must support single and multiple checklist attachments.",
+  checklistFilePicker.includes("useRef<HTMLInputElement>(null)") &&
+    checklistFilePicker.includes('type="file"') &&
+    checklistFilePicker.includes("multiple={multiple}") &&
+    checklistFilePicker.includes("hidden") &&
+    checklistFilePicker.includes("fileInputRef.current?.click()") &&
+    checklistFilePicker.includes("<Button") &&
+    !checklistFilePicker.includes("htmlFor") &&
+    !checklistFilePicker.includes("sr-only"),
+  "Stage 5 must trigger single and multiple hidden file inputs through the shared GTI Button/ref picker.",
+);
+assert(
+  workspace.includes("STAGE_FIVE_FIELD_DEFINITIONS.map") &&
+    requestWorkspace.includes("data.field.control") &&
+    requestWorkspace.includes("data.field.suggestions"),
+  "The owner checklist and collaborator response page must share one Stage 5 field definition source.",
 );
 assert(
   workspace.includes("uploadStageFiveChecklistAttachment") &&
@@ -132,6 +186,10 @@ assert(
     workspace.includes("Send Request") &&
     !workspace.includes("Request functionality will be connected"),
   "The Request dialog must dispatch real collaborator and manual-email requests.",
+);
+assert(
+  workspace.includes('<SelectContent className="z-[190]">'),
+  "The collaborator selector options must render above the request dialog backdrop.",
 );
 assert(
   workspace.includes('href={`/projects/${project.id}/stages/6`}') &&
@@ -188,12 +246,12 @@ assert(
   "Stage 5 attachment relations must preserve project deletion integrity.",
 );
 assert(
-  stageFourWorkspace.includes("Final files for Stage 5") &&
-    stageFourWorkspace.includes("Send to Stage 5") &&
-    conceptActions.includes("handoffStageFourFiles") &&
-    service.includes("stageFourAttachmentWhere") &&
-    service.includes("skipDuplicates: true"),
-  "Stage 4 must expose a minimal idempotent final-file designation surface.",
+  !stageFourWorkspace.includes("Final files for Stage 5") &&
+    !stageFourWorkspace.includes("Send to Stage 5") &&
+    !conceptActions.includes("handoffStageFourFiles") &&
+    !service.includes("handoffStageFourFiles") &&
+    conceptActions.includes("completeStageFourConceptsAction"),
+  "The temporary manual Stage 4 handoff product surface must be retired in favor of real Stage 4 completion.",
 );
 assert(
   workspace.includes("selectedHandoffId") &&
@@ -208,21 +266,179 @@ assert(
     service.includes("clientRequestId") &&
     service.includes("recipientUserId") &&
     service.includes("ProjectFileChecklistRequestStatus.FAILED") &&
-    emailTemplate.includes("Please reply to this email") &&
-    emailTemplate.includes("secure external response link will be introduced in a later phase"),
-  "Checklist requests must persist, notify project participants, and send the approved reply-by-email template.",
+    emailTemplate.includes("Provide Information") &&
+    emailTemplate.includes("input.responseUrl"),
+  "Checklist requests must persist, notify project participants, and send the secure response-link email template.",
 );
 assert(
   !service.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     !service.includes("PRODUCTION_AND_HANDOVER") &&
     !actions.includes("completeProject") &&
-    !workspace.includes("response token") &&
-    !page.includes("public"),
-  "This phase must not complete Stage 5, unlock Stage 6, or add an external response portal.",
+    !externalService.includes("PRODUCTION_AND_HANDOVER"),
+  "Checklist responses must not complete Stage 5 or unlock Stage 6.",
 );
 assert(
   chatWorkspace.includes("ProjectChatWorkspace") && !workspace.includes("ProjectChatWorkspace"),
   "Stage 5 must not modify or embed the existing project chat workspace.",
+);
+
+assert(
+  schema.includes("enum ProjectFileChecklistRequestWorkflowStatus") &&
+    schema.includes("workflowStatus") &&
+    schema.includes("acceptedAt") &&
+    schema.includes("completedAt") &&
+    schema.includes("declinedAt") &&
+    schema.includes("declineReason") &&
+    schema.includes("respondedByUserId"),
+  "Existing Stage 5 requests must retain a separate authenticated response lifecycle and audit timestamps.",
+);
+assert(
+  responseMigration.includes("ProjectFileChecklistRequest_active_recipient_key") &&
+    responseMigration.includes("WHERE \"channel\" = 'IN_APP'") &&
+    responseMigration.includes("'REQUESTED', 'ACCEPTED'") &&
+    responseMigration.includes("ProjectFileChecklistRequest_respondedByUserId_fkey"),
+  "The response migration must enforce active-request idempotency and responder integrity.",
+);
+assert(
+  service.includes("getStageFiveChecklistRequestData") &&
+    service.includes("acceptStageFiveChecklistRequest") &&
+    service.includes("declineStageFiveChecklistRequest") &&
+    service.includes("submitStageFiveChecklistResponse") &&
+    service.includes("canRespondToChecklistRequest") &&
+    service.includes("ProjectFileChecklistItemStatus.FILLED") &&
+    service.includes("CHECKLIST_INFORMATION_COMPLETED") &&
+    service.includes("CHECKLIST_INFORMATION_DECLINED"),
+  "The Stage 5 service must authorize and persist accept, decline, completion, checklist updates, and requester notifications.",
+);
+assert(
+  service.includes('url: `/requests/checklist/${created.id}`') &&
+    requestPage.includes("requireUser(returnTo)") &&
+    requestPage.includes("getStageFiveChecklistRequestData") &&
+    requestWorkspace.includes("Accept Request") &&
+    requestWorkspace.includes("Submit Response") &&
+    requestWorkspace.includes("Decline Request") &&
+    requestWorkspace.includes("Response completed") &&
+    requestWorkspace.includes("Request declined"),
+  "Authenticated collaborator notifications must open a focused, terminal-state-aware response page.",
+);
+assert(
+  requestWorkspace.includes("Requested file") &&
+    requestWorkspace.includes("sourcePreviewPath") &&
+    requestWorkspace.includes("sourceDownloadPath") &&
+    requestWorkspace.includes("AssetPreviewButton") &&
+    requestSourcePreviewRoute.includes("getStageFiveChecklistRequestSourceFileUrl") &&
+    requestSourceDownloadRoute.includes("getStageFiveChecklistRequestSourceFileUrl") &&
+    service.includes("getStageFiveChecklistRequestSourceFileUrl") &&
+    service.includes("recipientUserId: user.id"),
+  "The exact request recipient must be able to preview and download the requested source file.",
+);
+assert(
+  requestActions.includes("revalidatePath") &&
+    requestActions.includes("acceptStageFiveChecklistRequest") &&
+    requestActions.includes("declineStageFiveChecklistRequest") &&
+    requestActions.includes("submitStageFiveChecklistResponse"),
+  "Dedicated request actions must reauthorize, mutate, and revalidate request and Stage 5 pages.",
+);
+assert(
+  uploadClient.includes("checklistRequestId") &&
+    requestUploadRoute.includes("getStageFiveChecklistRequestUploadContext") &&
+    requestCompleteRoute.includes("getStageFiveChecklistRequestUploadContext") &&
+    service.includes("uploadedById: user.id") &&
+    service.includes("checklistResponseRequestId: request.id") &&
+    service.includes("fileChecklistItems: { none: {} }") &&
+    service.includes("status: AttachmentStatus.READY") &&
+    attachmentScopeMigration.includes("ProjectAttachment_checklistResponseRequestId_fkey"),
+  "Response attachments must reuse ProjectAttachment while enforcing recipient, project, READY, and one-field association constraints.",
+);
+assert(
+  auth.includes("returnTo") &&
+    signInPage.includes("getSafeReturnUrl") &&
+    signInActions.includes("getSafeReturnUrl") &&
+    signInActions.includes("redirect(returnTo ?? \"/\")"),
+  "Signed-out collaborators must return safely to the authenticated request after normal sign-in.",
+);
+assert(
+  workspace.includes("latestRequest.workflowStatus") &&
+    workspace.includes("Requested from") &&
+    page.includes("initialField") &&
+    workspace.includes("scrollIntoView"),
+  "The owner UI must show active request context and notification deep-links must focus the exact field.",
+);
+
+assert(
+  schema.includes("externalTokenHash") &&
+    schema.includes("externalTokenExpiresAt") &&
+    schema.includes("externalTokenRevokedAt") &&
+    schema.includes("externalResponderEmail") &&
+    schema.includes("ProjectFileChecklistResponseSource") &&
+    schema.includes("ProjectAttachmentUploadSource") &&
+    externalMigration.includes("ProjectFileChecklistRequest_active_email_recipient_key"),
+  "The existing checklist request and attachment models must store hashed-token lifecycle and external provenance.",
+);
+assert(
+  externalToken.includes("randomBytes(EXTERNAL_TOKEN_BYTES)") &&
+    externalToken.includes('createHash("sha256")') &&
+    externalToken.includes("CHECKLIST_EXTERNAL_REQUEST_EXPIRY_DAYS") &&
+    externalToken.includes("DEFAULT_EXPIRY_DAYS = 7") &&
+    !schema.includes("externalToken String"),
+  "External access must use a 32-byte random token, store only SHA-256 hash state, and default to seven-day expiry.",
+);
+assert(
+  service.includes("createExternalChecklistToken") &&
+    service.includes("buildExternalChecklistRequestUrl") &&
+    service.includes("resendStageFiveExternalChecklistRequest") &&
+    service.includes("externalTokenHash: access.tokenHash") &&
+    service.includes("externalTokenRevokedAt: new Date()") &&
+    workspace.includes("Resend email"),
+  "Manual dispatch and resend must generate fresh secure links, revoke failed links, and expose a safe internal resend action.",
+);
+assert(
+  externalPage.includes('dynamic = "force-dynamic"') &&
+    externalPage.includes("noStore()") &&
+    externalPage.includes("StageFiveExternalRequestWorkspace") &&
+    !externalPage.includes("requireUser") &&
+    !externalPage.includes("DashboardAppFrame") &&
+    !externalPage.includes("Sign In") &&
+    !externalWorkspace.includes("Dashboard") &&
+    nextConfig.includes('source: "/external/checklist-request/:token"') &&
+    nextConfig.includes('value: "private, no-store, max-age=0"'),
+  "The exact external route must be standalone, unauthenticated, request-scoped, and explicitly non-cacheable.",
+);
+assert(
+  externalWorkspace.includes("data.field.control") &&
+    externalWorkspace.includes("data.field.suggestions") &&
+    externalWorkspace.includes("Submit Response") &&
+    externalWorkspace.includes("Cannot provide this information") &&
+    externalService.includes("getStageFiveFieldDefinition") &&
+    externalService.includes("validateStageFiveChecklistResponse"),
+  "The external page must use the shared Stage 5 field definition and server response validator.",
+);
+assert(
+  externalUploadRoute.includes("prepareExternalChecklistAttachment") &&
+    externalUploadClient.includes("uploadExternalStageFiveAttachment") &&
+    externalService.includes("EXTERNAL_CHECKLIST_REQUEST") &&
+    externalService.includes("externalUploaderEmail") &&
+    externalService.includes("checklistResponseRequestId: request.id") &&
+    externalService.includes("fileChecklistItems: { none: {} }") &&
+    externalService.includes("projectId: request.projectId"),
+  "External uploads must derive scope from the token and retain explicit recipient/request provenance.",
+);
+assert(
+  externalSubmitRoute.includes("submitExternalChecklistResponse") &&
+    externalDeclineRoute.includes("declineExternalChecklistRequest") &&
+    externalService.includes("ProjectFileChecklistItemStatus.FILLED") &&
+    externalService.includes("ProjectFileChecklistRequestWorkflowStatus.COMPLETED") &&
+    externalService.includes("ProjectFileChecklistResponseSource.EXTERNAL_EMAIL") &&
+    externalService.includes("CHECKLIST_INFORMATION_COMPLETED") &&
+    externalService.includes("CHECKLIST_INFORMATION_DECLINED"),
+  "External completion/decline must update the real checklist lifecycle and notify the requester.",
+);
+assert(
+  rateLimit.includes("checkRateLimit") &&
+    externalUploadRoute.includes('scope: "upload"') &&
+    externalSubmitRoute.includes('scope: "submit"') &&
+    externalPage.includes('scope: "verify"'),
+  "Public token verification, upload, and submit surfaces must reuse bounded rate limiting.",
 );
 
 console.log("Stage 5 persistent per-file checklist UI checks passed.");

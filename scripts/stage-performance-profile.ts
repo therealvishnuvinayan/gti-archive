@@ -9,10 +9,7 @@ import {
   resetPrismaPerformanceMetrics,
 } from "@/lib/prisma";
 import { getProjectStageShellById } from "@/lib/projects";
-import {
-  getStageFiveWorkspaceData,
-  getStageFourFinalFileHandoffData,
-} from "@/lib/stage-five";
+import { getStageFiveWorkspaceData } from "@/lib/stage-five";
 
 type ProfileResult = {
   route: string;
@@ -113,7 +110,6 @@ async function main() {
     const shell = await getProjectStageShellById(project.id, user);
     if (!shell) throw new Error("Project shell unavailable.");
     await getProjectConceptFolders(user, project.id, "PROJECT_DEVELOPMENT");
-    await getStageFourFinalFileHandoffData(user, project.id);
   });
 
   await profile("stage-5", async () => {

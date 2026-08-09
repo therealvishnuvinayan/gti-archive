@@ -177,8 +177,12 @@ export function buildProjectAssetKey({
 }: BuildProjectAssetKeyInput) {
   switch (assetType) {
     case AttachmentAssetType.REVISION_ORIGINAL: {
-      if (!stageId || !revisionId) {
-        throw new Error("Revision original assets require stageId and revisionId.");
+      if (!stageId) {
+        throw new Error("Revision original assets require stageId.");
+      }
+
+      if (!revisionId) {
+        return `projects/${projectId}/stages/${stageId}/revisions/staged/${safeFileName}`;
       }
 
       return `projects/${projectId}/stages/${stageId}/revisions/${revisionId}/assets/original/${safeFileName}`;

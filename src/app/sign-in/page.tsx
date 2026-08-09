@@ -4,13 +4,20 @@ import { redirect } from "next/navigation";
 import { SignInForm } from "@/components/auth/sign-in-form";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSafeReturnUrl } from "@/lib/safe-return-url";
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
+  const query = await searchParams;
+  const returnTo = getSafeReturnUrl(query.returnTo);
   const user = await getCurrentUser();
   const currentYear = new Date().getFullYear();
 
   if (user) {
-    redirect("/");
+    redirect(returnTo ?? "/");
   }
 
   const hasAnyUsers = (await prisma.user.count()) > 0;
@@ -57,7 +64,7 @@ export default async function SignInPage() {
 
           <section className="bg-white px-7 py-10 sm:px-10 sm:py-12 lg:px-14 lg:py-16">
             <div className="mx-auto max-w-[470px]">
-              <SignInForm hasAnyUsers={hasAnyUsers} />
+              <SignInForm hasAnyUsers={hasAnyUsers} returnTo={returnTo ?? undefined} />
             </div>
           </section>
         </div>

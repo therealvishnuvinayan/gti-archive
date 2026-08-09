@@ -7,6 +7,7 @@ const stageParticipantSelect = {
   id: true,
   name: true,
   email: true,
+  avatarUrl: true,
   collaboratorType: true,
 } satisfies Prisma.UserSelect;
 

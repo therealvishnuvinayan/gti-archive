@@ -38,6 +38,7 @@ import {
 } from "@/lib/project-completion";
 import {
   cancelStageRevisionSubmission,
+  cancelStagedConceptRevisionAttachments,
   createStageComment,
   createStageRevision,
   deleteStageComment,
@@ -74,6 +75,7 @@ type StageRevisionInput = {
   projectId: string;
   stageId: string;
   summary?: string;
+  attachmentIds?: string[];
 };
 
 type StageCommentInput = {
@@ -302,6 +304,27 @@ export async function cancelStageRevisionSubmissionAction(input: {
         error instanceof Error
           ? error.message
           : "Unable to cancel the revision right now.",
+    };
+  }
+}
+
+export async function cancelStagedConceptRevisionAttachmentsAction(input: {
+  projectId: string;
+  stageId: string;
+  attachmentIds: string[];
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await cancelStagedConceptRevisionAttachments(user, input);
+    revalidateProjectFlow();
+    return { success: true, count: result.count };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to clean up the staged concept files right now.",
     };
   }
 }

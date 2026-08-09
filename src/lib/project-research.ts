@@ -137,7 +137,7 @@ const researchProjectSelect = {
   },
   workflowStages: {
     where: { stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING },
-    select: { status: true },
+    select: { stageKey: true, status: true },
     take: 1,
   },
 } satisfies Prisma.ProjectSelect;
@@ -170,7 +170,12 @@ export async function getProjectResearchPageData(
     return null;
   }
 
-  assertStageTwoAvailable(project.workflowStages[0]?.status);
+  assertStageTwoAvailable(
+    project.workflowStages.find(
+      (stage) =>
+        stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+    )?.status,
+  );
 
   const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
   const isOwner = project.ownerId === user.id;
@@ -271,7 +276,11 @@ export async function getProjectResearchPageData(
       coOwnerNames: project.coOwners.map((record) => displayName(record.user)),
       executorNames: project.executors.map((record) => displayName(record.user)),
     },
-    workflowStatus: project.workflowStages[0]?.status ?? ProjectWorkflowStageStatus.LOCKED,
+    workflowStatus:
+      project.workflowStages.find(
+        (stage) =>
+          stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+      )?.status ?? ProjectWorkflowStageStatus.LOCKED,
     selectedWorkspace: {
       id: selectedWorkspace.id,
       ownerUserId: selectedWorkspace.ownerUserId,

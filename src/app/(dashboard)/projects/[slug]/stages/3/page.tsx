@@ -5,10 +5,13 @@ import { decodeRouteParam } from "@/lib/route-params";
 
 export default async function StageThreePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ executor?: string }>;
 }) {
   const { slug: rawSlug } = await params;
+  const { executor } = await searchParams;
 
   return (
     <ConceptStageRoute
@@ -16,6 +19,7 @@ export default async function StageThreePage({
       stageNumber={3}
       stageTitle="Initial Concept"
       stageKey={ProjectWorkflowStageKey.CONCEPT_CREATION}
+      executorFilter={executor}
     />
   );
 }

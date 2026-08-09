@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { ProjectWorkflowStageKey } from "@prisma/client";
+import { ProjectFileChecklistField, ProjectWorkflowStageKey } from "@prisma/client";
 import { FileCheck2 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -46,11 +46,13 @@ async function StageFiveContent({
   userPromise,
   initialHandoffId,
   initialMode,
+  initialField,
 }: {
   slug: string;
   userPromise: Promise<StageFiveUser>;
   initialHandoffId?: string;
   initialMode?: "edit" | "view";
+  initialField?: ProjectFileChecklistField;
 }) {
   const user = await userPromise;
   const project = await getProjectStageShellById(slug, user);
@@ -95,6 +97,7 @@ async function StageFiveContent({
           project={project}
           initialHandoffId={initialHandoffId}
           initialMode={initialMode}
+          initialField={initialField}
         />
       </Suspense>
     </section>
@@ -107,12 +110,14 @@ async function StageFiveDataContent({
   project,
   initialHandoffId,
   initialMode,
+  initialField,
 }: {
   slug: string;
   user: StageFiveUser;
   project: NonNullable<Awaited<ReturnType<typeof getProjectStageShellById>>>;
   initialHandoffId?: string;
   initialMode?: "edit" | "view";
+  initialField?: ProjectFileChecklistField;
 }) {
   const pageData = await getStageFiveWorkspaceData(
     user,
@@ -132,6 +137,7 @@ async function StageFiveDataContent({
       pageData={pageData}
       initialHandoffId={initialHandoffId}
       initialMode={initialMode}
+      initialField={initialField}
       showChrome={false}
     />
   );
@@ -142,11 +148,16 @@ export default async function StageFivePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ file?: string; mode?: string }>;
+  searchParams: Promise<{ file?: string; mode?: string; field?: string }>;
 }) {
   const { slug: rawSlug } = await params;
   const query = await searchParams;
   const slug = decodeRouteParam(rawSlug);
+  const initialField = Object.values(ProjectFileChecklistField).includes(
+    query.field as ProjectFileChecklistField,
+  )
+    ? (query.field as ProjectFileChecklistField)
+    : undefined;
   const userPromise = requireUser();
 
   return (
@@ -167,6 +178,7 @@ export default async function StageFivePage({
           userPromise={userPromise}
           initialHandoffId={query.file}
           initialMode={query.mode === "view" ? "view" : "edit"}
+          initialField={initialField}
         />
       </Suspense>
     </DashboardLayout>

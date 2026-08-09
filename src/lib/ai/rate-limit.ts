@@ -1,4 +1,4 @@
-type AiRateLimitInput = {
+type RateLimitInput = {
   key: string;
   limit: number;
   windowMs?: number;
@@ -12,11 +12,11 @@ type AiRateLimitBucket = {
 const DEFAULT_WINDOW_MS = 60_000;
 const buckets = new Map<string, AiRateLimitBucket>();
 
-export function checkAiRateLimit({
+export function checkRateLimit({
   key,
   limit,
   windowMs = DEFAULT_WINDOW_MS,
-}: AiRateLimitInput) {
+}: RateLimitInput) {
   const now = Date.now();
 
   for (const [bucketKey, bucket] of buckets) {
@@ -56,3 +56,5 @@ export function checkAiRateLimit({
     retryAfterSeconds: 0,
   };
 }
+
+export const checkAiRateLimit = checkRateLimit;

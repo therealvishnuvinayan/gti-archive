@@ -90,6 +90,25 @@ const users = {
   },
 };
 
+async function cleanupIntegrationFixtures() {
+  const userIds = [
+    ...Object.values(users).map((user) => user.id),
+    "research-late-collaborator",
+  ];
+
+  await prisma.project.deleteMany({
+    where: {
+      OR: [{ ownerId: { in: userIds } }, { createdById: { in: userIds } }],
+    },
+  });
+  await prisma.contactDirectoryEntry.deleteMany({
+    where: { createdById: { in: userIds } },
+  });
+  await prisma.user.deleteMany({
+    where: { id: { in: userIds }, email: { endsWith: "@example.test" } },
+  });
+}
+
 async function unlockStageTwo(projectId: string) {
   await prisma.projectWorkflowStage.updateMany({
     where: { projectId, stageKey: ProjectWorkflowStageKey.PROJECT_INQUIRY },
@@ -195,7 +214,11 @@ async function main() {
   check(15, (await prisma.projectResearchWorkspace.findUnique({ where: { projectId_ownerUserId: { projectId, ownerUserId: lateUserId } }, include: { folders: true } }))?.folders.length === 7, "late collaborator must get a complete workspace");
 
   const superAdminPage = await getProjectResearchPageData(users.superAdmin, projectId);
-  check(16, superAdminPage?.selectedWorkspace.ownerUserId === users.owner.id, "non-participant SUPER_ADMIN must default to owner workspace");
+  check(
+    16,
+    superAdminPage?.selectedWorkspace.ownerUserId === users.owner.id,
+    `non-participant SUPER_ADMIN must default to owner workspace (actual=${superAdminPage?.selectedWorkspace.ownerUserId ?? "null"}, options=${superAdminPage?.workspaceOptions.map((item) => item.ownerUserId).join(",") ?? "none"})`,
+  );
   const executorPage = await getProjectResearchPageData(users.executor, projectId);
   check(17, executorPage?.selectedWorkspace.ownerUserId === users.executor.id, "participant must default to own workspace");
   check(18, superAdminPage?.workspaceOptions.length === 5, "SUPER_ADMIN must see all current participant workspaces");
@@ -331,8 +354,11 @@ async function main() {
 }
 
 main()
-  .finally(() => prisma.$disconnect())
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;
+  })
+  .finally(async () => {
+    await cleanupIntegrationFixtures();
+    await prisma.$disconnect();
   });

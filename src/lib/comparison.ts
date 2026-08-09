@@ -21,6 +21,11 @@ import {
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import {
+  canManageProjectConcept,
+  canViewProjectConcept,
+  getProjectConceptAccessContext,
+} from "@/lib/project-concept-access";
 import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
 import {
   canBypassCollaboratorVisibility,
@@ -206,9 +211,17 @@ async function resolveComparableSubmissionPair(
     throwOnInvalidPair?: boolean;
   } = {},
 ) {
-  const project = await assertProjectAccess(user, input.projectId);
+  const project = await assertProjectAccess(user, input.projectId, input.stageId);
 
-  if (!hasProjectPermission(user, project, "compare.view")) {
+  const concept = await getProjectConceptAccessContext({
+    projectId: input.projectId,
+    taskerStageId: input.stageId,
+  });
+  const canViewComparison = concept
+    ? canViewProjectConcept(user, concept)
+    : hasProjectPermission(user, project, "compare.view");
+
+  if (!canViewComparison) {
     throw new Error("You do not have permission to compare project submissions.");
   }
 
@@ -285,6 +298,7 @@ async function resolveComparableSubmissionPair(
   for (const attachment of attachments) {
     await assertProjectAttachmentVisibilityForUser(user, {
       projectId: attachment.projectId,
+      stageId: input.stageId,
       createdAt: attachment.createdAt,
       project: {
         ownerId: project.ownerId,
@@ -345,6 +359,7 @@ async function getVisibleSubmissionCaptionContext(
 
   await assertProjectAttachmentVisibilityForUser(user, {
     projectId: attachment.projectId,
+    stageId: attachment.stageId,
     createdAt: attachment.createdAt,
     project: {
       ownerId: project.ownerId,
@@ -393,13 +408,28 @@ async function getLatestFormalSubmissionAttachmentId(input: {
   return latestAttachment?.id ?? null;
 }
 
+async function canCreateComparisonMarker(
+  user: AccessUser,
+  project: Parameters<typeof canAddProjectCaptions>[1] & { id: string },
+  stageId: string,
+) {
+  const concept = await getProjectConceptAccessContext({
+    projectId: project.id,
+    taskerStageId: stageId,
+  });
+
+  return concept
+    ? canManageProjectConcept(user, concept)
+    : canAddProjectCaptions(user, project);
+}
+
 async function getSubmissionCaptionReadOnlyReason(
   user: AccessUser,
   context: Awaited<ReturnType<typeof getVisibleSubmissionCaptionContext>>,
 ) {
   const { attachment, project, stage } = context;
 
-  if (!canAddProjectCaptions(user, project)) {
+  if (!(await canCreateComparisonMarker(user, project, stage.id))) {
     return "You do not have permission to add captions.";
   }
 
@@ -720,7 +750,7 @@ export async function createComparisonComment(
     permissionMessage: "You do not have permission to add captions.",
   });
 
-  if (!canAddProjectCaptions(user, project)) {
+  if (!(await canCreateComparisonMarker(user, project, stage.id))) {
     throw new Error("You do not have permission to add captions.");
   }
 

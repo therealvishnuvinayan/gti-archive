@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { StageHistoryRecord } from "@/lib/project-history";
+import type { ProjectConceptChatMode } from "@/lib/project-concepts";
 import type {
   ProjectAttachmentRecord,
   ProjectCollaboratorRecord,
@@ -65,6 +66,7 @@ type ProjectCompareWorkspaceProps = {
   canManageChatVisibility: boolean;
   canAddCaptions: boolean;
   currentUserId: string;
+  conceptMode?: ProjectConceptChatMode;
 };
 
 type ImageDimensions = {
@@ -103,17 +105,20 @@ function buildCompareHref(
   stageId: string | null | undefined,
   baseAttachmentId: string,
   compareAttachmentId: string,
+  conceptCompareHref?: string,
 ) {
   const searchParams = new URLSearchParams();
 
-  if (stageId) {
+  if (stageId && !conceptCompareHref) {
     searchParams.set("stage", stageId);
   }
 
   searchParams.set("base", baseAttachmentId);
   searchParams.set("compare", compareAttachmentId);
 
-  return `/projects/${projectId}/compare?${searchParams.toString()}`;
+  const compareHref = conceptCompareHref ?? `/projects/${projectId}/compare`;
+
+  return `${compareHref}?${searchParams.toString()}`;
 }
 
 function getFallbackComparisonId(
@@ -917,6 +922,7 @@ export function ProjectCompareWorkspace({
   canManageChatVisibility,
   canAddCaptions,
   currentUserId,
+  conceptMode,
 }: ProjectCompareWorkspaceProps) {
   const router = useRouter();
   const [isSelectionPending, startSelectionTransition] = useTransition();
@@ -1103,6 +1109,7 @@ export function ProjectCompareWorkspace({
           stageId,
           nextBaseAttachmentId,
           nextCompareAttachmentId,
+          conceptMode?.compareHref,
         ),
         { scroll: false },
       );
@@ -1183,7 +1190,11 @@ export function ProjectCompareWorkspace({
   return (
     <section className="space-y-6">
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
-      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_288px]">
+      <div
+        className={`grid gap-4 ${
+          conceptMode ? "" : "2xl:grid-cols-[minmax(0,1fr)_288px]"
+        }`}
+      >
         <div className="space-y-4">
           <Card className="overflow-hidden rounded-[24px] border-none bg-[linear-gradient(135deg,#2f8d5d,#46a470)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1202,8 +1213,30 @@ export function ProjectCompareWorkspace({
                   </div>
                   <div>
                     <p className="font-[700] text-[#d3f7ca]">Stage</p>
-                    <p>{activeStage?.label ?? project.currentStageName}</p>
+                    <p>
+                      {conceptMode?.stageLabel ??
+                        activeStage?.label ??
+                        project.currentStageName}
+                    </p>
                   </div>
+                  {conceptMode ? (
+                    <>
+                      <div>
+                        <p className="font-[700] text-[#d3f7ca]">Concept</p>
+                        <p>{conceptMode.conceptName}</p>
+                      </div>
+                      <div>
+                        <p className="font-[700] text-[#d3f7ca]">
+                          Assigned Executor
+                        </p>
+                        <p>
+                          {conceptMode.assignedExecutor?.name?.trim() ||
+                            conceptMode.assignedExecutor?.email ||
+                            "Not assigned"}
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
                   <div>
                     <p className="font-[700] text-[#d3f7ca]">Submissions</p>
                     <p>{submissions.length}</p>
@@ -1360,7 +1393,7 @@ export function ProjectCompareWorkspace({
           ) : null}
         </div>
 
-        <div className="space-y-4">
+        {!conceptMode ? <div className="space-y-4">
           <Card className="rounded-[20px] border border-brand/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-[20px] font-semibold tracking-tight text-brand">Stage Overview</CardTitle>
@@ -1409,7 +1442,7 @@ export function ProjectCompareWorkspace({
               saving={collaboratorSaving}
             />
           ) : null}
-        </div>
+        </div> : null}
       </div>
 
       {viewerFullscreen && hasEnoughSubmissions && baseSubmission && compareSubmission ? (
