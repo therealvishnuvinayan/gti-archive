@@ -35,12 +35,13 @@ const [workspace, fieldDefinitions, filePicker, requestWorkspace, requestPage, r
     readFile("src/app/sign-in/actions.ts", "utf8"),
   ]);
 
-const [externalPage, externalWorkspace, externalService, externalToken, externalUploadClient, externalUploadRoute, externalSubmitRoute, externalDeclineRoute, externalMigration, rateLimit, nextConfig] =
+const [externalPage, externalWorkspace, externalService, externalToken, secureToken, externalUploadClient, externalUploadRoute, externalSubmitRoute, externalDeclineRoute, externalMigration, rateLimit, nextConfig] =
   await Promise.all([
     readFile("src/app/external/checklist-request/[token]/page.tsx", "utf8"),
     readFile("src/components/projects/stage-five-external-request-workspace.tsx", "utf8"),
     readFile("src/lib/stage-five-external.ts", "utf8"),
     readFile("src/lib/checklist-external-token.ts", "utf8"),
+    readFile("src/lib/secure-external-token.ts", "utf8"),
     readFile("src/lib/stage-five-external-upload-client.ts", "utf8"),
     readFile("src/app/api/external/checklist-request/[token]/upload-url/route.ts", "utf8"),
     readFile("src/app/api/external/checklist-request/[token]/submit/route.ts", "utf8"),
@@ -376,8 +377,8 @@ assert(
   "The existing checklist request and attachment models must store hashed-token lifecycle and external provenance.",
 );
 assert(
-  externalToken.includes("randomBytes(EXTERNAL_TOKEN_BYTES)") &&
-    externalToken.includes('createHash("sha256")') &&
+  secureToken.includes("randomBytes(EXTERNAL_TOKEN_BYTES)") &&
+    secureToken.includes('createHash("sha256")') &&
     externalToken.includes("CHECKLIST_EXTERNAL_REQUEST_EXPIRY_DAYS") &&
     externalToken.includes("DEFAULT_EXPIRY_DAYS = 7") &&
     !schema.includes("externalToken String"),

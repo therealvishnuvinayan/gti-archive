@@ -16,6 +16,7 @@ import { requireUser } from "@/lib/auth";
 import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/projects";
 import { decodeRouteParam } from "@/lib/route-params";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import { getStageSixWorkspaceData } from "@/lib/stage-six";
 
 type StageSixUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -38,9 +39,11 @@ async function StageSixUnavailableContent({
 async function StageSixContent({
   slug,
   userPromise,
+  initialUnitId,
 }: {
   slug: string;
   userPromise: Promise<StageSixUser>;
+  initialUnitId?: string;
 }) {
   const user = await userPromise;
   const project = await getProjectStageShellById(slug, user);
@@ -69,15 +72,27 @@ async function StageSixContent({
     );
   }
 
-  return <StageSixWorkspace project={project} currentUserId={user.id} />;
+  const pageData = await getStageSixWorkspaceData(user, slug);
+  if (!pageData) return <ProjectAccessUnavailableState />;
+
+  return (
+    <StageSixWorkspace
+      project={project}
+      currentUserId={user.id}
+      pageData={pageData}
+      initialUnitId={initialUnitId}
+    />
+  );
 }
 
 export default async function StageSixPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ unit?: string }>;
 }) {
-  const { slug: rawSlug } = await params;
+  const [{ slug: rawSlug }, query] = await Promise.all([params, searchParams]);
   const slug = decodeRouteParam(rawSlug);
   const userPromise = requireUser();
 
@@ -94,7 +109,11 @@ export default async function StageSixPage({
       }}
     >
       <Suspense fallback={<StageSixLoadingShell />}>
-        <StageSixContent slug={slug} userPromise={userPromise} />
+        <StageSixContent
+          slug={slug}
+          userPromise={userPromise}
+          initialUnitId={query.unit}
+        />
       </Suspense>
     </DashboardLayout>
   );

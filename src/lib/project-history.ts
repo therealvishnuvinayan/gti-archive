@@ -6577,6 +6577,21 @@ export async function deleteAttachmentForUser(
         createdAt: true,
         approvedConceptFolder: { select: { id: true } },
         conceptStartingReference: { select: { id: true } },
+        sourceProductionUnits: { select: { id: true }, take: 1 },
+        productionUnitFile: { select: { id: true } },
+        fileChecklistItems: {
+          select: {
+            checklistItem: {
+              select: {
+                checklist: {
+                  select: {
+                    productionUnit: { select: { status: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
         project: {
           select: {
             ownerId: true,
@@ -6623,6 +6638,29 @@ export async function deleteAttachmentForUser(
   if (attachment.approvedConceptFolder || attachment.conceptStartingReference) {
     throw new Error(
       "This file is locked because it is an Approved Concept or a Stage 4 starting reference.",
+    );
+  }
+
+  if (attachment.sourceProductionUnits.length > 0) {
+    throw new Error(
+      "This file is locked because it is the source of a Stage 6 Production Unit.",
+    );
+  }
+
+  if (attachment.productionUnitFile) {
+    throw new Error(
+      "Remove this file from its Stage 6 Production Unit before deleting it.",
+    );
+  }
+
+  if (
+    attachment.fileChecklistItems.some(({ checklistItem }) => {
+      const status = checklistItem.checklist.productionUnit?.status;
+      return status && status !== "PREPARATION";
+    })
+  ) {
+    throw new Error(
+      "This checklist file is locked because its Stage 6 approval workflow has started.",
     );
   }
 

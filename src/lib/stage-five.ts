@@ -37,8 +37,10 @@ import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
 } from "@/lib/storage/s3";
+import { getStageFiveCompletionState } from "@/lib/stage-six";
 
 export { STAGE_FIVE_FIELD_KEYS, STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
+export { completeStageFive } from "@/lib/stage-six";
 
 export type StageFiveChecklistValue = {
   text?: string;
@@ -87,6 +89,9 @@ export type StageFiveWorkspaceData = {
   files: StageFiveFileRecord[];
   participants: StageFiveParticipantRecord[];
   canEdit: boolean;
+  canComplete: boolean;
+  stageCompleted: boolean;
+  pendingRequestCount: number;
 };
 
 export type StageFiveChecklistRequestData = {
@@ -402,10 +407,15 @@ export async function getStageFiveWorkspaceData(
     };
   });
 
+  const completionState = await getStageFiveCompletionState(user, projectId);
+
   return {
     files,
     participants: getParticipants(project).filter((participant) => participant.id !== user.id),
     canEdit: hasProjectPermission(user, project, "file.uploadAttachment"),
+    canComplete: completionState?.canComplete ?? false,
+    stageCompleted: completionState?.completed ?? false,
+    pendingRequestCount: completionState?.pendingRequestCount ?? 0,
   };
 }
 

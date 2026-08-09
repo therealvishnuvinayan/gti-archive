@@ -149,6 +149,44 @@ enum ProjectFileChecklistResponseSource {
   EXTERNAL_EMAIL
 }
 
+enum ProjectProductionUnitStatus {
+  PREPARATION
+  APPROVAL_PENDING
+  REJECTED
+  HANDOVER_READY
+  HANDED_OVER
+}
+
+enum ProductionApprovalRecipientType {
+  EXISTING_COLLABORATOR
+  EXTERNAL_EMAIL
+}
+
+enum ProductionApprovalStepStatus {
+  WAITING
+  ACTIVE
+  APPROVED
+  REJECTED
+}
+
+enum ProductionDispatchStatus {
+  NOT_SENT
+  PENDING
+  SENT
+  FAILED
+}
+
+enum ProductionHandoverRoute {
+  PURCHASE_DEPARTMENT
+  DIRECT_VENDOR
+}
+
+enum ProductionHandoverDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum ProjectAttachmentUploadSource {
   AUTHENTICATED_USER
   EXTERNAL_CHECKLIST_REQUEST
@@ -269,6 +307,10 @@ enum NotificationType {
   CHECKLIST_INFORMATION_REQUESTED
   CHECKLIST_INFORMATION_COMPLETED
   CHECKLIST_INFORMATION_DECLINED
+  PRODUCTION_APPROVAL_REQUESTED
+  PRODUCTION_APPROVAL_APPROVED
+  PRODUCTION_APPROVAL_REJECTED
+  PRODUCTION_HANDOVER_COMPLETED
 }
 
 enum NotificationEntityType {
@@ -281,6 +323,8 @@ enum NotificationEntityType {
   COMPLETION_WORKFLOW
   COMPLETION_DOCUMENT
   CHECKLIST_REQUEST
+  PRODUCTION_UNIT
+  PRODUCTION_APPROVAL
 }
 
 enum FluxAiConversationStatus {
@@ -369,6 +413,14 @@ model User {
   fileChecklistRequestsMade           ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRequester")
   fileChecklistRequestsReceived       ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRecipient")
   fileChecklistRequestsResponded      ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestResponder")
+  createdProductionUnits              ProjectProductionUnit[]              @relation("ProjectProductionUnitCreator")
+  addedProductionUnitFiles            ProjectProductionUnitFile[]          @relation("ProjectProductionUnitFileAdder")
+  productionApprovalAssignments       ProductionApprovalStep[]             @relation("ProductionApprovalRecipient")
+  productionApprovalsRequested        ProductionApprovalStep[]             @relation("ProductionApprovalRequester")
+  productionApprovalDecisions         ProductionApprovalStep[]             @relation("ProductionApprovalDecider")
+  productionHandoversRequested        ProjectProductionHandover[]          @relation("ProjectProductionHandoverRequester")
+  productionHandoverAssignments       ProjectProductionHandover[]          @relation("ProjectProductionHandoverRecipient")
+  productionHandoversCompleted        ProjectProductionHandover[]          @relation("ProjectProductionHandoverCompleter")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -496,6 +548,7 @@ model Project {
   stageFileHandoffs      ProjectStageFileHandoff[]
   fileChecklists         ProjectFileChecklist[]
   fileChecklistRequests  ProjectFileChecklistRequest[]
+  productionUnits        ProjectProductionUnit[]
   archive                ProjectArchive?
   archivedFiles          ArchivedProjectFile[]
   archiveArtworkMetadata ArchiveArtworkMetadata[]
@@ -743,6 +796,7 @@ model ProjectStageFileHandoff {
   handedOffBy            User                    @relation("ProjectStageFileHandoffCreator", fields: [handedOffById], references: [id], onDelete: Restrict)
   handedOffAt            DateTime                @default(now())
   checklist              ProjectFileChecklist?
+  productionUnit         ProjectProductionUnit?
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 
@@ -762,6 +816,7 @@ model ProjectFileChecklist {
   sourceAttachment   ProjectAttachment             @relation("ProjectFileChecklistSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Cascade)
   items              ProjectFileChecklistItem[]
   requests           ProjectFileChecklistRequest[]
+  productionUnit     ProjectProductionUnit?
   createdAt          DateTime                      @default(now())
   updatedAt          DateTime                      @updatedAt
 
@@ -852,6 +907,129 @@ model ProjectFileChecklistRequest {
   @@index([respondedByUserId])
   @@index([externalTokenExpiresAt])
   @@index([responseSource])
+}
+
+model ProjectProductionUnit {
+  id                 String                      @id @default(cuid())
+  projectId          String
+  project            Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceHandoffId    String                      @unique
+  sourceHandoff      ProjectStageFileHandoff     @relation(fields: [sourceHandoffId], references: [id], onDelete: Cascade)
+  sourceChecklistId  String                      @unique
+  sourceChecklist    ProjectFileChecklist        @relation(fields: [sourceChecklistId], references: [id], onDelete: Cascade)
+  sourceAttachmentId String
+  sourceAttachment   ProjectAttachment           @relation("ProjectProductionUnitSourceAttachment", fields: [sourceAttachmentId], references: [id], onDelete: Cascade)
+  status             ProjectProductionUnitStatus @default(PREPARATION)
+  createdById        String
+  createdBy          User                        @relation("ProjectProductionUnitCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  files              ProjectProductionUnitFile[]
+  approvalSteps      ProductionApprovalStep[]
+  handover           ProjectProductionHandover?
+  approvedAt         DateTime?
+  handedOverAt       DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  @@unique([projectId, sourceAttachmentId])
+  @@index([projectId, status, createdAt])
+  @@index([sourceChecklistId])
+  @@index([createdById])
+}
+
+model ProjectProductionUnitFile {
+  id               String                @id @default(cuid())
+  productionUnitId String
+  productionUnit   ProjectProductionUnit @relation(fields: [productionUnitId], references: [id], onDelete: Cascade)
+  attachmentId     String                @unique
+  attachment       ProjectAttachment     @relation("ProjectProductionUnitFileAttachment", fields: [attachmentId], references: [id], onDelete: Cascade)
+  addedById        String
+  addedBy          User                  @relation("ProjectProductionUnitFileAdder", fields: [addedById], references: [id], onDelete: Restrict)
+  createdAt        DateTime              @default(now())
+
+  @@unique([productionUnitId, attachmentId])
+  @@index([productionUnitId, createdAt])
+  @@index([addedById])
+}
+
+model ProductionApprovalStep {
+  id                          String                           @id @default(cuid())
+  clientRequestId             String?                          @unique
+  productionUnitId            String
+  productionUnit              ProjectProductionUnit            @relation(fields: [productionUnitId], references: [id], onDelete: Cascade)
+  sequence                    Int
+  isMarketingDirectorRequired Boolean                          @default(false)
+  recipientType               ProductionApprovalRecipientType?
+  recipientUserId             String?
+  recipientUser               User?                            @relation("ProductionApprovalRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recipientName               String?
+  recipientEmail              String?
+  requestedById               String?
+  requestedBy                 User?                            @relation("ProductionApprovalRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  sharedFieldKeys             ProjectFileChecklistField[]      @default([])
+  selectedFileIds             String[]                         @default([])
+  sharedSnapshot              Json?
+  message                     String?                          @db.Text
+  status                      ProductionApprovalStepStatus     @default(WAITING)
+  dispatchStatus              ProductionDispatchStatus         @default(NOT_SENT)
+  activatedAt                 DateTime?
+  sentAt                      DateTime?
+  failedAt                    DateTime?
+  failureMessage              String?                          @db.Text
+  externalTokenHash           String?                          @unique
+  externalTokenExpiresAt      DateTime?
+  externalTokenCreatedAt      DateTime?
+  externalTokenRevokedAt      DateTime?
+  externalOpenedAt            DateTime?
+  decidedByUserId             String?
+  decidedByUser               User?                            @relation("ProductionApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  decisionComment             String?                          @db.Text
+  decidedAt                   DateTime?
+  createdAt                   DateTime                         @default(now())
+  updatedAt                   DateTime                         @updatedAt
+
+  @@unique([productionUnitId, sequence])
+  @@index([productionUnitId, status, sequence])
+  @@index([recipientUserId, status])
+  @@index([requestedById])
+  @@index([dispatchStatus, status])
+  @@index([decidedByUserId])
+}
+
+model ProjectProductionHandover {
+  id                     String                           @id @default(cuid())
+  clientRequestId        String                           @unique
+  productionUnitId       String                           @unique
+  productionUnit         ProjectProductionUnit            @relation(fields: [productionUnitId], references: [id], onDelete: Cascade)
+  route                  ProductionHandoverRoute
+  recipientType          ProductionApprovalRecipientType
+  recipientUserId        String?
+  recipientUser          User?                            @relation("ProjectProductionHandoverRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recipientName          String
+  recipientEmail         String
+  sharedFieldKeys        ProjectFileChecklistField[]      @default([])
+  selectedFileIds        String[]                         @default([])
+  contentSnapshot        Json
+  note                   String?                          @db.Text
+  requestedById          String
+  requestedBy            User                             @relation("ProjectProductionHandoverRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  handedOverById         String?
+  handedOverBy           User?                            @relation("ProjectProductionHandoverCompleter", fields: [handedOverById], references: [id], onDelete: Restrict)
+  deliveryStatus         ProductionHandoverDeliveryStatus @default(PENDING)
+  providerMessageId      String?
+  sentAt                 DateTime?
+  failedAt               DateTime?
+  failureMessage         String?                          @db.Text
+  externalTokenHash      String?                          @unique
+  externalTokenExpiresAt DateTime?
+  externalTokenCreatedAt DateTime?
+  externalTokenRevokedAt DateTime?
+  createdAt              DateTime                         @default(now())
+  updatedAt              DateTime                         @updatedAt
+
+  @@index([recipientUserId])
+  @@index([deliveryStatus, createdAt])
+  @@index([requestedById])
+  @@index([handedOverById])
 }
 
 model ProjectCategory {
@@ -1242,6 +1420,8 @@ model ProjectAttachment {
   researchFolderFile         ProjectResearchFolderFile?
   stageFileHandoffs          ProjectStageFileHandoff[]             @relation("ProjectStageFileHandoffSourceAttachment")
   sourceFileChecklists       ProjectFileChecklist[]                @relation("ProjectFileChecklistSourceAttachment")
+  sourceProductionUnits      ProjectProductionUnit[]               @relation("ProjectProductionUnitSourceAttachment")
+  productionUnitFile         ProjectProductionUnitFile?            @relation("ProjectProductionUnitFileAttachment")
   approvedConceptFolder      ProjectConceptFolder?                 @relation("ProjectConceptApprovedAttachment")
   conceptStartingReference   ProjectConceptFolder?                 @relation("ProjectConceptStartingReference")
   fileChecklistItems         ProjectFileChecklistItemAttachment[]  @relation("ProjectFileChecklistItemAttachment")
@@ -1626,6 +1806,7 @@ model Notification {
   attachmentId String?
   archiveId    String?
   url          String?
+  dedupeKey    String?                 @unique
   isRead       Boolean                 @default(false)
   readAt       DateTime?
   createdAt    DateTime                @default(now())

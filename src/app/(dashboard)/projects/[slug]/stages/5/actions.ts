@@ -9,11 +9,26 @@ import {
 import { requireUser } from "@/lib/auth";
 import {
   cancelStageFiveChecklistRequest,
+  completeStageFive,
   requestStageFiveChecklistInformation,
   resendStageFiveExternalChecklistRequest,
   saveStageFiveChecklist,
   type StageFiveChecklistValue,
 } from "@/lib/stage-five";
+
+export async function completeStageFiveAction(input: { projectId: string }) {
+  const user = await requireUser();
+  try {
+    const result = await completeStageFive(user, input);
+    revalidatePath(`/projects/${input.projectId}`);
+    revalidatePath(`/projects/${input.projectId}/stages/5`);
+    revalidatePath(`/projects/${input.projectId}/stages/6`);
+    return result;
+  } catch (error) {
+    console.error("[stage-five] completion failed", error);
+    return { error: "Unable to complete Stage 5 right now." } as const;
+  }
+}
 
 export async function saveStageFiveChecklistAction(input: {
   projectId: string;

@@ -41,6 +41,7 @@ import {
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import {
+  completeStageFiveAction,
   requestStageFiveChecklistInformationAction,
   resendStageFiveExternalChecklistRequestAction,
   saveStageFiveChecklistAction,
@@ -52,6 +53,7 @@ import {
 } from "@/components/projects/checklist-file-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -670,6 +672,9 @@ export function StageFiveWorkspace({
   const [dirtyHandoffIds, setDirtyHandoffIds] = useState<Set<string>>(() => new Set());
   const [isSaving, startSaving] = useTransition();
   const [isRequestActionPending, startRequestAction] = useTransition();
+  const [isCompleting, startCompleting] = useTransition();
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const [completionError, setCompletionError] = useState("");
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
   const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
   const activeDraft = drafts[selectedHandoffId];
@@ -689,6 +694,24 @@ export function StageFiveWorkspace({
     params.set("file", handoffId);
     params.set("mode", mode);
     router.replace(`/projects/${project.id}/stages/5?${params.toString()}`, { scroll: false });
+  }
+
+  function completeStage() {
+    if (isCompleting || dirtyHandoffIds.size > 0) return;
+    setCompletionError("");
+    startCompleting(async () => {
+      const result = await completeStageFiveAction({ projectId: project.id });
+      if ("error" in result) {
+        setCompletionError(result.error ?? "Unable to complete Stage 5.");
+        return;
+      }
+      setShowCompletionDialog(false);
+      showSuccessToast(
+        `Stage 5 completed. ${result.productionUnitCount} Production Unit${result.productionUnitCount === 1 ? " was" : "s were"} created.`,
+      );
+      router.push(`/projects/${project.id}/stages/6`);
+      router.refresh();
+    });
   }
 
   function updateMode(nextMode: "edit" | "view") {
@@ -1162,11 +1185,32 @@ export function StageFiveWorkspace({
                 <ListChecks className="h-4 w-4" /> All Stages
               </Link>
             </Button>
-            <Button asChild type="button" className="min-w-[180px] rounded-[13px]">
-              <Link href={`/projects/${project.id}/stages/6`}>
-                Next Stage <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            {pageData.stageCompleted ? (
+              <Button asChild type="button" className="min-w-[180px] rounded-[13px]">
+                <Link href={`/projects/${project.id}/stages/6`}>
+                  Next Stage <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : pageData.canComplete ? (
+              <div className="text-right">
+                {dirtyHandoffIds.size > 0 ? (
+                  <p className="mb-2 text-[10px] font-[650] text-[#9a6a22]">Save checklist changes before completion.</p>
+                ) : null}
+                <Button
+                  type="button"
+                  className="min-w-[180px] rounded-[13px]"
+                  disabled={dirtyHandoffIds.size > 0}
+                  onClick={() => {
+                    setCompletionError("");
+                    setShowCompletionDialog(true);
+                  }}
+                >
+                  <Check className="h-4 w-4" /> Complete Stage 5
+                </Button>
+              </div>
+            ) : (
+              <p className="text-[11px] font-[650] text-[#77827a]">Owner or Co-Owner completion required.</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1196,6 +1240,22 @@ export function StageFiveWorkspace({
           }}
         />
       ) : null}
+      <ConfirmationDialog
+        isOpen={showCompletionDialog}
+        title="Complete Stage 5"
+        description={
+          pageData.pendingRequestCount > 0
+            ? "Some checklist information requests are still pending. Continue and create one Production Unit for every Stage 5 final file?"
+            : "Create one Production Unit for every Stage 5 final file and unlock Stage 6?"
+        }
+        confirmLabel="Complete Stage 5"
+        pending={isCompleting}
+        error={completionError || undefined}
+        onConfirm={completeStage}
+        onClose={() => {
+          if (!isCompleting) setShowCompletionDialog(false);
+        }}
+      />
     </section>
   );
 }

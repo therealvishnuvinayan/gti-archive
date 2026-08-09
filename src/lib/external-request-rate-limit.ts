@@ -14,7 +14,7 @@ export function getExternalRequestClientIp(headers: Headers) {
 export function checkExternalRequestRateLimit(input: {
   token: string;
   clientIp: string;
-  scope: "verify" | "upload" | "submit" | "file";
+  scope: "verify" | "upload" | "submit" | "decision" | "file";
   limit: number;
 }) {
   const tokenFingerprint = createHash("sha256")
@@ -22,7 +22,7 @@ export function checkExternalRequestRateLimit(input: {
     .digest("hex")
     .slice(0, 20);
   return checkRateLimit({
-    key: `external-checklist:${input.scope}:${input.clientIp}:${tokenFingerprint}`,
+    key: `external-secure-request:${input.scope}:${input.clientIp}:${tokenFingerprint}`,
     limit: input.limit,
     windowMs: 60_000,
   });
