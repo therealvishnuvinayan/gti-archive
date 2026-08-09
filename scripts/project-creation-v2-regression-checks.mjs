@@ -146,6 +146,14 @@ assertIncludes(
   'document.addEventListener("pointerdown", handlePointerDown)',
   "Create Project selector outside-click handling",
 );
+assert(
+  /event\.stopPropagation\(\);\s*removeUser\(user\.id\);/.test(userSelector),
+  "Removing a selected project user must not bubble to the selector trigger.",
+);
+assert(
+  !/removeUser\(user\.id\);\s*openSelector\(\);/.test(userSelector),
+  "Removing a co-owner, executor, or collaborator must not open the user list.",
+);
 
 for (const snippet of [
   "isProjectOwnerOrCoOwner",

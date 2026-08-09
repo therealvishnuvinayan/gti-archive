@@ -213,7 +213,6 @@ export function ProjectUserSelector({
                 onClick={(event) => {
                   event.stopPropagation();
                   removeUser(user.id);
-                  openSelector();
                 }}
                 className="grid size-5 shrink-0 place-items-center rounded-full text-[#677169] transition hover:bg-[#dde3dd] hover:text-[#172019]"
                 aria-label={`Remove ${user.name}`}
