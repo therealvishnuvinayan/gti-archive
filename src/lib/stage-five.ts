@@ -37,8 +37,10 @@ import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
 } from "@/lib/storage/s3";
+import { getStageFiveCompletionState } from "@/lib/stage-six";
 
 export { STAGE_FIVE_FIELD_KEYS, STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
+export { completeStageFive } from "@/lib/stage-six";
 
 export type StageFiveChecklistValue = {
   text?: string;
@@ -87,6 +89,9 @@ export type StageFiveWorkspaceData = {
   files: StageFiveFileRecord[];
   participants: StageFiveParticipantRecord[];
   canEdit: boolean;
+  canComplete: boolean;
+  stageCompleted: boolean;
+  pendingRequestCount: number;
 };
 
 export type StageFiveChecklistRequestData = {
@@ -402,10 +407,15 @@ export async function getStageFiveWorkspaceData(
     };
   });
 
+  const completionState = await getStageFiveCompletionState(user, projectId);
+
   return {
     files,
     participants: getParticipants(project).filter((participant) => participant.id !== user.id),
     canEdit: hasProjectPermission(user, project, "file.uploadAttachment"),
+    canComplete: completionState?.canComplete ?? false,
+    stageCompleted: completionState?.completed ?? false,
+    pendingRequestCount: completionState?.pendingRequestCount ?? 0,
   };
 }
 
@@ -413,6 +423,8 @@ function validateChecklistValue(
   fieldKey: ProjectFileChecklistField,
   value: StageFiveChecklistValue,
 ): { error: string } | { value: StageFiveChecklistValue } {
+  const field = getStageFiveFieldDefinition(fieldKey);
+  if (!field) return { error: "Unknown checklist field." };
   const text = typeof value.text === "string" ? value.text.trim() : "";
   if (text.length > 20_000) return { error: `${STAGE_FIVE_FIELD_LABELS[fieldKey]} is too long.` };
   const values = Array.isArray(value.values)
@@ -420,17 +432,35 @@ function validateChecklistValue(
         new Set(value.values.map((item) => item.trim().replace(/\s+/g, " ")).filter(Boolean)),
       )
     : [];
-  if (values.length > 50 || values.some((item) => item.length > 150)) {
+  const maxValueLength =
+    fieldKey === ProjectFileChecklistField.COMPULSORY_TEXT ||
+    fieldKey === ProjectFileChecklistField.MARKETING_COPY
+      ? 2_000
+      : 150;
+  if (values.length > 50 || values.some((item) => item.length > maxValueLength)) {
     return { error: `${STAGE_FIVE_FIELD_LABELS[fieldKey]} has too many or overly long values.` };
   }
+  const normalizedValues =
+    (field.control === "multi-value" || field.control === "finishes") &&
+    values.length === 0 &&
+    text
+      ? [text]
+      : values;
+  const normalizedValue: StageFiveChecklistValue =
+    field.control === "text" ||
+    field.control === "textarea" ||
+    field.control === "text-attachment"
+      ? { ...(text ? { text } : {}) }
+      : field.control === "health-warning"
+        ? {
+            ...(text ? { text } : {}),
+            included: Boolean(value.included),
+          }
+        : field.control === "multi-value" || field.control === "finishes"
+          ? { ...(normalizedValues.length ? { values: normalizedValues } : {}) }
+          : {};
   return {
-    value: {
-      ...(text ? { text } : {}),
-      ...(values.length ? { values } : {}),
-      ...(fieldKey === ProjectFileChecklistField.HEALTH_WARNING
-        ? { included: Boolean(value.included) }
-        : {}),
-    } satisfies StageFiveChecklistValue,
+    value: normalizedValue,
   };
 }
 

@@ -18,6 +18,18 @@ export const PROJECT_ASSET_ALLOWED_EXTENSIONS = [
   "pptx",
 ] as const;
 
+export const STAGE_SEVEN_EVIDENCE_ALLOWED_EXTENSIONS = [
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "mp4",
+  "mov",
+  "webm",
+  "m4v",
+] as const;
+
 export const SUBMISSION_IMAGE_ALLOWED_EXTENSIONS = [
   "png",
   "jpg",
@@ -67,6 +79,9 @@ export const COMPLETION_DOCUMENT_ALLOWED_MIME_TYPES = [
 
 const projectAssetAllowedExtensionSet = new Set<string>(
   PROJECT_ASSET_ALLOWED_EXTENSIONS,
+);
+const stageSevenEvidenceAllowedExtensionSet = new Set<string>(
+  STAGE_SEVEN_EVIDENCE_ALLOWED_EXTENSIONS,
 );
 const submissionImageAllowedExtensionSet = new Set<string>(
   SUBMISSION_IMAGE_ALLOWED_EXTENSIONS,
@@ -130,6 +145,16 @@ export function getAllowedFormatLabels(extensions: readonly string[]) {
 export function isAllowedAssetFile(fileName: string) {
   const extension = getFileExtension(fileName);
   return extension ? projectAssetAllowedExtensionSet.has(extension) : false;
+}
+
+export function isAllowedStageSevenEvidenceFile(fileName: string, mimeType: string) {
+  const extension = getFileExtension(fileName);
+  const normalizedMimeType = mimeType.toLowerCase();
+  return (
+    stageSevenEvidenceAllowedExtensionSet.has(extension) &&
+    (/^(image|video)\//.test(normalizedMimeType) ||
+      normalizedMimeType === "application/octet-stream")
+  );
 }
 
 export function isAllowedSubmissionImage(fileName: string, mimeType: string) {

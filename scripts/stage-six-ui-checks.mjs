@@ -1,129 +1,62 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
-const [workspace, summaryAlias, summary, page, workflowAccess, overview, schema] = await Promise.all([
+const [workspace, service, page, schema, approvalWorkspace, externalPage, actions] = await Promise.all([
   readFile("src/components/projects/stage-six-workspace.tsx", "utf8"),
-  readFile("src/components/projects/project-stage-summary.tsx", "utf8"),
-  readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
+  readFile("src/lib/stage-six.ts", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/6/page.tsx", "utf8"),
-  readFile("src/lib/workflow-stage-access.ts", "utf8"),
-  readFile("src/components/projects/project-overview-workspace.tsx", "utf8"),
   readFile("prisma/schema.prisma", "utf8"),
+  readFile("src/components/projects/production-approval-workspace.tsx", "utf8"),
+  readFile("src/app/external/production-approval/[token]/page.tsx", "utf8"),
+  readFile("src/app/(dashboard)/projects/[slug]/stages/6/actions.ts", "utf8"),
 ]);
 
 for (const content of [
-  "Stage 6 - Handover &amp; Approval",
-  "Configure the handover file and approval chain.",
-  "Handover File",
-  "Final_Concept_Package.pdf",
-  "PDF · 24.8 MB · Uploaded by Super Admin",
-  "Preview",
-  "Download",
+  "Stage 6 - Production &amp; Handover",
+  "Production Units",
+  "Pending Approval",
+  "Production Files",
+  "Production Details",
   "Approval Chain",
+  "Marketing Director — Required",
   "Add Approver",
-  "Approval Overview",
-  "Total Approvers",
-  "Approved",
-  "Pending",
-  "Rejected",
-  "All Stages",
-  "Next Stage",
+  "Information to share",
+  "Select All",
+  "Existing Collaborator",
+  "External Email",
+  "Purchase Department",
+  "Direct Vendor",
+  "Complete Stage 6",
 ]) {
   assert(workspace.includes(content), `Missing Stage 6 UI content: ${content}`);
 }
-for (const label of ["Project Name", "Project Owner", "Project Co-Owners", "Project Executors"]) {
-  assert(summary.includes(label), `Missing shared project summary label: ${label}`);
-}
-assert(
-  workspace.includes("ProjectStageSummary") &&
-    workspace.includes('from "@/components/projects/project-stage-summary"') &&
-    summaryAlias.includes("ProjectFlowSummaryStrip"),
-  "Stage 6 must use the shared real-data project summary.",
-);
 
-for (const mockValue of [
-  "Design Department",
-  "design.head@company.com",
-  "Regulatory Affairs",
-  "regulatory.manager@company.com",
-  "Production Department",
-  "production.head@company.com",
+assert(!workspace.includes("Department / Role"), "The generic Department approval column must be removed.");
+assert(!workspace.includes("INITIAL_APPROVAL_STEPS"), "Stage 6 must not use mock approval steps.");
+assert(workspace.includes("UnitSwitcher") && workspace.includes("overflow-x-auto"), "Stage 6 must use the file-card switcher instead of a primary dropdown.");
+assert(workspace.includes("pageData.summary") && workspace.includes("unit.approvalSteps"), "Stage 6 summaries must use real server data.");
+assert(page.includes("getStageSixWorkspaceData") && page.includes("ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER"), "The route must load persisted Stage 6 data through workflow access.");
+
+for (const model of [
+  "ProjectProductionUnit",
+  "ProjectProductionUnitFile",
+  "ProductionApprovalStep",
+  "ProjectProductionHandover",
 ]) {
-  assert(workspace.includes(mockValue), `Missing initial mock approval value: ${mockValue}`);
+  assert(schema.includes(`model ${model}`), `Missing Stage 6 model: ${model}`);
 }
-assert.equal(
-  workspace.match(/id: "mock-[^"]+-approval"/g)?.length,
-  3,
-  "Stage 6 must initialize exactly three mock approval steps.",
-);
-assert(
-  workspace.includes("crypto.randomUUID()") &&
-    workspace.includes("onClick={addApprover}") &&
-    workspace.includes("onRemove={() => onChange(steps.filter"),
-  "Add and Remove Approver must update local React state.",
-);
-assert(
-  /useState<ApprovalStep\[]>\(\s*INITIAL_APPROVAL_STEPS,?\s*\)/.test(workspace) &&
-    !workspace.includes("fetch(") &&
-    !workspace.includes('"use server"') &&
-    !workspace.includes("Action("),
-  "Approval-chain data must remain local and must not call a backend.",
-);
-assert(
-  workspace.includes("No email or link is created in this UI preview.") &&
-    !workspace.match(/Resend|SendGrid|Nodemailer|AWS SES/),
-  "Stage 6 must describe future email behavior without sending email.",
-);
-assert(
-  workspace.includes('href={`/projects/${project.id}/stages/7`}') &&
-    !workspace.includes("completeProject") &&
-    !workspace.includes("completeProjectStage"),
-  "Next Stage must open Stage 7 directly without mutating Stage 6 workflow state.",
-);
-assert(
-  workspace.includes("href={`/projects/${project.id}`}") && workspace.includes("All Stages"),
-  "All Stages must return to the project overview.",
-);
+assert(schema.includes("sourceHandoffId") && schema.includes("sourceChecklistId") && schema.includes("sourceAttachmentId"), "Production Unit lineage must remain explicit.");
+assert(schema.includes("isMarketingDirectorRequired") && schema.includes("@@unique([productionUnitId, sequence])"), "The required first step and per-unit sequence must be persisted.");
+assert(schema.includes("sharedFieldKeys") && schema.includes("selectedFileIds") && schema.includes("sharedSnapshot"), "Selective sharing and stable snapshots must be persisted.");
+assert(schema.includes("externalTokenHash") && !schema.includes("externalToken        String"), "Only external token hashes may be stored.");
 
-assert(
-  page.includes("DashboardLayout") &&
-    page.includes("getProjectStageShellById") &&
-    page.includes("requireUser") &&
-    page.includes("StageSixWorkspace"),
-  "The Stage 6 route must use the existing shell and real authenticated project data.",
-);
-assert(
-  page.includes("ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER") &&
-    page.includes("canOpenImplementedWorkflowStage") &&
-    page.includes("StageLockedState"),
-  "Stage 6 must reuse centralized persisted workflow access.",
-);
-assert(
-  workflowAccess.includes("ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER") &&
-    overview.includes("stage.number >= 1 && stage.number <= 7"),
-  "The centralized SUPER_ADMIN testing bypass and overview must include implemented Stage 6.",
-);
-
-for (const forbiddenModel of [
-  "ProjectApproval",
-  "ApprovalChain",
-  "ApprovalRequest",
-  "HandoverFile",
-  "ExternalApproval",
-  "ApprovalToken",
-]) {
-  assert(!schema.includes(`model ${forbiddenModel}`), `Forbidden Stage 6 model found: ${forbiddenModel}`);
+for (const content of ["Approve", "Reject", "Shared Information", "Optional comment", "requestedBy"]) {
+  assert(approvalWorkspace.includes(content), `Missing approval experience content: ${content}`);
 }
-assert(
-  !page.includes('from "@/lib/prisma"') &&
-    !workspace.includes('from "@/lib/prisma"') &&
-    !workspace.includes("$transaction"),
-  "Stage 6 must not persist handover or approval-chain state.",
-);
+assert(externalPage.includes('dynamic = "force-dynamic"') && externalPage.includes("noStore()"), "The external approval route must be dynamic and no-store.");
+assert(service.includes("ProductionApprovalStepStatus.ACTIVE") && service.includes("ProductionApprovalStepStatus.WAITING"), "Sequential activation must be server-enforced.");
+assert(service.includes("ProjectProductionUnitStatus.HANDED_OVER") && service.includes("ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION"), "Stage 6 completion must require handover and unlock only Stage 7.");
+assert(service.includes("user.role === UserRole.SUPER_ADMIN") && !service.includes("user.role === UserRole.ADMIN ||"), "Stage 6 management must not grant ADMIN implicit rights.");
+assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");
 
-const appEntries = await readdir("src/app");
-for (const forbiddenRoute of ["approval", "handover", "external-approval"]) {
-  assert(!appEntries.includes(forbiddenRoute), `Forbidden public approval route found: /${forbiddenRoute}`);
-}
-
-console.log("Stage 6 local-only handover and approval UI checks passed.");
+console.log("Stage 6 production and handover UI/security checks passed.");

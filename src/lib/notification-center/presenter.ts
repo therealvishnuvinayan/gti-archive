@@ -34,6 +34,10 @@ export const workflowNotificationTypes = [
   "CHECKLIST_INFORMATION_REQUESTED",
   "CHECKLIST_INFORMATION_COMPLETED",
   "CHECKLIST_INFORMATION_DECLINED",
+  "PRODUCTION_APPROVAL_REQUESTED",
+  "PRODUCTION_APPROVAL_APPROVED",
+  "PRODUCTION_APPROVAL_REJECTED",
+  "PRODUCTION_HANDOVER_COMPLETED",
 ] as const satisfies readonly PrismaNotificationType[];
 
 const workflowNotificationTypeSet = new Set<PrismaNotificationType>(workflowNotificationTypes);
@@ -74,7 +78,14 @@ export function mapTypeFilterToNotificationTypes(
     case "Archive":
       return ["PROJECT_ARCHIVED"];
     case "Approval":
-      return ["APPROVAL_REQUIRED", "APPROVAL_PROOF_UPLOADED"];
+      return [
+        "APPROVAL_REQUIRED",
+        "APPROVAL_PROOF_UPLOADED",
+        "PRODUCTION_APPROVAL_REQUESTED",
+        "PRODUCTION_APPROVAL_APPROVED",
+        "PRODUCTION_APPROVAL_REJECTED",
+        "PRODUCTION_HANDOVER_COMPLETED",
+      ];
     case "Copyright":
       return ["COPYRIGHT_TRANSFER_REQUIRED", "COPYRIGHT_DOCUMENT_UPLOADED"];
     case "Invoice":
@@ -114,6 +125,10 @@ function mapNotificationType(type: PrismaNotificationType): NotificationType {
       return "Archive";
     case "APPROVAL_REQUIRED":
     case "APPROVAL_PROOF_UPLOADED":
+    case "PRODUCTION_APPROVAL_REQUESTED":
+    case "PRODUCTION_APPROVAL_APPROVED":
+    case "PRODUCTION_APPROVAL_REJECTED":
+    case "PRODUCTION_HANDOVER_COMPLETED":
       return "Approval";
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
@@ -158,6 +173,10 @@ function mapNotificationContextLabel(type: PrismaNotificationType) {
       return "Archive";
     case "APPROVAL_REQUIRED":
     case "APPROVAL_PROOF_UPLOADED":
+    case "PRODUCTION_APPROVAL_REQUESTED":
+    case "PRODUCTION_APPROVAL_APPROVED":
+    case "PRODUCTION_APPROVAL_REJECTED":
+    case "PRODUCTION_HANDOVER_COMPLETED":
       return "Approval";
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
@@ -202,6 +221,10 @@ function mapNotificationContextTone(type: PrismaNotificationType): NotificationC
       return "archive";
     case "APPROVAL_REQUIRED":
     case "APPROVAL_PROOF_UPLOADED":
+    case "PRODUCTION_APPROVAL_REQUESTED":
+    case "PRODUCTION_APPROVAL_APPROVED":
+    case "PRODUCTION_APPROVAL_REJECTED":
+    case "PRODUCTION_HANDOVER_COMPLETED":
       return "approval";
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
@@ -248,9 +271,14 @@ function mapNotificationVisualKind(type: PrismaNotificationType): NotificationVi
     case "PROJECT_ARCHIVED":
       return "archive-created";
     case "APPROVAL_REQUIRED":
+    case "PRODUCTION_APPROVAL_REQUESTED":
       return "approval-required";
     case "APPROVAL_PROOF_UPLOADED":
+    case "PRODUCTION_APPROVAL_APPROVED":
+    case "PRODUCTION_HANDOVER_COMPLETED":
       return "approval-received";
+    case "PRODUCTION_APPROVAL_REJECTED":
+      return "revision-rejected";
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
       return "copyright-transfer";

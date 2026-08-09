@@ -35,12 +35,13 @@ const [workspace, fieldDefinitions, filePicker, requestWorkspace, requestPage, r
     readFile("src/app/sign-in/actions.ts", "utf8"),
   ]);
 
-const [externalPage, externalWorkspace, externalService, externalToken, externalUploadClient, externalUploadRoute, externalSubmitRoute, externalDeclineRoute, externalMigration, rateLimit, nextConfig] =
+const [externalPage, externalWorkspace, externalService, externalToken, secureToken, externalUploadClient, externalUploadRoute, externalSubmitRoute, externalDeclineRoute, externalMigration, rateLimit, nextConfig] =
   await Promise.all([
     readFile("src/app/external/checklist-request/[token]/page.tsx", "utf8"),
     readFile("src/components/projects/stage-five-external-request-workspace.tsx", "utf8"),
     readFile("src/lib/stage-five-external.ts", "utf8"),
     readFile("src/lib/checklist-external-token.ts", "utf8"),
+    readFile("src/lib/secure-external-token.ts", "utf8"),
     readFile("src/lib/stage-five-external-upload-client.ts", "utf8"),
     readFile("src/app/api/external/checklist-request/[token]/upload-url/route.ts", "utf8"),
     readFile("src/app/api/external/checklist-request/[token]/submit/route.ts", "utf8"),
@@ -54,7 +55,8 @@ const checklistItems = [
   "Output Name",
   "Technical Drawing",
   "Health Warning",
-  "Tar / Nicotine",
+  "Tar",
+  "Nicotine",
   "Compulsory Text",
   "Marketing Copy",
   "Related Graphics",
@@ -132,6 +134,32 @@ assert(
   "Stage 5 View mode must show selected file metadata and repeatable values.",
 );
 assert(
+  fieldDefinitions.includes("ProjectFileChecklistField.TAR") &&
+    fieldDefinitions.includes("ProjectFileChecklistField.NICOTINE") &&
+    !fieldDefinitions.includes('title: "Tar / Nicotine"'),
+  "Stage 5 must collect Tar and Nicotine as separate active fields.",
+);
+assert(
+  fieldDefinitions.includes('title: "Compulsory Text"') &&
+    fieldDefinitions.includes('title: "Marketing Copy"') &&
+    fieldDefinitions.match(/control: "multi-value"/g)?.length >= 3,
+  "Compulsory Text and Marketing Copy must use repeatable Add controls.",
+);
+assert(
+  workspace.includes("activeFile.sourceAttachment.mimeType.startsWith") &&
+    workspace.includes("object-contain") &&
+    workspace.includes("truncate") &&
+    workspace.includes("Preview of"),
+  "The selected Stage 5 final file must show a compact image preview beside a truncated name.",
+);
+assert(
+  fieldDefinitions.includes('key: ProjectFileChecklistField.TECHNICAL_DRAWING') &&
+    fieldDefinitions.includes('key: ProjectFileChecklistField.QR_CODE') &&
+    workspace.includes('fieldLabel={`${item.title} reference`}') &&
+    requestWorkspace.includes("multiple"),
+  "Image/file-bearing checklist controls must support multiple files across manager and request flows.",
+);
+assert(
   workspace.includes("<Select") &&
     workspace.includes("<SelectTrigger") &&
     workspace.includes("<SelectContent") &&
@@ -178,6 +206,28 @@ assert(
     uploadClient.includes("/api/project-assets/upload-url") &&
     uploadClient.includes("/api/project-assets/complete"),
   "Stage 5 attachments must reuse authenticated ProjectAttachment upload infrastructure.",
+);
+assert(
+  uploadClient.includes("request.upload.onprogress") &&
+    workspace.includes('role="progressbar"') &&
+    workspace.includes("saveProgress.percent") &&
+    workspace.includes("completedUploads") &&
+    workspace.includes("totalUploads"),
+  "Stage 5 saves must show real upload and overall completion progress.",
+);
+assert(
+  workspace.includes("failedUploads += 1") &&
+    workspace.includes('uploadState: "failed"') &&
+    workspace.includes("Saving successful uploads and checklist information") &&
+    workspace.includes("showWarningToast") &&
+    filePicker.includes('file.uploadState === "failed"') &&
+    filePicker.includes("Not uploaded") &&
+    filePicker.includes("Retry"),
+  "A failed Stage 5 upload must remain retryable while successful files and checklist data are saved.",
+);
+assert(
+  workspace.includes("file.attachmentId ? [file.attachmentId] : []"),
+  "Stage 5 must never send a failed local file identifier as a checklist attachment reference.",
 );
 assert(
   workspace.includes("requestStageFiveChecklistInformationAction") &&
@@ -376,8 +426,8 @@ assert(
   "The existing checklist request and attachment models must store hashed-token lifecycle and external provenance.",
 );
 assert(
-  externalToken.includes("randomBytes(EXTERNAL_TOKEN_BYTES)") &&
-    externalToken.includes('createHash("sha256")') &&
+  secureToken.includes("randomBytes(EXTERNAL_TOKEN_BYTES)") &&
+    secureToken.includes('createHash("sha256")') &&
     externalToken.includes("CHECKLIST_EXTERNAL_REQUEST_EXPIRY_DAYS") &&
     externalToken.includes("DEFAULT_EXPIRY_DAYS = 7") &&
     !schema.includes("externalToken String"),

@@ -16,14 +16,21 @@ function putFile(
   uploadUrl: string,
   file: File,
   headers: Record<string, string>,
+  onProgress?: (progress: number) => void,
 ) {
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", uploadUrl);
     Object.entries(headers).forEach(([key, value]) => request.setRequestHeader(key, value));
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      onProgress?.(Math.min(1, event.loaded / event.total));
+    };
     request.onload = () => {
-      if (request.status >= 200 && request.status < 300) resolve();
-      else reject(new Error("The storage upload was not accepted."));
+      if (request.status >= 200 && request.status < 300) {
+        onProgress?.(1);
+        resolve();
+      } else reject(new Error("The storage upload was not accepted."));
     };
     request.onerror = () => reject(new Error("The storage upload could not be completed."));
     request.send(file);
@@ -34,6 +41,7 @@ export async function uploadStageFiveChecklistAttachment(
   projectId: string,
   file: File,
   checklistRequestId?: string,
+  onProgress?: (progress: number) => void,
 ): Promise<StageFiveUploadedAttachment> {
   let attachmentId: string | undefined;
   const requestBasePath = checklistRequestId
@@ -41,6 +49,7 @@ export async function uploadStageFiveChecklistAttachment(
     : null;
 
   try {
+    onProgress?.(0.01);
     const response = await fetch(requestBasePath ? `${requestBasePath}/upload-url` : "/api/project-assets/upload-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -64,6 +73,7 @@ export async function uploadStageFiveChecklistAttachment(
       preparation.uploadExpectedHeaders ?? {
         "Content-Type": file.type || "application/octet-stream",
       },
+      (progress) => onProgress?.(0.02 + progress * 0.93),
     );
 
     const completeResponse = await fetch(requestBasePath ? `${requestBasePath}/complete` : "/api/project-assets/complete", {
@@ -75,6 +85,7 @@ export async function uploadStageFiveChecklistAttachment(
     if (!completeResponse.ok) {
       throw new Error(complete.error || "Unable to finish the checklist upload.");
     }
+    onProgress?.(1);
 
     return {
       id: attachmentId,

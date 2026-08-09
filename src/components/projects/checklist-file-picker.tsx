@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { FileImage, Upload, X } from "lucide-react";
+import { AlertCircle, FileImage, LoaderCircle, RotateCcw, Upload, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,9 @@ export type ChecklistFileRecord = {
   mimeType: string;
   attachmentId?: string;
   file?: File;
+  uploadState?: "pending" | "uploading" | "failed";
+  uploadProgress?: number;
+  uploadError?: string;
 };
 
 function formatFileSize(bytes: number) {
@@ -47,6 +50,7 @@ export function ChecklistFilePicker({
       size: file.size,
       mimeType: file.type || "application/octet-stream",
       file,
+      uploadState: "pending" as const,
     }));
 
     if (selected.length > 0) {
@@ -70,11 +74,53 @@ export function ChecklistFilePicker({
         {files.map((file) => (
           <span
             key={file.id}
-            className="inline-flex max-w-full items-center gap-2 rounded-[10px] border border-[#dfe6df] bg-[#f7faf7] px-3 py-2 text-[11px] text-[#344038]"
+            className={cn(
+              "inline-flex max-w-full items-center gap-2 rounded-[10px] border px-3 py-2 text-[11px]",
+              file.uploadState === "failed"
+                ? "border-[#efb7ad] bg-[#fff5f3] text-[#71362f]"
+                : "border-[#dfe6df] bg-[#f7faf7] text-[#344038]",
+            )}
+            title={file.uploadError || file.name}
           >
-            <FileImage className="h-3.5 w-3.5 shrink-0 text-[#438060]" />
+            {file.uploadState === "uploading" ? (
+              <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-[#438060]" />
+            ) : file.uploadState === "failed" ? (
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 text-[#b5473b]" />
+            ) : (
+              <FileImage className="h-3.5 w-3.5 shrink-0 text-[#438060]" />
+            )}
             <span className="max-w-[220px] truncate font-[650]">{file.name}</span>
-            <span className="shrink-0 text-[#7c867f]">{formatFileSize(file.size)}</span>
+            <span className="shrink-0 text-[#7c867f]">
+              {file.uploadState === "uploading"
+                ? `${Math.round((file.uploadProgress ?? 0) * 100)}%`
+                : file.uploadState === "failed"
+                  ? "Not uploaded"
+                  : formatFileSize(file.size)}
+            </span>
+            {file.uploadState === "failed" ? (
+              <button
+                type="button"
+                disabled={disabled}
+                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-white px-2 text-[9px] font-[750] text-[#a33d33] shadow-sm hover:bg-[#fff0ed] disabled:pointer-events-none disabled:opacity-50"
+                aria-label={`Retry ${file.name}`}
+                onClick={() =>
+                  onChange(
+                    files.map((item) =>
+                      item.id === file.id
+                        ? {
+                            ...item,
+                            uploadState: "pending",
+                            uploadProgress: 0,
+                            uploadError: undefined,
+                          }
+                        : item,
+                    ),
+                  )
+                }
+              >
+                <RotateCcw className="h-2.5 w-2.5" /> Retry
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={disabled}

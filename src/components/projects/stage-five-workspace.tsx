@@ -1,5 +1,6 @@
 "use client";
 
+import NextImage from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
@@ -41,6 +42,7 @@ import {
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import {
+  completeStageFiveAction,
   requestStageFiveChecklistInformationAction,
   resendStageFiveExternalChecklistRequestAction,
   saveStageFiveChecklistAction,
@@ -52,6 +54,7 @@ import {
 } from "@/components/projects/checklist-file-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,7 +71,7 @@ import {
   type StageFiveFieldDefinition,
 } from "@/lib/stage-five-fields";
 import { uploadStageFiveChecklistAttachment } from "@/lib/stage-five-upload-client";
-import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 type ChecklistFieldKey = ProjectFileChecklistField;
@@ -79,10 +82,19 @@ type ChecklistDefinition = StageFiveFieldDefinition & {
 
 type LocalFileRecord = ChecklistFileRecord;
 
+type ChecklistSaveProgress = {
+  percent: number;
+  label: string;
+  completedUploads: number;
+  totalUploads: number;
+};
+
 const CHECKLIST_ITEM_ICONS: Record<ProjectFileChecklistField, LucideIcon> = {
   OUTPUT_NAME: FileOutput,
   TECHNICAL_DRAWING: FileText,
   HEALTH_WARNING: HeartPulse,
+  TAR: Hash,
+  NICOTINE: Hash,
   TAR_NICOTINE: Hash,
   COMPULSORY_TEXT: ShieldCheck,
   MARKETING_COPY: Palette,
@@ -99,6 +111,10 @@ const CHECKLIST_ITEM_ICONS: Record<ProjectFileChecklistField, LucideIcon> = {
 
 const CHECKLIST_ITEMS: ChecklistDefinition[] = STAGE_FIVE_FIELD_DEFINITIONS.map(
   (field) => ({ ...field, icon: CHECKLIST_ITEM_ICONS[field.key] }),
+);
+
+const CHECKLIST_ITEM_BY_KEY = new Map(
+  CHECKLIST_ITEMS.map((item) => [item.key, item]),
 );
 
 const CONTROL_CLASS =
@@ -134,11 +150,13 @@ function MultiValueChecklistInput({
   label,
   values,
   suggestions = [],
+  disabled = false,
   onChange,
 }: {
   label: string;
   values: string[];
   suggestions?: string[];
+  disabled?: boolean;
   onChange: (values: string[]) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -164,6 +182,7 @@ function MultiValueChecklistInput({
             {value}
             <button
               type="button"
+              disabled={disabled}
               className="text-[#748078] hover:text-[#29352d]"
               aria-label={`Remove ${value}`}
               onClick={() => onChange(values.filter((item) => item !== value))}
@@ -177,6 +196,7 @@ function MultiValueChecklistInput({
         <Input
           list={listId}
           value={draft}
+          disabled={disabled}
           className={CONTROL_CLASS}
           placeholder={`Select or enter ${label.toLocaleLowerCase()}`}
           onChange={(event) => setDraft(event.target.value)}
@@ -197,7 +217,7 @@ function MultiValueChecklistInput({
           variant="secondary"
           size="sm"
           className="min-h-11 shrink-0 rounded-[11px] shadow-none"
-          disabled={!draft.trim()}
+          disabled={disabled || !draft.trim()}
           onClick={addValue}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -635,8 +655,17 @@ export function StageFiveWorkspace({
         const statuses: Partial<Record<ChecklistFieldKey, ProjectFileChecklistItemStatus>> = {};
         let healthWarningIncluded = false;
         for (const item of file.items) {
-          if (item.value.text) textValues[item.fieldKey] = item.value.text;
-          if (item.value.values?.length) multiValues[item.fieldKey] = item.value.values;
+          const definition = CHECKLIST_ITEM_BY_KEY.get(item.fieldKey);
+          const usesMultipleValues = definition?.control === "multi-value";
+          if (item.value.text && !usesMultipleValues) {
+            textValues[item.fieldKey] = item.value.text;
+          }
+          const normalizedValues = item.value.values?.length
+            ? item.value.values
+            : usesMultipleValues && item.value.text?.trim()
+              ? [item.value.text.trim()]
+              : [];
+          if (normalizedValues.length) multiValues[item.fieldKey] = normalizedValues;
           if (item.fieldKey === ProjectFileChecklistField.HEALTH_WARNING) {
             healthWarningIncluded = Boolean(item.value.included);
           }
@@ -669,7 +698,11 @@ export function StageFiveWorkspace({
   );
   const [dirtyHandoffIds, setDirtyHandoffIds] = useState<Set<string>>(() => new Set());
   const [isSaving, startSaving] = useTransition();
+  const [saveProgress, setSaveProgress] = useState<ChecklistSaveProgress | null>(null);
   const [isRequestActionPending, startRequestAction] = useTransition();
+  const [isCompleting, startCompleting] = useTransition();
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const [completionError, setCompletionError] = useState("");
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
   const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
   const activeDraft = drafts[selectedHandoffId];
@@ -689,6 +722,24 @@ export function StageFiveWorkspace({
     params.set("file", handoffId);
     params.set("mode", mode);
     router.replace(`/projects/${project.id}/stages/5?${params.toString()}`, { scroll: false });
+  }
+
+  function completeStage() {
+    if (isCompleting || dirtyHandoffIds.size > 0) return;
+    setCompletionError("");
+    startCompleting(async () => {
+      const result = await completeStageFiveAction({ projectId: project.id });
+      if ("error" in result) {
+        setCompletionError(result.error ?? "Unable to complete Stage 5.");
+        return;
+      }
+      setShowCompletionDialog(false);
+      showSuccessToast(
+        `Stage 5 completed. ${result.productionUnitCount} Production Unit${result.productionUnitCount === 1 ? " was" : "s were"} created.`,
+      );
+      router.push(`/projects/${project.id}/stages/6`);
+      router.refresh();
+    });
   }
 
   function updateMode(nextMode: "edit" | "view") {
@@ -735,7 +786,9 @@ export function StageFiveWorkspace({
   function isFilled(item: ChecklistDefinition) {
     if (!activeDraft) return false;
     const hasText = Boolean(activeDraft.textValues[item.key]?.trim());
-    const hasFiles = Boolean(activeDraft.files[item.key]?.length);
+    const hasFiles = Boolean(
+      activeDraft.files[item.key]?.some((file) => file.uploadState !== "failed"),
+    );
     const hasMultiValues = Boolean(activeDraft.multiValues[item.key]?.length);
 
     if (item.control === "health-warning") {
@@ -759,23 +812,133 @@ export function StageFiveWorkspace({
     if (!activeFile || !activeDraft || isSaving) return;
     const submittedHandoffId = activeFile.handoffId;
     startSaving(async () => {
+      const resolvedFiles = Object.fromEntries(
+        CHECKLIST_ITEMS.map((item) => [item.key, [...(activeDraft.files[item.key] ?? [])]]),
+      ) as Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>;
+      const uploadTasks = CHECKLIST_ITEMS.flatMap((item) =>
+        (resolvedFiles[item.key] ?? [])
+          .filter((record): record is LocalFileRecord & { file: File } => Boolean(record.file))
+          .map((record) => ({ fieldKey: item.key, record })),
+      );
+      const progressByRecord = new Map(uploadTasks.map(({ record }) => [record.id, 0]));
+      let completedUploads = 0;
+      let failedUploads = 0;
+
+      const publishFiles = () => {
+        setDrafts((current) => ({
+          ...current,
+          [submittedHandoffId]: {
+            ...current[submittedHandoffId],
+            files: { ...resolvedFiles },
+          },
+        }));
+      };
+
+      const replaceFile = (
+        fieldKey: ChecklistFieldKey,
+        recordId: string,
+        updater: (record: LocalFileRecord) => LocalFileRecord,
+      ) => {
+        resolvedFiles[fieldKey] = (resolvedFiles[fieldKey] ?? []).map((record) =>
+          record.id === recordId ? updater(record) : record,
+        );
+      };
+
+      const updateOverallProgress = (label: string) => {
+        const uploadProgress = Array.from(progressByRecord.values()).reduce(
+          (total, progress) => total + progress,
+          0,
+        );
+        const totalSteps = uploadTasks.length + 1;
+        setSaveProgress({
+          percent: Math.min(99, Math.round((uploadProgress / totalSteps) * 100)),
+          label,
+          completedUploads,
+          totalUploads: uploadTasks.length,
+        });
+      };
+
+      setSaveProgress({
+        percent: 0,
+        label: uploadTasks.length ? "Preparing file uploads" : "Saving checklist information",
+        completedUploads: 0,
+        totalUploads: uploadTasks.length,
+      });
+
       try {
-        const resolvedFiles: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>> = {};
-        for (const item of CHECKLIST_ITEMS) {
-          resolvedFiles[item.key] = await Promise.all(
-            (activeDraft.files[item.key] ?? []).map(async (record) => {
-              if (!record.file) return record;
-              const uploaded = await uploadStageFiveChecklistAttachment(project.id, record.file);
-              return {
+        let nextUploadIndex = 0;
+        async function uploadWorker() {
+          while (nextUploadIndex < uploadTasks.length) {
+            const task = uploadTasks[nextUploadIndex];
+            nextUploadIndex += 1;
+            replaceFile(task.fieldKey, task.record.id, (record) => ({
+              ...record,
+              uploadState: "uploading",
+              uploadProgress: 0,
+              uploadError: undefined,
+            }));
+            publishFiles();
+
+            try {
+              const uploaded = await uploadStageFiveChecklistAttachment(
+                project.id,
+                task.record.file,
+                undefined,
+                (progress) => {
+                  progressByRecord.set(task.record.id, progress);
+                  replaceFile(task.fieldKey, task.record.id, (record) => ({
+                    ...record,
+                    uploadState: "uploading",
+                    uploadProgress: progress,
+                  }));
+                  publishFiles();
+                  updateOverallProgress(`Uploading ${task.record.name}`);
+                },
+              );
+              progressByRecord.set(task.record.id, 1);
+              completedUploads += 1;
+              replaceFile(task.fieldKey, task.record.id, () => ({
                 id: uploaded.id,
                 attachmentId: uploaded.id,
                 name: uploaded.name,
                 mimeType: uploaded.mimeType,
                 size: uploaded.size,
-              };
-            }),
-          );
+              }));
+              publishFiles();
+              updateOverallProgress(`Uploaded ${completedUploads} of ${uploadTasks.length} files`);
+            } catch (error) {
+              progressByRecord.set(task.record.id, 1);
+              completedUploads += 1;
+              failedUploads += 1;
+              replaceFile(task.fieldKey, task.record.id, (record) => ({
+                ...record,
+                uploadState: "failed",
+                uploadProgress: 0,
+                uploadError: error instanceof Error ? error.message : "Upload failed. Please retry.",
+              }));
+              publishFiles();
+              updateOverallProgress(`Could not upload ${task.record.name}`);
+            }
+          }
         }
+
+        await Promise.all(
+          Array.from(
+            { length: Math.min(3, uploadTasks.length) },
+            () => uploadWorker(),
+          ),
+        );
+
+        setSaveProgress({
+          percent: uploadTasks.length
+            ? Math.round((uploadTasks.length / (uploadTasks.length + 1)) * 100)
+            : 50,
+          label: failedUploads
+            ? "Saving successful uploads and checklist information"
+            : "Saving checklist information",
+          completedUploads,
+          totalUploads: uploadTasks.length,
+        });
 
         const result = await saveStageFiveChecklistAction({
           projectId: project.id,
@@ -793,7 +956,9 @@ export function StageFiveWorkspace({
                 ? { included: activeDraft.healthWarningIncluded }
                 : {}),
             } satisfies StageFiveChecklistValue,
-            attachmentIds: (resolvedFiles[item.key] ?? []).map((file) => file.attachmentId ?? file.id),
+            attachmentIds: (resolvedFiles[item.key] ?? []).flatMap((file) =>
+              file.attachmentId ? [file.attachmentId] : [],
+            ),
           })),
         });
         if ("error" in result) {
@@ -812,18 +977,34 @@ export function StageFiveWorkspace({
             },
           },
         }));
-        setDirtyHandoffIds((current) => {
-          const next = new Set(current);
-          next.delete(submittedHandoffId);
-          return next;
+        setSaveProgress({
+          percent: 100,
+          label: failedUploads ? "Saved with upload issues" : "Save complete",
+          completedUploads,
+          totalUploads: uploadTasks.length,
         });
-        showSuccessToast("File checklist saved.");
-        router.refresh();
+        if (failedUploads === 0) {
+          setDirtyHandoffIds((current) => {
+            const next = new Set(current);
+            next.delete(submittedHandoffId);
+            return next;
+          });
+          showSuccessToast("File checklist saved.");
+          router.refresh();
+        } else {
+          showWarningToast(
+            "Checklist saved with upload issues.",
+            `${failedUploads} ${failedUploads === 1 ? "file was" : "files were"} not uploaded. Successful files were saved; use Retry and save again.`,
+          );
+        }
       } catch (error) {
+        publishFiles();
         showErrorToast(
           "Unable to save checklist.",
           error instanceof Error ? error.message : "Please try again.",
         );
+      } finally {
+        setSaveProgress(null);
       }
     });
   }
@@ -852,6 +1033,7 @@ export function StageFiveWorkspace({
       return (
         <Input
           value={value}
+          disabled={isSaving}
           className={CONTROL_CLASS}
           placeholder={item.placeholder}
           aria-label={item.title}
@@ -864,6 +1046,7 @@ export function StageFiveWorkspace({
       return (
         <Textarea
           value={value}
+          disabled={isSaving}
           className="min-h-[76px] rounded-[12px] border-[#dfe6df] bg-white py-3 shadow-none"
           placeholder={item.placeholder}
           aria-label={item.title}
@@ -878,6 +1061,7 @@ export function StageFiveWorkspace({
           fieldLabel={item.title}
           files={selectedFiles}
           multiple={item.control === "multi-file"}
+          disabled={isSaving}
           onChange={(nextFiles) => updateFiles(item.key, nextFiles)}
         />
       );
@@ -889,6 +1073,7 @@ export function StageFiveWorkspace({
           label={item.title}
           values={values}
           suggestions={item.suggestions}
+          disabled={isSaving}
           onChange={(nextValues) => updateMultiValues(item.key, nextValues)}
         />
       );
@@ -901,6 +1086,7 @@ export function StageFiveWorkspace({
             label={item.title}
             values={values}
             suggestions={item.suggestions}
+            disabled={isSaving}
             onChange={(nextValues) => updateMultiValues(item.key, nextValues)}
           />
           <ChecklistFilePicker
@@ -908,6 +1094,7 @@ export function StageFiveWorkspace({
             files={selectedFiles}
             multiple
             compact
+            disabled={isSaving}
             onChange={(nextFiles) => updateFiles(item.key, nextFiles)}
           />
         </div>
@@ -919,6 +1106,7 @@ export function StageFiveWorkspace({
         <div className="space-y-3">
           <Textarea
             value={value}
+            disabled={isSaving}
             className="min-h-[72px] rounded-[12px] border-[#dfe6df] bg-white py-3 shadow-none"
             placeholder={item.placeholder}
             aria-label={item.title}
@@ -929,6 +1117,7 @@ export function StageFiveWorkspace({
             files={selectedFiles}
             multiple
             compact
+            disabled={isSaving}
             onChange={(nextFiles) => updateFiles(item.key, nextFiles)}
           />
         </div>
@@ -939,6 +1128,7 @@ export function StageFiveWorkspace({
       <div className="space-y-3">
         <Textarea
           value={value}
+          disabled={isSaving}
           className="min-h-[72px] rounded-[12px] border-[#dfe6df] bg-white py-3 shadow-none"
           placeholder={item.placeholder}
           aria-label={item.title}
@@ -948,13 +1138,16 @@ export function StageFiveWorkspace({
           <ChecklistFilePicker
             fieldLabel={`${item.title} reference`}
             files={selectedFiles}
+            multiple
             compact
+            disabled={isSaving}
             onChange={(nextFiles) => updateFiles(item.key, nextFiles)}
           />
           <button
             type="button"
             role="switch"
             aria-checked={activeDraft?.healthWarningIncluded ?? false}
+            disabled={isSaving}
             className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-[11px] border border-[#dfe6df] bg-white px-3 text-[11px] font-[680] text-[#58645c]"
             onClick={() =>
               updateActiveDraft((current) => ({
@@ -1040,7 +1233,7 @@ export function StageFiveWorkspace({
             {showChrome ? <p className="mt-2 text-[13px] leading-5 text-[#6f7a72]">
               Complete or request the required project information and files.
             </p> : null}
-            {showChrome ? <ProjectStageSummary project={project} /> : null}
+            {showChrome ? <ProjectStageSummary project={project} className="mt-7" /> : null}
 
             {activeFile ? (
               <div className="mt-5 flex flex-col gap-3 rounded-[16px] border border-[#dfe6df] bg-[#f8faf8] p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1051,7 +1244,7 @@ export function StageFiveWorkspace({
                     onValueChange={updateSelectedFile}
                   >
                     <SelectTrigger
-                      className="mt-2 h-11 w-full max-w-[560px] rounded-[12px] border border-[#d7e0d8] bg-white px-3 text-[13px] font-[680] text-[#263129] shadow-none focus-visible:border-[#82aa90] sm:min-w-[420px]"
+                      className="mt-2 h-11 w-full max-w-[380px] overflow-hidden rounded-[12px] border border-[#d7e0d8] bg-white px-3 text-[13px] font-[680] text-[#263129] shadow-none focus-visible:border-[#82aa90] [&>span]:min-w-0 [&>span]:truncate sm:w-[380px]"
                       aria-label="Current Stage 5 final file"
                     >
                       <SelectValue />
@@ -1063,17 +1256,44 @@ export function StageFiveWorkspace({
                           value={file.handoffId}
                           className="rounded-[11px] text-[12px] font-[620]"
                         >
-                          {file.sourceAttachment.name} — File {index + 1} of {pageData.files.length}
+                          <span
+                            className="block max-w-[300px] truncate"
+                            title={file.sourceAttachment.name}
+                          >
+                            {file.sourceAttachment.name} — File {index + 1} of {pageData.files.length}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="shrink-0 text-left sm:text-right">
-                  <p className="text-[12px] font-[700] text-[#2f6548]">
-                    {CHECKLIST_ITEMS.filter((item) => getItemStatus(item) === ProjectFileChecklistItemStatus.FILLED).length} / {CHECKLIST_ITEMS.length} filled
-                  </p>
-                  <p className="mt-1 text-[10px] text-[#7b867e]">{pageData.files.length} final {pageData.files.length === 1 ? "file" : "files"}</p>
+                <div className="flex shrink-0 items-center gap-3">
+                  <a
+                    href={`/api/project-assets/${activeFile.sourceAttachment.id}/preview`}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Preview ${activeFile.sourceAttachment.name}`}
+                    className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-[12px] border border-[#d9e2da] bg-white text-[#438060] shadow-[0_6px_16px_rgba(28,50,35,0.07)]"
+                  >
+                    {activeFile.sourceAttachment.mimeType.startsWith("image/") ? (
+                      <NextImage
+                        src={`/api/project-assets/${activeFile.sourceAttachment.id}/preview`}
+                        alt={`Preview of ${activeFile.sourceAttachment.name}`}
+                        width={64}
+                        height={64}
+                        unoptimized
+                        className="size-full object-contain"
+                      />
+                    ) : (
+                      <FileImage className="h-5 w-5" />
+                    )}
+                  </a>
+                  <div className="text-left sm:text-right">
+                    <p className="text-[12px] font-[700] text-[#2f6548]">
+                      {CHECKLIST_ITEMS.filter((item) => getItemStatus(item) === ProjectFileChecklistItemStatus.FILLED).length} / {CHECKLIST_ITEMS.length} filled
+                    </p>
+                    <p className="mt-1 text-[10px] text-[#7b867e]">{pageData.files.length} final {pageData.files.length === 1 ? "file" : "files"}</p>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -1114,13 +1334,45 @@ export function StageFiveWorkspace({
                   Values and selected files are saved independently for this final file.
                 </p>
               </div>
-              <Button
-                type="button"
-                disabled={isSaving || !dirtyHandoffIds.has(selectedHandoffId)}
-                onClick={saveChecklist}
-              >
-                <FileCheck2 className="h-4 w-4" /> {isSaving ? "Saving..." : "Save Changes"}
-              </Button>
+              <div className="w-full space-y-2 sm:w-[250px]">
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={isSaving || !dirtyHandoffIds.has(selectedHandoffId)}
+                  onClick={saveChecklist}
+                >
+                  <FileCheck2 className="h-4 w-4" />
+                  {isSaving ? `Saving ${saveProgress?.percent ?? 0}%` : "Save Changes"}
+                </Button>
+                {isSaving && saveProgress ? (
+                  <div
+                    role="progressbar"
+                    aria-label="Checklist save progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={saveProgress.percent}
+                    className="space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-3 text-[9px] font-[650] text-[#748078]">
+                      <span className="min-w-0 truncate" title={saveProgress.label}>
+                        {saveProgress.label}
+                      </span>
+                      <span className="shrink-0">{saveProgress.percent}%</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-[#e2e9e3]">
+                      <div
+                        className="h-full rounded-full bg-[#2f8057] transition-[width] duration-200"
+                        style={{ width: `${saveProgress.percent}%` }}
+                      />
+                    </div>
+                    {saveProgress.totalUploads > 0 ? (
+                      <p className="text-right text-[9px] text-[#8a948d]">
+                        {saveProgress.completedUploads} / {saveProgress.totalUploads} file uploads processed
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="hidden border-t border-[#e8ede8] bg-white px-6 py-3 text-[10px] font-[740] uppercase tracking-[0.08em] text-[#7c867f] xl:grid xl:grid-cols-[230px_minmax(0,1fr)_86px_108px] xl:gap-5">
               <span>Field</span>
@@ -1162,11 +1414,32 @@ export function StageFiveWorkspace({
                 <ListChecks className="h-4 w-4" /> All Stages
               </Link>
             </Button>
-            <Button asChild type="button" className="min-w-[180px] rounded-[13px]">
-              <Link href={`/projects/${project.id}/stages/6`}>
-                Next Stage <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            {pageData.stageCompleted ? (
+              <Button asChild type="button" className="min-w-[180px] rounded-[13px]">
+                <Link href={`/projects/${project.id}/stages/6`}>
+                  Next Stage <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : pageData.canComplete ? (
+              <div className="text-right">
+                {dirtyHandoffIds.size > 0 ? (
+                  <p className="mb-2 text-[10px] font-[650] text-[#9a6a22]">Save checklist changes before completion.</p>
+                ) : null}
+                <Button
+                  type="button"
+                  className="min-w-[180px] rounded-[13px]"
+                  disabled={dirtyHandoffIds.size > 0}
+                  onClick={() => {
+                    setCompletionError("");
+                    setShowCompletionDialog(true);
+                  }}
+                >
+                  <Check className="h-4 w-4" /> Complete Stage 5
+                </Button>
+              </div>
+            ) : (
+              <p className="text-[11px] font-[650] text-[#77827a]">Owner or Co-Owner completion required.</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1196,6 +1469,22 @@ export function StageFiveWorkspace({
           }}
         />
       ) : null}
+      <ConfirmationDialog
+        isOpen={showCompletionDialog}
+        title="Complete Stage 5"
+        description={
+          pageData.pendingRequestCount > 0
+            ? "Some checklist information requests are still pending. Continue and create one Production Unit for every Stage 5 final file?"
+            : "Create one Production Unit for every Stage 5 final file and unlock Stage 6?"
+        }
+        confirmLabel="Complete Stage 5"
+        pending={isCompleting}
+        error={completionError || undefined}
+        onConfirm={completeStage}
+        onClose={() => {
+          if (!isCompleting) setShowCompletionDialog(false);
+        }}
+      />
     </section>
   );
 }

@@ -95,6 +95,11 @@ async function putPresignedFile(
   mimeType: string,
   bytes = pngBytes,
 ) {
+  // The isolated regression mode validates application persistence and workflow
+  // boundaries without writing test objects to a real cloud bucket. Upload
+  // completion does not depend on a remote HEAD request, so the test can safely
+  // exercise the same service path with an inert presigned target.
+  if (process.env.STAGE_E2E_SKIP_S3_PUT === "1") return;
   const response = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": mimeType },
@@ -1214,7 +1219,7 @@ async function main() {
   );
   const inAppResponse = await submitStageFiveChecklistResponse(collaborator, {
     requestId: inAppRequest.request.id,
-    value: { text: "Approved copy for Product A" },
+    value: { values: ["Approved copy for Product A"] },
     attachmentIds: [],
   });
   check(!isError(inAppResponse), "authenticated collaborator response must complete");
@@ -1225,7 +1230,7 @@ async function main() {
   check(
     completedInApp.workflowStatus ===
       ProjectFileChecklistRequestWorkflowStatus.COMPLETED &&
-      (completedInApp.checklistItem.value as { text?: string } | null)?.text ===
+      (completedInApp.checklistItem.value as { values?: string[] } | null)?.values?.[0] ===
         "Approved copy for Product A" &&
       completedInApp.checklistId === fileA.checklistId,
     "authenticated response must update only the real Final A checklist",
