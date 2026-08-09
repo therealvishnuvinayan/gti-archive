@@ -515,6 +515,7 @@ function ApprovalSection({
             </div>
             <ApprovalBadge status={step.status} dispatch={step.dispatchStatus} />
             <div className="flex justify-end gap-1">
+              {step.reviewHref ? <Button asChild type="button" size="sm"><Link href={step.reviewHref}><ShieldCheck className="h-3.5 w-3.5" /> Review Approval</Link></Button> : null}
               {canManage && step.sequence === 1 && !step.recipientType && preparing ? <Button type="button" size="sm" onClick={() => onOpenDialog("marketing-director")}><ShieldCheck className="h-3.5 w-3.5" /> Assign</Button> : null}
               {canManage && step.dispatchStatus === ProductionDispatchStatus.FAILED && step.status === ProductionApprovalStepStatus.ACTIVE ? <Button type="button" variant="outline" size="sm" onClick={() => retry(step.id)}><RefreshCw className="h-3.5 w-3.5" /> Retry</Button> : null}
               {canManage && preparing && !step.isMarketingDirectorRequired ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove approval step ${step.sequence}`} onClick={() => remove(step.id)}><Trash2 className="h-4 w-4 text-[#aa4e45]" /></Button> : null}

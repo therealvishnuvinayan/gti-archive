@@ -75,6 +75,7 @@ export type ProductionSharedSnapshot = {
 
 export type StageSixApprovalStepRecord = {
   id: string;
+  reviewHref: string | null;
   sequence: number;
   isMarketingDirectorRequired: boolean;
   recipientType: ProductionApprovalRecipientType | null;
@@ -466,6 +467,7 @@ const workspaceUnitSelect = {
       sequence: true,
       isMarketingDirectorRequired: true,
       recipientType: true,
+      recipientUserId: true,
       recipientName: true,
       recipientEmail: true,
       sharedFieldKeys: true,
@@ -535,13 +537,22 @@ export async function getStageSixWorkspaceData(
             })) ?? [],
         };
       }),
-      approvalSteps: unit.approvalSteps.map((step) => ({
-        ...step,
-        recipientName: step.recipientName?.trim() || "Not assigned",
-        activatedAt: step.activatedAt?.toISOString() ?? null,
-        sentAt: step.sentAt?.toISOString() ?? null,
-        decidedAt: step.decidedAt?.toISOString() ?? null,
-      })),
+      approvalSteps: unit.approvalSteps.map((step) => {
+        const { recipientUserId, ...visibleStep } = step;
+        return {
+          ...visibleStep,
+          reviewHref:
+            recipientUserId === user.id &&
+            step.status === ProductionApprovalStepStatus.ACTIVE &&
+            step.dispatchStatus === ProductionDispatchStatus.SENT
+              ? `/production-approvals/${step.id}`
+              : null,
+          recipientName: step.recipientName?.trim() || "Not assigned",
+          activatedAt: step.activatedAt?.toISOString() ?? null,
+          sentAt: step.sentAt?.toISOString() ?? null,
+          decidedAt: step.decidedAt?.toISOString() ?? null,
+        };
+      }),
       handover: unit.handover
         ? {
             ...unit.handover,

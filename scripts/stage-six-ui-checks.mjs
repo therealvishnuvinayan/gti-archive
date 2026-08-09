@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, service, page, schema, approvalWorkspace, externalPage, actions] = await Promise.all([
+const [workspace, service, page, schema, approvalWorkspace, externalPage, authenticatedPage, actions] = await Promise.all([
   readFile("src/components/projects/stage-six-workspace.tsx", "utf8"),
   readFile("src/lib/stage-six.ts", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/6/page.tsx", "utf8"),
   readFile("prisma/schema.prisma", "utf8"),
   readFile("src/components/projects/production-approval-workspace.tsx", "utf8"),
   readFile("src/app/external/production-approval/[token]/page.tsx", "utf8"),
+  readFile("src/app/production-approvals/[stepId]/page.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/6/actions.ts", "utf8"),
 ]);
 
@@ -35,6 +36,7 @@ assert(!workspace.includes("Department / Role"), "The generic Department approva
 assert(!workspace.includes("INITIAL_APPROVAL_STEPS"), "Stage 6 must not use mock approval steps.");
 assert(workspace.includes("UnitSwitcher") && workspace.includes("overflow-x-auto"), "Stage 6 must use the file-card switcher instead of a primary dropdown.");
 assert(workspace.includes("pageData.summary") && workspace.includes("unit.approvalSteps"), "Stage 6 summaries must use real server data.");
+assert(workspace.includes("step.reviewHref") && workspace.includes("Review Approval"), "An assigned approver must have a direct review action on Stage 6.");
 assert(page.includes("getStageSixWorkspaceData") && page.includes("ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER"), "The route must load persisted Stage 6 data through workflow access.");
 
 for (const model of [
@@ -54,7 +56,9 @@ for (const content of ["Approve", "Reject", "Shared Information", "Optional comm
   assert(approvalWorkspace.includes(content), `Missing approval experience content: ${content}`);
 }
 assert(externalPage.includes('dynamic = "force-dynamic"') && externalPage.includes("noStore()"), "The external approval route must be dynamic and no-store.");
+assert(authenticatedPage.includes("getAuthenticatedProductionApprovalData"), "The direct Stage 6 review action must land on the authenticated approval route.");
 assert(service.includes("ProductionApprovalStepStatus.ACTIVE") && service.includes("ProductionApprovalStepStatus.WAITING"), "Sequential activation must be server-enforced.");
+assert(service.includes("recipientUserId === user.id") && service.includes("reviewHref:"), "Stage 6 must derive the direct review action from the authenticated assigned approver.");
 assert(service.includes("ProjectProductionUnitStatus.HANDED_OVER") && service.includes("ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION"), "Stage 6 completion must require handover and unlock only Stage 7.");
 assert(service.includes("user.role === UserRole.SUPER_ADMIN") && !service.includes("user.role === UserRole.ADMIN ||"), "Stage 6 management must not grant ADMIN implicit rights.");
 assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");
