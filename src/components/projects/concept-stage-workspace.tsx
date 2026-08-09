@@ -12,6 +12,8 @@ import {
   Plus,
   X,
   FileCheck2,
+  CheckCircle2,
+  Download,
   Send,
 } from "lucide-react";
 
@@ -19,11 +21,14 @@ import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access
 import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
 import {
   createProjectConceptFolderAction,
+  completeStageThreeConceptsAction,
   editProjectConceptFolderAction,
   handoffStageFourFilesAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { Button } from "@/components/ui/button";
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -466,6 +471,8 @@ export function ConceptStageWorkspace({
   currentUserId,
   initialFolders,
   canManageConcepts,
+  stageWorkflowStatus,
+  completionConcepts,
   executors,
   selectedExecutorId,
   stageFourHandoffData,
@@ -478,6 +485,12 @@ export function ConceptStageWorkspace({
   currentUserId: string;
   initialFolders: ProjectConceptFolderRecord[];
   canManageConcepts: boolean;
+  stageWorkflowStatus: "LOCKED" | "AVAILABLE" | "COMPLETED" | null;
+  completionConcepts: Array<{
+    id: string;
+    name: string;
+    isApproved: boolean;
+  }>;
   executors: ConceptExecutor[];
   selectedExecutorId: string | null;
   stageFourHandoffData?: {
@@ -488,8 +501,39 @@ export function ConceptStageWorkspace({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isCompleting, startCompletionTransition] = useTransition();
   const [folders, setFolders] = useState<ConceptFolder[]>(initialFolders);
   const [dialog, setDialog] = useState<FolderDialogState>(null);
+  const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
+  const [completionError, setCompletionError] = useState<string | null>(null);
+  const managementLocked = stageWorkflowStatus === "COMPLETED";
+  const approvedConceptCount = completionConcepts.filter(
+    (concept) => concept.isApproved,
+  ).length;
+  const unapprovedConcepts = completionConcepts.filter(
+    (concept) => !concept.isApproved,
+  );
+
+  function completeStageThree() {
+    setCompletionError(null);
+    startCompletionTransition(async () => {
+      const result = await completeStageThreeConceptsAction({
+        projectId: project.id,
+      });
+
+      if ("error" in result) {
+        setCompletionError(result.error);
+        return;
+      }
+
+      setCompletionDialogOpen(false);
+      showSuccessToast(
+        `Stage 3 completed. ${result.approvedCount} approved concept${result.approvedCount === 1 ? "" : "s"} moved to Stage 4.`,
+      );
+      router.push(`/projects/${project.id}/stages/4`);
+      router.refresh();
+    });
+  }
 
   function submitConceptDetails(input: {
     name: string;
@@ -654,7 +698,26 @@ export function ConceptStageWorkspace({
                 </Select>
               </label>
             ) : null}
-            {stageNumber === 3 && canManageConcepts ? (
+            {stageNumber === 3 && canManageConcepts && managementLocked ? (
+              <span className="inline-flex h-11 items-center gap-2 rounded-[12px] bg-[#e7f5eb] px-4 text-[12px] font-[760] text-[#247247]">
+                <CheckCircle2 className="h-4 w-4" /> Stage 3 Completed
+              </span>
+            ) : null}
+            {stageNumber === 3 && canManageConcepts && !managementLocked ? (
+              <Button
+                type="button"
+                className="h-11 rounded-[12px] px-5 font-[720]"
+                disabled={isCompleting}
+                onClick={() => {
+                  setCompletionError(null);
+                  setCompletionDialogOpen(true);
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Complete Stage 3
+              </Button>
+            ) : null}
+            {stageNumber === 3 && canManageConcepts && !managementLocked ? (
               <Button
                 type="button"
                 variant="outline"
@@ -700,8 +763,60 @@ export function ConceptStageWorkspace({
                       Assigned to: {folder.assignedExecutor?.name || folder.assignedExecutor?.email || "Unassigned"}
                     </span>
                   ) : null}
+                  {stageNumber === 3 ? (
+                    <span
+                      className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.07em] ${
+                        folder.approvedAttachment
+                          ? "bg-[#e7f5eb] text-[#247247]"
+                          : folder.latestRevisionStatus === "REJECTED"
+                            ? "bg-[#fff0ef] text-[#b94d45]"
+                            : "bg-[#fff3d6] text-[#8a5718]"
+                      }`}
+                    >
+                      {folder.approvedAttachment
+                        ? "Approved Concept"
+                        : folder.latestRevisionStatus === "REJECTED"
+                          ? "Changes Requested"
+                          : "Not Approved"}
+                    </span>
+                  ) : null}
+                  {stageNumber === 4 && folder.startingReference ? (
+                    <span className="relative z-10 mt-3 block rounded-[12px] border border-[#dbe7dd] bg-[#f7fbf7] p-2.5">
+                      <span className="block text-[9px] font-[800] uppercase tracking-[0.08em] text-[#5f7566]">
+                        Starting Reference
+                      </span>
+                      <span className="mt-1 flex min-w-0 items-center gap-1">
+                        <span className="min-w-0 flex-1 truncate text-[10px] font-[650] text-[#344138]">
+                          {folder.startingReference.name}
+                        </span>
+                        <AssetPreviewButton
+                          fileName={folder.startingReference.name}
+                          mimeType={folder.startingReference.mimeType}
+                          previewPath={folder.startingReference.previewPath}
+                          downloadPath={folder.startingReference.downloadPath}
+                          triggerClassName="size-7 rounded-full text-brand"
+                        />
+                        <Button
+                          asChild
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 rounded-full text-brand"
+                        >
+                          <a
+                            href={folder.startingReference.downloadPath}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`Download ${folder.startingReference.name}`}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      </span>
+                    </span>
+                  ) : null}
                 </span>
-                {canManageConcepts ? <DropdownMenu>
+                {canManageConcepts && !managementLocked ? <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
@@ -744,6 +859,28 @@ export function ConceptStageWorkspace({
           onSubmit={submitConceptDetails}
         />
       ) : null}
+
+      <ConfirmationDialog
+        isOpen={completionDialogOpen}
+        title="Complete Stage 3?"
+        description={
+          approvedConceptCount === 0
+            ? "At least one concept must have an approved concept file before Stage 3 can be completed. Mark one formal revision file, then try again."
+            : unapprovedConcepts.length > 0
+              ? `${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"} will move to Stage 4. These unapproved concepts will remain in Stage 3: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}. This locks Stage 3 approval selection and concept management.`
+              : `${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"} will move to Stage 4. This locks Stage 3 approval selection and concept management.`
+        }
+        confirmLabel="Complete Stage 3"
+        pending={isCompleting}
+        confirmDisabled={approvedConceptCount === 0}
+        error={completionError ?? undefined}
+        onConfirm={completeStageThree}
+        onClose={() => {
+          if (isCompleting) return;
+          setCompletionDialogOpen(false);
+          setCompletionError(null);
+        }}
+      />
     </section>
   );
 }

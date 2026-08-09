@@ -147,6 +147,8 @@ async function ConceptStageDataContent({
       currentUserId={user.id}
       initialFolders={folders.folders}
       canManageConcepts={folders.canManage}
+      stageWorkflowStatus={folders.workflowStatus}
+      completionConcepts={folders.completionConcepts}
       executors={folders.executors}
       selectedExecutorId={folders.selectedExecutorId}
       stageFourHandoffData={stageFourHandoffData ?? undefined}

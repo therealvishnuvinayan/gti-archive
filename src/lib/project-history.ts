@@ -48,6 +48,8 @@ import {
 } from "@/lib/project-research-access";
 import {
   assertConceptTaskerAccessIfNeeded,
+  canViewProjectConcept,
+  getProjectConceptAccessContext,
 } from "@/lib/project-concept-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
@@ -1471,6 +1473,7 @@ async function hasReadyStageInvoice(projectId: string, stageId: string) {
 export async function assertProjectAttachmentVisibilityForUser(
   user: AccessUser,
   attachment: {
+    id?: string;
     projectId: string;
     stageId?: string | null;
     createdAt: Date;
@@ -1481,11 +1484,60 @@ export async function assertProjectAttachmentVisibilityForUser(
   },
 ) {
   if (attachment.stageId) {
-    await assertConceptTaskerAccessIfNeeded(user, {
+    const sourceConcept = await getProjectConceptAccessContext({
       projectId: attachment.projectId,
-      stageId: attachment.stageId,
-      mode: "view",
+      taskerStageId: attachment.stageId,
     });
+
+    if (sourceConcept && !canViewProjectConcept(user, sourceConcept)) {
+      const startingReferenceConcept = attachment.id
+        ? await withPrismaRetry(() =>
+            prisma.projectConceptFolder.findFirst({
+              where: {
+                projectId: attachment.projectId,
+                workflowStageKey:
+                  ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                sourceStage3ApprovedAttachmentId: attachment.id,
+              },
+              select: {
+                id: true,
+                projectId: true,
+                taskerStageId: true,
+                workflowStageKey: true,
+                assignedExecutorId: true,
+                project: {
+                  select: {
+                    ownerId: true,
+                    coOwners: { select: { userId: true } },
+                  },
+                },
+              },
+            }),
+          )
+        : null;
+      const startingReferenceContext = startingReferenceConcept
+        ? {
+            folderId: startingReferenceConcept.id,
+            projectId: startingReferenceConcept.projectId,
+            taskerStageId: startingReferenceConcept.taskerStageId,
+            workflowStageKey: startingReferenceConcept.workflowStageKey,
+            assignedExecutorId: startingReferenceConcept.assignedExecutorId,
+            ownerId: startingReferenceConcept.project.ownerId,
+            coOwnerIds: startingReferenceConcept.project.coOwners.map(
+              (coOwner) => coOwner.userId,
+            ),
+          }
+        : null;
+
+      if (
+        !startingReferenceContext ||
+        !canViewProjectConcept(user, startingReferenceContext)
+      ) {
+        throw new Error("You do not have access to this concept.");
+      }
+
+      return;
+    }
   }
 
   if (hasProjectPermission(user, attachment.project, "collaborator.pauseVisibility")) {
@@ -1498,6 +1550,38 @@ export async function assertProjectAttachmentVisibilityForUser(
     timestamp: attachment.createdAt,
     message: "You do not have permission to access this file.",
   });
+}
+
+async function isConceptWorkflowCompleted(input: {
+  projectId: string;
+  taskerStageId: string;
+}) {
+  const concept = await withPrismaRetry(() =>
+    prisma.projectConceptFolder.findFirst({
+      where: {
+        projectId: input.projectId,
+        taskerStageId: input.taskerStageId,
+      },
+      select: {
+        workflowStageKey: true,
+        project: {
+          select: {
+            workflowStages: {
+              select: { stageKey: true, status: true },
+            },
+          },
+        },
+      },
+    }),
+  );
+
+  return Boolean(
+    concept?.project.workflowStages.some(
+      (stage) =>
+        stage.stageKey === concept.workflowStageKey &&
+        stage.status === ProjectWorkflowStageStatus.COMPLETED,
+    ),
+  );
 }
 
 export async function getProjectStageChatMessages(
@@ -2894,6 +2978,7 @@ export async function createStageRevision(
     stageId: stage.id,
     mode: "work",
   });
+
   const stagedAttachmentIds = Array.from(
     new Set((input.attachmentIds ?? []).map((id) => id.trim()).filter(Boolean)),
   );
@@ -4207,6 +4292,7 @@ export async function cancelStagedConceptRevisionAttachments(
     stageId: input.stageId,
     mode: "work",
   });
+
   const attachmentIds = Array.from(
     new Set(input.attachmentIds.map((id) => id.trim()).filter(Boolean)),
   );
@@ -5159,6 +5245,19 @@ export async function requestAttachmentUpload(
             : "view",
       });
 
+      if (
+        concept &&
+        isConceptBriefAttachment &&
+        (await isConceptWorkflowCompleted({
+          projectId: input.projectId,
+          taskerStageId: input.stageId,
+        }))
+      ) {
+        return {
+          error: "Concept files are locked because this workflow stage is completed.",
+        };
+      }
+
       if (concept && isConceptBriefAttachment) {
         const tasker = await withPrismaRetry(() =>
           prisma.projectStage.findUnique({
@@ -5878,6 +5977,19 @@ export async function completeAttachmentUpload(
           : "view",
     });
 
+    if (
+      concept &&
+      isConceptBriefAttachment &&
+      (await isConceptWorkflowCompleted({
+        projectId: attachment.projectId,
+        taskerStageId: attachment.stageId,
+      }))
+    ) {
+      throw new Error(
+        "Concept files are locked because this workflow stage is completed.",
+      );
+    }
+
     if (concept && isConceptBriefAttachment) {
       const tasker = await withPrismaRetry(() =>
         prisma.projectStage.findUnique({
@@ -6463,6 +6575,8 @@ export async function deleteAttachmentForUser(
         status: true,
         assetType: true,
         createdAt: true,
+        approvedConceptFolder: { select: { id: true } },
+        conceptStartingReference: { select: { id: true } },
         project: {
           select: {
             ownerId: true,
@@ -6506,6 +6620,12 @@ export async function deleteAttachmentForUser(
   );
   await assertProjectAttachmentVisibilityForUser(user, attachment);
 
+  if (attachment.approvedConceptFolder || attachment.conceptStartingReference) {
+    throw new Error(
+      "This file is locked because it is an Approved Concept or a Stage 4 starting reference.",
+    );
+  }
+
   if (
     attachment.stageId &&
     attachment.assetType === AttachmentAssetType.GENERAL_PROJECT_ASSET &&
@@ -6518,6 +6638,17 @@ export async function deleteAttachmentForUser(
       mode: "manage",
     });
     if (concept) {
+      if (
+        await isConceptWorkflowCompleted({
+          projectId: attachment.projectId,
+          taskerStageId: attachment.stageId,
+        })
+      ) {
+        throw new Error(
+          "Concept files are locked because this workflow stage is completed.",
+        );
+      }
+
       const tasker = await withPrismaRetry(() =>
         prisma.projectStage.findUnique({
           where: { id: attachment.stageId ?? "" },

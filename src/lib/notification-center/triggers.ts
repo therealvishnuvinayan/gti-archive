@@ -100,6 +100,104 @@ export function runNotificationTaskAfterResponse(
   after(() => runNotificationTask(label, task));
 }
 
+export async function notifyConceptFileApproved(input: {
+  projectId: string;
+  folderId: string;
+  attachmentId: string;
+  actorId: string;
+}) {
+  const folder = await withPrismaRetry(() =>
+    prisma.projectConceptFolder.findFirst({
+      where: {
+        id: input.folderId,
+        projectId: input.projectId,
+        workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+        approvedAttachmentId: input.attachmentId,
+      },
+      select: {
+        id: true,
+        name: true,
+        taskerStageId: true,
+        assignedExecutorId: true,
+        approvedAttachment: {
+          select: { id: true, originalFileName: true },
+        },
+      },
+    }),
+  );
+
+  if (
+    !folder?.assignedExecutorId ||
+    folder.assignedExecutorId === input.actorId ||
+    !folder.approvedAttachment
+  ) {
+    return;
+  }
+
+  await createNotificationsForUsers({
+    recipientUserIds: [folder.assignedExecutorId],
+    type: "REVISION_APPROVED",
+    title: "Concept file approved",
+    message: `Your concept file ${folder.approvedAttachment.originalFileName} for ${folder.name} has been approved.`,
+    entityType: "ATTACHMENT",
+    entityId: folder.approvedAttachment.id,
+    projectId: input.projectId,
+    stageId: folder.taskerStageId,
+    attachmentId: folder.approvedAttachment.id,
+    url: `/projects/${encodeURIComponent(input.projectId)}/stages/3/concepts/${encodeURIComponent(folder.id)}`,
+  });
+}
+
+export async function notifyStageFourConceptsActivated(input: {
+  projectId: string;
+  folderIds: string[];
+  actorId: string;
+}) {
+  if (input.folderIds.length === 0) {
+    return;
+  }
+
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id: input.projectId },
+      select: {
+        id: true,
+        name: true,
+        ownerId: true,
+        coOwners: { select: { userId: true } },
+        conceptFolders: {
+          where: {
+            id: { in: input.folderIds },
+            workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          },
+          select: { assignedExecutorId: true },
+        },
+      },
+    }),
+  );
+
+  if (!project) {
+    return;
+  }
+
+  const recipientUserIds = dedupeRecipients([
+    project.ownerId,
+    ...project.coOwners.map((coOwner) => coOwner.userId),
+    ...project.conceptFolders.map((folder) => folder.assignedExecutorId),
+  ]).filter((userId) => userId !== input.actorId);
+
+  await createNotificationsForUsers({
+    recipientUserIds,
+    type: "NEXT_STAGE_ACTIVATED",
+    title: "Stage 4 concepts activated",
+    message: `${input.folderIds.length} approved concept${input.folderIds.length === 1 ? " is" : "s are"} ready for project development in ${project.name}.`,
+    entityType: "PROJECT",
+    entityId: project.id,
+    projectId: project.id,
+    url: `/projects/${encodeURIComponent(project.id)}/stages/4`,
+  });
+}
+
 export async function notifyProjectCreated(input: {
   projectId: string;
   actorId: string;

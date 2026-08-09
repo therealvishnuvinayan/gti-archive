@@ -11,10 +11,12 @@ import {
 } from "@prisma/client";
 
 import {
+  completeStageThreeConcepts,
   createProjectConceptFolder,
   editProjectConceptFolder,
   getProjectConceptChatContext,
   getProjectConceptFolders,
+  markProjectConceptApprovedAttachment,
 } from "../src/lib/project-concepts";
 import {
   canManageProjectConcept,
@@ -30,11 +32,16 @@ import {
   assertProjectAttachmentVisibilityForUser,
   createStageRevision,
   createStageTextCommentFast,
+  deleteAttachmentForUser,
   getProjectStageChatMessages,
   reviewProjectRevision,
   reviewStageSubmission,
   startProjectStageWork,
 } from "../src/lib/project-history";
+import {
+  notifyConceptFileApproved,
+  notifyStageFourConceptsActivated,
+} from "../src/lib/notification-center/triggers";
 import { getVisibleStageEventRecipientUserIds } from "../src/lib/notification-center/recipients";
 import { prisma } from "../src/lib/prisma";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
@@ -61,6 +68,7 @@ async function main() {
   const runId = randomUUID();
   const projectId = `concept-round-one-${runId}`;
   const foreignProjectId = `concept-round-two-foreign-${runId}`;
+  const conflictProjectId = `concept-round-three-conflict-${runId}`;
   const userSpecs = [
     ["super", UserRole.SUPER_ADMIN],
     ["owner", UserRole.COLLABORATOR],
@@ -898,6 +906,643 @@ async function main() {
       "comparison must reject another project's file",
     );
 
+    const chatAttachment = await prisma.projectAttachment.create({
+      data: {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        commentId: commentA.id,
+        uploadedById: executorA.id,
+        fileName: `chat-attachment-${runId}.png`,
+        originalFileName: "chat-attachment.png",
+        mimeType: "image/png",
+        fileSize: 12,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/chat-attachment.png`,
+        assetType: AttachmentAssetType.COMMENT_ATTACHMENT,
+        status: AttachmentStatus.READY,
+      },
+    });
+    const invalidExecutorApproval = await markProjectConceptApprovedAttachment(
+      executorA,
+      {
+        projectId,
+        folderId: conceptA.folder.id,
+        attachmentId: secondRevisionFile.id,
+      },
+    );
+    check(
+      isErrorResult(invalidExecutorApproval),
+      "the assigned executor must not designate an Approved Concept",
+    );
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(adminOutsider, {
+          projectId,
+          folderId: conceptA.folder.id,
+          attachmentId: secondRevisionFile.id,
+        }),
+      ),
+      "ADMIN role alone must not designate an Approved Concept",
+    );
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(collaborator, {
+          projectId,
+          folderId: conceptA.folder.id,
+          attachmentId: secondRevisionFile.id,
+        }),
+      ),
+      "a normal collaborator must not designate an Approved Concept",
+    );
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(owner, {
+          projectId,
+          folderId: conceptB.folder.id,
+          attachmentId: secondRevisionFile.id,
+        }),
+      ),
+      "a formal file from another concept must be rejected",
+    );
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(owner, {
+          projectId,
+          folderId: conceptA.folder.id,
+          attachmentId: firstRevisionFile.id,
+        }),
+      ),
+      "a file from a rejected revision must not be designated",
+    );
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(owner, {
+          projectId,
+          folderId: conceptA.folder.id,
+          attachmentId: attachmentA.id,
+        }),
+      ),
+      "a concept brief attachment must not be designated",
+    );
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(owner, {
+          projectId,
+          folderId: conceptA.folder.id,
+          attachmentId: chatAttachment.id,
+        }),
+      ),
+      "a chat/comment attachment must not be designated",
+    );
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(owner, {
+          projectId,
+          folderId: conceptA.folder.id,
+          attachmentId: stageFourBase.id,
+        }),
+      ),
+      "a Stage 4 file must not be designated for a Stage 3 concept",
+    );
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(owner, {
+          projectId,
+          folderId: conceptA.folder.id,
+          attachmentId: foreignFile.id,
+        }),
+      ),
+      "a foreign-project file must not be designated",
+    );
+
+    const initialApproval = await markProjectConceptApprovedAttachment(coOwner, {
+      projectId,
+      folderId: conceptA.folder.id,
+      attachmentId: secondRevisionFile.id,
+    });
+    check(!isErrorResult(initialApproval) && initialApproval.changed, "co-owner must designate a valid formal revision file");
+    const initialApprovalRecord = await prisma.projectConceptFolder.findUniqueOrThrow({
+      where: { id: conceptA.folder.id },
+      select: { approvedAttachmentId: true, approvedById: true, approvedAt: true },
+    });
+    check(
+      initialApprovalRecord.approvedAttachmentId === secondRevisionFile.id &&
+        initialApprovalRecord.approvedById === coOwner.id &&
+        initialApprovalRecord.approvedAt !== null,
+      "designation must persist the exact attachment and audit fields",
+    );
+    const repeatedApproval = await markProjectConceptApprovedAttachment(superAdmin, {
+      projectId,
+      folderId: conceptA.folder.id,
+      attachmentId: secondRevisionFile.id,
+    });
+    check(
+      !isErrorResult(repeatedApproval) && !repeatedApproval.changed,
+      "repeating the same designation must be idempotent",
+    );
+
+    const replacementFile = await prisma.projectAttachment.create({
+      data: {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        revisionId: secondRevision.id,
+        uploadedById: executorA.id,
+        fileName: `concept-revision-two-alternate-${runId}.png`,
+        originalFileName: "concept-revision-two-alternate.png",
+        mimeType: "image/png",
+        fileSize: 24,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/concept-revision-two-alternate.png`,
+        assetType: AttachmentAssetType.STAGE_SUBMISSION,
+        status: AttachmentStatus.READY,
+      },
+    });
+    const replacementApproval = await markProjectConceptApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.folder.id,
+      attachmentId: replacementFile.id,
+    });
+    check(
+      !isErrorResult(replacementApproval) &&
+        replacementApproval.changed &&
+        replacementApproval.attachment.id === replacementFile.id,
+      "a manager must be able to replace the designation before completion",
+    );
+    check(
+      (await prisma.projectConceptFolder.count({
+        where: { id: conceptA.folder.id, approvedAttachmentId: { not: null } },
+      })) === 1,
+      "each concept must retain exactly one Approved Concept designation",
+    );
+    const preCompletionState = await prisma.$transaction([
+      prisma.projectStage.findUniqueOrThrow({
+        where: { id: conceptA.folder.taskerStageId },
+        select: { status: true },
+      }),
+      prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId,
+            stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+          },
+        },
+        select: { status: true },
+      }),
+      prisma.projectCompletionWorkflow.count({ where: { projectId } }),
+      prisma.projectRevision.count({
+        where: { id: { in: [firstRevision.id, secondRevision.id] } },
+      }),
+      prisma.projectAttachment.count({
+        where: { id: { in: [firstRevisionFile.id, secondRevisionFile.id] } },
+      }),
+    ]);
+    check(
+      preCompletionState[0].status === StageStatus.ONGOING &&
+        preCompletionState[1].status === ProjectWorkflowStageStatus.AVAILABLE &&
+        preCompletionState[2] === 0,
+      "Mark as Approved Concept must not complete the tasker/workflow or initialize project completion",
+    );
+    check(
+      preCompletionState[3] === 2 && preCompletionState[4] === 2,
+      "replacing the designation must preserve prior revisions and files",
+    );
+
+    await notifyConceptFileApproved({
+      projectId,
+      folderId: conceptA.folder.id,
+      attachmentId: replacementFile.id,
+      actorId: owner.id,
+    });
+    const approvalNotifications = await prisma.notification.findMany({
+      where: {
+        projectId,
+        attachmentId: replacementFile.id,
+        title: "Concept file approved",
+      },
+      select: { userId: true },
+    });
+    check(
+      approvalNotifications.length === 1 &&
+        approvalNotifications[0].userId === executorA.id,
+      "approval notification must target only the assigned executor",
+    );
+
+    await prisma.projectWorkflowStage.update({
+      where: {
+        projectId_stageKey: {
+          projectId,
+          stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        },
+      },
+      data: {
+        status: ProjectWorkflowStageStatus.LOCKED,
+        unlockedAt: null,
+      },
+    });
+    const attachmentCountBeforePromotion = await prisma.projectAttachment.count({
+      where: { id: replacementFile.id },
+    });
+    const [completion, concurrentCompletion] = await Promise.all([
+      completeStageThreeConcepts(owner, { projectId }),
+      completeStageThreeConcepts(coOwner, { projectId }),
+    ]);
+    check(!isErrorResult(completion), "owner must complete Stage 3 with one approved concept");
+    check(
+      !isErrorResult(concurrentCompletion),
+      "a concurrent completion retry must resolve idempotently",
+    );
+    check(
+      (completion.transitioned || concurrentCompletion.transitioned) &&
+        completion.approvedCount === 1 &&
+        completion.unapprovedConcepts.some((concept) => concept.id === conceptB.folder.id),
+      "completion must promote only approved concepts and report unapproved concepts",
+    );
+    const workflowAfterCompletion = await prisma.projectWorkflowStage.findMany({
+      where: {
+        projectId,
+        stageKey: {
+          in: [
+            ProjectWorkflowStageKey.CONCEPT_CREATION,
+            ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          ],
+        },
+      },
+      select: { stageKey: true, status: true, completedAt: true, unlockedAt: true },
+    });
+    const completedStageThree = workflowAfterCompletion.find(
+      (stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION,
+    );
+    const unlockedStageFour = workflowAfterCompletion.find(
+      (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+    );
+    check(
+      completedStageThree?.status === ProjectWorkflowStageStatus.COMPLETED &&
+        completedStageThree.completedAt !== null,
+      "completion must persist Stage 3 workflow completion",
+    );
+    check(
+      unlockedStageFour?.status === ProjectWorkflowStageStatus.AVAILABLE &&
+        unlockedStageFour.unlockedAt !== null,
+      "completion must unlock Stage 4",
+    );
+
+    const promotedConcept = await prisma.projectConceptFolder.findUniqueOrThrow({
+      where: { sourceStage3ConceptId: conceptA.folder.id },
+      select: {
+        id: true,
+        name: true,
+        workflowStageKey: true,
+        assignedExecutorId: true,
+        sourceStage3ConceptId: true,
+        sourceStage3ApprovedAttachmentId: true,
+        taskerStage: {
+          select: {
+            id: true,
+            description: true,
+            actualStartedAt: true,
+            startedById: true,
+            status: true,
+            _count: { select: { revisions: true, attachments: true } },
+          },
+        },
+      },
+    });
+    check(
+      promotedConcept.name === "Renamed Accepted Concept" &&
+        promotedConcept.workflowStageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT &&
+        promotedConcept.assignedExecutorId === executorA.id &&
+        promotedConcept.sourceStage3ApprovedAttachmentId === replacementFile.id,
+      "Stage 4 concept must preserve name, executor, source lineage, and the exact approved binary",
+    );
+    check(
+      (await prisma.projectAttachment.findUniqueOrThrow({
+        where: { id: replacementFile.id },
+        select: { stageId: true },
+      })).stageId === conceptA.folder.taskerStageId,
+      "the starting reference must remain a Stage 3 attachment rather than becoming a Stage 4 submission",
+    );
+    check(
+      (await prisma.comparisonComment.count({
+        where: { id: stageFourMarker.id },
+      })) === 1,
+      "unrelated legacy Stage 4 chat/comparison data must be preserved",
+    );
+    check(
+      promotedConcept.taskerStage.description === null &&
+        promotedConcept.taskerStage.actualStartedAt === null &&
+        promotedConcept.taskerStage.startedById === null &&
+        promotedConcept.taskerStage.status === StageStatus.ONGOING &&
+        promotedConcept.taskerStage._count.revisions === 0 &&
+        promotedConcept.taskerStage._count.attachments === 0,
+      "promoted Stage 4 concept must have a fresh independent unstarted tasker",
+    );
+    check(
+      attachmentCountBeforePromotion === 1 &&
+        (await prisma.projectAttachment.count({ where: { id: replacementFile.id } })) === 1,
+      "promotion must reference the existing binary without copying it",
+    );
+    check(
+      (await prisma.projectStageFileHandoff.count({
+        where: { projectId, sourceAttachmentId: replacementFile.id },
+      })) === 0,
+      "Round 3 completion must not create a Stage 4 to Stage 5 handoff",
+    );
+
+    await notifyStageFourConceptsActivated({
+      projectId,
+      folderIds: completion.promotedFolderIds,
+      actorId: owner.id,
+    });
+    const activationRecipients = await prisma.notification.findMany({
+      where: { projectId, title: "Stage 4 concepts activated" },
+      select: { userId: true },
+    });
+    const activationRecipientIds = activationRecipients.map(
+      (notification) => notification.userId,
+    );
+    check(
+      activationRecipientIds.includes(coOwner.id) &&
+        activationRecipientIds.includes(executorA.id) &&
+        !activationRecipientIds.includes(owner.id) &&
+        !activationRecipientIds.includes(executorB.id) &&
+        !activationRecipientIds.includes(collaborator.id) &&
+        !activationRecipientIds.includes(superAdmin.id),
+      "Stage 4 activation notifications must remain manager/assigned-executor scoped",
+    );
+
+    const stageFourEdit = await editProjectConceptFolder(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      folderId: promotedConcept.id,
+      name: promotedConcept.name,
+      assignedExecutorId: executorB.id,
+      brief: "Fresh Stage 4 refinement brief",
+    });
+    check(!isErrorResult(stageFourEdit), "Stage 4 assignment and brief must be editable before acceptance");
+    const reassignedStageFourContext = await getProjectConceptChatContext(executorB, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      folderId: promotedConcept.id,
+    });
+    check(
+      reassignedStageFourContext?.chatMode.startingReference?.id === replacementFile.id &&
+        reassignedStageFourContext.chatMode.startingReference.sourceConceptId === conceptA.folder.id,
+      "the reassigned Stage 4 executor must see the read-only starting reference",
+    );
+    await assertProjectAttachmentVisibilityForUser(executorB, {
+      id: replacementFile.id,
+      projectId,
+      stageId: conceptA.folder.taskerStageId,
+      createdAt: replacementFile.createdAt,
+      project: { ownerId: owner.id, coOwners: [{ userId: coOwner.id }] },
+    });
+    await expectRejected(
+      deleteAttachmentForUser(owner, replacementFile.id),
+      "an Approved Concept/starting reference must not be deletable",
+    );
+
+    await startProjectStageWork(executorB, {
+      projectId,
+      stageId: promotedConcept.taskerStage.id,
+    });
+    const lockedStageFourEdit = await editProjectConceptFolder(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      folderId: promotedConcept.id,
+      name: promotedConcept.name,
+      assignedExecutorId: executorA.id,
+      brief: "Must not replace accepted brief",
+    });
+    check(
+      isErrorResult(lockedStageFourEdit),
+      "Stage 4 assignment and brief must lock after acceptance",
+    );
+
+    check(
+      isErrorResult(
+        await markProjectConceptApprovedAttachment(owner, {
+          projectId,
+          folderId: conceptA.folder.id,
+          attachmentId: secondRevisionFile.id,
+        }),
+      ),
+      "Approved Concept replacement must lock after Stage 3 completion",
+    );
+    check(
+      isErrorResult(
+        await editProjectConceptFolder(owner, {
+          projectId,
+          stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+          folderId: conceptA.folder.id,
+          name: "Locked Stage 3 Concept",
+        }),
+      ),
+      "Stage 3 concept edits must lock after completion",
+    );
+    check(
+      isErrorResult(
+        await createProjectConceptFolder(owner, {
+          projectId,
+          stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+          name: "Late Concept",
+          assignedExecutorId: executorA.id,
+        }),
+      ),
+      "new Stage 3 concepts must be blocked after completion",
+    );
+    const postCompletionComment = await createStageTextCommentFast(executorA, {
+      projectId,
+      stageId: conceptA.folder.taskerStageId,
+      body: "Stage 3 history remains available after completion",
+    });
+    check(
+      Boolean(postCompletionComment.id),
+      "existing Stage 3 chat behavior must remain available after completion",
+    );
+    check(
+      (await prisma.projectRevision.findUniqueOrThrow({
+        where: { id: secondRevision.id },
+      })).status === ProjectRevisionStatus.PENDING_REVIEW,
+      "formal concept designation/completion must not mutate ProjectRevision status",
+    );
+
+    const countsBeforeRetry = await prisma.$transaction([
+      prisma.projectConceptFolder.count({
+        where: {
+          projectId,
+          workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          sourceStage3ConceptId: conceptA.folder.id,
+        },
+      }),
+      prisma.projectStage.count({
+        where: { projectId, id: promotedConcept.taskerStage.id },
+      }),
+    ]);
+    const repeatedCompletion = await completeStageThreeConcepts(superAdmin, {
+      projectId,
+    });
+    check(
+      !isErrorResult(repeatedCompletion) && !repeatedCompletion.transitioned,
+      "Stage 3 completion retry must be idempotent",
+    );
+    const countsAfterRetry = await prisma.$transaction([
+      prisma.projectConceptFolder.count({
+        where: {
+          projectId,
+          workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          sourceStage3ConceptId: conceptA.folder.id,
+        },
+      }),
+      prisma.projectStage.count({
+        where: { projectId, id: promotedConcept.taskerStage.id },
+      }),
+      prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId,
+            stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          },
+        },
+        select: { unlockedAt: true },
+      }),
+    ]);
+    check(
+      countsBeforeRetry[0] === countsAfterRetry[0] &&
+        countsBeforeRetry[1] === countsAfterRetry[1],
+      "completion retry must not duplicate Stage 4 folders or taskers",
+    );
+    check(
+      countsAfterRetry[2].unlockedAt?.getTime() ===
+        unlockedStageFour.unlockedAt?.getTime(),
+      "completion retry must preserve the first Stage 4 unlockedAt timestamp",
+    );
+
+    await prisma.project.create({
+      data: {
+        id: conflictProjectId,
+        name: `Concept Round 3 Collision ${runId}`,
+        ownerId: owner.id,
+        createdById: superAdmin.id,
+        executors: {
+          create: [{ userId: executorA.id, addedById: owner.id }],
+        },
+        workflowStages: {
+          create: getInitialProjectWorkflowStageData().map((stage) => ({
+            ...stage,
+            status:
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? ProjectWorkflowStageStatus.AVAILABLE
+                : stage.status,
+            unlockedAt:
+              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+                ? new Date()
+                : stage.unlockedAt,
+          })),
+        },
+      },
+    });
+    const collisionConcept = await createProjectConceptFolder(owner, {
+      projectId: conflictProjectId,
+      stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      name: "Collision Concept",
+      assignedExecutorId: executorA.id,
+    });
+    check(!isErrorResult(collisionConcept), "collision fixture concept must be created");
+    const zeroApprovalCompletion = await completeStageThreeConcepts(owner, {
+      projectId: conflictProjectId,
+    });
+    check(
+      isErrorResult(zeroApprovalCompletion),
+      "the server must block Stage 3 completion with zero approved concepts",
+    );
+    await prisma.projectStage.update({
+      where: { id: collisionConcept.folder.taskerStageId },
+      data: { actualStartedAt: new Date(), startedById: executorA.id },
+    });
+    const collisionRevision = await prisma.projectRevision.create({
+      data: {
+        projectId: conflictProjectId,
+        stageId: collisionConcept.folder.taskerStageId,
+        createdById: executorA.id,
+        revisionNumber: 1,
+        title: "Collision submission",
+        status: ProjectRevisionStatus.PENDING_REVIEW,
+      },
+    });
+    const collisionFile = await prisma.projectAttachment.create({
+      data: {
+        projectId: conflictProjectId,
+        stageId: collisionConcept.folder.taskerStageId,
+        revisionId: collisionRevision.id,
+        uploadedById: executorA.id,
+        fileName: `collision-${runId}.png`,
+        originalFileName: "collision.png",
+        mimeType: "image/png",
+        fileSize: 16,
+        bucket: "integration-test",
+        storageKey: `integration/${runId}/collision.png`,
+        assetType: AttachmentAssetType.REVISION_ORIGINAL,
+        status: AttachmentStatus.READY,
+      },
+    });
+    check(
+      !isErrorResult(
+        await markProjectConceptApprovedAttachment(owner, {
+          projectId: conflictProjectId,
+          folderId: collisionConcept.folder.id,
+          attachmentId: collisionFile.id,
+        }),
+      ),
+      "collision fixture approval must be valid",
+    );
+    const collisionStageFourTasker = await prisma.projectStage.create({
+      data: {
+        projectId: conflictProjectId,
+        name: "Collision Concept",
+        invoiceRequired: false,
+        isTasker: true,
+        status: StageStatus.ONGOING,
+        order: 40_001,
+      },
+    });
+    await prisma.projectConceptFolder.create({
+      data: {
+        projectId: conflictProjectId,
+        workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        taskerStageId: collisionStageFourTasker.id,
+        assignedExecutorId: executorA.id,
+        name: "Collision Concept",
+        normalizedName: "collision concept",
+        sortOrder: 1,
+        createdById: owner.id,
+      },
+    });
+    const collisionCompletion = await completeStageThreeConcepts(owner, {
+      projectId: conflictProjectId,
+    });
+    check(
+      isErrorResult(collisionCompletion) &&
+        collisionCompletion.error.includes("unrelated concept"),
+      "an unrelated Stage 4 name collision must return a clear correction error",
+    );
+    check(
+      (await prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId: conflictProjectId,
+            stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+          },
+        },
+      })).status === ProjectWorkflowStageStatus.AVAILABLE &&
+        (await prisma.projectConceptFolder.count({
+          where: {
+            projectId: conflictProjectId,
+            sourceStage3ConceptId: collisionConcept.folder.id,
+          },
+        })) === 0,
+      "a collision must leave Stage 3 available without a partial promotion",
+    );
+
     const normalStage = await prisma.projectStage.create({
       data: {
         projectId,
@@ -929,7 +1574,7 @@ async function main() {
     check(normalApproval.status === ProjectRevisionStatus.APPROVED, "normal stage approval must remain healthy");
   } finally {
     await prisma.project.deleteMany({
-      where: { id: { in: [projectId, foreignProjectId] } },
+      where: { id: { in: [projectId, foreignProjectId, conflictProjectId] } },
     });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
@@ -938,7 +1583,7 @@ async function main() {
 main()
   .then(async () => {
     await prisma.$disconnect();
-    console.log("Stage 3/4 Round 1/2 concept integration checks passed.");
+    console.log("Stage 3/4 Round 1/2/3 concept integration checks passed.");
   })
   .catch(async (error) => {
     console.error(error);

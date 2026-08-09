@@ -363,6 +363,7 @@ model User {
   createdResearchFolders              ProjectResearchFolder[]              @relation("ProjectResearchFolderCreator")
   addedResearchFolderFiles            ProjectResearchFolderFile[]          @relation("ProjectResearchFolderFileAdder")
   createdConceptFolders               ProjectConceptFolder[]               @relation("ProjectConceptFolderCreator")
+  approvedConceptFolders              ProjectConceptFolder[]               @relation("ProjectConceptFolderApprover")
   createdStageFileHandoffs            ProjectStageFileHandoff[]            @relation("ProjectStageFileHandoffCreator")
   updatedFileChecklistItems           ProjectFileChecklistItem[]           @relation("ProjectFileChecklistItemUpdater")
   fileChecklistRequestsMade           ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRequester")
@@ -697,25 +698,36 @@ model ProjectResearchFolderFile {
 }
 
 model ProjectConceptFolder {
-  id                 String                  @id @default(cuid())
-  projectId          String
-  project            Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  workflowStageKey   ProjectWorkflowStageKey @default(CONCEPT_CREATION)
-  taskerStageId      String                  @unique
-  taskerStage        ProjectStage            @relation(fields: [taskerStageId], references: [id], onDelete: Cascade)
-  assignedExecutorId String?
-  assignedExecutor   ProjectExecutor?        @relation("ProjectConceptFolderAssignedExecutor", fields: [projectId, assignedExecutorId], references: [projectId, userId], onDelete: Restrict, onUpdate: Cascade)
-  name               String
-  normalizedName     String
-  sortOrder          Int                     @default(1)
-  createdById        String?
-  createdBy          User?                   @relation("ProjectConceptFolderCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
+  id                               String                  @id @default(cuid())
+  projectId                        String
+  project                          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workflowStageKey                 ProjectWorkflowStageKey @default(CONCEPT_CREATION)
+  taskerStageId                    String                  @unique
+  taskerStage                      ProjectStage            @relation(fields: [taskerStageId], references: [id], onDelete: Cascade)
+  assignedExecutorId               String?
+  assignedExecutor                 ProjectExecutor?        @relation("ProjectConceptFolderAssignedExecutor", fields: [projectId, assignedExecutorId], references: [projectId, userId], onDelete: Restrict, onUpdate: Cascade)
+  approvedAttachmentId             String?                 @unique
+  approvedAttachment               ProjectAttachment?      @relation("ProjectConceptApprovedAttachment", fields: [approvedAttachmentId], references: [id], onDelete: Restrict)
+  approvedById                     String?
+  approvedBy                       User?                   @relation("ProjectConceptFolderApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt                       DateTime?
+  sourceStage3ConceptId            String?                 @unique
+  sourceStage3Concept              ProjectConceptFolder?   @relation("ProjectConceptPromotion", fields: [sourceStage3ConceptId], references: [id], onDelete: Restrict)
+  promotedStage4Concept            ProjectConceptFolder?   @relation("ProjectConceptPromotion")
+  sourceStage3ApprovedAttachmentId String?                 @unique
+  sourceStage3ApprovedAttachment   ProjectAttachment?      @relation("ProjectConceptStartingReference", fields: [sourceStage3ApprovedAttachmentId], references: [id], onDelete: Restrict)
+  name                             String
+  normalizedName                   String
+  sortOrder                        Int                     @default(1)
+  createdById                      String?
+  createdBy                        User?                   @relation("ProjectConceptFolderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt                        DateTime                @default(now())
+  updatedAt                        DateTime                @updatedAt
 
   @@unique([projectId, workflowStageKey, normalizedName])
   @@index([projectId, workflowStageKey, sortOrder])
   @@index([projectId, workflowStageKey, assignedExecutorId, sortOrder])
+  @@index([approvedById])
   @@index([createdById])
 }
 
@@ -1230,6 +1242,8 @@ model ProjectAttachment {
   researchFolderFile         ProjectResearchFolderFile?
   stageFileHandoffs          ProjectStageFileHandoff[]             @relation("ProjectStageFileHandoffSourceAttachment")
   sourceFileChecklists       ProjectFileChecklist[]                @relation("ProjectFileChecklistSourceAttachment")
+  approvedConceptFolder      ProjectConceptFolder?                 @relation("ProjectConceptApprovedAttachment")
+  conceptStartingReference   ProjectConceptFolder?                 @relation("ProjectConceptStartingReference")
   fileChecklistItems         ProjectFileChecklistItemAttachment[]  @relation("ProjectFileChecklistItemAttachment")
   checklistResponseRequestId String?
   checklistResponseRequest   ProjectFileChecklistRequest?          @relation("ProjectFileChecklistRequestResponseAttachments", fields: [checklistResponseRequestId], references: [id], onDelete: SetNull)

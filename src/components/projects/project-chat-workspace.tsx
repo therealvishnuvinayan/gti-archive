@@ -50,6 +50,7 @@ import {
   saveProjectCollaboratorsAction,
   setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
+import { markProjectConceptApprovedAttachmentAction } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
   DEFAULT_CHAT_LANGUAGE,
@@ -1598,11 +1599,13 @@ function ConceptBriefContextCard({
   attachments,
   assignedExecutorName,
   hasAcceptedBrief,
+  startingReference,
 }: {
   brief: string;
   attachments: DisplayAttachmentRecord[];
   assignedExecutorName: string;
   hasAcceptedBrief: boolean;
+  startingReference: ProjectConceptChatMode["startingReference"];
 }) {
   return (
     <TimelineFrame
@@ -1631,6 +1634,39 @@ function ConceptBriefContextCard({
           </span>
         </div>
         <CardContent className="space-y-4 px-4 py-4 sm:px-5">
+          {startingReference ? (
+            <div className="rounded-[14px] border border-[#cfe3d2] bg-[#f5faf6] p-3">
+              <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#4f765d]">
+                Starting Reference · {startingReference.sourceConceptName}
+              </p>
+              <div className="mt-2 flex min-w-0 items-center gap-2">
+                <FileText className="h-4 w-4 shrink-0 text-brand" />
+                <span className="min-w-0 flex-1 truncate text-[12px] font-[680] text-[#2d3a31]">
+                  {startingReference.name}
+                </span>
+                <AssetPreviewButton
+                  fileName={startingReference.name}
+                  mimeType={startingReference.mimeType}
+                  previewPath={startingReference.previewPath}
+                  downloadPath={startingReference.downloadPath}
+                  triggerClassName="size-8 rounded-full text-brand"
+                />
+                <Button asChild variant="ghost" size="icon" className="size-8 rounded-full text-brand">
+                  <a
+                    href={startingReference.downloadPath}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Download ${startingReference.name}`}
+                  >
+                    <Download className="h-4 w-4" />
+                  </a>
+                </Button>
+              </div>
+              <p className="mt-1.5 text-[10px] leading-4 text-[#708077]">
+                Read-only approved Stage 3 reference. New Stage 4 work remains independent.
+              </p>
+            </div>
+          ) : null}
           <p className="whitespace-pre-wrap break-words text-[13px] leading-6 text-[#26312a]">
             {brief || "No concept brief has been added."}
           </p>
@@ -1657,6 +1693,10 @@ function AttachmentHistoryList({
   onOpenCaptions,
   showCaptionAction = true,
   currentUserDisplayName,
+  approvedConceptAttachmentId,
+  canApproveConceptFile = false,
+  approvingConceptAttachmentId,
+  onApproveConceptFile,
 }: {
   attachments: DisplayAttachmentRecord[];
   compact?: boolean;
@@ -1666,6 +1706,10 @@ function AttachmentHistoryList({
   onOpenCaptions?: (attachment: DisplayAttachmentRecord) => void;
   showCaptionAction?: boolean;
   currentUserDisplayName?: string;
+  approvedConceptAttachmentId?: string | null;
+  canApproveConceptFile?: boolean;
+  approvingConceptAttachmentId?: string | null;
+  onApproveConceptFile?: (attachment: DisplayAttachmentRecord) => void;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -1695,6 +1739,16 @@ function AttachmentHistoryList({
             showCaptionAction &&
             Boolean(onOpenCaptions) &&
             isCaptionableStageSubmissionAttachment(attachment, projectCategory);
+          const isApprovedConcept =
+            approvedConceptAttachmentId === attachment.id;
+          const canMarkApprovedConcept =
+            canApproveConceptFile &&
+            !isApprovedConcept &&
+            !attachment.uploadState &&
+            attachment.isSubmission &&
+            (attachment.assetType === "REVISION_ORIGINAL" ||
+              attachment.assetType === "STAGE_SUBMISSION") &&
+            Boolean(onApproveConceptFile);
 
           const uploadedBy = currentUserDisplayName
             ? getActorDisplayName(attachment.uploadedBy, currentUserDisplayName)
@@ -1757,6 +1811,11 @@ function AttachmentHistoryList({
                           : effectiveSubmissionStatus === "REJECTED"
                             ? "Revision Requested"
                             : "Pending Review"}
+                      </span>
+                    ) : null}
+                    {isApprovedConcept ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-[#dff2e5] px-2 py-0.5 text-[9px] font-[800] uppercase tracking-wide leading-none text-[#1f7145]">
+                        <CheckCircle2 className="h-3 w-3" /> Approved Concept
                       </span>
                     ) : null}
                   </div>
@@ -1833,6 +1892,25 @@ function AttachmentHistoryList({
                   </div>
                 ) : null}
               </div>
+              {canMarkApprovedConcept ? (
+                <div className="mt-2 flex justify-end border-t border-[#edf1ed] pt-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-full border-[#93bda0] px-3 text-[10px] font-[760] text-[#276f49]"
+                    disabled={Boolean(approvingConceptAttachmentId)}
+                    onClick={() => onApproveConceptFile?.(attachment)}
+                  >
+                    {approvingConceptAttachmentId === attachment.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
+                    Mark as Approved Concept
+                  </Button>
+                </div>
+              ) : null}
             </div>
           );
         })()
@@ -2458,6 +2536,15 @@ export function ProjectChatWorkspace({
   const [reviewRejectMode, setReviewRejectMode] = useState(false);
   const [reviewRejectReason, setReviewRejectReason] = useState("");
   const [reviewDialogError, setReviewDialogError] = useState<string | null>(null);
+  const [approvedConceptAttachmentId, setApprovedConceptAttachmentId] =
+    useState<string | null>(conceptMode?.approvedAttachmentId ?? null);
+  const [conceptApprovalTarget, setConceptApprovalTarget] =
+    useState<DisplayAttachmentRecord | null>(null);
+  const [conceptApprovalError, setConceptApprovalError] = useState<string | null>(
+    null,
+  );
+  const [approvingConceptAttachmentId, setApprovingConceptAttachmentId] =
+    useState<string | null>(null);
   const [commentUploadDialogOpen, setCommentUploadDialogOpen] = useState(false);
   const [commentUploadIntent, setCommentUploadIntent] =
     useState<CommentUploadIntent>("COMMENT_ATTACHMENT");
@@ -2598,6 +2685,12 @@ export function ProjectChatWorkspace({
     setCollaborators(project.collaborators);
     setExecutors(project.executors);
   }, [project.collaborators, project.executors]);
+
+  useEffect(() => {
+    setApprovedConceptAttachmentId(
+      conceptMode?.approvedAttachmentId ?? null,
+    );
+  }, [conceptMode?.approvedAttachmentId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -5737,6 +5830,51 @@ export function ProjectChatWorkspace({
     setReviewRevisionId(revisionEntryId);
   }
 
+  function openConceptApprovalConfirmation(
+    attachment: DisplayAttachmentRecord,
+  ) {
+    setConceptApprovalError(null);
+    setConceptApprovalTarget(attachment);
+  }
+
+  async function confirmConceptApproval() {
+    if (!conceptMode || !conceptApprovalTarget) {
+      return;
+    }
+
+    setConceptApprovalError(null);
+    setApprovingConceptAttachmentId(conceptApprovalTarget.id);
+
+    try {
+      const result = await markProjectConceptApprovedAttachmentAction({
+        projectId: project.id,
+        folderId: conceptMode.folderId,
+        attachmentId: conceptApprovalTarget.id,
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      setApprovedConceptAttachmentId(result.attachment.id);
+      setConceptApprovalTarget(null);
+      showSuccessToast(
+        result.changed
+          ? "Approved Concept updated."
+          : "This file is already the Approved Concept.",
+      );
+      router.refresh();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to approve this concept file right now.";
+      setConceptApprovalError(message);
+    } finally {
+      setApprovingConceptAttachmentId(null);
+    }
+  }
+
   function startRevisionReply(message: DisplayChatEntry) {
     if (isChatReadOnly) {
       setComposerError(
@@ -7671,6 +7809,7 @@ export function ProjectChatWorkspace({
                 "Unassigned"
               }
               hasAcceptedBrief={hasAcceptedBriefInTimeline}
+              startingReference={conceptMode.startingReference}
             />
           ) : showBriefContextCard && activeStage ? (
             <StageBriefContextCard
@@ -7921,6 +8060,7 @@ export function ProjectChatWorkspace({
                             </div>
                             <AttachmentHistoryList
                               attachments={message.attachments}
+                              approvedConceptAttachmentId={approvedConceptAttachmentId}
                               actionsDisabled={isProjectCompleted}
                               tone={revisionAlignment === "right" ? "sent" : "received"}
                               projectCategory={project.category}
@@ -10195,6 +10335,38 @@ export function ProjectChatWorkspace({
           </Card>
         </div>
       ) : null}
+      <ConfirmationDialog
+        isOpen={Boolean(conceptApprovalTarget)}
+        title={
+          approvedConceptAttachmentId &&
+          approvedConceptAttachmentId !== conceptApprovalTarget?.id
+            ? "Replace the currently approved concept file?"
+            : "Mark as Approved Concept?"
+        }
+        description={
+          approvedConceptAttachmentId &&
+          approvedConceptAttachmentId !== conceptApprovalTarget?.id
+            ? `This replaces the current Approved Concept with ${conceptApprovalTarget?.originalFileName ?? "this file"}. The revision review status is not changed.`
+            : `${conceptApprovalTarget?.originalFileName ?? "This file"} will become the one formal Approved Concept for this concept. The revision review status is not changed.`
+        }
+        confirmLabel={
+          approvedConceptAttachmentId &&
+          approvedConceptAttachmentId !== conceptApprovalTarget?.id
+            ? "Replace Approved Concept"
+            : "Mark as Approved Concept"
+        }
+        pending={Boolean(approvingConceptAttachmentId)}
+        error={conceptApprovalError ?? undefined}
+        onConfirm={() => {
+          void confirmConceptApproval();
+        }}
+        onClose={() => {
+          if (approvingConceptAttachmentId) return;
+          setConceptApprovalTarget(null);
+          setConceptApprovalError(null);
+        }}
+      />
+
       {reviewRevisionMessage ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
           <Card className="w-full max-w-[720px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
@@ -10287,6 +10459,17 @@ export function ProjectChatWorkspace({
                   <p className="text-[13px] font-semibold text-[#2d372f]">Submitted Files</p>
                   <AttachmentHistoryList
                     attachments={reviewRevisionMessage.attachments}
+                    approvedConceptAttachmentId={approvedConceptAttachmentId}
+                    canApproveConceptFile={Boolean(
+                      conceptMode?.stageNumber === 3 &&
+                        conceptMode.canReview &&
+                        !conceptMode.isWorkflowCompleted &&
+                        (revisionReviewOverrides[reviewRevisionId ?? ""]?.status ??
+                          reviewRevisionMessage.revisionStatus ??
+                          "PENDING_REVIEW") !== "REJECTED"
+                    )}
+                    approvingConceptAttachmentId={approvingConceptAttachmentId}
+                    onApproveConceptFile={openConceptApprovalConfirmation}
                     actionsDisabled={isProjectCompleted}
                     projectCategory={project.category}
                     showCaptionAction={canAddCaptions}

@@ -4,8 +4,15 @@ import { revalidatePath, revalidateTag } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
 import {
+  notifyConceptFileApproved,
+  notifyStageFourConceptsActivated,
+  runNotificationTask,
+} from "@/lib/notification-center";
+import {
+  completeStageThreeConcepts,
   createProjectConceptFolder,
   editProjectConceptFolder,
+  markProjectConceptApprovedAttachment,
   renameProjectConceptFolder,
   type ConceptWorkflowStageKey,
 } from "@/lib/project-concepts";
@@ -92,6 +99,84 @@ export async function renameProjectConceptFolderAction(input: {
   } catch (error) {
     console.error("[project-concepts] rename failed", error);
     return { error: "Unable to rename the concept folder right now." } as const;
+  }
+}
+
+export async function markProjectConceptApprovedAttachmentAction(input: {
+  projectId: string;
+  folderId: string;
+  attachmentId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await markProjectConceptApprovedAttachment(user, input);
+
+    if (!("error" in result)) {
+      revalidateConceptStage(
+        input.projectId,
+        "CONCEPT_CREATION",
+      );
+      revalidatePath(
+        `/projects/${input.projectId}/stages/3/concepts/${input.folderId}`,
+      );
+
+      if (result.changed) {
+        await runNotificationTask("concept-file-approved", () =>
+          notifyConceptFileApproved({
+            ...input,
+            actorId: user.id,
+          }),
+        );
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] approval failed", error);
+    return { error: "Unable to approve this concept file right now." } as const;
+  }
+}
+
+export async function completeStageThreeConceptsAction(input: {
+  projectId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await completeStageThreeConcepts(user, input);
+
+    if (!("error" in result)) {
+      revalidateConceptStage(
+        input.projectId,
+        "CONCEPT_CREATION",
+      );
+      revalidateConceptStage(
+        input.projectId,
+        "PROJECT_DEVELOPMENT",
+      );
+
+      for (const folderId of result.promotedFolderIds) {
+        revalidatePath(
+          `/projects/${input.projectId}/stages/4/concepts/${folderId}`,
+        );
+      }
+
+      if (result.transitioned || result.createdFolderIds.length > 0) {
+        await runNotificationTask("stage-four-concepts-activated", () =>
+          notifyStageFourConceptsActivated({
+            projectId: input.projectId,
+            folderIds: result.promotedFolderIds,
+            actorId: user.id,
+          }),
+        );
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] Stage 3 completion failed", error);
+    return { error: "Unable to complete Stage 3 right now." } as const;
   }
 }
 

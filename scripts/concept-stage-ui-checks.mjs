@@ -147,7 +147,7 @@ assert(
   "Concept notifications must deep-link to the secured concept route.",
 );
 assert(
-  schema.includes("assignedExecutorId String?") &&
+  /assignedExecutorId\s+String\?/.test(schema) &&
     schema.includes("ProjectConceptFolderAssignedExecutor") &&
     schema.includes("references: [projectId, userId]") &&
     migration.includes('REFERENCES "ProjectExecutor"("projectId", "userId")'),

@@ -35,6 +35,7 @@
     "stage-two:ui-check": "node scripts/stage-two-ui-checks.mjs",
     "concept-stage:ui-check": "node scripts/concept-stage-ui-checks.mjs",
     "concept-chat:ui-check": "node scripts/concept-chat-round-two-ui-checks.mjs",
+    "concept-round-three:ui-check": "node scripts/concept-round-three-ui-checks.mjs",
     "stage-five:ui-check": "node scripts/stage-five-ui-checks.mjs",
     "stage-five:integration-check": "tsc --project scripts/tsconfig.stage-five-integration.json && COMPILED_ALIAS_ROOT=.tmp/stage-five-integration node -r ./scripts/register-compiled-alias.cjs .tmp/stage-five-integration/scripts/stage-five-integration-check.js",
     "stage-six:ui-check": "node scripts/stage-six-ui-checks.mjs",
