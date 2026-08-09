@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Check, Download, Eye, FileText, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, Check, Download, Eye, FileText, ShieldCheck, X } from "lucide-react";
 
 import { decideAuthenticatedProductionApprovalAction } from "@/app/production-approvals/[stepId]/actions";
 import { Button } from "@/components/ui/button";
@@ -73,7 +74,17 @@ export function ProductionApprovalWorkspace({
   return (
     <div>
       <header className="border-b border-[#e4ebe5] bg-[linear-gradient(135deg,#f8fbf8,#eef6f0)] px-6 py-7 sm:px-9 sm:py-9">
-        <div className="flex items-center gap-2 text-[11px] font-[780] uppercase tracking-[.13em] text-[#4b765b]"><ShieldCheck className="h-4 w-4" /> Production Approval</div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-[11px] font-[780] uppercase tracking-[.13em] text-[#4b765b]"><ShieldCheck className="h-4 w-4" /> Production Approval</div>
+          {access.kind === "authenticated" ? (
+            <Button asChild type="button" variant="secondary" size="sm" className="w-fit rounded-full bg-white shadow-none">
+              <Link href={`/projects/${data.project.id}/stages/6`}>
+                <ArrowLeft className="h-4 w-4" />
+                Back to Stage 6
+              </Link>
+            </Button>
+          ) : null}
+        </div>
         <h1 className="mt-2 text-[30px] font-[780] tracking-[-.04em] text-[#172019] sm:text-[38px]">Production Approval</h1>
         <p className="mt-2 text-[13px] text-[#68746c]">{data.stepLabel}</p>
       </header>

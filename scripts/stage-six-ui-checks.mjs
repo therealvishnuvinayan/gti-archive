@@ -64,6 +64,12 @@ assert(schema.includes("externalTokenHash") && !schema.includes("externalToken  
 for (const content of ["Approve", "Reject", "Shared Information", "Optional comment", "requestedBy"]) {
   assert(approvalWorkspace.includes(content), `Missing approval experience content: ${content}`);
 }
+assert(
+  approvalWorkspace.includes('access.kind === "authenticated"') &&
+    approvalWorkspace.includes('href={`/projects/${data.project.id}/stages/6`}') &&
+    approvalWorkspace.includes("Back to Stage 6"),
+  "Authenticated production approvals must provide a direct return to their Stage 6 workspace.",
+);
 assert(externalPage.includes('dynamic = "force-dynamic"') && externalPage.includes("noStore()"), "The external approval route must be dynamic and no-store.");
 assert(authenticatedPage.includes("getAuthenticatedProductionApprovalData"), "The direct Stage 6 review action must land on the authenticated approval route.");
 assert(service.includes("ProductionApprovalStepStatus.ACTIVE") && service.includes("ProductionApprovalStepStatus.WAITING"), "Sequential activation must be server-enforced.");
