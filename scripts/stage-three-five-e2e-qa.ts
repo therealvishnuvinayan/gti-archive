@@ -1219,7 +1219,7 @@ async function main() {
   );
   const inAppResponse = await submitStageFiveChecklistResponse(collaborator, {
     requestId: inAppRequest.request.id,
-    value: { text: "Approved copy for Product A" },
+    value: { values: ["Approved copy for Product A"] },
     attachmentIds: [],
   });
   check(!isError(inAppResponse), "authenticated collaborator response must complete");
@@ -1230,7 +1230,7 @@ async function main() {
   check(
     completedInApp.workflowStatus ===
       ProjectFileChecklistRequestWorkflowStatus.COMPLETED &&
-      (completedInApp.checklistItem.value as { text?: string } | null)?.text ===
+      (completedInApp.checklistItem.value as { values?: string[] } | null)?.values?.[0] ===
         "Approved copy for Product A" &&
       completedInApp.checklistId === fileA.checklistId,
     "authenticated response must update only the real Final A checklist",

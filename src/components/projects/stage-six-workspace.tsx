@@ -21,7 +21,6 @@ import {
   FileImage,
   FileText,
   ListChecks,
-  Mail,
   PackageCheck,
   Plus,
   RefreshCw,
@@ -29,7 +28,6 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
-  Users,
   X,
 } from "lucide-react";
 

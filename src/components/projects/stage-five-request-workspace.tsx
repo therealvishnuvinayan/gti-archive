@@ -364,6 +364,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
         <ChecklistFilePicker
           fieldLabel={`${data.field.title} reference`}
           files={files}
+          multiple
           disabled={disabled}
           onChange={setFiles}
         />

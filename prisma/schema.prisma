@@ -104,6 +104,9 @@ enum ProjectFileChecklistField {
   OUTPUT_NAME
   TECHNICAL_DRAWING
   HEALTH_WARNING
+  TAR
+  NICOTINE
+  // Retained for historical rows and approval snapshots; new checklists use TAR and NICOTINE.
   TAR_NICOTINE
   COMPULSORY_TEXT
   MARKETING_COPY

@@ -183,7 +183,7 @@ async function main() {
     emailLog.push(email);
     return { ok: true as const, id: `mock-${emailLog.length}` };
   };
-  const sendFailure = async (_email: SendEmailInput) => ({ ok: false as const, error: "Mock delivery failure" });
+  const sendFailure = async () => ({ ok: false as const, error: "Mock delivery failure" });
 
   try {
     await prisma.user.createMany({

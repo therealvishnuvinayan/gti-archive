@@ -145,7 +145,7 @@ export function StageFiveExternalRequestWorkspace({
     return (
       <div className="space-y-4">
         <Textarea value={text} disabled={isSubmitting} className="min-h-[120px] rounded-[14px] border-[#dce5dd] bg-white shadow-none" placeholder={data.field.placeholder} onChange={(event) => setText(event.target.value)} />
-        <ChecklistFilePicker fieldLabel={`${data.field.title} reference`} files={files} disabled={isSubmitting} onChange={setFiles} />
+        <ChecklistFilePicker fieldLabel={`${data.field.title} reference`} files={files} multiple disabled={isSubmitting} onChange={setFiles} />
         <button
           type="button"
           role="switch"

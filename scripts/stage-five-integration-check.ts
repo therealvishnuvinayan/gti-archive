@@ -145,6 +145,7 @@ async function main() {
   const attachmentAId = `stage-five-file-a-${runId}`;
   const attachmentBId = `stage-five-file-b-${runId}`;
   const checklistAttachmentId = `stage-five-checklist-file-${runId}`;
+  const checklistAttachmentTwoId = `stage-five-checklist-file-two-${runId}`;
   const foreignChecklistAttachmentId = `stage-five-checklist-foreign-${runId}`;
   const responseAttachmentId = `stage-five-response-file-${runId}`;
   const foreignResponseAttachmentId = `stage-five-response-foreign-${runId}`;
@@ -275,16 +276,17 @@ async function main() {
     const fileA = initial.files.find((file) => file.sourceAttachment.id === attachmentAId);
     const fileB = initial.files.find((file) => file.sourceAttachment.id === attachmentBId);
     check(fileA && fileB, "both handed-off files must have checklists");
-    check(fileA.items.length === 15, "the selected file must expose all 15 checklist fields");
+    check(fileA.items.length === 16, "the selected file must expose all 16 checklist fields");
     const selectedFileB = await getStageFiveWorkspaceData(owner, projectId, fileB.handoffId);
     check(
-      selectedFileB?.files.find((file) => file.handoffId === fileB.handoffId)?.items.length === 15,
-      "each final file must expose its own 15-field checklist when selected",
+      selectedFileB?.files.find((file) => file.handoffId === fileB.handoffId)?.items.length === 16,
+      "each final file must expose its own 16-field checklist when selected",
     );
 
     await prisma.projectAttachment.createMany({
       data: [
         [checklistAttachmentId, projectId],
+        [checklistAttachmentTwoId, projectId],
         [foreignChecklistAttachmentId, foreignProjectId],
       ].map(([id, targetProjectId]) => ({
         id,
@@ -318,7 +320,27 @@ async function main() {
         {
           fieldKey: ProjectFileChecklistField.TECHNICAL_DRAWING,
           value: {},
-          attachmentIds: [checklistAttachmentId],
+          attachmentIds: [checklistAttachmentId, checklistAttachmentTwoId],
+        },
+        {
+          fieldKey: ProjectFileChecklistField.TAR,
+          value: { text: "8 mg" },
+          attachmentIds: [],
+        },
+        {
+          fieldKey: ProjectFileChecklistField.NICOTINE,
+          value: { text: "0.7 mg" },
+          attachmentIds: [],
+        },
+        {
+          fieldKey: ProjectFileChecklistField.COMPULSORY_TEXT,
+          value: { values: ["Government warning", "Sale restrictions"] },
+          attachmentIds: [],
+        },
+        {
+          fieldKey: ProjectFileChecklistField.MARKETING_COPY,
+          value: { values: ["Approved campaign line", "Secondary pack line"] },
+          attachmentIds: [],
         },
       ],
     });
@@ -349,11 +371,21 @@ async function main() {
       "File B Output Name must remain isolated",
     );
     check(
-      persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.TECHNICAL_DRAWING)?.attachments.length === 1,
-      "checklist attachment association must persist",
+      persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.TECHNICAL_DRAWING)?.attachments.length === 2,
+      "multiple checklist attachment associations must persist",
     );
     check(
-      persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.COMPULSORY_TEXT)?.status === ProjectFileChecklistItemStatus.PENDING,
+      persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.TAR)?.value.text === "8 mg" &&
+        persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.NICOTINE)?.value.text === "0.7 mg",
+      "Tar and Nicotine must persist as separate checklist values",
+    );
+    check(
+      persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.COMPULSORY_TEXT)?.value.values?.length === 2 &&
+        persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.MARKETING_COPY)?.value.values?.length === 2,
+      "Compulsory Text and Marketing Copy must persist repeatable values",
+    );
+    check(
+      persistedA?.items.find((item) => item.fieldKey === ProjectFileChecklistField.BARCODE)?.status === ProjectFileChecklistItemStatus.PENDING,
       "an empty item must remain PENDING",
     );
     const crossChecklistAttachment = await saveStageFiveChecklist(owner, {
@@ -431,7 +463,7 @@ async function main() {
       isError(
         await submitStageFiveChecklistResponse(recipient, {
           requestId: inApp.request.id,
-          value: { text: "Approved compulsory copy" },
+          value: { values: ["Approved compulsory copy"] },
           attachmentIds: [],
         }),
       ),
@@ -445,7 +477,7 @@ async function main() {
     );
     const completedTextResponse = await submitStageFiveChecklistResponse(recipient, {
       requestId: inApp.request.id,
-      value: { text: "Approved compulsory copy" },
+      value: { values: ["Approved compulsory copy"] },
       attachmentIds: [],
     });
     check(!isError(completedTextResponse), "the accepted recipient text response must complete");
@@ -454,7 +486,7 @@ async function main() {
       completedRequestData?.status === ProjectFileChecklistRequestWorkflowStatus.COMPLETED &&
         completedRequestData.completedAt &&
         completedRequestData.acceptedAt &&
-        completedRequestData.response.value.text === "Approved compulsory copy",
+        completedRequestData.response.value.values?.[0] === "Approved compulsory copy",
       "the completed request page must retain acceptance, completion, and response data",
     );
     const completedTextItem = await prisma.projectFileChecklistItem.findUnique({
@@ -467,7 +499,7 @@ async function main() {
     });
     check(
       completedTextItem?.status === ProjectFileChecklistItemStatus.FILLED &&
-        (completedTextItem.value as { text?: string } | null)?.text === "Approved compulsory copy",
+        (completedTextItem.value as { values?: string[] } | null)?.values?.[0] === "Approved compulsory copy",
       "the collaborator response must update the real per-file checklist item",
     );
 

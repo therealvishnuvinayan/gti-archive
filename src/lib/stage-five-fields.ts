@@ -30,8 +30,8 @@ export const STAGE_FIVE_FIELD_DEFINITIONS: StageFiveFieldDefinition[] = [
   {
     key: ProjectFileChecklistField.TECHNICAL_DRAWING,
     title: "Technical Drawing",
-    helper: "Upload the technical drawing file",
-    control: "file",
+    helper: "Upload one or more technical drawing files",
+    control: "multi-file",
   },
   {
     key: ProjectFileChecklistField.HEALTH_WARNING,
@@ -41,24 +41,31 @@ export const STAGE_FIVE_FIELD_DEFINITIONS: StageFiveFieldDefinition[] = [
     placeholder: "Enter the required health warning",
   },
   {
-    key: ProjectFileChecklistField.TAR_NICOTINE,
-    title: "Tar / Nicotine",
-    helper: "The required tar and nicotine information",
+    key: ProjectFileChecklistField.TAR,
+    title: "Tar",
+    helper: "The required tar information",
     control: "text",
-    placeholder: "Tar: 8 mg | Nicotine: 0.7 mg",
+    placeholder: "Enter tar information",
+  },
+  {
+    key: ProjectFileChecklistField.NICOTINE,
+    title: "Nicotine",
+    helper: "The required nicotine information",
+    control: "text",
+    placeholder: "Enter nicotine information",
   },
   {
     key: ProjectFileChecklistField.COMPULSORY_TEXT,
     title: "Compulsory Text",
-    helper: "All mandatory text required for the pack",
-    control: "textarea",
+    helper: "Add each mandatory text requirement separately",
+    control: "multi-value",
     placeholder: "Enter compulsory text",
   },
   {
     key: ProjectFileChecklistField.MARKETING_COPY,
     title: "Marketing Copy",
     helper: "Add one or more lines of approved marketing copy",
-    control: "textarea",
+    control: "multi-value",
     placeholder: "Enter marketing copy",
   },
   {
@@ -111,8 +118,8 @@ export const STAGE_FIVE_FIELD_DEFINITIONS: StageFiveFieldDefinition[] = [
   {
     key: ProjectFileChecklistField.QR_CODE,
     title: "QR Code",
-    helper: "Add the required QR code file",
-    control: "file",
+    helper: "Add one or more required QR code files",
+    control: "multi-file",
   },
   {
     key: ProjectFileChecklistField.INVOICE,
@@ -127,9 +134,17 @@ export const STAGE_FIVE_FIELD_KEYS = STAGE_FIVE_FIELD_DEFINITIONS.map(
 ) as ProjectFileChecklistField[];
 
 export const STAGE_FIVE_FIELD_LABELS = Object.fromEntries(
-  STAGE_FIVE_FIELD_DEFINITIONS.map((field) => [field.key, field.title]),
+  [
+    ...STAGE_FIVE_FIELD_DEFINITIONS.map((field) => [field.key, field.title] as const),
+    [ProjectFileChecklistField.TAR_NICOTINE, "Tar / Nicotine (Legacy)"] as const,
+  ],
 ) as Record<ProjectFileChecklistField, string>;
 
 export function getStageFiveFieldDefinition(fieldKey: ProjectFileChecklistField) {
+  if (fieldKey === ProjectFileChecklistField.TAR_NICOTINE) {
+    return STAGE_FIVE_FIELD_DEFINITIONS.find(
+      (field) => field.key === ProjectFileChecklistField.TAR,
+    ) ?? null;
+  }
   return STAGE_FIVE_FIELD_DEFINITIONS.find((field) => field.key === fieldKey) ?? null;
 }
