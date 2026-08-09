@@ -176,6 +176,7 @@ export function NotificationsPageWorkspace() {
     markNotificationAsRead,
     markNotificationAsUnread,
     refreshRecent,
+    refreshVersion,
   } = useNotificationCenter();
 
   const [search, setSearch] = useState("");
@@ -276,7 +277,7 @@ export function NotificationsPageWorkspace() {
       window.clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [currentPage, deferredSearch, rowsPerPage, tab, typeFilter]);
+  }, [currentPage, deferredSearch, refreshVersion, rowsPerPage, tab, typeFilter]);
 
   function updateTab(nextTab: NotificationTabFilter) {
     setLoading(true);

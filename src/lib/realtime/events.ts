@@ -16,6 +16,10 @@ export const PROJECT_ACCESS_REALTIME_EVENTS = {
   accessRevoked: "project-access.revoked",
 } as const;
 
+export const NOTIFICATION_REALTIME_EVENTS = {
+  changed: "notification.changed",
+} as const;
+
 export type StageChatRealtimeEventName =
   (typeof STAGE_CHAT_REALTIME_EVENTS)[keyof typeof STAGE_CHAT_REALTIME_EVENTS];
 
@@ -26,6 +30,17 @@ export function getStageChatChannelName(projectId: string, stageId: string) {
 export function getProjectAccessChannelName(projectId: string) {
   return `private:project:${projectId}:access`;
 }
+
+export function getNotificationChannelName(userId: string) {
+  return `private:user:${userId}:notifications`;
+}
+
+export type NotificationRealtimeChangedPayload = {
+  eventId: string;
+  recipientUserId: string;
+  reason: "created" | "read-state-updated";
+  changedAt: string;
+};
 
 export type ProjectAccessRevokedPayload = {
   eventId: string;

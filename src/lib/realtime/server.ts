@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 
 import {
+  getNotificationChannelName,
   getProjectAccessChannelName,
   getStageChatChannelName,
+  type NotificationRealtimeChangedPayload,
   type ProjectAccessRevokedPayload,
   type StageChatRealtimeMessageCreatedPayload,
   type StageChatRealtimeMessageDeletedPayload,
@@ -11,9 +13,11 @@ import {
 } from "@/lib/realtime/events";
 
 import {
+  createAblyNotificationTokenRequest,
   createAblyStageChatTokenRequest,
   createAblyProjectAccessTokenRequest,
   isAblyServerConfigured,
+  publishAblyNotificationChanged,
   publishAblyProjectAccessRevoked,
   publishAblyStageChatMessageCreated,
   publishAblyStageChatMessageDeleted,
@@ -21,7 +25,11 @@ import {
   warnAblyNotConfigured,
 } from "./ably-server";
 
-export { getProjectAccessChannelName, getStageChatChannelName };
+export {
+  getNotificationChannelName,
+  getProjectAccessChannelName,
+  getStageChatChannelName,
+};
 
 export function getRealtimeProvider() {
   return process.env.NEXT_PUBLIC_REALTIME_PROVIDER === "ably" ? "ably" : "none";
@@ -65,6 +73,17 @@ export async function createProjectAccessRealtimeTokenRequest(input: {
   }
 
   return createAblyProjectAccessTokenRequest(input);
+}
+
+export async function createNotificationRealtimeTokenRequest(input: {
+  userId: string;
+  clientId: string;
+}) {
+  if (getRealtimeProvider() !== "ably") {
+    return null;
+  }
+
+  return createAblyNotificationTokenRequest(input);
 }
 
 async function runStageChatRealtimeTask(
@@ -148,4 +167,34 @@ export async function publishProjectAccessRevoked(
   payload: ProjectAccessRevokedPayload,
 ) {
   return publishAblyProjectAccessRevoked(payload);
+}
+
+export async function publishNotificationChanges(input: {
+  recipientUserIds: string[];
+  reason: NotificationRealtimeChangedPayload["reason"];
+}) {
+  if (getRealtimeProvider() !== "ably" || !isAblyServerConfigured()) {
+    return false;
+  }
+
+  const recipientUserIds = Array.from(
+    new Set(input.recipientUserIds.map((userId) => userId.trim()).filter(Boolean)),
+  );
+
+  try {
+    await Promise.all(
+      recipientUserIds.map((recipientUserId) =>
+        publishAblyNotificationChanged({
+          eventId: randomUUID(),
+          recipientUserId,
+          reason: input.reason,
+          changedAt: new Date().toISOString(),
+        }),
+      ),
+    );
+    return true;
+  } catch (error) {
+    console.error("[realtime] notification.changed failed", error);
+    return false;
+  }
 }

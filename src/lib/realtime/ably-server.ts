@@ -1,10 +1,13 @@
 import * as Ably from "ably";
 
 import {
+  NOTIFICATION_REALTIME_EVENTS,
   PROJECT_ACCESS_REALTIME_EVENTS,
   STAGE_CHAT_REALTIME_EVENTS,
+  getNotificationChannelName,
   getProjectAccessChannelName,
   getStageChatChannelName,
+  type NotificationRealtimeChangedPayload,
   type ProjectAccessRevokedPayload,
   type StageChatRealtimeMessageCreatedPayload,
   type StageChatRealtimeMessageDeletedPayload,
@@ -125,6 +128,25 @@ export async function createAblyProjectAccessTokenRequest(input: {
   });
 }
 
+export async function createAblyNotificationTokenRequest(input: {
+  userId: string;
+  clientId: string;
+}) {
+  const client = getAblyRestClient();
+
+  if (!client) {
+    return null;
+  }
+
+  return client.auth.createTokenRequest({
+    clientId: input.clientId,
+    ttl: STAGE_CHAT_TOKEN_TTL_MS,
+    capability: {
+      [getNotificationChannelName(input.userId)]: ["subscribe"],
+    },
+  });
+}
+
 async function publishStageChatEvent(
   projectId: string,
   stageId: string,
@@ -231,5 +253,21 @@ export async function publishAblyProjectAccessRevoked(
 
   const channel = client.channels.get(channelName);
   await channel.publish(PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked, payload);
+  return true;
+}
+
+export async function publishAblyNotificationChanged(
+  payload: NotificationRealtimeChangedPayload,
+) {
+  const client = getAblyRestClient();
+
+  if (!client) {
+    return false;
+  }
+
+  const channel = client.channels.get(
+    getNotificationChannelName(payload.recipientUserId),
+  );
+  await channel.publish(NOTIFICATION_REALTIME_EVENTS.changed, payload);
   return true;
 }

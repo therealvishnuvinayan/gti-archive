@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export type DashboardUserView = {
+  id: string;
   name: string;
   email: string;
   initials: string;
@@ -28,6 +29,7 @@ export type DashboardTopbarProps = {
 };
 
 const defaultUser: DashboardUserView = {
+  id: "",
   name: "Account",
   email: "User account",
   initials: "A",

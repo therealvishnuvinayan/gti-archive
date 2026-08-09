@@ -5,9 +5,10 @@ import {
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
 } from "@/lib/project-collaborator-visibility";
-import { hasProjectPermission } from "@/lib/permissions/resolver";
+import { hasPermission, hasProjectPermission } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
+  createNotificationRealtimeTokenRequest,
   createProjectAccessRealtimeTokenRequest,
   createStageChatRealtimeTokenRequest,
   getProjectAccessChannelName,
@@ -48,6 +49,7 @@ export async function GET(request: Request) {
   const stageId = searchParams.get("stageId")?.trim();
   const scope = searchParams.get("scope")?.trim();
   const isProjectAccessScope = scope === "project-access";
+  const isNotificationScope = scope === "notifications";
   const channelName =
     projectId && isProjectAccessScope
       ? getProjectAccessChannelName(projectId)
@@ -89,6 +91,34 @@ export async function GET(request: Request) {
       channelName,
     });
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (isNotificationScope) {
+    if (!hasPermission(user, "notification.view")) {
+      return NextResponse.json(
+        { error: "You do not have permission to view notifications." },
+        { status: 403 },
+      );
+    }
+
+    const tokenRequest = await createNotificationRealtimeTokenRequest({
+      userId: user.id,
+      clientId: buildRealtimeClientId(user.id),
+    });
+
+    if (!tokenRequest) {
+      return NextResponse.json(
+        { error: "Realtime is not configured." },
+        { status: 503 },
+      );
+    }
+
+    return NextResponse.json(tokenRequest, {
+      headers: {
+        "Cache-Control": "no-store",
+        "X-Realtime-User": getUserDisplayName(user),
+      },
+    });
   }
 
   if (!projectId || (!isProjectAccessScope && !stageId)) {

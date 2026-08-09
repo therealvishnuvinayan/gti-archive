@@ -25,6 +25,7 @@ export default async function StageFiveChecklistRequestPage({
   return (
     <DashboardAppFrame
       user={{
+        id: user.id,
         name: displayName,
         email: user.email,
         initials: getUserInitials(displayName),

@@ -7,6 +7,7 @@ import type {
   NotificationTypeFilter,
 } from "@/lib/notifications";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { publishNotificationChanges } from "@/lib/realtime/server";
 
 import {
   buildNotificationCounts,
@@ -117,7 +118,7 @@ export function buildNotificationUrl(input: NotificationUrlInput) {
 export async function createNotification(input: CreateNotificationInput) {
   const createdAt = new Date();
 
-  return withPrismaRetry(() =>
+  const notification = await withPrismaRetry(() =>
     prisma.notification.create({
       data: {
         userId: input.recipientUserId,
@@ -138,6 +139,13 @@ export async function createNotification(input: CreateNotificationInput) {
       },
     }),
   );
+
+  await publishNotificationChanges({
+    recipientUserIds: [input.recipientUserId],
+    reason: "created",
+  });
+
+  return notification;
 }
 
 export async function createNotificationsForUsers(
@@ -174,6 +182,11 @@ export async function createNotificationsForUsers(
       })),
     }),
   );
+
+  await publishNotificationChanges({
+    recipientUserIds,
+    reason: "created",
+  });
 
   return {
     count: result.count,
@@ -336,6 +349,11 @@ async function updateNotificationReadState(
     throw new Error("Notification not found.");
   }
 
+  await publishNotificationChanges({
+    recipientUserIds: [userId],
+    reason: "read-state-updated",
+  });
+
   return {
     unreadCount: await getUnreadNotificationCount(userId),
   };
@@ -362,6 +380,11 @@ export async function markAllNotificationsAsRead(userId: string) {
       },
     }),
   );
+
+  await publishNotificationChanges({
+    recipientUserIds: [userId],
+    reason: "read-state-updated",
+  });
 
   return {
     unreadCount: 0,

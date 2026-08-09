@@ -59,7 +59,7 @@ export function DashboardAppFrame({
   }
 
   return (
-    <NotificationCenterProvider>
+    <NotificationCenterProvider currentUserId={user.id}>
       <DashboardShell
         user={user}
         projectBadgeCount={projectBadgeCount}

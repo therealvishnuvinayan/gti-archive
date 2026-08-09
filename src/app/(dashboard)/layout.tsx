@@ -16,6 +16,7 @@ export default async function DashboardRoutesLayout({
   return (
     <DashboardAppFrame
       user={{
+        id: user.id,
         name: displayName,
         email: user.email,
         initials: getUserInitials(displayName),

@@ -1,5 +1,6 @@
 "use client";
 
+import type * as Ably from "ably";
 import {
   useCallback,
   createContext,
@@ -14,9 +15,18 @@ import type {
   NotificationRecentResponse,
   NotificationRecord,
 } from "@/lib/notifications";
+import {
+  NOTIFICATION_REALTIME_EVENTS,
+  getNotificationChannelName,
+  type NotificationRealtimeChangedPayload,
+} from "@/lib/realtime/events";
+import {
+  createNotificationRealtimeClient,
+  isStageChatRealtimeClientEnabled,
+} from "@/lib/realtime/client";
 import { showSuccessToast } from "@/lib/toast";
 
-const NOTIFICATION_REFRESH_INTERVAL_MS = 120_000;
+const NOTIFICATION_REFRESH_INTERVAL_MS = 30_000;
 const NOTIFICATION_FOCUS_REFRESH_STALE_MS = 60_000;
 const NOTIFICATION_RECENT_CACHE_KEY = "gti:recent-notifications";
 const NOTIFICATION_RECENT_CACHE_TTL_MS = 30_000;
@@ -26,6 +36,7 @@ type NotificationCenterContextValue = {
   unreadCount: number;
   isLoading: boolean;
   error: string | null;
+  refreshVersion: number;
   refreshRecent: () => Promise<void>;
   markAllAsRead: (options?: { showToast?: boolean }) => Promise<void>;
   markNotificationAsRead: (notificationId: string) => Promise<void>;
@@ -164,11 +175,31 @@ async function postMarkAllAsRead() {
   return payload as { unreadCount: number };
 }
 
-export function NotificationCenterProvider({ children }: { children: ReactNode }) {
+function isNotificationChangedPayload(
+  value: unknown,
+): value is NotificationRealtimeChangedPayload {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "recipientUserId" in value &&
+    typeof value.recipientUserId === "string" &&
+    "changedAt" in value &&
+    typeof value.changedAt === "string"
+  );
+}
+
+export function NotificationCenterProvider({
+  children,
+  currentUserId,
+}: {
+  children: ReactNode;
+  currentUserId: string;
+}) {
   const [recentNotifications, setRecentNotifications] = useState<NotificationRecord[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const refreshPromiseRef = useRef<Promise<void> | null>(null);
   const lastRefreshAtRef = useRef(0);
 
@@ -213,6 +244,51 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       throw nextError;
     }
   }, [refreshRecent]);
+
+  useEffect(() => {
+    if (!isStageChatRealtimeClientEnabled() || !currentUserId) {
+      return;
+    }
+
+    const client = createNotificationRealtimeClient();
+    const channel = client.channels.get(getNotificationChannelName(currentUserId));
+    let cancelled = false;
+
+    const handleNotificationChanged = (message: Ably.InboundMessage) => {
+      if (
+        cancelled ||
+        !isNotificationChangedPayload(message.data) ||
+        message.data.recipientUserId !== currentUserId
+      ) {
+        return;
+      }
+
+      refreshRecent()
+        .then(() => setRefreshVersion((current) => current + 1))
+        .catch((nextError) => {
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Unable to refresh notifications right now.",
+          );
+        });
+    };
+
+    void channel
+      .subscribe(NOTIFICATION_REALTIME_EVENTS.changed, handleNotificationChanged)
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      void Promise.resolve(
+        channel.unsubscribe(
+          NOTIFICATION_REALTIME_EVENTS.changed,
+          handleNotificationChanged,
+        ),
+      ).catch(() => undefined);
+      client.close();
+    };
+  }, [currentUserId, refreshRecent]);
 
   const markAllAsRead = useCallback(async (options?: { showToast?: boolean }) => {
     setRecentNotifications((current) =>
@@ -311,6 +387,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     unreadCount,
     isLoading,
     error,
+    refreshVersion,
     refreshRecent,
     markAllAsRead,
     markNotificationAsRead: (notificationId: string) =>

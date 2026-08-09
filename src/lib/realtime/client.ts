@@ -155,10 +155,51 @@ export function createProjectAccessRealtimeClient(input: {
   });
 }
 
+export function createNotificationRealtimeClient() {
+  const authUrl = "/api/realtime/ably/token?scope=notifications";
+
+  return new Ably.Realtime({
+    authCallback: (_tokenParams, callback) => {
+      fetch(authUrl, { cache: "no-store" })
+        .then(async (response) => {
+          const payload = (await response.json().catch(() => null)) as
+            | Ably.TokenRequest
+            | { error?: string }
+            | null;
+
+          if (!response.ok || !isAblyTokenRequest(payload)) {
+            const message =
+              payload && "error" in payload && payload.error
+                ? payload.error
+                : "Unable to obtain notification realtime access.";
+            callback(message, null);
+            return;
+          }
+
+          callback(null, payload);
+        })
+        .catch((error) => {
+          callback(
+            error instanceof Error
+              ? error.message
+              : "Unable to obtain notification realtime access.",
+            null,
+          );
+        });
+    },
+    useTokenAuth: true,
+    autoConnect: true,
+  });
+}
+
 export type StageChatRealtimeClient = ReturnType<
   typeof createStageChatRealtimeClient
 >;
 
 export type ProjectAccessRealtimeClient = ReturnType<
   typeof createProjectAccessRealtimeClient
+>;
+
+export type NotificationRealtimeClient = ReturnType<
+  typeof createNotificationRealtimeClient
 >;
