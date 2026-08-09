@@ -154,6 +154,12 @@ assert(
   !/removeUser\(user\.id\);\s*openSelector\(\);/.test(userSelector),
   "Removing a co-owner, executor, or collaborator must not open the user list.",
 );
+assert(
+  userSelector.includes('className="flex min-w-0 flex-1 flex-wrap items-center gap-2"') &&
+    userSelector.includes('className="flex h-8 min-w-[180px] flex-1 items-center gap-2 px-1"') &&
+    userSelector.includes('className="h-8 min-w-0 flex-1 bg-transparent'),
+  "Selected collaborators and the search control must share a responsive wrapping layout.",
+);
 
 for (const snippet of [
   "isProjectOwnerOrCoOwner",

@@ -124,6 +124,7 @@ export function ProjectUserSelector({
         : true;
     });
   }, [mode, query, selectedIdSet, users]);
+  const showSearchInput = mode === "multiple" || selectedUsers.length === 0 || isOpen;
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -188,7 +189,7 @@ export function ProjectUserSelector({
     <div ref={rootRef} className="relative">
       <div
         className={cn(
-          "flex min-h-[54px] w-full items-center gap-2 rounded-[16px] border bg-white px-3 py-2 shadow-none transition",
+          "flex min-h-[54px] w-full items-start rounded-[16px] border bg-white p-2 shadow-none transition",
           isOpen ? "border-brand ring-3 ring-brand/10" : "border-[#d9e0d9]",
           error && "border-[#c85c54]",
         )}
@@ -198,8 +199,6 @@ export function ProjectUserSelector({
           }
         }}
       >
-        <Search className="h-[18px] w-[18px] shrink-0 text-[#818b83]" aria-hidden="true" />
-
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {selectedUsers.map((user) => (
             <span
@@ -222,36 +221,40 @@ export function ProjectUserSelector({
             </span>
           ))}
 
-          {(mode === "multiple" || selectedUsers.length === 0 || isOpen) && (
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setIsOpen(true);
-              }}
-              onFocus={() => setIsOpen(true)}
-              onKeyDown={handleInputKeyDown}
-              placeholder={selectedUsers.length > 0 ? "Search users..." : placeholder}
-              aria-label={ariaLabel}
-              aria-controls={listboxId}
-              aria-expanded={isOpen}
-              role="combobox"
-              className="h-8 min-w-[145px] flex-1 bg-transparent px-1 text-[14px] text-[#253029] outline-none placeholder:text-[#8c948e]"
-            />
-          )}
+          <div className="flex h-8 min-w-[180px] flex-1 items-center gap-2 px-1">
+            <Search className="h-[18px] w-[18px] shrink-0 text-[#818b83]" aria-hidden="true" />
+            {showSearchInput ? (
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setIsOpen(true);
+                }}
+                onFocus={() => setIsOpen(true)}
+                onKeyDown={handleInputKeyDown}
+                placeholder={selectedUsers.length > 0 ? "Search users..." : placeholder}
+                aria-label={ariaLabel}
+                aria-controls={listboxId}
+                aria-expanded={isOpen}
+                role="combobox"
+                className="h-8 min-w-0 flex-1 bg-transparent text-[14px] text-[#253029] outline-none placeholder:text-[#8c948e]"
+              />
+            ) : (
+              <span className="min-w-0 flex-1" />
+            )}
+            <button
+              type="button"
+              onClick={toggleSelector}
+              className="grid size-8 shrink-0 place-items-center rounded-full text-[#657068] hover:bg-[#f0f3ef]"
+              aria-label={`${isOpen ? "Close" : "Open"} ${ariaLabel}`}
+            >
+              <ChevronDown
+                className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")}
+              />
+            </button>
+          </div>
         </div>
-
-        <button
-          type="button"
-          onClick={toggleSelector}
-          className="grid size-8 shrink-0 place-items-center rounded-full text-[#657068] hover:bg-[#f0f3ef]"
-          aria-label={`${isOpen ? "Close" : "Open"} ${ariaLabel}`}
-        >
-          <ChevronDown
-            className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")}
-          />
-        </button>
       </div>
 
       {error ? <p className="mt-1.5 text-[12px] text-[#b84e48]">{error}</p> : null}
