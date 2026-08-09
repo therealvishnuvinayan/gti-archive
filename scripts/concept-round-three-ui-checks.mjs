@@ -54,8 +54,8 @@ assert(
     concepts.includes("AttachmentStatus.READY") &&
     concepts.includes("attachment.revision.projectId !== input.projectId") &&
     concepts.includes("attachment.revision.stageId !== input.taskerStageId") &&
-    concepts.includes("canManageProjectConcept(user, accessContext)"),
-  "Approved Concept designation must validate a same-project/tasker READY formal revision file through centralized manager policy.",
+    concepts.includes("canReviewProjectConcept(user, accessContext)"),
+  "Approved Concept designation must validate a same-project/tasker READY formal revision file through centralized reviewer policy.",
 );
 assert(
   access.includes("user.role === UserRole.SUPER_ADMIN") &&

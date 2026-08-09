@@ -20,6 +20,7 @@ import {
 } from "../src/lib/project-concepts";
 import {
   canManageProjectConcept,
+  canReviewProjectConcept,
   canViewProjectConcept,
   canWorkOnProjectConcept,
   getProjectConceptAccessContext,
@@ -287,6 +288,19 @@ async function main() {
     check(accessA, "concept access context must resolve");
     check(canManageProjectConcept(owner, accessA), "owner must manage concepts");
     check(canManageProjectConcept(coOwner, accessA), "co-owner must manage concepts");
+    check(canReviewProjectConcept(owner, accessA), "owner must review concepts");
+    check(canReviewProjectConcept(coOwner, accessA), "co-owner must review concepts");
+    check(
+      !canReviewProjectConcept(executorA, accessA),
+      "assigned executor must not review concepts",
+    );
+    check(
+      !canReviewProjectConcept(owner, {
+        ...accessA,
+        assignedExecutorId: owner.id,
+      }),
+      "an assigned executor must not review their own concept even when they also manage the project",
+    );
     check(canViewProjectConcept(superAdmin, accessA), "SUPER_ADMIN must view concepts");
     check(canWorkOnProjectConcept(executorA, accessA), "assigned executor must work");
     check(!canViewProjectConcept(executorB, accessA), "other executor must not view");

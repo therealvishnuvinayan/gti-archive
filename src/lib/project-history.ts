@@ -4606,6 +4606,7 @@ export async function reviewStageSubmission(
         projectId: true,
         stageId: true,
         commentId: true,
+        uploadedById: true,
         submissionReviewStatus: true,
         project: {
           select: {
@@ -4633,7 +4634,7 @@ export async function reviewStageSubmission(
     ? await assertConceptTaskerAccessIfNeeded(user, {
         projectId: attachment.projectId,
         stageId: attachment.stageId,
-        mode: "manage",
+        mode: "review",
       })
     : null;
 
@@ -4641,6 +4642,10 @@ export async function reviewStageSubmission(
     throw new Error(
       "Concept taskers cannot use the legacy approve/complete action. Request changes remains available.",
     );
+  }
+
+  if (attachment.uploadedById === user.id) {
+    throw new Error("You cannot review your own submission.");
   }
 
   if (
@@ -4705,6 +4710,7 @@ export async function reviewProjectRevision(
         projectId: true,
         stageId: true,
         revisionNumber: true,
+        createdById: true,
         status: true,
         title: true,
         stage: {
@@ -4738,8 +4744,12 @@ export async function reviewProjectRevision(
   await assertConceptTaskerAccessIfNeeded(user, {
     projectId: input.projectId,
     stageId: input.stageId,
-    mode: "manage",
+    mode: "review",
   });
+
+  if (revision.createdById === user.id) {
+    throw new Error("You cannot review your own submission.");
+  }
 
   if (revision.stage.isTasker && input.status === "APPROVED") {
     throw new Error(

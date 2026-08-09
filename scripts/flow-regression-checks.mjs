@@ -257,7 +257,7 @@ assertIncludesAll(
     "getLatestFormalSubmissionAttachmentId",
     "This submission has been superseded. Existing captions are read-only.",
     "canCreateComparisonMarker",
-    "canManageProjectConcept(user, concept)",
+    "canReviewProjectConcept(user, concept)",
     ": canAddProjectCaptions(user, project)",
     "permissionMessage: \"You do not have permission to add captions.\"",
     "captionAttachmentId: context.attachment.id",

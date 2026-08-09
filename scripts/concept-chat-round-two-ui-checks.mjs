@@ -122,9 +122,13 @@ assert(
 );
 
 assert(
-  concepts.includes("canReview: canManage") &&
+  concepts.includes("const canReview = canReviewProjectConcept") &&
     access.includes("context.coOwnerIds.includes(user.id)") &&
     access.includes("user.role === UserRole.SUPER_ADMIN") &&
+    access.includes("context.assignedExecutorId !== user.id") &&
+    workspace.includes("conceptMode.canReview && !conceptMode.isAssignedExecutor") &&
+    workspace.includes("latestRevisionMessage?.authorId !== currentUserId") &&
+    history.includes("You cannot review your own submission.") &&
     workspace.includes('isConceptMode ? "Request Changes"') &&
     workspace.includes("!activeStage?.isTasker"),
   "Owner/co-owner/SUPER_ADMIN review and Request Changes must not restore tasker approval.",
@@ -153,10 +157,10 @@ assert(
 );
 assert(
   comparison.includes("getProjectConceptAccessContext") &&
-    comparison.includes("canManageProjectConcept") &&
+    comparison.includes("canReviewProjectConcept") &&
     comparison.includes("canCreateComparisonMarker") &&
     compareRoute.includes("canAddCaptions={chatMode.canReview}"),
-  "Only centralized concept managers may create comparison markers.",
+  "Only centralized concept reviewers may create comparison markers.",
 );
 assert(
   comparison.includes("baseAttachmentId") &&

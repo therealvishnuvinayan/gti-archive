@@ -26,6 +26,16 @@ export function canManageProjectConcept(
   );
 }
 
+export function canReviewProjectConcept(
+  user: ConceptAccessActor,
+  context: ConceptAccessContext,
+) {
+  return (
+    canManageProjectConcept(user, context) &&
+    context.assignedExecutorId !== user.id
+  );
+}
+
 export function canViewProjectConcept(
   user: ConceptAccessActor,
   context: ConceptAccessContext,
@@ -156,7 +166,7 @@ export async function assertConceptTaskerAccessIfNeeded(
   input: {
     projectId: string;
     stageId: string;
-    mode?: "view" | "manage" | "work";
+    mode?: "view" | "manage" | "review" | "work";
   },
 ) {
   const context = await getProjectConceptAccessContext({
@@ -168,18 +178,23 @@ export async function assertConceptTaskerAccessIfNeeded(
     return null;
   }
 
-  const allowed =
-    input.mode === "manage"
-      ? canManageProjectConcept(user, context)
-      : input.mode === "work"
-        ? canWorkOnProjectConcept(user, context)
-        : canViewProjectConcept(user, context);
+  let allowed = canViewProjectConcept(user, context);
+
+  if (input.mode === "review") {
+    allowed = canReviewProjectConcept(user, context);
+  } else if (input.mode === "manage") {
+    allowed = canManageProjectConcept(user, context);
+  } else if (input.mode === "work") {
+    allowed = canWorkOnProjectConcept(user, context);
+  }
 
   if (!allowed) {
     throw new Error(
       input.mode === "work"
         ? "Only the assigned concept executor can perform this action."
-        : "You do not have access to this concept.",
+        : input.mode === "review"
+          ? "The assigned concept executor cannot review this submission."
+          : "You do not have access to this concept.",
     );
   }
 

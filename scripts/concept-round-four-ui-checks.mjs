@@ -35,7 +35,7 @@ assert(
     concepts.includes("AttachmentStatus.READY") &&
     concepts.includes("attachment.revision.stageId !== input.taskerStageId") &&
     concepts.includes("Only a ready formal revision file from this exact Stage 4 concept") &&
-    concepts.includes("canManageProjectConcept(user, accessContext)"),
+    concepts.includes("canReviewProjectConcept(user, accessContext)"),
   "Final designation must be concept-scoped, formal-revision-only, READY, and server-authorized.",
 );
 

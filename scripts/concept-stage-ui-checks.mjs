@@ -106,6 +106,7 @@ assert(
 for (const helper of [
   "canViewProjectConcept",
   "canManageProjectConcept",
+  "canReviewProjectConcept",
   "canWorkOnProjectConcept",
   "assertConceptTaskerAccessIfNeeded",
   "getProjectConceptParticipantUserIds",

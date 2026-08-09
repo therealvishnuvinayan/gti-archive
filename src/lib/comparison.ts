@@ -22,7 +22,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import {
-  canManageProjectConcept,
+  canReviewProjectConcept,
   canViewProjectConcept,
   getProjectConceptAccessContext,
 } from "@/lib/project-concept-access";
@@ -419,7 +419,7 @@ async function canCreateComparisonMarker(
   });
 
   return concept
-    ? canManageProjectConcept(user, concept)
+    ? canReviewProjectConcept(user, concept)
     : canAddProjectCaptions(user, project);
 }
 

@@ -3072,7 +3072,7 @@ export function ProjectChatWorkspace({
     [currentUserId, project.collaborators],
   );
   const canReviewSubmissions = conceptMode
-    ? conceptMode.canReview
+    ? conceptMode.canReview && !conceptMode.isAssignedExecutor
     : project.ownerId === currentUserId;
   const isProjectCompleted = completionState.isCompleted;
   const isFinalStage =
@@ -4226,6 +4226,7 @@ export function ProjectChatWorkspace({
     Boolean(latestRevisionMessage) &&
     !isProjectCompleted &&
     canReviewSubmissions &&
+    latestRevisionMessage?.authorId !== currentUserId &&
     latestRevisionStatus === "PENDING_REVIEW";
   const canMarkLatestRevisionComplete =
     Boolean(latestRevisionMessage) &&

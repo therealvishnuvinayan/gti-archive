@@ -13,6 +13,7 @@ import {
 } from "@/lib/permissions/resolver";
 import {
   canManageProjectConcept,
+  canReviewProjectConcept,
   canViewProjectConcept,
   getProjectConceptParticipantUserIds,
   type ConceptAccessContext,
@@ -813,7 +814,7 @@ export async function markProjectConceptApprovedAttachment(
             coOwnerIds: folder.project.coOwners.map((coOwner) => coOwner.userId),
           };
 
-          if (!canManageProjectConcept(user, accessContext)) {
+          if (!canReviewProjectConcept(user, accessContext)) {
             return {
               error: "You do not have permission to approve concept files.",
             } as const;
@@ -959,7 +960,7 @@ export async function markStageFourFinalApprovedAttachment(
             coOwnerIds: folder.project.coOwners.map((coOwner) => coOwner.userId),
           };
 
-          if (!canManageProjectConcept(user, accessContext)) {
+          if (!canReviewProjectConcept(user, accessContext)) {
             return {
               error: "You do not have permission to approve final Stage 4 files.",
             } as const;
@@ -1772,6 +1773,7 @@ export async function getProjectConceptChatContext(
     input.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION ? 3 : 4;
   const conceptPath = `/projects/${encodeURIComponent(input.projectId)}/stages/${stageNumber}/concepts/${encodeURIComponent(record.id)}`;
   const canManage = canManageProjectConcept(user, accessContext);
+  const canReview = canReviewProjectConcept(user, accessContext);
   const workflowStatus = getWorkflowStageStatus(record.project, input.stageKey);
   const startingReference =
     record.sourceStage3Concept && record.sourceStage3ApprovedAttachment
@@ -1802,7 +1804,7 @@ export async function getProjectConceptChatContext(
       conceptName: record.name,
       assignedExecutor: record.assignedExecutor?.user ?? null,
       canManage,
-      canReview: canManage,
+      canReview,
       isAssignedExecutor: record.assignedExecutorId === user.id,
       participantUserIds: getProjectConceptParticipantUserIds(accessContext),
       approvedAttachmentId: record.approvedAttachmentId,
