@@ -2487,6 +2487,7 @@ export function ProjectChatWorkspace({
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const isConceptMode = conceptMode?.type === "concept";
+  const draftComposerMaxHeight = isConceptMode ? 96 : 168;
   const isStageFourConceptMode =
     conceptMode?.workflowStageKey === "PROJECT_DEVELOPMENT";
   const approvedFileLabel = isStageFourConceptMode
@@ -2745,9 +2746,10 @@ export function ProjectChatWorkspace({
     }
 
     input.style.height = "auto";
-    input.style.height = `${Math.min(input.scrollHeight, 168)}px`;
-    input.style.overflowY = input.scrollHeight > 168 ? "auto" : "hidden";
-  }, [draft]);
+    input.style.height = `${Math.min(input.scrollHeight, draftComposerMaxHeight)}px`;
+    input.style.overflowY =
+      input.scrollHeight > draftComposerMaxHeight ? "auto" : "hidden";
+  }, [draft, draftComposerMaxHeight]);
 
   useEffect(() => {
     if (!expandedMessageEditorOpen) {
@@ -7263,20 +7265,32 @@ export function ProjectChatWorkspace({
     Boolean(archiveCategoryId) &&
     !archiveHasBlockingFileErrors &&
     archiveMissingMetadataCount === 0;
+  const composerPositionClass = isConceptMode ? "" : "sticky bottom-1";
 
   return (
-    <section className="min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-11rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
+    <section
+      className={`min-h-0 ${
+        isConceptMode
+          ? "flex h-full flex-col overflow-hidden"
+          : "[@media_(min-width:1536px)_and_(min-height:900px)]:h-[calc(100dvh-11rem)] [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden"
+      }`}
+    >
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       {conceptMode ? (
-        <div className="mb-3 rounded-[22px] border border-[#dbe7dd] bg-white/94 px-3 py-3 shadow-[0_10px_26px_rgba(18,35,23,0.05)] sm:px-4">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <Button asChild variant="secondary" size="sm" className="w-fit rounded-full">
+        <div className="mb-2 shrink-0 rounded-[18px] border border-[#dbe7dd] bg-white/94 px-2.5 py-2 shadow-[0_8px_20px_rgba(18,35,23,0.04)] sm:px-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+            <Button
+              asChild
+              variant="secondary"
+              size="sm"
+              className="h-9 w-fit shrink-0 rounded-full px-3 text-[11px]"
+            >
               <Link href={conceptMode.backHref}>
-                <ArrowLeft className="h-4 w-4" />
+                <ArrowLeft className="h-3.5 w-3.5" />
                 Back to Stage {conceptMode.stageNumber}
               </Link>
             </Button>
-            <dl className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <dl className="grid min-w-0 flex-1 grid-cols-2 divide-x divide-[#e2e9e2] overflow-hidden rounded-[12px] bg-[#f7faf6] lg:grid-cols-4">
               {[
                 ["Project", project.title],
                 ["Stage", conceptMode.stageLabel],
@@ -7288,11 +7302,11 @@ export function ProjectChatWorkspace({
                     "Unassigned",
                 ],
               ].map(([label, value]) => (
-                <div key={label} className="min-w-0 rounded-[14px] bg-[#f7faf6] px-3 py-2">
-                  <dt className="text-[9px] font-[800] uppercase tracking-[0.08em] text-[#718076]">
+                <div key={label} className="min-w-0 px-3 py-1.5">
+                  <dt className="text-[8px] font-[800] uppercase tracking-[0.08em] text-[#718076]">
                     {label}
                   </dt>
-                  <dd className="mt-1 truncate text-[12px] font-[750] text-[#1c2a21]">
+                  <dd className="mt-0.5 truncate text-[11px] font-[750] text-[#1c2a21]">
                     {value}
                   </dd>
                 </div>
@@ -7302,19 +7316,29 @@ export function ProjectChatWorkspace({
         </div>
       ) : null}
       <div
-        className={`grid min-h-0 gap-4 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full ${
+        className={`grid min-h-0 gap-4 ${
           isConceptMode
-            ? "[@media_(min-width:1680px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]"
-            : "[@media_(min-width:1536px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]"
+            ? "flex-1 overflow-hidden [@media_(min-width:1680px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]"
+            : "[@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:grid-cols-[minmax(0,1fr)_300px]"
         }`}
       >
-        <div className="flex min-h-0 min-w-0 flex-col gap-2 [@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:gap-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden">
+        <div
+          className={`flex min-h-0 min-w-0 flex-col gap-2 ${
+            isConceptMode
+              ? "h-full overflow-hidden"
+              : "[@media_(min-width:1536px)_and_(min-height:900px)]:h-full [@media_(min-width:1536px)_and_(min-height:900px)]:gap-0 [@media_(min-width:1536px)_and_(min-height:900px)]:overflow-hidden"
+          }`}
+        >
           <div
             ref={chatScrollRef}
             onScroll={handleChatScroll}
-            className="no-scrollbar h-[clamp(360px,calc(100dvh-13rem),720px)] overflow-y-auto overscroll-contain rounded-[24px] border border-[#e1e9e2] bg-[#f4f8f3] px-2.5 pb-5 pt-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:rounded-[28px] sm:px-5 sm:pb-6 sm:pt-3 [@media_(min-width:1536px)_and_(min-height:900px)]:h-auto [@media_(min-width:1536px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:flex-1"
+            className={`no-scrollbar overflow-y-auto overscroll-contain rounded-[24px] border border-[#e1e9e2] bg-[#f4f8f3] px-2.5 pb-5 pt-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:rounded-[28px] sm:px-5 sm:pb-6 sm:pt-3 ${
+              isConceptMode
+                ? "min-h-0 flex-1"
+                : "h-[clamp(360px,calc(100dvh-13rem),720px)] [@media_(min-width:1536px)_and_(min-height:900px)]:h-auto [@media_(min-width:1536px)_and_(min-height:900px)]:min-h-0 [@media_(min-width:1536px)_and_(min-height:900px)]:flex-1"
+            }`}
           >
-            <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-2.5 pb-6">
+            <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-2.5 pb-6">
               <div className="sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <span
@@ -8580,7 +8604,13 @@ export function ProjectChatWorkspace({
           </div>
 
           {showLatestRevisionActionBar && latestRevisionMessage ? (
-            <Card className="mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dfe8df] bg-white/95 px-3 py-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:px-4 [@media_(min-width:1536px)_and_(min-height:900px)]:py-3">
+            <Card
+              className={`mx-auto w-full shrink-0 rounded-[20px] border border-[#dfe8df] bg-white/95 px-3 py-2 shadow-[0_10px_28px_rgba(18,35,23,0.07)] backdrop-blur ${
+                isConceptMode
+                  ? "max-w-[1120px]"
+                  : "max-w-[980px] [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:px-4 [@media_(min-width:1536px)_and_(min-height:900px)]:py-3"
+              }`}
+            >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-[11px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
@@ -8635,7 +8665,7 @@ export function ProjectChatWorkspace({
           ) : null}
 
           {isChatReadOnly ? (
-            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6]/96 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-[#f7fbf6] [@media_(min-width:1536px)_and_(min-height:900px)]:p-4 [@media_(min-width:1536px)_and_(min-height:900px)]:shadow-none">
+            <Card className={`${composerPositionClass} z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6]/96 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-[#f7fbf6] [@media_(min-width:1536px)_and_(min-height:900px)]:p-4 [@media_(min-width:1536px)_and_(min-height:900px)]:shadow-none`}>
               <p className="text-[14px] font-semibold text-[#173120]">
                 {isProjectCompleted ? "Project chat is locked." : "Stage chat is read-only."}
               </p>
@@ -8646,7 +8676,13 @@ export function ProjectChatWorkspace({
               </p>
             </Card>
           ) : (
-            <Card className="sticky bottom-1 z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[22px] border border-[#dfe8df] bg-white/96 p-2 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[26px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-white/95 [@media_(min-width:1536px)_and_(min-height:900px)]:p-3">
+            <Card
+              className={`${composerPositionClass} z-30 mx-auto w-full shrink-0 border border-[#dfe8df] bg-white/96 shadow-[0_10px_28px_rgba(18,35,23,0.07)] backdrop-blur ${
+                isConceptMode
+                  ? "max-w-[1120px] rounded-[18px] p-1.5"
+                  : "max-w-[980px] rounded-[22px] p-2 [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[26px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-white/95 [@media_(min-width:1536px)_and_(min-height:900px)]:p-3"
+              }`}
+            >
               <input
                 ref={revisionFileInputRef}
                 type="file"
@@ -8750,7 +8786,11 @@ export function ProjectChatWorkspace({
 
               <div
                 ref={mentionDropdownRef}
-                className="relative flex min-w-0 flex-col gap-1.5 rounded-[18px] border border-[#dde6dd] bg-[#fbfcfa] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] sm:gap-2.5 sm:rounded-[22px] sm:px-4 sm:py-3"
+                className={`relative flex min-w-0 border border-[#dde6dd] bg-[#fbfcfa] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] ${
+                  isConceptMode
+                    ? "flex-row items-end gap-1.5 rounded-[14px] px-2 py-1.5"
+                    : "flex-col gap-1.5 rounded-[18px] px-2.5 py-2 sm:gap-2.5 sm:rounded-[22px] sm:px-4 sm:py-3"
+                }`}
               >
                 <Textarea
                   ref={draftInputRef}
@@ -8815,7 +8855,11 @@ export function ProjectChatWorkspace({
                   }}
                   placeholder="Add a comment or upload files for this stage revision history."
                   rows={1}
-                  className="box-border max-h-[120px] min-h-[42px] w-full resize-none overflow-y-hidden rounded-[14px] border border-transparent bg-white/70 px-3 py-2 text-[13px] leading-[20px] text-[#29322c] shadow-none outline-none placeholder:text-[#9aa39b] focus-visible:ring-0 sm:max-h-[168px] sm:min-h-[58px] sm:rounded-[16px] sm:px-3.5 sm:py-3.5 sm:text-[14px] sm:leading-[22px]"
+                  className={`box-border w-full min-w-0 resize-none overflow-y-hidden border border-transparent bg-white/70 text-[#29322c] shadow-none outline-none placeholder:text-[#9aa39b] focus-visible:ring-0 ${
+                    isConceptMode
+                      ? "max-h-[96px] min-h-10 rounded-[11px] px-2.5 py-2 text-[13px] leading-5"
+                      : "max-h-[120px] min-h-[42px] rounded-[14px] px-3 py-2 text-[13px] leading-[20px] sm:max-h-[168px] sm:min-h-[58px] sm:rounded-[16px] sm:px-3.5 sm:py-3.5 sm:text-[14px] sm:leading-[22px]"
+                  }`}
                 />
                 {mentionDropdownOpen ? (
                   <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 z-20 overflow-hidden rounded-[22px] border border-[#dbe7dd] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.12)]">
@@ -8858,7 +8902,13 @@ export function ProjectChatWorkspace({
                     </div>
                   </div>
                 ) : null}
-                <div className="flex w-full min-w-0 flex-nowrap items-center justify-end gap-1 overflow-x-auto border-t border-[#e5ece5] pt-1 sm:flex-wrap sm:gap-2 sm:overflow-visible sm:pt-2">
+                <div
+                  className={`flex min-w-0 flex-nowrap items-center justify-end gap-1 ${
+                    isConceptMode
+                      ? "w-auto shrink-0 overflow-visible pb-0.5"
+                      : "w-full overflow-x-auto border-t border-[#e5ece5] pt-1 sm:flex-wrap sm:gap-2 sm:overflow-visible sm:pt-2"
+                  }`}
+                >
                   <Button
                     type="button"
                     variant="ghost"

@@ -129,6 +129,15 @@ assert(
   "Concept mode must hide only legacy approval and retain Request Changes/Revision.",
 );
 assert(
+  chatWorkspace.includes('"flex h-full flex-col overflow-hidden"') &&
+    chatWorkspace.includes('? "min-h-0 flex-1"') &&
+    chatWorkspace.includes('isConceptMode ? "" : "sticky bottom-1"') &&
+    chatWorkspace.includes('"flex-row items-end gap-1.5') &&
+    chatWorkspace.includes('"max-h-[96px] min-h-10') &&
+    chatWorkspace.includes('max-w-[1280px]'),
+  "Concept chat must reserve layout space for the composer instead of overlaying timeline content.",
+);
+assert(
   realtime.includes("assertConceptTaskerAccessIfNeeded") &&
     realtime.includes("Concept participant access denied"),
   "Ably capability issuance must enforce concept participation.",
