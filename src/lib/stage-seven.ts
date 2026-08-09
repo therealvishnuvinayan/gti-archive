@@ -25,6 +25,7 @@ import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
+import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import { createPresignedDownloadUrl } from "@/lib/storage/s3";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
@@ -240,7 +241,6 @@ async function getAuthorizedStageSevenProject(
   if (!project || !hasProjectPermission(user, project, "project.view")) return null;
   if (
     !canOpenImplementedWorkflowStage({
-      user,
       stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
       status: stageStatus(project),
     })
@@ -989,15 +989,21 @@ export async function closeStageSevenProject(
     if (existing) {
       return { duplicate: true, closedAt: existing.closedAt.toISOString() } as const;
     }
-    const stage = await tx.projectWorkflowStage.findUnique({
-      where: {
-        projectId_stageKey: {
-          projectId: input.projectId,
-          stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-        },
-      },
+    const workflowStages = await tx.projectWorkflowStage.findMany({
+      where: { projectId: input.projectId },
     });
-    if (!stage || stage.status !== ProjectWorkflowStageStatus.AVAILABLE) {
+    const stage = workflowStages.find(
+      (workflowStage) =>
+        workflowStage.stageKey ===
+        ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+    );
+    if (
+      !stage ||
+      getWorkflowStageCompletionMode(
+        workflowStages,
+        ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+      ) !== "TRANSITION"
+    ) {
       throw new StageSevenWorkflowError("Stage 7 is not currently available.");
     }
     const units = await tx.projectProductionUnit.findMany({

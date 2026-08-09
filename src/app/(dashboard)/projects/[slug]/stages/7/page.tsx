@@ -61,7 +61,6 @@ async function StageSevenContent({
 
   if (
     !canOpenImplementedWorkflowStage({
-      user,
       stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
       status: workflowStage?.status,
     })

@@ -285,7 +285,6 @@ export async function GET(request: Request) {
 
   if (
     !canOpenProjectStageChatContainer({
-      user,
       isTasker: stage.isTasker,
       conceptFolder: stage.conceptFolder,
       workflowStages: stage.project.workflowStages,

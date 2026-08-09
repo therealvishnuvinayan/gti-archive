@@ -50,6 +50,7 @@ import {
   assertConceptTaskerAccessIfNeeded,
   canViewProjectConcept,
   getProjectConceptAccessContext,
+  isProjectConceptWorkflowAccessible,
 } from "@/lib/project-concept-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
@@ -1033,7 +1034,6 @@ async function getStageChatAccessRecord(
 
   if (
     !canOpenProjectStageChatContainer({
-      user,
       isTasker: stage.isTasker,
       conceptFolder: stage.conceptFolder,
       workflowStages: stage.project.workflowStages,
@@ -1109,7 +1109,6 @@ export async function assertProjectAccess(
   if (
     selectedStage &&
     !canOpenProjectStageChatContainer({
-      user,
       isTasker: selectedStage.isTasker,
       conceptFolder: selectedStage.conceptFolder,
       workflowStages: project.workflowStages,
@@ -1194,7 +1193,6 @@ export async function assertStageChatWriteAccess(
 
   if (
     !canOpenProjectStageChatContainer({
-      user,
       isTasker: input.stage.isTasker,
       conceptFolder: input.stage.conceptFolder,
       workflowStages: input.stage.project.workflowStages,
@@ -1490,6 +1488,10 @@ export async function assertProjectAttachmentVisibilityForUser(
       projectId: attachment.projectId,
       taskerStageId: attachment.stageId,
     });
+
+    if (sourceConcept && !isProjectConceptWorkflowAccessible(sourceConcept)) {
+      throw new Error("This workflow stage is locked.");
+    }
 
     if (sourceConcept && !canViewProjectConcept(user, sourceConcept)) {
       const startingReferenceConcept = attachment.id

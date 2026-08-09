@@ -135,7 +135,14 @@ const projectSelect = {
       canAccessProjectArchives: true,
     },
   },
-  workflowStages: { select: { stageKey: true, status: true } },
+  workflowStages: {
+    select: {
+      stageKey: true,
+      status: true,
+      unlockedAt: true,
+      completedAt: true,
+    },
+  },
 } satisfies Prisma.ProjectSelect;
 
 type DashboardProject = Prisma.ProjectGetPayload<{ select: typeof projectSelect }>;

@@ -14,6 +14,7 @@ import {
   completeProjectInquiry,
   createContactDirectoryEntry,
   getProjectInquiryPageData,
+  searchProjectInquiryHistorySuggestions,
   type CompleteProjectInquiryInput,
 } from "../src/lib/project-inquiry";
 import { prisma } from "../src/lib/prisma";
@@ -492,9 +493,23 @@ async function main() {
       reopened.inquiry.attachments.INITIAL_BRIEF.length === 1,
     "Reopening Stage 1 must prefill all persisted values.",
   );
+  const [marketSuggestions, deliverableSuggestions] = await Promise.all([
+    searchProjectInquiryHistorySuggestions(
+      superAdmin,
+      mainProject.id,
+      "target-market",
+      "GCC",
+    ),
+    searchProjectInquiryHistorySuggestions(
+      superAdmin,
+      mainProject.id,
+      "deliverable",
+      "Packaging",
+    ),
+  ]);
   assert(
-    reopened.targetMarketSuggestions.some((market) => market.label === "GCC") &&
-      reopened.deliverableSuggestions.includes("Packaging Artwork"),
+    marketSuggestions.includes("GCC") &&
+      deliverableSuggestions.includes("Packaging Artwork"),
     "Persisted target-market and deliverable values must appear in history suggestions.",
   );
 
@@ -634,6 +649,42 @@ async function main() {
 
 main()
   .finally(async () => {
+    await prisma.$executeRawUnsafe(
+      `DROP TRIGGER IF EXISTS fail_inquiry_market_insert ON "ProjectInquiryTargetMarket"`,
+    ).catch(() => undefined);
+    await prisma.$executeRawUnsafe(
+      `DROP FUNCTION IF EXISTS fail_inquiry_market_insert()`,
+    ).catch(() => undefined);
+    await prisma.project.deleteMany({
+      where: {
+        id: {
+          in: [
+            "inquiry-main-project",
+            "inquiry-minimal-project",
+            "inquiry-failure-project",
+            "inquiry-foreign-project",
+          ],
+        },
+      },
+    });
+    await prisma.contactDirectoryEntry.deleteMany({
+      where: { createdById: superAdmin.id },
+    });
+    await prisma.user.deleteMany({
+      where: {
+        id: {
+          in: [
+            superAdmin.id,
+            "inquiry-owner",
+            "inquiry-client-user",
+            "inquiry-beneficiary-user",
+            "inquiry-collaborator-a",
+            "inquiry-collaborator-b",
+            outsider.id,
+          ],
+        },
+      },
+    });
     await prisma.$disconnect();
   })
   .catch((error) => {

@@ -18,7 +18,6 @@ import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
 type ProjectOverviewWorkspaceProps = {
   project: ProjectStageShellRecord;
   currentUserId: string;
-  canBypassLockedStages: boolean;
 };
 
 type ProjectOverviewStage = (typeof PROJECT_WORKFLOW_STAGE_DEFINITIONS)[number];
@@ -45,20 +44,16 @@ export function StageOverviewCard({
   stage,
   projectId,
   workflowStage,
-  canBypassLockedStage = false,
 }: {
   stage: ProjectOverviewStage;
   projectId: string;
   workflowStage: ProjectStageShellRecord["workflowStages"][number] | null;
-  canBypassLockedStage?: boolean;
 }) {
   const status = workflowStage?.status ?? "LOCKED";
   const available = status === "AVAILABLE";
   const completed = status === "COMPLETED";
   const locked = status === "LOCKED";
-  const implementedStage = stage.number >= 1 && stage.number <= 7;
-  const stageOpenable =
-    implementedStage && (!locked || canBypassLockedStage);
+  const stageOpenable = !locked;
   const statusLabel = completed ? "Completed" : available ? "Available" : "Locked";
 
   return (
@@ -114,6 +109,14 @@ export function StageOverviewCard({
         {stage.description}
       </p>
 
+      {locked ? (
+        <p className="mt-3 text-[11px] font-[650] leading-4 text-[#727d75]">
+          {stage.number === 1
+            ? "This stage is not available."
+            : `Complete Stage ${stage.number - 1} to unlock Stage ${stage.number}.`}
+        </p>
+      ) : null}
+
       <div className="mt-auto pt-4">
         {stageOpenable ? (
           <Button
@@ -125,15 +128,6 @@ export function StageOverviewCard({
               Open Stage
               <ArrowRight className="h-4 w-4" />
             </Link>
-          </Button>
-        ) : available ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled
-            className="h-10 w-full rounded-[12px] border-[#a8cfb6] bg-white/70 text-[#397a55] shadow-none disabled:opacity-100"
-          >
-            Available · Stage UI coming next
           </Button>
         ) : (
           <Button
@@ -153,10 +147,8 @@ export function StageOverviewCard({
 
 export function ProjectStageGrid({
   project,
-  canBypassLockedStages = false,
 }: {
   project: ProjectStageShellRecord;
-  canBypassLockedStages?: boolean;
 }) {
   return (
     <section className="mt-6" aria-labelledby="project-stages-heading">
@@ -178,7 +170,6 @@ export function ProjectStageGrid({
             key={stage.key}
             stage={stage}
             projectId={project.id}
-            canBypassLockedStage={canBypassLockedStages}
             workflowStage={
               project.workflowStages.find(
                 (workflowStage) => workflowStage.stageKey === stage.key,
@@ -194,17 +185,13 @@ export function ProjectStageGrid({
 export function ProjectOverviewWorkspace({
   project,
   currentUserId,
-  canBypassLockedStages,
 }: ProjectOverviewWorkspaceProps) {
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <ProjectOverviewHeader projectName={project.title} />
       <ProjectSummaryCard project={project} />
-      <ProjectStageGrid
-        project={project}
-        canBypassLockedStages={canBypassLockedStages}
-      />
+      <ProjectStageGrid project={project} />
     </section>
   );
 }

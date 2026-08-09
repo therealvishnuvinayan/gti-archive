@@ -58,3 +58,130 @@ export function getInitialProjectWorkflowStageData(unlockedAt = new Date()) {
     unlockedAt: stage.number === 1 ? unlockedAt : null,
   }));
 }
+
+export type ProjectWorkflowSequenceState =
+  | { kind: "MISSING" | "INVALID"; currentStage: null }
+  | {
+      kind: "ACTIVE";
+      currentStage: (typeof PROJECT_WORKFLOW_STAGE_DEFINITIONS)[number];
+    }
+  | { kind: "COMPLETED"; currentStage: null };
+
+/**
+ * Interprets the fixed workflow as a strict completed-prefix, one available
+ * stage, and locked-suffix sequence. It never repairs malformed persisted
+ * data or guesses which stage should be current.
+ */
+export function getProjectWorkflowSequenceState(
+  workflowStages: ReadonlyArray<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+    unlockedAt?: Date | null;
+    completedAt?: Date | null;
+  }>,
+): ProjectWorkflowSequenceState {
+  if (workflowStages.length === 0) {
+    return { kind: "MISSING", currentStage: null };
+  }
+
+  if (workflowStages.length !== PROJECT_WORKFLOW_STAGE_DEFINITIONS.length) {
+    return { kind: "INVALID", currentStage: null };
+  }
+
+  const stageByKey = new Map(
+    workflowStages.map((stage) => [stage.stageKey, stage.status] as const),
+  );
+
+  if (stageByKey.size !== PROJECT_WORKFLOW_STAGE_DEFINITIONS.length) {
+    return { kind: "INVALID", currentStage: null };
+  }
+
+  const includesTimestamps = workflowStages.some(
+    (stage) => "unlockedAt" in stage || "completedAt" in stage,
+  );
+  if (
+    includesTimestamps &&
+    workflowStages.some((stage) => {
+      if (stage.status === ProjectWorkflowStageStatus.LOCKED) {
+        return Boolean(stage.unlockedAt || stage.completedAt);
+      }
+      if (stage.status === ProjectWorkflowStageStatus.AVAILABLE) {
+        return !stage.unlockedAt || Boolean(stage.completedAt);
+      }
+      return !stage.unlockedAt || !stage.completedAt;
+    })
+  ) {
+    return { kind: "INVALID", currentStage: null };
+  }
+
+  const statuses = PROJECT_WORKFLOW_STAGE_DEFINITIONS.map((definition) =>
+    stageByKey.get(definition.key),
+  );
+
+  if (statuses.some((status) => status === undefined)) {
+    return { kind: "INVALID", currentStage: null };
+  }
+
+  if (
+    statuses.every(
+      (status) => status === ProjectWorkflowStageStatus.COMPLETED,
+    )
+  ) {
+    return { kind: "COMPLETED", currentStage: null };
+  }
+
+  const availableIndex = statuses.indexOf(ProjectWorkflowStageStatus.AVAILABLE);
+  if (
+    availableIndex < 0 ||
+    statuses.lastIndexOf(ProjectWorkflowStageStatus.AVAILABLE) !== availableIndex
+  ) {
+    return { kind: "INVALID", currentStage: null };
+  }
+
+  const validPrefix = statuses
+    .slice(0, availableIndex)
+    .every((status) => status === ProjectWorkflowStageStatus.COMPLETED);
+  const validSuffix = statuses
+    .slice(availableIndex + 1)
+    .every((status) => status === ProjectWorkflowStageStatus.LOCKED);
+
+  return validPrefix && validSuffix
+    ? {
+        kind: "ACTIVE",
+        currentStage: PROJECT_WORKFLOW_STAGE_DEFINITIONS[availableIndex],
+      }
+    : { kind: "INVALID", currentStage: null };
+}
+
+export function getWorkflowStageCompletionMode(
+  workflowStages: ReadonlyArray<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+    unlockedAt?: Date | null;
+    completedAt?: Date | null;
+  }>,
+  stageKey: ProjectWorkflowStageKey,
+): "TRANSITION" | "RETRY" | "UNAVAILABLE" {
+  const sequence = getProjectWorkflowSequenceState(workflowStages);
+  const target = PROJECT_WORKFLOW_STAGE_DEFINITIONS.find(
+    (definition) => definition.key === stageKey,
+  );
+
+  if (!target) {
+    return "UNAVAILABLE";
+  }
+
+  if (sequence.kind === "COMPLETED") {
+    return "RETRY";
+  }
+
+  if (sequence.kind !== "ACTIVE" || !sequence.currentStage) {
+    return "UNAVAILABLE";
+  }
+
+  if (sequence.currentStage.key === stageKey) {
+    return "TRANSITION";
+  }
+
+  return sequence.currentStage.number > target.number ? "RETRY" : "UNAVAILABLE";
+}

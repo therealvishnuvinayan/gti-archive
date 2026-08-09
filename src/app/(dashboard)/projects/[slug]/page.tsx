@@ -15,7 +15,6 @@ import {
   getProjectRouteAvailability,
   getProjectStageShellById,
 } from "@/lib/projects";
-import { canBypassImplementedWorkflowStageLock } from "@/lib/workflow-stage-access";
 
 type ProjectPageUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -53,7 +52,6 @@ async function ProjectOverviewContent({
     <ProjectOverviewWorkspace
       project={project}
       currentUserId={user.id}
-      canBypassLockedStages={canBypassImplementedWorkflowStageLock(user)}
     />
   );
 }

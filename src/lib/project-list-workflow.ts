@@ -4,7 +4,10 @@ import {
   type Prisma,
 } from "@prisma/client";
 
-import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
+import {
+  getProjectWorkflowSequenceState,
+  PROJECT_WORKFLOW_STAGE_DEFINITIONS,
+} from "@/lib/project-workflow";
 
 export const PROJECT_LIST_STATUSES = [
   "ALL",
@@ -44,26 +47,25 @@ type ProjectListWorkflowInput = {
   workflowStages: Array<{
     stageKey: ProjectWorkflowStageKey;
     status: ProjectWorkflowStageStatus;
+    unlockedAt?: Date | null;
+    completedAt?: Date | null;
   }>;
 };
 
 const stageKeys = PROJECT_WORKFLOW_STAGE_DEFINITIONS.map((stage) => stage.key);
-const finalStageKey = ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION;
 
 function buildCompletedWhere(): Prisma.ProjectWhereInput {
   return {
-    OR: [
-      { completedAt: { not: null } },
-      { closure: { isNot: null } },
-      {
-        workflowStages: {
-          some: {
-            stageKey: finalStageKey,
-            status: ProjectWorkflowStageStatus.COMPLETED,
-          },
+    AND: stageKeys.map((stageKey) => ({
+      workflowStages: {
+        some: {
+          stageKey,
+          status: ProjectWorkflowStageStatus.COMPLETED,
+          unlockedAt: { not: null },
+          completedAt: { not: null },
         },
       },
-    ],
+    })),
   };
 }
 
@@ -83,23 +85,35 @@ function buildValidActiveWorkflowWhere(): Prisma.ProjectWhereInput {
       { NOT: completedWhere },
       buildInitializedWorkflowWhere(),
       {
-        OR: stageKeys.map((availableStageKey) => ({
+        OR: stageKeys.map((availableStageKey, availableIndex) => ({
           AND: [
             {
               workflowStages: {
                 some: {
                   stageKey: availableStageKey,
                   status: ProjectWorkflowStageStatus.AVAILABLE,
+                  unlockedAt: { not: null },
+                  completedAt: null,
                 },
               },
             },
-            ...stageKeys
-              .filter((stageKey) => stageKey !== availableStageKey)
-              .map((stageKey) => ({
+            ...stageKeys.slice(0, availableIndex).map((stageKey) => ({
+              workflowStages: {
+                some: {
+                  stageKey,
+                  status: ProjectWorkflowStageStatus.COMPLETED,
+                  unlockedAt: { not: null },
+                  completedAt: { not: null },
+                },
+              },
+            })),
+            ...stageKeys.slice(availableIndex + 1).map((stageKey) => ({
                 workflowStages: {
-                  none: {
+                  some: {
                     stageKey,
-                    status: ProjectWorkflowStageStatus.AVAILABLE,
+                    status: ProjectWorkflowStageStatus.LOCKED,
+                    unlockedAt: null,
+                    completedAt: null,
                   },
                 },
               })),
@@ -148,6 +162,8 @@ export function buildProjectListStageWhere(
                 some: {
                   stageKey: definition.key,
                   status: ProjectWorkflowStageStatus.AVAILABLE,
+                  unlockedAt: { not: null },
+                  completedAt: null,
                 },
               },
             },
@@ -165,6 +181,8 @@ export function buildProjectListStageWhere(
           some: {
             stageKey: definition.key,
             status: ProjectWorkflowStageStatus.AVAILABLE,
+            unlockedAt: { not: null },
+            completedAt: null,
           },
         },
       },
@@ -182,12 +200,8 @@ export function deriveProjectListWorkflowState(
     (stageKey) =>
       stageByKey.get(stageKey)?.status ?? ProjectWorkflowStageStatus.LOCKED,
   );
-  const finalStage = stageByKey.get(finalStageKey);
-  const isCompleted = Boolean(
-    project.completedAt ||
-      project.closure ||
-      finalStage?.status === ProjectWorkflowStageStatus.COMPLETED,
-  );
+  const sequence = getProjectWorkflowSequenceState(project.workflowStages);
+  const isCompleted = sequence.kind === "COMPLETED";
 
   const hasCompleteStageSet =
     project.workflowStages.length === stageKeys.length &&
@@ -198,9 +212,9 @@ export function deriveProjectListWorkflowState(
       ProjectWorkflowStageStatus.AVAILABLE,
   );
   const workflowHealth: ProjectWorkflowHealth =
-    project.workflowStages.length === 0
+    sequence.kind === "MISSING"
       ? "MISSING"
-      : !hasCompleteStageSet || (!isCompleted && availableStages.length !== 1)
+      : !hasCompleteStageSet || sequence.kind === "INVALID"
         ? "INVALID"
         : "VALID";
   const workflowDiagnosticLabel =
@@ -210,7 +224,7 @@ export function deriveProjectListWorkflowState(
         ? "Legacy Project"
         : null;
 
-  if (isCompleted) {
+  if (isCompleted && workflowHealth === "VALID") {
     return {
       businessStatus: "COMPLETED",
       statusLabel: "Completed",
@@ -243,7 +257,8 @@ export function deriveProjectListWorkflowState(
     };
   }
 
-  const currentStage = availableStages[0];
+  const currentStage =
+    sequence.kind === "ACTIVE" ? sequence.currentStage : availableStages[0];
 
   return {
     businessStatus: "ACTIVE",

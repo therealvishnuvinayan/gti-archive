@@ -21,6 +21,7 @@ import {
   type ConceptAccessContext,
 } from "@/lib/project-concept-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import {
   getProjectStageAccessRecordById,
   projectStageAccessSelect,
@@ -169,7 +170,6 @@ async function getAuthorizedConceptProject(
 
   if (
     !canOpenImplementedWorkflowStage({
-      user,
       stageKey,
       status: getWorkflowStageStatus(project, stageKey),
     })
@@ -1222,15 +1222,13 @@ export async function completeStageThreeConcepts(
               ownerId: true,
               coOwners: { select: { userId: true } },
               workflowStages: {
-                where: {
-                  stageKey: {
-                    in: [
-                      ProjectWorkflowStageKey.CONCEPT_CREATION,
-                      ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-                    ],
-                  },
+                select: {
+                  id: true,
+                  stageKey: true,
+                  status: true,
+                  unlockedAt: true,
+                  completedAt: true,
                 },
-                select: { id: true, stageKey: true, status: true },
               },
               conceptFolders: {
                 where: {
@@ -1292,12 +1290,12 @@ export async function completeStageThreeConcepts(
             };
           }
 
-          if (
-            stageThreeWorkflow.status !==
-              ProjectWorkflowStageStatus.AVAILABLE &&
-            stageThreeWorkflow.status !==
-              ProjectWorkflowStageStatus.COMPLETED
-          ) {
+          const completionMode = getWorkflowStageCompletionMode(
+            project.workflowStages,
+            ProjectWorkflowStageKey.CONCEPT_CREATION,
+          );
+
+          if (completionMode === "UNAVAILABLE") {
             return { error: "Stage 3 is not currently available." };
           }
 
@@ -1433,31 +1431,33 @@ export async function completeStageThreeConcepts(
             nextSortOrder += 1;
           }
 
-          const transitioned =
-            stageThreeWorkflow.status !==
-            ProjectWorkflowStageStatus.COMPLETED;
+          const transitioned = completionMode === "TRANSITION";
           const completedAt = new Date();
 
           if (transitioned) {
-            await tx.projectWorkflowStage.update({
-              where: { id: stageThreeWorkflow.id },
+            const completed = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageThreeWorkflow.id,
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+              },
               data: {
                 status: ProjectWorkflowStageStatus.COMPLETED,
                 completedAt,
               },
             });
-          }
 
-          if (
-            stageFourWorkflow.status === ProjectWorkflowStageStatus.LOCKED
-          ) {
-            await tx.projectWorkflowStage.update({
-              where: { id: stageFourWorkflow.id },
-              data: {
-                status: ProjectWorkflowStageStatus.AVAILABLE,
-                unlockedAt: completedAt,
-              },
-            });
+            if (completed.count === 1) {
+              await tx.projectWorkflowStage.updateMany({
+                where: {
+                  id: stageFourWorkflow.id,
+                  status: ProjectWorkflowStageStatus.LOCKED,
+                },
+                data: {
+                  status: ProjectWorkflowStageStatus.AVAILABLE,
+                  unlockedAt: completedAt,
+                },
+              });
+            }
           }
 
           return {
@@ -1527,14 +1527,6 @@ export async function completeStageFourConcepts(
               ownerId: true,
               coOwners: { select: { userId: true } },
               workflowStages: {
-                where: {
-                  stageKey: {
-                    in: [
-                      ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-                      ProjectWorkflowStageKey.FINAL_LAYOUT,
-                    ],
-                  },
-                },
                 select: {
                   id: true,
                   stageKey: true,
@@ -1600,10 +1592,12 @@ export async function completeStageFourConcepts(
             };
           }
 
-          if (
-            stageFourWorkflow.status !== ProjectWorkflowStageStatus.AVAILABLE &&
-            stageFourWorkflow.status !== ProjectWorkflowStageStatus.COMPLETED
-          ) {
+          const completionMode = getWorkflowStageCompletionMode(
+            project.workflowStages,
+            ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          );
+
+          if (completionMode === "UNAVAILABLE") {
             return { error: "Stage 4 is not currently available." };
           }
 
@@ -1764,28 +1758,33 @@ export async function completeStageFourConcepts(
             });
           }
 
-          const transitioned =
-            stageFourWorkflow.status !== ProjectWorkflowStageStatus.COMPLETED;
+          const transitioned = completionMode === "TRANSITION";
           const completedAt = new Date();
 
           if (transitioned) {
-            await tx.projectWorkflowStage.update({
-              where: { id: stageFourWorkflow.id },
+            const completed = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageFourWorkflow.id,
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+              },
               data: {
                 status: ProjectWorkflowStageStatus.COMPLETED,
                 completedAt,
               },
             });
-          }
 
-          if (stageFiveWorkflow.status === ProjectWorkflowStageStatus.LOCKED) {
-            await tx.projectWorkflowStage.update({
-              where: { id: stageFiveWorkflow.id },
-              data: {
-                status: ProjectWorkflowStageStatus.AVAILABLE,
-                unlockedAt: completedAt,
-              },
-            });
+            if (completed.count === 1) {
+              await tx.projectWorkflowStage.updateMany({
+                where: {
+                  id: stageFiveWorkflow.id,
+                  status: ProjectWorkflowStageStatus.LOCKED,
+                },
+                data: {
+                  status: ProjectWorkflowStageStatus.AVAILABLE,
+                  unlockedAt: completedAt,
+                },
+              });
+            }
           }
 
           return {
@@ -1883,7 +1882,6 @@ export async function getProjectConceptChatContext(
       getConceptAccessContext(record.project, record, input.stageKey),
     ) ||
     !canOpenImplementedWorkflowStage({
-      user,
       stageKey: input.stageKey,
       status: getWorkflowStageStatus(record.project, input.stageKey),
     })

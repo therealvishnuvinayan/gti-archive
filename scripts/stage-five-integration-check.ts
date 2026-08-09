@@ -169,20 +169,21 @@ async function main() {
     });
     await prisma.projectWorkflowStage.createMany({
       data: [projectId, foreignProjectId].flatMap((id) =>
-        getInitialProjectWorkflowStageData().map((stage) => ({
-          projectId: id,
-          ...stage,
-          status:
-            stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT ||
-            stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT
-              ? ProjectWorkflowStageStatus.AVAILABLE
-              : stage.status,
-          unlockedAt:
-            stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT ||
-            stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT
-              ? new Date()
-              : stage.unlockedAt,
-        })),
+        getInitialProjectWorkflowStageData().map((stage, index) => {
+          const now = new Date();
+          return {
+            projectId: id,
+            ...stage,
+            status:
+              index < 4
+                ? ProjectWorkflowStageStatus.COMPLETED
+                : index === 4
+                  ? ProjectWorkflowStageStatus.AVAILABLE
+                  : ProjectWorkflowStageStatus.LOCKED,
+            unlockedAt: index <= 4 ? now : null,
+            completedAt: index < 4 ? now : null,
+          };
+        }),
       ),
     });
     await prisma.projectStage.createMany({

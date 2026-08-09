@@ -59,7 +59,6 @@ async function StageSixContent({
 
   if (
     !canOpenImplementedWorkflowStage({
-      user,
       stageKey: ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
       status: workflowStage?.status,
     })

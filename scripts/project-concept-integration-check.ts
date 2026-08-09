@@ -46,7 +46,10 @@ import {
 } from "../src/lib/notification-center/triggers";
 import { getVisibleStageEventRecipientUserIds } from "../src/lib/notification-center/recipients";
 import { prisma } from "../src/lib/prisma";
-import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
+import {
+  getInitialProjectWorkflowStageData,
+  PROJECT_WORKFLOW_STAGE_DEFINITIONS,
+} from "../src/lib/project-workflow";
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Concept Round 1/2 integration check failed: ${message}`);
@@ -64,6 +67,24 @@ async function expectRejected(task: Promise<unknown>, message: string) {
     rejected = true;
   }
   check(rejected, message);
+}
+
+function workflowAt(currentStageKey: ProjectWorkflowStageKey) {
+  const currentIndex = PROJECT_WORKFLOW_STAGE_DEFINITIONS.findIndex(
+    (definition) => definition.key === currentStageKey,
+  );
+  const now = new Date();
+  return getInitialProjectWorkflowStageData(now).map((stage, index) => ({
+    ...stage,
+    status:
+      index < currentIndex
+        ? ProjectWorkflowStageStatus.COMPLETED
+        : index === currentIndex
+          ? ProjectWorkflowStageStatus.AVAILABLE
+          : ProjectWorkflowStageStatus.LOCKED,
+    unlockedAt: index <= currentIndex ? now : null,
+    completedAt: index < currentIndex ? now : null,
+  }));
 }
 
 async function main() {
@@ -125,19 +146,7 @@ async function main() {
           create: [{ userId: collaborator.id, addedById: owner.id }],
         },
         workflowStages: {
-          create: getInitialProjectWorkflowStageData().map((stage) => ({
-            ...stage,
-            status:
-              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION ||
-              stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT
-                ? ProjectWorkflowStageStatus.AVAILABLE
-                : stage.status,
-            unlockedAt:
-              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION ||
-              stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT
-                ? new Date()
-                : stage.unlockedAt,
-          })),
+          create: workflowAt(ProjectWorkflowStageKey.CONCEPT_CREATION),
         },
       },
     });
@@ -154,7 +163,7 @@ async function main() {
       ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
     );
     check(emptyStageThree?.folders.length === 0, "Stage 3 must render an empty state");
-    check(emptyStageFour?.folders.length === 0, "Stage 4 must render an empty state");
+    check(emptyStageFour === null, "locked Stage 4 must not expose its workspace");
     check(
       (await prisma.projectConceptFolder.count({ where: { projectId } })) === countBeforeReads,
       "reading Stage 3/4 must not create Concept 1",
@@ -242,13 +251,7 @@ async function main() {
       stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
       folderId: stageFourConcept.id,
     });
-    check(
-      stageFourContext?.chatMode.stageLabel === "Stage 4 - Final Concept" &&
-        stageFourContext.chatMode.compareHref.endsWith(
-          `/stages/4/concepts/${stageFourConcept.id}/compare`,
-        ),
-      "Stage 4 must reuse concept mode and preserve its comparison route",
-    );
+    check(stageFourContext === null, "a direct Stage 4 concept URL must be blocked while Stage 3 is current");
 
     const ownerView = await getProjectConceptFolders(owner, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION);
     const coOwnerView = await getProjectConceptFolders(coOwner, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION);
@@ -804,10 +807,13 @@ async function main() {
       "comparison marker creation must reject another concept's file",
     );
 
-    await startProjectStageWork(executorA, {
-      projectId,
-      stageId: stageFourTasker.id,
-    });
+    await expectRejected(
+      startProjectStageWork(executorA, {
+        projectId,
+        stageId: stageFourTasker.id,
+      }),
+      "Stage 4 work must be rejected while Stage 4 is locked",
+    );
     const stageFourBase = await prisma.projectAttachment.create({
       data: {
         projectId,
@@ -840,25 +846,17 @@ async function main() {
         createdAt: new Date(),
       },
     });
-    const stageFourMarker = await createComparisonComment(owner, {
-      projectId,
-      stageId: stageFourTasker.id,
-      baseAttachmentId: stageFourBase.id,
-      compareAttachmentId: stageFourCompare.id,
-      xPercent: 40,
-      yPercent: 50,
-      body: "Stage 4 review marker",
-    });
-    check(
-      (
-        await getComparisonCommentsForPair(executorA, {
-          projectId,
-          stageId: stageFourTasker.id,
-          baseAttachmentId: stageFourBase.id,
-          compareAttachmentId: stageFourCompare.id,
-        })
-      ).some((marker) => marker.id === stageFourMarker.id),
-      "Stage 4 tasker comparison and executor marker visibility must work",
+    await expectRejected(
+      createComparisonComment(owner, {
+        projectId,
+        stageId: stageFourTasker.id,
+        baseAttachmentId: stageFourBase.id,
+        compareAttachmentId: stageFourCompare.id,
+        xPercent: 40,
+        yPercent: 50,
+        body: "Locked Stage 4 review marker",
+      }),
+      "Stage 4 comparison mutations must be rejected while Stage 4 is locked",
     );
 
     await prisma.project.create({
@@ -871,17 +869,7 @@ async function main() {
           create: [{ userId: executorA.id, addedById: owner.id }],
         },
         workflowStages: {
-          create: getInitialProjectWorkflowStageData().map((stage) => ({
-            ...stage,
-            status:
-              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
-                ? ProjectWorkflowStageStatus.AVAILABLE
-                : stage.status,
-            unlockedAt:
-              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
-                ? new Date()
-                : stage.unlockedAt,
-          })),
+          create: workflowAt(ProjectWorkflowStageKey.CONCEPT_CREATION),
         },
       },
     });
@@ -1245,6 +1233,43 @@ async function main() {
       "completion must unlock Stage 4",
     );
 
+    const unlockedStageFourContext = await getProjectConceptChatContext(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      folderId: stageFourConcept.id,
+    });
+    check(
+      unlockedStageFourContext?.chatMode.stageLabel === "Stage 4 - Final Concept" &&
+        unlockedStageFourContext.chatMode.compareHref.endsWith(
+          `/stages/4/concepts/${stageFourConcept.id}/compare`,
+        ),
+      "Stage 4 concept routes must open after the real Stage 3 transition",
+    );
+    await startProjectStageWork(executorA, {
+      projectId,
+      stageId: stageFourTasker.id,
+    });
+    const stageFourMarker = await createComparisonComment(owner, {
+      projectId,
+      stageId: stageFourTasker.id,
+      baseAttachmentId: stageFourBase.id,
+      compareAttachmentId: stageFourCompare.id,
+      xPercent: 40,
+      yPercent: 50,
+      body: "Stage 4 review marker",
+    });
+    check(
+      (
+        await getComparisonCommentsForPair(executorA, {
+          projectId,
+          stageId: stageFourTasker.id,
+          baseAttachmentId: stageFourBase.id,
+          compareAttachmentId: stageFourCompare.id,
+        })
+      ).some((marker) => marker.id === stageFourMarker.id),
+      "Stage 4 tasker comparison must work after Stage 4 becomes available",
+    );
+
     const promotedConcept = await prisma.projectConceptFolder.findUniqueOrThrow({
       where: { sourceStage3ConceptId: conceptA.folder.id },
       select: {
@@ -1528,17 +1553,7 @@ async function main() {
           create: [{ userId: executorA.id, addedById: owner.id }],
         },
         workflowStages: {
-          create: getInitialProjectWorkflowStageData().map((stage) => ({
-            ...stage,
-            status:
-              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
-                ? ProjectWorkflowStageStatus.AVAILABLE
-                : stage.status,
-            unlockedAt:
-              stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
-                ? new Date()
-                : stage.unlockedAt,
-          })),
+          create: workflowAt(ProjectWorkflowStageKey.CONCEPT_CREATION),
         },
       },
     });

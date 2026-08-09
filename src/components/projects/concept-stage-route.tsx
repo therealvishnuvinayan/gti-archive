@@ -67,7 +67,6 @@ async function ConceptStageContent({
     (stage) => stage.stageKey === stageKey,
   );
   const stageAvailable = canOpenImplementedWorkflowStage({
-    user,
     stageKey,
     status: workflowStage?.status,
   });

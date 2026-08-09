@@ -10,6 +10,7 @@ import {
 
 import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
 import {
   assertResearchFolderWriteAccess,
@@ -484,63 +485,59 @@ export async function completeProjectResearchStage(
   return withPrismaRetry(() =>
     prisma.$transaction(
       async (tx) => {
-        const stageTwo = await tx.projectWorkflowStage.findUnique({
-          where: {
-            projectId_stageKey: {
-              projectId,
-              stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
-            },
+        const workflowStages = await tx.projectWorkflowStage.findMany({
+          where: { projectId },
+          select: {
+            id: true,
+            stageKey: true,
+            status: true,
+            unlockedAt: true,
+            completedAt: true,
           },
-          select: { status: true },
         });
+        const stageTwo = workflowStages.find(
+          (stage) =>
+            stage.stageKey ===
+            ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+        );
+        const stageThree = workflowStages.find(
+          (stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION,
+        );
+        const completionMode = getWorkflowStageCompletionMode(
+          workflowStages,
+          ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+        );
 
-        if (
-          !stageTwo ||
-          (stageTwo.status !== ProjectWorkflowStageStatus.AVAILABLE &&
-            stageTwo.status !== ProjectWorkflowStageStatus.COMPLETED)
-        ) {
+        if (!stageTwo || !stageThree || completionMode === "UNAVAILABLE") {
           return { error: "Project Research and Planning is not available yet." } as const;
         }
 
-        const alreadyCompleted =
-          stageTwo.status === ProjectWorkflowStageStatus.COMPLETED;
-        const now = new Date();
-        await tx.projectWorkflowStage.updateMany({
-          where: {
-            projectId,
-            stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
-            status: ProjectWorkflowStageStatus.AVAILABLE,
-          },
-          data: { status: ProjectWorkflowStageStatus.COMPLETED, completedAt: now },
-        });
-
-        const stageThree = await tx.projectWorkflowStage.findUnique({
-          where: {
-            projectId_stageKey: {
-              projectId,
-              stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
-            },
-          },
-          select: { id: true, status: true },
-        });
-
-        if (!stageThree) {
-          await tx.projectWorkflowStage.create({
-            data: {
-              projectId,
-              stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+        const alreadyCompleted = completionMode === "RETRY";
+        if (completionMode === "TRANSITION") {
+          const now = new Date();
+          const completed = await tx.projectWorkflowStage.updateMany({
+            where: {
+              id: stageTwo.id,
               status: ProjectWorkflowStageStatus.AVAILABLE,
-              unlockedAt: now,
+            },
+            data: {
+              status: ProjectWorkflowStageStatus.COMPLETED,
+              completedAt: now,
             },
           });
-        } else if (stageThree.status === ProjectWorkflowStageStatus.LOCKED) {
-          await tx.projectWorkflowStage.update({
-            where: { id: stageThree.id },
-            data: {
-              status: ProjectWorkflowStageStatus.AVAILABLE,
-              unlockedAt: now,
-            },
-          });
+
+          if (completed.count === 1) {
+            await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageThree.id,
+                status: ProjectWorkflowStageStatus.LOCKED,
+              },
+              data: {
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+                unlockedAt: now,
+              },
+            });
+          }
         }
 
         return { success: true, nextStage: 3, alreadyCompleted } as const;

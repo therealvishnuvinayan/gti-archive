@@ -240,6 +240,11 @@ assert(
   !schema.includes("model TextDocument") && !schema.includes("model Note"),
   "Plain-text files must not introduce a separate note or document model.",
 );
-assert(overview.includes("stage.number >= 1 && stage.number <= 7") && overview.includes("Available · Stage UI coming next"), "Overview must expose all seven implemented stage UI routes while retaining the safe fallback for any future non-linked stage.");
+assert(
+  overview.includes("const stageOpenable = !locked") &&
+    !overview.includes("Available · Stage UI coming next") &&
+    overview.includes("Complete Stage ${stage.number - 1} to unlock Stage ${stage.number}."),
+  "Overview must expose all seven implemented routes only for available/completed cards and explain locked progression.",
+);
 
 console.log("Stage 2 connected UI and architecture checks passed.");

@@ -5,6 +5,7 @@ import {
 
 import {
   PROJECT_LIST_STATUSES,
+  buildProjectListStatusWhere,
   deriveProjectListWorkflowState,
 } from "../src/lib/project-list-workflow";
 import {
@@ -43,6 +44,8 @@ for (let currentStageNumber = 2; currentStageNumber <= 7; currentStageNumber += 
           : index + 1 === currentStageNumber
             ? ProjectWorkflowStageStatus.AVAILABLE
             : ProjectWorkflowStageStatus.LOCKED,
+      unlockedAt: index + 1 <= currentStageNumber ? new Date() : null,
+      completedAt: index + 1 < currentStageNumber ? new Date() : null,
     })),
   });
 
@@ -54,6 +57,12 @@ for (let currentStageNumber = 2; currentStageNumber <= 7; currentStageNumber += 
 const completedProject = deriveProjectListWorkflowState({
   ...baseProject,
   completedAt: new Date(),
+  workflowStages: baseProject.workflowStages.map((stage) => ({
+    ...stage,
+    status: ProjectWorkflowStageStatus.COMPLETED,
+    unlockedAt: new Date(),
+    completedAt: new Date(),
+  })),
 });
 assert.equal(completedProject.businessStatus, "COMPLETED");
 assert.equal(completedProject.statusLabel, "Completed");
@@ -89,5 +98,40 @@ const multipleAvailableStages = deriveProjectListWorkflowState({
 assert.equal(multipleAvailableStages.businessStatus, null);
 assert.equal(multipleAvailableStages.workflowHealth, "INVALID");
 assert.equal(multipleAvailableStages.currentStageNumber, null);
+
+const skippedStage = deriveProjectListWorkflowState({
+  ...baseProject,
+  workflowStages: baseProject.workflowStages.map((stage, index) => ({
+    ...stage,
+    status:
+      index === 1
+        ? ProjectWorkflowStageStatus.AVAILABLE
+        : ProjectWorkflowStageStatus.LOCKED,
+  })),
+});
+assert.equal(skippedStage.businessStatus, null);
+assert.equal(skippedStage.workflowHealth, "INVALID");
+assert.equal(skippedStage.currentStageNumber, null);
+
+const invalidCompletedTimestamp = deriveProjectListWorkflowState({
+  ...baseProject,
+  workflowStages: baseProject.workflowStages.map((stage, index) => ({
+    ...stage,
+    status:
+      index === 0
+        ? ProjectWorkflowStageStatus.COMPLETED
+        : index === 1
+          ? ProjectWorkflowStageStatus.AVAILABLE
+          : ProjectWorkflowStageStatus.LOCKED,
+    unlockedAt: index === 1 ? new Date() : null,
+    completedAt: index === 0 ? new Date() : null,
+  })),
+});
+assert.equal(invalidCompletedTimestamp.businessStatus, null);
+assert.equal(invalidCompletedTimestamp.workflowHealth, "INVALID");
+
+const activeWhere = JSON.stringify(buildProjectListStatusWhere("ACTIVE"));
+assert(activeWhere.includes("unlockedAt"));
+assert(activeWhere.includes("completedAt"));
 
 console.log("Project list workflow business-state and legacy-health checks passed.");

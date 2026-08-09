@@ -67,7 +67,6 @@ async function StageTwoContent({
 
   if (
     !canOpenImplementedWorkflowStage({
-      user,
       stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
       status: workflowStage?.status,
     })

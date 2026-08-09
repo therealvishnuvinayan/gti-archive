@@ -2348,7 +2348,12 @@ export async function getProjectsList(
                 select: { id: true },
               },
               workflowStages: {
-                select: { stageKey: true, status: true },
+                select: {
+                  stageKey: true,
+                  status: true,
+                  unlockedAt: true,
+                  completedAt: true,
+                },
               },
               coOwners: {
                 select: { userId: true },

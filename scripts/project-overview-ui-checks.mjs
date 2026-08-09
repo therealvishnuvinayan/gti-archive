@@ -74,8 +74,8 @@ assert(
 );
 
 assert(
-  overview.includes("stage.number >= 1 && stage.number <= 7"),
-  "Stage 1 through Stage 6 should be openable only when persisted status permits.",
+  overview.includes("const stageOpenable = !locked"),
+  "All seven stages must be openable only when persisted status permits.",
 );
 assert(overview.includes("Open Stage"), "Implemented stages should show the Open Stage CTA.");
 assert(
@@ -85,11 +85,16 @@ assert(
 assert(overview.includes("status === \"AVAILABLE\""), "Available state must come from persisted workflow status.");
 assert(overview.includes("status === \"COMPLETED\""), "Completed state must come from persisted workflow status.");
 assert(
-  overview.includes("Available · Stage UI coming next"),
-  "Unimplemented future stages should retain a safe available state.",
+  !overview.includes("Available · Stage UI coming next"),
+  "All seven implemented stages must use their real route when available.",
 );
 assert(overview.includes("disabled"), "Unavailable stage controls should be disabled.");
 assert(overview.includes("Locked"), "Locked workflow stages should show their real state.");
+assert(
+  overview.includes("Complete Stage ${stage.number - 1} to unlock Stage ${stage.number}.") &&
+    !overview.includes("canBypassLocked"),
+  "Locked cards must explain progression and must not expose a runtime bypass.",
+);
 assert(
   projectQuery.includes("workflowStages:") && projectQuery.includes("stageKey: stage.stageKey"),
   "The project query must return persisted workflow stage state.",

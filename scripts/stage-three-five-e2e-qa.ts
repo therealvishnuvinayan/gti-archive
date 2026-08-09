@@ -87,6 +87,8 @@ const pngBytes = Uint8Array.from(
     "base64",
   ),
 );
+const qaProjectIds: string[] = [];
+const qaUserIds: string[] = [];
 
 type QaUser = Parameters<typeof requestAttachmentUpload>[0];
 
@@ -216,6 +218,7 @@ async function main() {
   const userIds = userSpecs.map(
     ([label]) => `e2e-qa-${runLabel}-${label}`,
   );
+  qaUserIds.push(...userIds);
 
   await prisma.user.createMany({
     data: userSpecs.map(([label, role], index) => ({
@@ -259,6 +262,7 @@ async function main() {
   });
   check(!isError(createdProject), "the real project-creation service must succeed");
   const projectId = createdProject.projectId;
+  qaProjectIds.push(projectId);
 
   // Stages 1 and 2 are outside this audit. Advance only their workflow records so
   // the real Stage 3 services can be exercised without fabricating concept rows.
@@ -276,6 +280,7 @@ async function main() {
       },
       data: {
         status: ProjectWorkflowStageStatus.COMPLETED,
+        unlockedAt: now,
         completedAt: now,
       },
     }),
@@ -1352,12 +1357,15 @@ async function main() {
 }
 
 main()
-  .then(async () => {
-    await prisma.$disconnect();
+  .then(() => {
     console.log("Stage 3-5 E2E QA passed.");
   })
-  .catch(async (error) => {
+  .catch((error) => {
     console.error(error);
-    await prisma.$disconnect();
     process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.project.deleteMany({ where: { id: { in: qaProjectIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: qaUserIds } } });
+    await prisma.$disconnect();
   });

@@ -238,8 +238,13 @@ assert(
 
 assert(
   overview.includes("href={`/projects/${projectId}/stages/${stage.number}`}") &&
-    overview.includes("stage.number >= 1 && stage.number <= 7"),
+    overview.includes("const stageOpenable = !locked"),
   "The overview CTA should open the dedicated implemented stage route.",
+);
+assert(
+  stagePage.includes("canOpenImplementedWorkflowStage") &&
+    stagePage.includes("StageLockedState"),
+  "The Stage 1 route must reject a missing or locked workflow row.",
 );
 assert(
   stagePage.includes("getProjectStageShellById") &&

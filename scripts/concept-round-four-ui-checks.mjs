@@ -74,9 +74,11 @@ assert(
     concepts.includes("projectStageFileHandoff.upsert") &&
     concepts.includes("projectFileChecklist.upsert") &&
     concepts.includes("TransactionIsolationLevel.Serializable") &&
+    concepts.includes("getWorkflowStageCompletionMode") &&
     concepts.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     concepts.includes("ProjectWorkflowStageStatus.AVAILABLE") &&
-    concepts.includes("stageFiveWorkflow.status === ProjectWorkflowStageStatus.LOCKED") &&
+    concepts.includes("id: stageFiveWorkflow.id") &&
+    concepts.includes("status: ProjectWorkflowStageStatus.LOCKED") &&
     !concepts.includes("PRODUCTION_AND_HANDOVER"),
   "Owner/Super-Admin-only Stage 4 completion must atomically hand off final files, unlock Stage 5, and leave Stage 6 untouched.",
 );

@@ -42,9 +42,10 @@ import {
 import { ensureProjectResearchWorkspaceTx } from "@/lib/project-research";
 import type { ProjectAccessUser } from "@/lib/projects";
 import {
-  getInitialProjectWorkflowStageData,
+  getWorkflowStageCompletionMode,
   PROJECT_WORKFLOW_STAGE_DEFINITIONS,
 } from "@/lib/project-workflow";
+import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 const MAX_TEXT_LENGTH = 10_000;
 const MAX_LABEL_LENGTH = 160;
@@ -76,6 +77,14 @@ const projectAccessSelect = {
       canViewBudget: true,
       canViewVendorInfo: true,
       canAccessProjectArchives: true,
+    },
+  },
+  workflowStages: {
+    select: {
+      stageKey: true,
+      status: true,
+      unlockedAt: true,
+      completedAt: true,
     },
   },
 } satisfies Prisma.ProjectSelect;
@@ -319,6 +328,20 @@ async function getProjectAccessRecord(projectId: string) {
   return getProjectStageAccessRecordById(projectId);
 }
 
+function canOpenProjectInquiry(project: {
+  workflowStages: Array<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+  }>;
+}) {
+  return canOpenImplementedWorkflowStage({
+    stageKey: ProjectWorkflowStageKey.PROJECT_INQUIRY,
+    status: project.workflowStages.find(
+      (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY,
+    )?.status,
+  });
+}
+
 export async function createContactDirectoryEntry(
   user: ProjectAccessUser,
   projectId: string,
@@ -328,6 +351,10 @@ export async function createContactDirectoryEntry(
 
   if (!project) {
     return { error: "Project not found." };
+  }
+
+  if (!canOpenProjectInquiry(project)) {
+    return { error: "Project Inquiry is locked." };
   }
 
   if (!hasProjectPermission(user, toPermissionContext(project), "project.update")) {
@@ -376,7 +403,11 @@ export async function getProjectInquiryPageData(
 ): Promise<ProjectInquiryPageData> {
   const project = await getProjectAccessRecord(projectId);
 
-  if (!project || !hasProjectPermission(user, toPermissionContext(project), "stage.view")) {
+  if (
+    !project ||
+    !canOpenProjectInquiry(project) ||
+    !hasProjectPermission(user, toPermissionContext(project), "stage.view")
+  ) {
     throw new Error("Project Inquiry is unavailable.");
   }
 
@@ -480,6 +511,7 @@ async function assertProjectInquiryOptionsAccess(
 
   if (
     !project ||
+    !canOpenProjectInquiry(project) ||
     !hasProjectPermission(user, toPermissionContext(project), "stage.view")
   ) {
     throw new Error("Project Inquiry is unavailable.");
@@ -845,6 +877,30 @@ export async function completeProjectInquiry(
         } as const;
       }
 
+      const stageOne = project.workflowStages.find(
+        (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY,
+      );
+      const stageTwo = project.workflowStages.find(
+        (stage) =>
+          stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+      );
+
+      if (!stageOne || !stageTwo) {
+        return { error: "The fixed project workflow is unavailable." } as const;
+      }
+
+      const completionMode = getWorkflowStageCompletionMode(
+        project.workflowStages,
+        ProjectWorkflowStageKey.PROJECT_INQUIRY,
+      );
+      const isFirstCompletion = completionMode === "TRANSITION";
+
+      if (completionMode === "UNAVAILABLE") {
+        return {
+          error: "Project Inquiry cannot be completed from the current workflow state.",
+        } as const;
+      }
+
       const clientSnapshot = await resolvePartySnapshot(tx, client);
       const finalBeneficiarySnapshot = await resolvePartySnapshot(
         tx,
@@ -919,37 +975,6 @@ export async function completeProjectInquiry(
             attachments: "Use only ready attachments uploaded to this project.",
           },
         } as const;
-      }
-
-      await tx.projectWorkflowStage.createMany({
-        data: getInitialProjectWorkflowStageData(project.createdAt).map((stage) => ({
-          projectId,
-          ...stage,
-        })),
-        skipDuplicates: true,
-      });
-
-      const currentWorkflowStages = await tx.projectWorkflowStage.findMany({
-        where: {
-          projectId,
-          stageKey: {
-            in: [
-              ProjectWorkflowStageKey.PROJECT_INQUIRY,
-              ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
-            ],
-          },
-        },
-      });
-      const stageOne = currentWorkflowStages.find(
-        (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY,
-      );
-      const stageTwo = currentWorkflowStages.find(
-        (stage) =>
-          stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
-      );
-
-      if (!stageOne || !stageTwo) {
-        throw new Error("The fixed project workflow could not be initialized.");
       }
 
       const inquiry = await tx.projectInquiry.upsert({
@@ -1113,34 +1138,33 @@ export async function completeProjectInquiry(
         }
       }
 
-      const completedAt = stageOne.completedAt ?? new Date();
-      await tx.projectWorkflowStage.update({
-        where: {
-          projectId_stageKey: {
+      if (isFirstCompletion) {
+        const completedAt = new Date();
+        const completed = await tx.projectWorkflowStage.updateMany({
+          where: {
             projectId,
             stageKey: ProjectWorkflowStageKey.PROJECT_INQUIRY,
-          },
-        },
-        data: {
-          status: ProjectWorkflowStageStatus.COMPLETED,
-          unlockedAt: stageOne.unlockedAt ?? project.createdAt,
-          completedAt,
-        },
-      });
-
-      if (stageTwo.status !== ProjectWorkflowStageStatus.COMPLETED) {
-        await tx.projectWorkflowStage.update({
-          where: {
-            projectId_stageKey: {
-              projectId,
-              stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
-            },
+            status: ProjectWorkflowStageStatus.AVAILABLE,
           },
           data: {
-            status: ProjectWorkflowStageStatus.AVAILABLE,
-            unlockedAt: stageTwo.unlockedAt ?? completedAt,
+            status: ProjectWorkflowStageStatus.COMPLETED,
+            completedAt,
           },
         });
+
+        if (completed.count === 1) {
+          await tx.projectWorkflowStage.updateMany({
+            where: {
+              projectId,
+              stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
+              status: ProjectWorkflowStageStatus.LOCKED,
+            },
+            data: {
+              status: ProjectWorkflowStageStatus.AVAILABLE,
+              unlockedAt: completedAt,
+            },
+          });
+        }
       }
 
       return { success: true } as const;

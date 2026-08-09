@@ -97,18 +97,18 @@ async function createProjectFixture(input: {
         create: [{ userId: input.collaboratorId, addedById: input.ownerId, canInteract: true }],
       },
       workflowStages: {
-        create: getInitialProjectWorkflowStageData().map((stage) => ({
-          ...stage,
-          status:
-            stage.stageKey === ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER
-              ? ProjectWorkflowStageStatus.COMPLETED
-              : stage.stageKey === ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION
-                ? ProjectWorkflowStageStatus.AVAILABLE
-                : stage.status,
-          ...(stage.stageKey === ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION
-            ? { unlockedAt: new Date() }
-            : {}),
-        })),
+        create: getInitialProjectWorkflowStageData().map((stage, index) => {
+          const now = new Date();
+          return {
+            ...stage,
+            status:
+              index < 6
+                ? ProjectWorkflowStageStatus.COMPLETED
+                : ProjectWorkflowStageStatus.AVAILABLE,
+            unlockedAt: now,
+            completedAt: index < 6 ? now : null,
+          };
+        }),
       },
     },
   });
@@ -359,7 +359,17 @@ async function main() {
     check(overdueWorkspace?.summary.totalUnits === 2 && overdueWorkspace.summary.waitingUnits === 1 && overdueWorkspace.summary.overdueRounds === 1 && overdueWorkspace.summary.acceptedUnits === 1, "summary must report Production Units, Waiting, Overdue, and Accepted from persisted physical-sample state");
 
     await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: overdueRound.id, decision: PhysicalSampleDecision.ACCEPTED });
-    check((await processStageSevenOverdueDeadlines(new Date())).scannedRounds === 0, "a decided past-deadline request must no longer be overdue");
+    await processStageSevenOverdueDeadlines(new Date());
+    check(
+      (await prisma.productionSampleRound.count({
+        where: {
+          id: overdueRound.id,
+          decision: null,
+          deadline: { lt: new Date() },
+        },
+      })) === 0,
+      "a decided past-deadline request must no longer be overdue",
+    );
     const archiveCount = await prisma.projectArchive.count({ where: { projectId: ids.project } });
     const closure = await closeStageSevenProject(owner, { projectId: ids.project });
     check(!closure.duplicate, "all accepted units must permit manual project closure");

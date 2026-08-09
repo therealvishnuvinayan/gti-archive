@@ -1,7 +1,12 @@
-import { UserRole, type ProjectWorkflowStageKey } from "@prisma/client";
+import {
+  UserRole,
+  type ProjectWorkflowStageKey,
+  type ProjectWorkflowStageStatus,
+} from "@prisma/client";
 
 import type { PermissionUser } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 export type ConceptAccessContext = {
   folderId: string;
@@ -11,6 +16,7 @@ export type ConceptAccessContext = {
   assignedExecutorId: string | null;
   ownerId: string | null;
   coOwnerIds: string[];
+  workflowStageStatus?: ProjectWorkflowStageStatus;
 };
 
 type ConceptAccessActor = Pick<PermissionUser, "id" | "role">;
@@ -86,6 +92,7 @@ const conceptAccessSelect = {
     select: {
       ownerId: true,
       coOwners: { select: { userId: true } },
+      workflowStages: { select: { stageKey: true, status: true } },
     },
   },
 } as const;
@@ -99,6 +106,10 @@ function mapConceptAccessContext(record: {
   project: {
     ownerId: string | null;
     coOwners: Array<{ userId: string }>;
+    workflowStages: Array<{
+      stageKey: ProjectWorkflowStageKey;
+      status: ProjectWorkflowStageStatus;
+    }>;
   };
 }): ConceptAccessContext {
   return {
@@ -109,7 +120,19 @@ function mapConceptAccessContext(record: {
     assignedExecutorId: record.assignedExecutorId,
     ownerId: record.project.ownerId,
     coOwnerIds: record.project.coOwners.map((coOwner) => coOwner.userId),
+    workflowStageStatus: record.project.workflowStages.find(
+      (stage) => stage.stageKey === record.workflowStageKey,
+    )?.status,
   };
+}
+
+export function isProjectConceptWorkflowAccessible(
+  context: ConceptAccessContext,
+) {
+  return canOpenImplementedWorkflowStage({
+    stageKey: context.workflowStageKey,
+    status: context.workflowStageStatus,
+  });
 }
 
 export async function getProjectConceptAccessContext(input: {
@@ -137,7 +160,11 @@ export async function assertCanViewProjectConcept(
 ) {
   const context = await getProjectConceptAccessContext(input);
 
-  if (!context || !canViewProjectConcept(user, context)) {
+  if (
+    !context ||
+    !isProjectConceptWorkflowAccessible(context) ||
+    !canViewProjectConcept(user, context)
+  ) {
     throw new Error("You do not have access to this concept.");
   }
 
@@ -150,7 +177,11 @@ export async function assertCanManageProjectConcept(
 ) {
   const context = await getProjectConceptAccessContext(input);
 
-  if (!context || !canManageProjectConcept(user, context)) {
+  if (
+    !context ||
+    !isProjectConceptWorkflowAccessible(context) ||
+    !canManageProjectConcept(user, context)
+  ) {
     throw new Error("You do not have permission to manage this concept.");
   }
 
@@ -163,7 +194,11 @@ export async function assertCanWorkOnProjectConcept(
 ) {
   const context = await getProjectConceptAccessContext(input);
 
-  if (!context || !canWorkOnProjectConcept(user, context)) {
+  if (
+    !context ||
+    !isProjectConceptWorkflowAccessible(context) ||
+    !canWorkOnProjectConcept(user, context)
+  ) {
     throw new Error("Only the assigned concept executor can perform this action.");
   }
 
@@ -185,6 +220,10 @@ export async function assertConceptTaskerAccessIfNeeded(
 
   if (!context) {
     return null;
+  }
+
+  if (!isProjectConceptWorkflowAccessible(context)) {
+    throw new Error("This workflow stage is locked.");
   }
 
   let allowed = canViewProjectConcept(user, context);

@@ -1,51 +1,70 @@
 import {
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
-  UserRole,
 } from "@prisma/client";
 
-const IMPLEMENTED_WORKFLOW_STAGE_KEYS = new Set<ProjectWorkflowStageKey>([
-  ProjectWorkflowStageKey.PROJECT_INQUIRY,
-  ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
-  ProjectWorkflowStageKey.CONCEPT_CREATION,
-  ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-  ProjectWorkflowStageKey.FINAL_LAYOUT,
-  ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
-  ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-]);
+export const ACCESSIBLE_WORKFLOW_STAGE_STATUSES = [
+  ProjectWorkflowStageStatus.AVAILABLE,
+  ProjectWorkflowStageStatus.COMPLETED,
+] as const;
+
+export type ProjectWorkflowStageAccessResult =
+  | {
+      allowed: true;
+      code: "STAGE_ACCESSIBLE";
+      status:
+        | typeof ProjectWorkflowStageStatus.AVAILABLE
+        | typeof ProjectWorkflowStageStatus.COMPLETED;
+    }
+  | {
+      allowed: false;
+      code: "STAGE_LOCKED";
+      status: typeof ProjectWorkflowStageStatus.LOCKED | null;
+    };
+
+/**
+ * Canonical runtime workflow policy.
+ *
+ * Project authorization is deliberately evaluated by the caller. Workflow
+ * progression is role-independent: no account, including SUPER_ADMIN, may
+ * open a locked or missing fixed-workflow stage.
+ */
+export function getProjectWorkflowStageAccess(
+  status: ProjectWorkflowStageStatus | null | undefined,
+): ProjectWorkflowStageAccessResult {
+  if (
+    status === ProjectWorkflowStageStatus.AVAILABLE ||
+    status === ProjectWorkflowStageStatus.COMPLETED
+  ) {
+    return {
+      allowed: true,
+      code: "STAGE_ACCESSIBLE",
+      status,
+    };
+  }
+
+  return {
+    allowed: false,
+    code: "STAGE_LOCKED",
+    status: status === ProjectWorkflowStageStatus.LOCKED ? status : null,
+  };
+}
 
 export function isWorkflowStagePersistentlyOpen(
   status: ProjectWorkflowStageStatus | null | undefined,
 ) {
-  return (
-    status === ProjectWorkflowStageStatus.AVAILABLE ||
-    status === ProjectWorkflowStageStatus.COMPLETED
-  );
-}
-
-export function canBypassImplementedWorkflowStageLock(user: {
-  role: UserRole;
-}) {
-  return user.role === UserRole.SUPER_ADMIN;
+  return getProjectWorkflowStageAccess(status).allowed;
 }
 
 export function canOpenImplementedWorkflowStage(input: {
-  user: { role: UserRole };
   stageKey: ProjectWorkflowStageKey;
   status: ProjectWorkflowStageStatus | null | undefined;
 }) {
-  if (isWorkflowStagePersistentlyOpen(input.status)) {
-    return true;
-  }
-
-  return (
-    canBypassImplementedWorkflowStageLock(input.user) &&
-    IMPLEMENTED_WORKFLOW_STAGE_KEYS.has(input.stageKey)
-  );
+  void input.stageKey;
+  return getProjectWorkflowStageAccess(input.status).allowed;
 }
 
 export function canOpenProjectStageChatContainer(input: {
-  user: { role: UserRole };
   isTasker: boolean;
   conceptFolder?: { workflowStageKey: ProjectWorkflowStageKey } | null;
   workflowStages?: Array<{
@@ -53,6 +72,9 @@ export function canOpenProjectStageChatContainer(input: {
     status: ProjectWorkflowStageStatus;
   }>;
 }) {
+  // Legacy non-tasker chat containers are not one of the seven fixed workflow
+  // stage routes. Concept tasker containers are, and must inherit their
+  // persisted Stage 3/4 lock.
   if (!input.isTasker) {
     return true;
   }
@@ -64,7 +86,6 @@ export function canOpenProjectStageChatContainer(input: {
   }
 
   return canOpenImplementedWorkflowStage({
-    user: input.user,
     stageKey,
     status: input.workflowStages?.find((stage) => stage.stageKey === stageKey)?.status,
   });

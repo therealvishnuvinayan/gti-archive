@@ -26,7 +26,10 @@ import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
-import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import {
+  ACCESSIBLE_WORKFLOW_STAGE_STATUSES,
+  canOpenImplementedWorkflowStage,
+} from "@/lib/workflow-stage-access";
 import {
   getStageFiveFieldDefinition,
   STAGE_FIVE_FIELD_KEYS,
@@ -119,6 +122,15 @@ export type StageFiveChecklistRequestData = {
 
 type StageFiveProject = ProjectStageAccessRecord;
 
+const accessibleStageFiveProjectWhere = {
+  workflowStages: {
+    some: {
+      stageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+      status: { in: [...ACCESSIBLE_WORKFLOW_STAGE_STATUSES] },
+    },
+  },
+} satisfies Prisma.ProjectWhereInput;
+
 function displayName(user: { name: string | null; email: string }) {
   return user.name?.trim() || user.email;
 }
@@ -137,7 +149,6 @@ async function getAuthorizedProject(
   if (!project || !hasProjectPermission(user, project, "project.view")) return null;
   if (
     !canOpenImplementedWorkflowStage({
-      user,
       stageKey,
       status: stageStatus(project, stageKey),
     })
@@ -1242,6 +1253,7 @@ export async function getStageFiveChecklistRequestData(
         id: requestId,
         channel: ProjectFileChecklistRequestChannel.IN_APP,
         recipientUserId: { not: null },
+        project: accessibleStageFiveProjectWhere,
       },
       relationLoadStrategy: "join",
       select: checklistRequestResponseSelect,
@@ -1302,6 +1314,7 @@ export async function getStageFiveChecklistRequestSourceFileUrl(
       where: {
         id: requestId,
         channel: ProjectFileChecklistRequestChannel.IN_APP,
+        project: accessibleStageFiveProjectWhere,
         ...(user.role === UserRole.SUPER_ADMIN ? {} : { recipientUserId: user.id }),
       },
       select: {
@@ -1348,6 +1361,7 @@ export async function getStageFiveChecklistRequestUploadContext(
         id: requestId,
         channel: ProjectFileChecklistRequestChannel.IN_APP,
         workflowStatus: ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+        project: accessibleStageFiveProjectWhere,
       },
       select: { id: true, projectId: true, recipientUserId: true },
     }),
@@ -1362,7 +1376,11 @@ export async function acceptStageFiveChecklistRequest(
 ) {
   const request = await withPrismaRetry(() =>
     prisma.projectFileChecklistRequest.findFirst({
-      where: { id: requestId, channel: ProjectFileChecklistRequestChannel.IN_APP },
+      where: {
+        id: requestId,
+        channel: ProjectFileChecklistRequestChannel.IN_APP,
+        project: accessibleStageFiveProjectWhere,
+      },
       select: { id: true, recipientUserId: true, workflowStatus: true },
     }),
   );
@@ -1404,7 +1422,11 @@ export async function declineStageFiveChecklistRequest(
 
   const request = await withPrismaRetry(() =>
     prisma.projectFileChecklistRequest.findFirst({
-      where: { id: input.requestId, channel: ProjectFileChecklistRequestChannel.IN_APP },
+      where: {
+        id: input.requestId,
+        channel: ProjectFileChecklistRequestChannel.IN_APP,
+        project: accessibleStageFiveProjectWhere,
+      },
       select: {
         id: true,
         projectId: true,
@@ -1574,7 +1596,11 @@ export async function submitStageFiveChecklistResponse(
 
   const request = await withPrismaRetry(() =>
     prisma.projectFileChecklistRequest.findFirst({
-      where: { id: input.requestId, channel: ProjectFileChecklistRequestChannel.IN_APP },
+      where: {
+        id: input.requestId,
+        channel: ProjectFileChecklistRequestChannel.IN_APP,
+        project: accessibleStageFiveProjectWhere,
+      },
       select: {
         id: true,
         projectId: true,

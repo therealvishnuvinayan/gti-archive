@@ -268,9 +268,16 @@ assert(
   "Stage 5 must reuse centralized persisted workflow access.",
 );
 assert(
-  workflowAccess.includes("ProjectWorkflowStageKey.FINAL_LAYOUT") &&
-    overview.includes("stage.number >= 1 && stage.number <= 7"),
-  "The centralized SUPER_ADMIN testing bypass and overview must include implemented Stage 5.",
+  workflowAccess.includes('code: "STAGE_LOCKED"') &&
+    !workflowAccess.includes("UserRole") &&
+    overview.includes("const stageOpenable = !locked") &&
+    !overview.includes("canBypassLocked"),
+  "The centralized workflow policy and overview must enforce Stage 5 without a role bypass.",
+);
+assert(
+  service.includes("accessibleStageFiveProjectWhere") &&
+    service.includes("ACCESSIBLE_WORKFLOW_STAGE_STATUSES"),
+  "Authenticated Stage 5 request pages, files, uploads, and mutations must inherit the Stage 5 lock.",
 );
 
 assert(

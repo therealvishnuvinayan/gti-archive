@@ -92,16 +92,20 @@ async function createProjectFixture(input: {
         })),
       },
       workflowStages: {
-        create: getInitialProjectWorkflowStageData().map((stage) => ({
-          ...stage,
-          status:
-            stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT
-              ? ProjectWorkflowStageStatus.AVAILABLE
-              : stage.stageKey === ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER ||
-                  stage.stageKey === ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION
-                ? ProjectWorkflowStageStatus.LOCKED
-                : stage.status,
-        })),
+        create: getInitialProjectWorkflowStageData().map((stage, index) => {
+          const now = new Date();
+          return {
+            ...stage,
+            status:
+              index < 4
+                ? ProjectWorkflowStageStatus.COMPLETED
+                : index === 4
+                  ? ProjectWorkflowStageStatus.AVAILABLE
+                  : ProjectWorkflowStageStatus.LOCKED,
+            unlockedAt: index <= 4 ? now : null,
+            completedAt: index < 4 ? now : null,
+          };
+        }),
       },
     },
   });

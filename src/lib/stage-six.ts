@@ -36,6 +36,7 @@ import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
+import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import {
   STAGE_FIVE_FIELD_KEYS,
   STAGE_FIVE_FIELD_LABELS,
@@ -44,10 +45,22 @@ import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
 } from "@/lib/storage/s3";
-import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import {
+  ACCESSIBLE_WORKFLOW_STAGE_STATUSES,
+  canOpenImplementedWorkflowStage,
+} from "@/lib/workflow-stage-access";
 
 type EmailSender = typeof sendResendEmail;
 type StageProject = ProjectStageAccessRecord;
+
+const accessibleStageSixProjectWhere = {
+  workflowStages: {
+    some: {
+      stageKey: ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+      status: { in: [...ACCESSIBLE_WORKFLOW_STAGE_STATUSES] },
+    },
+  },
+} satisfies Prisma.ProjectWhereInput;
 
 class StageSixWorkflowError extends Error {}
 
@@ -135,7 +148,7 @@ export type StageSixWorkspaceData = {
 };
 
 export type ProductionApprovalData =
-  | { state: "invalid" | "expired" | "unavailable" }
+  | { state: "invalid" | "expired" | "unavailable" | "locked" }
   | {
       state: "completed";
       decision: "APPROVED" | "REJECTED";
@@ -277,7 +290,14 @@ async function getAuthorizedStageSixProject(user: PermissionUser, projectId: str
   if (!project || !hasProjectPermission(user, project, "project.view")) return null;
   if (
     !canOpenImplementedWorkflowStage({
-      user,
+      stageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+      status: stageStatus(project, ProjectWorkflowStageKey.FINAL_LAYOUT),
+    })
+  ) {
+    return null;
+  }
+  if (
+    !canOpenImplementedWorkflowStage({
       stageKey: ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
       status: stageStatus(project, ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER),
     })
@@ -639,15 +659,6 @@ export async function completeStageFive(
               ownerId: true,
               coOwners: { select: { userId: true } },
               workflowStages: {
-                where: {
-                  stageKey: {
-                    in: [
-                      ProjectWorkflowStageKey.FINAL_LAYOUT,
-                      ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
-                      ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-                    ],
-                  },
-                },
                 select: {
                   id: true,
                   stageKey: true,
@@ -718,10 +729,11 @@ export async function completeStageFive(
           if (!stageFive || !stageSix || !stageSeven) {
             return { error: "Stage 5, Stage 6, and Stage 7 workflow records are required." } as const;
           }
-          if (
-            stageFive.status !== ProjectWorkflowStageStatus.AVAILABLE &&
-            stageFive.status !== ProjectWorkflowStageStatus.COMPLETED
-          ) {
+          const completionMode = getWorkflowStageCompletionMode(
+            project.workflowStages,
+            ProjectWorkflowStageKey.FINAL_LAYOUT,
+          );
+          if (completionMode === "UNAVAILABLE") {
             return { error: "Stage 5 is not currently available." } as const;
           }
           if (!project.stageFileHandoffs.length) {
@@ -758,7 +770,7 @@ export async function completeStageFive(
             }
           }
 
-          const transitioned = stageFive.status !== ProjectWorkflowStageStatus.COMPLETED;
+          const transitioned = completionMode === "TRANSITION";
           if (transitioned && stageSeven.status !== ProjectWorkflowStageStatus.LOCKED) {
             return { error: "Stage 7 must remain locked while Stage 5 is completed." } as const;
           }
@@ -812,22 +824,29 @@ export async function completeStageFive(
           }
           const now = new Date();
           if (transitioned) {
-            await tx.projectWorkflowStage.update({
-              where: { id: stageFive.id },
+            const completed = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageFive.id,
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+              },
               data: {
                 status: ProjectWorkflowStageStatus.COMPLETED,
                 completedAt: now,
               },
             });
-          }
-          if (stageSix.status === ProjectWorkflowStageStatus.LOCKED) {
-            await tx.projectWorkflowStage.update({
-              where: { id: stageSix.id },
-              data: {
-                status: ProjectWorkflowStageStatus.AVAILABLE,
-                unlockedAt: stageSix.unlockedAt ?? now,
-              },
-            });
+
+            if (completed.count === 1) {
+              await tx.projectWorkflowStage.updateMany({
+                where: {
+                  id: stageSix.id,
+                  status: ProjectWorkflowStageStatus.LOCKED,
+                },
+                data: {
+                  status: ProjectWorkflowStageStatus.AVAILABLE,
+                  unlockedAt: now,
+                },
+              });
+            }
           }
           if (transitioned) {
             await createNotifications(
@@ -1447,6 +1466,7 @@ export async function decideProductionApproval(
                   id: scope.stepId,
                   recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR,
                   recipientUserId: scope.user.id,
+                  productionUnit: { project: accessibleStageSixProjectWhere },
                 }
               : {
                   externalTokenHash: tokenHash!,
@@ -1646,7 +1666,18 @@ const approvalReadSelect = {
     select: {
       id: true,
       sourceAttachment: { select: { originalFileName: true } },
-      project: { select: { id: true, name: true } },
+      project: {
+        select: {
+          id: true,
+          name: true,
+          workflowStages: {
+            where: {
+              stageKey: ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+            },
+            select: { status: true },
+          },
+        },
+      },
     },
   },
 } satisfies Prisma.ProductionApprovalStepSelect;
@@ -1699,7 +1730,16 @@ export async function getAuthenticatedProductionApprovalData(
       select: approvalReadSelect,
     }),
   );
-  return step ? mapApprovalData(step) : ({ state: "invalid" } as const);
+  if (!step) return { state: "invalid" } as const;
+  if (
+    !canOpenImplementedWorkflowStage({
+      stageKey: ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+      status: step.productionUnit.project.workflowStages[0]?.status,
+    })
+  ) {
+    return { state: "locked" } as const;
+  }
+  return mapApprovalData(step);
 }
 
 export async function getExternalProductionApprovalData(token: string) {
@@ -1768,6 +1808,7 @@ async function getApprovalStepForFileScope(scope: ApprovalDecisionScope) {
               id: scope.stepId,
               recipientUserId: scope.user.id,
               recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR,
+              productionUnit: { project: accessibleStageSixProjectWhere },
             }
           : {
               externalTokenHash: tokenHash!,
@@ -2313,15 +2354,13 @@ export async function completeStageSix(
               coOwners: { select: { userId: true } },
               productionUnits: { select: { id: true, status: true } },
               workflowStages: {
-                where: {
-                  stageKey: {
-                    in: [
-                      ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
-                      ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
-                    ],
-                  },
+                select: {
+                  id: true,
+                  stageKey: true,
+                  status: true,
+                  unlockedAt: true,
+                  completedAt: true,
                 },
-                select: { id: true, stageKey: true, status: true, unlockedAt: true },
               },
             },
           });
@@ -2335,6 +2374,13 @@ export async function completeStageSix(
           if (!stageSix || !stageSeven) {
             return { error: "Stage 6 and Stage 7 workflow records are required." } as const;
           }
+          const completionMode = getWorkflowStageCompletionMode(
+            project.workflowStages,
+            ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+          );
+          if (completionMode === "UNAVAILABLE") {
+            return { error: "Stage 6 is not currently available." } as const;
+          }
           if (!project.productionUnits.length) {
             return { error: "Stage 6 has no Production Units." } as const;
           }
@@ -2347,28 +2393,32 @@ export async function completeStageSix(
               incompleteUnitIds: incomplete.map((unit) => unit.id),
             } as const;
           }
-          const transitioned = stageSix.status !== ProjectWorkflowStageStatus.COMPLETED;
+          const transitioned = completionMode === "TRANSITION";
           const now = new Date();
           if (transitioned) {
-            if (stageSix.status !== ProjectWorkflowStageStatus.AVAILABLE) {
-              return { error: "Stage 6 is not currently available." } as const;
-            }
-            await tx.projectWorkflowStage.update({
-              where: { id: stageSix.id },
+            const completed = await tx.projectWorkflowStage.updateMany({
+              where: {
+                id: stageSix.id,
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+              },
               data: {
                 status: ProjectWorkflowStageStatus.COMPLETED,
                 completedAt: now,
               },
             });
-          }
-          if (stageSeven.status === ProjectWorkflowStageStatus.LOCKED) {
-            await tx.projectWorkflowStage.update({
-              where: { id: stageSeven.id },
-              data: {
-                status: ProjectWorkflowStageStatus.AVAILABLE,
-                unlockedAt: stageSeven.unlockedAt ?? now,
-              },
-            });
+
+            if (completed.count === 1) {
+              await tx.projectWorkflowStage.updateMany({
+                where: {
+                  id: stageSeven.id,
+                  status: ProjectWorkflowStageStatus.LOCKED,
+                },
+                data: {
+                  status: ProjectWorkflowStageStatus.AVAILABLE,
+                  unlockedAt: now,
+                },
+              });
+            }
           }
           if (transitioned) {
             await createNotifications(

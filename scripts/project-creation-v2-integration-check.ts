@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   PrismaClient,
   ProjectWorkflowStageStatus,
@@ -10,6 +11,17 @@ import { hasProjectPermission } from "../src/lib/permissions/resolver";
 import { prisma as servicePrisma } from "../src/lib/prisma";
 
 const prisma = new PrismaClient();
+const runId = randomUUID();
+const ids = {
+  creator: `creator-sa-${runId}`,
+  owner: `owner-admin-${runId}`,
+  coOwner: `co-owner-${runId}`,
+  executorA: `executor-a-${runId}`,
+  executorB: `executor-b-${runId}`,
+  collaboratorA: `collaborator-a-${runId}`,
+  collaboratorB: `collaborator-b-${runId}`,
+  otherSuperAdmin: `other-sa-${runId}`,
+};
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -29,55 +41,55 @@ async function main() {
   await prisma.user.createMany({
     data: [
       {
-        id: "creator-sa",
-        email: "creator-sa@example.test",
+        id: ids.creator,
+        email: `${ids.creator}@example.test`,
         passwordHash: "x",
         role: UserRole.SUPER_ADMIN,
       },
       {
-        id: "owner-admin",
-        email: "owner-admin@example.test",
+        id: ids.owner,
+        email: `${ids.owner}@example.test`,
         passwordHash: "x",
         role: UserRole.ADMIN,
       },
       {
-        id: "co-owner",
-        email: "co-owner@example.test",
+        id: ids.coOwner,
+        email: `${ids.coOwner}@example.test`,
         passwordHash: "x",
         role: UserRole.COLLABORATOR,
         collaboratorType: "GTI_INTERNAL_CLIENT",
       },
       {
-        id: "executor-a",
-        email: "executor-a@example.test",
+        id: ids.executorA,
+        email: `${ids.executorA}@example.test`,
         passwordHash: "x",
         role: UserRole.COLLABORATOR,
         collaboratorType: "EXTERNAL_AGENCY",
       },
       {
-        id: "executor-b",
-        email: "executor-b@example.test",
+        id: ids.executorB,
+        email: `${ids.executorB}@example.test`,
         passwordHash: "x",
         role: UserRole.COLLABORATOR,
         collaboratorType: "GTI_INTERNAL_CLIENT",
       },
       {
-        id: "collaborator-a",
-        email: "collaborator-a@example.test",
+        id: ids.collaboratorA,
+        email: `${ids.collaboratorA}@example.test`,
         passwordHash: "x",
         role: UserRole.COLLABORATOR,
         collaboratorType: "EXTERNAL_VENDOR",
       },
       {
-        id: "collaborator-b",
-        email: "collaborator-b@example.test",
+        id: ids.collaboratorB,
+        email: `${ids.collaboratorB}@example.test`,
         passwordHash: "x",
         role: UserRole.COLLABORATOR,
         collaboratorType: "GTI_INTERNAL_CLIENT",
       },
       {
-        id: "other-sa",
-        email: "other-sa@example.test",
+        id: ids.otherSuperAdmin,
+        email: `${ids.otherSuperAdmin}@example.test`,
         passwordHash: "x",
         role: UserRole.SUPER_ADMIN,
       },
@@ -85,13 +97,13 @@ async function main() {
   });
 
   const success = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "V2 collaborator integration success",
-      ownerId: "owner-admin",
-      coOwnerIds: ["co-owner"],
-      executorIds: ["executor-a", "executor-b"],
-      collaboratorIds: ["collaborator-a", "collaborator-b", "collaborator-a"],
+      ownerId: ids.owner,
+      coOwnerIds: [ids.coOwner],
+      executorIds: [ids.executorA, ids.executorB],
+      collaboratorIds: [ids.collaboratorA, ids.collaboratorB, ids.collaboratorA],
     },
   );
   assert("projectId" in success, "Valid V2 creation must succeed.");
@@ -109,12 +121,12 @@ async function main() {
   });
   assert(created, "Created project must be persisted.");
   assert(
-    created.createdById === "creator-sa",
+    created.createdById === ids.creator,
     "Creator audit identity must remain separate.",
   );
-  assert(created.ownerId === "owner-admin", "Operational owner must be persisted.");
+  assert(created.ownerId === ids.owner, "Operational owner must be persisted.");
   assert(
-    !created.coOwners.some((item) => item.userId === "creator-sa"),
+    !created.coOwners.some((item) => item.userId === ids.creator),
     "SUPER_ADMIN creator must not be a co-owner.",
   );
   assert(created.executors.length === 2, "Every executor assignment must persist.");
@@ -128,21 +140,21 @@ async function main() {
   );
   assert(
     !created.collaborators.some(
-      (item) => item.userId === "owner-admin" || item.userId === "co-owner",
+      (item) => item.userId === ids.owner || item.userId === ids.coOwner,
     ),
     "Owner and co-owner access must not require duplicate collaborator membership.",
   );
   assert(
-    created.collaborators.find((item) => item.userId === "executor-a")
+    created.collaborators.find((item) => item.userId === ids.executorA)
       ?.participantType === "EXTERNAL_AGENCY",
     "Executor participant type must match the selected user.",
   );
 
   const externalCollaborator = created.collaborators.find(
-    (item) => item.userId === "collaborator-a",
+    (item) => item.userId === ids.collaboratorA,
   );
   const internalCollaborator = created.collaborators.find(
-    (item) => item.userId === "collaborator-b",
+    (item) => item.userId === ids.collaboratorB,
   );
   assert(externalCollaborator, "External collaborator membership must exist.");
   assert(internalCollaborator, "Internal collaborator membership must exist.");
@@ -164,7 +176,7 @@ async function main() {
   assert(
     !hasProjectPermission(
       {
-        id: "collaborator-a",
+        id: ids.collaboratorA,
         role: UserRole.COLLABORATOR,
         collaboratorType: "EXTERNAL_VENDOR",
       },
@@ -210,6 +222,8 @@ async function main() {
             : index + 1 === currentStageNumber
               ? ProjectWorkflowStageStatus.AVAILABLE
               : ProjectWorkflowStageStatus.LOCKED,
+        unlockedAt: index + 1 <= currentStageNumber ? new Date() : null,
+        completedAt: index + 1 < currentStageNumber ? new Date() : null,
       })),
     });
     assert(
@@ -223,6 +237,12 @@ async function main() {
   const completedWorkflowState = deriveProjectListWorkflowState({
     ...created,
     completedAt: new Date(),
+    workflowStages: created.workflowStages.map((stage) => ({
+      ...stage,
+      status: ProjectWorkflowStageStatus.COMPLETED,
+      unlockedAt: new Date(),
+      completedAt: new Date(),
+    })),
   });
   assert(
     completedWorkflowState.businessStatus === "COMPLETED" &&
@@ -279,13 +299,13 @@ async function main() {
   );
 
   const overlap = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "V2 executor collaborator overlap",
-      ownerId: "owner-admin",
+      ownerId: ids.owner,
       coOwnerIds: [],
-      executorIds: ["executor-a"],
-      collaboratorIds: ["executor-a", "collaborator-a"],
+      executorIds: [ids.executorA],
+      collaboratorIds: [ids.executorA, ids.collaboratorA],
     },
   );
   assert("projectId" in overlap, "Executor/collaborator overlap must be accepted.");
@@ -299,7 +319,7 @@ async function main() {
     (await prisma.notification.count({
       where: {
         projectId: overlap.projectId,
-        userId: "executor-a",
+        userId: ids.executorA,
       },
     })) === 1,
     "An executor/collaborator overlap must receive only one assignment notification.",
@@ -308,7 +328,7 @@ async function main() {
     (await prisma.notification.count({
       where: {
         projectId: overlap.projectId,
-        userId: "executor-a",
+        userId: ids.executorA,
         type: "COLLABORATOR_ADDED",
       },
     })) === 0,
@@ -316,12 +336,12 @@ async function main() {
   );
 
   const zeroCollaborators = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "V2 zero collaborators",
-      ownerId: "owner-admin",
+      ownerId: ids.owner,
       coOwnerIds: [],
-      executorIds: ["executor-b"],
+      executorIds: [ids.executorB],
       collaboratorIds: [],
     },
   );
@@ -334,12 +354,12 @@ async function main() {
   );
 
   const legacyFourFieldInput = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "V2 omitted collaborators",
-      ownerId: "owner-admin",
+      ownerId: ids.owner,
       coOwnerIds: [],
-      executorIds: ["executor-a"],
+      executorIds: [ids.executorA],
     },
   );
   assert(
@@ -350,18 +370,18 @@ async function main() {
   const projectCountBeforeValidation = await prisma.project.count();
 
   const duplicateExecutors = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "Duplicate executors",
-      ownerId: "owner-admin",
+      ownerId: ids.owner,
       coOwnerIds: [],
-      executorIds: ["executor-a", "executor-a"],
+      executorIds: [ids.executorA, ids.executorA],
     },
   );
   assertValidationError(duplicateExecutors, "executorIds");
 
   const invalidUsers = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "Invalid users",
       ownerId: "missing-owner",
@@ -379,45 +399,45 @@ async function main() {
   );
 
   const ineligibleCollaborator = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "Ineligible collaborator role",
-      ownerId: "owner-admin",
+      ownerId: ids.owner,
       coOwnerIds: [],
-      executorIds: ["executor-a"],
-      collaboratorIds: ["other-sa"],
+      executorIds: [ids.executorA],
+      collaboratorIds: [ids.otherSuperAdmin],
     },
   );
   assertValidationError(ineligibleCollaborator, "collaboratorIds");
 
   const malformedCollaborator = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "Malformed collaborator ID",
-      ownerId: "owner-admin",
+      ownerId: ids.owner,
       coOwnerIds: [],
-      executorIds: ["executor-a"],
+      executorIds: [ids.executorA],
       collaboratorIds: [42] as unknown as string[],
     },
   );
   assertValidationError(malformedCollaborator, "collaboratorIds");
 
   const ownerAsCoOwner = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "Owner overlap",
-      ownerId: "owner-admin",
-      coOwnerIds: ["owner-admin"],
-      executorIds: ["executor-a"],
+      ownerId: ids.owner,
+      coOwnerIds: [ids.owner],
+      executorIds: [ids.executorA],
     },
   );
   assertValidationError(ownerAsCoOwner, "coOwnerIds");
 
   const noExecutors = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "No executors",
-      ownerId: "owner-admin",
+      ownerId: ids.owner,
       coOwnerIds: [],
       executorIds: [],
     },
@@ -425,23 +445,23 @@ async function main() {
   assertValidationError(noExecutors, "executorIds");
 
   const superAdminOwner = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "SA owner",
-      ownerId: "other-sa",
+      ownerId: ids.otherSuperAdmin,
       coOwnerIds: [],
-      executorIds: ["executor-a"],
+      executorIds: [ids.executorA],
     },
   );
   assertValidationError(superAdminOwner, "ownerId");
 
   const superAdminCoOwner = await createProjectV2(
-    { id: "creator-sa" },
+    { id: ids.creator },
     {
       name: "SA co-owner",
-      ownerId: "owner-admin",
-      coOwnerIds: ["other-sa"],
-      executorIds: ["executor-a"],
+      ownerId: ids.owner,
+      coOwnerIds: [ids.otherSuperAdmin],
+      executorIds: [ids.executorA],
     },
   );
   assertValidationError(superAdminCoOwner, "coOwnerIds");
@@ -467,13 +487,13 @@ async function main() {
   let rollbackFailed = false;
   try {
     await createProjectV2(
-      { id: "creator-sa" },
+      { id: ids.creator },
       {
         name: "Must roll back",
-        ownerId: "owner-admin",
-        coOwnerIds: ["co-owner"],
-        executorIds: ["executor-a"],
-        collaboratorIds: ["collaborator-a"],
+        ownerId: ids.owner,
+        coOwnerIds: [ids.coOwner],
+        executorIds: [ids.executorA],
+        collaboratorIds: [ids.collaboratorA],
       },
     );
   } catch {
@@ -495,6 +515,14 @@ async function main() {
 
 main()
   .finally(async () => {
+    await prisma.$executeRawUnsafe(
+      `DROP TRIGGER IF EXISTS fail_v2_notification_insert ON "Notification"`,
+    ).catch(() => undefined);
+    await prisma.$executeRawUnsafe(
+      `DROP FUNCTION IF EXISTS fail_v2_notification_insert()`,
+    ).catch(() => undefined);
+    await prisma.project.deleteMany({ where: { createdById: ids.creator } });
+    await prisma.user.deleteMany({ where: { id: { in: Object.values(ids) } } });
     await prisma.$disconnect();
     await servicePrisma.$disconnect();
   })

@@ -67,7 +67,6 @@ async function StageFiveContent({
 
   if (
     !canOpenImplementedWorkflowStage({
-      user,
       stageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
       status: workflowStage?.status,
     })

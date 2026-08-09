@@ -117,9 +117,11 @@ async function main() {
                 ? now
                 : null,
             unlockedAt:
-              stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT
-                ? now
-                : stage.unlockedAt,
+              stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT ||
+              stage.stageKey === ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER ||
+              stage.stageKey === ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION
+                ? null
+                : now,
           })),
         },
       },
