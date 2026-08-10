@@ -222,7 +222,12 @@ export function ProjectUserSelector({
           ))}
 
           <div className="flex h-8 min-w-[180px] flex-1 items-center gap-2 px-1">
-            <Search className="h-[18px] w-[18px] shrink-0 text-[#818b83]" aria-hidden="true" />
+            {showSearchInput ? (
+              <Search
+                className="h-[18px] w-[18px] shrink-0 text-[#818b83]"
+                aria-hidden="true"
+              />
+            ) : null}
             {showSearchInput ? (
               <input
                 ref={inputRef}

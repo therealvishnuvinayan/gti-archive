@@ -63,7 +63,8 @@ for (const snippet of [
   "input.collaboratorIds ?? []",
   "hasMalformedIds(rawCollaboratorIds)",
   "new Set(normalizeIdList(rawCollaboratorIds))",
-  "owner.role === UserRole.SUPER_ADMIN",
+  "owner.role === UserRole.SUPER_ADMIN &&",
+  "owner.id !== creator.id",
   "user.role === UserRole.SUPER_ADMIN",
   "UserRole.COLLABORATOR",
   "invalidCollaborator",
@@ -112,6 +113,13 @@ for (const snippet of [
 }
 
 for (const snippet of [
+  "useState<string[]>(() => [currentUser.id])",
+  "uniqueOptions.set(currentUser.id, currentUser)",
+]) {
+  assertIncludes(form, snippet, `Current user owner default ${snippet}`);
+}
+
+for (const snippet of [
   "Project Collaborators",
   "Add people who will participate in or access this project.",
   'ariaLabel="Project collaborators"',
@@ -153,6 +161,10 @@ assert(
 assert(
   !/removeUser\(user\.id\);\s*openSelector\(\);/.test(userSelector),
   "Removing a co-owner, executor, or collaborator must not open the user list.",
+);
+assert(
+  /\{showSearchInput \? \(\s*<Search/.test(userSelector),
+  "A selected single owner must not retain an unnecessary search icon.",
 );
 assert(
   userSelector.includes('className="flex min-w-0 flex-1 flex-wrap items-center gap-2"') &&

@@ -126,8 +126,9 @@ export async function createProjectV2(
 
   if (!owner) {
     fieldErrors.ownerId = "The selected project owner no longer exists.";
-  } else if (owner.role === UserRole.SUPER_ADMIN) {
-    fieldErrors.ownerId = "Select an operational owner who is not a Super Admin.";
+  } else if (owner.role === UserRole.SUPER_ADMIN && owner.id !== creator.id) {
+    fieldErrors.ownerId =
+      "Select an operational owner or keep yourself as the project owner.";
   }
 
   const invalidCoOwner = coOwnerIds.find((userId) => {

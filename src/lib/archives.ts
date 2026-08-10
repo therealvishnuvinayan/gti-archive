@@ -374,7 +374,7 @@ function getManualArchiveFileAccessWhere(
 
   return {};
 }
-
+  
 function getArchiveCategoryAssetGrantWhere(
   user: ArchiveAccessUser,
 ): Prisma.ArchiveCategoryWhereInput {

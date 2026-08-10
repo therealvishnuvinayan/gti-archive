@@ -80,9 +80,7 @@ export function CreateProjectForm({
   const [isCreating, startCreating] = useTransition();
   const [projectName, setProjectName] = useState("");
   const [collaborators, setCollaborators] = useState(availableCollaborators);
-  const [ownerIds, setOwnerIds] = useState<string[]>(() =>
-    currentUser.role === "SUPER_ADMIN" ? [] : [currentUser.id],
-  );
+  const [ownerIds, setOwnerIds] = useState<string[]>(() => [currentUser.id]);
   const [coOwnerIds, setCoOwnerIds] = useState<string[]>([]);
   const [executorIds, setExecutorIds] = useState<string[]>([]);
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>([]);
@@ -104,20 +102,25 @@ export function CreateProjectForm({
     () => collaboratorUserOptions.filter((user) => !collaboratorIds.includes(user.id)),
     [collaboratorIds, collaboratorUserOptions],
   );
-  const ownerOptions = useMemo(
-    () =>
-      eligibleOwnerCandidates
-        .filter((candidate) => candidate.role !== "SUPER_ADMIN")
-        .map((candidate) => ({
-          id: candidate.id,
-          name: candidate.name,
-          email: candidate.email,
-          role: candidate.role,
-          avatarSrc:
-            candidate.id === currentUser.id ? currentUser.avatarSrc : null,
-        })),
-    [currentUser, eligibleOwnerCandidates],
-  );
+  const ownerOptions = useMemo(() => {
+    const options: ProjectUserOption[] = eligibleOwnerCandidates
+      .filter((candidate) => candidate.role !== "SUPER_ADMIN")
+      .map((candidate) => ({
+        id: candidate.id,
+        name: candidate.name,
+        email: candidate.email,
+        role: candidate.role,
+        avatarSrc:
+          candidate.id === currentUser.id ? currentUser.avatarSrc : null,
+      }));
+    const uniqueOptions = new Map(
+      options.map((user) => [user.id, user] as const),
+    );
+
+    uniqueOptions.set(currentUser.id, currentUser);
+
+    return [...uniqueOptions.values()];
+  }, [currentUser, eligibleOwnerCandidates]);
   const coOwnerOptions = useMemo(
     () =>
       ownerOptions.filter(
