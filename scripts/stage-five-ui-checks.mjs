@@ -242,6 +242,14 @@ assert(
   "The collaborator selector options must render above the request dialog backdrop.",
 );
 assert(
+  workspace.includes("max-h-[calc(100dvh-1.5rem)]") &&
+    workspace.includes("min-h-0 flex-1 overflow-y-auto overscroll-contain") &&
+    workspace.includes("shrink-0 flex-col-reverse") &&
+    workspace.includes("border-t border-[#e7ece8] bg-white") &&
+    workspace.includes("h-24 min-h-20 max-h-36 resize-y rounded-[14px]"),
+  "The Request Information dialog must fit the viewport, scroll its body, and keep its actions visible.",
+);
+assert(
   workspace.includes('href={`/projects/${project.id}/stages/6`}') &&
     !workspace.includes("completeProject") &&
     !workspace.includes("completeProjectStage"),

@@ -487,14 +487,14 @@ function RequestInformationDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[170] flex items-center justify-center bg-[#112118]/40 px-4 py-8 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[170] flex items-center justify-center overflow-hidden bg-[#112118]/40 p-3 backdrop-blur-[2px] sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="request-information-title"
     >
-      <Card className="w-full max-w-[560px] rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.22)]">
-        <CardContent className="p-6 sm:p-7">
-          <div className="flex items-start justify-between gap-4">
+      <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[560px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.22)] sm:max-h-[calc(100dvh-2.5rem)]">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e7ece8] px-5 py-4 sm:px-6 sm:py-5">
             <div>
               <div className="flex items-center gap-2 text-[10px] font-[760] uppercase tracking-[0.12em] text-[#4c795e]">
                 <Mail className="h-3.5 w-3.5" /> Request information
@@ -515,101 +515,103 @@ function RequestInformationDialog({
             </Button>
           </div>
 
-          <div className="mt-6 rounded-[14px] border border-[#e1e8e2] bg-[#f7faf7] px-4 py-3">
-            <span className="text-[10px] font-[720] uppercase tracking-[0.08em] text-[#818b84]">Field</span>
-            <p className="mt-1 text-[13px] font-[700] text-[#28342c]">{field.title}</p>
-          </div>
-
-          <fieldset className="mt-5">
-            <legend className="text-[12px] font-[700] text-[#2d372f]">Request from</legend>
-            <div className="mt-2 inline-flex w-full rounded-[12px] border border-[#dce4dd] bg-[#f4f7f4] p-1 sm:w-auto">
-              <button
-                type="button"
-                className={cn(
-                  "flex-1 rounded-[9px] px-4 py-2 text-[11px] font-[700] transition sm:flex-none",
-                  recipientMode === "existing"
-                    ? "bg-white text-[#276c4a] shadow-sm"
-                    : "text-[#69746d]",
-                )}
-                aria-pressed={recipientMode === "existing"}
-                onClick={() => setRecipientMode("existing")}
-              >
-                Existing collaborator
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  "flex-1 rounded-[9px] px-4 py-2 text-[11px] font-[700] transition sm:flex-none",
-                  recipientMode === "email"
-                    ? "bg-white text-[#276c4a] shadow-sm"
-                    : "text-[#69746d]",
-                )}
-                aria-pressed={recipientMode === "email"}
-                onClick={() => setRecipientMode("email")}
-              >
-                Manual email
-              </button>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6 sm:py-5">
+            <div className="rounded-[14px] border border-[#e1e8e2] bg-[#f7faf7] px-4 py-3">
+              <span className="text-[10px] font-[720] uppercase tracking-[0.08em] text-[#818b84]">Field</span>
+              <p className="mt-1 text-[13px] font-[700] text-[#28342c]">{field.title}</p>
             </div>
 
-            {recipientMode === "existing" ? (
-              <Select
-                value={participantId}
-                onValueChange={setParticipantId}
-              >
-                <SelectTrigger
-                  className="mt-3 h-11 w-full rounded-[12px] border border-[#dfe6df] bg-white px-4 text-[13px] text-[#344038] shadow-none"
-                  aria-label="Select an existing collaborator"
+            <fieldset className="mt-5">
+              <legend className="text-[12px] font-[700] text-[#2d372f]">Request from</legend>
+              <div className="mt-2 inline-flex w-full rounded-[12px] border border-[#dce4dd] bg-[#f4f7f4] p-1 sm:w-auto">
+                <button
+                  type="button"
+                  className={cn(
+                    "flex-1 rounded-[9px] px-4 py-2 text-[11px] font-[700] transition sm:flex-none",
+                    recipientMode === "existing"
+                      ? "bg-white text-[#276c4a] shadow-sm"
+                      : "text-[#69746d]",
+                  )}
+                  aria-pressed={recipientMode === "existing"}
+                  onClick={() => setRecipientMode("existing")}
                 >
-                  <SelectValue placeholder="Select a collaborator" />
-                </SelectTrigger>
-                <SelectContent className="z-[190]">
-                  {participants.map((participant) => (
-                    <SelectItem key={participant.id} value={participant.id}>
-                      {participant.name} — {participant.role}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <div className="mt-3 space-y-3">
-                <Input
-                  value={recipientName}
-                  className={CONTROL_CLASS}
-                  placeholder="Recipient name (optional)"
-                  aria-label="Manual recipient name"
-                  onChange={(event) => setRecipientName(event.target.value)}
-                />
-                <Input
-                  type="email"
-                  value={email}
-                  className={CONTROL_CLASS}
-                  placeholder="name@example.com"
-                  aria-label="Manual recipient email"
-                  onChange={(event) => setEmail(event.target.value)}
-                />
+                  Existing collaborator
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex-1 rounded-[9px] px-4 py-2 text-[11px] font-[700] transition sm:flex-none",
+                    recipientMode === "email"
+                      ? "bg-white text-[#276c4a] shadow-sm"
+                      : "text-[#69746d]",
+                  )}
+                  aria-pressed={recipientMode === "email"}
+                  onClick={() => setRecipientMode("email")}
+                >
+                  Manual email
+                </button>
               </div>
-            )}
-          </fieldset>
 
-          <label className="mt-5 block space-y-2">
-            <span className="text-[12px] font-[700] text-[#2d372f]">Message (optional)</span>
-            <Textarea
-              value={message}
-              className="min-h-[112px] rounded-[14px] border-[#dfe6df] bg-white shadow-none"
-              placeholder={`Please provide the ${field.title.toLocaleLowerCase()} for this project.`}
-              onChange={(event) => setMessage(event.target.value)}
-            />
-          </label>
+              {recipientMode === "existing" ? (
+                <Select
+                  value={participantId}
+                  onValueChange={setParticipantId}
+                >
+                  <SelectTrigger
+                    className="mt-3 h-11 w-full rounded-[12px] border border-[#dfe6df] bg-white px-4 text-[13px] text-[#344038] shadow-none"
+                    aria-label="Select an existing collaborator"
+                  >
+                    <SelectValue placeholder="Select a collaborator" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[190]">
+                    {participants.map((participant) => (
+                      <SelectItem key={participant.id} value={participant.id}>
+                        {participant.name} — {participant.role}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  <Input
+                    value={recipientName}
+                    className={CONTROL_CLASS}
+                    placeholder="Recipient name (optional)"
+                    aria-label="Manual recipient name"
+                    onChange={(event) => setRecipientName(event.target.value)}
+                  />
+                  <Input
+                    type="email"
+                    value={email}
+                    className={CONTROL_CLASS}
+                    placeholder="name@example.com"
+                    aria-label="Manual recipient email"
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </div>
+              )}
+            </fieldset>
 
-          <p className="mt-4 rounded-[12px] bg-[#f4f7f4] px-3 py-2 text-[10px] leading-4 text-[#748078]">
-            Manual recipients receive a secure email link to provide the requested information without a GTI account.
-          </p>
+            <label className="mt-5 block space-y-2">
+              <span className="text-[12px] font-[700] text-[#2d372f]">Message (optional)</span>
+              <Textarea
+                value={message}
+                className="h-24 min-h-20 max-h-36 resize-y rounded-[14px] border-[#c8d5cb] bg-[#fbfdfb] px-4 py-3 shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15"
+                placeholder={`Please provide the ${field.title.toLocaleLowerCase()} for this project.`}
+                onChange={(event) => setMessage(event.target.value)}
+              />
+            </label>
 
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <Button type="button" variant="secondary" onClick={onClose}>
+            <p className="mt-4 rounded-[12px] bg-[#f4f7f4] px-3 py-2 text-[10px] leading-4 text-[#748078]">
+              Manual recipients receive a secure email link to provide the requested information without a GTI account.
+            </p>
+          </div>
+
+          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e7ece8] bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+            <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" disabled={!canPrepare || isSending} onClick={sendRequest}>
+            <Button type="button" className="w-full sm:w-auto" disabled={!canPrepare || isSending} onClick={sendRequest}>
               <Send className="h-4 w-4" /> {isSending ? "Sending..." : "Send Request"}
             </Button>
           </div>
