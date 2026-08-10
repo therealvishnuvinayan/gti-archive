@@ -164,10 +164,20 @@ for (const snippet of [
   'onClick={() => setMode("view")}',
   'mode === "view"',
   "StageOneReadOnlyView",
-  "inquiry={saved}",
+  "inquiry={viewInquiry}",
 ]) {
   assert(workspace.includes(snippet), `Missing Stage 1 mode behavior: ${snippet}`);
 }
+
+assert(
+  workspace.includes("const draftInquiry = useMemo<ProjectInquiryRecord>") &&
+    workspace.includes("targetMarkets: targetMarkets.map((label) => ({ label }))") &&
+    workspace.includes("priority: priority || null") &&
+    workspace.includes("const viewInquiry = pageData.canEdit ? draftInquiry : saved") &&
+    workspace.includes("availableCollaborators={collaborators}") &&
+    workspace.includes("inquiry={viewInquiry}"),
+  "Stage 1 View mode must render the current edit draft without completing the stage.",
+);
 
 assert(
   stagePage.includes("ProjectBackButton") &&

@@ -72,6 +72,7 @@ import type {
   ProjectInquiryPageData,
   ProjectInquiryPartyOption,
   ProjectInquiryPartySelection,
+  ProjectInquiryRecord,
 } from "@/lib/project-inquiry";
 import type { ProjectStageShellRecord } from "@/lib/projects";
 import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
@@ -925,6 +926,39 @@ export function StageOneWorkspace({
   const [inviteForm, setInviteForm] = useState<CollaboratorForm>(getDefaultCollaboratorForm);
   const [inviteError, setInviteError] = useState<string>();
   const [inviteSaving, setInviteSaving] = useState(false);
+  const draftInquiry = useMemo<ProjectInquiryRecord>(
+    () => ({
+      client,
+      finalBeneficiary,
+      clientOrigin,
+      targetMarkets: targetMarkets.map((label) => ({ label })),
+      initialBrief,
+      businessObjectives,
+      collaboratorIds,
+      deliverables,
+      inquiryDate,
+      deadline,
+      legalNotes,
+      priority: priority || null,
+      attachments,
+    }),
+    [
+      attachments,
+      businessObjectives,
+      client,
+      clientOrigin,
+      collaboratorIds,
+      deadline,
+      deliverables,
+      finalBeneficiary,
+      initialBrief,
+      inquiryDate,
+      legalNotes,
+      priority,
+      targetMarkets,
+    ],
+  );
+  const viewInquiry = pageData.canEdit ? draftInquiry : saved;
   const collaboratorOptions = useMemo(
     () => collaborators.map(toUserOption),
     [collaborators],
@@ -1210,8 +1244,8 @@ export function StageOneWorkspace({
       {mode === "view" ? (
         <StageOneReadOnlyView
           projectId={project.id}
-          inquiry={saved}
-          availableCollaborators={pageData.availableCollaborators}
+          inquiry={viewInquiry}
+          availableCollaborators={collaborators}
           canEdit={pageData.canEdit}
         />
       ) : (
