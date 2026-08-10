@@ -166,6 +166,15 @@ assert(
   "Concept comparison must retain exact routing and hide generic comparison context.",
 );
 assert(
+  compareWorkspace.includes("mx-auto w-full min-w-0 max-w-[1600px]") &&
+    compareWorkspace.includes(
+      "[grid-template-columns:repeat(auto-fit,minmax(min(100%,28rem),1fr))]",
+    ) &&
+    compareWorkspace.includes("min-h-0 min-w-0 max-w-full") &&
+    compareWorkspace.includes("[&>span]:min-w-0"),
+  "Concept comparison cards and the overlay viewer must remain aligned within the available viewport.",
+);
+assert(
   comparison.includes("getProjectConceptAccessContext") &&
     comparison.includes("canReviewProjectConcept") &&
     comparison.includes("canCreateComparisonMarker") &&

@@ -147,7 +147,7 @@ function ComparisonSelectionCard({
   onValueChange: (value: string) => void;
 }) {
   return (
-    <Card className="rounded-[20px] border border-[#dbe4dc] bg-white/92 p-4 shadow-[0_10px_24px_rgba(18,35,23,0.05)]">
+    <Card className="min-w-0 overflow-hidden rounded-[20px] border border-[#dbe4dc] bg-white/92 p-4 shadow-[0_10px_24px_rgba(18,35,23,0.05)]">
       <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#718074]">
         {label}
       </p>
@@ -157,7 +157,7 @@ function ComparisonSelectionCard({
           onValueChange={onValueChange}
           disabled={disabled || submissions.length === 0}
         >
-          <SelectTrigger className="rounded-[16px] border border-[#dce6de] bg-[#f8fbf8] text-[13px] font-[700]">
+          <SelectTrigger className="min-w-0 rounded-[16px] border border-[#dce6de] bg-[#f8fbf8] text-[13px] font-[700] [&>span]:min-w-0">
             <SelectValue placeholder="Select submission" />
           </SelectTrigger>
           <SelectContent>
@@ -176,7 +176,7 @@ function ComparisonSelectionCard({
             <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] leading-none text-[#2b8b56]">
               {formatSubmissionLabel(submission)}
             </span>
-            <p className="truncate text-[14px] font-[700] text-[#111712]">
+            <p className="min-w-0 flex-1 truncate text-[14px] font-[700] text-[#111712]">
               {submission.originalFileName}
             </p>
           </div>
@@ -227,7 +227,7 @@ function ComparisonCommentsPanel({
   onSelectComment: (commentId: string) => void;
 }) {
   return (
-    <Card className="flex min-h-0 flex-col rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
+    <Card className="flex min-h-0 min-w-0 flex-col rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
       <CardTitle className="shrink-0 text-[22px] font-semibold tracking-tight text-brand">
         Captions
       </CardTitle>
@@ -512,7 +512,7 @@ function ComparisonViewerSurface({
 
   return (
     <Card
-      className={`flex min-h-0 flex-col border bg-white/95 p-4 shadow-[0_16px_36px_rgba(17,34,24,0.08)] sm:p-5 ${
+      className={`flex min-h-0 min-w-0 max-w-full flex-col overflow-hidden border bg-white/95 p-4 shadow-[0_16px_36px_rgba(17,34,24,0.08)] sm:p-5 ${
         fullscreenMode
           ? "h-full rounded-none border-[#303832] bg-[#151a17] text-white shadow-none"
           : "rounded-[24px] border-[#dbe4dc]"
@@ -1188,14 +1188,14 @@ export function ProjectCompareWorkspace({
         : null;
 
   return (
-    <section className="space-y-6">
+    <section className="mx-auto w-full min-w-0 max-w-[1600px] space-y-6">
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
       <div
-        className={`grid gap-4 ${
+        className={`grid min-w-0 gap-4 ${
           conceptMode ? "" : "2xl:grid-cols-[minmax(0,1fr)_288px]"
         }`}
       >
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <Card className="overflow-hidden rounded-[24px] border-none bg-[linear-gradient(135deg,#2f8d5d,#46a470)] p-5 text-white shadow-[0_18px_45px_rgba(23,39,28,0.08)] sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -1259,7 +1259,7 @@ export function ProjectCompareWorkspace({
           ) : null}
 
           {hasEnoughSubmissions ? (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,28rem),1fr))]">
               <ComparisonSelectionCard
                 label="Base Submission"
                 submission={baseSubmission}
@@ -1285,7 +1285,7 @@ export function ProjectCompareWorkspace({
           ) : null}
 
           {hasEnoughSubmissions && baseSubmission && compareSubmission ? (
-            <div className="grid min-h-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid min-h-0 min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
               <ComparisonViewerSurface
                 baseSubmission={baseSubmission}
                 compareSubmission={compareSubmission}
@@ -1324,7 +1324,7 @@ export function ProjectCompareWorkspace({
           ) : null}
 
           {submissions.length > 0 ? (
-            <Card className="rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
+            <Card className="min-w-0 rounded-[24px] border border-[#dbe4dc] bg-white/95 p-5 shadow-[0_12px_28px_rgba(18,35,23,0.05)]">
               <CardTitle className="text-[22px] font-semibold tracking-tight text-brand">Available Submissions</CardTitle>
               <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 {submissions.map((submission) => (
