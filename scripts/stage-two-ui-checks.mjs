@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, actions, service, access, files, uploadClient, textFile, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
+const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, actions, service, access, files, storage, uploadClient, textFile, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
   readFile("src/components/projects/stage-two-workspace.tsx", "utf8"),
   readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/components/projects/stage-two-folder-workspace.tsx", "utf8"),
@@ -12,6 +12,7 @@ const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, acti
   readFile("src/lib/project-research.ts", "utf8"),
   readFile("src/lib/project-research-access.ts", "utf8"),
   readFile("src/lib/project-research-files.ts", "utf8"),
+  readFile("src/lib/storage/s3.ts", "utf8"),
   readFile("src/lib/project-research-upload-client.ts", "utf8"),
   readFile("src/lib/project-research-text-file.ts", "utf8"),
   readFile("prisma/migrations/20260807210000_project_research_workspaces/migration.sql", "utf8"),
@@ -139,6 +140,13 @@ assert(
   "The gallery must show real image thumbnails and polished type-specific fallback cards.",
 );
 assert(
+  folderWorkspace.includes("TextFileVisual") &&
+    folderWorkspace.includes("?excerpt=1") &&
+    folderWorkspace.includes("This text file is empty.") &&
+    !folderWorkspace.includes('text: "bg-[#f1f4f2] text-[#5a6b60]"'),
+  "Text-file cards must show readable content excerpts instead of a generic TXT icon.",
+);
+assert(
   folderWorkspace.includes("grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))]") &&
     folderWorkspace.includes("truncate") &&
     folderWorkspace.includes("Search files in this folder") &&
@@ -163,6 +171,14 @@ assert(
     assetPreview.includes("export function AssetPreviewDialog") &&
     assetPreview.includes('role="dialog"'),
   "Preview actions and file cards must open the shared in-app preview dialog instead of a new tab.",
+);
+assert(
+  folderWorkspace.includes("textContentPath=") &&
+    assetPreview.includes("Text document · Readable preview") &&
+    assetPreview.includes("whitespace-pre-wrap break-words text-[15px] leading-7") &&
+    assetPreview.includes("rounded-[18px] border border-[#dfe5df] bg-white") &&
+    !assetPreview.includes("font-mono"),
+  "Full text previews must use a clean document presentation rather than a code-editor treatment.",
 );
 assert(
   folderWorkspace.includes("ConfirmationDialog") &&
@@ -216,6 +232,14 @@ assert(
   "Empty folders must guide upload and successful uploads must appear without a full refresh.",
 );
 assert(folderWorkspace.includes("/download") && folderWorkspace.includes('method: "DELETE"'), "Folder file actions must include download and delete.");
+assert(
+  deleteRoute.includes("export async function GET") &&
+    deleteRoute.includes("getProjectResearchTextFileContent") &&
+    files.includes("assertResearchFolderReadAccess") &&
+    files.includes("TEXT_FILE_EXCERPT_MAX_BYTES") &&
+    storage.includes("readTextObject"),
+  "Text excerpts and full previews must load through an authenticated, byte-bounded server path.",
+);
 assert(page.includes("getProjectResearchPageData") && folderPage.includes("getProjectResearchFolderPageData") && page.includes("requireUser"), "Stage 2 routes must load authenticated persisted data.");
 assert(
   [folderPage, uploadRoute, completeRoute, deleteRoute, downloadRoute].every((source) =>

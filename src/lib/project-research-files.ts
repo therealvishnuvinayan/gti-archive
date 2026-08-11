@@ -13,6 +13,10 @@ import {
   assertResearchFolderWriteAccess,
 } from "@/lib/project-research-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { readTextObject } from "@/lib/storage/s3";
+
+const TEXT_FILE_PREVIEW_MAX_BYTES = 1024 * 1024;
+const TEXT_FILE_EXCERPT_MAX_BYTES = 6 * 1024;
 
 export async function requestProjectResearchFileUpload(
   user: ProjectHistoryAccessUser,
@@ -131,6 +135,68 @@ async function getExactResearchFile(
       select: { id: true, attachmentId: true },
     }),
   );
+}
+
+export async function getProjectResearchTextFileContent(
+  user: ProjectHistoryAccessUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    fileId: string;
+    excerpt?: boolean;
+  },
+) {
+  await assertResearchFolderReadAccess(user, input);
+  const file = await withPrismaRetry(() =>
+    prisma.projectResearchFolderFile.findFirst({
+      where: {
+        id: input.fileId,
+        folderId: input.folderId,
+        folder: { workspace: { projectId: input.projectId } },
+      },
+      select: {
+        attachment: {
+          select: {
+            bucket: true,
+            storageKey: true,
+            originalFileName: true,
+            mimeType: true,
+            fileSize: true,
+          },
+        },
+      },
+    }),
+  );
+
+  if (!file) {
+    throw new Error("Research file not found.");
+  }
+
+  const extension = file.attachment.originalFileName
+    .split(".")
+    .pop()
+    ?.toLocaleLowerCase("en");
+  const isTextFile =
+    file.attachment.mimeType.toLocaleLowerCase("en").startsWith("text/") ||
+    ["txt", "md", "json", "xml"].includes(extension ?? "");
+
+  if (!isTextFile) {
+    throw new Error("This file does not contain previewable text.");
+  }
+
+  const maxBytes = input.excerpt
+    ? TEXT_FILE_EXCERPT_MAX_BYTES
+    : TEXT_FILE_PREVIEW_MAX_BYTES;
+  const content = await readTextObject({
+    bucket: file.attachment.bucket,
+    storageKey: file.attachment.storageKey,
+    maxBytes,
+  });
+
+  return {
+    content,
+    truncated: file.attachment.fileSize > maxBytes,
+  };
 }
 
 export async function getProjectResearchFileDownloadUrl(

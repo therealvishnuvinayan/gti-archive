@@ -402,6 +402,30 @@ export async function createPresignedPreviewUrl({
   });
 }
 
+export async function readTextObject({
+  bucket = getS3BucketName(),
+  storageKey,
+  maxBytes,
+}: {
+  bucket?: string;
+  storageKey: string;
+  maxBytes: number;
+}) {
+  const response = await getS3Client().send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+      Range: `bytes=0-${Math.max(0, maxBytes - 1)}`,
+    }),
+  );
+
+  if (!response.Body) {
+    throw new Error("Text file content is unavailable.");
+  }
+
+  return response.Body.transformToString("utf-8");
+}
+
 export async function getObjectMetadata(
   storageKey: string,
   bucket = getS3BucketName(),

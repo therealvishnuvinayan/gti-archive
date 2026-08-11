@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Download, Eye, FileText, ImageIcon, Loader2, X } from "lucide-react";
 
@@ -12,6 +12,7 @@ type AssetPreviewButtonProps = {
   fileName: string;
   mimeType: string;
   previewPath: string;
+  textContentPath?: string | null;
   downloadPath?: string | null;
   triggerClassName?: string;
   iconOnly?: boolean;
@@ -23,17 +24,26 @@ type AssetPreviewDialogProps = {
   fileName: string;
   mimeType: string;
   previewPath: string;
+  textContentPath?: string | null;
   downloadPath?: string | null;
   onClose: () => void;
 };
 
-function isPreviewableAsset(fileName: string, mimeType: string) {
+function isPreviewableAsset(
+  fileName: string,
+  mimeType: string,
+  textContentPath?: string | null,
+) {
   if (mimeType.startsWith("image/")) {
     return true;
   }
 
   if (mimeType === "application/pdf") {
     return true;
+  }
+
+  if (mimeType.startsWith("text/")) {
+    return Boolean(textContentPath);
   }
 
   return fileName.toLowerCase().endsWith(".pdf");
@@ -92,10 +102,45 @@ export function AssetPreviewDialog({
   fileName,
   mimeType,
   previewPath,
+  textContentPath,
   downloadPath,
   onClose,
 }: AssetPreviewDialogProps) {
   const [loading, setLoading] = useState(true);
+  const [textContent, setTextContent] = useState("");
+  const [textError, setTextError] = useState<string>();
+  const [textTruncated, setTextTruncated] = useState(false);
+  const isText = Boolean(textContentPath);
+
+  useEffect(() => {
+    if (!isOpen || !textContentPath) return;
+    const controller = new AbortController();
+
+    void fetch(textContentPath, { signal: controller.signal })
+      .then(async (response) => {
+        const result = (await response.json()) as {
+          content?: string;
+          truncated?: boolean;
+          error?: string;
+        };
+        if (!response.ok || typeof result.content !== "string") {
+          throw new Error(result.error || "Unable to prepare the text preview.");
+        }
+        setTextContent(result.content);
+        setTextTruncated(Boolean(result.truncated));
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setTextError(
+          error instanceof Error ? error.message : "Unable to prepare the text preview.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [isOpen, textContentPath]);
 
   if (!isOpen || typeof document === "undefined") {
     return null;
@@ -114,6 +159,11 @@ export function AssetPreviewDialog({
             <CardTitle className="truncate text-[22px] font-semibold tracking-tight text-[#111712]">
               {fileName}
             </CardTitle>
+            {isText ? (
+              <p className="mt-1 text-[12px] text-[#748078]">
+                Text document · Readable preview
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             {downloadPath ? (
@@ -145,7 +195,37 @@ export function AssetPreviewDialog({
         <CardContent className="min-h-0 flex-1 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
           <div className="relative flex h-full min-h-[420px] items-center justify-center overflow-hidden rounded-[20px] border border-[#e3e8e2] bg-[#f8fbf8]">
             {loading ? <PreviewLoadingState mimeType={mimeType} /> : null}
-            {mimeType.startsWith("image/") ? (
+            {isText ? (
+              <div className="h-full w-full overflow-y-auto bg-[#eef2ed] px-4 py-6 sm:px-8 sm:py-8">
+                {textError ? (
+                  <div className="mx-auto max-w-[760px] rounded-[16px] border border-[#efcbc8] bg-[#fff4f3] px-5 py-4 text-[13px] text-[#aa4843]">
+                    {textError}
+                  </div>
+                ) : (
+                  <article className="mx-auto min-h-full w-full max-w-[820px] rounded-[18px] border border-[#dfe5df] bg-white px-6 py-7 shadow-[0_16px_40px_rgba(24,43,30,0.08)] sm:px-10 sm:py-10">
+                    <div className="mb-7 flex items-center gap-3 border-b border-[#e8ede8] pb-5">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#eaf4ec] text-[#2e754f]">
+                        <FileText className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-[14px] font-[720] text-[#233027]">
+                          {fileName}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-[#829087]">Plain text</p>
+                      </div>
+                    </div>
+                    <div className="whitespace-pre-wrap break-words text-[15px] leading-7 text-[#344139] selection:bg-[#dcefe2]">
+                      {textContent || "This text file is empty."}
+                    </div>
+                    {textTruncated ? (
+                      <p className="mt-8 border-t border-[#e8ede8] pt-4 text-[11px] text-[#819087]">
+                        Preview limited to the first 1 MB. Download the file to read the rest.
+                      </p>
+                    ) : null}
+                  </article>
+                )}
+              </div>
+            ) : mimeType.startsWith("image/") ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={previewPath}
@@ -174,6 +254,7 @@ export function AssetPreviewButton({
   fileName,
   mimeType,
   previewPath,
+  textContentPath,
   downloadPath,
   triggerClassName,
   iconOnly = true,
@@ -181,7 +262,7 @@ export function AssetPreviewButton({
 }: AssetPreviewButtonProps) {
   const [open, setOpen] = useState(false);
 
-  if (!isPreviewableAsset(fileName, mimeType)) {
+  if (!isPreviewableAsset(fileName, mimeType, textContentPath)) {
     return null;
   }
 
@@ -205,6 +286,7 @@ export function AssetPreviewButton({
           fileName={fileName}
           mimeType={mimeType}
           previewPath={previewPath}
+          textContentPath={textContentPath}
           downloadPath={downloadPath}
           onClose={() => setOpen(false)}
         />

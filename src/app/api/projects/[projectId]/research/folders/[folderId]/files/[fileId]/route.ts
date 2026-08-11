@@ -2,9 +2,44 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
-import { deleteProjectResearchFile } from "@/lib/project-research-files";
+import {
+  deleteProjectResearchFile,
+  getProjectResearchTextFileContent,
+} from "@/lib/project-research-files";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { decodeRouteParam } from "@/lib/route-params";
+
+export async function GET(
+  request: Request,
+  {
+    params,
+  }: {
+    params: Promise<{ projectId: string; folderId: string; fileId: string }>;
+  },
+) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
+  const routeParams = await params;
+  const input = {
+    ...routeParams,
+    folderId: decodeRouteParam(routeParams.folderId),
+    excerpt: new URL(request.url).searchParams.get("excerpt") === "1",
+  };
+
+  try {
+    return NextResponse.json(
+      await getProjectResearchTextFileContent(user, input),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to preview text file.";
+    return NextResponse.json(
+      { error: message },
+      { status: /permission|read-only|access/i.test(message) ? 403 : 400 },
+    );
+  }
+}
 
 export async function DELETE(
   request: Request,

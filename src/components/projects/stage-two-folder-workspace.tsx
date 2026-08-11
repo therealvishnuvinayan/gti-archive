@@ -3,6 +3,7 @@
 import Image from "next/image";
 import {
   type DragEvent,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -158,7 +159,73 @@ function FileKindIcon({ file, className }: { file: FolderFile; className?: strin
   return <File className={iconClassName} />;
 }
 
-function FileVisual({ file }: { file: FolderFile }) {
+function TextFileVisual({ contentPath }: { contentPath: string }) {
+  const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void fetch(`${contentPath}?excerpt=1`, { signal: controller.signal })
+      .then(async (response) => {
+        const result = (await response.json()) as {
+          content?: string;
+          error?: string;
+        };
+        if (!response.ok || typeof result.content !== "string") {
+          throw new Error(result.error || "Preview unavailable.");
+        }
+        setContent(result.content);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setFailed(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [contentPath]);
+
+  return (
+    <span className="relative block h-full w-full overflow-hidden bg-[#eef2ed] px-3 py-3">
+      <span className="block h-full overflow-hidden rounded-[8px] border border-[#dfe5df] bg-white px-3 py-3 shadow-[0_5px_14px_rgba(31,51,38,0.08)]">
+        <span className="mb-2 block h-1 w-10 rounded-full bg-[#dce9df]" />
+        {loading ? (
+          <span className="block space-y-1.5" aria-label="Loading text preview">
+            {["w-full", "w-[92%]", "w-[96%]", "w-[78%]", "w-[88%]"].map(
+              (width, index) => (
+                <span
+                  key={`${width}-${index}`}
+                  className={cn("block h-1.5 animate-pulse rounded-full bg-[#e7ece8]", width)}
+                />
+              ),
+            )}
+          </span>
+        ) : failed ? (
+          <span className="block pt-6 text-center text-[10px] font-[650] text-[#869188]">
+            Text preview unavailable
+          </span>
+        ) : (
+          <span className="block max-h-[92px] overflow-hidden whitespace-pre-wrap break-words text-[10px] leading-[15px] text-[#4b574f]">
+            {content || "This text file is empty."}
+          </span>
+        )}
+      </span>
+      <span className="pointer-events-none absolute inset-x-3 bottom-3 h-9 bg-gradient-to-t from-white to-transparent" />
+    </span>
+  );
+}
+
+function FileVisual({
+  file,
+  textContentPath,
+}: {
+  file: FolderFile;
+  textContentPath?: string;
+}) {
   const kind = getFileKind(file);
   const previewHref = `/api/project-assets/${file.attachmentId}/preview`;
 
@@ -177,6 +244,10 @@ function FileVisual({ file }: { file: FolderFile }) {
     );
   }
 
+  if (kind === "text" && textContentPath) {
+    return <TextFileVisual contentPath={textContentPath} />;
+  }
+
   const visualStyles: Record<string, string> = {
     video: "bg-[#eef2f8] text-[#4d6486]",
     pdf: "bg-[#fff0ef] text-[#b84e48]",
@@ -185,7 +256,6 @@ function FileVisual({ file }: { file: FolderFile }) {
     presentation: "bg-[#fff3e9] text-[#b66c32]",
     archive: "bg-[#f4effa] text-[#7758a2]",
     design: "bg-[#f0eff9] text-[#5e589c]",
-    text: "bg-[#f1f4f2] text-[#5a6b60]",
     generic: "bg-[#f1f4f2] text-[#66736a]",
   };
 
@@ -268,6 +338,7 @@ function FileGalleryCard({
   onDelete: () => void;
 }) {
   const previewable = isBrowserPreviewable(file);
+  const textContentPath = `${baseApi}/files/${file.id}`;
   const openHref = previewable
     ? `/api/project-assets/${file.attachmentId}/preview`
     : `${baseApi}/files/${file.id}/download`;
@@ -297,7 +368,7 @@ function FileGalleryCard({
           className="block h-[148px] w-full border-y border-[#edf1ed] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
           aria-label={`Preview ${file.name}`}
         >
-          <FileVisual file={file} />
+          <FileVisual file={file} textContentPath={textContentPath} />
         </button>
       ) : (
         <a
@@ -305,7 +376,7 @@ function FileGalleryCard({
           className="block h-[148px] border-y border-[#edf1ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
           aria-label={`Download ${file.name}`}
         >
-          <FileVisual file={file} />
+          <FileVisual file={file} textContentPath={textContentPath} />
         </a>
       )}
       <div className="min-w-0 px-3 py-3">
@@ -893,6 +964,11 @@ export function StageTwoFolderWorkspace({
           fileName={previewFile.name}
           mimeType={previewFile.mimeType}
           previewPath={`/api/project-assets/${previewFile.attachmentId}/preview`}
+          textContentPath={
+            getFileKind(previewFile) === "text"
+              ? `${baseApi}/files/${previewFile.id}`
+              : null
+          }
           downloadPath={`${baseApi}/files/${previewFile.id}/download`}
           onClose={() => setPreviewFile(undefined)}
         />
