@@ -404,11 +404,22 @@ export function ConceptStageWorkspace({
   );
   const allStageFourConceptsApproved =
     completionConcepts.length > 0 && unapprovedConcepts.length === 0;
+  const stageCompletionReady =
+    stageNumber === 3
+      ? approvedConceptCount > 0
+      : allStageFourConceptsApproved;
 
   function completeCurrentStage() {
     if (!canCompleteStage) {
       setCompletionError(
         `Only the Project Owner or Super Admin can complete Stage ${stageNumber}.`,
+      );
+      return;
+    }
+
+    if (stageNumber === 3 && approvedConceptCount === 0) {
+      setCompletionError(
+        "At least one concept must have an approved concept file before Stage 3 can be completed.",
       );
       return;
     }
@@ -617,16 +628,16 @@ export function ConceptStageWorkspace({
               <Button
                 type="button"
                 className="h-11 rounded-[12px] px-5 font-[720]"
-                disabled={
-                  isCompleting ||
-                  (stageNumber === 4 && !allStageFourConceptsApproved)
-                }
+                disabled={isCompleting || !stageCompletionReady}
                 title={
-                  stageNumber === 4 && !allStageFourConceptsApproved
-                    ? "Every concept requires Final Approval before Stage 4 can be completed."
+                  !stageCompletionReady
+                    ? stageNumber === 3
+                      ? "Approve at least one concept file before completing Stage 3."
+                      : "Every concept requires Final Approval before Stage 4 can be completed."
                     : undefined
                 }
                 onClick={() => {
+                  if (!stageCompletionReady) return;
                   setCompletionError(null);
                   setCompletionDialogOpen(true);
                 }}
@@ -799,7 +810,7 @@ export function ConceptStageWorkspace({
         isOpen={
           canCompleteStage &&
           completionDialogOpen &&
-          (stageNumber === 3 || allStageFourConceptsApproved)
+          stageCompletionReady
         }
         title={`Complete Stage ${stageNumber}?`}
         description={

@@ -138,9 +138,14 @@ assert(
   workspace.includes("canCompleteStage && !managementLocked") &&
     workspace.includes("canCompleteStage &&") &&
     workspace.includes("completionDialogOpen &&") &&
+    workspace.includes("const stageCompletionReady =") &&
+    workspace.includes("disabled={isCompleting || !stageCompletionReady}") &&
+    workspace.includes("if (!stageCompletionReady) return;") &&
+    workspace.includes("completionDialogOpen &&\n          stageCompletionReady") &&
     concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
+    concepts.includes("approvedConcepts.length === 0") &&
     concepts.includes("Only the Project Owner or Super Admin can complete Stage 3."),
-  "Stage completion must be rendered and enforced separately from concept management.",
+  "Stage completion must remain disabled until workflow requirements are met and be enforced separately from concept management.",
 );
 assert(
   history.includes('mode: "work"') &&
