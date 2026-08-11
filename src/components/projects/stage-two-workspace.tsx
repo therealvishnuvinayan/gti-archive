@@ -24,6 +24,7 @@ import {
   Loader2,
   Plus,
   SlidersHorizontal,
+  Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -31,9 +32,11 @@ import {
 import {
   completeProjectResearchStageAction,
   createProjectResearchFolderAction,
+  deleteProjectResearchFolderAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectSummaryStrip } from "@/components/projects/project-summary-strip";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -56,7 +59,7 @@ type FolderRecord = NonNullable<ProjectResearchPageData>["folders"][number];
 type FolderUploadSummary = { fileCount: number; progress: number };
 
 const sortLabels: Record<FolderSort, string> = {
-  business: "Business order",
+  business: "Default order",
   "name-asc": "Name (A–Z)",
   "name-desc": "Name (Z–A)",
   "files-desc": "Most files",
@@ -196,15 +199,19 @@ function FolderTile({
   view,
   href,
   canWrite,
+  canDelete,
   upload,
   onDropFiles,
+  onDelete,
 }: {
   folder: FolderRecord;
   view: FolderView;
   href: string;
   canWrite: boolean;
+  canDelete: boolean;
   upload?: FolderUploadSummary;
   onDropFiles: (folder: FolderRecord, files: File[]) => void;
+  onDelete: (folder: FolderRecord) => void;
 }) {
   const dragDepth = useRef(0);
   const [dragActive, setDragActive] = useState(false);
@@ -214,9 +221,7 @@ function FolderTile({
   }
 
   return (
-    <Link
-      href={href}
-      draggable={false}
+    <div
       aria-busy={Boolean(upload)}
       onDragEnter={(event) => {
         if (!canWrite || !isFileDrag(event)) return;
@@ -249,33 +254,59 @@ function FolderTile({
           ? "border-[#2b8056] bg-[#eaf5ed] ring-2 ring-[#2b8056]/20"
           : "border-[#dfe6df]",
         view === "grid"
-          ? "flex min-h-[154px] flex-col rounded-[20px] p-5"
-          : "flex w-full items-center gap-4 rounded-[17px] px-4 py-3.5",
+          ? "min-h-[154px] rounded-[20px]"
+          : "w-full rounded-[17px]",
       )}
     >
-      <div className="flex w-full items-center gap-4">
-        <FolderArtwork />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-[720] text-[#202a23]">{folder.name}</span>
-          <span className="mt-1 block text-[11px] text-[#7c867f]">
-            {folder.isSystem ? "System folder" : "Custom folder"}
+      <Link
+        href={href}
+        draggable={false}
+        className={cn(
+          "flex h-full w-full",
+          view === "grid"
+            ? "min-h-[152px] flex-col p-5"
+            : "items-center gap-4 px-4 py-3.5",
+        )}
+      >
+        <div className={cn("flex w-full items-center gap-4", canDelete && "pr-10")}>
+          <FolderArtwork />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14px] font-[720] text-[#202a23]">{folder.name}</span>
+            <span className="mt-1 block text-[11px] text-[#7c867f]">
+              {folder.isSystem ? "System folder" : "Custom folder"}
+            </span>
           </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-[#8a948d] transition group-hover:translate-x-0.5 group-hover:text-brand" />
+        </div>
+        <span className={cn("flex items-center gap-1.5 text-[11px] text-[#6f7a72]", view === "grid" && "mt-auto border-t border-[#edf1ed] pt-3.5")}>
+          {upload ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <File className="h-3.5 w-3.5" />}
+          {upload
+            ? `Uploading ${upload.fileCount} ${upload.fileCount === 1 ? "file" : "files"} · ${upload.progress}%`
+            : `${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`}
         </span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-[#8a948d] transition group-hover:translate-x-0.5 group-hover:text-brand" />
-      </div>
-      <span className={cn("flex items-center gap-1.5 text-[11px] text-[#6f7a72]", view === "grid" && "mt-auto border-t border-[#edf1ed] pt-3.5")}>
-        {upload ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <File className="h-3.5 w-3.5" />}
-        {upload
-          ? `Uploading ${upload.fileCount} ${upload.fileCount === 1 ? "file" : "files"} · ${upload.progress}%`
-          : `${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"}`}
-      </span>
+      </Link>
+      {canDelete ? (
+        <button
+          type="button"
+          aria-label={`Delete ${folder.name}`}
+          title={`Delete ${folder.name}`}
+          disabled={Boolean(upload)}
+          onClick={() => onDelete(folder)}
+          className={cn(
+            "absolute z-20 grid size-9 place-items-center rounded-[10px] border border-[#ead9d7] bg-white text-[#ad514b] shadow-sm transition hover:border-[#d9a9a5] hover:bg-[#fff2f1] disabled:cursor-not-allowed disabled:opacity-45",
+            view === "grid" ? "right-4 top-4" : "right-4 top-1/2 -translate-y-1/2",
+          )}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      ) : null}
       {dragActive ? (
         <span className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#eaf5ed]/95 text-[#216643]">
           <UploadCloud className="h-7 w-7" />
           <span className="mt-2 text-[13px] font-[760]">Drop to upload</span>
         </span>
       ) : null}
-    </Link>
+    </div>
   );
 }
 
@@ -355,6 +386,8 @@ export function StageTwoWorkspace({
   >({});
   const [dialogOpen, setDialogOpen] = useState(false);
   const [folderError, setFolderError] = useState<string>();
+  const [folderToDelete, setFolderToDelete] = useState<FolderRecord>();
+  const [deleteError, setDeleteError] = useState<string>();
   const [isPending, startTransition] = useTransition();
 
   const folders = useMemo(() => {
@@ -456,6 +489,28 @@ export function StageTwoWorkspace({
     });
   }
 
+  function deleteFolder(folder: FolderRecord) {
+    setDeleteError(undefined);
+    startTransition(async () => {
+      const result = await deleteProjectResearchFolderAction({
+        projectId: data.project.id,
+        workspaceId: data.selectedWorkspace.id,
+        folderId: folder.id,
+      });
+      if ("error" in result) {
+        setDeleteError(result.error);
+        return;
+      }
+
+      setFolderRecords((current) =>
+        current.filter((record) => record.id !== result.folder.id),
+      );
+      setFolderToDelete(undefined);
+      showSuccessToast(`${result.folder.name} deleted.`);
+      router.refresh();
+    });
+  }
+
   function completeStage() {
     const stageThreeHref = `/projects/${data.project.id}/stages/3`;
 
@@ -546,10 +601,15 @@ export function StageTwoWorkspace({
                   view={view}
                   href={`/projects/${data.project.id}/stages/2/folders/${folder.id}?workspace=${encodeURIComponent(data.selectedWorkspace.id)}`}
                   canWrite={data.selectedWorkspace.canWrite}
+                  canDelete={data.selectedWorkspace.canDeleteFolders}
                   upload={folderUploads[folder.id]}
                   onDropFiles={(targetFolder, files) =>
                     void uploadFilesToFolder(targetFolder, files)
                   }
+                  onDelete={(targetFolder) => {
+                    setDeleteError(undefined);
+                    setFolderToDelete(targetFolder);
+                  }}
                 />
               ))}
               {data.selectedWorkspace.canWrite ? (
@@ -569,6 +629,27 @@ export function StageTwoWorkspace({
         </CardContent>
       </Card>
       <NewFolderDialog open={dialogOpen} pending={isPending} error={folderError} onClose={() => setDialogOpen(false)} onCreate={createFolder} />
+      <ConfirmationDialog
+        isOpen={Boolean(folderToDelete)}
+        title="Delete folder?"
+        description={
+          folderToDelete
+            ? `Delete “${folderToDelete.name}” and every file inside it? This permanently removes them from your private workspace and cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete folder"
+        tone="destructive"
+        pending={isPending}
+        error={deleteError}
+        onConfirm={() => {
+          if (folderToDelete) deleteFolder(folderToDelete);
+        }}
+        onClose={() => {
+          if (isPending) return;
+          setFolderToDelete(undefined);
+          setDeleteError(undefined);
+        }}
+      />
     </section>
   );
 }

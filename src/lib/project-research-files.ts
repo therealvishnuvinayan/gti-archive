@@ -11,6 +11,7 @@ import {
 import {
   assertResearchFolderReadAccess,
   assertResearchFolderWriteAccess,
+  getResearchFolderAccess,
 } from "@/lib/project-research-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { readTextObject } from "@/lib/storage/s3";
@@ -225,4 +226,60 @@ export async function deleteProjectResearchFile(
   }
 
   await deleteAttachmentForUser(user, file.attachmentId);
+}
+
+export async function deleteProjectResearchFolder(
+  user: ProjectHistoryAccessUser,
+  input: { projectId: string; workspaceId: string; folderId: string },
+) {
+  const { folder: accessFolder, access } = await getResearchFolderAccess(user, {
+    projectId: input.projectId,
+    folderId: input.folderId,
+  });
+
+  if (accessFolder.workspaceId !== input.workspaceId) {
+    return { error: "Folder not found." } as const;
+  }
+
+  if (!access.canWrite || !access.isOwnWorkspace) {
+    return {
+      error: "Only the owner of this private folder set can delete its folders.",
+    } as const;
+  }
+
+  const folder = await withPrismaRetry(() =>
+    prisma.projectResearchFolder.findUnique({
+      where: { id: input.folderId },
+      select: {
+        id: true,
+        name: true,
+        workspaceId: true,
+        files: { select: { attachmentId: true } },
+      },
+    }),
+  );
+
+  if (!folder || folder.workspaceId !== input.workspaceId) {
+    return { error: "Folder not found." } as const;
+  }
+
+  for (const file of folder.files) {
+    await deleteAttachmentForUser(user, file.attachmentId);
+  }
+
+  const deleted = await withPrismaRetry(() =>
+    prisma.projectResearchFolder.deleteMany({
+      where: {
+        id: folder.id,
+        workspaceId: folder.workspaceId,
+        workspace: { projectId: input.projectId, ownerUserId: user.id },
+      },
+    }),
+  );
+
+  if (deleted.count !== 1) {
+    return { error: "Folder could not be deleted." } as const;
+  }
+
+  return { folder: { id: folder.id, name: folder.name } } as const;
 }

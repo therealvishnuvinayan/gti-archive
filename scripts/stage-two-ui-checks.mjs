@@ -50,7 +50,7 @@ assert(
 for (const folderName of ["Brief", "Market & Competition", "Tech", "Vendors", "Finance", "Legal", "Pitch"]) {
   assert(service.includes(`name: "${folderName}"`), `Missing predefined Stage 2 folder: ${folderName}`);
 }
-for (const text of ["Stage 2 - Project Research and Planning", "Viewing folder set", "Shared folders", "New Folder", "Next Stage", "All Stages", "Business order", "Name (A–Z)", "Read-only"]) {
+for (const text of ["Stage 2 - Project Research and Planning", "Viewing folder set", "Shared folders", "New Folder", "Next Stage", "All Stages", "Default order", "Name (A–Z)", "Read-only"]) {
   assert(workspace.includes(text), `Missing connected Stage 2 UI content: ${text}`);
 }
 assert(workspace.includes("workspace=${encodeURIComponent(option.id)}"), "Workspace switching must use stable URL state.");
@@ -69,6 +69,21 @@ assert(
   "Completing Stage 2 must open Stage 3 directly instead of the project overview.",
 );
 assert(workspace.includes("createProjectResearchFolderAction") && actions.includes("createProjectResearchFolder"), "New Folder must call the persisted server action.");
+assert(
+  workspace.includes("deleteProjectResearchFolderAction") &&
+    workspace.includes("canDelete={data.selectedWorkspace.canDeleteFolders}") &&
+    workspace.includes('title="Delete folder?"') &&
+    actions.includes("deleteProjectResearchFolder") &&
+    files.includes("!access.canWrite || !access.isOwnWorkspace") &&
+    files.includes("deleteAttachmentForUser(user, file.attachmentId)"),
+  "Folder deletion must be confirmed, remove contained files, and remain strictly private to the workspace owner.",
+);
+assert(
+  service.includes("if (existingWorkspace)") &&
+    service.includes("folders: {") &&
+    service.includes("create: PROJECT_RESEARCH_SYSTEM_FOLDERS.map"),
+  "Deleted predefined folders must not be silently recreated when an existing workspace is ensured.",
+);
 assert(workspace.includes("completeProjectResearchStageAction") && actions.includes("completeProjectResearchStage"), "Next Stage must call the real completion action.");
 assert(
   workspace.includes('data.workflowStatus === "COMPLETED"') &&

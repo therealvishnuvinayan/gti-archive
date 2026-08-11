@@ -12,10 +12,7 @@ import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/res
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
-import {
-  assertResearchFolderWriteAccess,
-  getProjectResearchAccess,
-} from "@/lib/project-research-access";
+import { getProjectResearchAccess } from "@/lib/project-research-access";
 
 export const PROJECT_RESEARCH_SYSTEM_FOLDERS = [
   { key: ProjectResearchFolderSystemKey.BRIEF, name: "Brief", sortOrder: 1 },
@@ -48,26 +45,31 @@ export async function ensureProjectResearchWorkspaceTx(
   projectId: string,
   ownerUserId: string,
 ) {
-  const workspace = await tx.projectResearchWorkspace.upsert({
+  const existingWorkspace = await tx.projectResearchWorkspace.findUnique({
     where: { projectId_ownerUserId: { projectId, ownerUserId } },
-    update: {},
-    create: { projectId, ownerUserId },
     select: { id: true },
   });
 
-  await tx.projectResearchFolder.createMany({
-    data: PROJECT_RESEARCH_SYSTEM_FOLDERS.map((folder) => ({
-      workspaceId: workspace.id,
-      name: folder.name,
-      normalizedName: normalizeProjectResearchFolderName(folder.name),
-      systemKey: folder.key,
-      isSystem: true,
-      sortOrder: folder.sortOrder,
-    })),
-    skipDuplicates: true,
-  });
+  if (existingWorkspace) {
+    return existingWorkspace;
+  }
 
-  return workspace;
+  return tx.projectResearchWorkspace.create({
+    data: {
+      projectId,
+      ownerUserId,
+      folders: {
+        create: PROJECT_RESEARCH_SYSTEM_FOLDERS.map((folder) => ({
+          name: folder.name,
+          normalizedName: normalizeProjectResearchFolderName(folder.name),
+          systemKey: folder.key,
+          isSystem: true,
+          sortOrder: folder.sortOrder,
+        })),
+      },
+    },
+    select: { id: true },
+  });
 }
 
 export async function ensureProjectResearchWorkspace(
@@ -288,6 +290,7 @@ export async function getProjectResearchPageData(
       ownerName: displayName(selectedWorkspace.owner),
       role: participantRole.get(selectedWorkspace.ownerUserId) ?? "Project Participant",
       canWrite: access.canWrite,
+      canDeleteFolders: access.canWrite && access.isOwnWorkspace,
     },
     workspaceOptions: workspaces.map((workspace) => ({
       id: workspace.id,
@@ -325,7 +328,11 @@ export async function createProjectResearchFolder(
   const workspace = await withPrismaRetry(() =>
     prisma.projectResearchWorkspace.findFirst({
       where: { id: input.workspaceId, projectId: input.projectId },
-      select: { folders: { select: { id: true }, take: 1 } },
+      select: {
+        id: true,
+        ownerUserId: true,
+        project: { select: researchProjectSelect },
+      },
     }),
   );
 
@@ -333,21 +340,16 @@ export async function createProjectResearchFolder(
     return { error: "Folder set not found." } as const;
   }
 
-  const accessFolder = await withPrismaRetry(() =>
-    prisma.projectResearchFolder.findFirst({
-      where: { workspaceId: input.workspaceId },
-      select: { id: true },
-    }),
-  );
-
-  if (!accessFolder) {
-    return { error: "Folder set not found." } as const;
-  }
-
-  await assertResearchFolderWriteAccess(user, {
+  const access = getProjectResearchAccess(user, {
     projectId: input.projectId,
-    folderId: accessFolder.id,
+    workspaceId: workspace.id,
+    workspaceOwnerUserId: workspace.ownerUserId,
+    project: workspace.project,
   });
+
+  if (!access.canWrite) {
+    return { error: "This folder set is read-only for your account." } as const;
+  }
 
   try {
     const folder = await withPrismaRetry(() =>

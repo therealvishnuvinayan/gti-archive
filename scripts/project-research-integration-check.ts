@@ -18,6 +18,7 @@ import {
 } from "../src/lib/project-research";
 import {
   completeProjectResearchFileUpload,
+  deleteProjectResearchFolder,
   deleteProjectResearchFile,
   getProjectResearchFileDownloadUrl,
   requestProjectResearchFileUpload,
@@ -233,6 +234,24 @@ async function main() {
   check(23, ownerPage?.selectedWorkspace.canWrite === false && coOwnerPage?.selectedWorkspace.canWrite === false, "owner/co-owner cross-workspace view must be read-only");
   const superAdminCross = await getProjectResearchPageData(users.superAdmin, projectId, executorWorkspace.id);
   check(24, superAdminCross?.selectedWorkspace.canWrite === true, "SUPER_ADMIN must write cross-workspace");
+  check(63, executorPage?.selectedWorkspace.canDeleteFolders === true, "workspace owners must receive folder deletion controls");
+  check(64, ownerPage?.selectedWorkspace.canDeleteFolders === false && superAdminCross?.selectedWorkspace.canDeleteFolders === false, "cross-workspace viewers must never receive folder deletion controls");
+
+  const ownerPitch = ownerWorkspace.folders.find((folder) => folder.systemKey === "PITCH")!;
+  const blockedFolderDelete = await deleteProjectResearchFolder(users.superAdmin, {
+    projectId,
+    workspaceId: ownerWorkspace.id,
+    folderId: ownerPitch.id,
+  });
+  check(65, expectError(blockedFolderDelete), "even SUPER_ADMIN must not delete another user's private workspace folder");
+  const deletedSystemFolder = await deleteProjectResearchFolder(users.owner, {
+    projectId,
+    workspaceId: ownerWorkspace.id,
+    folderId: ownerPitch.id,
+  });
+  check(66, "folder" in deletedSystemFolder && !(await prisma.projectResearchFolder.findUnique({ where: { id: ownerPitch.id } })), "a workspace owner must be able to delete a predefined folder");
+  await ensureProjectResearchWorkspace(projectId, users.owner.id);
+  check(67, !(await prisma.projectResearchFolder.findFirst({ where: { workspaceId: ownerWorkspace.id, systemKey: "PITCH" } })), "an intentionally deleted predefined folder must not be recreated");
 
   const upload = await requestProjectResearchFileUpload(users.executor, {
     projectId,
@@ -350,7 +369,7 @@ async function main() {
   check(48, !Object.keys(prisma).some((key) => /task|vendor/i.test(key)), "Stage 2 must not add task/chat/vendor-specific models");
   check(30, (await getProjectResearchPageData(users.adminOutsider, projectId)) === null, "ADMIN role alone must not gain Stage 2 access");
 
-  console.log("Stage 2 database integration checks 1-62 passed.");
+  console.log("Stage 2 database integration checks 1-67 passed.");
 }
 
 main()
