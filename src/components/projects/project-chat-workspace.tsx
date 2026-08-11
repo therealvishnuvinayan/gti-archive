@@ -7462,7 +7462,12 @@ export function ProjectChatWorkspace({
             }`}
           >
             <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-2.5 pb-6">
-              <div className="sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3">
+              <div
+                aria-hidden={isConceptMode}
+                className={`sticky top-0 z-30 -mx-1 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-[#dbe7dd] bg-[#f4f8f3]/94 px-2 py-2 text-[12px] font-semibold text-[#5f6b62] shadow-[0_12px_28px_rgba(18,35,23,0.08)] backdrop-blur sm:-mx-2 sm:px-3 ${
+                  isConceptMode ? "hidden" : ""
+                }`}
+              >
                 <div className="flex min-w-0 items-center gap-2">
                   <span
                     className={`size-2 rounded-full ${
@@ -7545,7 +7550,7 @@ export function ProjectChatWorkspace({
                   {translateAllError}
                 </div>
               ) : null}
-              {canAcceptCurrentStageBrief ? (
+              {!isConceptMode && canAcceptCurrentStageBrief ? (
                 <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#acd9bd] bg-[linear-gradient(135deg,#f5fff6,#e6f7ea)] p-3 shadow-[0_18px_42px_rgba(22,93,56,0.16)]">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
@@ -7573,37 +7578,10 @@ export function ProjectChatWorkspace({
                   </div>
                 </div>
               ) : null}
-              {isConceptMode &&
-              showSubmitWorkAction &&
-              hasAcceptedBrief &&
-              (canSubmitNewRevision || isUploadingRevision) ? (
-                <div className="sticky top-[56px] z-20 mb-2 flex flex-col gap-2 rounded-[18px] border border-[#dbe7dd] bg-white/96 p-2.5 shadow-[0_14px_32px_rgba(22,93,56,0.1)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-                  <p className="min-w-0 text-[12px] font-[650] text-[#536158]">
-                    {submitWorkDisabledReason ?? "Submit the next concept revision for review."}
-                  </p>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    {canCompareSubmissions && conceptMode ? (
-                      <Button asChild variant="secondary" size="sm" className="rounded-full">
-                        <Link href={conceptMode.compareHref}>
-                          <GitCompare className="h-4 w-4" />
-                          Compare
-                        </Link>
-                      </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="rounded-full"
-                      onClick={openRevisionDialog}
-                      disabled={!canSubmitNewRevision || isUploadingRevision}
-                    >
-                      <Upload className="h-4 w-4" />
-                      Submit Work
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-              {canReviewLatestRevision && latestRevisionMessage && latestRevisionEntryId ? (
+              {!isConceptMode &&
+              canReviewLatestRevision &&
+              latestRevisionMessage &&
+              latestRevisionEntryId ? (
                 <div className="sticky top-[56px] z-20 mb-2 rounded-[22px] border border-[#b8dec5] bg-white/96 p-3 shadow-[0_18px_42px_rgba(22,93,56,0.14)] backdrop-blur">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
@@ -8727,6 +8705,67 @@ export function ProjectChatWorkspace({
             </div>
           </div>
 
+          {isConceptMode && canAcceptCurrentStageBrief ? (
+            <Card className="mx-auto w-full max-w-[1120px] shrink-0 rounded-[20px] border border-[#acd9bd] bg-[linear-gradient(135deg,#f5fff6,#e6f7ea)] px-3 py-2.5 shadow-[0_10px_28px_rgba(22,93,56,0.1)]">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
+                    Action required
+                  </p>
+                  <p className="mt-0.5 truncate text-[13px] font-[800] text-[#173120]">
+                    Accept the brief to start work on {activeStage?.label ?? "this stage"}.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="shrink-0 rounded-full px-4 text-[12px] font-[800]"
+                  onClick={() => {
+                    setAcceptBriefError(null);
+                    setAcceptBriefDialogOpen(true);
+                  }}
+                  disabled={isAcceptingBrief}
+                >
+                  {isAcceptingBrief ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Accept Brief / Start Work
+                </Button>
+              </div>
+            </Card>
+          ) : null}
+
+          {isConceptMode &&
+          showSubmitWorkAction &&
+          hasAcceptedBrief &&
+          (canSubmitNewRevision || isUploadingRevision) ? (
+            <Card className="mx-auto w-full max-w-[1120px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-white/96 px-3 py-2.5 shadow-[0_10px_28px_rgba(22,93,56,0.08)]">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="min-w-0 text-[12px] font-[650] text-[#536158]">
+                  {submitWorkDisabledReason ?? "Submit the next concept revision for review."}
+                </p>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {canCompareSubmissions && conceptMode ? (
+                    <Button asChild variant="secondary" size="sm" className="rounded-full">
+                      <Link href={conceptMode.compareHref}>
+                        <GitCompare className="h-4 w-4" />
+                        Compare
+                      </Link>
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={openRevisionDialog}
+                    disabled={!canSubmitNewRevision || isUploadingRevision}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Submit Work
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ) : null}
+
           {showLatestRevisionActionBar && latestRevisionMessage ? (
             <Card
               className={`mx-auto w-full shrink-0 rounded-[20px] border border-[#dfe8df] bg-white/95 px-3 py-2 shadow-[0_10px_28px_rgba(18,35,23,0.07)] backdrop-blur ${
@@ -8746,6 +8785,20 @@ export function ProjectChatWorkspace({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {canCompareSubmissions && conceptMode ? (
+                    <Button
+                      asChild
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-full text-[12px]"
+                    >
+                      <Link href={conceptMode.compareHref}>
+                        <GitCompare className="h-4 w-4" />
+                        Compare Submissions
+                      </Link>
+                    </Button>
+                  ) : null}
                   {canReviewLatestRevision && latestRevisionEntryId ? (
                     <Button
                       type="button"

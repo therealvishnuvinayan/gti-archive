@@ -81,10 +81,34 @@ const conceptStatusBlock = workspace.slice(
   workspace.indexOf("<StageTimeRemainingCard", workspace.indexOf("Concept Status")),
 );
 assert(
-  workspace.includes("{isConceptMode &&\n              showSubmitWorkAction &&\n              hasAcceptedBrief &&\n              (canSubmitNewRevision || isUploadingRevision) ? (") &&
+  workspace.includes("{isConceptMode &&\n          showSubmitWorkAction &&\n          hasAcceptedBrief &&\n          (canSubmitNewRevision || isUploadingRevision) ? (") &&
     workspace.includes("{!isConceptMode &&\n              showSubmitWorkAction &&") &&
     !conceptStatusBlock.includes("Submit Work"),
   "Concept mode must expose one canonical Submit Work action and exclude generic/sidebar duplicates.",
+);
+const conceptBottomActionIndex = workspace.indexOf(
+  "{isConceptMode && canAcceptCurrentStageBrief ? (",
+);
+const conceptLatestActionIndex = workspace.indexOf(
+  "{showLatestRevisionActionBar && latestRevisionMessage ? (",
+);
+assert(
+  conceptBottomActionIndex > workspace.indexOf('<div ref={chatBottomRef} />') &&
+    conceptBottomActionIndex < conceptLatestActionIndex &&
+    !workspace
+      .slice(conceptBottomActionIndex, conceptLatestActionIndex)
+      .includes("sticky top-[56px]"),
+  "Concept workflow actions must sit in normal layout directly above the composer instead of floating over history.",
+);
+const latestRevisionActionBlock = workspace.slice(
+  conceptLatestActionIndex,
+  workspace.indexOf("{isChatReadOnly ? (", conceptLatestActionIndex),
+);
+assert(
+  latestRevisionActionBlock.includes("canCompareSubmissions && conceptMode") &&
+    latestRevisionActionBlock.includes("conceptMode.compareHref") &&
+    latestRevisionActionBlock.includes("Compare Submissions"),
+  "Reviewer comparison must remain available in the composer action bar when the responsive sidebar is hidden.",
 );
 assert(
   workspace.includes("ProjectExecutorsPanel") &&
@@ -133,6 +157,7 @@ assert(
 
 assert(
   concepts.includes("const canReview = canReviewProjectConcept") &&
+    chatRoute.includes("? conceptMode.canReview") &&
     access.includes("context.coOwnerIds.includes(user.id)") &&
     access.includes("user.role === UserRole.SUPER_ADMIN") &&
     access.includes("context.assignedExecutorId !== user.id") &&
@@ -142,6 +167,15 @@ assert(
     workspace.includes('isConceptMode ? "Request Changes"') &&
     workspace.includes("!activeStage?.isTasker"),
   "Owner/co-owner/SUPER_ADMIN review and Request Changes must not restore tasker approval.",
+);
+assert(
+  compareRoute.includes("!context || !context.chatMode.canReview") &&
+    comparison.includes("? canReviewProjectConcept(user, concept)") &&
+    history.includes('mode: "review"') &&
+    workspace.includes('isConceptMode ? "hidden" : ""') &&
+    workspace.includes("!isConceptMode &&\n              canReviewLatestRevision") &&
+    workspace.includes("showLatestRevisionActionBar && latestRevisionMessage"),
+  "Concept comparison and review actions must be reviewer-only, keep the composer action bar, and hide duplicate top/presence controls.",
 );
 assert(
     history.includes("Concept taskers cannot use the legacy approve/complete action") &&
@@ -173,6 +207,24 @@ assert(
     compareWorkspace.includes("min-h-0 min-w-0 max-w-full") &&
     compareWorkspace.includes("[&>span]:min-w-0"),
   "Concept comparison cards and the overlay viewer must remain aligned within the available viewport.",
+);
+const comparisonFrameIndex = compareWorkspace.indexOf("ref={frameRef}");
+const pendingCaptionMarkerIndex = compareWorkspace.indexOf(
+  'data-caption-marker="pending"',
+  comparisonFrameIndex,
+);
+const pendingCaptionEditorIndex = compareWorkspace.indexOf(
+  'data-caption-editor="true"',
+  pendingCaptionMarkerIndex,
+);
+assert(
+  compareWorkspace.includes("relative min-h-0 border p-4") &&
+    pendingCaptionMarkerIndex > comparisonFrameIndex &&
+    pendingCaptionEditorIndex > pendingCaptionMarkerIndex &&
+    compareWorkspace.includes('data-caption-overlay-layer="true"') &&
+    compareWorkspace.includes("max-h-[calc(100%-1.5rem)]") &&
+    compareWorkspace.includes("overflow-y-auto"),
+  "Caption markers must remain image-anchored while caption controls stay inside a scroll-safe viewer overlay.",
 );
 assert(
   comparison.includes("getProjectConceptAccessContext") &&

@@ -103,7 +103,7 @@ export async function ConceptCompareRoute({
     stageKey,
   });
 
-  if (!context) {
+  if (!context || !context.chatMode.canReview) {
     return (
       <DashboardLayout>
         <ProjectAccessUnavailableState />

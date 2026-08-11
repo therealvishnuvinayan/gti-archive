@@ -2668,14 +2668,25 @@ export async function getProjectStageHistory(
   if (!hasProjectPermission(user, project, "project.view")) {
     throw new Error("You do not have access to this project.");
   }
-  assertProjectWorkflowPermission(
-    user,
-    project,
-    requiredPermissionKey,
-    requiredPermissionKey === "compare.view"
-      ? "You do not have permission to compare project submissions."
-      : "You do not have permission to view project chat.",
-  );
+  const conceptComparisonAccess =
+    requiredPermissionKey === "compare.view" && preferredStageId
+      ? await assertConceptTaskerAccessIfNeeded(user, {
+          projectId,
+          stageId: preferredStageId,
+          mode: "review",
+        })
+      : null;
+
+  if (!conceptComparisonAccess) {
+    assertProjectWorkflowPermission(
+      user,
+      project,
+      requiredPermissionKey,
+      requiredPermissionKey === "compare.view"
+        ? "You do not have permission to compare project submissions."
+        : "You do not have permission to view project chat.",
+    );
+  }
   const activeStageId = resolveStageId(project, preferredStageId);
   const lockedStageInfo = getLockedStageInfo(
     project.stages.map((stage) => ({

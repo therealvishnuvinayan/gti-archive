@@ -23,7 +23,6 @@ import {
 } from "@/lib/permissions/resolver";
 import {
   canReviewProjectConcept,
-  canViewProjectConcept,
   getProjectConceptAccessContext,
 } from "@/lib/project-concept-access";
 import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
@@ -218,7 +217,7 @@ async function resolveComparableSubmissionPair(
     taskerStageId: input.stageId,
   });
   const canViewComparison = concept
-    ? canViewProjectConcept(user, concept)
+    ? canReviewProjectConcept(user, concept)
     : hasProjectPermission(user, project, "compare.view");
 
   if (!canViewComparison) {

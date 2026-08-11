@@ -65,6 +65,18 @@ expectNavigation("/projects/project-1/stages/4/concepts/concept-1", {
   label: "Concept Folders",
   ariaLabel: "Back to Stage 4 Concept Folders",
 });
+expectNavigation("/projects/project-1/stages/3/concepts/concept-1/compare", {
+  owner: "topbar",
+  href: "/projects/project-1/stages/3/concepts/concept-1",
+  label: "Concept Chat",
+  ariaLabel: "Back to Concept Chat",
+});
+expectNavigation("/projects/project-1/stages/4/concepts/concept-1/compare", {
+  owner: "topbar",
+  href: "/projects/project-1/stages/4/concepts/concept-1",
+  label: "Concept Chat",
+  ariaLabel: "Back to Concept Chat",
+});
 expectNavigation("/projects/project-1/chat", {
   owner: "topbar",
   href: "/projects/project-1",

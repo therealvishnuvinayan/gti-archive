@@ -77,8 +77,6 @@ type ImageDimensions = {
 type PendingCommentPosition = {
   xPercent: number;
   yPercent: number;
-  displayXPercent: number;
-  displayYPercent: number;
 };
 
 type CompareZoomMode = "fit" | "width" | "zoom";
@@ -401,16 +399,6 @@ function ComparisonViewerSurface({
     };
   }, []);
 
-  function getPopoverPosition(comment: {
-    xPercent: number;
-    yPercent: number;
-  }) {
-    return {
-      left: `${clampPercent(comment.xPercent, 14, 86)}%`,
-      top: `${clampPercent(comment.yPercent, 12, 82)}%`,
-    };
-  }
-
   function handleFrameDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("[data-comment-interactive='true']")) {
       return;
@@ -433,8 +421,6 @@ function ComparisonViewerSurface({
     onCreatePendingComment({
       xPercent,
       yPercent,
-      displayXPercent: clampPercent(xPercent, 18, 82),
-      displayYPercent: clampPercent(yPercent, 14, 80),
     });
   }
 
@@ -681,7 +667,7 @@ function ComparisonViewerSurface({
 
       <div
         ref={viewportRef}
-        className={`min-h-0 border p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
+        className={`relative min-h-0 border p-4 shadow-[inset_0_0_0_1px_rgba(225,234,226,0.7)] ${
           fullscreenMode
             ? "flex-1 rounded-none border-[#2b332e] bg-[#0f1311]"
             : "h-[clamp(300px,44dvh,560px)] rounded-[28px] border-brand/25 bg-[radial-gradient(circle_at_top,rgba(89,158,106,0.08),transparent_55%),linear-gradient(180deg,#fcfdfb,#f4f8f4)]"
@@ -787,85 +773,102 @@ function ComparisonViewerSurface({
               );
             }) : null}
 
-            {commentsVisible && activeComment ? (
-              <div
-                data-comment-interactive="true"
-                className="absolute z-30 w-[min(18rem,calc(100%-1rem))] -translate-x-1/2 rounded-[18px] border border-[#d8e5d9] bg-white p-3 shadow-[0_18px_36px_rgba(14,31,20,0.14)]"
-                style={getPopoverPosition(activeComment)}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[12px] font-[700] text-[#111712]">{activeComment.author}</p>
-                    <p className="text-[10px] text-[#7b847d]">
-                      {activeComment.role} · {activeComment.createdAt}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="text-[#7d847e] transition hover:text-[#27322b]"
-                    onClick={() => onActiveCommentChange(null)}
-                    aria-label="Close caption"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <p className="mt-2 text-[12px] leading-[1.45] text-[#111712]">{activeComment.body}</p>
-              </div>
-            ) : null}
-
             {pendingComment ? (
-              <div
+              <span
+                data-caption-marker="pending"
                 data-comment-interactive="true"
-                className="absolute z-30 w-[min(19rem,calc(100%-1rem))] -translate-x-1/2 rounded-[20px] border border-[#d8e5d9] bg-white p-3 shadow-[0_20px_38px_rgba(14,31,20,0.16)]"
+                className="absolute z-20 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/90 bg-[#1f7a4b] text-white shadow-[0_12px_22px_rgba(16,33,23,0.2)]"
                 style={{
-                  left: `${pendingComment.displayXPercent}%`,
-                  top: `${pendingComment.displayYPercent}%`,
+                  left: `${pendingComment.xPercent}%`,
+                  top: `${pendingComment.yPercent}%`,
                 }}
-                onClick={(event) => event.stopPropagation()}
+                aria-hidden="true"
               >
-                <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58]">
-                  New Caption
-                </p>
-                <Textarea
-                  value={commentDraft}
-                  onChange={(event) => onCommentDraftChange(event.target.value)}
-                  placeholder="Caption"
-                  className="mt-3 min-h-[90px] rounded-[16px] border border-[#dce6de] bg-[#f8fbf8] text-[13px]"
-                />
-                {commentError ? (
-                  <p className="mt-2 text-[12px] text-[#bd554f]">{commentError}</p>
-                ) : null}
-                <div className="mt-3 flex items-center justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="rounded-full"
-                    onClick={onCancelComment}
-                    disabled={isSavingComment}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="rounded-full"
-                    onClick={onSaveComment}
-                    disabled={isSavingComment}
-                  >
-                    {isSavingComment ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                    Save Caption
-                  </Button>
-                </div>
-              </div>
+                <MessageSquarePlus className="h-4 w-4" />
+              </span>
             ) : null}
           </div>
         </div>
+
+        {commentsVisible && activeComment ? (
+          <div
+            data-caption-overlay-layer="true"
+            data-comment-interactive="true"
+            className="absolute inset-x-3 bottom-3 z-40 mx-auto max-h-[calc(100%-1.5rem)] w-[min(20rem,calc(100%-1.5rem))] overflow-y-auto rounded-[18px] border border-[#d8e5d9] bg-white p-3 shadow-[0_18px_36px_rgba(14,31,20,0.14)] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:mx-0 sm:w-80"
+            onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[12px] font-[700] text-[#111712]">{activeComment.author}</p>
+                <p className="text-[10px] text-[#7b847d]">
+                  {activeComment.role} · {activeComment.createdAt}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-[#7d847e] transition hover:text-[#27322b]"
+                onClick={() => onActiveCommentChange(null)}
+                aria-label="Close caption"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-2 text-[12px] leading-[1.45] text-[#111712]">{activeComment.body}</p>
+          </div>
+        ) : null}
+
+        {pendingComment ? (
+          <div
+            data-caption-editor="true"
+            data-caption-overlay-layer="true"
+            data-comment-interactive="true"
+            className="absolute inset-x-3 bottom-3 z-40 mx-auto max-h-[calc(100%-1.5rem)] w-[min(22rem,calc(100%-1.5rem))] overflow-y-auto rounded-[20px] border border-[#d8e5d9] bg-white p-4 shadow-[0_20px_38px_rgba(14,31,20,0.16)] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:mx-0 sm:w-[22rem]"
+            onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58]">
+              New Caption
+            </p>
+            <Textarea
+              value={commentDraft}
+              onChange={(event) => onCommentDraftChange(event.target.value)}
+              placeholder="Caption"
+              className="mt-3 min-h-[90px] rounded-[16px] border border-[#dce6de] bg-[#f8fbf8] text-[13px]"
+            />
+            {commentError ? (
+              <p className="mt-2 text-[12px] text-[#bd554f]">{commentError}</p>
+            ) : null}
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="rounded-full"
+                onClick={onCancelComment}
+                disabled={isSavingComment}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="rounded-full"
+                onClick={onSaveComment}
+                disabled={isSavingComment}
+              >
+                {isSavingComment ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Save Caption
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-4 shrink-0 rounded-[20px] border border-[#dde6de] bg-[#f8fbf8] px-4 py-3">

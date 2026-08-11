@@ -724,7 +724,7 @@ async function main() {
       "assigned executor must be able to resubmit after Request Changes",
     );
 
-    const ownerMarker = await createComparisonComment(owner, {
+    await createComparisonComment(owner, {
       projectId,
       stageId: conceptA.folder.taskerStageId,
       baseAttachmentId: firstRevisionFile.id,
@@ -734,7 +734,7 @@ async function main() {
       body: "Owner review marker",
       opacity: 70,
     });
-    const coOwnerMarker = await createComparisonComment(coOwner, {
+    await createComparisonComment(coOwner, {
       projectId,
       stageId: conceptA.folder.taskerStageId,
       baseAttachmentId: firstRevisionFile.id,
@@ -744,16 +744,14 @@ async function main() {
       body: "Co-owner review marker",
       opacity: 60,
     });
-    const executorVisibleMarkers = await getComparisonCommentsForPair(executorA, {
-      projectId,
-      stageId: conceptA.folder.taskerStageId,
-      baseAttachmentId: firstRevisionFile.id,
-      compareAttachmentId: secondRevisionFile.id,
-    });
-    check(
-      executorVisibleMarkers.some((marker) => marker.id === ownerMarker.id) &&
-        executorVisibleMarkers.some((marker) => marker.id === coOwnerMarker.id),
-      "assigned executor must be able to view owner/co-owner review markers",
+    await expectRejected(
+      getComparisonCommentsForPair(executorA, {
+        projectId,
+        stageId: conceptA.folder.taskerStageId,
+        baseAttachmentId: firstRevisionFile.id,
+        compareAttachmentId: secondRevisionFile.id,
+      }),
+      "assigned executor must not access the reviewer comparison workspace",
     );
     await expectRejected(
       createComparisonComment(executorA, {
@@ -1258,16 +1256,14 @@ async function main() {
       yPercent: 50,
       body: "Stage 4 review marker",
     });
-    check(
-      (
-        await getComparisonCommentsForPair(executorA, {
-          projectId,
-          stageId: stageFourTasker.id,
-          baseAttachmentId: stageFourBase.id,
-          compareAttachmentId: stageFourCompare.id,
-        })
-      ).some((marker) => marker.id === stageFourMarker.id),
-      "Stage 4 tasker comparison must work after Stage 4 becomes available",
+    await expectRejected(
+      getComparisonCommentsForPair(executorA, {
+        projectId,
+        stageId: stageFourTasker.id,
+        baseAttachmentId: stageFourBase.id,
+        compareAttachmentId: stageFourCompare.id,
+      }),
+      "Stage 4 comparison must remain restricted to authorized reviewers",
     );
 
     const promotedConcept = await prisma.projectConceptFolder.findUniqueOrThrow({

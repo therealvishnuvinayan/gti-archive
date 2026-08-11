@@ -202,7 +202,7 @@ async function ProjectChatDeferredContent({
     ? false
     : hasProjectPermission(user, projectContext, "collaborator.pauseVisibility");
   const canViewCompareSubmissions = conceptMode
-    ? true
+    ? conceptMode.canReview
     : hasProjectPermission(user, projectContext, "compare.view");
   const canAddCaptions = conceptMode
     ? conceptMode.canReview

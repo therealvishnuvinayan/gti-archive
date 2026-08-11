@@ -110,6 +110,16 @@ export function getDashboardBackNavigation(
     nestedStageRoute === "concepts" &&
     segments[5]
   ) {
+    const conceptId = segments[5];
+
+    if (segments[6] === "compare") {
+      return topbar(
+        `/projects/${projectId}/stages/${stageNumber}/concepts/${conceptId}`,
+        "Concept Chat",
+        "Back to Concept Chat",
+      );
+    }
+
     return topbar(
       `/projects/${projectId}/stages/${stageNumber}`,
       "Concept Folders",
