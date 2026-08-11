@@ -18,7 +18,6 @@ import {
   StageSectionLoadingShell,
 } from "@/components/projects/stage-route-shell";
 import { requireUser } from "@/lib/auth";
-import { getCollaborators } from "@/lib/collaboration";
 import { getProjectInquiryPageData } from "@/lib/project-inquiry";
 import {
   getProjectRouteAvailability,
@@ -101,16 +100,13 @@ async function StageOneDataContent({
   user: StageOnePageUser;
   project: NonNullable<Awaited<ReturnType<typeof getProjectStageShellById>>>;
 }) {
-  const [pageData, collaborators] = await Promise.all([
-    getProjectInquiryPageData(user, slug, []),
-    getCollaborators(),
-  ]);
+  const pageData = await getProjectInquiryPageData(user, slug);
 
   return (
     <StageOneWorkspace
       project={project}
       currentUserId={user.id}
-      pageData={{ ...pageData, availableCollaborators: collaborators }}
+      pageData={pageData}
       showChrome={false}
     />
   );

@@ -91,7 +91,7 @@ async function main() {
   await profile("stage-1", async () => {
     const [shell] = await Promise.all([
       getProjectStageShellById(project.id, user),
-      getProjectInquiryPageData(user, project.id, []),
+      getProjectInquiryPageData(user, project.id),
     ]);
     if (!shell) throw new Error("Project shell unavailable.");
   });

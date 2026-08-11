@@ -107,11 +107,10 @@ assert(
 for (const field of [
   "Client Name",
   "External / Internal - for execution",
-  "Final Beneficiary",
+  "Final Beneficiaries",
   "Target Market",
   "Initial Brief",
   "Key Business Objectives",
-  "Collaborators",
   "Deliverables",
   "Date",
   "Deadline",
@@ -123,11 +122,14 @@ for (const field of [
 
 assert(
   workspace.includes('<StageOneFormField label="Client Name" required') &&
-    workspace.includes('<StageOneFormField label="Final Beneficiary" required'),
-  "Only Client Name and Final Beneficiary should visibly show required markers.",
+    workspace.includes('label="Final Beneficiaries"') &&
+    workspace.includes("multiple"),
+  "Client Name and the multi-select Final Beneficiaries field must be required.",
 );
 assert.equal(
-  workspace.match(/<StageOneFormField label="[^"]+" required/g)?.length,
+  workspace
+    .match(/<StageOneFormField[\s\S]*?>/g)
+    ?.filter((tag) => /\brequired\b/.test(tag)).length,
   2,
   "Exactly two Stage 1 fields should visibly show required markers.",
 );
@@ -145,7 +147,6 @@ for (const snippet of [
   "MultiEntryInput",
   "createContactDirectoryEntryAction",
   "completeProjectInquiryAction",
-  "saveCollaboratorAction",
   'assetType: "GENERAL_PROJECT_ASSET"',
 ]) {
   assert(
@@ -174,7 +175,6 @@ assert(
     workspace.includes("targetMarkets: targetMarkets.map((label) => ({ label }))") &&
     workspace.includes("priority: priority || null") &&
     workspace.includes("const viewInquiry = pageData.canEdit ? draftInquiry : saved") &&
-    workspace.includes("availableCollaborators={collaborators}") &&
     workspace.includes("inquiry={viewInquiry}"),
   "Stage 1 View mode must render the current edit draft without completing the stage.",
 );
@@ -194,8 +194,7 @@ for (const label of [
   "Project Brief",
   "Initial Brief",
   "Key Business Objectives",
-  "Project Team",
-  "Collaborators",
+  "Project Deliverables",
   "Deliverables",
   "Project Details",
   "Date",
@@ -213,6 +212,21 @@ assert(
     !readOnlyView.includes("<select") &&
     !readOnlyView.includes("<textarea"),
   "Stage 1 View mode must not render editable form controls.",
+);
+assert(
+  workspace.includes("finalBeneficiaries.map((beneficiary)") &&
+    workspace.includes("setFinalBeneficiaries") &&
+    readOnlyView.includes("inquiry.finalBeneficiaries.map") &&
+    service.includes("finalBeneficiarySnapshots.map"),
+  "Stage 1 must accept, persist, and display multiple final beneficiaries.",
+);
+assert(
+  !workspace.includes('label="Collaborators"') &&
+    !workspace.includes("saveCollaboratorAction") &&
+    !workspace.includes("ProjectUserSelector") &&
+    !readOnlyView.includes('label="Collaborators"') &&
+    !service.includes("requestedCollaboratorIds"),
+  "Stage 1 must not duplicate or mutate collaborator selection from project creation.",
 );
 assert(
   !readOnlyView.includes("completeProjectInquiryAction") &&
@@ -276,6 +290,11 @@ assert(
   "Priority must remain a controlled Select for the component lifetime.",
 );
 assert(schema.includes("model ProjectInquiry"), "Stage 1 must persist its own domain record.");
+assert(
+  schema.includes("@@index([inquiryId, role, sequence])") &&
+    !schema.includes("@@unique([inquiryId, role])"),
+  "The inquiry party schema must allow multiple final beneficiaries.",
+);
 assert(
   schema.includes("inquiryDate        DateTime?                    @db.Date") &&
     schema.includes("deadline           DateTime?                    @db.Date"),

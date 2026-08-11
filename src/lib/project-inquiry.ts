@@ -10,17 +10,9 @@ import {
   ProjectInquiryTargetMarketKind,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
-  UserRole,
 } from "@prisma/client";
 
 import { getUserDisplayName } from "@/lib/auth";
-import type { CollaboratorRecord } from "@/lib/collaboration";
-import {
-  getCollaboratorTypeGroup,
-  getDefaultProjectCollaboratorParticipantType,
-  isProjectCollaboratorParticipantType,
-} from "@/lib/project-collaborator-participant-types";
-import { normalizeProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
 import {
   type ProjectContactInput,
   validateProjectContactInput,
@@ -31,7 +23,6 @@ import {
   PROJECT_INQUIRY_GLOBAL_MARKET_LABEL,
 } from "@/lib/project-inquiry-countries";
 import {
-  hasPermission,
   hasProjectPermission,
   type ProjectPermissionContext,
 } from "@/lib/permissions/resolver";
@@ -39,7 +30,6 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   getProjectStageAccessRecordById,
 } from "@/lib/project-stage-data";
-import { ensureProjectResearchWorkspaceTx } from "@/lib/project-research";
 import type { ProjectAccessUser } from "@/lib/projects";
 import {
   getWorkflowStageCompletionMode,
@@ -50,7 +40,6 @@ import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 const MAX_TEXT_LENGTH = 10_000;
 const MAX_LABEL_LENGTH = 160;
 const MAX_SELECTION_COUNT = 50;
-const MAX_COLLABORATOR_COUNT = 100;
 const MAX_ATTACHMENT_COUNT = 60;
 
 const projectAccessSelect = {
@@ -118,12 +107,11 @@ export type ProjectInquiryAttachmentRecord = {
 
 export type ProjectInquiryRecord = {
   client: ProjectInquiryPartySelection | null;
-  finalBeneficiary: ProjectInquiryPartySelection | null;
+  finalBeneficiaries: ProjectInquiryPartySelection[];
   clientOrigin: ProjectInquiryClientOrigin | null;
   targetMarkets: ProjectInquiryTargetMarketInput[];
   initialBrief: string;
   businessObjectives: string;
-  collaboratorIds: string[];
   deliverables: string[];
   inquiryDate: string;
   deadline: string;
@@ -141,21 +129,19 @@ export type ProjectInquiryPageData = {
   targetMarketSuggestions: ProjectInquiryTargetMarketInput[];
   countryOptions: string[];
   deliverableSuggestions: string[];
-  availableCollaborators: CollaboratorRecord[];
-  projectCollaboratorIds: string[];
   canEdit: boolean;
-  canInviteCollaborator: boolean;
 };
 
 export type CompleteProjectInquiryInput = {
   projectId: string;
   client: Pick<ProjectInquiryPartySelection, "source" | "id"> | null;
-  finalBeneficiary: Pick<ProjectInquiryPartySelection, "source" | "id"> | null;
+  finalBeneficiaries: Array<
+    Pick<ProjectInquiryPartySelection, "source" | "id">
+  >;
   clientOrigin?: ProjectInquiryClientOrigin | null;
   targetMarkets?: ProjectInquiryTargetMarketInput[];
   initialBrief?: string;
   businessObjectives?: string;
-  collaboratorIds?: string[];
   deliverables?: string[];
   inquiryDate?: string;
   deadline?: string;
@@ -167,12 +153,11 @@ export type CompleteProjectInquiryInput = {
 export type ProjectInquiryFieldErrors = Partial<
   Record<
     | "client"
-    | "finalBeneficiary"
+    | "finalBeneficiaries"
     | "clientOrigin"
     | "targetMarkets"
     | "initialBrief"
     | "businessObjectives"
-    | "collaboratorIds"
     | "deliverables"
     | "inquiryDate"
     | "deadline"
@@ -399,7 +384,6 @@ export async function createContactDirectoryEntry(
 export async function getProjectInquiryPageData(
   user: ProjectAccessUser,
   projectId: string,
-  availableCollaborators: CollaboratorRecord[],
 ): Promise<ProjectInquiryPageData> {
   const project = await getProjectAccessRecord(projectId);
 
@@ -416,7 +400,9 @@ export async function getProjectInquiryPageData(
       where: { projectId },
       relationLoadStrategy: "join",
       include: {
-        parties: true,
+        parties: {
+          orderBy: [{ role: "asc" }, { sequence: "asc" }, { createdAt: "asc" }],
+        },
         targetMarkets: {
           orderBy: { createdAt: "asc" },
         },
@@ -447,7 +433,7 @@ export async function getProjectInquiryPageData(
     const client = inquiry.parties.find(
       (party) => party.role === ProjectInquiryPartyRole.CLIENT,
     );
-    const finalBeneficiary = inquiry.parties.find(
+    const finalBeneficiaries = inquiry.parties.filter(
       (party) => party.role === ProjectInquiryPartyRole.FINAL_BENEFICIARY,
     );
     const attachments = emptyAttachmentRecord();
@@ -467,7 +453,7 @@ export async function getProjectInquiryPageData(
 
     mappedInquiry = {
       client: client ? mapSavedParty(client) : null,
-      finalBeneficiary: finalBeneficiary ? mapSavedParty(finalBeneficiary) : null,
+      finalBeneficiaries: finalBeneficiaries.map(mapSavedParty),
       clientOrigin: inquiry.clientOrigin,
       targetMarkets: inquiry.targetMarkets.map((market) => ({
         label: market.label,
@@ -475,7 +461,6 @@ export async function getProjectInquiryPageData(
       })),
       initialBrief: inquiry.initialBrief ?? "",
       businessObjectives: inquiry.businessObjectives ?? "",
-      collaboratorIds: project.collaborators.map((collaborator) => collaborator.userId),
       deliverables: inquiry.deliverables.map((deliverable) => deliverable.label),
       inquiryDate: formatDateOnly(inquiry.inquiryDate),
       deadline: formatDateOnly(inquiry.deadline),
@@ -494,12 +479,7 @@ export async function getProjectInquiryPageData(
       ...PROJECT_INQUIRY_COUNTRY_OPTIONS,
     ],
     deliverableSuggestions: [],
-    availableCollaborators,
-    projectCollaboratorIds: project.collaborators.map(
-      (collaborator) => collaborator.userId,
-    ),
     canEdit: hasProjectPermission(user, toPermissionContext(project), "project.update"),
-    canInviteCollaborator: hasPermission(user, "collaboration.createUser"),
   };
 }
 
@@ -624,12 +604,12 @@ export async function searchProjectInquiryHistorySuggestions(
 
 function validatePartyInput(
   value: CompleteProjectInquiryInput["client"],
-  field: "client" | "finalBeneficiary",
+  field: "client" | "finalBeneficiaries",
   fieldErrors: ProjectInquiryFieldErrors,
 ) {
   if (!value?.id?.trim()) {
     fieldErrors[field] =
-      field === "client" ? "Select a client." : "Select a final beneficiary.";
+      field === "client" ? "Select a client." : "Select at least one final beneficiary.";
     return null;
   }
 
@@ -642,6 +622,38 @@ function validatePartyInput(
     source: value.source,
     id: value.id.trim(),
   };
+}
+
+function validateFinalBeneficiaries(
+  values: CompleteProjectInquiryInput["finalBeneficiaries"],
+  fieldErrors: ProjectInquiryFieldErrors,
+) {
+  if (!Array.isArray(values) || values.length === 0) {
+    fieldErrors.finalBeneficiaries = "Select at least one final beneficiary.";
+    return [];
+  }
+
+  if (values.length > MAX_SELECTION_COUNT) {
+    fieldErrors.finalBeneficiaries = `Select no more than ${MAX_SELECTION_COUNT} final beneficiaries.`;
+    return [];
+  }
+
+  const validated = values
+    .map((value) =>
+      validatePartyInput(value, "finalBeneficiaries", fieldErrors),
+    )
+    .filter((value): value is NonNullable<typeof value> => Boolean(value));
+  const uniqueKeys = new Set(
+    validated.map((value) => `${value.source}:${value.id}`),
+  );
+
+  if (uniqueKeys.size !== validated.length) {
+    fieldErrors.finalBeneficiaries =
+      "A final beneficiary can only be selected once.";
+    return [];
+  }
+
+  return validated;
 }
 
 function normalizeTargetMarkets(
@@ -721,7 +733,7 @@ function normalizeDeliverables(
 function normalizeIds(
   values: string[] | undefined,
   maxCount: number,
-  field: "collaboratorIds" | "attachments",
+  field: "attachments",
   fieldErrors: ProjectInquiryFieldErrors,
 ) {
   const normalized = (values ?? []).map((value) => value.trim()).filter(Boolean);
@@ -803,9 +815,8 @@ export async function completeProjectInquiry(
   const projectId = input.projectId.trim();
   const fieldErrors: ProjectInquiryFieldErrors = {};
   const client = validatePartyInput(input.client, "client", fieldErrors);
-  const finalBeneficiary = validatePartyInput(
-    input.finalBeneficiary,
-    "finalBeneficiary",
+  const finalBeneficiaries = validateFinalBeneficiaries(
+    input.finalBeneficiaries,
     fieldErrors,
   );
   const initialBrief = normalizeOptionalText(input.initialBrief, "initialBrief", fieldErrors);
@@ -819,12 +830,6 @@ export async function completeProjectInquiry(
   const deadline = parseDateOnly(input.deadline, "deadline", fieldErrors);
   const targetMarkets = normalizeTargetMarkets(input.targetMarkets, fieldErrors);
   const deliverables = normalizeDeliverables(input.deliverables, fieldErrors);
-  const collaboratorIds = normalizeIds(
-    input.collaboratorIds,
-    MAX_COLLABORATOR_COUNT,
-    "collaboratorIds",
-    fieldErrors,
-  );
   const attachmentSelections = Object.values(ProjectInquiryAttachmentField).flatMap(
     (field) =>
       normalizeIds(
@@ -853,7 +858,11 @@ export async function completeProjectInquiry(
     fieldErrors.priority = "Select a valid priority.";
   }
 
-  if (Object.keys(fieldErrors).length > 0 || !client || !finalBeneficiary) {
+  if (
+    Object.keys(fieldErrors).length > 0 ||
+    !client ||
+    finalBeneficiaries.length === 0
+  ) {
     return {
       error: "Review the highlighted Stage 1 fields.",
       fieldErrors,
@@ -902,42 +911,23 @@ export async function completeProjectInquiry(
       }
 
       const clientSnapshot = await resolvePartySnapshot(tx, client);
-      const finalBeneficiarySnapshot = await resolvePartySnapshot(
-        tx,
-        finalBeneficiary,
+      const finalBeneficiarySnapshots = await Promise.all(
+        finalBeneficiaries.map((beneficiary) =>
+          resolvePartySnapshot(tx, beneficiary),
+        ),
       );
 
-      if (!clientSnapshot || !finalBeneficiarySnapshot) {
+      if (
+        !clientSnapshot ||
+        finalBeneficiarySnapshots.some((snapshot) => !snapshot)
+      ) {
         return {
           error: "One or more selected parties are no longer available.",
           fieldErrors: {
             ...(!clientSnapshot ? { client: "Select a valid client." } : {}),
-            ...(!finalBeneficiarySnapshot
-              ? { finalBeneficiary: "Select a valid final beneficiary." }
+            ...(finalBeneficiarySnapshots.some((snapshot) => !snapshot)
+              ? { finalBeneficiaries: "Select only valid final beneficiaries." }
               : {}),
-          },
-        } as const;
-      }
-
-      const uniqueCollaboratorIds = [...new Set(collaboratorIds)];
-      const collaboratorUsers = uniqueCollaboratorIds.length
-        ? await tx.user.findMany({
-            where: {
-              id: { in: uniqueCollaboratorIds },
-              role: UserRole.COLLABORATOR,
-            },
-            select: {
-              id: true,
-              collaboratorType: true,
-            },
-          })
-        : [];
-
-      if (collaboratorUsers.length !== uniqueCollaboratorIds.length) {
-        return {
-          error: "One or more collaborators are no longer eligible.",
-          fieldErrors: {
-            collaboratorIds: "Select only eligible application collaborators.",
           },
         } as const;
       }
@@ -1009,13 +999,15 @@ export async function completeProjectInquiry(
           {
             inquiryId: inquiry.id,
             role: ProjectInquiryPartyRole.CLIENT,
+            sequence: 0,
             ...clientSnapshot,
           },
-          {
+          ...finalBeneficiarySnapshots.map((snapshot, sequence) => ({
             inquiryId: inquiry.id,
             role: ProjectInquiryPartyRole.FINAL_BENEFICIARY,
-            ...finalBeneficiarySnapshot,
-          },
+            sequence,
+            ...snapshot!,
+          })),
         ],
       });
 
@@ -1053,89 +1045,6 @@ export async function completeProjectInquiry(
             ...selection,
           })),
         });
-      }
-
-      const existingCollaboratorIds = new Set(
-        project.collaborators.map((collaborator) => collaborator.userId),
-      );
-      const newCollaborators = collaboratorUsers.filter(
-        (collaborator) => !existingCollaboratorIds.has(collaborator.id),
-      );
-      const requestedCollaboratorIds = new Set(
-        collaboratorUsers.map((collaborator) => collaborator.id),
-      );
-      const protectedParticipantIds = new Set([
-        ...(project.ownerId ? [project.ownerId] : []),
-        ...project.coOwners.map((coOwner) => coOwner.userId),
-        ...project.executors.map((executor) => executor.userId),
-      ]);
-      const removableCollaboratorIds = project.collaborators
-        .map((collaborator) => collaborator.userId)
-        .filter(
-          (userId) =>
-            !requestedCollaboratorIds.has(userId) &&
-            !protectedParticipantIds.has(userId),
-        );
-
-      if (removableCollaboratorIds.length > 0) {
-        await tx.projectCollaborator.deleteMany({
-          where: {
-            projectId,
-            userId: { in: removableCollaboratorIds },
-          },
-        });
-      }
-
-      if (newCollaborators.length > 0) {
-        const notificationRecipientIds: string[] = [];
-
-        for (const collaborator of newCollaborators) {
-          const participantType = isProjectCollaboratorParticipantType(
-            collaborator.collaboratorType,
-          )
-            ? collaborator.collaboratorType
-            : getDefaultProjectCollaboratorParticipantType(
-                getCollaboratorTypeGroup(collaborator.collaboratorType),
-              );
-          const created = await tx.projectCollaborator.createMany({
-            data: [
-              {
-                projectId,
-                userId: collaborator.id,
-                addedById: user.id,
-                participantType,
-                ...normalizeProjectCollaboratorPermissions(null, participantType),
-              },
-            ],
-            skipDuplicates: true,
-          });
-
-          if (created.count === 1 && collaborator.id !== user.id) {
-            notificationRecipientIds.push(collaborator.id);
-          }
-
-          if (created.count === 1) {
-            await ensureProjectResearchWorkspaceTx(tx, projectId, collaborator.id);
-          }
-        }
-
-        if (notificationRecipientIds.length > 0) {
-          const now = new Date();
-          await tx.notification.createMany({
-            data: notificationRecipientIds.map((userId) => ({
-              userId,
-              type: "COLLABORATOR_ADDED",
-              title: "Added to project",
-              message: `You have been added to ${project.name}.`,
-              entityType: "PROJECT",
-              entityId: projectId,
-              projectId,
-              url: `/projects/${projectId}/stages/1`,
-              createdAt: now,
-              updatedAt: now,
-            })),
-          });
-        }
       }
 
       if (isFirstCompletion) {

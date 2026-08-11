@@ -25,11 +25,9 @@ import {
   Loader2,
   Paperclip,
   Search,
-  UserPlus,
   X,
 } from "lucide-react";
 
-import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
   completeProjectInquiryAction,
   createContactDirectoryEntryAction,
@@ -37,10 +35,6 @@ import {
   searchProjectInquiryPartyOptionsAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/1/actions";
 import { AppDatePicker } from "@/components/calendar/app-date-picker";
-import {
-  CollaboratorDialog,
-  type CollaboratorForm,
-} from "@/components/collaboration/collaborator-dialog";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
 import { StageOneReadOnlyView } from "@/components/projects/stage-one-read-only-view";
@@ -48,10 +42,6 @@ import {
   ProjectContactDialog,
   type ProjectContactForm,
 } from "@/components/projects/project-contact-dialog";
-import {
-  ProjectUserSelector,
-  type ProjectUserOption,
-} from "@/components/projects/project-user-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -63,7 +53,6 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import type { CollaboratorRecord } from "@/lib/collaboration";
 import { validateProjectContactInput } from "@/lib/project-contact-validation";
 import type {
   CompleteProjectInquiryInput,
@@ -75,7 +64,7 @@ import type {
   ProjectInquiryRecord,
 } from "@/lib/project-inquiry";
 import type { ProjectStageShellRecord } from "@/lib/projects";
-import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 type StageOneWorkspaceProps = {
@@ -103,30 +92,6 @@ function getTodayDateValue() {
 
 function getDefaultContactForm(): ProjectContactForm {
   return { name: "", company: "", position: "", email: "", phone: "" };
-}
-
-function getDefaultCollaboratorForm(): CollaboratorForm {
-  return { name: "", email: "", type: "GTI_INTERNAL_CLIENT" };
-}
-
-function toUserOption(collaborator: CollaboratorRecord): ProjectUserOption {
-  return {
-    id: collaborator.id,
-    name: collaborator.name,
-    email: collaborator.email,
-    role: "COLLABORATOR",
-  };
-}
-
-function upsertCollaborator(
-  collaborators: CollaboratorRecord[],
-  next: CollaboratorRecord,
-) {
-  return collaborators.some((collaborator) => collaborator.id === next.id)
-    ? collaborators.map((collaborator) =>
-        collaborator.id === next.id ? next : collaborator,
-      )
-    : [...collaborators, next];
 }
 
 function formatBytes(bytes: number) {
@@ -162,7 +127,8 @@ function PartySelector({
   ariaLabel,
   placeholder,
   options,
-  value,
+  values,
+  multiple = false,
   disabled,
   error,
   onChange,
@@ -171,10 +137,11 @@ function PartySelector({
   ariaLabel: string;
   placeholder: string;
   options: ProjectInquiryPartyOption[];
-  value: ProjectInquiryPartySelection | null;
+  values: ProjectInquiryPartySelection[];
+  multiple?: boolean;
   disabled: boolean;
   error?: string;
-  onChange: (value: ProjectInquiryPartySelection | null) => void;
+  onChange: (values: ProjectInquiryPartySelection[]) => void;
   onSearch: (query: string) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -182,15 +149,38 @@ function PartySelector({
   const [searching, setSearching] = useState(false);
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const selectedKeys = useMemo(
+    () => new Set(values.map((value) => `${value.source}:${value.id}`)),
+    [values],
+  );
+  const singleValue = multiple ? null : values[0] ?? null;
+  const showSearchInput = multiple || !singleValue || open;
   const filteredOptions = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("en");
     return options.filter((option) => {
+      if (multiple && selectedKeys.has(`${option.source}:${option.id}`)) {
+        return false;
+      }
       if (!normalizedQuery) return true;
       return [option.name, option.company, option.position, option.email]
         .filter(Boolean)
         .some((part) => part!.toLocaleLowerCase("en").includes(normalizedQuery));
     });
-  }, [options, query]);
+  }, [multiple, options, query, selectedKeys]);
+
+  function selectOption(option: ProjectInquiryPartyOption) {
+    onChange(multiple ? [...values, option] : [option]);
+    setQuery("");
+    setOpen(multiple);
+  }
+
+  function removeOption(option: ProjectInquiryPartySelection) {
+    onChange(
+      values.filter(
+        (value) => value.id !== option.id || value.source !== option.source,
+      ),
+    );
+  }
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -222,14 +212,36 @@ function PartySelector({
     <div ref={rootRef} className="relative">
       <div
         className={cn(
-          "flex min-h-12 items-center gap-2 rounded-[14px] border bg-white px-3 transition",
+          "flex min-h-12 flex-wrap items-center gap-2 rounded-[14px] border bg-white px-3 py-1 transition",
           open ? "border-brand ring-3 ring-brand/10" : "border-[#dce3dc]",
           error && "border-[#c85c54]",
           disabled && "bg-[#f6f8f6] opacity-70",
         )}
       >
-        <Search className="h-4 w-4 shrink-0 text-[#859087]" />
-        {value && !open ? (
+        {multiple
+          ? values.map((value) => (
+              <span
+                key={`${value.source}:${value.id}`}
+                className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-[#edf4ee] py-1 pl-2.5 pr-1 text-[12px] font-[650] text-[#285f43]"
+              >
+                <span className="max-w-[180px] truncate">{value.name}</span>
+                {!disabled ? (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${value.name}`}
+                    onClick={() => removeOption(value)}
+                    className="grid size-5 place-items-center rounded-full hover:bg-[#dce9df]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </span>
+            ))
+          : null}
+        {showSearchInput ? (
+          <Search className="h-4 w-4 shrink-0 text-[#859087]" />
+        ) : null}
+        {singleValue && !open ? (
           <button
             type="button"
             disabled={disabled}
@@ -237,11 +249,11 @@ function PartySelector({
             className="min-w-0 flex-1 text-left"
           >
             <span className="block truncate text-[13px] font-[650] text-[#263029]">
-              {value.name}
+              {singleValue.name}
             </span>
-            {value.company || value.email ? (
+            {singleValue.company || singleValue.email ? (
               <span className="block truncate text-[11px] text-[#7d8780]">
-                {value.company || value.email}
+                {singleValue.company || singleValue.email}
               </span>
             ) : null}
           </button>
@@ -262,21 +274,19 @@ function PartySelector({
               if (event.key === "Escape") setOpen(false);
               if (event.key === "Enter" && filteredOptions[0]) {
                 event.preventDefault();
-                onChange(filteredOptions[0]);
-                setQuery("");
-                setOpen(false);
+                selectOption(filteredOptions[0]);
               }
             }}
             placeholder={placeholder}
             className="h-10 min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[#9aa39b]"
           />
         )}
-        {value && !disabled ? (
+        {singleValue && !disabled ? (
           <button
             type="button"
             aria-label={`Clear ${ariaLabel}`}
             onClick={() => {
-              onChange(null);
+              onChange([]);
               setQuery("");
               setOpen(true);
             }}
@@ -309,7 +319,7 @@ function PartySelector({
             </p>
           ) : filteredOptions.length ? (
             filteredOptions.map((option) => {
-              const selected = value?.id === option.id && value.source === option.source;
+              const selected = selectedKeys.has(`${option.source}:${option.id}`);
               return (
                 <button
                   key={`${option.source}:${option.id}`}
@@ -317,9 +327,7 @@ function PartySelector({
                   role="option"
                   aria-selected={selected}
                   onClick={() => {
-                    onChange(option);
-                    setQuery("");
-                    setOpen(false);
+                    selectOption(option);
                   }}
                   className="flex w-full items-center gap-3 rounded-[13px] px-3 py-2.5 text-left hover:bg-[#f3f7f3]"
                 >
@@ -865,7 +873,10 @@ export function StageOneWorkspace({
   const [submitting, startSubmitting] = useTransition();
   const [partyOptions, setPartyOptions] = useState(() => {
     const options = [...pageData.partyOptions];
-    for (const savedParty of [saved?.client, saved?.finalBeneficiary]) {
+    for (const savedParty of [
+      saved?.client,
+      ...(saved?.finalBeneficiaries ?? []),
+    ]) {
       if (
         savedParty &&
         !options.some(
@@ -878,8 +889,8 @@ export function StageOneWorkspace({
     return options;
   });
   const [client, setClient] = useState(saved?.client ?? null);
-  const [finalBeneficiary, setFinalBeneficiary] = useState(
-    saved?.finalBeneficiary ?? null,
+  const [finalBeneficiaries, setFinalBeneficiaries] = useState(
+    saved?.finalBeneficiaries ?? [],
   );
   const [clientOrigin, setClientOrigin] = useState<"EXTERNAL" | "INTERNAL">(
     saved?.clientOrigin ?? "EXTERNAL",
@@ -893,10 +904,6 @@ export function StageOneWorkspace({
   const [initialBrief, setInitialBrief] = useState(saved?.initialBrief ?? "");
   const [businessObjectives, setBusinessObjectives] = useState(
     saved?.businessObjectives ?? "",
-  );
-  const [collaborators, setCollaborators] = useState(pageData.availableCollaborators);
-  const [collaboratorIds, setCollaboratorIds] = useState(
-    saved?.collaboratorIds ?? pageData.projectCollaboratorIds,
   );
   const [deliverables, setDeliverables] = useState(saved?.deliverables ?? []);
   const [deliverableHistory, setDeliverableHistory] = useState(
@@ -922,19 +929,14 @@ export function StageOneWorkspace({
   const [contactErrors, setContactErrors] = useState<Partial<Record<keyof ProjectContactForm, string>>>({});
   const [contactError, setContactError] = useState<string>();
   const [contactSaving, setContactSaving] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState<CollaboratorForm>(getDefaultCollaboratorForm);
-  const [inviteError, setInviteError] = useState<string>();
-  const [inviteSaving, setInviteSaving] = useState(false);
   const draftInquiry = useMemo<ProjectInquiryRecord>(
     () => ({
       client,
-      finalBeneficiary,
+      finalBeneficiaries,
       clientOrigin,
       targetMarkets: targetMarkets.map((label) => ({ label })),
       initialBrief,
       businessObjectives,
-      collaboratorIds,
       deliverables,
       inquiryDate,
       deadline,
@@ -947,10 +949,9 @@ export function StageOneWorkspace({
       businessObjectives,
       client,
       clientOrigin,
-      collaboratorIds,
       deadline,
       deliverables,
-      finalBeneficiary,
+      finalBeneficiaries,
       initialBrief,
       inquiryDate,
       legalNotes,
@@ -959,10 +960,6 @@ export function StageOneWorkspace({
     ],
   );
   const viewInquiry = pageData.canEdit ? draftInquiry : saved;
-  const collaboratorOptions = useMemo(
-    () => collaborators.map(toUserOption),
-    [collaborators],
-  );
   const targetMarketSuggestions = useMemo(
     () =>
       Array.from(
@@ -1064,8 +1061,8 @@ export function StageOneWorkspace({
         setClient(result.contact);
         clearFieldError("client");
       } else {
-        setFinalBeneficiary(result.contact);
-        clearFieldError("finalBeneficiary");
+        setFinalBeneficiaries((current) => [...current, result.contact]);
+        clearFieldError("finalBeneficiaries");
       }
       setContactTarget(null);
       showSuccessToast(
@@ -1082,58 +1079,14 @@ export function StageOneWorkspace({
     }
   }
 
-  function openInviteDialog() {
-    if (!pageData.canInviteCollaborator) {
-      showWarningToast(
-        "Invitation unavailable.",
-        "You do not have permission to invite collaborators.",
-      );
-      return;
-    }
-    setInviteForm(getDefaultCollaboratorForm());
-    setInviteError(undefined);
-    setInviteOpen(true);
-  }
-
-  async function handleInviteCollaborator() {
-    if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
-      setInviteError("Enter both collaborator name and email.");
-      return;
-    }
-    setInviteSaving(true);
-    setInviteError(undefined);
-    try {
-      const result = await saveCollaboratorAction({
-        ...inviteForm,
-        allowExistingUser: true,
-      });
-      if ("error" in result) {
-        setInviteError(result.error);
-        return;
-      }
-      setCollaborators((current) => upsertCollaborator(current, result.collaborator));
-      setCollaboratorIds((current) =>
-        current.includes(result.collaborator.id)
-          ? current
-          : [...current, result.collaborator.id],
-      );
-      clearFieldError("collaboratorIds");
-      setInviteOpen(false);
-      showSuccessToast("Collaborator invited and selected.");
-      if (result.warning) showWarningToast("Collaborator saved with a warning.", result.warning);
-    } catch {
-      setInviteError("Unable to invite the collaborator right now. Please try again.");
-    } finally {
-      setInviteSaving(false);
-    }
-  }
-
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!pageData.canEdit || submitting) return;
     const nextErrors: ProjectInquiryFieldErrors = {};
     if (!client) nextErrors.client = "Select a client.";
-    if (!finalBeneficiary) nextErrors.finalBeneficiary = "Select a final beneficiary.";
+    if (finalBeneficiaries.length === 0) {
+      nextErrors.finalBeneficiaries = "Select at least one final beneficiary.";
+    }
     setFieldErrors(nextErrors);
     setFormError(undefined);
     if (Object.keys(nextErrors).length) {
@@ -1144,14 +1097,14 @@ export function StageOneWorkspace({
     const input: CompleteProjectInquiryInput = {
       projectId: project.id,
       client: client ? { source: client.source, id: client.id } : null,
-      finalBeneficiary: finalBeneficiary
-        ? { source: finalBeneficiary.source, id: finalBeneficiary.id }
-        : null,
+      finalBeneficiaries: finalBeneficiaries.map((beneficiary) => ({
+        source: beneficiary.source,
+        id: beneficiary.id,
+      })),
       clientOrigin,
       targetMarkets: targetMarkets.map((label) => ({ label })),
       initialBrief,
       businessObjectives,
-      collaboratorIds,
       deliverables,
       inquiryDate,
       deadline,
@@ -1245,7 +1198,6 @@ export function StageOneWorkspace({
         <StageOneReadOnlyView
           projectId={project.id}
           inquiry={viewInquiry}
-          availableCollaborators={collaborators}
           canEdit={pageData.canEdit}
         />
       ) : (
@@ -1274,12 +1226,12 @@ export function StageOneWorkspace({
                   ariaLabel="Client name"
                   placeholder="Search or select client"
                   options={partyOptions}
-                  value={client}
+                  values={client ? [client] : []}
                   disabled={readOnly || submitting}
                   error={fieldErrors.client}
                   onSearch={loadPartyOptions}
-                  onChange={(value) => {
-                    setClient(value);
+                  onChange={(values) => {
+                    setClient(values[0] ?? null);
                     clearFieldError("client");
                   }}
                 />
@@ -1318,18 +1270,23 @@ export function StageOneWorkspace({
                 </div>
               </StageOneFormField>
 
-              <StageOneFormField label="Final Beneficiary" required error={fieldErrors.finalBeneficiary}>
+              <StageOneFormField
+                label="Final Beneficiaries"
+                required
+                error={fieldErrors.finalBeneficiaries}
+              >
                 <PartySelector
-                  ariaLabel="Final beneficiary"
-                  placeholder="Search or select beneficiary"
+                  ariaLabel="Final beneficiaries"
+                  placeholder="Search or select beneficiaries"
                   options={partyOptions}
-                  value={finalBeneficiary}
+                  values={finalBeneficiaries}
+                  multiple
                   disabled={readOnly || submitting}
-                  error={fieldErrors.finalBeneficiary}
+                  error={fieldErrors.finalBeneficiaries}
                   onSearch={loadPartyOptions}
-                  onChange={(value) => {
-                    setFinalBeneficiary(value);
-                    clearFieldError("finalBeneficiary");
+                  onChange={(values) => {
+                    setFinalBeneficiaries(values);
+                    clearFieldError("finalBeneficiaries");
                   }}
                 />
                 {!readOnly ? (
@@ -1395,29 +1352,6 @@ export function StageOneWorkspace({
                   <p className="mt-2 text-[11px] text-[#718078]">
                     Add each objective separately. Type an objective and press Enter to add it.
                   </p>
-                ) : null}
-              </StageOneFormField>
-
-              <StageOneFormField label="Collaborators" error={fieldErrors.collaboratorIds}>
-                <div className={cn((readOnly || submitting) && "pointer-events-none opacity-70")}>
-                  <ProjectUserSelector
-                    users={collaboratorOptions}
-                    selectedIds={collaboratorIds}
-                    onChange={(ids) => {
-                      setCollaboratorIds(ids);
-                      clearFieldError("collaboratorIds");
-                    }}
-                    mode="multiple"
-                    placeholder="Search or select collaborators"
-                    ariaLabel="Collaborators"
-                    error={fieldErrors.collaboratorIds}
-                  />
-                </div>
-                {!readOnly ? (
-                  <button type="button" disabled={submitting} onClick={openInviteDialog} className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-[650] text-[#2d7b51] hover:text-[#185d3a] disabled:opacity-50">
-                    <UserPlus className="h-3.5 w-3.5" />
-                    Invite collaborator
-                  </button>
                 ) : null}
               </StageOneFormField>
 
@@ -1521,19 +1455,6 @@ export function StageOneWorkspace({
         }}
       />
 
-      <CollaboratorDialog
-        isOpen={inviteOpen}
-        mode="invite"
-        form={inviteForm}
-        error={inviteError}
-        saving={inviteSaving}
-        onClose={() => { if (!inviteSaving) setInviteOpen(false); }}
-        onSubmit={() => void handleInviteCollaborator()}
-        onChange={(field, value) => {
-          setInviteForm((current) => ({ ...current, [field]: value }));
-          setInviteError(undefined);
-        }}
-      />
     </section>
   );
 }

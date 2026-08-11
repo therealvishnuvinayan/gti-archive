@@ -716,10 +716,11 @@ model ProjectInquiryParty {
   snapshotPosition String?
   snapshotEmail    String?
   snapshotPhone    String?
+  sequence         Int                       @default(0)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
-  @@unique([inquiryId, role])
+  @@index([inquiryId, role, sequence])
   @@index([userId])
   @@index([contactId])
 }

@@ -11,7 +11,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { CollaboratorRecord } from "@/lib/collaboration";
 import type {
   ProjectInquiryAttachmentRecord,
   ProjectInquiryPartySelection,
@@ -22,7 +21,6 @@ import { cn } from "@/lib/utils";
 type StageOneReadOnlyViewProps = {
   projectId: string;
   inquiry: ProjectInquiryRecord | null;
-  availableCollaborators: CollaboratorRecord[];
   canEdit: boolean;
 };
 
@@ -273,52 +271,9 @@ function ReadOnlyAttachmentList({
   );
 }
 
-function CollaboratorList({
-  collaboratorIds,
-  availableCollaborators,
-}: {
-  collaboratorIds: string[];
-  availableCollaborators: CollaboratorRecord[];
-}) {
-  const collaboratorById = new Map(
-    availableCollaborators.map((collaborator) => [collaborator.id, collaborator]),
-  );
-  const selected = collaboratorIds
-    .map((collaboratorId) => collaboratorById.get(collaboratorId))
-    .filter((collaborator): collaborator is CollaboratorRecord => Boolean(collaborator));
-
-  if (!selected.length) return <NotProvided />;
-
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {selected.map((collaborator) => (
-        <div
-          key={collaborator.id}
-          className="flex min-w-0 items-center gap-3 rounded-[14px] border border-[#e2e8e2] bg-[#fbfcfb] p-3"
-        >
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#eaf3ec] text-[11px] font-[760] text-[#2f7450]">
-            {getInitials(collaborator.name)}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-[680] text-[#28332b]">
-              {collaborator.name}
-            </p>
-            {collaborator.email ? (
-              <p className="mt-0.5 truncate text-[11px] text-[#849087]">
-                {collaborator.email}
-              </p>
-            ) : null}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function StageOneReadOnlyView({
   projectId,
   inquiry,
-  availableCollaborators,
   canEdit,
 }: StageOneReadOnlyViewProps) {
   const targetMarkets = inquiry?.targetMarkets.map((market) => market.label) ?? [];
@@ -337,7 +292,23 @@ export function StageOneReadOnlyView({
       <StageOneViewSection title="Client Information">
         <div className="grid gap-4 lg:grid-cols-2">
           <PartyDetails label="Client Name" party={inquiry?.client} />
-          <PartyDetails label="Final Beneficiary" party={inquiry?.finalBeneficiary} />
+          <div className="grid gap-4">
+            {inquiry?.finalBeneficiaries.length ? (
+              inquiry.finalBeneficiaries.map((beneficiary, index) => (
+                <PartyDetails
+                  key={`${beneficiary.source}:${beneficiary.id}`}
+                  label={
+                    inquiry.finalBeneficiaries.length > 1
+                      ? `Final Beneficiary ${index + 1}`
+                      : "Final Beneficiary"
+                  }
+                  party={beneficiary}
+                />
+              ))
+            ) : (
+              <PartyDetails label="Final Beneficiary" party={null} />
+            )}
+          </div>
         </div>
         <div className="mt-5 grid gap-5 border-t border-[#edf1ed] pt-5 sm:grid-cols-2">
           <ReadOnlyValue
@@ -369,22 +340,11 @@ export function StageOneReadOnlyView({
         </div>
       </StageOneViewSection>
 
-      <StageOneViewSection title="Project Team">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <ReadOnlyValue
-            label="Collaborators"
-            value={
-              <CollaboratorList
-                collaboratorIds={inquiry?.collaboratorIds ?? []}
-                availableCollaborators={availableCollaborators}
-              />
-            }
-          />
-          <ReadOnlyValue
-            label="Deliverables"
-            value={<ChipList values={inquiry?.deliverables ?? []} />}
-          />
-        </div>
+      <StageOneViewSection title="Project Deliverables">
+        <ReadOnlyValue
+          label="Deliverables"
+          value={<ChipList values={inquiry?.deliverables ?? []} />}
+        />
       </StageOneViewSection>
 
       <StageOneViewSection title="Project Details">

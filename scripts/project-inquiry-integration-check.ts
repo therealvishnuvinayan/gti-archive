@@ -71,10 +71,12 @@ function requiredParties(projectId: string): CompleteProjectInquiryInput {
       source: ProjectInquiryPartySource.USER,
       id: "inquiry-client-user",
     },
-    finalBeneficiary: {
-      source: ProjectInquiryPartySource.USER,
-      id: "inquiry-beneficiary-user",
-    },
+    finalBeneficiaries: [
+      {
+        source: ProjectInquiryPartySource.USER,
+        id: "inquiry-beneficiary-user",
+      },
+    ],
   };
 }
 
@@ -156,9 +158,9 @@ async function main() {
 
   const missingBeneficiary = await completeProjectInquiry(superAdmin, {
     ...requiredParties(failureProject.id),
-    finalBeneficiary: null,
+    finalBeneficiaries: [],
   });
-  assertError(missingBeneficiary, "finalBeneficiary");
+  assertError(missingBeneficiary, "finalBeneficiaries");
 
   const duplicateDeliverables = await completeProjectInquiry(superAdmin, {
     ...requiredParties(failureProject.id),
@@ -315,10 +317,16 @@ async function main() {
       source: ProjectInquiryPartySource.MANUAL_CONTACT,
       id: clientContactResult.contact.id,
     },
-    finalBeneficiary: {
-      source: ProjectInquiryPartySource.MANUAL_CONTACT,
-      id: beneficiaryContactResult.contact.id,
-    },
+    finalBeneficiaries: [
+      {
+        source: ProjectInquiryPartySource.MANUAL_CONTACT,
+        id: beneficiaryContactResult.contact.id,
+      },
+      {
+        source: ProjectInquiryPartySource.USER,
+        id: "inquiry-beneficiary-user",
+      },
+    ],
     clientOrigin: ProjectInquiryClientOrigin.EXTERNAL,
     targetMarkets: [
       { label: "United Arab Emirates" },
@@ -327,7 +335,6 @@ async function main() {
     ],
     initialBrief: "Persisted initial brief",
     businessObjectives: "Persisted business objectives",
-    collaboratorIds: ["inquiry-collaborator-a", "inquiry-collaborator-b"],
     deliverables: ["Packaging Artwork", "Signature Artwork"],
     inquiryDate: "2026-08-07",
     deadline: "2026-09-21",
@@ -400,14 +407,14 @@ async function main() {
     "Attachments must associate with their exact Stage 1 fields.",
   );
   assert(
-    (await prisma.projectCollaborator.count({ where: { projectId: mainProject.id } })) === 2,
-    "Multiple project collaborators must be added.",
+    persisted.parties.filter(
+      (party) => party.role === "FINAL_BENEFICIARY",
+    ).length === 2,
+    "Multiple final beneficiaries must persist.",
   );
   assert(
-    (await prisma.notification.count({
-      where: { projectId: mainProject.id, type: "COLLABORATOR_ADDED" },
-    })) === 2,
-    "Each newly added collaborator must receive exactly one notification.",
+    (await prisma.projectCollaborator.count({ where: { projectId: mainProject.id } })) === 0,
+    "Stage 1 must not change project collaborators selected during project creation.",
   );
   assert(
     (await prisma.notification.count({
@@ -454,18 +461,9 @@ async function main() {
     "Stages 3-7 must remain LOCKED.",
   );
 
-  const notificationsBeforeRepeat = await prisma.notification.count({
-    where: { projectId: mainProject.id, type: "COLLABORATOR_ADDED" },
-  });
   const stageOneCompletionTime = stageOneAfterSuccess.completedAt?.getTime();
   const repeated = await completeProjectInquiry(superAdmin, richInput);
   assert("success" in repeated, "Repeated completion must succeed idempotently.");
-  assert(
-    (await prisma.notification.count({
-      where: { projectId: mainProject.id, type: "COLLABORATOR_ADDED" },
-    })) === notificationsBeforeRepeat,
-    "Repeated completion must not duplicate collaborator notifications.",
-  );
   assert(
     (await prisma.projectInquiryTargetMarket.count({
       where: { inquiryId: persisted.id },
@@ -484,10 +482,11 @@ async function main() {
     "Repeated completion must preserve the original Stage 1 completion time.",
   );
 
-  const reopened = await getProjectInquiryPageData(superAdmin, mainProject.id, []);
+  const reopened = await getProjectInquiryPageData(superAdmin, mainProject.id);
   assert(
     reopened.inquiry?.client?.name === "Manual Client Entity" &&
-      reopened.inquiry.finalBeneficiary?.name === "Manual Beneficiary" &&
+      reopened.inquiry.finalBeneficiaries.length === 2 &&
+      reopened.inquiry.finalBeneficiaries[0]?.name === "Manual Beneficiary" &&
       reopened.inquiry.targetMarkets.length === 3 &&
       reopened.inquiry.deliverables.length === 2 &&
       reopened.inquiry.attachments.INITIAL_BRIEF.length === 1,
@@ -519,10 +518,12 @@ async function main() {
       source: ProjectInquiryPartySource.USER,
       id: "inquiry-client-user",
     },
-    finalBeneficiary: {
-      source: ProjectInquiryPartySource.USER,
-      id: "inquiry-beneficiary-user",
-    },
+    finalBeneficiaries: [
+      {
+        source: ProjectInquiryPartySource.USER,
+        id: "inquiry-beneficiary-user",
+      },
+    ],
   });
   assert("success" in switchPartySources, "Existing users must be valid parties.");
   const switchedParties = await prisma.projectInquiryParty.findMany({
@@ -581,7 +582,6 @@ async function main() {
     await completeProjectInquiry(superAdmin, {
       ...requiredParties(failureProject.id),
       targetMarkets: [{ label: "Force rollback" }],
-      collaboratorIds: ["inquiry-collaborator-a"],
     });
   } catch {
     transactionFailed = true;
@@ -612,11 +612,22 @@ async function main() {
       addedById: superAdmin.id,
     },
   });
-  const removeSelections = await completeProjectInquiry(superAdmin, {
-    ...richInput,
-    collaboratorIds: [],
+  await prisma.projectCollaborator.create({
+    data: {
+      projectId: mainProject.id,
+      userId: "inquiry-collaborator-a",
+      addedById: superAdmin.id,
+      participantType: "GTI_INTERNAL_CLIENT",
+    },
   });
-  assert("success" in removeSelections, "Collaborator removal sync must succeed.");
+  const preserveProjectCollaborators = await completeProjectInquiry(
+    superAdmin,
+    richInput,
+  );
+  assert(
+    "success" in preserveProjectCollaborators,
+    "Stage 1 updates must preserve project collaborator assignments.",
+  );
   assert(
     (await prisma.projectCollaborator.findUnique({
       where: {
@@ -625,16 +636,8 @@ async function main() {
           userId: "inquiry-collaborator-a",
         },
       },
-    })) !== null &&
-      (await prisma.projectCollaborator.findUnique({
-        where: {
-          projectId_userId: {
-            projectId: mainProject.id,
-            userId: "inquiry-collaborator-b",
-          },
-        },
-      })) === null,
-    "Collaborator sync must preserve executor membership and remove only unprotected membership.",
+    })) !== null,
+    "Stage 1 must not remove an existing project collaborator.",
   );
 
   assert(
