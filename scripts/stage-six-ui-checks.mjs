@@ -129,10 +129,11 @@ assert(
   "Approval emails and pages must remain pending until an approver explicitly confirms a decision, backed by an auditable decision timestamp.",
 );
 assert(
-  approvalWorkspace.includes('access.kind === "authenticated"') &&
-    approvalWorkspace.includes('href={`/projects/${data.project.id}/stages/6`}') &&
-    approvalWorkspace.includes("Back to Stage 6"),
-  "Authenticated production approvals must provide a direct return to their Stage 6 workspace.",
+  authenticatedPage.includes('href={`/projects/${data.project.id}/stages/6`}') &&
+    authenticatedPage.includes("Back to Stage 6") &&
+    authenticatedPage.includes("ArrowLeft") &&
+    !externalPage.includes("Back to Stage 6"),
+  "Authenticated production approvals must provide a prominent page-level return to Stage 6 without exposing project navigation on external links.",
 );
 assert(externalPage.includes('dynamic = "force-dynamic"') && externalPage.includes("noStore()"), "The external approval route must be dynamic and no-store.");
 assert(authenticatedPage.includes("getAuthenticatedProductionApprovalData"), "The direct Stage 6 review action must land on the authenticated approval route.");
