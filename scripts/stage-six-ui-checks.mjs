@@ -73,11 +73,13 @@ assert(
   "Files added in Stage 6 must immediately expose a working Remove action while the Stage 5 source reference stays protected.",
 );
 assert(
-  workspace.includes('className="min-w-0 overflow-hidden rounded-[14px]') &&
+  workspace.includes('className="flex min-w-0 flex-col overflow-hidden rounded-[14px]') &&
+    workspace.includes("mt-2 min-h-5 whitespace-pre-wrap") &&
     workspace.includes("[overflow-wrap:anywhere]") &&
     workspace.includes('title={file.name}') &&
-    workspace.includes('className="truncate">{file.name}</span>'),
-  "Production Details must contain long text and truncate attachment names without overflowing their field cards.",
+    workspace.includes("block w-fit min-w-0 max-w-full overflow-hidden") &&
+    workspace.includes('className="block min-w-0 max-w-full truncate">{file.name}</span>'),
+  "Production Details must align values consistently and contain long attachment names within their field cards.",
 );
 assert(workspace.includes("step.reviewHref") && workspace.includes("Review Approval"), "An assigned approver must have a direct review action on Stage 6.");
 assert(workspace.includes("max-h-[calc(100dvh-1.5rem)]") && workspace.includes("overflow-y-auto overscroll-contain"), "The approval request dialog must remain bounded by the viewport and scroll its form content.");
