@@ -181,11 +181,19 @@ assert(
   workspace.includes("No Stage 3 concepts have been created") &&
     workspace.includes("Stage 4 will open without automatically creating any folders") &&
     workspace.includes('"Continue to Stage 4"') &&
+    workspace.includes("Go to Stage 4") &&
+    workspace.includes('href={`/projects/${project.id}/stages/4`}') &&
+    workspace.includes("stageNumber === 3 && managementLocked") &&
     workspace.includes('"Continue to Stage 5"') &&
     workspace.includes('cancelLabel="Cancel"') &&
     !concepts.includes("const stageTransition = await completeStageThreeConcepts") &&
     !concepts.includes("const stageTransition = await completeStageFourConcepts"),
   "Stages 3 and 4 must advance only through their explicit manual continue/skip actions and never from final-file approval.",
+);
+assert(
+  concepts.includes("const isProjectExecutor = project.executors.some") &&
+    concepts.includes("!canManage && !isProjectExecutor && visibleFolders.length === 0"),
+  "Project executors must be able to open an unlocked empty concept-stage workspace without gaining access to unassigned concept folders.",
 );
 assert(
   history.includes('mode: "work"') &&

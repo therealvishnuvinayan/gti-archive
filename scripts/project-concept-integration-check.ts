@@ -1320,6 +1320,17 @@ async function main() {
         concurrentCompletion.promotedFolderIds.length === 0,
       "Stage 3 completion must not automatically create or promote Stage 4 folders",
     );
+    const executorBEmptyStageFourView = await getProjectConceptFolders(
+      executorB,
+      projectId,
+      ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+    );
+    check(
+      executorBEmptyStageFourView !== null &&
+        executorBEmptyStageFourView.folders.length === 0 &&
+        !executorBEmptyStageFourView.canManage,
+      "a project executor must reach an unlocked empty Stage 4 workspace without seeing unassigned concepts",
+    );
 
     const independentStageFourConcept = await createProjectConceptFolder(owner, {
       projectId,

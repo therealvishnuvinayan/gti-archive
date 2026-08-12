@@ -342,6 +342,9 @@ export async function getProjectConceptFolders(
   };
   const canManage = canManageProjectConcept(user, managerContext);
   const canCompleteStage = canCompleteProjectConceptStage(user, managerContext);
+  const isProjectExecutor = project.executors.some(
+    (executor) => executor.userId === user.id,
+  );
   const requestedExecutor = options.executorId?.trim() || null;
   const requestedExecutorId = canManage
     ? requestedExecutor &&
@@ -370,7 +373,7 @@ export async function getProjectConceptFolders(
       )
     : visibleFolders;
 
-  if (!canManage && visibleFolders.length === 0) {
+  if (!canManage && !isProjectExecutor && visibleFolders.length === 0) {
     return null;
   }
 
