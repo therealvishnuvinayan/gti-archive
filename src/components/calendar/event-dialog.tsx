@@ -9,7 +9,13 @@ import {
   parseCalendarDateValue,
 } from "@/components/calendar/calendar-month-grid";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -180,9 +186,9 @@ export function EventDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8">
-      <Card className="w-full max-w-[520px] rounded-[28px] p-0 shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
-        <CardHeader className="flex-row items-start justify-between gap-4 pb-0">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#112118]/45 p-4 sm:items-center sm:p-8">
+      <Card className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[520px] flex-col overflow-hidden rounded-[28px] p-0 shadow-[0_35px_90px_rgba(11,26,18,0.22)] sm:max-h-[calc(100dvh-4rem)]">
+        <CardHeader className="shrink-0 flex-row items-start justify-between gap-4 border-b border-line/70 pb-5">
           <div>
             <CardTitle className="text-[24px]">
               {title}
@@ -203,137 +209,138 @@ export function EventDialog({
           </Button>
         </CardHeader>
 
-        <CardContent className="p-6 pt-5">
+        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 pt-5">
           {error ? (
             <div className="mb-5 rounded-[18px] border border-[#f1c7c1] bg-[#fff4f2] px-4 py-3 text-[13px] font-medium text-[#c05243]">
               {error}
             </div>
           ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="sm:col-span-2">
-            <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
-              Title
-            </span>
-            <Input
-              value={form.title}
-              onChange={(event) => onChange("title", event.target.value)}
-              className="h-12 rounded-2xl border-line text-[15px] text-[#18211a]"
-              placeholder="Design review"
-            />
-          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="sm:col-span-2">
+              <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
+                Title
+              </span>
+              <Input
+                value={form.title}
+                onChange={(event) => onChange("title", event.target.value)}
+                className="h-12 rounded-2xl border-line text-[15px] text-[#18211a]"
+                placeholder="Design review"
+              />
+            </label>
 
-          <label>
-            <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
-              Date
-            </span>
-            <CalendarDateField value={form.date} onChange={(value) => onChange("date", value)} />
-          </label>
+            <label>
+              <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
+                Date
+              </span>
+              <CalendarDateField value={form.date} onChange={(value) => onChange("date", value)} />
+            </label>
 
-          <label>
-            <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
-              Calendar
-            </span>
-            <Select
-              value={form.calendar}
-              onValueChange={(value) => onChange("calendar", value as CalendarType)}
-            >
-              <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {calendarOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+            <label>
+              <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
+                Calendar
+              </span>
+              <Select
+                value={form.calendar}
+                onValueChange={(value) => onChange("calendar", value as CalendarType)}
+              >
+                <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {calendarOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
 
-          <label>
-            <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
-              Start
-            </span>
-            <Select value={form.start} onValueChange={(value) => onChange("start", value)}>
-              <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {startOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+            <label>
+              <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
+                Start
+              </span>
+              <Select value={form.start} onValueChange={(value) => onChange("start", value)}>
+                <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {startOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
 
-          <label>
-            <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
-              End
-            </span>
-            <Select value={form.end} onValueChange={(value) => onChange("end", value)}>
-              <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {endOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+            <label>
+              <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
+                End
+              </span>
+              <Select value={form.end} onValueChange={(value) => onChange("end", value)}>
+                <SelectTrigger className="h-12 rounded-2xl border border-line text-[15px] text-[#18211a]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {endOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
 
-          <label className="sm:col-span-2">
-            <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
-              Details
-            </span>
-            <Textarea
-              value={form.details}
-              onChange={(event) => onChange("details", event.target.value)}
-              className="min-h-[96px] rounded-2xl border border-line text-[15px] text-[#18211a]"
-              placeholder="Optional notes, location, or attendees"
-            />
-          </label>
-        </div>
-
-        <div className="mt-5">
-          <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
-            Color
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {toneOptions.map((option) => {
-              const active = form.tone === option.tone;
-
-              return (
-                <button
-                  key={option.tone}
-                  type="button"
-                  onClick={() => onChange("tone", option.tone)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[13px] font-[600] transition-colors ${
-                    active
-                      ? "border-brand bg-brand-soft text-brand"
-                      : "border-line text-[#566059]"
-                  } cursor-pointer`}
-                >
-                  <span className={`h-3 w-3 rounded-full ${option.swatch}`} />
-                  {option.label}
-                </button>
-              );
-            })}
+            <label className="sm:col-span-2">
+              <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
+                Details
+              </span>
+              <Textarea
+                value={form.details}
+                onChange={(event) => onChange("details", event.target.value)}
+                className="min-h-[96px] rounded-2xl border border-line text-[15px] text-[#18211a]"
+                placeholder="Optional notes, location, or attendees"
+              />
+            </label>
           </div>
-        </div>
 
-        <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <div className="mt-5">
+            <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
+              Color
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {toneOptions.map((option) => {
+                const active = form.tone === option.tone;
+
+                return (
+                  <button
+                    key={option.tone}
+                    type="button"
+                    onClick={() => onChange("tone", option.tone)}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[13px] font-[600] transition-colors ${
+                      active
+                        ? "border-brand bg-brand-soft text-brand"
+                        : "border-line text-[#566059]"
+                    } cursor-pointer`}
+                  >
+                    <span className={`h-3 w-3 rounded-full ${option.swatch}`} />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </CardContent>
+
+        <CardFooter className="shrink-0 flex-col gap-3 border-t border-line/70 bg-white px-6 py-4 sm:flex-row sm:justify-end">
           <Button
             type="button"
             onClick={onClose}
             variant="secondary"
             size="lg"
-            className="border border-line px-6 text-[15px] text-[#2f3a32]"
+            className="w-full border border-line px-6 text-[15px] text-[#2f3a32] sm:w-auto"
           >
             Cancel
           </Button>
@@ -342,7 +349,7 @@ export function EventDialog({
             onClick={onSubmit}
             disabled={pending}
             size="lg"
-            className={`px-7 text-[15px] ${
+            className={`w-full px-7 text-[15px] sm:w-auto ${
               pending
                 ? "cursor-not-allowed bg-[linear-gradient(90deg,#6ca989,#397453)]"
                 : ""
@@ -350,8 +357,7 @@ export function EventDialog({
           >
             {pending ? "Saving..." : submitLabel}
           </Button>
-        </div>
-        </CardContent>
+        </CardFooter>
       </Card>
     </div>
   );
