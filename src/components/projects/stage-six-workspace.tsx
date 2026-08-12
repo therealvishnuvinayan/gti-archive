@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 import {
   AlertTriangle,
+  Archive,
   ArrowDown,
   ArrowRight,
   ArrowUp,
@@ -23,6 +24,7 @@ import {
   FileImage,
   FileText,
   ListChecks,
+  Loader2,
   PackageCheck,
   Plus,
   RefreshCw,
@@ -42,18 +44,34 @@ import {
   removeProductionApproverAction,
   removeProductionUnitFileAction,
   reorderProductionApproverAction,
+  prepareStageSixArchiveAction,
   retryProductionApprovalDispatchAction,
+  saveStageSixArchiveAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/6/actions";
+import {
+  ArchiveMetadataIdentificationStep,
+  ArchiveMetadataReviewList,
+  ArchiveMetadataTechnicalStep,
+} from "@/components/archives/archive-artwork-metadata-form";
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectStageSummary } from "@/components/projects/project-stage-summary";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { getArchiveFileNameValidationError } from "@/lib/archive-file-name";
 import type { ProjectStageShellRecord } from "@/lib/projects";
+import type { StageSixArchivePreparation } from "@/lib/archives";
+import {
+  archiveProjectWizardSteps,
+  getArchiveArtworkMetadataMissingCount,
+  getArchiveArtworkMetadataMissingGroups,
+  type ArchiveArtworkMetadataDraft,
+} from "@/lib/archive-artwork-metadata";
 import {
   STAGE_FIVE_FIELD_DEFINITIONS,
 } from "@/lib/stage-five-fields";
@@ -777,6 +795,187 @@ function HandoverSection({ unit, canManage, onOpen }: { unit: StageSixUnitRecord
   );
 }
 
+type ArchiveWizardStep = 0 | 1 | 2 | 3;
+
+function StageSixArchiveDialog({
+  preparation,
+  projectId,
+  onClose,
+  onSaved,
+}: {
+  preparation: StageSixArchivePreparation;
+  projectId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [step, setStep] = useState<ArchiveWizardStep>(0);
+  const [categoryId, setCategoryId] = useState(preparation.selectedCategoryId);
+  const [fileNames, setFileNames] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      preparation.files.map((file) => [file.sourceAttachmentId, file.defaultArchiveFileName]),
+    ),
+  );
+  const [metadata, setMetadata] = useState<Record<string, ArchiveArtworkMetadataDraft>>(() =>
+    Object.fromEntries(
+      preparation.files.map((file) => [file.sourceAttachmentId, file.metadataDraft]),
+    ),
+  );
+  const [error, setError] = useState("");
+  const [saving, startSaving] = useTransition();
+
+  const fileErrors = useMemo(
+    () =>
+      Object.fromEntries(
+        preparation.files.map((file) => {
+          const otherNames = preparation.files
+            .filter((candidate) => candidate.sourceAttachmentId !== file.sourceAttachmentId)
+            .map(
+              (candidate) =>
+                fileNames[candidate.sourceAttachmentId] ?? candidate.defaultArchiveFileName,
+            );
+          return [
+            file.sourceAttachmentId,
+            getArchiveFileNameValidationError(
+              file.originalFileName,
+              fileNames[file.sourceAttachmentId] ?? file.defaultArchiveFileName,
+              otherNames,
+            ),
+          ];
+        }),
+      ) as Record<string, string | null>,
+    [fileNames, preparation.files],
+  );
+  const metadataFiles = preparation.files.map((file) => ({
+    id: file.sourceAttachmentId,
+    originalFileName: file.originalFileName,
+    metadata: metadata[file.sourceAttachmentId] ?? file.metadataDraft,
+  }));
+  const missingMetadataCount = metadataFiles.reduce(
+    (count, file) => count + getArchiveArtworkMetadataMissingCount(file.metadata),
+    0,
+  );
+  const canContinueFiles =
+    Boolean(categoryId) && !Object.values(fileErrors).some(Boolean);
+  const canSave = canContinueFiles && missingMetadataCount === 0;
+
+  function updateMetadata(
+    fileId: string,
+    field: keyof ArchiveArtworkMetadataDraft,
+    value: string,
+  ) {
+    setMetadata((current) => ({
+      ...current,
+      [fileId]: {
+        ...(current[fileId] ?? preparation.files.find((file) => file.sourceAttachmentId === fileId)!.metadataDraft),
+        [field]: value,
+      },
+    }));
+  }
+
+  function applyProjectMetadataToAll() {
+    const firstFile = metadataFiles[0];
+    if (!firstFile) return;
+    const source = firstFile.metadata;
+    const sharedFields: Array<keyof ArchiveArtworkMetadataDraft> = [
+      "languageMarket", "artworkType", "brandSubBrand", "productSku", "campaignProject",
+      "colourSpace", "printProcess", "specialFinishes", "archiveStatus", "clientBrandOwner",
+      "regulatoryClearance", "fontsUsed", "imagesPhotography", "illustrationsIcons",
+      "colourCodes", "thirdPartyLogosIp", "supplierPrinter", "printProofRef",
+      "packagingDielineRef", "relatedArtworks", "briefSpecLink", "generalNotes",
+    ];
+    setMetadata((current) =>
+      Object.fromEntries(
+        preparation.files.map((file) => {
+          const next = { ...(current[file.sourceAttachmentId] ?? file.metadataDraft) };
+          sharedFields.forEach((field) => { next[field] = source[field]; });
+          return [file.sourceAttachmentId, next];
+        }),
+      ),
+    );
+  }
+
+  function save() {
+    if (!canSave) {
+      if (!canContinueFiles) {
+        setError("Choose an archive category and fix the archive file names.");
+        setStep(0);
+        return;
+      }
+      const firstIncomplete = metadataFiles.find(
+        (file) => getArchiveArtworkMetadataMissingGroups(file.metadata).length > 0,
+      );
+      setError(
+        firstIncomplete
+          ? `Complete the required metadata for ${firstIncomplete.originalFileName}.`
+          : "Complete the required archive metadata.",
+      );
+      setStep(1);
+      return;
+    }
+
+    setError("");
+    startSaving(async () => {
+      const result = await saveStageSixArchiveAction({
+        projectId,
+        archiveCategoryId: categoryId,
+        files: preparation.files.map((file) => ({
+          sourceAttachmentId: file.sourceAttachmentId,
+          finalArchiveFileName: fileNames[file.sourceAttachmentId] ?? file.defaultArchiveFileName,
+          artworkMetadata: metadata[file.sourceAttachmentId] ?? file.metadataDraft,
+        })),
+      });
+      if ("error" in result) {
+        setError(result.error ?? "Unable to save the Stage 6 archive.");
+        return;
+      }
+      showSuccessToast("Final files saved to Archives. Stage 7 remains active.");
+      onSaved();
+      onClose();
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[180] flex items-center justify-center overflow-hidden bg-[#112118]/45 px-3 py-4 backdrop-blur-[2px] sm:px-5 sm:py-6" role="dialog" aria-modal="true" aria-labelledby="stage-six-archive-title">
+      <Card className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[1080px] flex-col overflow-hidden rounded-[28px] border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,.22)] sm:max-h-[calc(100dvh-3rem)]">
+        <CardHeader className="shrink-0 flex-row items-start justify-between gap-4 border-b border-[#e4eae5] p-5 sm:p-7">
+          <div>
+            <CardTitle id="stage-six-archive-title" className="text-[22px] font-[760] tracking-tight text-[#111712]">Save Final Files to Archives</CardTitle>
+            <p className="mt-2 text-[13px] leading-5 text-[#687269]">Save an archive snapshot now. This does not complete the project or stop Stage 7.</p>
+          </div>
+          <Button type="button" variant="secondary" size="icon" onClick={onClose} disabled={saving} aria-label="Close archive dialog"><X className="h-4 w-4" /></Button>
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7 sm:py-6">
+          {error ? <div className="mb-4 rounded-[14px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] text-[#aa463f]">{error}</div> : null}
+          <div className="grid gap-2 sm:grid-cols-4">
+            {archiveProjectWizardSteps.map((label, index) => (
+              <button key={label} type="button" disabled={saving} onClick={() => setStep(index as ArchiveWizardStep)} className={cn("rounded-[14px] border px-3 py-3 text-left", step === index ? "border-[#72a184] bg-[#eef8f0] text-[#173120]" : "border-[#dce6dd] bg-white text-[#687269]")}>
+                <span className="block text-[9px] font-[800] uppercase tracking-[.08em]">Step {index + 1}</span>
+                <span className="mt-1 block text-[12px] font-[800]">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          {step === 0 ? <div className="mt-5 space-y-4">
+            <div className="grid gap-4 rounded-[18px] border border-[#dfe6df] bg-[#fbfcfa] p-4 sm:grid-cols-[minmax(0,1fr)_260px]">
+              <div><p className="text-[10px] font-[800] uppercase tracking-[.08em] text-[#70806f]">Project</p><p className="mt-1 text-[16px] font-[750]">{preparation.projectName}</p><p className="mt-1 text-[12px] text-[#687269]">Source: Stage 6 approved production files</p></div>
+              <div className="space-y-2"><p className="text-[10px] font-[800] uppercase tracking-[.08em] text-[#70806f]">Archive Category *</p><Select value={categoryId} onValueChange={setCategoryId} disabled={saving}><SelectTrigger className="h-11 rounded-[12px]"><SelectValue placeholder="Choose archive category" /></SelectTrigger><SelectContent>{preparation.categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.parentName ? `${category.parentName} / ${category.name}` : category.name}</SelectItem>)}</SelectContent></Select></div>
+            </div>
+            {preparation.files.map((file) => <div key={file.sourceAttachmentId} className="grid gap-4 rounded-[18px] border border-[#dfe6df] bg-white p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.8fr)]"><div className="min-w-0"><p className="truncate text-[13px] font-[750]">{file.originalFileName}</p><p className="mt-1 text-[11px] text-[#687269]">{file.fileSizeLabel} · {file.sourceLabel}</p><div className="mt-3 flex gap-2"><AssetPreviewButton fileName={file.originalFileName} mimeType={file.mimeType} previewPath={file.previewPath} downloadPath={file.downloadPath} iconOnly={false} triggerClassName="rounded-full" /><Button asChild type="button" variant="secondary" size="sm" className="rounded-full"><a href={file.downloadPath}><Download className="h-4 w-4" />Download</a></Button></div></div><label className="space-y-2"><span className="text-[10px] font-[800] uppercase tracking-[.08em] text-[#70806f]">Final Archive File Name *</span><Input value={fileNames[file.sourceAttachmentId] ?? file.defaultArchiveFileName} onChange={(event) => setFileNames((current) => ({ ...current, [file.sourceAttachmentId]: event.target.value }))} disabled={saving} className={cn("h-11 rounded-[12px]", fileErrors[file.sourceAttachmentId] && "border-[#df6f66]")} />{fileErrors[file.sourceAttachmentId] ? <span className="block text-[11px] text-[#bd4a43]">{fileErrors[file.sourceAttachmentId]}</span> : <span className="block text-[10px] text-[#77827a]">Keep the original extension.</span>}</label></div>)}
+          </div> : null}
+
+          {step === 1 ? <div className="mt-5"><ArchiveMetadataIdentificationStep files={metadataFiles} onChange={updateMetadata} onApplyToAll={applyProjectMetadataToAll} disabled={saving} description="Complete Artwork Legend identification for each Stage 6 final file." /></div> : null}
+          {step === 2 ? <div className="mt-5"><ArchiveMetadataTechnicalStep files={metadataFiles} onChange={updateMetadata} disabled={saving} /></div> : null}
+          {step === 3 ? <div className="mt-5"><ArchiveMetadataReviewList files={metadataFiles} getFinalFileName={(file) => fileNames[file.id] ?? file.originalFileName} onEditMetadata={() => setStep(1)} missingMetadataCount={missingMetadataCount} fileCountLabel={`${preparation.files.length} final file${preparation.files.length === 1 ? "" : "s"}`} /></div> : null}
+        </CardContent>
+        <CardFooter className="shrink-0 flex-col gap-3 border-t border-[#e4eae5] bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+          <p className="text-[11px] leading-5 text-[#687269]">The files become available in Archives while the project continues to Stage 7.</p>
+          <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto"><Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>{step > 0 ? <Button type="button" variant="secondary" onClick={() => setStep((current) => Math.max(0, current - 1) as ArchiveWizardStep)} disabled={saving}>Previous</Button> : null}{step < 3 ? <Button type="button" onClick={() => setStep((current) => Math.min(3, current + 1) as ArchiveWizardStep)} disabled={saving || (step === 0 && !canContinueFiles)}>Next</Button> : <Button type="button" onClick={save} disabled={saving || !canSave}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}Save to Archives</Button>}</div>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
+
 export function StageSixWorkspace({
   project,
   currentUserId,
@@ -795,6 +994,9 @@ export function StageSixWorkspace({
   const [handoverDialog, setHandoverDialog] = useState(false);
   const [completionDialog, setCompletionDialog] = useState(false);
   const [completionError, setCompletionError] = useState("");
+  const [archivePreparation, setArchivePreparation] = useState<StageSixArchivePreparation | null>(null);
+  const [archiveError, setArchiveError] = useState("");
+  const [preparingArchive, startPreparingArchive] = useTransition();
   const [completing, startCompleting] = useTransition();
   const activeUnit = useMemo(() => pageData.units.find((unit) => unit.id === activeUnitId) ?? pageData.units[0], [activeUnitId, pageData.units]);
 
@@ -826,9 +1028,21 @@ export function StageSixWorkspace({
         return;
       }
       setCompletionDialog(false);
-      showSuccessToast("Stage 6 completed. Stage 7 is now available.");
-      router.push(`/projects/${project.id}/stages/7`);
+      showSuccessToast("Stage 6 completed. Save the final files to Archives or continue to Stage 7.");
       router.refresh();
+    });
+  }
+  function openArchiveDialog() {
+    setArchiveError("");
+    startPreparingArchive(async () => {
+      const result = await prepareStageSixArchiveAction({ projectId: project.id });
+      if ("error" in result) {
+        const message = result.error ?? "Unable to prepare the Stage 6 archive.";
+        setArchiveError(message);
+        showErrorToast("Unable to prepare the archive.", message);
+        return;
+      }
+      setArchivePreparation(result.preparation);
     });
   }
 
@@ -864,12 +1078,87 @@ export function StageSixWorkspace({
 
         <div className="flex flex-col-reverse gap-3 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
           <Button asChild type="button" variant="outline" className="min-w-[160px]"><Link href={`/projects/${project.id}`}><ListChecks className="h-4 w-4" /> All Stages</Link></Button>
-          {pageData.stageCompleted ? <Button asChild type="button" className="min-w-[180px]"><Link href={`/projects/${project.id}/stages/7`}>Next Stage <ArrowRight className="h-4 w-4" /></Link></Button> : pageData.canManage ? <div className="text-right"><Button type="button" className="min-w-[180px]" disabled={!pageData.units.length || pageData.summary.approved !== pageData.summary.total} onClick={() => { setCompletionError(""); setCompletionDialog(true); }}><Check className="h-4 w-4" /> Complete Stage 6</Button>{pageData.summary.approved !== pageData.summary.total ? <p className="mt-2 text-[10px] text-[#8a7452]">Every Production Unit must complete its approval chain. Handover is optional.</p> : null}</div> : <p className="text-[11px] text-[#77827a]">Owner or Co-Owner management required.</p>}
+          {pageData.stageCompleted ? (
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                {pageData.canManage ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-w-[180px]"
+                    disabled={preparingArchive}
+                    onClick={openArchiveDialog}
+                  >
+                    {preparingArchive ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Archive className="h-4 w-4" />
+                    )}
+                    {pageData.savedArchive ? "Update Saved Archive" : "Save to Archives"}
+                  </Button>
+                ) : null}
+                {pageData.savedArchive && pageData.canManage ? (
+                  <Button
+                    asChild
+                    type="button"
+                    variant="secondary"
+                    className="min-w-[180px]"
+                  >
+                    <Link href={`/archives/${pageData.savedArchive.archiveCategorySlug}`}>
+                      <Archive className="h-4 w-4" /> Open Saved Archive
+                    </Link>
+                  </Button>
+                ) : null}
+                <Button asChild type="button" className="min-w-[180px]">
+                  <Link href={`/projects/${project.id}/stages/7`}>
+                    Next Stage <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+              {pageData.savedArchive ? (
+                <p className="text-[10px] font-[700] text-[#2e744e]">
+                  {pageData.savedArchive.fileCount} final file
+                  {pageData.savedArchive.fileCount === 1 ? "" : "s"} saved in{" "}
+                  {pageData.savedArchive.archiveCategoryLabel}. Stage 7 remains active.
+                </p>
+              ) : archiveError ? (
+                <p className="max-w-[440px] text-right text-[10px] text-[#b84e48]">
+                  {archiveError}
+                </p>
+              ) : (
+                <p className="text-[10px] text-[#687269]">
+                  Archiving saves a snapshot and does not complete the project.
+                </p>
+              )}
+            </div>
+          ) : pageData.canManage ? (
+            <div className="text-right">
+              <Button
+                type="button"
+                className="min-w-[180px]"
+                disabled={!pageData.units.length || pageData.summary.approved !== pageData.summary.total}
+                onClick={() => {
+                  setCompletionError("");
+                  setCompletionDialog(true);
+                }}
+              >
+                <Check className="h-4 w-4" /> Complete Stage 6
+              </Button>
+              {pageData.summary.approved !== pageData.summary.total ? (
+                <p className="mt-2 text-[10px] text-[#8a7452]">
+                  Every Production Unit must complete its approval chain. Handover is optional.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-[11px] text-[#77827a]">Owner or Co-Owner management required.</p>
+          )}
         </div>
       </CardContent></Card>
 
       {activeUnit && approverDialog ? <ApproverDialog mode={approverDialog} projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setApproverDialog(null)} onSaved={refresh} /> : null}
       {activeUnit && handoverDialog ? <HandoverDialog projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setHandoverDialog(false)} onSaved={refresh} /> : null}
+      {archivePreparation ? <StageSixArchiveDialog preparation={archivePreparation} projectId={project.id} onClose={() => setArchivePreparation(null)} onSaved={refresh} /> : null}
       <ConfirmationDialog isOpen={completionDialog} title="Complete Stage 6" description="All Production Units have completed approval. Complete Stage 6 and unlock Stage 7? Optional handovers can be skipped." confirmLabel="Complete Stage 6" pending={completing} error={completionError || undefined} onConfirm={complete} onClose={() => { if (!completing) setCompletionDialog(false); }} />
     </section>
   );

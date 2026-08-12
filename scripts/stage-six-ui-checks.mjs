@@ -17,6 +17,9 @@ const [
   migration,
   stageSevenService,
   stageSevenWorkspace,
+  archivesService,
+  savedArchiveMigration,
+  optionalLegacyStageMigration,
 ] = await Promise.all([
   readFile("src/components/projects/stage-six-workspace.tsx", "utf8"),
   readFile("src/lib/stage-six.ts", "utf8"),
@@ -33,6 +36,15 @@ const [
   readFile("prisma/migrations/20260812090000_stage_six_optional_handover_contacts/migration.sql", "utf8"),
   readFile("src/lib/stage-seven.ts", "utf8"),
   readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
+  readFile("src/lib/archives.ts", "utf8"),
+  readFile(
+    "prisma/migrations/20260812190000_stage_six_saved_archive_snapshot/migration.sql",
+    "utf8",
+  ),
+  readFile(
+    "prisma/migrations/20260812203000_saved_archive_optional_legacy_stage/migration.sql",
+    "utf8",
+  ),
 ]);
 
 for (const content of [
@@ -159,7 +171,7 @@ assert(service.includes("ProductionApprovalStepStatus.ACTIVE") && service.includ
 assert(service.includes("recipientUserId === user.id") && service.includes("reviewHref:"), "Stage 6 must derive the direct review action from the authenticated assigned approver.");
 assert(
   constants.includes('name: "Slavomir Kluziak"') &&
-    constants.includes('"abhijithajikumarofficial@gmail.com"') &&
+    constants.includes("email: STAGE_SIX_EMAIL_DELIVERY_ADDRESS") &&
     service.includes("STAGE_SIX_EMAIL_DELIVERY_ADDRESS") &&
     service.includes("STAGE_SIX_FIRST_APPROVER") &&
     workspace.includes("STAGE_SIX_FIRST_APPROVER"),
@@ -222,5 +234,55 @@ assert(
 );
 assert(service.includes("user.role === UserRole.SUPER_ADMIN") && !service.includes("user.role === UserRole.ADMIN ||"), "Stage 6 management must not grant ADMIN implicit rights.");
 assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");
+assert(
+  workspace.includes("StageSixArchiveDialog") &&
+    workspace.includes("Save to Archives") &&
+    workspace.includes("Update Saved Archive") &&
+    workspace.includes("Open Saved Archive") &&
+    workspace.includes("Stage 7 remains active") &&
+    workspace.includes("max-h-[calc(100dvh-2rem)]") &&
+    workspace.includes("min-h-0 flex-1 overflow-y-auto overscroll-contain") &&
+    !workspace.includes('router.push(`/projects/${project.id}/stages/7`)'),
+  "Completed Stage 6 must provide a viewport-bounded archive wizard while keeping Stage 7 explicitly active.",
+);
+assert(
+  actions.includes("prepareStageSixArchiveAction") &&
+    actions.includes("saveStageSixArchiveAction") &&
+  archivesService.includes("getStageSixArchivePreparation") &&
+    archivesService.includes("saveStageSixArchiveSnapshot") &&
+    archivesService.includes("legacyStage?.id ?? null") &&
+    !archivesService.includes('throw new Error("Stage 6 is not available for this project.")') &&
+    archivesService.includes("ArchiveRecordStatus.SAVED") &&
+    archivesService.includes("projectRemainsActive: true"),
+  "Stage 6 archive actions must persist a saved archive snapshot rather than completing the project.",
+);
+const saveSnapshotStart = archivesService.indexOf(
+  "export async function saveStageSixArchiveSnapshot",
+);
+const projectCompletionStart = archivesService.indexOf(
+  "export async function getProjectCompletionSummary",
+  saveSnapshotStart,
+);
+const saveSnapshotSource = archivesService.slice(saveSnapshotStart, projectCompletionStart);
+assert(
+  saveSnapshotStart >= 0 &&
+    projectCompletionStart > saveSnapshotStart &&
+    !saveSnapshotSource.includes("tx.project.update("),
+  "Saving from Stage 6 must not mark the Project complete or archived.",
+);
+assert(
+  archivesService.includes("latestProject.archive.status !== ArchiveRecordStatus.SAVED") &&
+    archivesService.includes("status: ArchiveRecordStatus.ARCHIVED") &&
+    archivesService.includes("await tx.projectArchive.update({"),
+  "Final project completion must upgrade the saved snapshot instead of rejecting or duplicating it.",
+);
+assert(
+  schema.includes("SAVED") &&
+    schema.includes("ARCHIVE_SNAPSHOT_SAVED") &&
+    savedArchiveMigration.includes("'SAVED'") &&
+    savedArchiveMigration.includes("'ARCHIVE_SNAPSHOT_SAVED'") &&
+    optionalLegacyStageMigration.includes('ALTER COLUMN "finalStageId" DROP NOT NULL'),
+  "The database must distinguish a non-terminal Stage 6 snapshot from a final archived project.",
+);
 
 console.log("Stage 6 production and handover UI/security checks passed.");

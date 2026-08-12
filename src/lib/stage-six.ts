@@ -1,4 +1,5 @@
 import {
+  ArchiveRecordStatus,
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
@@ -146,6 +147,12 @@ export type StageSixWorkspaceData = {
   participants: Array<{ id: string; name: string; email: string; role: string }>;
   canManage: boolean;
   stageCompleted: boolean;
+  savedArchive: {
+    archiveCategorySlug: string;
+    archiveCategoryLabel: string;
+    fileCount: number;
+    savedAt: string;
+  } | null;
   summary: {
     total: number;
     approved: number;
@@ -533,13 +540,24 @@ export async function getStageSixWorkspaceData(
 ): Promise<StageSixWorkspaceData | null> {
   const project = await getAuthorizedStageSixProject(user, projectId);
   if (!project) return null;
-  const records = await withPrismaRetry(() =>
-    prisma.projectProductionUnit.findMany({
-      where: { projectId },
-      relationLoadStrategy: "join",
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: workspaceUnitSelect,
-    }),
+  const [records, savedArchive] = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.projectProductionUnit.findMany({
+        where: { projectId },
+        relationLoadStrategy: "join",
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: workspaceUnitSelect,
+      }),
+      prisma.projectArchive.findUnique({
+        where: { projectId },
+        select: {
+          status: true,
+          archivedAt: true,
+          archiveCategory: { select: { slug: true, name: true } },
+          _count: { select: { files: true } },
+        },
+      }),
+    ]),
   );
   const units: StageSixUnitRecord[] = records.map((unit) => {
     const itemByKey = new Map(
@@ -614,6 +632,15 @@ export async function getStageSixWorkspaceData(
     stageCompleted:
       stageStatus(project, ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER) ===
       ProjectWorkflowStageStatus.COMPLETED,
+    savedArchive:
+      savedArchive?.status === ArchiveRecordStatus.SAVED && savedArchive.archiveCategory
+        ? {
+            archiveCategorySlug: savedArchive.archiveCategory.slug,
+            archiveCategoryLabel: savedArchive.archiveCategory.name,
+            fileCount: savedArchive._count.files,
+            savedAt: savedArchive.archivedAt.toISOString(),
+          }
+        : null,
     summary: {
       total: units.length,
       approved: units.filter(
