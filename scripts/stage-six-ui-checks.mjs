@@ -68,7 +68,9 @@ assert(
   workspace.includes('aria-labelledby="production-handover-dialog-title"') &&
     (workspace.match(/max-h-\[calc\(100dvh-1\.5rem\)\]/g)?.length ?? 0) >= 2 &&
     (workspace.match(/overflow-y-auto overscroll-contain/g)?.length ?? 0) >= 2 &&
-    workspace.includes('className="shrink-0 border-t border-[#e7ece8] bg-white px-6 py-4 sm:px-7"'),
+    workspace.includes("items-start justify-center overflow-y-auto") &&
+    workspace.includes('className="shrink-0 flex-col items-stretch border-t border-[#e7ece8] bg-white px-6 py-4 sm:px-7"') &&
+    workspace.includes('className="w-full sm:w-auto"'),
   "The Production Handover dialog must remain viewport-bounded with a scrollable form and persistent footer.",
 );
 assert(
