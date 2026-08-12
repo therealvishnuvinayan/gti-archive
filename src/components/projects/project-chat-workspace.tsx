@@ -98,7 +98,13 @@ import {
   type CaptionDialogAttachment,
 } from "@/components/projects/submission-caption-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   DropdownMenu,
@@ -10751,9 +10757,9 @@ export function ProjectChatWorkspace({
       />
 
       {reviewRevisionMessage ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
-          <Card className="w-full max-w-[720px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
-            <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#112118]/45 p-4 backdrop-blur-[2px] sm:items-center sm:p-8">
+          <Card className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[720px] flex-col overflow-hidden rounded-[28px] border border-[#e1e7e1] p-0 shadow-[0_35px_90px_rgba(11,26,18,0.22)] sm:max-h-[calc(100dvh-4rem)]">
+            <CardHeader className="shrink-0 flex-row items-start justify-between gap-4 space-y-0 border-b border-line/70 p-6 sm:p-7">
               <div>
                 <CardTitle className="text-[24px] font-semibold tracking-tight text-[#111712]">
                   Review Submission
@@ -10780,7 +10786,7 @@ export function ProjectChatWorkspace({
                 <X className="h-4 w-4" />
               </Button>
             </CardHeader>
-            <CardContent className="space-y-5 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+            <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-6 py-5 sm:px-7">
               {reviewDialogError ? (
                 <div className="rounded-[18px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[13px] text-[#bb4d49]">
                   {reviewDialogError}
@@ -10875,60 +10881,64 @@ export function ProjectChatWorkspace({
                   />
                 </div>
               ) : null}
-              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={closeRevisionReviewDialog}
-                  disabled={Boolean(pendingRevisionReviewId)}
-                >
-                  Cancel
-                </Button>
-                {!reviewRejectMode ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setReviewDialogError(null);
-                        setReviewRejectMode(true);
-                      }}
-                      disabled={Boolean(pendingRevisionReviewId)}
-                    >
-                      {isConceptMode ? "Request Changes" : "Request Revision"}
-                    </Button>
-                    {!activeStage?.isTasker ? (
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          setReviewDialogError(null);
-                          setReviewCompleteDialogOpen(true);
-                        }}
-                        disabled={Boolean(pendingRevisionReviewId)}
-                      >
-                        Approve Submission
-                      </Button>
-                    ) : null}
-                  </>
-                ) : (
+            </CardContent>
+            <CardFooter className="shrink-0 flex-col gap-3 border-t border-line/70 bg-white px-6 py-4 sm:flex-row sm:justify-end sm:px-7">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={closeRevisionReviewDialog}
+                disabled={Boolean(pendingRevisionReviewId)}
+                className="w-full sm:w-auto"
+              >
+                Cancel
+              </Button>
+              {!reviewRejectMode ? (
+                <>
                   <Button
                     type="button"
-                    variant="destructive"
+                    variant="secondary"
                     onClick={() => {
-                      void handleRevisionReview("REJECTED");
+                      setReviewDialogError(null);
+                      setReviewRejectMode(true);
                     }}
-                    disabled={
-                      Boolean(pendingRevisionReviewId) || reviewRejectReason.trim().length === 0
-                    }
+                    disabled={Boolean(pendingRevisionReviewId)}
+                    className="w-full sm:w-auto"
                   >
-                    {pendingRevisionReviewId ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : null}
                     {isConceptMode ? "Request Changes" : "Request Revision"}
                   </Button>
-                )}
-              </div>
-            </CardContent>
+                  {!activeStage?.isTasker ? (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setReviewDialogError(null);
+                        setReviewCompleteDialogOpen(true);
+                      }}
+                      disabled={Boolean(pendingRevisionReviewId)}
+                      className="w-full sm:w-auto"
+                    >
+                      Approve Submission
+                    </Button>
+                  ) : null}
+                </>
+              ) : (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => {
+                    void handleRevisionReview("REJECTED");
+                  }}
+                  disabled={
+                    Boolean(pendingRevisionReviewId) || reviewRejectReason.trim().length === 0
+                  }
+                  className="w-full sm:w-auto"
+                >
+                  {pendingRevisionReviewId ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  {isConceptMode ? "Request Changes" : "Request Revision"}
+                </Button>
+              )}
+            </CardFooter>
           </Card>
         </div>
       ) : null}
