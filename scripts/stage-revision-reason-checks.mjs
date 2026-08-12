@@ -47,4 +47,15 @@ assert(
   "Review Submission modal must still require a reason before requesting revision.",
 );
 
+assert(
+  workspaceSource.includes("h-[calc(100dvh-2rem)]") &&
+    workspaceSource.includes("sm:h-[calc(100dvh-4rem)]") &&
+    workspaceSource.includes("max-h-[860px]") &&
+    workspaceSource.includes("min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain") &&
+    workspaceSource.includes("[scrollbar-gutter:stable]") &&
+    workspaceSource.includes("shrink-0 flex-col-reverse") &&
+    workspaceSource.includes("sm:flex-nowrap"),
+  "Review Submission must stay viewport-bounded with an internally scrolling form and persistent action footer.",
+);
+
 console.log("Stage revision reason regression checks passed.");
