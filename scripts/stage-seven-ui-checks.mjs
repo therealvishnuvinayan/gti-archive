@@ -104,6 +104,14 @@ assert(
   "The request must use the reusable date-only AppDatePicker.",
 );
 assert(
+  workspace.includes("max-h-[calc(100dvh-2rem)]") &&
+    workspace.includes("min-h-0 flex-1 overflow-y-auto overscroll-contain") &&
+    workspace.includes("shrink-0 border-t border-[#e4eae5] bg-white") &&
+    workspace.includes("footer={(") &&
+    workspace.indexOf("footer={(") < workspace.indexOf('Round Name *'),
+  "The Request New Sample dialog must remain viewport-bounded, scroll its fields internally, and keep its action footer accessible.",
+);
+assert(
   (workspace.match(/grid-cols-\[50px_minmax\(155px,1\.25fr\)_minmax\(130px,1fr\)_110px_140px_88px\]/g)?.length ?? 0) === 2 &&
     workspace.includes('<span className="justify-self-start">Status</span>') &&
     workspace.includes('<span className="justify-self-end text-right">Action</span>') &&
