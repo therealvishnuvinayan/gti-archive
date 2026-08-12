@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, ProjectWorkflowStageKey } from "@prisma/client";
 
 import type {
   NotificationListResponse,
@@ -23,6 +23,61 @@ import type {
 } from "./types";
 
 const DEFAULT_RECENT_LIMIT = 5;
+
+type NotificationDestinationRecord = {
+  id: string;
+  projectId: string | null;
+  stageId: string | null;
+  url: string | null;
+};
+
+async function resolveNotificationDestinations<
+  T extends NotificationDestinationRecord,
+>(items: T[]) {
+  const taskerStageIds = Array.from(
+    new Set(
+      items
+        .map((item) => item.stageId)
+        .filter((stageId): stageId is string => Boolean(stageId)),
+    ),
+  );
+
+  if (taskerStageIds.length === 0) return items;
+
+  const conceptFolders = await withPrismaRetry(() =>
+    prisma.projectConceptFolder.findMany({
+      where: { taskerStageId: { in: taskerStageIds } },
+      select: {
+        id: true,
+        projectId: true,
+        taskerStageId: true,
+        workflowStageKey: true,
+      },
+    }),
+  );
+  const conceptRouteByStageId = new Map(
+    conceptFolders.map((folder) => {
+      const stageNumber =
+        folder.workflowStageKey === ProjectWorkflowStageKey.CONCEPT_CREATION ? 3 : 4;
+      return [
+        folder.taskerStageId,
+        {
+          projectId: folder.projectId,
+          url: `/projects/${encodeURIComponent(folder.projectId)}/stages/${stageNumber}/concepts/${encodeURIComponent(folder.id)}`,
+        },
+      ];
+    }),
+  );
+
+  return items.map((item) => {
+    const conceptRoute = item.stageId
+      ? conceptRouteByStageId.get(item.stageId)
+      : undefined;
+    return conceptRoute && item.projectId === conceptRoute.projectId
+      ? { ...item, url: conceptRoute.url }
+      : item;
+  });
+}
 
 function clampPage(value: number | undefined) {
   if (!Number.isFinite(value) || !value || value < 1) {
@@ -224,6 +279,8 @@ export async function getRecentNotificationsForUser(
           title: true,
           message: true,
           url: true,
+          projectId: true,
+          stageId: true,
           isRead: true,
           createdAt: true,
         },
@@ -236,9 +293,10 @@ export async function getRecentNotificationsForUser(
       }),
     ]),
   );
+  const resolvedItems = await resolveNotificationDestinations(items);
 
   return {
-    notifications: items.map(mapNotificationToView),
+    notifications: resolvedItems.map(mapNotificationToView),
     unreadCount,
   };
 }
@@ -309,9 +367,10 @@ export async function getNotificationsForUser(
   );
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const resolvedItems = await resolveNotificationDestinations(items);
 
   return {
-    notifications: items.map(mapNotificationToView),
+    notifications: resolvedItems.map(mapNotificationToView),
     unreadCount,
     counts: buildNotificationCounts({
       all: allCount,

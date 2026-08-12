@@ -44,6 +44,15 @@ assert(
   "Notification creation and read-state updates must publish realtime invalidations.",
 );
 assert(
+  service.includes("resolveNotificationDestinations") &&
+    service.includes("projectConceptFolder.findMany") &&
+    service.includes("taskerStageId: { in: taskerStageIds }") &&
+    service.includes("ProjectWorkflowStageKey.CONCEPT_CREATION ? 3 : 4") &&
+    service.includes("/stages/${stageNumber}/concepts/") &&
+    service.includes("resolvedItems.map(mapNotificationToView)"),
+  "Concept activity notifications, including legacy records, must resolve to the Stage 3/4 concept chat route.",
+);
+assert(
   server.includes("publishAblyNotificationChanged") &&
     center.includes("const NOTIFICATION_REFRESH_INTERVAL_MS = 10_000") &&
     center.includes("refreshRecentAfterChange") &&
