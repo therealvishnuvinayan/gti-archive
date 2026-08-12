@@ -159,7 +159,7 @@ assert(service.includes("ProductionApprovalStepStatus.ACTIVE") && service.includ
 assert(service.includes("recipientUserId === user.id") && service.includes("reviewHref:"), "Stage 6 must derive the direct review action from the authenticated assigned approver.");
 assert(
   constants.includes('name: "Slavomir Kluziak"') &&
-    constants.includes('"abhijithajikumarofficial@gmail.com"') &&
+    constants.includes('"slavomir.kluziak@gulbahartobacco.com"') &&
     service.includes("STAGE_SIX_EMAIL_DELIVERY_ADDRESS") &&
     service.includes("STAGE_SIX_FIRST_APPROVER") &&
     workspace.includes("STAGE_SIX_FIRST_APPROVER"),
