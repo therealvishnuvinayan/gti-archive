@@ -130,9 +130,16 @@ async function ConceptStageDataContent({
     return <ProjectAccessUnavailableState />;
   }
 
+  const folderVersion = folders.folders
+    .map(
+      (folder) =>
+        `${folder.id}:${folder.assignedExecutorId ?? "unassigned"}:${folder.latestRevisionStatus ?? "none"}:${folder.approvedAttachment?.id ?? "none"}`,
+    )
+    .join("|");
+
   return (
     <ConceptStageWorkspace
-      key={`${stageNumber}:${folders.selectedExecutorId ?? "all"}`}
+      key={`${stageNumber}:${folders.selectedExecutorId ?? "all"}:${folderVersion}`}
       stageNumber={stageNumber}
       stageTitle={stageTitle}
       stageKey={stageKey}

@@ -22,6 +22,7 @@ import {
   type ConceptWorkflowStageKey,
 } from "@/lib/project-concepts";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
+import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/server";
 
 function getConceptStageNumber(stageKey: ConceptWorkflowStageKey) {
   return stageKey === "CONCEPT_CREATION" ? 3 : 4;
@@ -50,8 +51,16 @@ export async function createProjectConceptFolderAction(input: {
   try {
     const result = await createProjectConceptFolder(user, input);
 
-    if ("folder" in result) {
+    if ("folder" in result && result.folder) {
+      const folder = result.folder;
       revalidateConceptStage(input.projectId, input.stageKey);
+      publishProjectActivityUpdatedAfterResponse({
+        projectId: input.projectId,
+        stageId: folder.taskerStageId,
+        eventType: "participant_access_changed",
+        changedEntityId: folder.id,
+        actorId: user.id,
+      });
     }
 
     return result;
@@ -74,8 +83,16 @@ export async function editProjectConceptFolderAction(input: {
   try {
     const result = await editProjectConceptFolder(user, input);
 
-    if ("folder" in result) {
+    if ("folder" in result && result.folder) {
+      const folder = result.folder;
       revalidateConceptStage(input.projectId, input.stageKey);
+      publishProjectActivityUpdatedAfterResponse({
+        projectId: input.projectId,
+        stageId: folder.taskerStageId,
+        eventType: "participant_access_changed",
+        changedEntityId: folder.id,
+        actorId: user.id,
+      });
     }
 
     return result;

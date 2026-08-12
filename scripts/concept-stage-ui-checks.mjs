@@ -196,6 +196,15 @@ assert(
   "Project executors must be able to open an unlocked empty concept-stage workspace without gaining access to unassigned concept folders.",
 );
 assert(
+  route.includes("const folderVersion = folders.folders") &&
+    route.includes('key={`${stageNumber}:${folders.selectedExecutorId ?? "all"}:${folderVersion}`}') &&
+    route.includes("StageRouteShell") &&
+    actions.includes("publishProjectActivityUpdatedAfterResponse") &&
+    actions.includes('eventType: "participant_access_changed"') &&
+    actions.includes("changedEntityId: folder.id"),
+  "Concept creation and assignment changes must broadcast a project refresh, and refreshed server folders must remount stale client state.",
+);
+assert(
   history.includes('mode: "work"') &&
     access.includes("Only the assigned concept executor") &&
     history.includes("Concept taskers cannot use the legacy approve/complete action"),
