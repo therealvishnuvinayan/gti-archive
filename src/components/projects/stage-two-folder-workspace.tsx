@@ -697,21 +697,24 @@ export function StageTwoFolderWorkspace({
   return (
     <section className="mx-auto w-full max-w-[1420px] pb-6">
       <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
-      <Card className="overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
+      <Card className="overflow-clip rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
         <CardContent className="p-0">
+          <nav
+            aria-label="Folder navigation"
+            className="sticky top-0 z-40 flex min-w-0 items-center gap-2 border-b border-[#e6ece7] bg-white/95 px-5 py-3 backdrop-blur-sm sm:px-8"
+          >
+            <ProjectBackButton
+              href={`/projects/${data.project.id}/stages/2?workspace=${encodeURIComponent(data.workspace.id)}`}
+              label="Research workspace"
+              ariaLabel="Back to Stage 2 Research Workspace"
+            />
+            <span className="text-[#a0aaa2]">/</span>
+            <span className="max-w-[220px] truncate text-[12px] font-[700] text-[#536158]">
+              {data.folder.name}
+            </span>
+          </nav>
           <header className="border-b border-[#e6ece7] px-5 py-5 sm:px-8">
-            <div className="flex min-w-0 items-center gap-2">
-              <ProjectBackButton
-                href={`/projects/${data.project.id}/stages/2?workspace=${encodeURIComponent(data.workspace.id)}`}
-                label="Research workspace"
-                ariaLabel="Back to Stage 2 Research Workspace"
-              />
-              <span className="text-[#a0aaa2]">/</span>
-              <span className="max-w-[220px] truncate text-[12px] font-[700] text-[#536158]">
-                {data.folder.name}
-              </span>
-            </div>
-            <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#e7f3ea] text-[#2d7952]">
                   <FolderOpen className="h-5 w-5" />
