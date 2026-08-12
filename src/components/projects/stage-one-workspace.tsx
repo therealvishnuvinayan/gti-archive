@@ -104,15 +104,17 @@ function StageOneFormField({
   label,
   required = false,
   error,
+  className,
   children,
 }: {
   label: string;
   required?: boolean;
   error?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", className)}>
       <label className="mb-2 block text-[13px] font-[720] text-[#202923]">
         {label}
         {required ? <span className="ml-1 text-[#bd4d48]">*</span> : null}
@@ -1391,7 +1393,11 @@ export function StageOneWorkspace({
                 <AppDatePicker value={deadline} onChange={(value) => { setDeadline(value); clearFieldError("deadline"); }} disabled={readOnly || submitting} placeholder="Select deadline" triggerClassName="h-12 w-full justify-between rounded-[14px] border border-[#dce3dc] bg-white px-4 text-left text-[13px] font-normal text-[#263029] shadow-none hover:bg-white" />
               </StageOneFormField>
 
-              <StageOneFormField label="Legal Notes" error={fieldErrors.legalNotes || fieldErrors.attachments}>
+              <StageOneFormField
+                label="Legal Notes"
+                error={fieldErrors.legalNotes || fieldErrors.attachments}
+                className="lg:row-span-2"
+              >
                 <AttachmentTextarea
                   projectId={project.id}
                   field={attachmentFields.legalNotes}

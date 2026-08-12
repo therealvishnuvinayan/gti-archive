@@ -69,6 +69,12 @@ assert(
   "Stage 1 description fields must grow with content while preserving manual vertical resizing.",
 );
 assert(
+  workspace.includes('label="Legal Notes"') &&
+    workspace.includes('className="lg:row-span-2"') &&
+    workspace.includes('className={cn("min-w-0", className)}'),
+  "Legal Notes must span the Deadline and Priority rows so its growth does not leave an empty left column.",
+);
+assert(
   workspace.includes("BusinessObjectiveTagsInput") &&
     workspace.includes('entryMode="business-objectives"') &&
     workspace.includes('onChange([...entries, nextEntry].join("\\n"))') &&
