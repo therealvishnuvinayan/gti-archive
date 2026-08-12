@@ -185,10 +185,13 @@ assert(
     workspace.includes('href={`/projects/${project.id}/stages/4`}') &&
     workspace.includes("stageNumber === 3 && managementLocked") &&
     workspace.includes('"Continue to Stage 5"') &&
+    workspace.includes("Go to Stage 5") &&
+    workspace.includes('href={`/projects/${project.id}/stages/5`}') &&
+    workspace.includes("stageNumber === 4 && managementLocked") &&
     workspace.includes('cancelLabel="Cancel"') &&
     !concepts.includes("const stageTransition = await completeStageThreeConcepts") &&
     !concepts.includes("const stageTransition = await completeStageFourConcepts"),
-  "Stages 3 and 4 must advance only through their explicit manual continue/skip actions and never from final-file approval.",
+  "Stages 3 and 4 must advance only through their explicit manual continue/skip actions, then retain direct navigation to the unlocked next stage.",
 );
 assert(
   concepts.includes("const isProjectExecutor = project.executors.some") &&

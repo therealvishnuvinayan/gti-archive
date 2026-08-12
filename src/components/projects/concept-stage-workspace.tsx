@@ -709,10 +709,22 @@ export function ConceptStageWorkspace({
                 </Link>
               </Button>
             ) : null}
-            {stageNumber === 4 && canManageConcepts && managementLocked ? (
+            {stageNumber === 4 && managementLocked ? (
               <span className="inline-flex h-11 items-center gap-2 rounded-[12px] bg-[#e7f5eb] px-4 text-[12px] font-[760] text-[#247247]">
                 <CheckCircle2 className="h-4 w-4" /> Stage 4 Completed
               </span>
+            ) : null}
+            {stageNumber === 4 && managementLocked ? (
+              <Button
+                asChild
+                type="button"
+                className="h-11 rounded-[12px] px-5 font-[720]"
+              >
+                <Link href={`/projects/${project.id}/stages/5`}>
+                  Go to Stage 5
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
             ) : null}
             {canCompleteStage && !managementLocked && stageCompletionReady ? (
               <Button
