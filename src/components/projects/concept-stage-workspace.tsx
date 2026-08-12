@@ -67,12 +67,14 @@ function ConceptDetailsDialog({
   state,
   executors,
   defaultName,
+  defaultAssignedExecutorId,
   onClose,
   onSubmit,
 }: {
   state: Exclude<FolderDialogState, null>;
   executors: ConceptExecutor[];
   defaultName: string;
+  defaultAssignedExecutorId?: string | null;
   onClose: () => void;
   onSubmit: (input: {
     name: string;
@@ -85,7 +87,10 @@ function ConceptDetailsDialog({
     state.mode === "edit" ? state.folder.name : defaultName,
   );
   const [assignedExecutorId, setAssignedExecutorId] = useState(
-    state.mode === "edit" ? state.folder.assignedExecutorId ?? "" : "",
+    state.mode === "edit"
+      ? state.folder.assignedExecutorId ?? ""
+      : defaultAssignedExecutorId?.trim() ||
+          (executors.length === 1 ? executors[0]?.id ?? "" : ""),
   );
   const [brief, setBrief] = useState(
     state.mode === "edit" ? state.folder.brief ?? "" : "",
@@ -154,7 +159,10 @@ function ConceptDetailsDialog({
                 <Select
                   value={assignedExecutorId}
                   onValueChange={setAssignedExecutorId}
-                  disabled={assignmentLocked}
+                  disabled={
+                    assignmentLocked ||
+                    (state.mode === "create" && executors.length === 1)
+                  }
                 >
                   <SelectTrigger className="h-12 rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 shadow-none focus-visible:border-[#46906a]">
                     <SelectValue placeholder="Select a project executor" />
@@ -175,6 +183,11 @@ function ConceptDetailsDialog({
                     ))}
                   </SelectContent>
                 </Select>
+                <span className="block text-[11px] leading-4 text-[#748078]">
+                  {state.mode === "create" && executors.length === 1
+                    ? "Automatically assigned because this project has one executor."
+                    : "Choose the project executor responsible for this concept."}
+                </span>
               </label>
 
               <label className="block space-y-2">
@@ -402,12 +415,9 @@ export function ConceptStageWorkspace({
   const unapprovedConcepts = completionConcepts.filter(
     (concept) => !concept.isApproved,
   );
-  const allStageFourConceptsApproved =
+  const allConceptsApproved =
     completionConcepts.length > 0 && unapprovedConcepts.length === 0;
-  const stageCompletionReady =
-    stageNumber === 3
-      ? approvedConceptCount > 0
-      : allStageFourConceptsApproved;
+  const stageCompletionReady = allConceptsApproved;
 
   function completeCurrentStage() {
     if (!canCompleteStage) {
@@ -417,14 +427,16 @@ export function ConceptStageWorkspace({
       return;
     }
 
-    if (stageNumber === 3 && approvedConceptCount === 0) {
+    if (stageNumber === 3 && !allConceptsApproved) {
       setCompletionError(
-        "At least one concept must have an approved concept file before Stage 3 can be completed.",
+        unapprovedConcepts.length > 0
+          ? `Every Stage 3 concept must have an Approved Concept before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
+          : "Create and approve at least one concept before Stage 3 can be completed.",
       );
       return;
     }
 
-    if (stageNumber === 4 && !allStageFourConceptsApproved) {
+    if (stageNumber === 4 && !allConceptsApproved) {
       setCompletionError(
         "Every Stage 4 concept must receive Final Approval before Stage 4 can be completed.",
       );
@@ -588,7 +600,7 @@ export function ConceptStageWorkspace({
             </div>
           </div>
           <div className="flex flex-wrap items-end gap-3">
-            {stageNumber === 3 && canManageConcepts ? (
+            {canManageConcepts && executors.length > 1 ? (
               <label className="min-w-[220px] space-y-1.5">
                 <span className="text-[11px] font-[720] uppercase tracking-[0.08em] text-[#748078]">
                   Viewing Executor
@@ -597,7 +609,7 @@ export function ConceptStageWorkspace({
                   value={selectedExecutorId ?? "all"}
                   onValueChange={(value) => {
                     const query = value === "all" ? "" : `?executor=${encodeURIComponent(value)}`;
-                    router.replace(`/projects/${project.id}/stages/3${query}`);
+                    router.replace(`/projects/${project.id}/stages/${stageNumber}${query}`);
                   }}
                 >
                   <SelectTrigger className="rounded-[12px] border border-[#dfe6df] bg-white">
@@ -624,20 +636,12 @@ export function ConceptStageWorkspace({
                 <CheckCircle2 className="h-4 w-4" /> Stage 4 Completed
               </span>
             ) : null}
-            {canCompleteStage && !managementLocked ? (
+            {canCompleteStage && !managementLocked && stageCompletionReady ? (
               <Button
                 type="button"
                 className="h-11 rounded-[12px] px-5 font-[720]"
-                disabled={isCompleting || !stageCompletionReady}
-                title={
-                  !stageCompletionReady
-                    ? stageNumber === 3
-                      ? "Approve at least one concept file before completing Stage 3."
-                      : "Every concept requires Final Approval before Stage 4 can be completed."
-                    : undefined
-                }
+                disabled={isCompleting}
                 onClick={() => {
-                  if (!stageCompletionReady) return;
                   setCompletionError(null);
                   setCompletionDialogOpen(true);
                 }}
@@ -801,6 +805,7 @@ export function ConceptStageWorkspace({
           state={dialog}
           executors={executors}
           defaultName={folders.length === 0 ? "Concept 1" : `Concept ${folders.length + 1}`}
+          defaultAssignedExecutorId={selectedExecutorId}
           onClose={() => setDialog(null)}
           onSubmit={submitConceptDetails}
         />
@@ -816,9 +821,9 @@ export function ConceptStageWorkspace({
         description={
           stageNumber === 3
             ? approvedConceptCount === 0
-              ? "At least one concept must have an approved concept file before Stage 3 can be completed. Mark one formal revision file, then try again."
+              ? "Create and approve at least one concept before Stage 3 can be completed."
               : unapprovedConcepts.length > 0
-                ? `${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"} will move to Stage 4. These unapproved concepts will remain in Stage 3: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}. This locks Stage 3 approval selection and concept management.`
+                ? `Every Stage 3 concept must have an Approved Concept before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
                 : `${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"} will move to Stage 4. This locks Stage 3 approval selection and concept management.`
             : approvedConceptCount === 0
               ? "At least one concept must have a Final Approved File before Stage 4 can be completed."
@@ -828,11 +833,7 @@ export function ConceptStageWorkspace({
         }
         confirmLabel={`Complete Stage ${stageNumber}`}
         pending={isCompleting}
-        confirmDisabled={
-          stageNumber === 3
-            ? approvedConceptCount === 0
-            : !allStageFourConceptsApproved
-        }
+        confirmDisabled={!allConceptsApproved}
         error={completionError ?? undefined}
         onConfirm={completeCurrentStage}
         onClose={() => {

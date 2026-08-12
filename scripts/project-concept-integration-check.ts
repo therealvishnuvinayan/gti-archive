@@ -766,10 +766,21 @@ async function main() {
       "assigned executor must not create concept review markers",
     );
 
+    const conceptBRevision = await prisma.projectRevision.create({
+      data: {
+        projectId,
+        stageId: conceptB.folder.taskerStageId,
+        createdById: executorB.id,
+        revisionNumber: 1,
+        title: "Concept B submission",
+        status: ProjectRevisionStatus.PENDING_REVIEW,
+      },
+    });
     const conceptBFile = await prisma.projectAttachment.create({
       data: {
         projectId,
         stageId: conceptB.folder.taskerStageId,
+        revisionId: conceptBRevision.id,
         uploadedById: executorB.id,
         fileName: `concept-b-cross-scope-${runId}.png`,
         originalFileName: "concept-b-cross-scope.png",
@@ -1187,20 +1198,40 @@ async function main() {
       isErrorResult(await completeStageThreeConcepts(coOwner, { projectId })),
       "co-owner must be rejected by the Stage 3 completion service",
     );
+    const prematureCompletion = await completeStageThreeConcepts(owner, { projectId });
+    check(
+      isErrorResult(prematureCompletion) &&
+        prematureCompletion.error.includes("Every Stage 3 concept") &&
+        prematureCompletion.error.includes(conceptB.folder.name),
+      "Stage 3 completion must reject concepts that are still awaiting approval",
+    );
+    const conceptBApproval = await markProjectConceptApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptB.folder.id,
+      attachmentId: conceptBFile.id,
+    });
+    check(
+      !isErrorResult(conceptBApproval) &&
+        "stageTransition" in conceptBApproval &&
+        conceptBApproval.stageTransition.transitioned,
+      "approving the final pending Stage 3 concept must activate Stage 4",
+    );
     const [completion, concurrentCompletion] = await Promise.all([
       completeStageThreeConcepts(owner, { projectId }),
       completeStageThreeConcepts(superAdmin, { projectId }),
     ]);
-    check(!isErrorResult(completion), "owner must complete Stage 3 with one approved concept");
     check(
-      !isErrorResult(concurrentCompletion),
-      "a concurrent completion retry must resolve idempotently",
+      !isErrorResult(completion) &&
+        !isErrorResult(concurrentCompletion) &&
+        !completion.transitioned &&
+        !concurrentCompletion.transitioned,
+      "concurrent completion retries must resolve idempotently after automatic progression",
     );
     check(
-      (completion.transitioned || concurrentCompletion.transitioned) &&
-        completion.approvedCount === 1 &&
-        completion.unapprovedConcepts.some((concept) => concept.id === conceptB.folder.id),
-      "completion must promote only approved concepts and report unapproved concepts",
+      conceptBApproval.stageTransition.approvedCount === 2 &&
+        conceptBApproval.stageTransition.unapprovedConcepts.length === 0 &&
+        completion.approvedCount === 2,
+      "completion must promote every approved concept without leaving pending concepts behind",
     );
     const workflowAfterCompletion = await prisma.projectWorkflowStage.findMany({
       where: {
@@ -1343,8 +1374,8 @@ async function main() {
     check(
       activationRecipientIds.includes(coOwner.id) &&
         activationRecipientIds.includes(executorA.id) &&
+        activationRecipientIds.includes(executorB.id) &&
         !activationRecipientIds.includes(owner.id) &&
-        !activationRecipientIds.includes(executorB.id) &&
         !activationRecipientIds.includes(collaborator.id) &&
         !activationRecipientIds.includes(superAdmin.id),
       "Stage 4 activation notifications must remain manager/assigned-executor scoped",
@@ -1644,8 +1675,9 @@ async function main() {
     });
     check(
       isErrorResult(collisionCompletion) &&
-        collisionCompletion.error.includes("unrelated concept"),
-      "an unrelated Stage 4 name collision must return a clear correction error",
+        collisionCompletion.error.includes("Every Stage 3 concept") &&
+        collisionCompletion.error.includes(collisionControlConcept.folder.name),
+      "Stage 3 completion must report pending concepts before attempting promotion",
     );
     check(
       (await prisma.projectWorkflowStage.findUniqueOrThrow({
@@ -1662,7 +1694,7 @@ async function main() {
             sourceStage3ConceptId: collisionConcept.folder.id,
           },
         })) === 0,
-      "a collision must leave Stage 3 available without a partial promotion",
+      "premature completion must leave Stage 3 available without a partial promotion",
     );
 
     await prisma.projectConceptFolder.delete({

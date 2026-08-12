@@ -87,7 +87,8 @@ assert(
     concepts.includes("Only the Project Owner or Super Admin can complete Stage 3.") &&
     concepts.includes("TransactionIsolationLevel.Serializable") &&
     concepts.includes("approvedConcepts.length === 0") &&
-    concepts.includes("unapprovedConcepts") &&
+    concepts.includes("unapprovedConcepts.length > 0") &&
+    concepts.includes("Every Stage 3 concept must have an Approved Concept") &&
     concepts.includes("sourceStage3ConceptId: concept.id") &&
     concepts.includes("sourceStage3ApprovedAttachmentId: approvedAttachmentId") &&
     concepts.includes("description: null") &&
@@ -95,7 +96,7 @@ assert(
     concepts.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     concepts.includes("ProjectWorkflowStageStatus.AVAILABLE") &&
     !concepts.includes("ProjectStageFileHandoff"),
-  "Owner/Super-Admin-only Stage 3 completion must atomically promote approved concepts to fresh Stage 4 taskers without a Stage 5 handoff.",
+  "Owner/Super-Admin-only Stage 3 completion must require and atomically promote every approved concept to fresh Stage 4 taskers without a Stage 5 handoff.",
 );
 assert(
   concepts.includes("bySourceId") &&
@@ -120,9 +121,10 @@ assert(
     workspace.includes("completeStageThreeConceptsAction") &&
     workspace.includes("stageNumber === 3") &&
     workspace.includes("approvedConceptCount === 0") &&
+    workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
     workspace.includes("folder.startingReference.previewPath") &&
     workspace.includes("folder.startingReference.downloadPath"),
-  "Completion confirmation must warn about unapproved concepts and Stage 4 references must preview/download.",
+  "Completion must stay hidden while concepts are unapproved, and Stage 4 references must preview/download.",
 );
 
 assert(

@@ -81,8 +81,18 @@ assert(
 assert(
   stageThreePage.includes("searchParams") &&
     stageThreePage.includes("executorFilter={executor}") &&
-    workspace.includes("?executor=${encodeURIComponent(value)}"),
-  "Stage 3 executor filtering must be URL-backed.",
+    stageFourPage.includes("searchParams") &&
+    stageFourPage.includes("executorFilter={executor}") &&
+    route.includes("executorId: executorFilter") &&
+    workspace.includes("/stages/${stageNumber}${query}"),
+  "Stage 3/4 executor filtering must be URL-backed.",
+);
+assert(
+  workspace.includes("defaultAssignedExecutorId") &&
+    workspace.includes("executors.length === 1 ? executors[0]?.id") &&
+    workspace.includes("Automatically assigned because this project has one executor") &&
+    workspace.includes("Choose the project executor responsible for this concept"),
+  "Single-executor concepts must auto-assign while multi-executor projects retain an explicit owner choice.",
 );
 assert(
   route.includes("folders.canManage") &&
@@ -135,17 +145,19 @@ assert(
   "SUPER_ADMIN must be the sole implicit global concept role.",
 );
 assert(
-  workspace.includes("canCompleteStage && !managementLocked") &&
+  workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
     workspace.includes("canCompleteStage &&") &&
     workspace.includes("completionDialogOpen &&") &&
     workspace.includes("const stageCompletionReady =") &&
-    workspace.includes("disabled={isCompleting || !stageCompletionReady}") &&
-    workspace.includes("if (!stageCompletionReady) return;") &&
+    workspace.includes("disabled={isCompleting}") &&
     workspace.includes("completionDialogOpen &&\n          stageCompletionReady") &&
     concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
     concepts.includes("approvedConcepts.length === 0") &&
+    concepts.includes("unapprovedConcepts.length > 0") &&
+    concepts.includes("Every Stage 3 concept must have an Approved Concept") &&
+    workspace.includes("const stageCompletionReady = allConceptsApproved") &&
     concepts.includes("Only the Project Owner or Super Admin can complete Stage 3."),
-  "Stage completion must remain disabled until workflow requirements are met and be enforced separately from concept management.",
+  "Stage 3/4 completion controls must stay hidden until every concept is approved and be enforced separately from concept management.",
 );
 assert(
   history.includes('mode: "work"') &&

@@ -1308,7 +1308,13 @@ export async function completeStageThreeConcepts(
 
           if (approvedConcepts.length === 0) {
             return {
-              error: "At least one concept must have an approved concept file before Stage 3 can be completed.",
+              error: "Create and approve at least one concept before Stage 3 can be completed.",
+            };
+          }
+
+          if (unapprovedConcepts.length > 0) {
+            return {
+              error: `Every Stage 3 concept must have an Approved Concept before Stage 3 can be completed. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`,
             };
           }
 

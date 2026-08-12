@@ -309,11 +309,6 @@ async function main() {
       assignedExecutorId: executorB.id,
       brief: "Develop a geometric identity with restrained architectural forms.",
     },
-    {
-      name: "Concept C - Editorial",
-      assignedExecutorId: executorA.id,
-      brief: "Develop an editorial identity with expressive typography.",
-    },
   ];
   const concepts: Array<{
     id: string;
@@ -330,7 +325,7 @@ async function main() {
     check(!isError(concept), `real concept creation must succeed for ${conceptInput.name}`);
     concepts.push(concept.folder);
   }
-  const [conceptA, conceptB, conceptC] = concepts;
+  const [conceptA, conceptB] = concepts;
 
   const duplicateConcept = await createProjectConceptFolder(owner, {
     projectId,
@@ -351,8 +346,8 @@ async function main() {
     },
   });
   check(
-    stageThreeTaskers.length === 3 &&
-      new Set(stageThreeTaskers.map((tasker) => tasker.id)).size === 3 &&
+    stageThreeTaskers.length === 2 &&
+      new Set(stageThreeTaskers.map((tasker) => tasker.id)).size === 2 &&
       stageThreeTaskers.every(
         (tasker) =>
           tasker.description &&
@@ -386,13 +381,12 @@ async function main() {
       getProjectConceptFolders(executorA, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION),
       getProjectConceptFolders(executorB, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION),
     ]);
-  check(ownerView?.folders.length === 3, "owner must see all three concepts");
-  check(coOwnerView?.folders.length === 3, "co-owner must see all three concepts");
-  check(superView?.folders.length === 3, "SUPER_ADMIN must see all concepts");
+  check(ownerView?.folders.length === 2, "owner must see all concepts");
+  check(coOwnerView?.folders.length === 2, "co-owner must see all concepts");
+  check(superView?.folders.length === 2, "SUPER_ADMIN must see all concepts");
   check(
-    executorAView?.folders.map((folder) => folder.id).sort().join(",") ===
-      [conceptA.id, conceptC.id].sort().join(","),
-    "Executor A must see only Concepts A and C",
+    executorAView?.folders.length === 1 && executorAView.folders[0]?.id === conceptA.id,
+    "Executor A must see only Concept A",
   );
   check(
     executorBView?.folders.length === 1 && executorBView.folders[0].id === conceptB.id,
@@ -727,6 +721,15 @@ async function main() {
     !isError(replacementApproval) && replacementApproval.changed,
     "co-owner must safely replace the approved Concept A file",
   );
+  const prematureStageThreeCompletion = await completeStageThreeConcepts(owner, {
+    projectId,
+  });
+  check(
+    isError(prematureStageThreeCompletion) &&
+      prematureStageThreeCompletion.error.includes("Every Stage 3 concept") &&
+      prematureStageThreeCompletion.error.includes(conceptB.name),
+    "Stage 3 must not complete while another executor's concept is still awaiting approval",
+  );
   const duplicateApproval = await markProjectConceptApprovedAttachment(superAdmin, {
     projectId,
     folderId: conceptA.id,
@@ -785,7 +788,12 @@ async function main() {
     folderId: conceptB.id,
     attachmentId: conceptBRevision.attachmentIds[0],
   });
-  check(!isError(conceptBApproval), "co-owner must approve Concept B");
+  check(
+    !isError(conceptBApproval) &&
+      "stageTransition" in conceptBApproval &&
+      conceptBApproval.stageTransition.transitioned,
+    "co-owner approval of the final pending concept must activate Stage 4",
+  );
   check(
     isError(await completeStageThreeConcepts(coOwner, { projectId })),
     "co-owner must not complete Stage 3",
@@ -798,18 +806,15 @@ async function main() {
   check(
     !isError(stageThreeCompletionA) &&
       !isError(stageThreeCompletionB) &&
-      (stageThreeCompletionA.transitioned || stageThreeCompletionB.transitioned),
-    "double Complete Stage 3 must converge successfully",
+      !stageThreeCompletionA.transitioned &&
+      !stageThreeCompletionB.transitioned,
+    "manual Stage 3 completion retries must be idempotent after automatic progression",
   );
-  const stageThreeCompletion = stageThreeCompletionA.transitioned
-    ? stageThreeCompletionA
-    : stageThreeCompletionB;
+  const stageThreeCompletion = conceptBApproval.stageTransition;
   check(
     stageThreeCompletion.approvedCount === 2 &&
-      stageThreeCompletion.unapprovedConcepts.some(
-        (concept) => concept.id === conceptC.id,
-      ),
-    "Stage 3 completion must warn that Concept C will not continue",
+      stageThreeCompletion.unapprovedConcepts.length === 0,
+    "Stage 3 completion must include every approved concept",
   );
   await notifyStageFourConceptsActivated({
     projectId,

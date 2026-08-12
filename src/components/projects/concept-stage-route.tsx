@@ -123,7 +123,7 @@ async function ConceptStageDataContent({
   executorFilter?: string;
 }) {
   const folders = await getProjectConceptFolders(user, slug, stageKey, {
-    executorId: stageNumber === 3 ? executorFilter : null,
+    executorId: executorFilter,
   });
 
   if (!folders) {
