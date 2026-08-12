@@ -647,7 +647,11 @@ export function ConceptStageWorkspace({
 
       {showChrome ? <ProjectFlowSummaryStrip project={project} /> : null}
 
-      <section className="mt-6 border-t border-[#dfe6df] pt-6" aria-labelledby="concept-folders-heading">
+      <section
+        id="concept-folders"
+        className="mt-6 scroll-mt-4 border-t border-[#dfe6df] pt-6"
+        aria-labelledby="concept-folders-heading"
+      >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#eaf4ed] text-[#2e8057]">
