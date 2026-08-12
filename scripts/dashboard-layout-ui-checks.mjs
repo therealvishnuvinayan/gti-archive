@@ -60,8 +60,10 @@ assert(
 assert(
   sidebar.includes("LogoMark compact") &&
     sidebar.includes('alt="GTI logo mark"') &&
-    sidebar.includes('alt="GTI logo"'),
-  "Expanded and collapsed branding must use full and compact logo treatments.",
+    sidebar.includes('alt="GTI logo"') &&
+    sidebar.includes("relative h-9 w-7 overflow-hidden") &&
+    sidebar.includes("w-20 max-w-none -translate-x-1/2"),
+  "Expanded and collapsed branding must retain the established scale while leaving the bottom of the compact logo visible.",
 );
 assert(
   sidebar.includes("createPortal") &&

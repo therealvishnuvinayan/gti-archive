@@ -149,7 +149,7 @@ type SidebarProps = {
 function LogoMark({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
-      <div className="relative size-7 overflow-hidden rounded-[9px] bg-white/55">
+      <div className="relative h-9 w-7 overflow-hidden rounded-[9px] bg-white/55">
         <Image
           src="/gti-logo.svg"
           alt="GTI logo mark"
