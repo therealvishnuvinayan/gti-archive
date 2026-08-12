@@ -42,17 +42,17 @@ export const STAGE_FIVE_FIELD_DEFINITIONS: StageFiveFieldDefinition[] = [
   },
   {
     key: ProjectFileChecklistField.TAR,
-    title: "Tar",
-    helper: "The required tar information",
+    title: "Tar (mg)",
+    helper: "Tar value in milligrams",
     control: "text",
-    placeholder: "Enter tar information",
+    placeholder: "Enter tar value (mg)",
   },
   {
     key: ProjectFileChecklistField.NICOTINE,
-    title: "Nicotine",
-    helper: "The required nicotine information",
+    title: "Nicotine (mg)",
+    helper: "Nicotine value in milligrams",
     control: "text",
-    placeholder: "Enter nicotine information",
+    placeholder: "Enter nicotine value (mg)",
   },
   {
     key: ProjectFileChecklistField.COMPULSORY_TEXT,

@@ -1249,7 +1249,10 @@ function TimelineFrame({
   grouped?: boolean;
   children: ReactNode;
 }) {
-  const verticalSpacing = grouped ? "mt-1" : "mt-2.5";
+  // Keep every shared timeline block visually separate. This wrapper is used by
+  // briefs, activity, submissions, revisions, captions, comparisons, and comments
+  // across all project stages.
+  const verticalSpacing = grouped ? "mb-2" : "mb-3";
 
   if (alignment === "left") {
     return (

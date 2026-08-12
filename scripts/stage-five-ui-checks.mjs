@@ -55,8 +55,8 @@ const checklistItems = [
   "Output Name",
   "Technical Drawing",
   "Health Warning",
-  "Tar",
-  "Nicotine",
+  "Tar (mg)",
+  "Nicotine (mg)",
   "Compulsory Text",
   "Marketing Copy",
   "Related Graphics",
@@ -138,6 +138,14 @@ assert(
     fieldDefinitions.includes("ProjectFileChecklistField.NICOTINE") &&
     !fieldDefinitions.includes('title: "Tar / Nicotine"'),
   "Stage 5 must collect Tar and Nicotine as separate active fields.",
+);
+assert(
+  fieldDefinitions.includes('title: "Tar (mg)"') &&
+    fieldDefinitions.includes('placeholder: "Enter tar value (mg)"') &&
+    fieldDefinitions.includes('title: "Nicotine (mg)"') &&
+    fieldDefinitions.includes('placeholder: "Enter nicotine value (mg)"') &&
+    !fieldDefinitions.includes("Required —"),
+  "Tar and Nicotine must communicate their mg unit without implying that either field is required.",
 );
 assert(
   fieldDefinitions.includes('title: "Compulsory Text"') &&
