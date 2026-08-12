@@ -86,11 +86,11 @@ export const quickStartItems: HelpQuickStartItem[] = [
   },
   {
     id: "quick-flux-ai",
-    title: "Ask Flux AI",
-    description: "Use the AI assistant to search accessible projects, summarize status, and prepare draft projects.",
+    title: "Search with Flux AI",
+    description: "Find authorized archived projects and files by name.",
     sectionId: "flux-ai",
     icon: Sparkles,
-    keywords: ["flux ai", "ai assistant", "project search", "project draft", "create project with ai"],
+    keywords: ["flux ai", "archive search", "archive finder", "archived file"],
   },
   {
     id: "quick-stage-budget",
@@ -170,10 +170,10 @@ export const helpTopics: HelpTopic[] = [
   {
     id: "topic-flux-ai",
     title: "Flux AI",
-    description: "Use the permission-controlled AI assistant for project search, status summaries, blockers, and project drafts.",
+    description: "Use the read-only, permission-controlled archive finder.",
     sectionId: "flux-ai",
     icon: Sparkles,
-    keywords: ["flux ai", "ai assistant", "project search", "project draft", "create project with ai"],
+    keywords: ["flux ai", "archive search", "archive finder", "archived file"],
   },
   {
     id: "topic-stages",
@@ -285,9 +285,9 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-flux-ai",
     title: "How Flux AI works",
-    description: "Understand what Flux AI can help with, what it cannot do, and how permission-controlled access works.",
+    description: "Find archives with deterministic search and server-enforced access rules.",
     sectionId: "flux-ai",
-    keywords: ["flux ai", "ai assistant", "project search", "project draft", "create project with ai"],
+    keywords: ["flux ai", "archive search", "archive finder", "permissions"],
   },
   {
     id: "guide-stage-budgets",
@@ -541,41 +541,34 @@ export const helpSections: HelpSection[] = [
   },
   {
     id: "flux-ai",
-    eyebrow: "AI Assistant",
+    eyebrow: "Archive Finder",
     title: "Flux AI",
     summary:
-      "Flux AI is an AI assistant inside GTI Archive that helps permitted users find projects, summarize project status, understand blockers, and prepare project drafts.",
+      "Flux AI is a read-only archive finder that searches real archive records the signed-in user is authorized to view.",
     keywords: [
       "flux ai",
-      "ai assistant",
-      "project search",
-      "project summary",
-      "project draft",
-      "create project with ai",
-      "approval blockers",
-      "archive readiness",
+      "archive search",
+      "archive finder",
+      "archived project",
+      "archived file",
     ],
     blocks: [
       {
         title: "What Flux AI is",
         items: [
-          "Flux AI is an AI assistant inside GTI Archive for project-focused questions and guided draft preparation.",
-          "It uses the current user's permissions, so answers should only include projects and fields the user is allowed to access.",
-          "It can restore recent Flux AI conversations for the same signed-in user when conversation persistence is enabled.",
+          "Flux AI searches archive records stored in GTI Archive.",
+          "Search is deterministic and database-backed; an AI model is not the source of truth for archive existence.",
+          "It uses the same server-side archive access rules as the Archives module.",
         ],
       },
       {
         title: "What Flux AI can do now",
         items: [
-          "Search accessible projects.",
-          "Count and summarize accessible projects.",
-          "Find projects by category, tag, owner, executor, or collaborator.",
-          "Find projects waiting for approval, copyright, invoice, or archive.",
-          "Explain what is blocking a project from archive where the user is allowed to see that information.",
-          "Prepare a project draft from natural language.",
-          "Ask for missing fields before creation.",
-          "Create a project only after explicit confirmation from the user.",
-          "Users with the required Flux AI permission can delete their own Flux AI chats from conversation history. Deleting a chat removes it from their history and does not affect projects created through Flux AI.",
+          "Find an archive by its archive name.",
+          "Find archived projects by project name.",
+          "Find an archive from an archived filename.",
+          "Understand simple wording such as “find”, “search archive”, and “show archived project”.",
+          "Open a result in the existing Archives module.",
         ],
       },
       {
@@ -583,10 +576,10 @@ export const helpSections: HelpSection[] = [
         items: [
           "It cannot bypass permissions.",
           "It cannot access Archives for CLIENT_OF_GTI accounts.",
-          "It cannot show hidden budget, vendor, participant, or archive data.",
-          "It cannot create a project without confirmation.",
+          "It cannot show archive names, filenames, dates, or counts from unauthorized records.",
+          "It cannot create or update projects.",
           "It cannot delete projects.",
-          "It cannot approve submissions.",
+          "It cannot change stages, assignments, collaborators, workflows, or archives.",
           "It cannot upload files.",
           "It cannot perform destructive actions.",
         ],
@@ -603,17 +596,17 @@ export const helpSections: HelpSection[] = [
       },
     ],
     callout:
-      "Flux AI may make mistakes. Always review project drafts and important information before confirming actions.",
+      "Every result shown by Flux AI comes from an authorized database record. If nothing matches, Flux AI returns no result.",
     questions: [
       {
         question: "Can Flux AI show information I cannot normally access?",
         answer:
-          "No. Flux AI must respect the same project, budget, participant, archive, and CLIENT_OF_GTI restrictions as the rest of GTI Archive.",
+          "No. Flux AI uses the same archive visibility and CLIENT_OF_GTI restrictions as the Archives module.",
       },
       {
         question: "Can Flux AI create a project from a prompt?",
         answer:
-          "Flux AI can prepare a draft and show missing fields, but the project is created only after the user explicitly clicks Create Project.",
+          "No. Flux AI is archive-finding only and has no project or workflow write actions.",
       },
     ],
   },
@@ -1501,16 +1494,16 @@ export const helpKeyTerms = [
   },
   {
     term: "Flux AI",
-    description: "A permission-controlled AI assistant for project search, status summaries, blockers, and draft project preparation.",
+    description: "A permission-controlled, read-only finder for archived projects and files.",
   },
 ];
 
 export const helpSearchKeywords = [
   "flux ai",
-  "ai assistant",
-  "project search",
-  "project draft",
-  "create project with ai",
+  "archive search",
+  "archive finder",
+  "archived project",
+  "archived file",
   "create project",
   "project brief",
   "stage brief",

@@ -35,6 +35,7 @@ type ArchiveCategoryWorkspaceProps = {
   categoryIconKey: string;
   categoryColor: string;
   items: ArchivedProjectFileRecord[];
+  initialSearch?: string;
   canUploadArchives: boolean;
   currentUserDisplayName: string;
 };
@@ -181,10 +182,14 @@ export function ArchiveCategoryWorkspace({
   categoryIconKey,
   categoryColor,
   items,
+  initialSearch = "",
   canUploadArchives,
   currentUserDisplayName,
 }: ArchiveCategoryWorkspaceProps) {
-  const [filters, setFilters] = useState<ArchiveFilters>(defaultFilters);
+  const [filters, setFilters] = useState<ArchiveFilters>(() => ({
+    ...defaultFilters,
+    search: initialSearch,
+  }));
   const [expandedArchiveItemIds, setExpandedArchiveItemIds] = useState<Set<string>>(
     () => new Set(),
   );

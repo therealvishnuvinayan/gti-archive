@@ -14,10 +14,16 @@ import { Card } from "@/components/ui/card";
 
 export default async function ArchiveCategoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ search?: string | string[] }>;
 }) {
   const { slug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const initialSearch = Array.isArray(resolvedSearchParams.search)
+    ? resolvedSearchParams.search[0] ?? ""
+    : resolvedSearchParams.search ?? "";
   const user = await requireUser();
 
   if (!(await canAccessArchivesArea(user))) {
@@ -81,6 +87,7 @@ export default async function ArchiveCategoryPage({
         categoryIconKey={category.iconKey}
         categoryColor={category.color}
         items={items}
+        initialSearch={initialSearch.slice(0, 240)}
         canUploadArchives={canUploadArchives}
         currentUserDisplayName={getUserDisplayName(user)}
       />

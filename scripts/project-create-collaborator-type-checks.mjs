@@ -100,8 +100,6 @@ for (const snippet of [
 for (const guardedPath of [
   "src/app/(dashboard)/projects/new/page.tsx",
   "src/app/(dashboard)/projects/new/v2-actions.ts",
-  "src/app/api/flux-ai/create-project/route.ts",
-  "src/app/api/flux-ai/validate-draft/route.ts",
 ]) {
   const source = read(guardedPath);
 
@@ -111,11 +109,5 @@ for (const guardedPath of [
     `${guardedPath} project.create guard`,
   );
 }
-
-assertIncludes(
-  read("src/lib/flux-ai/tools.ts"),
-  'hasPermission(input.user, "project.create")',
-  "src/lib/flux-ai/tools.ts project.create guard",
-);
 
 console.log("Project create collaborator type checks passed.");

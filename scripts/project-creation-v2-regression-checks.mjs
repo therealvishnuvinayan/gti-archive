@@ -28,7 +28,6 @@ const form = read("src/components/projects/create-project-form.tsx");
 const userSelector = read("src/components/projects/project-user-selector.tsx");
 const candidates = read("src/lib/project-owner-candidates.ts");
 const resolver = read("src/lib/permissions/resolver.ts");
-const fluxRoute = read("src/app/api/flux-ai/create-project/route.ts");
 
 for (const snippet of [
   'ownerId                String?',
@@ -203,8 +202,5 @@ for (const snippet of [
 ]) {
   assertIncludes(resolver, snippet, `Access resolver rule ${snippet}`);
 }
-
-assertIncludes(fluxRoute, "jsonFluxAI(response, 409)", "Flux AI V2 block response");
-assert(!fluxRoute.includes("prisma.project.create"), "Flux AI route must not use the legacy create path.");
 
 console.log("Project creation V2 regression checks passed.");

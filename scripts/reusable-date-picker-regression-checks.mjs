@@ -23,7 +23,6 @@ function assertNotIncludes(source, value, label) {
 }
 
 const appDatePicker = read("src/components/calendar/app-date-picker.tsx");
-const fluxWorkspace = read("src/components/flux-ai/flux-ai-workspace.tsx");
 const archiveMetadataForm = read("src/components/archives/archive-artwork-metadata-form.tsx");
 
 for (const snippet of [
@@ -43,26 +42,6 @@ assertNotIncludes(
   'type="date"',
   "Reusable date picker native date input",
 );
-
-for (const snippet of [
-  'import { AppDatePicker } from "@/components/calendar/app-date-picker";',
-  "draftProject.startDate",
-  "draftProject.endDate",
-  "stage.startDate",
-  "stage.dueDate",
-  "placeholder=\"Select start date\"",
-  "placeholder=\"Select end date\"",
-  "placeholder=\"Select stage start\"",
-  "placeholder=\"Select due date\"",
-]) {
-  assertIncludes(fluxWorkspace, snippet, `Flux AI date picker usage ${snippet}`);
-}
-
-assert(
-  (fluxWorkspace.match(/<AppDatePicker/g) ?? []).length >= 4,
-  "Flux AI draft editor must render AppDatePicker for project and stage dates.",
-);
-assertNotIncludes(fluxWorkspace, 'type="date"', "Flux AI native date input");
 
 for (const snippet of [
   'import { AppDatePicker } from "@/components/calendar/app-date-picker";',

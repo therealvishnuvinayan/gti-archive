@@ -62,6 +62,11 @@ import {
   type ArchiveArtworkMetadataDraft,
   type ArchiveArtworkMetadataMissingGroup,
 } from "@/lib/archive-artwork-metadata";
+import {
+  parseArchiveSearchQuery,
+  rankArchiveSearchCandidate,
+  type ArchiveSearchMatchKind,
+} from "@/lib/archive-search-query";
 
 export type {
   ArchiveArtworkMetadataDraft,
@@ -89,6 +94,24 @@ export type ArchiveCategorySummary = {
   fileCount: number;
   projectCount: number;
   latestArchivedAt: string | null;
+};
+
+export type ArchiveSearchResult = {
+  id: string;
+  recordType: "PROJECT_ARCHIVE" | "MANUAL_ARCHIVE_FILE";
+  name: string;
+  projectName: string | null;
+  archiveCategory: string;
+  archivedAt: string;
+  matchedOn: ArchiveSearchMatchKind;
+  matchedFileName: string | null;
+  href: string;
+};
+
+export type ArchiveSearchResponse = {
+  query: string;
+  recent: boolean;
+  results: ArchiveSearchResult[];
 };
 
 export type ArchivedProjectFileRecord = {
@@ -1805,6 +1828,583 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
   return hasPartialArchiveAccess(user)
     ? summaries.filter((summary) => summary.fileCount > 0)
     : summaries;
+}
+
+const DEFAULT_ARCHIVE_SEARCH_LIMIT = 10;
+const MAX_ARCHIVE_SEARCH_LIMIT = 20;
+const MAX_ARCHIVE_SEARCH_CANDIDATES = 100;
+
+function resolveArchiveSearchLimit(limit: number | null | undefined) {
+  if (!Number.isFinite(limit)) {
+    return DEFAULT_ARCHIVE_SEARCH_LIMIT;
+  }
+
+  return Math.min(
+    MAX_ARCHIVE_SEARCH_LIMIT,
+    Math.max(1, Math.trunc(limit ?? DEFAULT_ARCHIVE_SEARCH_LIMIT)),
+  );
+}
+
+function buildProjectArchiveSearchBaseWhere(
+  user: ArchiveAccessUser,
+): Prisma.ProjectArchiveWhereInput {
+  const archiveAccessWhere: Prisma.ProjectArchiveWhereInput = hasPartialArchiveAccess(user)
+    ? {
+        files: {
+          some: {
+            userArchiveAccesses: {
+              some: {
+                userId: user.id,
+              },
+            },
+          },
+        },
+      }
+    : {
+        project: {
+          is: buildArchivedProjectFileProjectWhere(user),
+        },
+      };
+
+  return {
+    AND: [
+      archiveAccessWhere,
+      {
+        archiveCategory: {
+          is: getAccessibleArchiveCategoryWhere(user),
+        },
+      },
+    ],
+  };
+}
+
+function buildManualArchiveSearchBaseWhere(
+  user: ArchiveAccessUser,
+): Prisma.ManualArchiveFileWhereInput {
+  return {
+    AND: [
+      {
+        status: AttachmentStatus.READY,
+      },
+      getManualArchiveFileAccessWhere(user),
+      {
+        archiveCategory: {
+          is: getAccessibleArchiveCategoryWhere(user),
+        },
+      },
+    ],
+  };
+}
+
+function buildArchivedFileNameSearchWhere(
+  user: ArchiveAccessUser,
+  query: string,
+): Prisma.ArchivedProjectFileWhereInput {
+  const containsQuery = {
+    contains: query,
+    mode: "insensitive" as const,
+  };
+
+  return {
+    AND: [
+      getArchivedProjectFileAccessWhere(user),
+      {
+        OR: [
+          { finalArchiveFileName: containsQuery },
+          { originalFileName: containsQuery },
+        ],
+      },
+    ],
+  };
+}
+
+function buildProjectArchiveBroadSearchWhere(
+  user: ArchiveAccessUser,
+  query: string,
+): Prisma.ProjectArchiveWhereInput {
+  const containsQuery = {
+    contains: query,
+    mode: "insensitive" as const,
+  };
+
+  return {
+    AND: [
+      buildProjectArchiveSearchBaseWhere(user),
+      {
+        OR: [
+          { projectName: containsQuery },
+          {
+            project: {
+              is: {
+                name: containsQuery,
+              },
+            },
+          },
+          {
+            archiveCategory: {
+              is: {
+                name: containsQuery,
+              },
+            },
+          },
+          {
+            files: {
+              some: buildArchivedFileNameSearchWhere(user, query),
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildManualArchiveBroadSearchWhere(
+  user: ArchiveAccessUser,
+  query: string,
+): Prisma.ManualArchiveFileWhereInput {
+  const containsQuery = {
+    contains: query,
+    mode: "insensitive" as const,
+  };
+
+  return {
+    AND: [
+      buildManualArchiveSearchBaseWhere(user),
+      {
+        OR: [
+          { fileName: containsQuery },
+          { projectName: containsQuery },
+          { originalFileName: containsQuery },
+          {
+            archiveCategory: {
+              is: {
+                name: containsQuery,
+              },
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function getProjectArchiveSearchSelect(user: ArchiveAccessUser, query: string) {
+  return {
+    id: true,
+    projectName: true,
+    archivedAt: true,
+    archiveCategory: {
+      select: {
+        name: true,
+        slug: true,
+      },
+    },
+    files: {
+      where: query
+        ? buildArchivedFileNameSearchWhere(user, query)
+        : getArchivedProjectFileAccessWhere(user),
+      orderBy: {
+        finalArchiveFileName: "asc" as const,
+      },
+      take: 5,
+      select: {
+        finalArchiveFileName: true,
+        originalFileName: true,
+      },
+    },
+    project: {
+      select: {
+        name: true,
+        ownerId: true,
+        coOwners: {
+          select: {
+            userId: true,
+          },
+        },
+        collaborators: {
+          where: {
+            userId: user.id,
+          },
+          select: {
+            chatVisibilityPaused: true,
+            visibilityPauses: {
+              orderBy: {
+                pausedAt: "asc" as const,
+              },
+              select: {
+                pausedAt: true,
+                resumedAt: true,
+              },
+            },
+          },
+        },
+      },
+    },
+  } as const satisfies Prisma.ProjectArchiveSelect;
+}
+
+const manualArchiveSearchSelect = {
+  id: true,
+  fileName: true,
+  originalFileName: true,
+  projectName: true,
+  uploadedAt: true,
+  archiveCategory: {
+    select: {
+      name: true,
+      slug: true,
+    },
+  },
+} as const satisfies Prisma.ManualArchiveFileSelect;
+
+type ProjectArchiveSearchRecord = Prisma.ProjectArchiveGetPayload<{
+  select: ReturnType<typeof getProjectArchiveSearchSelect>;
+}>;
+
+type ManualArchiveSearchRecord = Prisma.ManualArchiveFileGetPayload<{
+  select: typeof manualArchiveSearchSelect;
+}>;
+
+function mergeArchiveSearchRecords<T extends { id: string }>(...groups: T[][]) {
+  const records = new Map<string, T>();
+
+  for (const record of groups.flat()) {
+    records.set(record.id, record);
+  }
+
+  return [...records.values()];
+}
+
+function buildArchiveModuleHref(categorySlug: string, searchValue: string) {
+  return `/archives/${encodeURIComponent(categorySlug)}?search=${encodeURIComponent(
+    searchValue,
+  )}`;
+}
+
+function mapProjectArchiveSearchResult(
+  user: ArchiveAccessUser,
+  archive: ProjectArchiveSearchRecord,
+  query: string,
+) {
+  if (
+    !archive.archiveCategory ||
+    !isArchiveTimestampVisibleToUser(
+      user,
+      archive.project,
+      archive.archivedAt,
+    )
+  ) {
+    return null;
+  }
+
+  const archivedFileNames = archive.files.flatMap((file) => [
+    file.finalArchiveFileName,
+    file.originalFileName,
+  ]);
+  const match = rankArchiveSearchCandidate(
+    {
+      archiveName: archive.projectName,
+      projectName: archive.project.name,
+      archiveCategory: archive.archiveCategory.name,
+      archivedFileNames,
+    },
+    query,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const searchValue = match.matchedFileName ?? archive.projectName;
+
+  return {
+    result: {
+      id: archive.id,
+      recordType: "PROJECT_ARCHIVE",
+      name: archive.projectName,
+      projectName: archive.project.name,
+      archiveCategory: archive.archiveCategory.name,
+      archivedAt: archive.archivedAt.toISOString(),
+      matchedOn: match.kind,
+      matchedFileName: match.matchedFileName,
+      href: buildArchiveModuleHref(archive.archiveCategory.slug, searchValue),
+    } satisfies ArchiveSearchResult,
+    rank: match.rank,
+  };
+}
+
+function mapManualArchiveSearchResult(
+  archive: ManualArchiveSearchRecord,
+  query: string,
+) {
+  if (!archive.archiveCategory) {
+    return null;
+  }
+
+  const match = rankArchiveSearchCandidate(
+    {
+      archiveName: archive.fileName,
+      projectName: archive.projectName,
+      archiveCategory: archive.archiveCategory.name,
+      archivedFileNames: [archive.originalFileName],
+    },
+    query,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const searchValue = match.matchedFileName ?? archive.fileName;
+
+  return {
+    result: {
+      id: archive.id,
+      recordType: "MANUAL_ARCHIVE_FILE",
+      name: archive.fileName,
+      projectName: archive.projectName?.trim() || null,
+      archiveCategory: archive.archiveCategory.name,
+      archivedAt: archive.uploadedAt.toISOString(),
+      matchedOn: match.kind,
+      matchedFileName: match.matchedFileName,
+      href: buildArchiveModuleHref(archive.archiveCategory.slug, searchValue),
+    } satisfies ArchiveSearchResult,
+    rank: match.rank,
+  };
+}
+
+export async function searchArchivesForUser(input: {
+  user: ArchiveAccessUser;
+  query: string;
+  limit?: number | null;
+}): Promise<ArchiveSearchResponse> {
+  const parsedQuery = parseArchiveSearchQuery(input.query);
+  const resultLimit = resolveArchiveSearchLimit(input.limit);
+
+  if (!(await canAccessArchivesArea(input.user))) {
+    return {
+      ...parsedQuery,
+      results: [],
+    };
+  }
+
+  if (!parsedQuery.query && !parsedQuery.recent) {
+    return {
+      ...parsedQuery,
+      results: [],
+    };
+  }
+
+  const projectArchiveSelect = getProjectArchiveSearchSelect(
+    input.user,
+    parsedQuery.query,
+  );
+  let projectArchives: ProjectArchiveSearchRecord[];
+  let manualArchives: ManualArchiveSearchRecord[];
+
+  if (parsedQuery.recent) {
+    [projectArchives, manualArchives] = await withPrismaRetry(() =>
+      Promise.all([
+        prisma.projectArchive.findMany({
+          where: buildProjectArchiveSearchBaseWhere(input.user),
+          orderBy: {
+            archivedAt: "desc",
+          },
+          take: resultLimit,
+          select: projectArchiveSelect,
+        }),
+        prisma.manualArchiveFile.findMany({
+          where: buildManualArchiveSearchBaseWhere(input.user),
+          orderBy: {
+            uploadedAt: "desc",
+          },
+          take: resultLimit,
+          select: manualArchiveSearchSelect,
+        }),
+      ]),
+    );
+  } else {
+    const query = parsedQuery.query;
+    const insensitiveQuery = {
+      equals: query,
+      mode: "insensitive" as const,
+    };
+    const prefixQuery = {
+      startsWith: query,
+      mode: "insensitive" as const,
+    };
+    const [
+      exactProjectArchives,
+      prefixProjectArchives,
+      nameProjectArchives,
+      broadProjectArchives,
+      exactManualArchives,
+      prefixManualArchives,
+      nameManualArchives,
+      broadManualArchives,
+    ] = await withPrismaRetry(() =>
+      Promise.all([
+        prisma.projectArchive.findMany({
+          where: {
+            AND: [
+              buildProjectArchiveSearchBaseWhere(input.user),
+              { projectName: insensitiveQuery },
+            ],
+          },
+          take: resultLimit,
+          select: projectArchiveSelect,
+        }),
+        prisma.projectArchive.findMany({
+          where: {
+            AND: [
+              buildProjectArchiveSearchBaseWhere(input.user),
+              { projectName: prefixQuery },
+            ],
+          },
+          take: resultLimit,
+          select: projectArchiveSelect,
+        }),
+        prisma.projectArchive.findMany({
+          where: {
+            AND: [
+              buildProjectArchiveSearchBaseWhere(input.user),
+              {
+                projectName: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            ],
+          },
+          take: resultLimit,
+          select: projectArchiveSelect,
+        }),
+        prisma.projectArchive.findMany({
+          where: buildProjectArchiveBroadSearchWhere(input.user, query),
+          orderBy: {
+            archivedAt: "desc",
+          },
+          take: MAX_ARCHIVE_SEARCH_CANDIDATES,
+          select: projectArchiveSelect,
+        }),
+        prisma.manualArchiveFile.findMany({
+          where: {
+            AND: [
+              buildManualArchiveSearchBaseWhere(input.user),
+              { fileName: insensitiveQuery },
+            ],
+          },
+          take: resultLimit,
+          select: manualArchiveSearchSelect,
+        }),
+        prisma.manualArchiveFile.findMany({
+          where: {
+            AND: [
+              buildManualArchiveSearchBaseWhere(input.user),
+              { fileName: prefixQuery },
+            ],
+          },
+          take: resultLimit,
+          select: manualArchiveSearchSelect,
+        }),
+        prisma.manualArchiveFile.findMany({
+          where: {
+            AND: [
+              buildManualArchiveSearchBaseWhere(input.user),
+              {
+                fileName: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            ],
+          },
+          take: resultLimit,
+          select: manualArchiveSearchSelect,
+        }),
+        prisma.manualArchiveFile.findMany({
+          where: buildManualArchiveBroadSearchWhere(input.user, query),
+          orderBy: {
+            uploadedAt: "desc",
+          },
+          take: MAX_ARCHIVE_SEARCH_CANDIDATES,
+          select: manualArchiveSearchSelect,
+        }),
+      ]),
+    );
+
+    projectArchives = mergeArchiveSearchRecords(
+      exactProjectArchives,
+      prefixProjectArchives,
+      nameProjectArchives,
+      broadProjectArchives,
+    );
+    manualArchives = mergeArchiveSearchRecords(
+      exactManualArchives,
+      prefixManualArchives,
+      nameManualArchives,
+      broadManualArchives,
+    );
+  }
+
+  const rankedResults: Array<{
+    result: ArchiveSearchResult;
+    rank: number;
+  }> = [];
+
+  for (const archive of projectArchives) {
+    const rankedResult = mapProjectArchiveSearchResult(
+      input.user,
+      archive,
+      parsedQuery.query,
+    );
+
+    if (rankedResult) {
+      rankedResults.push(rankedResult);
+    }
+  }
+
+  for (const archive of manualArchives) {
+    const rankedResult = mapManualArchiveSearchResult(
+      archive,
+      parsedQuery.query,
+    );
+
+    if (rankedResult) {
+      rankedResults.push(rankedResult);
+    }
+  }
+
+  rankedResults.sort((left, right) => {
+    if (parsedQuery.recent) {
+      return (
+        new Date(right.result.archivedAt).getTime() -
+        new Date(left.result.archivedAt).getTime()
+      );
+    }
+
+    if (left.rank !== right.rank) {
+      return left.rank - right.rank;
+    }
+
+    const nameOrder = left.result.name.localeCompare(right.result.name, undefined, {
+      sensitivity: "base",
+    });
+
+    if (nameOrder !== 0) {
+      return nameOrder;
+    }
+
+    return (
+      new Date(right.result.archivedAt).getTime() -
+      new Date(left.result.archivedAt).getTime()
+    );
+  });
+
+  return {
+    ...parsedQuery,
+    results: rankedResults.slice(0, resultLimit).map((item) => item.result),
+  };
 }
 
 export function getDashboardArchiveUploadAccessState(user: ArchiveAccessUser) {
