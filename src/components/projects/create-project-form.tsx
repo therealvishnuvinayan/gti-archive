@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import { Loader2, UserPlus } from "lucide-react";
 
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
-import { createProjectV2Action } from "@/app/(dashboard)/projects/new/v2-actions";
+import {
+  createProjectV2Action,
+  updateProjectV2Action,
+} from "@/app/(dashboard)/projects/new/v2-actions";
 import {
   CollaboratorDialog,
   type CollaboratorForm,
@@ -26,6 +29,15 @@ type CreateProjectFormProps = {
   eligibleOwnerCandidates: ProjectOwnerCandidate[];
   availableCollaborators: CollaboratorRecord[];
   canInviteCollaborator: boolean;
+  mode?: "create" | "edit";
+  initialProject?: {
+    id: string;
+    name: string;
+    ownerId: string;
+    coOwnerIds: string[];
+    executorIds: string[];
+    collaboratorIds: string[];
+  };
 };
 
 type FormErrors = {
@@ -75,15 +87,27 @@ export function CreateProjectForm({
   eligibleOwnerCandidates,
   availableCollaborators,
   canInviteCollaborator,
+  mode = "create",
+  initialProject,
 }: CreateProjectFormProps) {
   const router = useRouter();
   const [isCreating, startCreating] = useTransition();
-  const [projectName, setProjectName] = useState("");
+  const editingProjectId = mode === "edit" ? initialProject?.id : undefined;
+  const isEditing = Boolean(editingProjectId);
+  const [projectName, setProjectName] = useState(initialProject?.name ?? "");
   const [collaborators, setCollaborators] = useState(availableCollaborators);
-  const [ownerIds, setOwnerIds] = useState<string[]>(() => [currentUser.id]);
-  const [coOwnerIds, setCoOwnerIds] = useState<string[]>([]);
-  const [executorIds, setExecutorIds] = useState<string[]>([]);
-  const [collaboratorIds, setCollaboratorIds] = useState<string[]>([]);
+  const [ownerIds, setOwnerIds] = useState<string[]>(() => [
+    initialProject?.ownerId ?? currentUser.id,
+  ]);
+  const [coOwnerIds, setCoOwnerIds] = useState<string[]>(
+    initialProject?.coOwnerIds ?? [],
+  );
+  const [executorIds, setExecutorIds] = useState<string[]>(
+    initialProject?.executorIds ?? [],
+  );
+  const [collaboratorIds, setCollaboratorIds] = useState<string[]>(
+    initialProject?.collaboratorIds ?? [],
+  );
   const [errors, setErrors] = useState<FormErrors>({});
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState<CollaboratorForm>(
@@ -238,13 +262,16 @@ export function CreateProjectForm({
     }
 
     startCreating(async () => {
-      const result = await createProjectV2Action({
+      const input = {
         name: projectName,
         ownerId: ownerIds[0] ?? "",
         coOwnerIds,
         executorIds,
         collaboratorIds,
-      });
+      };
+      const result = isEditing
+        ? await updateProjectV2Action(editingProjectId!, input)
+        : await createProjectV2Action(input);
 
       if ("error" in result) {
         setErrors({
@@ -254,11 +281,18 @@ export function CreateProjectForm({
           executors: result.fieldErrors?.executorIds,
           collaborators: result.fieldErrors?.collaboratorIds,
         });
-        showErrorToast("Unable to create project.", result.error);
+        showErrorToast(
+          isEditing ? "Unable to update project." : "Unable to create project.",
+          result.error,
+        );
         return;
       }
 
-      showSuccessToast("Project created successfully.");
+      showSuccessToast(
+        isEditing
+          ? "Project updated successfully."
+          : "Project created successfully.",
+      );
       router.push(`/projects/${result.projectId}`);
       router.refresh();
     });
@@ -273,11 +307,13 @@ export function CreateProjectForm({
         <span className="text-[#a0a7a1]" aria-hidden="true">
           /
         </span>
-        <span className="font-[650] text-[#263029]">Create Project</span>
+        <span className="font-[650] text-[#263029]">
+          {isEditing ? "Edit Project" : "Create Project"}
+        </span>
       </nav>
 
       <h1 className="text-[30px] font-[750] tracking-[-0.045em] text-[#111713] sm:text-[38px]">
-        Create Project
+        {isEditing ? "Edit Project" : "Create Project"}
       </h1>
 
       <form onSubmit={handleSubmit} noValidate className="mt-7 sm:mt-8">
@@ -407,7 +443,13 @@ export function CreateProjectForm({
             className="min-w-[170px] rounded-[14px]"
           >
             {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {isCreating ? "Creating..." : "Create Project"}
+            {isCreating
+              ? isEditing
+                ? "Saving..."
+                : "Creating..."
+              : isEditing
+                ? "Save Changes"
+                : "Create Project"}
           </Button>
           <Button
             asChild
@@ -416,7 +458,9 @@ export function CreateProjectForm({
             variant="secondary"
             className="min-w-[112px] rounded-[14px] shadow-none"
           >
-            <Link href="/projects">Cancel</Link>
+            <Link href={isEditing ? `/projects/${editingProjectId}` : "/projects"}>
+              Cancel
+            </Link>
           </Button>
         </div>
       </form>

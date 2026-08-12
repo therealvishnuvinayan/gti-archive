@@ -113,10 +113,30 @@ for (const snippet of [
 }
 
 for (const snippet of [
-  "useState<string[]>(() => [currentUser.id])",
+  "initialProject?.ownerId ?? currentUser.id",
   "uniqueOptions.set(currentUser.id, currentUser)",
 ]) {
   assertIncludes(form, snippet, `Current user owner default ${snippet}`);
+}
+
+for (const snippet of [
+  'mode?: "create" | "edit"',
+  "updateProjectV2Action",
+  'isEditing ? "Edit Project" : "Create Project"',
+  '"Save Changes"',
+]) {
+  assertIncludes(form, snippet, `Shared create/edit project form ${snippet}`);
+}
+
+for (const snippet of [
+  "export async function updateProjectV2",
+  "tx.project.update",
+  "tx.projectCoOwner.deleteMany",
+  "tx.projectExecutor.deleteMany",
+  "tx.projectCollaborator.deleteMany",
+  "tx.projectCollaborator.upsert",
+]) {
+  assertIncludes(creation, snippet, `Project edit persistence ${snippet}`);
 }
 
 for (const snippet of [

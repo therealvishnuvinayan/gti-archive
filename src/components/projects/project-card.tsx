@@ -7,6 +7,7 @@ import {
   ArrowRight,
   Clock3,
   Ellipsis,
+  Pencil,
   Pin,
   PinOff,
   Trash2,
@@ -50,6 +51,7 @@ export type ProjectCardItem = {
   isPinned: boolean;
   canPin: boolean;
   canDelete: boolean;
+  canEdit: boolean;
 };
 
 type ProjectCardProps = {
@@ -134,6 +136,9 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
   const projectHref = returnHref
     ? `/projects/${project.id}?returnTo=${encodeURIComponent(returnHref)}`
     : `/projects/${project.id}`;
+  const editProjectHref = returnHref
+    ? `/projects/${project.id}/edit?returnTo=${encodeURIComponent(returnHref)}`
+    : `/projects/${project.id}/edit`;
   const visibleExecutors = project.executors.slice(0, 3);
   const hiddenExecutorCount = Math.max(0, project.executors.length - visibleExecutors.length);
   const statusClass = "border-[#d1ead9] bg-[#eaf7ee] text-[#197143]";
@@ -185,7 +190,7 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
               {project.isPinned ? <Pin className="size-3.5 text-[#267c4f]" aria-label="Pinned" /> : null}
             </div>
 
-            {project.canPin || project.canDelete ? (
+            {project.canPin || project.canDelete || project.canEdit ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -200,6 +205,13 @@ export function ProjectCard({ project, returnHref }: ProjectCardProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[190px] rounded-[16px]">
+                  {project.canEdit ? (
+                    <DropdownMenuItem asChild>
+                      <Link href={editProjectHref}>
+                        <Pencil className="size-4" /> Edit project
+                      </Link>
+                    </DropdownMenuItem>
+                  ) : null}
                   {project.canPin ? (
                     <DropdownMenuItem onSelect={handleTogglePin}>
                       {project.isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}

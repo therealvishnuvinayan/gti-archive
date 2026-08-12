@@ -60,9 +60,11 @@ includes(actions, "ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION", "com
 includes(projects, "const updatedAt = toProjectDate(project.updatedAt);", "cached updatedAt normalization");
 
 assert(
-  !existsSync(join(rootDir, "src/app/(dashboard)/projects/[slug]/edit/page.tsx")),
-  "Legacy edit route still exists.",
+  existsSync(join(rootDir, "src/app/(dashboard)/projects/[slug]/edit/page.tsx")),
+  "Permission-aware project edit route is missing.",
 );
-assert(!card.includes("/edit"), "Project card still links to the legacy edit route.");
+includes(card, "/edit", "project card edit route");
+includes(card, "Edit project", "project card edit action");
+includes(projects, '"project.manageCollaborators"', "project edit participant permission");
 
 console.log("Projects V2 dashboard regression checks passed.");

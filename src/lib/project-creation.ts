@@ -37,6 +37,8 @@ export type CreateProjectV2Result =
 
 type ProjectCreator = Pick<User, "id">;
 
+export type UpdateProjectV2Result = CreateProjectV2Result;
+
 function normalizeIdList(values: string[]) {
   return values.map((value) => value.trim()).filter(Boolean);
 }
@@ -337,4 +339,223 @@ export async function createProjectV2(
   return {
     projectId: createdProject.id,
   };
+}
+
+export async function updateProjectV2(
+  actor: ProjectCreator,
+  projectId: string,
+  input: CreateProjectV2Input,
+): Promise<UpdateProjectV2Result> {
+  const name = input.name.trim();
+  const ownerId = input.ownerId.trim();
+  const coOwnerIds = normalizeIdList(input.coOwnerIds);
+  const executorIds = normalizeIdList(input.executorIds);
+  const rawCollaboratorIds: unknown = input.collaboratorIds ?? [];
+  const collaboratorIds = isValidIdList(rawCollaboratorIds)
+    ? [...new Set(normalizeIdList(rawCollaboratorIds))]
+    : [];
+  const fieldErrors: CreateProjectV2FieldErrors = {};
+
+  if (!projectId.trim()) {
+    return { error: "Project not found." };
+  }
+
+  if (!name) fieldErrors.name = "Project name is required.";
+  if (!ownerId) fieldErrors.ownerId = "Select one project owner.";
+
+  if (hasDuplicates(coOwnerIds)) {
+    fieldErrors.coOwnerIds = "A co-owner can only be selected once.";
+  } else if (ownerId && coOwnerIds.includes(ownerId)) {
+    fieldErrors.coOwnerIds = "The project owner cannot also be a co-owner.";
+  }
+
+  if (executorIds.length === 0) {
+    fieldErrors.executorIds = "Select at least one project executor.";
+  } else if (hasDuplicates(executorIds)) {
+    fieldErrors.executorIds = "An executor can only be selected once.";
+  }
+
+  if (hasMalformedIds(rawCollaboratorIds)) {
+    fieldErrors.collaboratorIds =
+      "Every collaborator selection must contain a valid user ID.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { error: "Review the highlighted fields.", fieldErrors };
+  }
+
+  const participantIds = [
+    ...new Set([ownerId, ...coOwnerIds, ...executorIds, ...collaboratorIds]),
+  ];
+  const users = await withPrismaRetry(() =>
+    prisma.user.findMany({
+      where: { id: { in: participantIds } },
+      select: { id: true, role: true, collaboratorType: true },
+    }),
+  );
+  const userById = new Map(users.map((user) => [user.id, user] as const));
+  const owner = userById.get(ownerId);
+
+  if (!owner) {
+    fieldErrors.ownerId = "The selected project owner no longer exists.";
+  } else if (owner.role === UserRole.SUPER_ADMIN && owner.id !== actor.id) {
+    fieldErrors.ownerId =
+      "Select an operational owner or keep yourself as the project owner.";
+  }
+
+  if (
+    coOwnerIds.some((userId) => {
+      const user = userById.get(userId);
+      return !user || user.role === UserRole.SUPER_ADMIN;
+    })
+  ) {
+    fieldErrors.coOwnerIds =
+      "Every co-owner must be an existing eligible user who is not a Super Admin.";
+  }
+
+  if (
+    executorIds.some(
+      (userId) => userById.get(userId)?.role !== UserRole.COLLABORATOR,
+    )
+  ) {
+    fieldErrors.executorIds =
+      "Every executor must be an existing eligible collaborator.";
+  }
+
+  if (
+    collaboratorIds.some(
+      (userId) => userById.get(userId)?.role !== UserRole.COLLABORATOR,
+    )
+  ) {
+    fieldErrors.collaboratorIds =
+      "Every project collaborator must be an existing eligible collaborator.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      error: "One or more selected users are no longer eligible.",
+      fieldErrors,
+    };
+  }
+
+  const additionalCollaboratorIds = collaboratorIds.filter(
+    (userId) => userId !== ownerId && !coOwnerIds.includes(userId),
+  );
+  const executorIdSet = new Set(executorIds);
+  const membershipIds = [
+    ...new Set([...executorIds, ...additionalCollaboratorIds]),
+  ];
+
+  await withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const project = await tx.project.findUnique({
+        where: { id: projectId },
+        select: {
+          id: true,
+          executors: { select: { userId: true } },
+          collaborators: {
+            select: {
+              userId: true,
+              participantType: true,
+              canInteract: true,
+              canAddCaptions: true,
+              canDownloadFiles: true,
+              canViewBudget: true,
+              canViewVendorInfo: true,
+              canAccessProjectArchives: true,
+            },
+          },
+        },
+      });
+
+      if (!project) throw new Error("Project not found.");
+
+      const existingExecutorIds = new Set(
+        project.executors.map((executor) => executor.userId),
+      );
+      const existingCollaboratorById = new Map(
+        project.collaborators.map(
+          (collaborator) => [collaborator.userId, collaborator] as const,
+        ),
+      );
+      const removedExecutorIds = project.executors
+        .map((executor) => executor.userId)
+        .filter((userId) => !executorIdSet.has(userId));
+
+      if (removedExecutorIds.length > 0) {
+        await tx.projectConceptFolder.updateMany({
+          where: {
+            projectId,
+            assignedExecutorId: { in: removedExecutorIds },
+          },
+          data: { assignedExecutorId: null },
+        });
+      }
+
+      await tx.project.update({
+        where: { id: projectId },
+        data: { name, ownerId },
+      });
+      await tx.projectCoOwner.deleteMany({
+        where: {
+          projectId,
+          ...(coOwnerIds.length > 0 ? { userId: { notIn: coOwnerIds } } : {}),
+        },
+      });
+      await tx.projectCoOwner.createMany({
+        data: coOwnerIds.map((userId) => ({ projectId, userId, addedById: actor.id })),
+        skipDuplicates: true,
+      });
+      await tx.projectExecutor.deleteMany({
+        where: {
+          projectId,
+          ...(executorIds.length > 0 ? { userId: { notIn: executorIds } } : {}),
+        },
+      });
+      await tx.projectExecutor.createMany({
+        data: executorIds
+          .filter((userId) => !existingExecutorIds.has(userId))
+          .map((userId) => ({ projectId, userId, addedById: actor.id })),
+        skipDuplicates: true,
+      });
+      await tx.projectCollaborator.deleteMany({
+        where: {
+          projectId,
+          ...(membershipIds.length > 0 ? { userId: { notIn: membershipIds } } : {}),
+        },
+      });
+
+      for (const userId of membershipIds) {
+        const user = userById.get(userId);
+        if (!user) continue;
+
+        const existing = existingCollaboratorById.get(userId);
+        const participantType =
+          existing?.participantType &&
+          isProjectCollaboratorParticipantType(existing.participantType)
+            ? existing.participantType
+            : getDefaultProjectCollaboratorParticipantType(
+                getCollaboratorTypeGroup(user.collaboratorType),
+              );
+        const data = {
+          participantType,
+          ...normalizeProjectCollaboratorPermissions(existing, participantType, {
+            isExecutor: executorIdSet.has(userId),
+          }),
+        };
+
+        await tx.projectCollaborator.upsert({
+          where: { projectId_userId: { projectId, userId } },
+          create: { projectId, userId, addedById: actor.id, ...data },
+          update: data,
+        });
+      }
+
+      for (const participantId of participantIds) {
+        await ensureProjectResearchWorkspaceTx(tx, projectId, participantId);
+      }
+    }, { timeout: 30_000 }),
+  );
+
+  return { projectId };
 }

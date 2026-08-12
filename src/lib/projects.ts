@@ -223,6 +223,7 @@ export type ProjectCardRecord = {
   isPinned: boolean;
   canPin: boolean;
   canDelete: boolean;
+  canEdit: boolean;
 };
 
 export type ProjectStageVisualStatus =
@@ -1128,6 +1129,10 @@ function mapProjectToCard(
     canDelete:
       workflowState.businessStatus !== "COMPLETED" &&
       hasProjectPermission(currentUser, project, "project.delete"),
+    canEdit:
+      workflowState.businessStatus !== "COMPLETED" &&
+      hasProjectPermission(currentUser, project, "project.update") &&
+      hasProjectPermission(currentUser, project, "project.manageCollaborators"),
   };
 }
 
