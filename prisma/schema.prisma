@@ -1235,6 +1235,8 @@ model ProjectProductionHandover {
   recipientUser          User?                            @relation("ProjectProductionHandoverRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
   recipientName          String
   recipientEmail         String
+  recipientCompany       String?
+  recipientPhone         String?
   sharedFieldKeys        ProjectFileChecklistField[]      @default([])
   selectedFileIds        String[]                         @default([])
   contentSnapshot        Json

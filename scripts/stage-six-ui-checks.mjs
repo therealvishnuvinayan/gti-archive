@@ -13,6 +13,9 @@ const [
   authenticatedActions,
   externalDecisionRoute,
   constants,
+  migration,
+  stageSevenService,
+  stageSevenWorkspace,
 ] = await Promise.all([
   readFile("src/components/projects/stage-six-workspace.tsx", "utf8"),
   readFile("src/lib/stage-six.ts", "utf8"),
@@ -25,6 +28,9 @@ const [
   readFile("src/app/production-approvals/[stepId]/actions.ts", "utf8"),
   readFile("src/app/api/external/production-approval/[token]/decision/route.ts", "utf8"),
   readFile("src/lib/stage-six-constants.ts", "utf8"),
+  readFile("prisma/migrations/20260812090000_stage_six_optional_handover_contacts/migration.sql", "utf8"),
+  readFile("src/lib/stage-seven.ts", "utf8"),
+  readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
 ]);
 
 for (const content of [
@@ -40,8 +46,12 @@ for (const content of [
   "Select All",
   "Existing Collaborator",
   "External Email",
-  "Purchase Department",
-  "Direct Vendor",
+  "Internal",
+  "External",
+  "Company name",
+  "Contact name",
+  "Phone, e.g.",
+  "Optional",
   "Complete Stage 6",
 ]) {
   assert(workspace.includes(content), `Missing Stage 6 UI content: ${content}`);
@@ -75,6 +85,13 @@ assert(schema.includes("sourceHandoffId") && schema.includes("sourceChecklistId"
 assert(schema.includes("isMarketingDirectorRequired") && schema.includes("@@unique([productionUnitId, sequence])"), "The required first step and per-unit sequence must be persisted.");
 assert(schema.includes("sharedFieldKeys") && schema.includes("selectedFileIds") && schema.includes("sharedSnapshot"), "Selective sharing and stable snapshots must be persisted.");
 assert(schema.includes("externalTokenHash") && !schema.includes("externalToken        String"), "Only external token hashes may be stored.");
+assert(
+  schema.includes("recipientCompany") &&
+    schema.includes("recipientPhone") &&
+    migration.includes('ADD COLUMN "recipientCompany"') &&
+    migration.includes('ADD COLUMN "recipientPhone"'),
+  "External handover company and phone details must be persisted through a migration.",
+);
 
 for (const content of ["Approve", "Reject", "Shared Information", "Optional comment", "requestedBy"]) {
   assert(approvalWorkspace.includes(content), `Missing approval experience content: ${content}`);
@@ -109,6 +126,13 @@ assert(
   "Waiting approval steps must expose manager-only reorder and delete controls backed by server validation.",
 );
 assert(
+  !workspace.includes("window.confirm") &&
+    workspace.includes('title="Remove approver?"') &&
+    workspace.includes('confirmLabel="Remove approver"') &&
+    workspace.includes('tone="destructive"'),
+  "Stage 6 approver deletion must use the custom destructive confirmation dialog.",
+);
+assert(
   service.includes("Completed approval steps cannot be removed.") &&
     service.includes("Only waiting approval steps can be reordered."),
   "Completed decisions must remain immutable and only waiting approvals may be reordered.",
@@ -124,7 +148,26 @@ assert(
     workspace.includes("window.setInterval(refreshVisiblePage, 15_000)"),
   "Authenticated and external decisions must refresh open Stage 6 pages in realtime with a polling fallback.",
 );
-assert(service.includes("ProjectProductionUnitStatus.HANDED_OVER") && service.includes("ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION"), "Stage 6 completion must require handover and unlock only Stage 7.");
+assert(
+  service.includes("unit.status !== ProjectProductionUnitStatus.HANDOVER_READY") &&
+    service.includes("unit.status !== ProjectProductionUnitStatus.HANDED_OVER") &&
+    workspace.includes("Handover is optional") &&
+    service.includes("ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION"),
+  "Stage 6 completion must require approval, allow optional handover, and unlock only Stage 7.",
+);
+assert(
+  service.includes("Internal handover requires an existing project participant.") &&
+    service.includes("External handover requires external recipient details.") &&
+    service.includes("Enter the external recipient company name.") &&
+    service.includes("Enter a valid external phone number including country code."),
+  "The backend must enforce distinct internal and external handover recipient rules.",
+);
+assert(
+  stageSevenService.includes("ProjectProductionUnitStatus.HANDOVER_READY") &&
+    stageSevenService.includes("ProjectProductionUnitStatus.HANDED_OVER") &&
+    stageSevenWorkspace.includes("the optional handover is not required"),
+  "Stage 7 must accept approved units even when the optional Stage 6 handover is skipped.",
+);
 assert(service.includes("user.role === UserRole.SUPER_ADMIN") && !service.includes("user.role === UserRole.ADMIN ||"), "Stage 6 management must not grant ADMIN implicit rights.");
 assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");
 

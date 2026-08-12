@@ -227,7 +227,7 @@ function selectReferenceAttachments(
   }
   if (!allowed.length) {
     throw new StageSevenWorkflowError(
-      "This Production Unit has no handed-over reference files available.",
+      "This Production Unit has no approved reference files available.",
     );
   }
   return allowed;
@@ -292,8 +292,16 @@ export async function getStageSevenWorkspaceData(
   const [units, closure] = await withPrismaRetry(() =>
     prisma.$transaction([
       prisma.projectProductionUnit.findMany({
-        where: { projectId, status: ProjectProductionUnitStatus.HANDED_OVER },
-        orderBy: [{ handedOverAt: "asc" }, { id: "asc" }],
+        where: {
+          projectId,
+          status: {
+            in: [
+              ProjectProductionUnitStatus.HANDOVER_READY,
+              ProjectProductionUnitStatus.HANDED_OVER,
+            ],
+          },
+        },
+        orderBy: [{ approvedAt: "asc" }, { id: "asc" }],
         include: {
           sourceAttachment: { select: workspaceAttachmentSelect },
           files: {
@@ -730,13 +738,18 @@ export async function createProductionSampleRound(
       where: {
         id: input.productionUnitId,
         projectId: input.projectId,
-        status: ProjectProductionUnitStatus.HANDED_OVER,
+        status: {
+          in: [
+            ProjectProductionUnitStatus.HANDOVER_READY,
+            ProjectProductionUnitStatus.HANDED_OVER,
+          ],
+        },
       },
       include: requestUnitInclude,
     });
     if (!unit) {
       throw new StageSevenWorkflowError(
-        "Only handed-over Stage 6 Production Units can request physical samples.",
+        "Only approved Stage 6 Production Units can request physical samples.",
       );
     }
     if (unit.supervision?.status === ProductionSupervisionStatus.SIGNED_OFF) {
@@ -822,7 +835,12 @@ export async function retryProductionSampleRequestEmail(
           productionUnitId: input.productionUnitId,
           productionUnit: {
             projectId: input.projectId,
-            status: ProjectProductionUnitStatus.HANDED_OVER,
+            status: {
+              in: [
+                ProjectProductionUnitStatus.HANDOVER_READY,
+                ProjectProductionUnitStatus.HANDED_OVER,
+              ],
+            },
           },
         },
       },
@@ -903,7 +921,12 @@ export async function decidePhysicalSampleRound(
           productionUnitId: input.productionUnitId,
           productionUnit: {
             projectId: input.projectId,
-            status: ProjectProductionUnitStatus.HANDED_OVER,
+            status: {
+              in: [
+                ProjectProductionUnitStatus.HANDOVER_READY,
+                ProjectProductionUnitStatus.HANDED_OVER,
+              ],
+            },
           },
         },
       },
@@ -1009,12 +1032,17 @@ export async function closeStageSevenProject(
     const units = await tx.projectProductionUnit.findMany({
       where: {
         projectId: input.projectId,
-        status: ProjectProductionUnitStatus.HANDED_OVER,
+        status: {
+          in: [
+            ProjectProductionUnitStatus.HANDOVER_READY,
+            ProjectProductionUnitStatus.HANDED_OVER,
+          ],
+        },
       },
       select: { id: true, supervision: { select: { status: true } } },
     });
     if (!units.length) {
-      throw new StageSevenWorkflowError("No handed-over Production Units are available.");
+      throw new StageSevenWorkflowError("No approved Production Units are available.");
     }
     if (
       units.some(

@@ -85,6 +85,8 @@ export function buildProductionHandoverEmail(input: {
   projectName: string;
   unitName: string;
   routeLabel: string;
+  recipientCompany?: string | null;
+  recipientPhone?: string | null;
   note?: string | null;
   handoverUrl: string;
 }) {
@@ -99,6 +101,12 @@ export function buildProductionHandoverEmail(input: {
         ["Project", input.projectName],
         ["Production unit", input.unitName],
         ["Handover route", input.routeLabel],
+        ...(input.recipientCompany
+          ? ([["Recipient company", input.recipientCompany]] as Array<[string, string]>)
+          : []),
+        ...(input.recipientPhone
+          ? ([["Recipient phone", input.recipientPhone]] as Array<[string, string]>)
+          : []),
       ],
       message: input.note,
       actionLabel: "Open Secure Handover",

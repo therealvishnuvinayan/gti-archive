@@ -513,18 +513,35 @@ function ApprovalSection({
   const chainIsEditable =
     unit.status === ProjectProductionUnitStatus.PREPARATION ||
     unit.status === ProjectProductionUnitStatus.APPROVAL_PENDING;
+  const [stepToRemoveId, setStepToRemoveId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [removing, startRemoving] = useTransition();
+  const stepToRemove = unit.approvalSteps.find((step) => step.id === stepToRemoveId);
 
-  async function remove(stepId: string) {
-    if (!window.confirm("Remove this approval step from the chain?")) return;
-    const result = await removeProductionApproverAction({ projectId, productionUnitId: unit.id, stepId });
-    if ("error" in result) return showErrorToast("Unable to remove approver.", result.error);
-    showSuccessToast(
-      "Approver removed.",
-      "dispatchError" in result
-        ? `The next approval is ready, but its email failed: ${result.dispatchError}`
-        : undefined,
-    );
-    onRefresh();
+  function remove() {
+    if (!stepToRemoveId || removing) return;
+    setRemoveError(null);
+    startRemoving(async () => {
+      const result = await removeProductionApproverAction({
+        projectId,
+        productionUnitId: unit.id,
+        stepId: stepToRemoveId,
+      });
+      if ("error" in result) {
+        const message = result.error ?? "Unable to remove this approver.";
+        setRemoveError(message);
+        showErrorToast("Unable to remove approver.", message);
+        return;
+      }
+      showSuccessToast(
+        "Approver removed.",
+        "dispatchError" in result
+          ? `The next approval is ready, but its email failed: ${result.dispatchError}`
+          : undefined,
+      );
+      setStepToRemoveId(null);
+      onRefresh();
+    });
   }
 
   async function retry(stepId: string) {
@@ -587,7 +604,7 @@ function ApprovalSection({
                   <Button type="button" variant="ghost" size="icon" aria-label={`Move approval step ${step.sequence} down`} disabled={reorderableSteps.at(-1)?.id === step.id} onClick={() => reorder(step.id, "DOWN")}><ArrowDown className="h-4 w-4" /></Button>
                 </>
               ) : null}
-              {canManage && chainIsEditable && !step.isMarketingDirectorRequired && (step.status === ProductionApprovalStepStatus.WAITING || step.status === ProductionApprovalStepStatus.ACTIVE) ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove approval step ${step.sequence}`} title="Remove approver" onClick={() => remove(step.id)}><Trash2 className="h-4 w-4 text-[#aa4e45]" /></Button> : null}
+              {canManage && chainIsEditable && !step.isMarketingDirectorRequired && (step.status === ProductionApprovalStepStatus.WAITING || step.status === ProductionApprovalStepStatus.ACTIVE) ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove approval step ${step.sequence}`} title="Remove approver" onClick={() => { setRemoveError(null); setStepToRemoveId(step.id); }}><Trash2 className="h-4 w-4 text-[#aa4e45]" /></Button> : null}
             </div>
           </div>
         ))}
@@ -595,6 +612,21 @@ function ApprovalSection({
       {unit.status === ProjectProductionUnitStatus.REJECTED ? (
         <div className="flex gap-2 border-t border-[#f0d5d1] bg-[#fff7f5] px-5 py-4 text-[11px] leading-5 text-[#9b5149]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />The chain stopped at rejection. Prior approvals are preserved. Restart Approval Chain is intentionally deferred.</div>
       ) : null}
+      <ConfirmationDialog
+        isOpen={Boolean(stepToRemove)}
+        title="Remove approver?"
+        description={stepToRemove ? `Remove ${stepToRemove.recipientName} from this approval chain? The remaining approval order will be updated automatically.` : ""}
+        confirmLabel="Remove approver"
+        tone="destructive"
+        pending={removing}
+        error={removeError ?? undefined}
+        onConfirm={remove}
+        onClose={() => {
+          if (removing) return;
+          setStepToRemoveId(null);
+          setRemoveError(null);
+        }}
+      />
     </section>
   );
 }
@@ -615,10 +647,11 @@ function HandoverDialog({
   const [pending, startPending] = useTransition();
   const requestId = useRef(crypto.randomUUID());
   const [route, setRoute] = useState<ProductionHandoverRoute>(ProductionHandoverRoute.PURCHASE_DEPARTMENT);
-  const [recipientType, setRecipientType] = useState<ProductionApprovalRecipientType>(ProductionApprovalRecipientType.EXISTING_COLLABORATOR);
   const [recipientUserId, setRecipientUserId] = useState("");
-  const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
+  const [contactName, setContactName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [fieldKeys, setFieldKeys] = useState<string[]>([]);
   const approvedFileIds = new Set(
     unit.approvalSteps
@@ -630,8 +663,13 @@ function HandoverDialog({
   );
   const [fileIds, setFileIds] = useState(files.map((file) => file.id));
   const [note, setNote] = useState("");
-  const effectiveRecipientType = route === ProductionHandoverRoute.DIRECT_VENDOR ? ProductionApprovalRecipientType.EXTERNAL_EMAIL : recipientType;
-  const recipientReady = effectiveRecipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR ? Boolean(recipientUserId) : /^\S+@\S+\.\S+$/.test(email.trim());
+  const isInternal = route === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
+  const effectiveRecipientType = isInternal
+    ? ProductionApprovalRecipientType.EXISTING_COLLABORATOR
+    : ProductionApprovalRecipientType.EXTERNAL_EMAIL;
+  const recipientReady = isInternal
+    ? Boolean(recipientUserId)
+    : Boolean(company.trim() && contactName.trim() && /^\S+@\S+\.\S+$/.test(email.trim()) && /^\+[\d\s().-]{8,}$/.test(phone.trim()));
 
   function toggle(list: string[], value: string, setter: (next: string[]) => void) {
     setter(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
@@ -646,7 +684,14 @@ function HandoverDialog({
         productionUnitId: unit.id,
         route,
         recipientType: effectiveRecipientType,
-        ...(effectiveRecipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR ? { recipientUserId } : { recipientName: name, recipientEmail: email }),
+        ...(isInternal
+          ? { recipientUserId }
+          : {
+              recipientCompany: company,
+              recipientName: contactName,
+              recipientEmail: email,
+              recipientPhone: phone,
+            }),
         sharedFieldKeys: fieldKeys as never[],
         selectedFileIds: fileIds,
         note,
@@ -665,12 +710,12 @@ function HandoverDialog({
     <div className="fixed inset-0 z-[170] flex items-start justify-center overflow-y-auto bg-[#112118]/45 px-4 py-6 backdrop-blur-[2px] sm:items-center" role="dialog" aria-modal="true">
       <Card className="w-full max-w-[700px] rounded-[24px] border-[#dfe6df]"><CardContent className="p-6 sm:p-7">
         <div className="flex items-start justify-between"><div><p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">Approved Unit</p><h2 className="mt-2 text-[22px] font-[760]">Production Handover</h2></div><Button type="button" variant="secondary" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button></div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <button type="button" onClick={() => setRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("rounded-[14px] border p-4 text-left text-[12px] font-[700]", route === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}>Purchase Department</button>
-          <button type="button" onClick={() => { setRoute(ProductionHandoverRoute.DIRECT_VENDOR); setRecipientType(ProductionApprovalRecipientType.EXTERNAL_EMAIL); }} className={cn("rounded-[14px] border p-4 text-left text-[12px] font-[700]", route === ProductionHandoverRoute.DIRECT_VENDOR ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}>Direct Vendor</button>
+        <p className="mt-5 text-[12px] font-[720] text-[#2d372f]">Who receives this optional handover?</p>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <button type="button" onClick={() => setRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
+          <button type="button" onClick={() => setRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send securely to a vendor or other external company.</span></button>
         </div>
-        {route === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? <div className="mt-4 flex gap-3">{[[ProductionApprovalRecipientType.EXISTING_COLLABORATOR, "Existing recipient"], [ProductionApprovalRecipientType.EXTERNAL_EMAIL, "Configured email"]].map(([value, label]) => <label key={value} className="flex items-center gap-2 text-[11px]"><input type="radio" checked={recipientType === value} onChange={() => setRecipientType(value as ProductionApprovalRecipientType)} />{label}</label>)}</div> : null}
-        {effectiveRecipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR ? <Select value={recipientUserId} onValueChange={setRecipientUserId}><SelectTrigger className="mt-3 h-11"><SelectValue placeholder="Select Purchase Department recipient" /></SelectTrigger><SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent></Select> : <div className="mt-3 grid gap-3 sm:grid-cols-2"><Input value={name} placeholder="Recipient name" onChange={(event) => setName(event.target.value)} /><Input type="email" value={email} placeholder="recipient@example.com" onChange={(event) => setEmail(event.target.value)} /></div>}
+        {isInternal ? <Select value={recipientUserId} onValueChange={setRecipientUserId}><SelectTrigger className="mt-3 h-11"><SelectValue placeholder="Select internal recipient" /></SelectTrigger><SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent></Select> : <div className="mt-3 grid gap-3 sm:grid-cols-2"><Input value={company} placeholder="Company name" onChange={(event) => setCompany(event.target.value)} /><Input value={contactName} placeholder="Contact name" onChange={(event) => setContactName(event.target.value)} /><Input type="email" value={email} placeholder="contact@company.com" onChange={(event) => setEmail(event.target.value)} /><div><Input type="tel" value={phone} placeholder="Phone, e.g. +971 50 123 4567" onChange={(event) => setPhone(event.target.value)} /><p className="mt-1 text-[9px] text-[#77827a]">Include the international country code.</p></div></div>}
         <h3 className="mt-6 text-[12px] font-[720]">Approved production files</h3>
         <div className="mt-2 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">{files.map((file) => <label key={file.id} className="flex min-w-0 items-center gap-2 text-[11px]"><input type="checkbox" checked={fileIds.includes(file.id)} onChange={() => toggle(fileIds, file.id, setFileIds)} /><span className="truncate">{file.name}</span></label>)}</div>
         <div className="mt-3 flex items-center justify-between"><h3 className="text-[12px] font-[720]">Relevant technical information</h3><button type="button" className="text-[10px] font-[740] text-[#28714d]" onClick={() => setFieldKeys(fieldKeys.length === STAGE_FIVE_FIELD_DEFINITIONS.length ? [] : STAGE_FIVE_FIELD_DEFINITIONS.map((field) => field.key))}>Select All</button></div>
@@ -687,10 +732,10 @@ function HandoverSection({ unit, canManage, onOpen }: { unit: StageSixUnitRecord
   return (
     <section className="rounded-[20px] border border-[#dfe6df] bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div><h2 className="text-[17px] font-[750] text-[#1c271f]">Handover</h2><p className="mt-1 text-[11px] text-[#727d75]">Available only after the final approval step succeeds.</p></div>
-        {canManage && unit.status === ProjectProductionUnitStatus.HANDOVER_READY ? <Button type="button" onClick={onOpen}><PackageCheck className="h-4 w-4" /> Choose Route & Handover</Button> : null}
+        <div><div className="flex items-center gap-2"><h2 className="text-[17px] font-[750] text-[#1c271f]">Production Handover</h2><span className="rounded-full bg-[#f0f3f0] px-2 py-0.5 text-[9px] font-[740] uppercase tracking-[.06em] text-[#6d786f]">Optional</span></div><p className="mt-1 text-[11px] text-[#727d75]">After final approval, optionally send the production package internally or externally.</p></div>
+        {canManage && unit.status === ProjectProductionUnitStatus.HANDOVER_READY ? <Button type="button" onClick={onOpen}><PackageCheck className="h-4 w-4" /> Send Optional Handover</Button> : null}
       </div>
-      {unit.handover ? <div className={cn("mt-4 rounded-[14px] border px-4 py-3 text-[11px]", unit.handover.deliveryStatus === "FAILED" ? "border-[#f0c9c7] bg-[#fff2f1] text-[#9b5149]" : "border-[#d8e6dc] bg-[#f3f8f4] text-[#41604c]")}><strong>{unit.handover.route === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Purchase Department" : "Direct Vendor"}</strong> · {unit.handover.recipientName} · {unit.handover.recipientEmail}{unit.handover.failureMessage ? <p className="mt-1">{unit.handover.failureMessage}</p> : null}</div> : null}
+      {unit.handover ? <div className={cn("mt-4 rounded-[14px] border px-4 py-3 text-[11px]", unit.handover.deliveryStatus === "FAILED" ? "border-[#f0c9c7] bg-[#fff2f1] text-[#9b5149]" : "border-[#d8e6dc] bg-[#f3f8f4] text-[#41604c]")}><strong>{unit.handover.route === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Internal" : "External"}</strong>{unit.handover.recipientCompany ? ` · ${unit.handover.recipientCompany}` : ""} · {unit.handover.recipientName} · {unit.handover.recipientEmail}{unit.handover.recipientPhone ? ` · ${unit.handover.recipientPhone}` : ""}{unit.handover.failureMessage ? <p className="mt-1">{unit.handover.failureMessage}</p> : null}</div> : null}
       {unit.status === ProjectProductionUnitStatus.HANDED_OVER ? <p className="mt-4 flex items-center gap-2 text-[11px] font-[700] text-[#2e744e]"><Check className="h-4 w-4" /> Handed over successfully.</p> : unit.status !== ProjectProductionUnitStatus.HANDOVER_READY ? <p className="mt-4 flex items-center gap-2 text-[11px] text-[#8a7452]"><Clock3 className="h-4 w-4" /> Complete this unit’s approval chain first.</p> : null}
     </section>
   );
@@ -777,13 +822,13 @@ export function StageSixWorkspace({
 
         <div className="flex flex-col-reverse gap-3 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
           <Button asChild type="button" variant="outline" className="min-w-[160px]"><Link href={`/projects/${project.id}`}><ListChecks className="h-4 w-4" /> All Stages</Link></Button>
-          {pageData.stageCompleted ? <Button asChild type="button" className="min-w-[180px]"><Link href={`/projects/${project.id}/stages/7`}>Next Stage <ArrowRight className="h-4 w-4" /></Link></Button> : pageData.canManage ? <div className="text-right"><Button type="button" className="min-w-[180px]" disabled={!pageData.units.length || pageData.summary.handedOver !== pageData.summary.total} onClick={() => { setCompletionError(""); setCompletionDialog(true); }}><Check className="h-4 w-4" /> Complete Stage 6</Button>{pageData.summary.handedOver !== pageData.summary.total ? <p className="mt-2 text-[10px] text-[#8a7452]">Every Production Unit must be HANDED_OVER.</p> : null}</div> : <p className="text-[11px] text-[#77827a]">Owner or Co-Owner management required.</p>}
+          {pageData.stageCompleted ? <Button asChild type="button" className="min-w-[180px]"><Link href={`/projects/${project.id}/stages/7`}>Next Stage <ArrowRight className="h-4 w-4" /></Link></Button> : pageData.canManage ? <div className="text-right"><Button type="button" className="min-w-[180px]" disabled={!pageData.units.length || pageData.summary.approved !== pageData.summary.total} onClick={() => { setCompletionError(""); setCompletionDialog(true); }}><Check className="h-4 w-4" /> Complete Stage 6</Button>{pageData.summary.approved !== pageData.summary.total ? <p className="mt-2 text-[10px] text-[#8a7452]">Every Production Unit must complete its approval chain. Handover is optional.</p> : null}</div> : <p className="text-[11px] text-[#77827a]">Owner or Co-Owner management required.</p>}
         </div>
       </CardContent></Card>
 
       {activeUnit && approverDialog ? <ApproverDialog mode={approverDialog} projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setApproverDialog(null)} onSaved={refresh} /> : null}
       {activeUnit && handoverDialog ? <HandoverDialog projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setHandoverDialog(false)} onSaved={refresh} /> : null}
-      <ConfirmationDialog isOpen={completionDialog} title="Complete Stage 6" description="All Production Units are handed over. Complete Stage 6 and unlock Stage 7?" confirmLabel="Complete Stage 6" pending={completing} error={completionError || undefined} onConfirm={complete} onClose={() => { if (!completing) setCompletionDialog(false); }} />
+      <ConfirmationDialog isOpen={completionDialog} title="Complete Stage 6" description="All Production Units have completed approval. Complete Stage 6 and unlock Stage 7? Optional handovers can be skipped." confirmLabel="Complete Stage 6" pending={completing} error={completionError || undefined} onConfirm={complete} onClose={() => { if (!completing) setCompletionDialog(false); }} />
     </section>
   );
 }

@@ -24,6 +24,7 @@ import {
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
+import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   buildExternalProductionApprovalUrl,
@@ -127,6 +128,8 @@ export type StageSixUnitRecord = {
     route: ProductionHandoverRoute;
     recipientName: string;
     recipientEmail: string;
+    recipientCompany: string | null;
+    recipientPhone: string | null;
     deliveryStatus: ProductionHandoverDeliveryStatus;
     sentAt: string | null;
     failureMessage: string | null;
@@ -510,6 +513,8 @@ const workspaceUnitSelect = {
       route: true,
       recipientName: true,
       recipientEmail: true,
+      recipientCompany: true,
+      recipientPhone: true,
       deliveryStatus: true,
       sentAt: true,
       failureMessage: true,
@@ -608,7 +613,11 @@ export async function getStageSixWorkspaceData(
       ProjectWorkflowStageStatus.COMPLETED,
     summary: {
       total: units.length,
-      approved: units.filter((unit) => unit.status === ProjectProductionUnitStatus.HANDOVER_READY).length,
+      approved: units.filter(
+        (unit) =>
+          unit.status === ProjectProductionUnitStatus.HANDOVER_READY ||
+          unit.status === ProjectProductionUnitStatus.HANDED_OVER,
+      ).length,
       pending: units.filter(
         (unit) =>
           unit.status === ProjectProductionUnitStatus.PREPARATION ||
@@ -923,6 +932,8 @@ async function resolveRecipient(
     recipientUserId?: string;
     recipientName?: string;
     recipientEmail?: string;
+    recipientCompany?: string;
+    recipientPhone?: string;
   },
 ) {
   if (input.recipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR) {
@@ -2178,6 +2189,8 @@ export async function handoverProductionUnit(
     recipientUserId?: string;
     recipientName?: string;
     recipientEmail?: string;
+    recipientCompany?: string;
+    recipientPhone?: string;
     sharedFieldKeys: ProjectFileChecklistField[];
     selectedFileIds: string[];
     note?: string;
@@ -2188,11 +2201,36 @@ export async function handoverProductionUnit(
   if (!uniqueAllowedFieldKeys(input.sharedFieldKeys)) return { error: "Unknown shared-information field." } as const;
   if (!input.selectedFileIds.length) return { error: "Select at least one approved production file." } as const;
   if (input.note && input.note.trim().length > 5_000) return { error: "The handover note is too long." } as const;
+  const isInternal = input.route === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
   if (
-    input.route === ProductionHandoverRoute.DIRECT_VENDOR &&
+    isInternal &&
+    input.recipientType !== ProductionApprovalRecipientType.EXISTING_COLLABORATOR
+  ) {
+    return { error: "Internal handover requires an existing project participant." } as const;
+  }
+  if (
+    !isInternal &&
     input.recipientType !== ProductionApprovalRecipientType.EXTERNAL_EMAIL
   ) {
-    return { error: "Direct Vendor handover requires an external email recipient." } as const;
+    return { error: "External handover requires external recipient details." } as const;
+  }
+  const recipientCompany = input.recipientCompany?.trim() || null;
+  const recipientPhone = input.recipientPhone
+    ? normalizeInternationalPhone(input.recipientPhone)
+    : null;
+  if (!isInternal && !recipientCompany) {
+    return { error: "Enter the external recipient company name." } as const;
+  }
+  if (recipientCompany && recipientCompany.length > 160) {
+    return { error: "The external recipient company name is too long." } as const;
+  }
+  if (!isInternal && !input.recipientName?.trim()) {
+    return { error: "Enter the external contact name." } as const;
+  }
+  if (!isInternal && !recipientPhone) {
+    return {
+      error: "Enter a valid external phone number including country code.",
+    } as const;
   }
   const project = await getStageSixManagerProject(user, input.projectId);
   if (!project) return { error: "You do not have permission to manage Stage 6." } as const;
@@ -2203,6 +2241,8 @@ export async function handoverProductionUnit(
     recipientUserId: recipient.recipientUserId,
     recipientName: recipient.recipientName,
     recipientEmail: recipient.recipientEmail,
+    recipientCompany: isInternal ? null : recipientCompany,
+    recipientPhone: isInternal ? null : recipientPhone,
   };
   const requester = await withPrismaRetry(() =>
     prisma.user.findUnique({ where: { id: user.id }, select: { name: true, email: true } }),
@@ -2345,9 +2385,9 @@ export async function handoverProductionUnit(
     projectName: project.name,
     unitName: prepared.unitName,
     routeLabel:
-      input.route === ProductionHandoverRoute.PURCHASE_DEPARTMENT
-        ? "Purchase Department"
-        : "Direct Vendor",
+      isInternal ? "Internal" : "External",
+    recipientCompany,
+    recipientPhone,
     note: input.note,
     handoverUrl: buildExternalProductionHandoverUrl(access.token),
   });
@@ -2596,11 +2636,13 @@ export async function completeStageSix(
             return { error: "Stage 6 has no Production Units." } as const;
           }
           const incomplete = project.productionUnits.filter(
-            (unit) => unit.status !== ProjectProductionUnitStatus.HANDED_OVER,
+            (unit) =>
+              unit.status !== ProjectProductionUnitStatus.HANDOVER_READY &&
+              unit.status !== ProjectProductionUnitStatus.HANDED_OVER,
           );
           if (incomplete.length) {
             return {
-              error: `${incomplete.length} Production Unit${incomplete.length === 1 ? " is" : "s are"} not handed over.`,
+              error: `${incomplete.length} Production Unit${incomplete.length === 1 ? " has" : "s have"} not completed approval.`,
               incompleteUnitIds: incomplete.map((unit) => unit.id),
             } as const;
           }
@@ -2640,7 +2682,7 @@ export async function completeStageSix(
                 dedupePrefix: `stage-seven-activated:${project.id}`,
                 type: "NEXT_STAGE_ACTIVATED",
                 title: "Stage 7 available",
-                message: `Production and handover is complete for ${project.name}.`,
+                message: `Production approval is complete for ${project.name}.`,
                 entityType: "PROJECT",
                 entityId: project.id,
                 projectId: project.id,

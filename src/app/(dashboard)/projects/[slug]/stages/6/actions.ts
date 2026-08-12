@@ -161,6 +161,8 @@ export async function handoverProductionUnitAction(input: {
   recipientUserId?: string;
   recipientName?: string;
   recipientEmail?: string;
+  recipientCompany?: string;
+  recipientPhone?: string;
   sharedFieldKeys: ProjectFileChecklistField[];
   selectedFileIds: string[];
   note?: string;
