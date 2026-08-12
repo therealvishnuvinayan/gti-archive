@@ -50,7 +50,7 @@ for (const content of [
   "External",
   "Company name",
   "Contact name",
-  "Phone, e.g.",
+  "e.g. +971 50 123 4567",
   "Optional",
   "Complete Stage 6",
 ]) {
@@ -70,6 +70,13 @@ assert(
     workspace.includes("focus-visible:border-[#46906a]") &&
     workspace.includes("Add context or instructions for the approver (optional)."),
   "The optional approval message must use a controlled height with visible resting and focus boundaries.",
+);
+assert(
+  workspace.match(/border-\[#c8d5cb\]/g)?.length >= 7 &&
+    workspace.includes("Enter recipient name") &&
+    workspace.includes("Enter company name") &&
+    workspace.includes("Enter contact name"),
+  "External approval and handover recipient fields must have labels and visible resting/focus borders.",
 );
 assert(page.includes("getStageSixWorkspaceData") && page.includes("ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER"), "The route must load persisted Stage 6 data through workflow access.");
 
