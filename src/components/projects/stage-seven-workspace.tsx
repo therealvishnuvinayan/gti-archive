@@ -131,20 +131,20 @@ function UnitStatusBadge({ status }: { status: ProductionSupervisionStatus }) {
   );
 }
 
-function RoundStatusBadge({ round }: { round: Round }) {
-  if (round.decision === PhysicalSampleDecision.ACCEPTED) {
-    return <Badge className="border-[#cde3d3] bg-[#e9f6ed] text-[#257049]">Accepted</Badge>;
-  }
-  if (round.decision === PhysicalSampleDecision.REJECTED) {
-    return <Badge className="border-[#f2cbc6] bg-[#fff0ee] text-[#b44338]">Rejected</Badge>;
-  }
-  if (round.emailStatus === ProductionDispatchStatus.FAILED) {
-    return <Badge className="border-[#f1dbb2] bg-[#fff4df] text-[#9b6418]">Email Failed</Badge>;
-  }
-  if (round.overdue) {
-    return <Badge className="border-[#f2cbc6] bg-[#fff0ee] text-[#b44338]">Overdue</Badge>;
-  }
-  return <Badge className="border-[#d6e3f3] bg-[#eef5ff] text-[#456e9f]">Waiting for Sample</Badge>;
+function ReceiptStatusBadge({ round }: { round: Round }) {
+  return round.decision ? (
+    <Badge className="border-[#cde3d3] bg-[#e9f6ed] text-[#257049]">Received</Badge>
+  ) : (
+    <Badge className="border-[#dfe5df] bg-[#f5f7f5] text-[#68736b]">Not Received</Badge>
+  );
+}
+
+function DecisionBadge({ decision }: { decision: PhysicalSampleDecision }) {
+  return decision === PhysicalSampleDecision.ACCEPTED ? (
+    <Badge className="border-[#cde3d3] bg-[#e9f6ed] text-[#257049]">Accepted</Badge>
+  ) : (
+    <Badge className="border-[#f2cbc6] bg-[#fff0ee] text-[#b44338]">Rejected</Badge>
+  );
 }
 
 function ModalShell({
@@ -172,7 +172,7 @@ function ModalShell({
             <div>
               <p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">{eyebrow}</p>
               <h2 className="mt-2 text-[22px] font-[760] text-[#162019]">{title}</h2>
-              <p className="mt-2 max-w-[520px] text-[11px] leading-5 text-[#748078]">Sending this request emails the selected recipient to prepare and courier a physical production sample.</p>
+              <p className="mt-2 max-w-[520px] text-[11px] leading-5 text-[#748078]">Sending this request emails the selected provider to prepare and courier a physical production sample.</p>
             </div>
             <Button type="button" variant="secondary" size="icon" onClick={onClose} aria-label="Close dialog">
               <X className="h-4 w-4" />
@@ -324,7 +324,7 @@ function NewSampleRequestDialog({
           <AppDatePicker value={deadline} onChange={setDeadline} required clearable={false} placeholder="Select deadline" popoverZIndex={200} triggerClassName="h-11 w-full justify-between rounded-[12px] border border-[#c8d5cb] bg-[#fbfdfb] px-4 text-left text-[14px] font-normal text-[#18211a] shadow-none hover:bg-white focus-visible:border-[#46906a] focus-visible:ring-3 focus-visible:ring-[#46906a]/15" />
         </label>
         <div>
-          <span className="text-[12px] font-[720] text-[#2d372f]">Who receives this sample request? *</span>
+          <span className="text-[12px] font-[720] text-[#2d372f]">Who will provide this sample? *</span>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
             <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
             <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send the request to a vendor or other external company.</span></button>
@@ -332,9 +332,9 @@ function NewSampleRequestDialog({
         </div>
         {isInternal ? (
           <label className="space-y-2">
-            <span className="text-[12px] font-[720] text-[#2d372f]">Internal Recipient *</span>
+            <span className="text-[12px] font-[720] text-[#2d372f]">Internal Provider *</span>
             <Select value={recipientUserId} onValueChange={setRecipientUserId}>
-              <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue placeholder="Select internal recipient" /></SelectTrigger>
+              <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue placeholder="Select internal provider" /></SelectTrigger>
               <SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent>
             </Select>
           </label>
@@ -428,18 +428,18 @@ function SampleRoundsList({
       </div>
       {unit.rounds.length ? (
         <div>
-          <div className="hidden grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_140px_88px] gap-3 border-b border-[#edf0ed] bg-[#fafbfa] px-5 py-2.5 text-[8px] font-[760] uppercase tracking-[0.065em] text-[#7d8780] lg:grid"><span>Round</span><span>Name / Type</span><span>Recipient</span><span>Deadline</span><span className="justify-self-start">Status</span><span className="justify-self-end text-right">Action</span></div>
+          <div className="hidden grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_110px_120px] gap-3 border-b border-[#edf0ed] bg-[#fafbfa] px-5 py-2.5 text-[8px] font-[760] uppercase tracking-[0.065em] text-[#7d8780] lg:grid"><span>Round</span><span>Name / Type</span><span>Provider</span><span>Deadline</span><span className="justify-self-start">Status</span><span className="justify-self-end text-right">Action</span></div>
           <div className="divide-y divide-[#e9ede9]">
             {unit.rounds.map((round) => {
               const selected = round.id === selectedRoundId;
               return (
-                <article key={round.id} className={cn("grid gap-4 px-4 py-4 transition lg:grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_140px_88px] lg:items-center lg:gap-3 lg:px-5", selected ? "bg-[#f4faf5]" : "hover:bg-[#fbfcfb]")}>
+                <article key={round.id} className={cn("grid gap-4 px-4 py-4 transition lg:grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_110px_120px] lg:items-center lg:gap-3 lg:px-5", selected ? "bg-[#f4faf5]" : "hover:bg-[#fbfcfb]")}>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Round</span><span className={cn("grid size-8 shrink-0 place-items-center rounded-full border text-[11px] font-[780]", selected ? "border-[#86b395] bg-[#e7f4ea] text-[#2d744d]" : "border-[#dce4dd] bg-[#f7f9f7] text-[#68746b]")}>{round.sequence}</span></div>
                   <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Name / Type</span><h3 className="truncate text-[11px] font-[700] leading-4 text-[#29342c]">{round.name}</h3><p className="mt-0.5 truncate text-[9px] text-[#758078]">{round.type === ProductionSampleRoundType.CUSTOM ? round.customTypeName : ROUND_TYPE_LABELS[round.type]}</p></div>
-                  <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Recipient</span><p className="truncate text-[10px] font-[680] text-[#39443c]">{round.recipientCompany || round.recipientName || "Legacy request"}</p>{round.recipientEmail ? <p className="mt-0.5 truncate text-[8px] text-[#849087]">{round.recipientEmail}</p> : null}</div>
+                  <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Provider</span><p className="truncate text-[10px] font-[680] text-[#39443c]">{round.recipientCompany || round.recipientName || "Legacy request"}</p>{round.recipientEmail ? <p className="mt-0.5 truncate text-[8px] text-[#849087]">{round.recipientEmail}</p> : null}</div>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Deadline</span><p className="text-[10px] font-[680] text-[#39443c]">{formatDate(round.deadline)}</p>{round.overdue ? <p className="mt-0.5 text-[8px] font-[700] text-[#bd473d]">{overdueLabel(round.deadline)}</p> : null}</div>
-                  <div className="min-w-0 justify-self-start"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Status</span><RoundStatusBadge round={round} /></div>
-                  <Button type="button" size="sm" variant={selected ? "secondary" : "ghost"} className="min-h-8 min-w-[72px] justify-self-start rounded-[10px] px-3 text-[10px] lg:justify-self-end" onClick={() => onSelectRound(round.id)}>{selected ? "Selected" : "View"}</Button>
+                  <div className="min-w-0 justify-self-start"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Status</span><ReceiptStatusBadge round={round} /></div>
+                  <div className="justify-self-start lg:justify-self-end"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Action</span>{round.decision ? <button type="button" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4b9068]/40" aria-label={`View ${round.decision === PhysicalSampleDecision.ACCEPTED ? "accepted" : "rejected"} sample request`} onClick={() => onSelectRound(round.id)}><DecisionBadge decision={round.decision} /></button> : <Button type="button" size="sm" variant={selected ? "secondary" : "outline"} className="min-h-8 rounded-[10px] px-3 text-[10px]" onClick={() => onSelectRound(round.id)}>Accept / Reject</Button>}</div>
                 </article>
               );
             })}
@@ -512,22 +512,22 @@ function SampleRequestDetails({
   return (
     <aside className="min-w-0 rounded-[18px] border border-[#dfe6df] bg-white shadow-[0_10px_28px_rgba(23,39,28,0.035)]" aria-labelledby="selected-round-heading">
       <div className="border-b border-[#e5ebe5] px-4 py-4 sm:px-5">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[9px] font-[760] uppercase tracking-[0.08em] text-[#7d8780]">Selected Sample Request</p><h2 id="selected-round-heading" className="mt-1.5 text-[15px] font-[760] leading-5 text-[#1f2a22]">Round {round.sequence} — {round.name}</h2><p className="mt-1 text-[9px] text-[#758078]">{round.type === ProductionSampleRoundType.CUSTOM ? round.customTypeName : ROUND_TYPE_LABELS[round.type]}</p></div><RoundStatusBadge round={round} /></div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[9px] font-[760] uppercase tracking-[0.08em] text-[#7d8780]">Selected Sample Request</p><h2 id="selected-round-heading" className="mt-1.5 text-[15px] font-[760] leading-5 text-[#1f2a22]">Round {round.sequence} — {round.name}</h2><p className="mt-1 text-[9px] text-[#758078]">{round.type === ProductionSampleRoundType.CUSTOM ? round.customTypeName : ROUND_TYPE_LABELS[round.type]}</p></div><ReceiptStatusBadge round={round} /></div>
       </div>
       <div className="space-y-5 px-4 py-4 sm:px-5">
+        {mutable && round.emailStatus === ProductionDispatchStatus.FAILED ? <div className="flex flex-col gap-3 rounded-[12px] border border-[#f1dbb2] bg-[#fff9ed] p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-[10px] leading-4 text-[#795c2b]">The request is saved, but the provider email was not delivered.</p><Button type="button" size="sm" className="shrink-0 rounded-[10px]" disabled={pending} onClick={retryEmail}><RefreshCw className="h-3.5 w-3.5" /> {pending ? "Retrying..." : "Retry Email"}</Button></div> : null}
+        <section className="rounded-[14px] border border-[#dfe6df] bg-[#fafcfa] p-3.5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Physical Sample Review</h3><p className="mt-1 text-[9px] text-[#7c867f]">Record the note and outcome for this sample request.</p></div>{round.decision ? <DecisionBadge decision={round.decision} /> : <div className="grid shrink-0 grid-cols-2 gap-2"><Button type="button" size="sm" variant="outline" className="border-[#d96a60] text-[#b9433a] hover:bg-[#fff3f1]" disabled={!mutable || !reviewNote.trim()} onClick={() => setConfirm(PhysicalSampleDecision.REJECTED)}><XCircle className="h-4 w-4" /> Reject Sample</Button><Button type="button" size="sm" disabled={!mutable} onClick={() => setConfirm(PhysicalSampleDecision.ACCEPTED)}><CheckCircle2 className="h-4 w-4" /> Accept Sample</Button></div>}</div>
+          {round.decision ? <div className="mt-3 border-t border-[#e0e7e0] pt-3"><p className="whitespace-pre-wrap text-[10px] leading-4 text-[#465149]">{round.decisionNote || "No review note was added."}</p><p className="mt-2 text-[8px] text-[#849087]">Decided by {round.decidedBy || "Unknown"}{round.decidedAt ? ` · ${formatDateTime(round.decidedAt)}` : ""}</p>{round.decision === PhysicalSampleDecision.REJECTED && canManage && !stageCompleted ? <Button type="button" size="sm" className="mt-3 rounded-[10px]" onClick={onRequestAnother}><Plus className="h-3.5 w-3.5" /> Request Another Sample</Button> : null}</div> : <label className="mt-3 block space-y-2 border-t border-[#e0e7e0] pt-3"><span className="text-[10px] font-[700] text-[#59655d]">Review Note <span className="font-[500] text-[#7c867f]">(required for rejection)</span></span><Textarea value={reviewNote} maxLength={8000} disabled={!mutable} className="min-h-[90px] bg-white" placeholder="Add a note for accepting or rejecting this physical sample." onChange={(event) => setReviewNote(event.target.value)} /></label>}
+        </section>
         <section className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Recipient</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{round.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Internal" : round.recipientRoute === ProductionHandoverRoute.DIRECT_VENDOR ? "External" : "Legacy request"}{round.recipientCompany ? ` · ${round.recipientCompany}` : ""}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.recipientName || "Not provided"}</p><p className="mt-0.5 break-all text-[9px] text-[#758078]">{round.recipientEmail || "Legacy request"}{round.recipientPhone ? ` · ${round.recipientPhone}` : ""}</p></div>
+          <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Provider</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{round.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Internal" : round.recipientRoute === ProductionHandoverRoute.DIRECT_VENDOR ? "External" : "Legacy request"}{round.recipientCompany ? ` · ${round.recipientCompany}` : ""}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.recipientName || "Not provided"}</p><p className="mt-0.5 break-all text-[9px] text-[#758078]">{round.recipientEmail || "Legacy request"}{round.recipientPhone ? ` · ${round.recipientPhone}` : ""}</p></div>
           <div className={cn("rounded-[11px] border px-3 py-2.5", round.overdue ? "border-[#efcbc5] bg-[#fff6f4]" : "border-[#e2e8e2] bg-[#fafcfa]")}><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Deadline</p><p className={cn("mt-1 text-[10px] font-[700]", round.overdue ? "text-[#b8473e]" : "text-[#39443c]")}>{formatDate(round.deadline)}</p>{round.overdue ? <p className="mt-0.5 text-[9px] font-[700] text-[#b8473e]">{overdueLabel(round.deadline)}</p> : null}</div>
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Email Status</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{EMAIL_STATUS_LABELS[round.emailStatus]}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.emailSentAt ? `Sent ${formatDateTime(round.emailSentAt)}` : round.emailError || "Not delivered"}</p></div>
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Request Created</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{formatDateTime(round.createdAt)}</p></div>
         </section>
         <section><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Request Note</h3><p className="mt-2 whitespace-pre-wrap rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5 text-[10px] leading-4 text-[#4c584f]">{round.requestNote || "No request note was added."}</p></section>
         <section><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Production Files / References</h3><div className="mt-2 grid gap-2">{round.referenceFiles.length ? round.referenceFiles.map((file) => <a key={file.id} href={file.downloadPath} className="flex min-w-0 items-center gap-3 rounded-[11px] border border-[#e0e7e0] bg-[#fafcfa] px-3 py-2.5 text-[10px] text-[#354139] hover:bg-[#f3f8f4]"><FileImage className="h-4 w-4 shrink-0 text-[#4b7e5d]" /><span className="min-w-0 flex-1 truncate font-[680]">{file.name}</span><Download className="h-3.5 w-3.5 shrink-0" /></a>) : <p className="text-[10px] text-[#8a948d]">No reference files are available for this legacy request.</p>}</div></section>
-        <section className="border-t border-[#e6ebe6] pt-5"><div className="flex items-center justify-between gap-3"><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Physical Sample Review</h3>{round.decision ? <Badge className={round.decision === PhysicalSampleDecision.ACCEPTED ? "bg-[#e9f6ed] text-[#257049]" : "bg-[#fff0ee] text-[#b44338]"}>{round.decision === PhysicalSampleDecision.ACCEPTED ? "Accepted" : "Rejected"}</Badge> : null}</div>
-          {round.decision ? <div className="mt-3 rounded-[12px] border border-[#e0e7e0] bg-[#fafcfa] p-3"><p className="text-[10px] leading-4 text-[#465149]">{round.decisionNote || "No review note was added."}</p><p className="mt-2 text-[8px] text-[#849087]">Decided by {round.decidedBy || "Unknown"}{round.decidedAt ? ` · ${formatDateTime(round.decidedAt)}` : ""}</p>{round.decision === PhysicalSampleDecision.REJECTED && canManage && !stageCompleted ? <Button type="button" size="sm" className="mt-3 rounded-[10px]" onClick={onRequestAnother}><Plus className="h-3.5 w-3.5" /> Request Another Sample</Button> : null}</div> : <><label className="mt-3 block space-y-2"><span className="text-[10px] font-[700] text-[#59655d]">Review Note {"(required for rejection)"}</span><Textarea value={reviewNote} maxLength={8000} disabled={!mutable} className="min-h-[90px]" placeholder="Record the physical sample review outcome." onChange={(event) => setReviewNote(event.target.value)} /></label><div className="mt-3 grid gap-2 sm:grid-cols-2"><Button type="button" variant="outline" className="border-[#d96a60] text-[#b9433a] hover:bg-[#fff3f1]" disabled={!mutable || !reviewNote.trim() || round.emailStatus !== ProductionDispatchStatus.SENT} onClick={() => setConfirm(PhysicalSampleDecision.REJECTED)}><XCircle className="h-4 w-4" /> Reject Sample</Button><Button type="button" disabled={!mutable || round.emailStatus !== ProductionDispatchStatus.SENT} onClick={() => setConfirm(PhysicalSampleDecision.ACCEPTED)}><CheckCircle2 className="h-4 w-4" /> Accept Sample</Button></div></>}
-        </section>
       </div>
-      {mutable && round.emailStatus === ProductionDispatchStatus.FAILED ? <div className="border-t border-[#e5ebe5] bg-[#fff9ed] px-4 py-4 sm:px-5"><p className="text-[10px] leading-4 text-[#795c2b]">The request is saved, but the recipient email was not delivered.</p><Button type="button" size="sm" className="mt-2 rounded-[10px]" disabled={pending} onClick={retryEmail}><RefreshCw className="h-3.5 w-3.5" /> {pending ? "Retrying..." : "Retry Email"}</Button></div> : null}
       <ConfirmationDialog isOpen={confirm === PhysicalSampleDecision.ACCEPTED} title="Accept this physical sample?" description={`This will mark ${unit.name} as accepted for Stage 7 and lock further sample requests.`} confirmLabel="Accept Sample" pending={pending} onConfirm={decide} onClose={() => setConfirm(null)} />
       <ConfirmationDialog isOpen={confirm === PhysicalSampleDecision.REJECTED} title="Reject this physical sample?" description="The rejection and review note will remain as permanent history. You may then request another physical sample." confirmLabel="Reject Sample" tone="destructive" pending={pending} onConfirm={decide} onClose={() => setConfirm(null)} />
     </aside>
@@ -549,8 +549,7 @@ export function StageSevenWorkspace({
   const [closeConfirm, setCloseConfirm] = useState(false);
   const selectedUnit = data.units.find((unit) => unit.id === data.selectedUnitId) ?? data.units[0] ?? null;
   const selectedRound = selectedUnit?.rounds.find((round) => round.id === data.selectedRoundId) ?? selectedUnit?.rounds.at(-1) ?? null;
-  const latestRound = selectedUnit?.rounds.at(-1);
-  const canRequest = Boolean(selectedUnit && data.canManage && !data.stageCompleted && selectedUnit.status !== ProductionSupervisionStatus.SIGNED_OFF && (!latestRound || latestRound.decision === PhysicalSampleDecision.REJECTED));
+  const canRequest = Boolean(selectedUnit && data.canManage && !data.stageCompleted && selectedUnit.status !== ProductionSupervisionStatus.SIGNED_OFF);
   const remainingUnits = data.units.filter((unit) => unit.status !== ProductionSupervisionStatus.SIGNED_OFF);
   const canClose = data.canManage && !data.stageCompleted && data.units.length > 0 && !remainingUnits.length;
   const headerStatus = data.stageCompleted ? "COMPLETED" : data.units.some((unit) => unit.rounds.length) ? "IN PROGRESS" : "AVAILABLE";

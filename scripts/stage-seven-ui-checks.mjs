@@ -25,13 +25,13 @@ for (const content of [
   "Overdue",
   "Accepted",
   "Physical Sample Requests —",
-  "<span>Round</span><span>Name / Type</span><span>Recipient</span><span>Deadline</span>",
+  "<span>Round</span><span>Name / Type</span><span>Provider</span><span>Deadline</span>",
   "Request New Sample",
   "Round Name *",
   "Sample Type *",
   "Deadline *",
-  "Who receives this sample request? *",
-  "Internal Recipient *",
+  "Who will provide this sample? *",
+  "Internal Provider *",
   "Company Name *",
   "Contact Name *",
   "Email *",
@@ -42,6 +42,9 @@ for (const content of [
   "Accept Sample",
   "Reject Sample",
   "Retry Email",
+  "Received",
+  "Not Received",
+  "Accept / Reject",
   "Mark Project as Completed",
 ]) {
   assert(workspace.includes(content), `Missing final Stage 7 UI content: ${content}`);
@@ -112,12 +115,28 @@ assert(
   "The Request New Sample dialog must remain viewport-bounded, scroll its fields internally, and keep its action footer accessible.",
 );
 assert(
-  (workspace.match(/grid-cols-\[50px_minmax\(155px,1\.25fr\)_minmax\(130px,1fr\)_110px_140px_88px\]/g)?.length ?? 0) === 2 &&
+  (workspace.match(/grid-cols-\[50px_minmax\(155px,1\.25fr\)_minmax\(130px,1fr\)_110px_110px_120px\]/g)?.length ?? 0) === 2 &&
     workspace.includes('<span className="justify-self-start">Status</span>') &&
     workspace.includes('<span className="justify-self-end text-right">Action</span>') &&
-    workspace.includes('min-w-[72px] justify-self-start') &&
-    workspace.includes("lg:justify-self-end"),
+    workspace.includes("<ReceiptStatusBadge round={round} />") &&
+    workspace.includes("<DecisionBadge decision={round.decision} />") &&
+    !workspace.includes('{selected ? "Selected" : "View"}'),
   "Physical Sample Request Status and Action headers and cells must use matching, non-overlapping column widths and alignment.",
+);
+assert(
+  workspace.indexOf("Physical Sample Review") < workspace.lastIndexOf("Request Note") &&
+    workspace.indexOf("Reject Sample") < workspace.indexOf("Review Note") &&
+    workspace.includes("provider email was not delivered") &&
+    workspace.indexOf("Retry Email") < workspace.indexOf("Request Created"),
+  "Review decisions and email retry must stay at the top of the selected request panel.",
+);
+assert(
+  workspace.includes("const canRequest = Boolean(selectedUnit && data.canManage") &&
+    !workspace.includes("!latestRound || latestRound.decision") &&
+    !service.includes("The latest physical sample request is still awaiting a decision") &&
+    !service.includes("Previous sample rounds are read-only history.") &&
+    !service.includes("The physical sample request email must be sent before recording a decision."),
+  "Managers must be able to create and review each physical sample request independently.",
 );
 
 for (const action of [
@@ -178,14 +197,13 @@ assert(
     service.includes("emailStatus: ProductionDispatchStatus.SENT") &&
     service.includes("emailAttemptCount: { increment: 1 }") &&
     service.includes("return { duplicate: true }") &&
-    workspace.includes("The request is saved, but the recipient email was not delivered."),
+    workspace.includes("The request is saved, but the provider email was not delivered."),
   "Sample requests must persist before delivery and support audited, idempotent retry.",
 );
 assert(
   service.includes("PhysicalSampleDecision.ACCEPTED") &&
     service.includes("PhysicalSampleDecision.REJECTED") &&
     service.includes("Enter a review note before rejecting the sample.") &&
-    service.includes("Previous sample rounds are read-only history.") &&
     service.includes("status: ProductionSupervisionStatus.SIGNED_OFF") &&
     service.includes("status: ProductionSupervisionStatus.REVISIONS_NEEDED"),
   "Acceptance and rejection must be final, audited decisions with rejection-note enforcement.",

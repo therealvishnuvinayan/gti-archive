@@ -512,15 +512,7 @@ const requestUnitInclude = {
       },
     },
   },
-  supervision: {
-    include: {
-      sampleRounds: {
-        orderBy: { sequence: "desc" as const },
-        take: 1,
-        select: { id: true, decision: true },
-      },
-    },
-  },
+  supervision: true,
 } satisfies Prisma.ProjectProductionUnitInclude;
 
 function validateSampleRequestInput(input: {
@@ -871,12 +863,6 @@ export async function createProductionSampleRound(
     if (unit.supervision?.status === ProductionSupervisionStatus.SIGNED_OFF) {
       throw new StageSevenWorkflowError("Accepted Production Units are read-only.");
     }
-    const latest = unit.supervision?.sampleRounds[0];
-    if (latest && latest.decision === null) {
-      throw new StageSevenWorkflowError(
-        "The latest physical sample request is still awaiting a decision or email retry.",
-      );
-    }
     const references = selectReferenceAttachments(unit, input.referenceFileIds);
     const supervision = unit.supervision
       ? unit.supervision
@@ -885,13 +871,6 @@ export async function createProductionSampleRound(
             projectId: input.projectId,
             productionUnitId: input.productionUnitId,
             status: ProductionSupervisionStatus.NOT_STARTED,
-          },
-          include: {
-            sampleRounds: {
-              orderBy: { sequence: "desc" },
-              take: 1,
-              select: { id: true, decision: true },
-            },
           },
         });
     const latestSequence = await tx.productionSampleRound.aggregate({
@@ -1054,19 +1033,6 @@ export async function decidePhysicalSampleRound(
     }
     if (round.supervision.status === ProductionSupervisionStatus.SIGNED_OFF) {
       throw new StageSevenWorkflowError("Accepted Production Units are read-only.");
-    }
-    if (round.emailStatus !== ProductionDispatchStatus.SENT) {
-      throw new StageSevenWorkflowError(
-        "The physical sample request email must be sent before recording a decision.",
-      );
-    }
-    const latest = await tx.productionSampleRound.findFirst({
-      where: { supervisionId: round.supervisionId },
-      orderBy: { sequence: "desc" },
-      select: { id: true },
-    });
-    if (latest?.id !== round.id) {
-      throw new StageSevenWorkflowError("Previous sample rounds are read-only history.");
     }
     const now = new Date();
     const updated = await tx.productionSampleRound.updateMany({

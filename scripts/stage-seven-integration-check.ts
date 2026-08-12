@@ -301,7 +301,8 @@ async function main() {
     check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.NOT_STARTED, "failed delivery must not claim that GTI is waiting for a sample");
     const duplicateFailure = await createProductionSampleRound(owner, { ...baseInput, clientRequestId: failedClientRequestId }, { sendEmail: sendSuccess });
     check(duplicateFailure.duplicate && sentEmailCount() === 0, "the create idempotency key must not duplicate or silently resend a failed request");
-    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `blocked-pending-${runId}` }, { sendEmail: sendSuccess }), "a pending/failed latest request must block a new round until retry and decision");
+    const parallelRequest = await createProductionSampleRound(owner, { ...baseInput, clientRequestId: `parallel-pending-${runId}`, name: "Parallel physical sample request" }, { sendEmail: sendFailure });
+    check(!parallelRequest.duplicate && parallelRequest.emailStatus === ProductionDispatchStatus.FAILED, "a manager must be able to create another request while an earlier request is still pending");
 
     const retried = await retryProductionSampleRequestEmail(owner, {
       projectId: ids.project,
