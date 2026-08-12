@@ -1383,7 +1383,7 @@ export function StageFiveWorkspace({
             className="border-t border-[#e7ece7] bg-[#fbfcfb]"
             aria-labelledby="file-checklist-heading"
           >
-            <div className="flex flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:px-6">
+            <div className="px-4 py-5 sm:px-5 lg:px-6">
               <div>
                 <h2 id="file-checklist-heading" className="text-[18px] font-[750] text-[#1b261f]">
                   Required information and files
@@ -1392,6 +1392,39 @@ export function StageFiveWorkspace({
                   Values and selected files are saved independently for this final file.
                 </p>
               </div>
+            </div>
+            <div className="hidden border-t border-[#e8ede8] bg-white px-6 py-3 text-[10px] font-[740] uppercase tracking-[0.08em] text-[#7c867f] xl:grid xl:grid-cols-[230px_minmax(0,1fr)_86px_108px] xl:gap-5">
+              <span>Field</span>
+              <span>Information / Upload</span>
+              <span>Status</span>
+              <span className="text-right">Action</span>
+            </div>
+            <div className="bg-white">
+              {CHECKLIST_ITEMS.map((item) => (
+                <ChecklistItemRow
+                  key={item.key}
+                  item={item}
+                  status={getItemStatus(item)}
+                  latestRequest={
+                    activeFile.items.find((activeItem) => activeItem.fieldKey === item.key)
+                      ?.latestRequest ?? null
+                  }
+                  onRequest={() => setRequestField(item)}
+                  onResend={(() => {
+                    const latestRequest = activeFile.items.find(
+                      (activeItem) => activeItem.fieldKey === item.key,
+                    )?.latestRequest;
+                    return latestRequest?.channel === ProjectFileChecklistRequestChannel.EMAIL
+                      ? () => resendExternalRequest(latestRequest.id)
+                      : undefined;
+                  })()}
+                  isResending={isRequestActionPending}
+                >
+                  {renderControl(item)}
+                </ChecklistItemRow>
+              ))}
+            </div>
+            <div className="flex justify-end border-t border-[#e7ece7] bg-[#fbfcfb] px-4 py-5 sm:px-5 lg:px-6">
               <div className="w-full space-y-2 sm:w-[250px]">
                 <Button
                   type="button"
@@ -1431,37 +1464,6 @@ export function StageFiveWorkspace({
                   </div>
                 ) : null}
               </div>
-            </div>
-            <div className="hidden border-t border-[#e8ede8] bg-white px-6 py-3 text-[10px] font-[740] uppercase tracking-[0.08em] text-[#7c867f] xl:grid xl:grid-cols-[230px_minmax(0,1fr)_86px_108px] xl:gap-5">
-              <span>Field</span>
-              <span>Information / Upload</span>
-              <span>Status</span>
-              <span className="text-right">Action</span>
-            </div>
-            <div className="bg-white">
-              {CHECKLIST_ITEMS.map((item) => (
-                <ChecklistItemRow
-                  key={item.key}
-                  item={item}
-                  status={getItemStatus(item)}
-                  latestRequest={
-                    activeFile.items.find((activeItem) => activeItem.fieldKey === item.key)
-                      ?.latestRequest ?? null
-                  }
-                  onRequest={() => setRequestField(item)}
-                  onResend={(() => {
-                    const latestRequest = activeFile.items.find(
-                      (activeItem) => activeItem.fieldKey === item.key,
-                    )?.latestRequest;
-                    return latestRequest?.channel === ProjectFileChecklistRequestChannel.EMAIL
-                      ? () => resendExternalRequest(latestRequest.id)
-                      : undefined;
-                  })()}
-                  isResending={isRequestActionPending}
-                >
-                  {renderControl(item)}
-                </ChecklistItemRow>
-              ))}
             </div>
           </section>
           )}

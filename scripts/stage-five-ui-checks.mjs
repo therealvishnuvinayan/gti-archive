@@ -335,6 +335,11 @@ assert(
   "Stage 5 must keep independent per-file drafts and persist them explicitly.",
 );
 assert(
+  workspace.indexOf("CHECKLIST_ITEMS.map") < workspace.indexOf('border-t border-[#e7ece7] bg-[#fbfcfb] px-4 py-5') &&
+    workspace.indexOf('border-t border-[#e7ece7] bg-[#fbfcfb] px-4 py-5') < workspace.indexOf('"Save Changes"'),
+  "Save Changes must render in a checklist footer after every required information and file row.",
+);
+assert(
   service.includes("CHECKLIST_INFORMATION_REQUESTED") &&
     service.includes("clientRequestId") &&
     service.includes("recipientUserId") &&
