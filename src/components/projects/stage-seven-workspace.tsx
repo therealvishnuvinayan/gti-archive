@@ -413,18 +413,18 @@ function SampleRoundsList({
       </div>
       {unit.rounds.length ? (
         <div>
-          <div className="hidden grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_105px_48px] gap-3 border-b border-[#edf0ed] bg-[#fafbfa] px-5 py-2.5 text-[8px] font-[760] uppercase tracking-[0.065em] text-[#7d8780] lg:grid"><span>Round</span><span>Name / Type</span><span>Recipient</span><span>Deadline</span><span>Status</span><span className="text-right">Action</span></div>
+          <div className="hidden grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_140px_88px] gap-3 border-b border-[#edf0ed] bg-[#fafbfa] px-5 py-2.5 text-[8px] font-[760] uppercase tracking-[0.065em] text-[#7d8780] lg:grid"><span>Round</span><span>Name / Type</span><span>Recipient</span><span>Deadline</span><span className="justify-self-start">Status</span><span className="justify-self-end text-right">Action</span></div>
           <div className="divide-y divide-[#e9ede9]">
             {unit.rounds.map((round) => {
               const selected = round.id === selectedRoundId;
               return (
-                <article key={round.id} className={cn("grid gap-4 px-4 py-4 transition lg:grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_105px_48px] lg:items-center lg:gap-3 lg:px-5", selected ? "bg-[#f4faf5]" : "hover:bg-[#fbfcfb]")}>
+                <article key={round.id} className={cn("grid gap-4 px-4 py-4 transition lg:grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_140px_88px] lg:items-center lg:gap-3 lg:px-5", selected ? "bg-[#f4faf5]" : "hover:bg-[#fbfcfb]")}>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Round</span><span className={cn("grid size-8 shrink-0 place-items-center rounded-full border text-[11px] font-[780]", selected ? "border-[#86b395] bg-[#e7f4ea] text-[#2d744d]" : "border-[#dce4dd] bg-[#f7f9f7] text-[#68746b]")}>{round.sequence}</span></div>
                   <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Name / Type</span><h3 className="truncate text-[11px] font-[700] leading-4 text-[#29342c]">{round.name}</h3><p className="mt-0.5 truncate text-[9px] text-[#758078]">{round.type === ProductionSampleRoundType.CUSTOM ? round.customTypeName : ROUND_TYPE_LABELS[round.type]}</p></div>
                   <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Recipient</span><p className="truncate text-[10px] font-[680] text-[#39443c]">{round.recipientCompany || round.recipientName || "Legacy request"}</p>{round.recipientEmail ? <p className="mt-0.5 truncate text-[8px] text-[#849087]">{round.recipientEmail}</p> : null}</div>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Deadline</span><p className="text-[10px] font-[680] text-[#39443c]">{formatDate(round.deadline)}</p>{round.overdue ? <p className="mt-0.5 text-[8px] font-[700] text-[#bd473d]">{overdueLabel(round.deadline)}</p> : null}</div>
-                  <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Status</span><RoundStatusBadge round={round} /></div>
-                  <Button type="button" size="sm" variant={selected ? "secondary" : "ghost"} className="min-h-8 justify-self-start rounded-[10px] px-3 text-[10px] lg:justify-self-end" onClick={() => onSelectRound(round.id)}>{selected ? "Selected" : "View"}</Button>
+                  <div className="min-w-0 justify-self-start"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Status</span><RoundStatusBadge round={round} /></div>
+                  <Button type="button" size="sm" variant={selected ? "secondary" : "ghost"} className="min-h-8 min-w-[72px] justify-self-start rounded-[10px] px-3 text-[10px] lg:justify-self-end" onClick={() => onSelectRound(round.id)}>{selected ? "Selected" : "View"}</Button>
                 </article>
               );
             })}

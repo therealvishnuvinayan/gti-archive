@@ -25,7 +25,7 @@ for (const content of [
   "Overdue",
   "Accepted",
   "Physical Sample Requests —",
-  "<span>Round</span><span>Name / Type</span><span>Recipient</span><span>Deadline</span><span>Status</span>",
+  "<span>Round</span><span>Name / Type</span><span>Recipient</span><span>Deadline</span>",
   "Request New Sample",
   "Round Name *",
   "Sample Type *",
@@ -102,6 +102,14 @@ assert(
     !workspace.includes('type="date"') &&
     !workspace.includes('type="datetime-local"'),
   "The request must use the reusable date-only AppDatePicker.",
+);
+assert(
+  (workspace.match(/grid-cols-\[50px_minmax\(155px,1\.25fr\)_minmax\(130px,1fr\)_110px_140px_88px\]/g)?.length ?? 0) === 2 &&
+    workspace.includes('<span className="justify-self-start">Status</span>') &&
+    workspace.includes('<span className="justify-self-end text-right">Action</span>') &&
+    workspace.includes('min-w-[72px] justify-self-start') &&
+    workspace.includes("lg:justify-self-end"),
+  "Physical Sample Request Status and Action headers and cells must use matching, non-overlapping column widths and alignment.",
 );
 
 for (const action of [
