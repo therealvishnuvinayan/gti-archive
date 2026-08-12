@@ -26,8 +26,8 @@ import {
 } from "@/lib/realtime/client";
 import { showSuccessToast } from "@/lib/toast";
 
-const NOTIFICATION_REFRESH_INTERVAL_MS = 30_000;
-const NOTIFICATION_FOCUS_REFRESH_STALE_MS = 60_000;
+const NOTIFICATION_REFRESH_INTERVAL_MS = 10_000;
+const NOTIFICATION_FOCUS_REFRESH_STALE_MS = 10_000;
 const NOTIFICATION_RECENT_CACHE_KEY = "gti:recent-notifications";
 const NOTIFICATION_RECENT_CACHE_TTL_MS = 30_000;
 
@@ -226,6 +226,16 @@ export function NotificationCenterProvider({
     return refreshPromise;
   }, []);
 
+  const refreshRecentAfterChange = useCallback(async () => {
+    const activeRefresh = refreshPromiseRef.current;
+
+    if (activeRefresh) {
+      await activeRefresh.catch(() => undefined);
+    }
+
+    await refreshRecent();
+  }, [refreshRecent]);
+
   const setNotificationReadState = useCallback(async (notificationId: string, read: boolean) => {
     setRecentNotifications((current) =>
       current.map((notification) =>
@@ -253,6 +263,19 @@ export function NotificationCenterProvider({
     const client = createNotificationRealtimeClient();
     const channel = client.channels.get(getNotificationChannelName(currentUserId));
     let cancelled = false;
+    let subscribed = false;
+
+    const refreshFromRealtime = () => {
+      refreshRecentAfterChange()
+        .then(() => setRefreshVersion((current) => current + 1))
+        .catch((nextError) => {
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Unable to refresh notifications right now.",
+          );
+        });
+    };
 
     const handleNotificationChanged = (message: Ably.InboundMessage) => {
       if (
@@ -263,24 +286,33 @@ export function NotificationCenterProvider({
         return;
       }
 
-      refreshRecent()
-        .then(() => setRefreshVersion((current) => current + 1))
-        .catch((nextError) => {
-          setError(
-            nextError instanceof Error
-              ? nextError.message
-              : "Unable to refresh notifications right now.",
-          );
-        });
-
+      refreshFromRealtime();
     };
 
+    const handleRealtimeReconnected = () => {
+      if (subscribed && !cancelled) {
+        refreshFromRealtime();
+      }
+    };
+
+    client.connection.on("connected", handleRealtimeReconnected);
     void channel
       .subscribe(NOTIFICATION_REALTIME_EVENTS.changed, handleNotificationChanged)
-      .catch(() => undefined);
+      .then(() => {
+        subscribed = true;
+        refreshFromRealtime();
+      })
+      .catch((nextError) => {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to connect to notification updates.",
+        );
+      });
 
     return () => {
       cancelled = true;
+      client.connection.off("connected", handleRealtimeReconnected);
       void Promise.resolve(
         channel.unsubscribe(
           NOTIFICATION_REALTIME_EVENTS.changed,
@@ -289,7 +321,7 @@ export function NotificationCenterProvider({
       ).catch(() => undefined);
       client.close();
     };
-  }, [currentUserId, refreshRecent]);
+  }, [currentUserId, refreshRecentAfterChange]);
 
   const markAllAsRead = useCallback(async (options?: { showToast?: boolean }) => {
     setRecentNotifications((current) =>
@@ -370,7 +402,15 @@ export function NotificationCenterProvider({
       });
     }
 
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refreshRecent().catch(() => undefined);
+      }
+    }
+
     window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       controller.abort();
@@ -380,6 +420,8 @@ export function NotificationCenterProvider({
       window.clearTimeout(initialRefreshTimeoutId);
       window.clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [refreshRecent]);
 

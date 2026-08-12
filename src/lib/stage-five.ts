@@ -22,6 +22,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { publishNotificationChanges } from "@/lib/realtime/server";
 import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
@@ -789,6 +790,10 @@ export async function requestStageFiveChecklistInformation(
         return created;
         }),
       );
+      await publishNotificationChanges({
+        recipientUserIds: [recipientUserId],
+        reason: "created",
+      });
       return { request, duplicate: false } as const;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -1527,6 +1532,12 @@ export async function declineStageFiveChecklistRequest(
   if (!declined) {
     return { error: "This information request changed before it could be declined." } as const;
   }
+  if (request.requestedById !== user.id) {
+    await publishNotificationChanges({
+      recipientUserIds: [request.requestedById],
+      reason: "created",
+    });
+  }
   return {
     status: ProjectFileChecklistRequestWorkflowStatus.DECLINED,
     projectId: request.projectId,
@@ -1718,6 +1729,12 @@ export async function submitStageFiveChecklistResponse(
   );
   if (!completed) {
     return { error: "This information request changed before the response was submitted." } as const;
+  }
+  if (request.requestedById !== user.id) {
+    await publishNotificationChanges({
+      recipientUserIds: [request.requestedById],
+      reason: "created",
+    });
   }
   return {
     status: ProjectFileChecklistRequestWorkflowStatus.COMPLETED,

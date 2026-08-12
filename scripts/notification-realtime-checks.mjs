@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [center, service, events, server, ablyServer, client, tokenRoute, layout] =
+const [center, service, events, server, ablyServer, client, tokenRoute, layout, stageFive, stageFiveExternal] =
   await Promise.all([
     readFile("src/components/notifications/notification-center.tsx", "utf8"),
     readFile("src/lib/notification-center/service.ts", "utf8"),
@@ -11,6 +11,8 @@ const [center, service, events, server, ablyServer, client, tokenRoute, layout] 
     readFile("src/lib/realtime/client.ts", "utf8"),
     readFile("src/app/api/realtime/ably/token/route.ts", "utf8"),
     readFile("src/app/(dashboard)/layout.tsx", "utf8"),
+    readFile("src/lib/stage-five.ts", "utf8"),
+    readFile("src/lib/stage-five-external.ts", "utf8"),
   ]);
 
 assert(
@@ -43,8 +45,16 @@ assert(
 );
 assert(
   server.includes("publishAblyNotificationChanged") &&
-    center.includes("const NOTIFICATION_REFRESH_INTERVAL_MS = 30_000"),
+    center.includes("const NOTIFICATION_REFRESH_INTERVAL_MS = 10_000") &&
+    center.includes("refreshRecentAfterChange") &&
+    center.includes('client.connection.on("connected"') &&
+    center.includes('document.addEventListener("visibilitychange"'),
   "Realtime delivery must retain a bounded polling fallback.",
+);
+assert(
+  stageFive.includes("publishNotificationChanges") &&
+    stageFiveExternal.includes("publishNotificationChanges"),
+  "Transactional Stage 5 notification writes must publish realtime invalidations after commit.",
 );
 assert(
   layout.includes("id: user.id"),

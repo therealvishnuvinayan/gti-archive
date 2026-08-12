@@ -13,6 +13,7 @@ import {
 
 import { hashExternalChecklistToken } from "@/lib/checklist-external-token";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { publishNotificationChanges } from "@/lib/realtime/server";
 import {
   getStageFiveFieldDefinition,
   STAGE_FIVE_FIELD_LABELS,
@@ -444,6 +445,12 @@ export async function submitExternalChecklistResponse(
       return true;
     }),
   );
+  if (completed) {
+    await publishNotificationChanges({
+      recipientUserIds: [request.requestedById],
+      reason: "created",
+    });
+  }
   return completed
     ? ({ status: ProjectFileChecklistRequestWorkflowStatus.COMPLETED } as const)
     : ({ error: "This request changed before the response was submitted." } as const);
@@ -522,6 +529,12 @@ export async function declineExternalChecklistRequest(token: string, reasonInput
       return true;
     }),
   );
+  if (declined) {
+    await publishNotificationChanges({
+      recipientUserIds: [request.requestedById],
+      reason: "created",
+    });
+  }
   return declined
     ? ({ status: ProjectFileChecklistRequestWorkflowStatus.DECLINED } as const)
     : ({ error: "This request changed before it could be declined." } as const);
