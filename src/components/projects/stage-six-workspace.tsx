@@ -713,10 +713,15 @@ function HandoverDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[170] flex items-start justify-center overflow-y-auto bg-[#112118]/45 px-4 py-6 backdrop-blur-[2px] sm:items-center" role="dialog" aria-modal="true">
-      <Card className="w-full max-w-[700px] rounded-[24px] border-[#dfe6df]"><CardContent className="p-6 sm:p-7">
-        <div className="flex items-start justify-between"><div><p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">Approved Unit</p><h2 className="mt-2 text-[22px] font-[760]">Production Handover</h2></div><Button type="button" variant="secondary" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button></div>
-        <p className="mt-5 text-[12px] font-[720] text-[#2d372f]">Who receives this optional handover?</p>
+    <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-hidden bg-[#112118]/45 p-3 backdrop-blur-[2px] sm:p-5" role="dialog" aria-modal="true" aria-labelledby="production-handover-dialog-title">
+      <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[700px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] sm:max-h-[calc(100dvh-2.5rem)]">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+          <div className="flex shrink-0 items-start justify-between border-b border-[#e7ece8] px-6 py-5 sm:px-7">
+            <div><p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">Approved Unit</p><h2 id="production-handover-dialog-title" className="mt-2 text-[22px] font-[760]">Production Handover</h2></div>
+            <Button type="button" variant="secondary" size="icon" onClick={onClose} aria-label="Close production handover dialog"><X className="h-4 w-4" /></Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5 sm:px-7">
+            <p className="text-[12px] font-[720] text-[#2d372f]">Who receives this optional handover?</p>
         <div className="mt-2 grid gap-3 sm:grid-cols-2">
           <button type="button" onClick={() => setRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
           <button type="button" onClick={() => setRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send securely to a vendor or other external company.</span></button>
@@ -731,10 +736,14 @@ function HandoverDialog({
         <div className="mt-2 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">{files.map((file) => <label key={file.id} className="flex min-w-0 items-center gap-2 text-[11px]"><input type="checkbox" checked={fileIds.includes(file.id)} onChange={() => toggle(fileIds, file.id, setFileIds)} /><span className="truncate">{file.name}</span></label>)}</div>
         <div className="mt-3 flex items-center justify-between"><h3 className="text-[12px] font-[720]">Relevant technical information</h3><button type="button" className="text-[10px] font-[740] text-[#28714d]" onClick={() => setFieldKeys(fieldKeys.length === STAGE_FIVE_FIELD_DEFINITIONS.length ? [] : STAGE_FIVE_FIELD_DEFINITIONS.map((field) => field.key))}>Select All</button></div>
         <div className="mt-2 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">{STAGE_FIVE_FIELD_DEFINITIONS.map((field) => <label key={field.key} className="flex items-center gap-2 text-[11px]"><input type="checkbox" checked={fieldKeys.includes(field.key)} onChange={() => toggle(fieldKeys, field.key, setFieldKeys)} />{field.title}</label>)}</div>
-        <label className="mt-4 block space-y-2"><span className="text-[12px] font-[720]">Optional handover note</span><Textarea value={note} className="min-h-[90px]" onChange={(event) => setNote(event.target.value)} /></label>
-        <p className="mt-3 text-[10px] leading-4 text-[#748078]">The recipient receives a time-limited secure link. Files are not exposed through permanent public storage URLs.</p>
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" disabled={pending} onClick={onClose}>Cancel</Button><Button type="button" disabled={!recipientReady || !fileIds.length || pending} onClick={sendHandover}><Send className="h-4 w-4" />{pending ? "Sending..." : "Send Handover"}</Button></div>
-      </CardContent></Card>
+            <label className="mt-4 block space-y-2"><span className="text-[12px] font-[720]">Optional handover note</span><Textarea value={note} className="min-h-[90px]" onChange={(event) => setNote(event.target.value)} /></label>
+          </div>
+          <div className="shrink-0 border-t border-[#e7ece8] bg-white px-6 py-4 sm:px-7">
+            <p className="text-[10px] leading-4 text-[#748078]">The recipient receives a time-limited secure link. Files are not exposed through permanent public storage URLs.</p>
+            <div className="mt-3 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" disabled={pending} onClick={onClose}>Cancel</Button><Button type="button" disabled={!recipientReady || !fileIds.length || pending} onClick={sendHandover}><Send className="h-4 w-4" />{pending ? "Sending..." : "Send Handover"}</Button></div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

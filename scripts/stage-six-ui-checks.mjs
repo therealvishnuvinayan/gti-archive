@@ -65,6 +65,13 @@ assert(workspace.includes("step.reviewHref") && workspace.includes("Review Appro
 assert(workspace.includes("max-h-[calc(100dvh-1.5rem)]") && workspace.includes("overflow-y-auto overscroll-contain"), "The approval request dialog must remain bounded by the viewport and scroll its form content.");
 assert(workspace.includes("shrink-0 flex-col-reverse") && workspace.includes("border-t border-[#e7ece8] bg-white"), "The approval request actions must remain in a persistent modal footer.");
 assert(
+  workspace.includes('aria-labelledby="production-handover-dialog-title"') &&
+    (workspace.match(/max-h-\[calc\(100dvh-1\.5rem\)\]/g)?.length ?? 0) >= 2 &&
+    (workspace.match(/overflow-y-auto overscroll-contain/g)?.length ?? 0) >= 2 &&
+    workspace.includes('className="shrink-0 border-t border-[#e7ece8] bg-white px-6 py-4 sm:px-7"'),
+  "The Production Handover dialog must remain viewport-bounded with a scrollable form and persistent footer.",
+);
+assert(
   workspace.includes("h-24 min-h-20 max-h-36 resize-y rounded-[14px]") &&
     workspace.includes("border-[#c8d5cb] bg-[#fbfdfb]") &&
     workspace.includes("focus-visible:border-[#46906a]") &&
