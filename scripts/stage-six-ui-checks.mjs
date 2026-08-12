@@ -64,6 +64,15 @@ assert(!workspace.includes("INITIAL_APPROVAL_STEPS"), "Stage 6 must not use mock
 assert(workspace.includes("UnitSwitcher") && workspace.includes("overflow-x-auto"), "Stage 6 must use the file-card switcher instead of a primary dropdown.");
 assert(workspace.includes("pageData.summary") && workspace.includes("unit.approvalSteps"), "Stage 6 summaries must use real server data.");
 assert(
+  workspace.includes("const [productionFiles, setProductionFiles] = useState(unit.productionFiles)") &&
+    workspace.includes("{ ...uploaded, isSource: false }") &&
+    workspace.includes("[unit.sourceFile, ...productionFiles]") &&
+    workspace.includes("current.filter((item) => item.id !== file.id)") &&
+    workspace.includes("disabled={removingFileId === file.id}") &&
+    workspace.includes("canManage && mutable && !file.isSource"),
+  "Files added in Stage 6 must immediately expose a working Remove action while the Stage 5 source reference stays protected.",
+);
+assert(
   workspace.includes('className="min-w-0 overflow-hidden rounded-[14px]') &&
     workspace.includes("[overflow-wrap:anywhere]") &&
     workspace.includes('title={file.name}') &&

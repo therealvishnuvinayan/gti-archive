@@ -210,6 +210,8 @@ function FilesSection({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [productionFiles, setProductionFiles] = useState(unit.productionFiles);
+  const [removingFileId, setRemovingFileId] = useState<string | null>(null);
   const mutable =
     unit.status === ProjectProductionUnitStatus.PREPARATION ||
     unit.status === ProjectProductionUnitStatus.REJECTED;
@@ -226,6 +228,10 @@ function FilesSection({
         attachmentId: uploaded.id,
       });
       if ("error" in associated) throw new Error(associated.error);
+      setProductionFiles((current) => [
+        ...current.filter((item) => item.id !== uploaded.id),
+        { ...uploaded, isSource: false },
+      ]);
       showSuccessToast("Production file added.");
       onRefresh();
     } catch (error) {
@@ -237,14 +243,21 @@ function FilesSection({
   }
 
   async function removeFile(file: ProductionFileRecord) {
-    const result = await removeProductionUnitFileAction({
-      projectId,
-      productionUnitId: unit.id,
-      attachmentId: file.id,
-    });
-    if ("error" in result) return showErrorToast("Unable to remove file.", result.error);
-    showSuccessToast("Production file removed from this unit.");
-    onRefresh();
+    if (removingFileId) return;
+    setRemovingFileId(file.id);
+    try {
+      const result = await removeProductionUnitFileAction({
+        projectId,
+        productionUnitId: unit.id,
+        attachmentId: file.id,
+      });
+      if ("error" in result) return showErrorToast("Unable to remove file.", result.error);
+      setProductionFiles((current) => current.filter((item) => item.id !== file.id));
+      showSuccessToast("Production file removed from this unit.");
+      onRefresh();
+    } finally {
+      setRemovingFileId(null);
+    }
   }
 
   return (
@@ -264,7 +277,7 @@ function FilesSection({
         ) : null}
       </div>
       <div className="mt-4 space-y-3">
-        {[unit.sourceFile, ...unit.productionFiles].map((file) => (
+        {[unit.sourceFile, ...productionFiles].map((file) => (
           <div key={file.id} className="flex flex-col gap-3 rounded-[14px] border border-[#e2e8e2] bg-[#fbfcfb] p-4 sm:flex-row sm:items-center">
             <span className="grid size-10 shrink-0 place-items-center rounded-[11px] bg-[#edf5ef] text-[#347455]"><FileIcon file={file} /></span>
             <div className="min-w-0 flex-1">
@@ -273,7 +286,7 @@ function FilesSection({
             </div>
             <FileActions file={file} />
             {canManage && mutable && !file.isSource ? (
-              <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${file.name}`} onClick={() => removeFile(file)}>
+              <Button type="button" variant="ghost" size="icon" disabled={removingFileId === file.id} aria-label={`Remove ${file.name}`} onClick={() => removeFile(file)}>
                 <Trash2 className="h-4 w-4 text-[#aa4e45]" />
               </Button>
             ) : null}
@@ -834,7 +847,13 @@ export function StageSixWorkspace({
 
         {activeUnit ? (
           <div className="space-y-5 border-t border-[#e7ece7] bg-[#fbfcfb] px-5 py-6 sm:px-7 lg:px-9 lg:py-7">
-            <FilesSection projectId={project.id} unit={activeUnit} canManage={pageData.canManage} onRefresh={refresh} />
+            <FilesSection
+              key={`${activeUnit.id}:${activeUnit.productionFiles.map((file) => file.id).join(",")}`}
+              projectId={project.id}
+              unit={activeUnit}
+              canManage={pageData.canManage}
+              onRefresh={refresh}
+            />
             <ProductionDetails unit={activeUnit} />
             <ApprovalSection projectId={project.id} unit={activeUnit} canManage={pageData.canManage} onOpenDialog={setApproverDialog} onRefresh={refresh} />
             <HandoverSection unit={activeUnit} canManage={pageData.canManage} onOpen={() => setHandoverDialog(true)} />
