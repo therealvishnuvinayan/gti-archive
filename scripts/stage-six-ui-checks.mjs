@@ -12,6 +12,7 @@ const [
   actions,
   authenticatedActions,
   externalDecisionRoute,
+  approvalEmail,
   constants,
   migration,
   stageSevenService,
@@ -27,6 +28,7 @@ const [
   readFile("src/app/(dashboard)/projects/[slug]/stages/6/actions.ts", "utf8"),
   readFile("src/app/production-approvals/[stepId]/actions.ts", "utf8"),
   readFile("src/app/api/external/production-approval/[token]/decision/route.ts", "utf8"),
+  readFile("src/lib/email/production-workflow.ts", "utf8"),
   readFile("src/lib/stage-six-constants.ts", "utf8"),
   readFile("prisma/migrations/20260812090000_stage_six_optional_handover_contacts/migration.sql", "utf8"),
   readFile("src/lib/stage-seven.ts", "utf8"),
@@ -112,6 +114,20 @@ assert(
 for (const content of ["Approve", "Reject", "Shared Information", "Optional comment", "requestedBy"]) {
   assert(approvalWorkspace.includes(content), `Missing approval experience content: ${content}`);
 }
+assert(
+  approvalEmail.includes('["Status", "Action required"]') &&
+    approvalWorkspace.includes("decisionToConfirm") &&
+    approvalWorkspace.includes("ConfirmationDialog") &&
+    approvalWorkspace.includes("Confirm Approval") &&
+    approvalWorkspace.includes("Confirm Rejection") &&
+    approvalWorkspace.includes("confirmed: true") &&
+    authenticatedActions.includes("confirmed: input.confirmed") &&
+    externalDecisionRoute.includes("payload.confirmed !== true") &&
+    service.includes("input.confirmed !== true") &&
+    service.includes("step.status === ProductionApprovalStepStatus.APPROVED && step.decidedAt") &&
+    service.includes("step.status === ProductionApprovalStepStatus.REJECTED && step.decidedAt"),
+  "Approval emails and pages must remain pending until an approver explicitly confirms a decision, backed by an auditable decision timestamp.",
+);
 assert(
   approvalWorkspace.includes('access.kind === "authenticated"') &&
     approvalWorkspace.includes('href={`/projects/${data.project.id}/stages/6`}') &&

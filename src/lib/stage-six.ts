@@ -1658,9 +1658,16 @@ type ApprovalDecisionScope =
 
 export async function decideProductionApproval(
   scope: ApprovalDecisionScope,
-  input: { decision: "APPROVE" | "REJECT"; comment?: string },
+  input: {
+    decision: "APPROVE" | "REJECT";
+    comment?: string;
+    confirmed?: boolean;
+  },
   options: { sendEmail?: EmailSender } = {},
 ) {
+  if (input.confirmed !== true) {
+    return { error: "Confirm Approve or Reject before recording this decision." } as const;
+  }
   const comment = input.comment?.trim() || null;
   if (comment && comment.length > 5_000) return { error: "The decision comment is too long." } as const;
   const tokenHash = scope.kind === "external" ? hashProductionExternalToken(scope.token) : null;
@@ -1913,9 +1920,9 @@ function mapApprovalData(
   const snapshot = parseSnapshot(step.sharedSnapshot);
   if (!snapshot || !step.requestedBy) return { state: "unavailable" };
   const state =
-    step.status === ProductionApprovalStepStatus.APPROVED
+    step.status === ProductionApprovalStepStatus.APPROVED && step.decidedAt
       ? "approved"
-      : step.status === ProductionApprovalStepStatus.REJECTED
+      : step.status === ProductionApprovalStepStatus.REJECTED && step.decidedAt
         ? "rejected"
         : step.status === ProductionApprovalStepStatus.ACTIVE &&
             step.dispatchStatus === ProductionDispatchStatus.SENT
@@ -1981,8 +1988,9 @@ export async function getExternalProductionApprovalData(token: string) {
   );
   if (!step) return { state: "invalid" } as const;
   if (
-    step.status === ProductionApprovalStepStatus.APPROVED ||
-    step.status === ProductionApprovalStepStatus.REJECTED
+    (step.status === ProductionApprovalStepStatus.APPROVED ||
+      step.status === ProductionApprovalStepStatus.REJECTED) &&
+    step.decidedAt
   ) {
     return {
       state: "completed",

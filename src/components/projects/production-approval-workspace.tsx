@@ -7,6 +7,7 @@ import { ArrowLeft, Check, Download, Eye, FileText, ShieldCheck, X } from "lucid
 
 import { decideAuthenticatedProductionApprovalAction } from "@/app/production-approvals/[stepId]/actions";
 import { Button } from "@/components/ui/button";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProductionApprovalData } from "@/lib/stage-six";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
@@ -35,6 +36,9 @@ export function ProductionApprovalWorkspace({
 }) {
   const router = useRouter();
   const [comment, setComment] = useState("");
+  const [decisionToConfirm, setDecisionToConfirm] = useState<
+    "APPROVE" | "REJECT" | null
+  >(null);
   const [pending, startPending] = useTransition();
   const basePath = access.kind === "authenticated"
     ? `/api/production-approvals/${data.stepId}/files`
@@ -48,11 +52,12 @@ export function ProductionApprovalWorkspace({
             stepId: data.stepId,
             decision,
             comment,
+            confirmed: true,
           })
         : await fetch(`/api/external/production-approval/${encodeURIComponent(access.token)}/decision`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ decision, comment }),
+            body: JSON.stringify({ decision, comment, confirmed: true }),
           }).then(async (response) => ({
             ok: response.ok,
             payload: (await response.json()) as { error?: string },
@@ -67,6 +72,7 @@ export function ProductionApprovalWorkspace({
         return;
       }
       showSuccessToast(decision === "APPROVE" ? "Production approval accepted." : "Production approval rejected.");
+      setDecisionToConfirm(null);
       router.refresh();
     });
   }
@@ -98,8 +104,22 @@ export function ProductionApprovalWorkspace({
 
         <section><h2 className="text-[15px] font-[750] text-[#253029]">Shared Information</h2><div className="mt-3 grid gap-3 sm:grid-cols-2">{data.snapshot.fields.map((field) => <article key={field.key} className="rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4"><h3 className="text-[10px] font-[760] uppercase tracking-[.07em] text-[#758179]">{field.label}</h3><p className="mt-2 whitespace-pre-wrap text-[12px] leading-5 text-[#455149]">{valueText(field.value)}</p>{field.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{field.attachments.map((file) => <a key={file.id} href={`${basePath}/${file.id}/download`} className="rounded-full bg-[#eaf4ed] px-2.5 py-1 text-[9px] font-[680] text-[#2e744e]">{file.name}</a>)}</div> : null}</article>)}</div></section>
 
-        {data.state === "active" ? <section className="rounded-[18px] border border-[#dce6dd] bg-[#f7faf7] p-5"><h2 className="text-[15px] font-[750]">Decision</h2><p className="mt-1 text-[11px] text-[#6f7a72]">This is a yes/no approval. Checklist editing is not available here.</p><Textarea value={comment} className="mt-4 min-h-[100px] bg-white" placeholder="Optional comment" onChange={(event) => setComment(event.target.value)} /><div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="destructive" disabled={pending} onClick={() => decide("REJECT")}><X className="h-4 w-4" /> Reject</Button><Button type="button" disabled={pending} onClick={() => decide("APPROVE")}><Check className="h-4 w-4" /> {pending ? "Submitting..." : "Approve"}</Button></div></section> : <section className="rounded-[16px] border border-[#dce6dd] bg-[#f7faf7] p-5 text-center"><p className="text-[14px] font-[750] text-[#315b43]">Decision recorded: {data.state === "approved" ? "Approved" : "Rejected"}</p>{data.decisionComment ? <p className="mt-2 text-[12px] italic text-[#657168]">“{data.decisionComment}”</p> : null}</section>}
+        {data.state === "active" ? <section className="rounded-[18px] border border-[#dce6dd] bg-[#f7faf7] p-5"><h2 className="text-[15px] font-[750]">Decision</h2><p className="mt-1 text-[11px] text-[#6f7a72]">This approval remains pending until you explicitly confirm Approve or Reject.</p><Textarea value={comment} className="mt-4 min-h-[100px] bg-white" placeholder="Optional comment" onChange={(event) => setComment(event.target.value)} /><div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="destructive" disabled={pending} onClick={() => setDecisionToConfirm("REJECT")}><X className="h-4 w-4" /> Reject</Button><Button type="button" disabled={pending} onClick={() => setDecisionToConfirm("APPROVE")}><Check className="h-4 w-4" /> Approve</Button></div></section> : <section className="rounded-[16px] border border-[#dce6dd] bg-[#f7faf7] p-5 text-center"><p className="text-[14px] font-[750] text-[#315b43]">Decision recorded: {data.state === "approved" ? "Approved" : "Rejected"}</p>{data.decisionComment ? <p className="mt-2 text-[12px] italic text-[#657168]">“{data.decisionComment}”</p> : null}</section>}
       </div>
+      <ConfirmationDialog
+        isOpen={decisionToConfirm !== null}
+        title={decisionToConfirm === "APPROVE" ? "Approve production files?" : "Reject production files?"}
+        description={decisionToConfirm === "APPROVE" ? "This records your approval and activates the next approver in the chain." : "This records your rejection and stops the approval chain."}
+        confirmLabel={decisionToConfirm === "APPROVE" ? "Confirm Approval" : "Confirm Rejection"}
+        tone={decisionToConfirm === "REJECT" ? "destructive" : "default"}
+        pending={pending}
+        onConfirm={() => {
+          if (decisionToConfirm) decide(decisionToConfirm);
+        }}
+        onClose={() => {
+          if (!pending) setDecisionToConfirm(null);
+        }}
+      />
     </div>
   );
 }

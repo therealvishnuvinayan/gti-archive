@@ -10,11 +10,16 @@ export async function decideAuthenticatedProductionApprovalAction(input: {
   stepId: string;
   decision: "APPROVE" | "REJECT";
   comment?: string;
+  confirmed?: boolean;
 }) {
   const user = await requireUser(`/production-approvals/${input.stepId}`);
   const result = await decideProductionApproval(
     { kind: "authenticated", user, stepId: input.stepId },
-    { decision: input.decision, comment: input.comment },
+    {
+      decision: input.decision,
+      comment: input.comment,
+      confirmed: input.confirmed,
+    },
   );
   revalidatePath(`/production-approvals/${input.stepId}`);
   if (!("error" in result)) {

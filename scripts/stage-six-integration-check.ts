@@ -337,14 +337,19 @@ async function main() {
     }
     const outsiderApproval = await getAuthenticatedProductionApprovalData(outsider, configuredA.step.id);
     check(outsiderApproval.state === "invalid", "collaborator must not open someone else's approval");
-    const earlyDecision = await decideProductionApproval({ kind: "external", token: "a".repeat(43) }, { decision: "APPROVE" });
+    const earlyDecision = await decideProductionApproval({ kind: "external", token: "a".repeat(43) }, { decision: "APPROVE", confirmed: true });
     check(isError(earlyDecision), "invalid or non-active external step must not decide");
     await prisma.projectFileChecklistItem.update({ where: { checklistId_fieldKey: { checklistId: unitA.sourceChecklistId, fieldKey: ProjectFileChecklistField.OUTPUT_NAME } }, data: { value: { text: "Updated before Step 2" } } });
     const stableApproval = await getExternalProductionApprovalData(stepOneToken);
     check(stableApproval.state === "active" && JSON.stringify(stableApproval.snapshot).includes("Output 1"), "active approval snapshot must remain stable after Stage 5 edits");
 
+    const unconfirmedStepOne = await decideProductionApproval({ kind: "external", token: stepOneToken }, { decision: "APPROVE" });
+    check(isError(unconfirmedStepOne) && unconfirmedStepOne.error.includes("Confirm"), "an approval request without explicit confirmation must be rejected");
+    const pendingStepOne = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: configuredA.step.id } });
+    check(pendingStepOne.status === ProductionApprovalStepStatus.ACTIVE && pendingStepOne.decidedAt === null, "opening an approval and submitting no confirmation must leave it pending without a decision timestamp");
+
     const emailBeforeStepTwo = emailLog.length;
-    const approvedStepOne = await decideProductionApproval({ kind: "external", token: stepOneToken }, { decision: "APPROVE", comment: "Approved by Slavomir" }, { sendEmail: sendSuccess });
+    const approvedStepOne = await decideProductionApproval({ kind: "external", token: stepOneToken }, { decision: "APPROVE", comment: "Approved by Slavomir", confirmed: true }, { sendEmail: sendSuccess });
     check(!isError(approvedStepOne), "the active fixed first approver must approve");
     const decidedApproverWorkspace = await getStageSixWorkspaceData(approver, ids.project);
     const decidedApproverStep = decidedApproverWorkspace?.units
@@ -358,9 +363,11 @@ async function main() {
     await prisma.projectFileChecklistItem.update({ where: { checklistId_fieldKey: { checklistId: unitA.sourceChecklistId, fieldKey: ProjectFileChecklistField.OUTPUT_NAME } }, data: { value: { text: "Edited after dispatch" } } });
     const externalStepTwo = await getExternalProductionApprovalData(stepTwoToken);
     check(externalStepTwo.state === "active" && JSON.stringify(externalStepTwo.snapshot).includes("Updated before Step 2") && !JSON.stringify(externalStepTwo.snapshot).includes("Edited after dispatch"), "external approval must see its exact stable dispatch snapshot");
-    const approvedStepTwo = await decideProductionApproval({ kind: "external", token: stepTwoToken }, { decision: "APPROVE", comment: "Printer approves" }, { sendEmail: sendSuccess });
+    const pendingStepTwo = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: additional.step.id } });
+    check(pendingStepTwo.status === ProductionApprovalStepStatus.ACTIVE && pendingStepTwo.decidedAt === null, "activating and emailing the next approver must not record a decision");
+    const approvedStepTwo = await decideProductionApproval({ kind: "external", token: stepTwoToken }, { decision: "APPROVE", comment: "Printer approves", confirmed: true }, { sendEmail: sendSuccess });
     check(!isError(approvedStepTwo), "active external approver must approve");
-    const doubleDecision = await decideProductionApproval({ kind: "external", token: stepTwoToken }, { decision: "REJECT" });
+    const doubleDecision = await decideProductionApproval({ kind: "external", token: stepTwoToken }, { decision: "REJECT", confirmed: true });
     check(isError(doubleDecision), "completed token must not submit a second decision");
     check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: unitA.id } })).status === ProjectProductionUnitStatus.HANDOVER_READY, "final approval must make only its unit handover-ready");
     check((await prisma.notification.count({ where: { entityType: "PRODUCTION_UNIT", entityId: unitA.id, title: "Production approval chain completed" } })) > 0, "final approval must notify managers that the unit approval chain completed");
@@ -384,12 +391,12 @@ async function main() {
     await expectRejected(getProductionApprovalFileUrl({ kind: "external", token: unitBToken }, productionAttachmentId, "download"), "an external approval token must not download another unit's file");
     await prisma.productionApprovalStep.update({ where: { id: configuredB.step.id }, data: { externalTokenExpiresAt: new Date(Date.now() - 1_000) } });
     check((await getExternalProductionApprovalData(unitBToken)).state === "expired", "an expired external approval token must be denied");
-    check(isError(await decideProductionApproval({ kind: "external", token: unitBToken }, { decision: "APPROVE" })), "an expired external token must not decide");
+    check(isError(await decideProductionApproval({ kind: "external", token: unitBToken }, { decision: "APPROVE", confirmed: true })), "an expired external token must not decide");
     await prisma.productionApprovalStep.update({ where: { id: configuredB.step.id }, data: { externalTokenExpiresAt: new Date(Date.now() + 60_000), externalTokenRevokedAt: new Date() } });
     check((await getExternalProductionApprovalData(unitBToken)).state === "unavailable", "a revoked external approval token must be denied");
-    check(isError(await decideProductionApproval({ kind: "external", token: unitBToken }, { decision: "APPROVE" })), "a revoked external token must not decide");
+    check(isError(await decideProductionApproval({ kind: "external", token: unitBToken }, { decision: "APPROVE", confirmed: true })), "a revoked external token must not decide");
     await prisma.productionApprovalStep.update({ where: { id: configuredB.step.id }, data: { externalTokenExpiresAt: new Date(Date.now() + 60_000), externalTokenRevokedAt: null } });
-    const approvedB = await decideProductionApproval({ kind: "external", token: unitBToken }, { decision: "APPROVE" }, { sendEmail: sendSuccess });
+    const approvedB = await decideProductionApproval({ kind: "external", token: unitBToken }, { decision: "APPROVE", confirmed: true }, { sendEmail: sendSuccess });
     check(!isError(approvedB), "external Marketing Director must approve with exact token");
 
     const invalidExternalHandover = await handoverProductionUnit(owner, { clientRequestId: `handover-a-invalid-${runId}`, projectId: ids.project, productionUnitId: unitA.id, route: ProductionHandoverRoute.DIRECT_VENDOR, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Vendor A", recipientEmail: "vendor-a@example.test", sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId] }, { sendEmail: sendSuccess });
@@ -430,8 +437,8 @@ async function main() {
     check(!isError(rejectMd) && "step" in rejectMd && rejectMd.step, "rejection fixture Marketing Director must activate");
     const rejectToken = approvalToken(emailLog.at(-1)!);
     const concurrentRejections = await Promise.all([
-      decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "REJECT", comment: "Needs correction" }),
-      decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "REJECT", comment: "Duplicate click" }),
+      decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "REJECT", comment: "Needs correction", confirmed: true }),
+      decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "REJECT", comment: "Duplicate click", confirmed: true }),
     ]);
     check(concurrentRejections.filter((result) => !isError(result)).length === 1, "concurrent rejection clicks must record exactly one decision");
     check(concurrentRejections.filter(isError).length === 1, "the losing concurrent rejection must return a controlled error");

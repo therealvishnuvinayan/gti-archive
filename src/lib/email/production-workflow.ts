@@ -71,6 +71,7 @@ export function buildProductionApprovalEmail(input: {
         ["Project", input.projectName],
         ["Production unit", input.unitName],
         ["Approval step", input.stepLabel],
+        ["Status", "Action required"],
       ],
       message: input.message,
       actionLabel: "Review Production Approval",
