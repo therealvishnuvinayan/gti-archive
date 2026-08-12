@@ -474,6 +474,7 @@ model User {
   createdProductionSampleRounds       ProductionSampleRound[]              @relation("ProductionSampleRoundCreator")
   completedProductionSampleRounds     ProductionSampleRound[]              @relation("ProductionSampleRoundCompleter")
   decidedPhysicalSampleRounds         ProductionSampleRound[]              @relation("ProductionSampleRoundDecider")
+  productionSampleRequestAssignments  ProductionSampleRound[]              @relation("ProductionSampleRoundRecipient")
   productionSampleRoundParticipations ProductionSampleRoundParticipant[]   @relation("ProductionSampleRoundParticipantUser")
   addedProductionSampleParticipants   ProductionSampleRoundParticipant[]   @relation("ProductionSampleRoundParticipantAdder")
   addedProductionSampleEvidence       ProductionSampleRoundEvidence[]      @relation("ProductionSampleRoundEvidenceAdder")
@@ -1031,8 +1032,14 @@ model ProductionSampleRound {
   type                    ProductionSampleRoundType
   customTypeName          String?
   deadline                DateTime                           @db.Date
+  recipientRoute          ProductionHandoverRoute?
+  recipientType           ProductionApprovalRecipientType?
+  recipientUserId         String?
+  recipientUser           User?                              @relation("ProductionSampleRoundRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
   recipientName           String?
   recipientEmail          String?
+  recipientCompany        String?
+  recipientPhone          String?
   requestNote             String?                            @db.Text
   requestReferenceFileIds String[]                           @default([])
   emailStatus             ProductionDispatchStatus           @default(NOT_SENT)
@@ -1075,6 +1082,7 @@ model ProductionSampleRound {
   @@index([emailStatus, updatedAt])
   @@index([supervisionId, status, sequence])
   @@index([decidedById])
+  @@index([recipientUserId])
   @@index([completedById])
   @@index([createdById])
 }

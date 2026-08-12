@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import type {
   PhysicalSampleDecision,
+  ProductionApprovalRecipientType,
+  ProductionHandoverRoute,
   ProductionSampleRoundType,
 } from "@prisma/client";
 
@@ -42,8 +44,13 @@ export async function createProductionSampleRoundAction(input: {
   type: ProductionSampleRoundType;
   customTypeName?: string | null;
   deadline: string;
+  recipientRoute: ProductionHandoverRoute;
+  recipientType: ProductionApprovalRecipientType;
+  recipientUserId?: string | null;
   recipientName?: string | null;
-  recipientEmail: string;
+  recipientEmail?: string | null;
+  recipientCompany?: string | null;
+  recipientPhone?: string | null;
   requestNote?: string | null;
 }) {
   const user = await requireUser();

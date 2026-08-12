@@ -4,7 +4,9 @@ import {
   NotificationType,
   PhysicalSampleDecision,
   Prisma,
+  ProductionApprovalRecipientType,
   ProductionDispatchStatus,
+  ProductionHandoverRoute,
   ProductionSampleRoundStatus,
   ProductionSampleRoundType,
   ProductionSupervisionStatus,
@@ -21,6 +23,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
 import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
@@ -47,6 +50,7 @@ export type StageSevenWorkspaceData = {
   canManage: boolean;
   stageCompleted: boolean;
   projectClosedAt: string | null;
+  participants: Array<{ id: string; name: string; email: string; role: string }>;
   selectedUnitId: string | null;
   selectedRoundId: string | null;
   units: Array<{
@@ -65,8 +69,13 @@ export type StageSevenWorkspaceData = {
       type: ProductionSampleRoundType;
       customTypeName: string | null;
       deadline: string;
+      recipientRoute: ProductionHandoverRoute | null;
+      recipientType: ProductionApprovalRecipientType | null;
+      recipientUserId: string | null;
       recipientName: string | null;
       recipientEmail: string | null;
+      recipientCompany: string | null;
+      recipientPhone: string | null;
       requestNote: string | null;
       emailStatus: ProductionDispatchStatus;
       emailSentAt: string | null;
@@ -121,6 +130,27 @@ export function canManageStageSeven(
 
 function displayName(user: { name: string | null; email: string }) {
   return user.name?.trim() || user.email;
+}
+
+function getParticipants(project: StageProject) {
+  const candidates = [
+    ...(project.owner ? [{ user: project.owner, role: "Project Owner" }] : []),
+    ...project.coOwners.map(({ user }) => ({ user, role: "Project Co-Owner" })),
+    ...project.executors.map(({ user }) => ({ user, role: "Project Executor" })),
+    ...project.collaborators.map(({ user }) => ({ user, role: "Project Collaborator" })),
+  ];
+  const unique = new Map<string, { id: string; name: string; email: string; role: string }>();
+  for (const { user, role } of candidates) {
+    if (!unique.has(user.id)) {
+      unique.set(user.id, {
+        id: user.id,
+        name: displayName(user),
+        email: user.email,
+        role,
+      });
+    }
+  }
+  return [...unique.values()];
 }
 
 function validClientRequestId(value: string) {
@@ -357,8 +387,13 @@ export async function getStageSevenWorkspaceData(
           type: round.type,
           customTypeName: round.customTypeName,
           deadline: round.deadline.toISOString(),
+          recipientRoute: round.recipientRoute,
+          recipientType: round.recipientType,
+          recipientUserId: round.recipientUserId,
           recipientName: round.recipientName,
           recipientEmail: round.recipientEmail,
+          recipientCompany: round.recipientCompany,
+          recipientPhone: round.recipientPhone,
           requestNote: round.requestNote,
           emailStatus: round.emailStatus,
           emailSentAt: round.emailSentAt?.toISOString() ?? null,
@@ -404,6 +439,7 @@ export async function getStageSevenWorkspaceData(
     canManage: canManageStageSeven(user, project),
     stageCompleted: stageStatus(project) === ProjectWorkflowStageStatus.COMPLETED,
     projectClosedAt: closure?.closedAt.toISOString() ?? null,
+    participants: getParticipants(project),
     selectedUnitId: resolvedUnitId,
     selectedRoundId: resolvedRoundId,
     units: mappedUnits,
@@ -493,8 +529,6 @@ function validateSampleRequestInput(input: {
   type: ProductionSampleRoundType;
   customTypeName?: string | null;
   deadline: string | Date;
-  recipientName?: string | null;
-  recipientEmail: string;
   requestNote?: string | null;
 }) {
   if (!validClientRequestId(input.clientRequestId)) {
@@ -514,17 +548,93 @@ function validateSampleRequestInput(input: {
       "A custom sample type can only be used when Sample Type is Custom.",
     );
   }
-  const recipientEmail = normalizeEmail(input.recipientEmail);
-  if (!recipientEmail) {
-    throw new StageSevenWorkflowError("Enter a valid recipient email address.");
-  }
   return {
     name,
     customTypeName,
     deadline: parseDeadlineDate(input.deadline),
-    recipientName: normalizeOptionalText(input.recipientName, 160),
-    recipientEmail,
     requestNote: normalizeOptionalText(input.requestNote, 8_000),
+  };
+}
+
+function resolveSampleRecipient(
+  project: StageProject,
+  input: {
+    recipientRoute: ProductionHandoverRoute;
+    recipientType: ProductionApprovalRecipientType;
+    recipientUserId?: string | null;
+    recipientName?: string | null;
+    recipientEmail?: string | null;
+    recipientCompany?: string | null;
+    recipientPhone?: string | null;
+  },
+) {
+  const isInternal = input.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
+  if (
+    !Object.values(ProductionHandoverRoute).includes(input.recipientRoute) ||
+    !Object.values(ProductionApprovalRecipientType).includes(input.recipientType)
+  ) {
+    throw new StageSevenWorkflowError("Select a valid sample recipient type.");
+  }
+  if (isInternal) {
+    if (
+      input.recipientType !== ProductionApprovalRecipientType.EXISTING_COLLABORATOR ||
+      !input.recipientUserId
+    ) {
+      throw new StageSevenWorkflowError(
+        "Internal sample requests require an existing project participant.",
+      );
+    }
+    const participant = getParticipants(project).find(
+      (candidate) => candidate.id === input.recipientUserId,
+    );
+    if (!participant) {
+      throw new StageSevenWorkflowError(
+        "The selected internal recipient is not part of this project.",
+      );
+    }
+    return {
+      recipientRoute: input.recipientRoute,
+      recipientType: input.recipientType,
+      recipientUserId: participant.id,
+      recipientName: participant.name,
+      recipientEmail: participant.email,
+      recipientCompany: null,
+      recipientPhone: null,
+    };
+  }
+  if (input.recipientType !== ProductionApprovalRecipientType.EXTERNAL_EMAIL) {
+    throw new StageSevenWorkflowError(
+      "External sample requests require external recipient details.",
+    );
+  }
+  const recipientCompany = normalizeOptionalText(input.recipientCompany, 160);
+  if (!recipientCompany) {
+    throw new StageSevenWorkflowError("Enter the external recipient company name.");
+  }
+  const recipientName = normalizeOptionalText(input.recipientName, 160);
+  if (!recipientName) {
+    throw new StageSevenWorkflowError("Enter the external contact name.");
+  }
+  const recipientEmail = normalizeEmail(input.recipientEmail);
+  if (!recipientEmail) {
+    throw new StageSevenWorkflowError("Enter a valid external recipient email address.");
+  }
+  const recipientPhone = input.recipientPhone
+    ? normalizeInternationalPhone(input.recipientPhone)
+    : null;
+  if (!recipientPhone) {
+    throw new StageSevenWorkflowError(
+      "Enter a valid external phone number including country code.",
+    );
+  }
+  return {
+    recipientRoute: input.recipientRoute,
+    recipientType: input.recipientType,
+    recipientUserId: null,
+    recipientName,
+    recipientEmail,
+    recipientCompany,
+    recipientPhone,
   };
 }
 
@@ -703,15 +813,21 @@ export async function createProductionSampleRound(
     type: ProductionSampleRoundType;
     customTypeName?: string | null;
     deadline: string | Date;
+    recipientRoute: ProductionHandoverRoute;
+    recipientType: ProductionApprovalRecipientType;
+    recipientUserId?: string | null;
     recipientName?: string | null;
-    recipientEmail: string;
+    recipientEmail?: string | null;
+    recipientCompany?: string | null;
+    recipientPhone?: string | null;
     requestNote?: string | null;
     referenceFileIds?: string[];
   },
   options: { sendEmail?: EmailSender } = {},
 ) {
-  await getManagerProject(user, input.projectId);
+  const project = await getManagerProject(user, input.projectId);
   const validated = validateSampleRequestInput(input);
+  const recipient = resolveSampleRecipient(project, input);
   const prepared = await serializable(async (tx) => {
     await assertStageSevenActive(tx, input.projectId);
     const duplicate = await tx.productionSampleRound.findUnique({
@@ -792,8 +908,7 @@ export async function createProductionSampleRound(
         type: input.type,
         customTypeName: validated.customTypeName,
         deadline: validated.deadline,
-        recipientName: validated.recipientName,
-        recipientEmail: validated.recipientEmail,
+        ...recipient,
         requestNote: validated.requestNote,
         requestReferenceFileIds: references.map((attachment) => attachment.id),
         emailStatus: ProductionDispatchStatus.PENDING,
@@ -1000,7 +1115,7 @@ export async function closeStageSevenProject(
   const project = await getAuthorizedStageSevenProject(user, input.projectId);
   if (!project || !canManageStageSeven(user, project)) {
     throw new StageSevenWorkflowError(
-      "Only the project owner, a project co-owner, or a Super Admin can close the project.",
+      "Only the project owner, a project co-owner, or a Super Admin can complete the project.",
     );
   }
   if (project.archivedAt) throw new StageSevenWorkflowError("Archived projects are read-only.");
@@ -1050,7 +1165,7 @@ export async function closeStageSevenProject(
       )
     ) {
       throw new StageSevenWorkflowError(
-        "All physical Production Unit samples must be accepted before the project can be closed.",
+        "All physical Production Unit samples must be accepted before the project can be completed.",
       );
     }
     const now = new Date();

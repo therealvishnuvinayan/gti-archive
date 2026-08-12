@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, cronRoute, datePicker] =
+const [workspace, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, recipientMigration, cronRoute, datePicker] =
   await Promise.all([
     readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/7/page.tsx", "utf8"),
@@ -12,6 +12,7 @@ const [workspace, page, actions, service, dashboard, schema, baseMigration, corr
     readFile("prisma/migrations/20260809210000_stage_seven_production_supervision/migration.sql", "utf8"),
     readFile("prisma/migrations/20260809233000_correct_stage_seven_sample_round/migration.sql", "utf8"),
     readFile("prisma/migrations/20260809235900_stage_seven_physical_sample_requests/migration.sql", "utf8"),
+    readFile("prisma/migrations/20260812130000_stage_seven_sample_request_recipients/migration.sql", "utf8"),
     readFile("src/app/api/internal/stage-seven/overdue/route.ts", "utf8"),
     readFile("src/components/calendar/app-date-picker.tsx", "utf8"),
   ]);
@@ -29,15 +30,19 @@ for (const content of [
   "Round Name *",
   "Sample Type *",
   "Deadline *",
-  "Recipient Name",
-  "Recipient Email *",
+  "Who receives this sample request? *",
+  "Internal Recipient *",
+  "Company Name *",
+  "Contact Name *",
+  "Email *",
+  "Phone *",
   "Request Note",
   "Send Sample Request",
   "Physical Sample Review",
   "Accept Sample",
   "Reject Sample",
   "Retry Email",
-  "Close Project",
+  "Mark Project as Completed",
 ]) {
   assert(workspace.includes(content), `Missing final Stage 7 UI content: ${content}`);
 }
@@ -69,6 +74,18 @@ assert(
     workspace.includes("URLSearchParams") &&
     workspace.includes('params.set("round", roundId)'),
   "Stage 7 must load persisted data and keep unit/round selection URL-backed.",
+);
+assert(
+  workspace.includes("ProductionHandoverRoute.PURCHASE_DEPARTMENT") &&
+    workspace.includes("ProductionHandoverRoute.DIRECT_VENDOR") &&
+    workspace.includes("border-[#c8d5cb]") &&
+    workspace.includes("focus-visible:border-[#46906a]") &&
+    service.includes("Internal sample requests require an existing project participant.") &&
+    service.includes("External sample requests require external recipient details.") &&
+    recipientMigration.includes('ADD COLUMN "recipientRoute"') &&
+    recipientMigration.includes('ADD COLUMN "recipientCompany"') &&
+    recipientMigration.includes('ADD COLUMN "recipientPhone"'),
+  "Sample requests must mirror the bordered Stage 6 internal/external recipient workflow.",
 );
 assert(
   workspace.includes("unit.rawFileName !== unit.name") &&
@@ -143,7 +160,7 @@ assert(
     service.includes("emailStatus: ProductionDispatchStatus.SENT") &&
     service.includes("emailAttemptCount: { increment: 1 }") &&
     service.includes("return { duplicate: true }") &&
-    workspace.includes("The request is saved, but the supplier email was not delivered."),
+    workspace.includes("The request is saved, but the recipient email was not delivered."),
   "Sample requests must persist before delivery and support audited, idempotent retry.",
 );
 assert(
@@ -171,7 +188,7 @@ assert(
     service.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     !service.includes("projectArchive.create") &&
     workspace.includes("Archiving remains a separate action."),
-  "Manual closure must require every unit accepted and remain separate from archive.",
+  "Manual project completion must require every unit accepted and remain separate from archive.",
 );
 assert(
   workspace.includes("overflow-x-auto") &&

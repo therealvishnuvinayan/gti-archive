@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import {
   PhysicalSampleDecision,
+  ProductionApprovalRecipientType,
   ProductionDispatchStatus,
+  ProductionHandoverRoute,
   ProductionSampleRoundType,
   ProductionSupervisionStatus,
 } from "@prisma/client";
@@ -164,7 +166,7 @@ function ModalShell({
             <div>
               <p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">{eyebrow}</p>
               <h2 className="mt-2 text-[22px] font-[760] text-[#162019]">{title}</h2>
-              <p className="mt-2 max-w-[520px] text-[11px] leading-5 text-[#748078]">Sending this request emails the supplier to prepare and courier a physical production sample.</p>
+              <p className="mt-2 max-w-[520px] text-[11px] leading-5 text-[#748078]">Sending this request emails the selected recipient to prepare and courier a physical production sample.</p>
             </div>
             <Button type="button" variant="secondary" size="icon" onClick={onClose} aria-label="Close dialog">
               <X className="h-4 w-4" />
@@ -180,11 +182,13 @@ function ModalShell({
 function NewSampleRequestDialog({
   projectId,
   unit,
+  participants,
   onClose,
   onCreated,
 }: {
   projectId: string;
   unit: Unit;
+  participants: StageSevenWorkspaceData["participants"];
   onClose: () => void;
   onCreated: (roundId: string) => void;
 }) {
@@ -197,13 +201,32 @@ function NewSampleRequestDialog({
   );
   const [customTypeName, setCustomTypeName] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [recipientRoute, setRecipientRoute] = useState<ProductionHandoverRoute>(
+    previous?.recipientRoute ?? ProductionHandoverRoute.PURCHASE_DEPARTMENT,
+  );
+  const [recipientUserId, setRecipientUserId] = useState(
+    previous?.recipientUserId ?? "",
+  );
+  const [recipientCompany, setRecipientCompany] = useState(
+    previous?.recipientCompany ?? "",
+  );
   const [recipientName, setRecipientName] = useState(previous?.recipientName ?? "");
   const [recipientEmail, setRecipientEmail] = useState(previous?.recipientEmail ?? "");
+  const [recipientPhone, setRecipientPhone] = useState(previous?.recipientPhone ?? "");
   const [requestNote, setRequestNote] = useState("");
+  const isInternal = recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
+  const recipientReady = isInternal
+    ? Boolean(recipientUserId)
+    : Boolean(
+        recipientCompany.trim() &&
+          recipientName.trim() &&
+          /^\S+@\S+\.\S+$/.test(recipientEmail.trim()) &&
+          /^\+[\d\s().-]{8,}$/.test(recipientPhone.trim()),
+      );
   const ready = Boolean(
     name.trim() &&
       deadline &&
-      recipientEmail.trim() &&
+      recipientReady &&
       (type !== ProductionSampleRoundType.CUSTOM || customTypeName.trim()),
   );
 
@@ -218,8 +241,18 @@ function NewSampleRequestDialog({
         type,
         customTypeName,
         deadline,
-        recipientName,
-        recipientEmail,
+        recipientRoute,
+        recipientType: isInternal
+          ? ProductionApprovalRecipientType.EXISTING_COLLABORATOR
+          : ProductionApprovalRecipientType.EXTERNAL_EMAIL,
+        ...(isInternal
+          ? { recipientUserId }
+          : {
+              recipientCompany,
+              recipientName,
+              recipientEmail,
+              recipientPhone,
+            }),
         requestNote,
       });
       if ("error" in result) {
@@ -244,12 +277,12 @@ function NewSampleRequestDialog({
       <div className="mt-6 grid gap-4">
         <label className="space-y-2">
           <span className="text-[12px] font-[720] text-[#2d372f]">Round Name *</span>
-          <Input value={name} maxLength={160} autoFocus placeholder="First Physical Packaging Sample" onChange={(event) => setName(event.target.value)} />
+          <Input value={name} maxLength={160} autoFocus placeholder="First Physical Packaging Sample" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setName(event.target.value)} />
         </label>
         <label className="space-y-2">
           <span className="text-[12px] font-[720] text-[#2d372f]">Sample Type *</span>
           <Select value={type} onValueChange={(value) => setType(value as ProductionSampleRoundType)}>
-            <SelectTrigger className="rounded-[12px] border-[#dfe6df] bg-white"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue /></SelectTrigger>
             <SelectContent className="z-[190]">
               {Object.values(ProductionSampleRoundType).map((value) => <SelectItem key={value} value={value}>{ROUND_TYPE_LABELS[value]}</SelectItem>)}
             </SelectContent>
@@ -258,26 +291,39 @@ function NewSampleRequestDialog({
         {type === ProductionSampleRoundType.CUSTOM ? (
           <label className="space-y-2">
             <span className="text-[12px] font-[720] text-[#2d372f]">Custom Sample Type *</span>
-            <Input value={customTypeName} maxLength={120} onChange={(event) => setCustomTypeName(event.target.value)} />
+            <Input value={customTypeName} maxLength={120} placeholder="Enter custom sample type" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setCustomTypeName(event.target.value)} />
           </label>
         ) : null}
         <label className="space-y-2">
           <span className="text-[12px] font-[720] text-[#2d372f]">Deadline *</span>
-          <AppDatePicker value={deadline} onChange={setDeadline} required clearable={false} placeholder="Select deadline" popoverZIndex={200} triggerClassName="h-11 w-full justify-between rounded-[12px] border border-[#dfe6df] bg-white px-4 text-left text-[14px] font-normal text-[#18211a] shadow-none hover:bg-white" />
+          <AppDatePicker value={deadline} onChange={setDeadline} required clearable={false} placeholder="Select deadline" popoverZIndex={200} triggerClassName="h-11 w-full justify-between rounded-[12px] border border-[#c8d5cb] bg-[#fbfdfb] px-4 text-left text-[14px] font-normal text-[#18211a] shadow-none hover:bg-white focus-visible:border-[#46906a] focus-visible:ring-3 focus-visible:ring-[#46906a]/15" />
         </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-[12px] font-[720] text-[#2d372f]">Recipient Name</span>
-            <Input value={recipientName} maxLength={160} placeholder="ABC Packaging" onChange={(event) => setRecipientName(event.target.value)} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-[12px] font-[720] text-[#2d372f]">Recipient Email *</span>
-            <Input type="email" value={recipientEmail} maxLength={320} placeholder="supplier@example.com" onChange={(event) => setRecipientEmail(event.target.value)} />
-          </label>
+        <div>
+          <span className="text-[12px] font-[720] text-[#2d372f]">Who receives this sample request? *</span>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.PURCHASE_DEPARTMENT)} className={cn("rounded-[14px] border p-4 text-left", isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">Internal</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Select an existing project participant, such as Purchasing.</span></button>
+            <button type="button" onClick={() => setRecipientRoute(ProductionHandoverRoute.DIRECT_VENDOR)} className={cn("rounded-[14px] border p-4 text-left", !isInternal ? "border-[#72a184] bg-[#f1f8f3]" : "border-[#dfe6df]")}><strong className="block text-[12px] font-[740]">External</strong><span className="mt-1 block text-[10px] leading-4 text-[#6f7a72]">Send the request to a vendor or other external company.</span></button>
+          </div>
         </div>
+        {isInternal ? (
+          <label className="space-y-2">
+            <span className="text-[12px] font-[720] text-[#2d372f]">Internal Recipient *</span>
+            <Select value={recipientUserId} onValueChange={setRecipientUserId}>
+              <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] focus:border-[#46906a] focus:ring-[#46906a]/15"><SelectValue placeholder="Select internal recipient" /></SelectTrigger>
+              <SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent>
+            </Select>
+          </label>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Company Name *</span><Input value={recipientCompany} maxLength={160} placeholder="Enter company name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientCompany(event.target.value)} /></label>
+            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Contact Name *</span><Input value={recipientName} maxLength={160} placeholder="Enter contact name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientName(event.target.value)} /></label>
+            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Email *</span><Input type="email" value={recipientEmail} maxLength={320} placeholder="contact@company.com" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientEmail(event.target.value)} /></label>
+            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Phone *</span><Input type="tel" value={recipientPhone} maxLength={50} placeholder="e.g. +971 50 123 4567" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientPhone(event.target.value)} /><span className="block text-[9px] text-[#77827a]">Include the international country code.</span></label>
+          </div>
+        )}
         <label className="space-y-2">
           <span className="text-[12px] font-[720] text-[#2d372f]">Request Note</span>
-          <Textarea value={requestNote} maxLength={8000} className="min-h-[110px]" placeholder="Please produce and courier one physical sample using the approved packaging artwork. Please ensure it reaches GTI before the deadline." onChange={(event) => setRequestNote(event.target.value)} />
+          <Textarea value={requestNote} maxLength={8000} className="min-h-[110px] rounded-[14px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" placeholder="Please produce and courier one physical sample using the approved packaging artwork. Please ensure it reaches GTI before the deadline." onChange={(event) => setRequestNote(event.target.value)} />
         </label>
       </div>
       <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -369,7 +415,7 @@ function SampleRoundsList({
                 <article key={round.id} className={cn("grid gap-4 px-4 py-4 transition lg:grid-cols-[50px_minmax(155px,1.25fr)_minmax(130px,1fr)_110px_105px_48px] lg:items-center lg:gap-3 lg:px-5", selected ? "bg-[#f4faf5]" : "hover:bg-[#fbfcfb]")}>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Round</span><span className={cn("grid size-8 shrink-0 place-items-center rounded-full border text-[11px] font-[780]", selected ? "border-[#86b395] bg-[#e7f4ea] text-[#2d744d]" : "border-[#dce4dd] bg-[#f7f9f7] text-[#68746b]")}>{round.sequence}</span></div>
                   <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Name / Type</span><h3 className="truncate text-[11px] font-[700] leading-4 text-[#29342c]">{round.name}</h3><p className="mt-0.5 truncate text-[9px] text-[#758078]">{round.type === ProductionSampleRoundType.CUSTOM ? round.customTypeName : ROUND_TYPE_LABELS[round.type]}</p></div>
-                  <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Recipient</span><p className="truncate text-[10px] font-[680] text-[#39443c]">{round.recipientEmail || "Legacy request"}</p>{round.recipientName ? <p className="mt-0.5 truncate text-[8px] text-[#849087]">{round.recipientName}</p> : null}</div>
+                  <div className="min-w-0"><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Recipient</span><p className="truncate text-[10px] font-[680] text-[#39443c]">{round.recipientCompany || round.recipientName || "Legacy request"}</p>{round.recipientEmail ? <p className="mt-0.5 truncate text-[8px] text-[#849087]">{round.recipientEmail}</p> : null}</div>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Deadline</span><p className="text-[10px] font-[680] text-[#39443c]">{formatDate(round.deadline)}</p>{round.overdue ? <p className="mt-0.5 text-[8px] font-[700] text-[#bd473d]">{overdueLabel(round.deadline)}</p> : null}</div>
                   <div><span className="mb-1 block text-[8px] font-[760] uppercase text-[#8a948d] lg:hidden">Status</span><RoundStatusBadge round={round} /></div>
                   <Button type="button" size="sm" variant={selected ? "secondary" : "ghost"} className="min-h-8 justify-self-start rounded-[10px] px-3 text-[10px] lg:justify-self-end" onClick={() => onSelectRound(round.id)}>{selected ? "Selected" : "View"}</Button>
@@ -379,7 +425,7 @@ function SampleRoundsList({
           </div>
         </div>
       ) : (
-        <div className="grid min-h-[250px] place-items-center px-6 py-12 text-center"><div><CircleDot className="mx-auto h-8 w-8 text-[#aab3ac]" /><h3 className="mt-3 text-[13px] font-[720] text-[#344038]">No physical samples requested yet.</h3><p className="mt-1 text-[10px] text-[#849087]">Send the supplier the first physical sample request for {unit.name}.</p></div></div>
+        <div className="grid min-h-[250px] place-items-center px-6 py-12 text-center"><div><CircleDot className="mx-auto h-8 w-8 text-[#aab3ac]" /><h3 className="mt-3 text-[13px] font-[720] text-[#344038]">No physical samples requested yet.</h3><p className="mt-1 text-[10px] text-[#849087]">Send the first physical sample request for {unit.name}.</p></div></div>
       )}
     </section>
   );
@@ -449,7 +495,7 @@ function SampleRequestDetails({
       </div>
       <div className="space-y-5 px-4 py-4 sm:px-5">
         <section className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Recipient</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{round.recipientName || "Not provided"}</p><p className="mt-0.5 break-all text-[9px] text-[#758078]">{round.recipientEmail || "Legacy request"}</p></div>
+          <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Recipient</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{round.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Internal" : round.recipientRoute === ProductionHandoverRoute.DIRECT_VENDOR ? "External" : "Legacy request"}{round.recipientCompany ? ` · ${round.recipientCompany}` : ""}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.recipientName || "Not provided"}</p><p className="mt-0.5 break-all text-[9px] text-[#758078]">{round.recipientEmail || "Legacy request"}{round.recipientPhone ? ` · ${round.recipientPhone}` : ""}</p></div>
           <div className={cn("rounded-[11px] border px-3 py-2.5", round.overdue ? "border-[#efcbc5] bg-[#fff6f4]" : "border-[#e2e8e2] bg-[#fafcfa]")}><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Deadline</p><p className={cn("mt-1 text-[10px] font-[700]", round.overdue ? "text-[#b8473e]" : "text-[#39443c]")}>{formatDate(round.deadline)}</p>{round.overdue ? <p className="mt-0.5 text-[9px] font-[700] text-[#b8473e]">{overdueLabel(round.deadline)}</p> : null}</div>
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Email Status</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{EMAIL_STATUS_LABELS[round.emailStatus]}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.emailSentAt ? `Sent ${formatDateTime(round.emailSentAt)}` : round.emailError || "Not delivered"}</p></div>
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Request Created</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{formatDateTime(round.createdAt)}</p></div>
@@ -460,7 +506,7 @@ function SampleRequestDetails({
           {round.decision ? <div className="mt-3 rounded-[12px] border border-[#e0e7e0] bg-[#fafcfa] p-3"><p className="text-[10px] leading-4 text-[#465149]">{round.decisionNote || "No review note was added."}</p><p className="mt-2 text-[8px] text-[#849087]">Decided by {round.decidedBy || "Unknown"}{round.decidedAt ? ` · ${formatDateTime(round.decidedAt)}` : ""}</p>{round.decision === PhysicalSampleDecision.REJECTED && canManage && !stageCompleted ? <Button type="button" size="sm" className="mt-3 rounded-[10px]" onClick={onRequestAnother}><Plus className="h-3.5 w-3.5" /> Request Another Sample</Button> : null}</div> : <><label className="mt-3 block space-y-2"><span className="text-[10px] font-[700] text-[#59655d]">Review Note {"(required for rejection)"}</span><Textarea value={reviewNote} maxLength={8000} disabled={!mutable} className="min-h-[90px]" placeholder="Record the physical sample review outcome." onChange={(event) => setReviewNote(event.target.value)} /></label><div className="mt-3 grid gap-2 sm:grid-cols-2"><Button type="button" variant="outline" className="border-[#d96a60] text-[#b9433a] hover:bg-[#fff3f1]" disabled={!mutable || !reviewNote.trim() || round.emailStatus !== ProductionDispatchStatus.SENT} onClick={() => setConfirm(PhysicalSampleDecision.REJECTED)}><XCircle className="h-4 w-4" /> Reject Sample</Button><Button type="button" disabled={!mutable || round.emailStatus !== ProductionDispatchStatus.SENT} onClick={() => setConfirm(PhysicalSampleDecision.ACCEPTED)}><CheckCircle2 className="h-4 w-4" /> Accept Sample</Button></div></>}
         </section>
       </div>
-      {mutable && round.emailStatus === ProductionDispatchStatus.FAILED ? <div className="border-t border-[#e5ebe5] bg-[#fff9ed] px-4 py-4 sm:px-5"><p className="text-[10px] leading-4 text-[#795c2b]">The request is saved, but the supplier email was not delivered.</p><Button type="button" size="sm" className="mt-2 rounded-[10px]" disabled={pending} onClick={retryEmail}><RefreshCw className="h-3.5 w-3.5" /> {pending ? "Retrying..." : "Retry Email"}</Button></div> : null}
+      {mutable && round.emailStatus === ProductionDispatchStatus.FAILED ? <div className="border-t border-[#e5ebe5] bg-[#fff9ed] px-4 py-4 sm:px-5"><p className="text-[10px] leading-4 text-[#795c2b]">The request is saved, but the recipient email was not delivered.</p><Button type="button" size="sm" className="mt-2 rounded-[10px]" disabled={pending} onClick={retryEmail}><RefreshCw className="h-3.5 w-3.5" /> {pending ? "Retrying..." : "Retry Email"}</Button></div> : null}
       <ConfirmationDialog isOpen={confirm === PhysicalSampleDecision.ACCEPTED} title="Accept this physical sample?" description={`This will mark ${unit.name} as accepted for Stage 7 and lock further sample requests.`} confirmLabel="Accept Sample" pending={pending} onConfirm={decide} onClose={() => setConfirm(null)} />
       <ConfirmationDialog isOpen={confirm === PhysicalSampleDecision.REJECTED} title="Reject this physical sample?" description="The rejection and review note will remain as permanent history. You may then request another physical sample." confirmLabel="Reject Sample" tone="destructive" pending={pending} onConfirm={decide} onClose={() => setConfirm(null)} />
     </aside>
@@ -494,14 +540,14 @@ export function StageSevenWorkspace({
     router.push(`/projects/${project.id}/stages/7?${params.toString()}`, { scroll: false });
   }
 
-  function closeProject() {
+  function markProjectCompleted() {
     startPending(async () => {
       const result = await closeStageSevenProjectAction({ projectId: project.id });
       if ("error" in result) {
-        showErrorToast("Unable to close the project.", result.error);
+        showErrorToast("Unable to mark the project as completed.", result.error);
         return;
       }
-      showSuccessToast(result.duplicate ? "Project was already closed." : "Project closed. Archiving remains separate.");
+      showSuccessToast(result.duplicate ? "Project was already completed." : "Project marked as completed. Archiving remains separate.");
       setCloseConfirm(false);
       router.refresh();
     });
@@ -522,13 +568,13 @@ export function StageSevenWorkspace({
             {!data.units.length ? <div className="grid min-h-[360px] place-items-center rounded-[18px] border border-[#dfe6df] bg-white p-8 text-center"><div><PackageCheck className="mx-auto h-9 w-9 text-[#a7b2a9]" /><h2 className="mt-3 text-[15px] font-[740] text-[#303b33]">No approved Production Units are available.</h2><p className="mt-1 text-[10px] text-[#849087]">Stage 7 uses approved Stage 6 Production Units; the optional handover is not required.</p></div></div> : selectedUnit ? <><ProductionUnitSwitcher units={data.units} selectedUnitId={selectedUnit.id} onSelect={(unitId) => select(unitId)} /><StageSevenSummary data={data} />{selectedUnit.status === ProductionSupervisionStatus.SIGNED_OFF ? <div className="flex flex-wrap items-center gap-3 rounded-[13px] border border-[#cde3d3] bg-[#eff9f2] px-4 py-3 text-[10px] text-[#2d6f4a]"><CheckCircle2 className="h-4 w-4" /><strong>Physical Sample Accepted</strong><span>Accepted by {selectedUnit.acceptedBy || "manager"}{selectedUnit.signedOffAt ? ` on ${formatDateTime(selectedUnit.signedOffAt)}` : ""}.</span></div> : null}<div className="grid min-w-0 gap-5 min-[1360px]:grid-cols-[minmax(0,1.65fr)_minmax(380px,0.95fr)] min-[1360px]:items-start"><SampleRoundsList unit={selectedUnit} selectedRoundId={selectedRound?.id ?? null} canRequest={canRequest} onRequest={() => setRequestOpen(true)} onSelectRound={(roundId) => select(selectedUnit.id, roundId)} /><SampleRequestDetails key={selectedRound?.id ?? "none"} projectId={project.id} unit={selectedUnit} round={selectedRound} canManage={data.canManage} stageCompleted={data.stageCompleted} onRefresh={() => router.refresh()} onRequestAnother={() => setRequestOpen(true)} /></div>{data.summary.overdueRounds ? <div className="flex items-start gap-2 rounded-[13px] border border-[#ead6ae] bg-[#fff9ed] px-4 py-3 text-[10px] leading-4 text-[#795c2b]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#b37a21]" /><span><strong>{data.summary.overdueRounds} physical sample {data.summary.overdueRounds === 1 ? "request is" : "requests are"} overdue.</strong> Project Owner and Co-Owners receive one deduplicated alert per overdue request.</span></div> : null}</> : null}
           </div>
           <div className="flex flex-col gap-4 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
-            <div className="flex items-start gap-2"><Info className="mt-0.5 h-4 w-4 shrink-0 text-[#4f8062]" /><div><p className="text-[11px] font-[720] text-[#354138]">Project closure is manual once every physical Production Unit sample is accepted.</p><p className="mt-0.5 text-[9px] text-[#849087]">Closing completes Stage 7. Archiving remains a separate action.</p></div></div>
-            {data.stageCompleted ? <Badge className="bg-[#e4f2e7] text-[#2e744e]">Project Closed</Badge> : data.canManage ? <Button type="button" variant="outline" className="rounded-[12px] border-[#d96a60] text-[#b9433a] hover:bg-[#fff3f1]" onClick={() => { if (!canClose) { showErrorToast("All physical Production Unit samples must be accepted before the project can be closed.", remainingUnits.length ? `Remaining: ${remainingUnits.map((unit) => unit.name).join(", ")}.` : undefined); return; } setCloseConfirm(true); }}><X className="h-4 w-4" /> Close Project</Button> : null}
+            <div className="flex items-start gap-2"><Info className="mt-0.5 h-4 w-4 shrink-0 text-[#4f8062]" /><div><p className="text-[11px] font-[720] text-[#354138]">Project completion is manual once every physical Production Unit sample is accepted.</p><p className="mt-0.5 text-[9px] text-[#849087]">Completing the project finishes Stage 7. Archiving remains a separate action.</p></div></div>
+            {data.stageCompleted ? <Badge className="bg-[#e4f2e7] text-[#2e744e]">Project Completed</Badge> : data.canManage ? <Button type="button" className="rounded-[12px]" onClick={() => { if (!canClose) { showErrorToast("All physical Production Unit samples must be accepted before the project can be completed.", remainingUnits.length ? `Remaining: ${remainingUnits.map((unit) => unit.name).join(", ")}.` : undefined); return; } setCloseConfirm(true); }}><CheckCircle2 className="h-4 w-4" /> Mark Project as Completed</Button> : null}
           </div>
         </CardContent>
       </Card>
-      {requestOpen && selectedUnit ? <NewSampleRequestDialog projectId={project.id} unit={selectedUnit} onClose={() => setRequestOpen(false)} onCreated={(roundId) => select(selectedUnit.id, roundId)} /> : null}
-      <ConfirmationDialog isOpen={closeConfirm} title="Close Project?" description="Every physical Production Unit sample has been accepted. Closing completes Stage 7; Archive remains separate." confirmLabel="Close Project" tone="destructive" pending={pending} onConfirm={closeProject} onClose={() => setCloseConfirm(false)} />
+      {requestOpen && selectedUnit ? <NewSampleRequestDialog projectId={project.id} unit={selectedUnit} participants={data.participants} onClose={() => setRequestOpen(false)} onCreated={(roundId) => select(selectedUnit.id, roundId)} /> : null}
+      <ConfirmationDialog isOpen={closeConfirm} title="Mark Project as Completed?" description="Every physical Production Unit sample has been accepted. Completing the project finishes Stage 7; Archive remains separate." confirmLabel="Mark Project as Completed" pending={pending} onConfirm={markProjectCompleted} onClose={() => setCloseConfirm(false)} />
     </section>
   );
 }

@@ -3,7 +3,9 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   PhysicalSampleDecision,
+  ProductionApprovalRecipientType,
   ProductionDispatchStatus,
+  ProductionHandoverRoute,
   ProductionSampleRoundStatus,
   ProductionSampleRoundType,
   ProductionSupervisionStatus,
@@ -267,8 +269,12 @@ async function main() {
       name: "Retail carton courier sample",
       type: ProductionSampleRoundType.PRODUCTION_SAMPLE,
       deadline: deadlineDate(2),
+      recipientRoute: ProductionHandoverRoute.DIRECT_VENDOR,
+      recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL,
+      recipientCompany: "ABC Packaging LLC",
       recipientName: "ABC Packaging",
       recipientEmail: "supplier.external@example.test",
+      recipientPhone: "+971 50 123 4567",
       requestNote: "Please courier one physical sample before the deadline.",
     };
     await expectRejected(createProductionSampleRound(admin, { ...baseInput, clientRequestId: `admin-${runId}` }, { sendEmail: sendSuccess }), "ADMIN alone must not manage Stage 7");
@@ -277,6 +283,9 @@ async function main() {
     await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `blank-name-${runId}`, name: " " }, { sendEmail: sendSuccess }), "Round Name must be required");
     await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `bad-date-${runId}`, deadline: "not-a-date" }, { sendEmail: sendSuccess }), "Deadline must be a valid date");
     await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `bad-email-${runId}`, recipientEmail: "invalid" }, { sendEmail: sendSuccess }), "Recipient Email must be valid");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `bad-company-${runId}`, recipientCompany: "" }, { sendEmail: sendSuccess }), "External recipient company must be required");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `bad-phone-${runId}`, recipientPhone: "0501234567" }, { sendEmail: sendSuccess }), "External recipient phone must include a country code");
+    await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `bad-internal-${runId}`, recipientRoute: ProductionHandoverRoute.PURCHASE_DEPARTMENT, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.outsider }, { sendEmail: sendSuccess }), "Internal recipient must belong to the project");
     await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `custom-${runId}`, type: ProductionSampleRoundType.CUSTOM }, { sendEmail: sendSuccess }), "Custom Sample Type must require a label");
     await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `foreign-ref-${runId}`, referenceFileIds: [foreignUnits[0].sourceAttachmentId] }, { sendEmail: sendSuccess }), "reference files must not cross projects or Production Units");
 
@@ -305,6 +314,7 @@ async function main() {
     check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.IN_REVIEW, "successful send must move the unit to Waiting for Sample");
     const firstEmail = sentEmails[0];
     check(firstEmail.to === "supplier.external@example.test", "the request must send to the arbitrary external recipient email");
+    check(failedRow.recipientRoute === ProductionHandoverRoute.DIRECT_VENDOR && failedRow.recipientType === ProductionApprovalRecipientType.EXTERNAL_EMAIL && failedRow.recipientCompany === "ABC Packaging LLC" && failedRow.recipientPhone === "+971501234567", "external sample recipient route, company, and normalized phone must persist");
     check(firstEmail.text.includes("Retail Carton") && firstEmail.text.includes("Retail carton courier sample") && firstEmail.text.includes("Production Sample") && firstEmail.text.includes("Please courier one physical sample"), "the professional email must include project-unit-round-type-deadline-note context");
     check(firstEmail.text.includes("unit-1-source.pdf") && firstEmail.text.includes("unit-1-production-reference.pdf") && !firstEmail.text.includes("unit-2-source.pdf") && !firstEmail.text.includes("Foreign Pack"), "email links must be scoped to the selected Stage 6 unit");
     check((firstEmail.text.match(/X-Amz-/g) ?? []).length >= 2, "reference files must use expiring signed download links");
@@ -345,10 +355,14 @@ async function main() {
       name: "Master case physical proof",
       type: ProductionSampleRoundType.PRE_PRODUCTION_SAMPLE,
       deadline: deadlineDate(-1),
-      recipientEmail: "factory@example.test",
+      recipientRoute: ProductionHandoverRoute.PURCHASE_DEPARTMENT,
+      recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR,
+      recipientUserId: ids.executor,
       requestNote: "Courier the physical shipping case proof.",
     }, { sendEmail: sendSuccess });
-    await expectRejected(closeStageSevenProject(owner, { projectId: ids.project }), "project closure must remain blocked while any unit is not accepted");
+    const internalRound = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: overdueRound.id } });
+    check(internalRound.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT && internalRound.recipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR && internalRound.recipientUserId === ids.executor, "internal sample requests must persist the selected project participant");
+    await expectRejected(closeStageSevenProject(owner, { projectId: ids.project }), "project completion must remain blocked while any unit is not accepted");
     const overdueFirst = await processStageSevenOverdueDeadlines(new Date());
     check(overdueFirst.attemptedNotifications >= 2, "a pending past-deadline request must be processed as overdue");
     await processStageSevenOverdueDeadlines(new Date());
@@ -372,14 +386,14 @@ async function main() {
     );
     const archiveCount = await prisma.projectArchive.count({ where: { projectId: ids.project } });
     const closure = await closeStageSevenProject(owner, { projectId: ids.project });
-    check(!closure.duplicate, "all accepted units must permit manual project closure");
-    check((await closeStageSevenProject(owner, { projectId: ids.project })).duplicate, "manual project closure must be idempotent");
+    check(!closure.duplicate, "all accepted units must permit manual project completion");
+    check((await closeStageSevenProject(owner, { projectId: ids.project })).duplicate, "manual project completion must be idempotent");
     const closedProject = await prisma.project.findUniqueOrThrow({ where: { id: ids.project }, include: { closure: true, workflowStages: true } });
-    check(Boolean(closedProject.closure && closedProject.completedAt), "closure audit and project completion time must persist");
+    check(Boolean(closedProject.closure && closedProject.completedAt), "completion audit and project completion time must persist");
     check(closedProject.archivedAt === null && (await prisma.projectArchive.count({ where: { projectId: ids.project } })) === archiveCount, "closing Stage 7 must not archive the project");
     check(closedProject.workflowStages.find((stage) => stage.stageKey === ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION)?.status === ProjectWorkflowStageStatus.COMPLETED, "Stage 7 must become COMPLETED only after manual closure");
 
-    console.log("Stage 7 physical-sample request, scoped email/retry, permissions, decisions, overdue, and manual closure integration checks passed.");
+    console.log("Stage 7 physical-sample request, scoped email/retry, permissions, decisions, overdue, and manual project completion integration checks passed.");
   } finally {
     await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
