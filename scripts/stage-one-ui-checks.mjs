@@ -90,9 +90,17 @@ assert(
   "Manual client and beneficiary dialogs must use contextual headings and add actions.",
 );
 assert(
-  workspace.includes('router.push(`/projects/${project.id}/stages/2`)') &&
+  workspace.includes('const stageTwoHref = `/projects/${project.id}/stages/2`') &&
+    workspace.includes("router.push(stageTwoHref)") &&
     !workspace.includes('router.push(`/projects/${project.id}`)'),
   "Completing Stage 1 must open Stage 2 directly instead of the project overview.",
+);
+assert(
+  workspace.includes('pageData.workflowStatus === "COMPLETED"') &&
+    workspace.includes('href={`/projects/${project.id}/stages/2`}') &&
+    workspace.includes("if (!result.alreadyCompleted)") &&
+    service.includes("alreadyCompleted: !isFirstCompletion"),
+  "Next Stage must navigate directly from completed Stage 1 and suppress repeated completion notifications for stale pages.",
 );
 
 assert(

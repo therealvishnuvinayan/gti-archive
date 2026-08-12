@@ -1081,6 +1081,11 @@ export function StageOneWorkspace({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const stageTwoHref = `/projects/${project.id}/stages/2`;
+    if (pageData.workflowStatus === "COMPLETED") {
+      router.push(stageTwoHref);
+      return;
+    }
     if (!pageData.canEdit || submitting) return;
     const nextErrors: ProjectInquiryFieldErrors = {};
     if (!client) nextErrors.client = "Select a client.";
@@ -1125,8 +1130,10 @@ export function StageOneWorkspace({
         showErrorToast("Unable to complete Project Inquiry.", result.error);
         return;
       }
-      showSuccessToast("Project Inquiry completed.", "Stage 2 is now available.");
-      router.push(`/projects/${project.id}/stages/2`);
+      if (!result.alreadyCompleted) {
+        showSuccessToast("Project Inquiry completed.", "Stage 2 is now available.");
+      }
+      router.push(stageTwoHref);
       router.refresh();
     });
   }
@@ -1414,7 +1421,14 @@ export function StageOneWorkspace({
             </div>
 
             <div className="mt-8 flex flex-col gap-3 border-t border-[#edf1ed] pt-6 sm:flex-row sm:items-center">
-              {pageData.canEdit ? (
+              {pageData.workflowStatus === "COMPLETED" ? (
+                <Button asChild type="button" className="min-w-[170px] rounded-[13px]">
+                  <Link href={`/projects/${project.id}/stages/2`}>
+                    Next Stage
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              ) : pageData.canEdit ? (
                 <Button type="submit" disabled={submitting} className="min-w-[170px] rounded-[13px]">
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   {submitting ? "Completing..." : "Next Stage"}

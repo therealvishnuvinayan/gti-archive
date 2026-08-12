@@ -463,7 +463,10 @@ async function main() {
 
   const stageOneCompletionTime = stageOneAfterSuccess.completedAt?.getTime();
   const repeated = await completeProjectInquiry(superAdmin, richInput);
-  assert("success" in repeated, "Repeated completion must succeed idempotently.");
+  assert(
+    "success" in repeated && repeated.alreadyCompleted,
+    "Repeated completion must succeed idempotently without retriggering completion.",
+  );
   assert(
     (await prisma.projectInquiryTargetMarket.count({
       where: { inquiryId: persisted.id },

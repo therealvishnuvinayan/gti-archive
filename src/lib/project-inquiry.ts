@@ -130,6 +130,7 @@ export type ProjectInquiryPageData = {
   countryOptions: string[];
   deliverableSuggestions: string[];
   canEdit: boolean;
+  workflowStatus: ProjectWorkflowStageStatus;
 };
 
 export type CompleteProjectInquiryInput = {
@@ -169,7 +170,7 @@ export type ProjectInquiryFieldErrors = Partial<
 >;
 
 export type CompleteProjectInquiryResult =
-  | { success: true }
+  | { success: true; alreadyCompleted: boolean }
   | { error: string; fieldErrors?: ProjectInquiryFieldErrors };
 
 export type CreateContactDirectoryEntryInput = ProjectContactInput;
@@ -480,6 +481,10 @@ export async function getProjectInquiryPageData(
     ],
     deliverableSuggestions: [],
     canEdit: hasProjectPermission(user, toPermissionContext(project), "project.update"),
+    workflowStatus:
+      project.workflowStages.find(
+        (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY,
+      )?.status ?? ProjectWorkflowStageStatus.LOCKED,
   };
 }
 
@@ -1076,7 +1081,7 @@ export async function completeProjectInquiry(
         }
       }
 
-      return { success: true } as const;
+      return { success: true, alreadyCompleted: !isFirstCompletion } as const;
     }, {
       maxWait: 10_000,
       timeout: 30_000,
