@@ -2688,7 +2688,7 @@ export function ProjectChatWorkspace({
     workflow: completionWorkflow,
   });
   const [isCompletionDataLoading, setIsCompletionDataLoading] =
-    useState(deferCompletionData && !isConceptMode);
+    useState(deferCompletionData);
   const [projectCompletionError, setProjectCompletionError] = useState<string | null>(null);
   const [completionChecklistOpen, setCompletionChecklistOpen] = useState(false);
   const [isPreparingProjectCompletion, setIsPreparingProjectCompletion] = useState(false);
@@ -3129,7 +3129,7 @@ export function ProjectChatWorkspace({
     let cancelled = false;
     const controller = new AbortController();
 
-    if (isConceptMode || !deferCompletionData) {
+    if (!deferCompletionData) {
       setCompletionData({
         summary: completionSummary,
         workflow: completionWorkflow,
@@ -3160,7 +3160,6 @@ export function ProjectChatWorkspace({
     completionSummary,
     completionWorkflow,
     deferCompletionData,
-    isConceptMode,
     loadCompletionData,
   ]);
 
@@ -7945,34 +7944,6 @@ export function ProjectChatWorkspace({
                   </Card>
                 ) : null}
 
-                {shouldExpectCompletionWorkflow &&
-                !effectiveCompletionWorkflow &&
-                !isCompletionDataLoading &&
-                (isProjectOwner || isProjectExecutor) ? (
-                  <Card className="rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6] shadow-none">
-                    <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-[16px] font-semibold text-[#173120]">
-                          Project completion checklist is not available yet.
-                        </p>
-                        <p className="mt-1 text-[13px] leading-6 text-[#5f6b62]">
-                          This project should show Authority Approval, Copyright Transfer,
-                          and Final Invoice steps here before archive. Reload the page to
-                          fetch the checklist.
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="rounded-full text-[12px]"
-                        onClick={refreshHistory}
-                      >
-                        Reload Checklist
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ) : null}
-
                 {!isProjectCompleted &&
                 completionState.isFinalCompletionPending &&
                 !showProjectCompletionStickyAction ? (
@@ -10062,7 +10033,7 @@ export function ProjectChatWorkspace({
                     ) : null}
                     {isCompletionDataLoading
                       ? "Loading completion details..."
-                      : "Project completion checklist is not available yet."}
+                      : "Completion workflow is unavailable for this project."}
                   </div>
                   {!isCompletionDataLoading ? (
                     <p className="mt-2 text-[12px] leading-5 text-[#6a706b]">

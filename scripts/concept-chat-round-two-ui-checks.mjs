@@ -125,12 +125,16 @@ assert(
 );
 
 assert(
-  workspace.includes("if (isConceptMode || !deferCompletionData)") &&
+  workspace.includes("useState(deferCompletionData)") &&
+    workspace.includes("if (!deferCompletionData)") &&
+    workspace.includes("void loadCompletionData({") &&
+    !workspace.includes("Reload Checklist") &&
+    !workspace.includes("Project completion checklist is not available yet.") &&
     chatRoute.includes("completionWorkflow={null}") &&
     projects.includes("includeStageInvoiceData?: boolean") &&
     projects.includes("participantUserIds") &&
     projects.includes("without-stage-invoices"),
-  "Concept chat must skip completion, invoice data, and unrelated participant loading.",
+  "Concept chat must load deferred completion data automatically without the legacy manual reload prompt.",
 );
 
 assert(
