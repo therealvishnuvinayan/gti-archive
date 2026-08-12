@@ -97,6 +97,7 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
     });
     const channel = client.channels.get(getProjectAccessChannelName(input.projectId));
     let cancelled = false;
+    let subscribed = false;
 
     const handleAccessRevoked = (message: Ably.InboundMessage) => {
       if (
@@ -123,17 +124,37 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
       onActivityUpdatedRef.current(message.data);
     };
 
+    const handleRealtimeReconnected = () => {
+      if (subscribed && !cancelled) {
+        onActivityUpdatedRef.current({
+          eventId: `reconnected:${Date.now()}`,
+          projectId: input.projectId,
+          stageId: null,
+          eventType: "timeline_updated",
+          changedEntityId: null,
+          actorId: null,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    };
+
+    client.connection.on("connected", handleRealtimeReconnected);
     void channel.subscribe(
       PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
       handleAccessRevoked,
     );
-    void channel.subscribe(
-      PROJECT_ACCESS_REALTIME_EVENTS.activityUpdated,
-      handleActivityUpdated,
-    );
+    void channel
+      .subscribe(
+        PROJECT_ACCESS_REALTIME_EVENTS.activityUpdated,
+        handleActivityUpdated,
+      )
+      .then(() => {
+        subscribed = true;
+      });
 
     return () => {
       cancelled = true;
+      client.connection.off("connected", handleRealtimeReconnected);
       runProjectAccessCleanup("unsubscribe access.revoked", () =>
         channel.unsubscribe(
           PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
@@ -146,6 +167,7 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
           handleActivityUpdated,
         ),
       );
+      client.close();
     };
   }, [input.currentUserId, input.projectId]);
 }

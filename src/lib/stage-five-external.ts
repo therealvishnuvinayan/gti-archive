@@ -452,7 +452,11 @@ export async function submitExternalChecklistResponse(
     });
   }
   return completed
-    ? ({ status: ProjectFileChecklistRequestWorkflowStatus.COMPLETED } as const)
+    ? ({
+        status: ProjectFileChecklistRequestWorkflowStatus.COMPLETED,
+        projectId: request.projectId,
+        requestId: request.id,
+      } as const)
     : ({ error: "This request changed before the response was submitted." } as const);
 }
 
@@ -536,6 +540,10 @@ export async function declineExternalChecklistRequest(token: string, reasonInput
     });
   }
   return declined
-    ? ({ status: ProjectFileChecklistRequestWorkflowStatus.DECLINED } as const)
+    ? ({
+        status: ProjectFileChecklistRequestWorkflowStatus.DECLINED,
+        projectId: request.projectId,
+        requestId: request.id,
+      } as const)
     : ({ error: "This request changed before it could be declined." } as const);
 }

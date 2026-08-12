@@ -35,6 +35,8 @@ assert(
 assert(
   projectHook.includes("PROJECT_ACCESS_REALTIME_EVENTS.activityUpdated") &&
     projectHook.includes("onActivityUpdatedRef.current") &&
+    projectHook.includes('client.connection.on("connected"') &&
+    projectHook.includes("client.close()") &&
     projectGuard.includes("handleActivityUpdated") &&
     projectGuard.includes("router.refresh()"),
   "Every open authorized project page must refresh when its project activity changes.",

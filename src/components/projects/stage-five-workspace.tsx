@@ -68,6 +68,7 @@ import type {
 } from "@/lib/stage-five";
 import {
   STAGE_FIVE_FIELD_DEFINITIONS,
+  STAGE_FIVE_FIELD_KEYS,
   type StageFiveFieldDefinition,
 } from "@/lib/stage-five-fields";
 import { uploadStageFiveChecklistAttachment } from "@/lib/stage-five-upload-client";
@@ -81,6 +82,14 @@ type ChecklistDefinition = StageFiveFieldDefinition & {
 };
 
 type LocalFileRecord = ChecklistFileRecord;
+
+type StageFiveDraft = {
+  textValues: Partial<Record<ChecklistFieldKey, string>>;
+  files: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>;
+  multiValues: Partial<Record<ChecklistFieldKey, string[]>>;
+  healthWarningIncluded: boolean;
+  statuses: Partial<Record<ChecklistFieldKey, ProjectFileChecklistItemStatus>>;
+};
 
 type ChecklistSaveProgress = {
   percent: number;
@@ -116,6 +125,88 @@ const CHECKLIST_ITEMS: ChecklistDefinition[] = STAGE_FIVE_FIELD_DEFINITIONS.map(
 const CHECKLIST_ITEM_BY_KEY = new Map(
   CHECKLIST_ITEMS.map((item) => [item.key, item]),
 );
+
+function buildStageFiveDrafts(files: StageFiveWorkspaceData["files"]) {
+  return Object.fromEntries(
+    files.map((file) => {
+      const textValues: StageFiveDraft["textValues"] = {};
+      const selectedFiles: StageFiveDraft["files"] = {};
+      const multiValues: StageFiveDraft["multiValues"] = {};
+      const statuses: StageFiveDraft["statuses"] = {};
+      let healthWarningIncluded = false;
+
+      for (const item of file.items) {
+        const definition = CHECKLIST_ITEM_BY_KEY.get(item.fieldKey);
+        const usesMultipleValues = definition?.control === "multi-value";
+        if (item.value.text && !usesMultipleValues) {
+          textValues[item.fieldKey] = item.value.text;
+        }
+        const normalizedValues = item.value.values?.length
+          ? item.value.values
+          : usesMultipleValues && item.value.text?.trim()
+            ? [item.value.text.trim()]
+            : [];
+        if (normalizedValues.length) multiValues[item.fieldKey] = normalizedValues;
+        if (item.fieldKey === ProjectFileChecklistField.HEALTH_WARNING) {
+          healthWarningIncluded = Boolean(item.value.included);
+        }
+        if (item.attachments.length) {
+          selectedFiles[item.fieldKey] = item.attachments.map((attachment) => ({
+            id: attachment.id,
+            attachmentId: attachment.id,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+          }));
+        }
+        statuses[item.fieldKey] = item.status;
+      }
+
+      return [
+        file.handoffId,
+        {
+          textValues,
+          files: selectedFiles,
+          multiValues,
+          healthWarningIncluded,
+          statuses,
+        } satisfies StageFiveDraft,
+      ];
+    }),
+  ) as Record<string, StageFiveDraft>;
+}
+
+function mergeResolvedRequestFields(
+  current: StageFiveDraft,
+  server: StageFiveDraft,
+) {
+  const next: StageFiveDraft = {
+    ...current,
+    textValues: { ...current.textValues },
+    files: { ...current.files },
+    multiValues: { ...current.multiValues },
+    statuses: { ...current.statuses },
+  };
+
+  for (const fieldKey of STAGE_FIVE_FIELD_KEYS) {
+    if (
+      current.statuses[fieldKey] !== ProjectFileChecklistItemStatus.REQUESTED ||
+      server.statuses[fieldKey] === ProjectFileChecklistItemStatus.REQUESTED
+    ) {
+      continue;
+    }
+
+    next.textValues[fieldKey] = server.textValues[fieldKey] ?? "";
+    next.files[fieldKey] = server.files[fieldKey] ?? [];
+    next.multiValues[fieldKey] = server.multiValues[fieldKey] ?? [];
+    next.statuses[fieldKey] = server.statuses[fieldKey];
+    if (fieldKey === ProjectFileChecklistField.HEALTH_WARNING) {
+      next.healthWarningIncluded = server.healthWarningIncluded;
+    }
+  }
+
+  return next;
+}
 
 const CONTROL_CLASS =
   "min-h-11 rounded-[12px] border-[#dfe6df] bg-white shadow-none focus-visible:border-[#8db49a]";
@@ -648,56 +739,7 @@ export function StageFiveWorkspace({
       ? initialHandoffId ?? firstHandoffId
       : firstHandoffId,
   );
-  const [drafts, setDrafts] = useState(() =>
-    Object.fromEntries(
-      pageData.files.map((file) => {
-        const textValues: Partial<Record<ChecklistFieldKey, string>> = {};
-        const files: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>> = {};
-        const multiValues: Partial<Record<ChecklistFieldKey, string[]>> = {};
-        const statuses: Partial<Record<ChecklistFieldKey, ProjectFileChecklistItemStatus>> = {};
-        let healthWarningIncluded = false;
-        for (const item of file.items) {
-          const definition = CHECKLIST_ITEM_BY_KEY.get(item.fieldKey);
-          const usesMultipleValues = definition?.control === "multi-value";
-          if (item.value.text && !usesMultipleValues) {
-            textValues[item.fieldKey] = item.value.text;
-          }
-          const normalizedValues = item.value.values?.length
-            ? item.value.values
-            : usesMultipleValues && item.value.text?.trim()
-              ? [item.value.text.trim()]
-              : [];
-          if (normalizedValues.length) multiValues[item.fieldKey] = normalizedValues;
-          if (item.fieldKey === ProjectFileChecklistField.HEALTH_WARNING) {
-            healthWarningIncluded = Boolean(item.value.included);
-          }
-          if (item.attachments.length) {
-            files[item.fieldKey] = item.attachments.map((attachment) => ({
-              id: attachment.id,
-              attachmentId: attachment.id,
-              name: attachment.name,
-              mimeType: attachment.mimeType,
-              size: attachment.size,
-            }));
-          }
-          statuses[item.fieldKey] = item.status;
-        }
-        return [
-          file.handoffId,
-          { textValues, files, multiValues, healthWarningIncluded, statuses },
-        ];
-      }),
-    ) as Record<
-      string,
-      {
-        textValues: Partial<Record<ChecklistFieldKey, string>>;
-        files: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>;
-        multiValues: Partial<Record<ChecklistFieldKey, string[]>>;
-        healthWarningIncluded: boolean;
-        statuses: Partial<Record<ChecklistFieldKey, ProjectFileChecklistItemStatus>>;
-      }
-    >,
-  );
+  const [drafts, setDrafts] = useState(() => buildStageFiveDrafts(pageData.files));
   const [dirtyHandoffIds, setDirtyHandoffIds] = useState<Set<string>>(() => new Set());
   const [isSaving, startSaving] = useTransition();
   const [saveProgress, setSaveProgress] = useState<ChecklistSaveProgress | null>(null);
@@ -718,6 +760,20 @@ export function StageFiveWorkspace({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [initialField, selectedHandoffId, mode]);
+
+  useEffect(() => {
+    const serverDrafts = buildStageFiveDrafts(pageData.files);
+    setDrafts((current) =>
+      Object.fromEntries(
+        Object.entries(serverDrafts).map(([handoffId, serverDraft]) => [
+          handoffId,
+          dirtyHandoffIds.has(handoffId) && current[handoffId]
+            ? mergeResolvedRequestFields(current[handoffId], serverDraft)
+            : serverDraft,
+        ]),
+      ),
+    );
+  }, [pageData.files, dirtyHandoffIds]);
 
   function updateSelectedFile(handoffId: string) {
     const params = new URLSearchParams(window.location.search);

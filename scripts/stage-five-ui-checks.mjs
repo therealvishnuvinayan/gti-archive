@@ -499,12 +499,22 @@ assert(
 assert(
   externalSubmitRoute.includes("submitExternalChecklistResponse") &&
     externalDeclineRoute.includes("declineExternalChecklistRequest") &&
+    externalSubmitRoute.includes("publishProjectActivityUpdatedAfterResponse") &&
+    externalDeclineRoute.includes("publishProjectActivityUpdatedAfterResponse") &&
+    externalSubmitRoute.includes('eventType: "timeline_updated"') &&
+    externalDeclineRoute.includes('eventType: "timeline_updated"') &&
     externalService.includes("ProjectFileChecklistItemStatus.FILLED") &&
     externalService.includes("ProjectFileChecklistRequestWorkflowStatus.COMPLETED") &&
     externalService.includes("ProjectFileChecklistResponseSource.EXTERNAL_EMAIL") &&
     externalService.includes("CHECKLIST_INFORMATION_COMPLETED") &&
     externalService.includes("CHECKLIST_INFORMATION_DECLINED"),
-  "External completion/decline must update the real checklist lifecycle and notify the requester.",
+  "External completion/decline must update the real checklist lifecycle, notify the requester, and refresh open project pages.",
+);
+assert(
+  workspace.includes("buildStageFiveDrafts(pageData.files)") &&
+    workspace.includes("mergeResolvedRequestFields") &&
+    workspace.includes("current.statuses[fieldKey] !== ProjectFileChecklistItemStatus.REQUESTED"),
+  "Stage 5 must reconcile refreshed server responses into the visible form without discarding unrelated unsaved edits.",
 );
 assert(
   rateLimit.includes("checkRateLimit") &&
