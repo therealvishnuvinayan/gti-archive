@@ -406,6 +406,7 @@ export async function createProjectConceptFolder(
     name: string;
     assignedExecutorId: string;
     brief?: string | null;
+    briefAttachmentIds?: string[];
   },
 ) {
   const validatedName = validateConceptFolderName(input.name);
@@ -459,6 +460,17 @@ export async function createProjectConceptFolder(
   }
 
   const brief = input.brief?.trim() || null;
+  if (!brief) {
+    return { error: "Concept Brief is required." } as const;
+  }
+
+  const briefAttachmentIds = [
+    ...new Set(
+      (input.briefAttachmentIds ?? [])
+        .map((attachmentId) => attachmentId.trim())
+        .filter(Boolean),
+    ),
+  ];
 
   try {
     const folder = await withPrismaRetry(() =>
@@ -488,6 +500,26 @@ export async function createProjectConceptFolder(
             select: { sortOrder: true },
           });
           const sortOrder = (lastFolder?.sortOrder ?? 0) + 1;
+          if (briefAttachmentIds.length > 0) {
+            const stagedAttachments = await tx.projectAttachment.findMany({
+              where: {
+                id: { in: briefAttachmentIds },
+                projectId: input.projectId,
+                stageId: null,
+                revisionId: null,
+                commentId: null,
+                uploadedById: user.id,
+                assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+                status: AttachmentStatus.READY,
+              },
+              select: { id: true },
+            });
+
+            if (stagedAttachments.length !== briefAttachmentIds.length) {
+              throw new Error("INVALID_CONCEPT_BRIEF_ATTACHMENTS");
+            }
+          }
+
           const taskerStage = await tx.projectStage.create({
             data: {
               projectId: input.projectId,
@@ -503,7 +535,7 @@ export async function createProjectConceptFolder(
             select: { id: true },
           });
 
-          return tx.projectConceptFolder.create({
+          const folder = await tx.projectConceptFolder.create({
             data: {
               projectId: input.projectId,
               workflowStageKey: input.stageKey,
@@ -514,6 +546,28 @@ export async function createProjectConceptFolder(
               sortOrder,
               createdById: user.id,
             },
+            select: { id: true },
+          });
+          if (briefAttachmentIds.length > 0) {
+            const attached = await tx.projectAttachment.updateMany({
+              where: {
+                id: { in: briefAttachmentIds },
+                projectId: input.projectId,
+                stageId: null,
+                uploadedById: user.id,
+                assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+                status: AttachmentStatus.READY,
+              },
+              data: { stageId: taskerStage.id },
+            });
+
+            if (attached.count !== briefAttachmentIds.length) {
+              throw new Error("INVALID_CONCEPT_BRIEF_ATTACHMENTS");
+            }
+          }
+
+          return tx.projectConceptFolder.findUniqueOrThrow({
+            where: { id: folder.id },
             select: conceptFolderSelect,
           });
         },
@@ -523,6 +577,16 @@ export async function createProjectConceptFolder(
 
     return { folder: mapConceptFolder(folder) } as const;
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "INVALID_CONCEPT_BRIEF_ATTACHMENTS"
+    ) {
+      return {
+        error:
+          "Every Brief Attachment must finish uploading before the concept can be created.",
+      } as const;
+    }
+
     if (
       (error instanceof Error && error.message === "DUPLICATE_CONCEPT_FOLDER") ||
       (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
@@ -797,6 +861,9 @@ export async function editProjectConceptFolder(
     requestedExecutorId !== folder.assignedExecutorId;
   const requestedBrief =
     input.brief === undefined ? undefined : input.brief?.trim() || null;
+  if (input.brief !== undefined && !requestedBrief) {
+    return { error: "Concept Brief is required." } as const;
+  }
   const briefChanged =
     requestedBrief !== undefined && requestedBrief !== folder.taskerStage.description;
 

@@ -12,7 +12,7 @@ import {
 
 import {
   completeStageThreeConcepts,
-  createProjectConceptFolder,
+  createProjectConceptFolder as createProjectConceptFolderService,
   editProjectConceptFolder,
   getProjectConceptChatContext,
   getProjectConceptFolders,
@@ -58,6 +58,36 @@ function check(condition: unknown, message: string): asserts condition {
 
 function isErrorResult(value: unknown): value is { error: string } {
   return Boolean(value && typeof value === "object" && "error" in value);
+}
+
+async function createProjectConceptFolder(
+  user: Parameters<typeof createProjectConceptFolderService>[0],
+  input: Omit<
+    Parameters<typeof createProjectConceptFolderService>[1],
+    "briefAttachmentIds"
+  >,
+) {
+  const attachmentId = randomUUID();
+  await prisma.projectAttachment.create({
+    data: {
+      id: attachmentId,
+      projectId: input.projectId,
+      uploadedById: user.id,
+      fileName: `${attachmentId}.pdf`,
+      originalFileName: "concept-brief.pdf",
+      mimeType: "application/pdf",
+      fileSize: 128,
+      bucket: "integration-test",
+      storageKey: `integration/concept-brief/${attachmentId}.pdf`,
+      assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+      status: AttachmentStatus.READY,
+    },
+  });
+
+  return createProjectConceptFolderService(user, {
+    ...input,
+    briefAttachmentIds: [attachmentId],
+  });
 }
 
 async function expectRejected(task: Promise<unknown>, message: string) {
@@ -189,6 +219,28 @@ async function main() {
     });
     check(isErrorResult(invalidExecutor), "a normal collaborator cannot be assigned");
 
+    const missingBrief = await createProjectConceptFolderService(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      name: "Missing Brief",
+      assignedExecutorId: executorA.id,
+      brief: "  ",
+      briefAttachmentIds: [],
+    });
+    check(isErrorResult(missingBrief), "new concepts must require a brief");
+
+    const missingAttachment = await createProjectConceptFolderService(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      name: "Missing Attachment",
+      assignedExecutorId: executorA.id,
+      brief: "A valid brief without a file",
+      briefAttachmentIds: [],
+    });
+    check(!isErrorResult(missingAttachment), "new concepts must allow an optional brief attachment");
+    await prisma.projectConceptFolder.delete({ where: { id: missingAttachment.folder.id } });
+    await prisma.projectStage.delete({ where: { id: missingAttachment.folder.taskerStageId } });
+
     const conceptA = await createProjectConceptFolder(owner, {
       projectId,
       stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
@@ -211,6 +263,7 @@ async function main() {
       stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
       name: " concept 1 ",
       assignedExecutorId: executorA.id,
+      brief: "Duplicate direction",
     });
     check(isErrorResult(duplicate), "normalized duplicate names must be rejected");
 
@@ -1273,6 +1326,7 @@ async function main() {
       stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
       name: "Renamed Accepted Concept",
       assignedExecutorId: executorA.id,
+      brief: "Independent Stage 4 refinement brief",
     });
     check(
       !isErrorResult(independentStageFourConcept),
@@ -1367,13 +1421,14 @@ async function main() {
       "unrelated legacy Stage 4 chat/comparison data must be preserved",
     );
     check(
-      promotedConcept.taskerStage.description === null &&
+      promotedConcept.taskerStage.description ===
+        "Independent Stage 4 refinement brief" &&
         promotedConcept.taskerStage.actualStartedAt === null &&
         promotedConcept.taskerStage.startedById === null &&
         promotedConcept.taskerStage.status === StageStatus.ONGOING &&
         promotedConcept.taskerStage._count.revisions === 0 &&
-        promotedConcept.taskerStage._count.attachments === 0,
-      "explicit import must not replace the independently created Stage 4 tasker or its brief",
+        promotedConcept.taskerStage._count.attachments === 1,
+      "explicit import must preserve the independently created Stage 4 tasker and required brief",
     );
     check(
       attachmentCountBeforeImport === 1 &&
@@ -1617,6 +1672,7 @@ async function main() {
       stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
       name: "Collision Concept",
       assignedExecutorId: executorA.id,
+      brief: "Collision fixture brief",
     });
     check(!isErrorResult(collisionConcept), "collision fixture concept must be created");
     const collisionControlConcept = await createProjectConceptFolder(owner, {
@@ -1624,6 +1680,7 @@ async function main() {
       stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
       name: "Unapproved Collision Control",
       assignedExecutorId: executorA.id,
+      brief: "Unapproved collision control brief",
     });
     check(
       !isErrorResult(collisionControlConcept),

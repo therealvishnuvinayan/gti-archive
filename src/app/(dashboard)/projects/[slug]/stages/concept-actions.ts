@@ -43,6 +43,7 @@ export async function createProjectConceptFolderAction(input: {
   name: string;
   assignedExecutorId: string;
   brief?: string | null;
+  briefAttachmentIds?: string[];
 }) {
   const user = await requireUser();
 

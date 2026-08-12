@@ -101,9 +101,14 @@ function ConceptDetailsDialog({
   );
   const attachmentInputId = useId();
   const cleanName = name.trim().replace(/\s+/g, " ");
+  const cleanBrief = brief.trim();
   const detailsLocked = state.mode === "edit" && Boolean(state.folder.actualStartedAt);
   const assignmentLocked =
     detailsLocked && state.mode === "edit" && Boolean(state.folder.assignedExecutorId);
+  const canSubmit =
+    Boolean(cleanName) &&
+    Boolean(assignedExecutorId) &&
+    Boolean(cleanBrief);
 
   return (
     <div
@@ -191,14 +196,21 @@ function ConceptDetailsDialog({
               </label>
 
               <label className="block space-y-2">
-                <span className="text-[12px] font-[700] text-[#2d372f]">Concept Brief</span>
+                <span className="text-[12px] font-[700] text-[#2d372f]">Concept Brief *</span>
                 <Textarea
                   value={brief}
                   onChange={(event) => setBrief(event.target.value)}
                   disabled={detailsLocked}
                   placeholder="Describe the direction, requirements, and expected outcome."
                   className="min-h-[112px] resize-y rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 py-3 shadow-none focus-visible:border-[#46906a]"
+                  required
+                  aria-invalid={!cleanBrief}
                 />
+                {!cleanBrief ? (
+                  <span className="block text-[11px] font-[600] text-[#b84e48]">
+                    Concept Brief is required.
+                  </span>
+                ) : null}
               </label>
 
               <div className="space-y-2">
@@ -289,9 +301,14 @@ function ConceptDetailsDialog({
             <Button
               type="button"
               className="w-full sm:w-auto"
-              disabled={!cleanName || !assignedExecutorId}
+              disabled={!canSubmit}
               onClick={() =>
-                onSubmit({ name: cleanName, assignedExecutorId, brief, files })
+                onSubmit({
+                  name: cleanName,
+                  assignedExecutorId,
+                  brief: cleanBrief,
+                  files,
+                })
               }
             >
               {state.mode === "create" ? "Create Concept" : "Save Changes"}
@@ -305,7 +322,7 @@ function ConceptDetailsDialog({
 
 async function uploadConceptBriefAttachment(input: {
   projectId: string;
-  taskerStageId: string;
+  taskerStageId?: string | null;
   file: File;
 }) {
   const prepareResponse = await fetch("/api/project-assets/upload-url", {
@@ -313,7 +330,7 @@ async function uploadConceptBriefAttachment(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       projectId: input.projectId,
-      stageId: input.taskerStageId,
+      stageId: input.taskerStageId ?? null,
       revisionId: null,
       commentId: null,
       originalFileName: input.file.name,
@@ -354,6 +371,8 @@ async function uploadConceptBriefAttachment(input: {
     if (!completeResponse.ok) {
       throw new Error(completed.error || "Unable to finalize the brief attachment.");
     }
+
+    return prepared.attachmentId;
   } catch (error) {
     await fetch("/api/project-assets/complete", {
       method: "POST",
@@ -366,6 +385,14 @@ async function uploadConceptBriefAttachment(input: {
     }).catch(() => undefined);
     throw error;
   }
+}
+
+async function discardConceptBriefAttachments(attachmentIds: string[]) {
+  await Promise.allSettled(
+    attachmentIds.map((attachmentId) =>
+      fetch(`/api/project-assets/${attachmentId}`, { method: "DELETE" }),
+    ),
+  );
 }
 
 export function ConceptStageWorkspace({
@@ -483,6 +510,11 @@ export function ConceptStageWorkspace({
   }) {
     if (!dialog) return;
 
+    if (!input.brief.trim()) {
+      showErrorToast("Concept Brief is required.");
+      return;
+    }
+
     const submittedDialog = dialog;
     startTransition(async () => {
       let taskerStageId: string;
@@ -519,21 +551,52 @@ export function ConceptStageWorkspace({
           ),
         );
       } else {
+        const uploadResults = await Promise.allSettled(
+          input.files.map((file) =>
+            uploadConceptBriefAttachment({
+              projectId: project.id,
+              taskerStageId: null,
+              file,
+            }),
+          ),
+        );
+        const briefAttachmentIds = uploadResults.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value] : [],
+        );
+        const failedFiles = input.files.filter(
+          (_file, index) => uploadResults[index]?.status === "rejected",
+        );
+
+        if (failedFiles.length > 0) {
+          await discardConceptBriefAttachments(briefAttachmentIds);
+          showErrorToast(
+            "Concept was not created.",
+            `Brief attachment upload failed: ${failedFiles.map((file) => file.name).join(", ")}`,
+          );
+          return;
+        }
+
         const result = await createProjectConceptFolderAction({
           projectId: project.id,
           stageKey,
           name: input.name,
           assignedExecutorId: input.assignedExecutorId,
           brief: input.brief,
+          briefAttachmentIds,
         });
 
         if ("error" in result) {
+          await discardConceptBriefAttachments(briefAttachmentIds);
           showErrorToast(result.error ?? "Unable to create the concept folder.");
           return;
         }
 
         taskerStageId = result.folder.taskerStageId;
         setFolders((current) => [...current, result.folder]);
+        setDialog(null);
+        router.refresh();
+        showSuccessToast("Concept created.");
+        return;
       }
 
       const uploadResults = await Promise.allSettled(
@@ -557,9 +620,7 @@ export function ConceptStageWorkspace({
           `Retry: ${failedFiles.map((file) => file.name).join(", ")}`,
         );
       } else {
-        showSuccessToast(
-          submittedDialog.mode === "create" ? "Concept created." : "Concept updated.",
-        );
+        showSuccessToast("Concept updated.");
       }
     });
   }

@@ -79,6 +79,25 @@ assert(
   "Brief files must reuse the existing attachment upload pipeline and preserve partial successes.",
 );
 assert(
+  workspace.includes("Concept Brief *") &&
+    workspace.includes(">Brief Attachments</span>") &&
+    workspace.includes("Concept Brief is required.") &&
+    !workspace.includes("At least one Brief Attachment is required.") &&
+    workspace.includes("disabled={!canSubmit}"),
+  "Concept creation must require a brief while keeping brief attachments optional.",
+);
+assert(
+  workspace.includes("taskerStageId: null") &&
+    workspace.includes("briefAttachmentIds") &&
+    workspace.includes("discardConceptBriefAttachments") &&
+    concepts.includes('error: "Concept Brief is required."') &&
+    !concepts.includes('error: "At least one Brief Attachment is required."') &&
+    concepts.includes("INVALID_CONCEPT_BRIEF_ATTACHMENTS") &&
+    concepts.includes("data: { stageId: taskerStage.id }") &&
+    actions.includes("briefAttachmentIds?: string[]"),
+  "Concept creation must accept no attachment and atomically validate/associate any provided brief attachments.",
+);
+assert(
   stageThreePage.includes("searchParams") &&
     stageThreePage.includes("executorFilter={executor}") &&
     stageFourPage.includes("searchParams") &&

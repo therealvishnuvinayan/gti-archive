@@ -22,7 +22,7 @@ import { createProjectV2 } from "../src/lib/project-creation";
 import {
   completeStageFourConcepts,
   completeStageThreeConcepts,
-  createProjectConceptFolder,
+  createProjectConceptFolder as createProjectConceptFolderService,
   editProjectConceptFolder,
   getProjectConceptChatContext,
   getProjectConceptFolders,
@@ -70,6 +70,36 @@ function check(condition: unknown, message: string): asserts condition {
 
 function isError(value: unknown): value is { error: string } {
   return Boolean(value && typeof value === "object" && "error" in value);
+}
+
+async function createProjectConceptFolder(
+  user: Parameters<typeof createProjectConceptFolderService>[0],
+  input: Omit<
+    Parameters<typeof createProjectConceptFolderService>[1],
+    "briefAttachmentIds"
+  >,
+) {
+  const attachmentId = randomUUID();
+  await prisma.projectAttachment.create({
+    data: {
+      id: attachmentId,
+      projectId: input.projectId,
+      uploadedById: user.id,
+      fileName: `${attachmentId}.png`,
+      originalFileName: "concept-brief.png",
+      mimeType: "image/png",
+      fileSize: 128,
+      bucket: "integration-test",
+      storageKey: `integration/concept-brief/${attachmentId}.png`,
+      assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET,
+      status: AttachmentStatus.READY,
+    },
+  });
+
+  return createProjectConceptFolderService(user, {
+    ...input,
+    briefAttachmentIds: [attachmentId],
+  });
 }
 
 async function expectRejected(task: Promise<unknown>, message: string) {
