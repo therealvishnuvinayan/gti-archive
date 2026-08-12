@@ -115,10 +115,11 @@ assert(service.includes("ProductionApprovalStepStatus.ACTIVE") && service.includ
 assert(service.includes("recipientUserId === user.id") && service.includes("reviewHref:"), "Stage 6 must derive the direct review action from the authenticated assigned approver.");
 assert(
   constants.includes('name: "Slavomir Kluziak"') &&
-    constants.includes('email: "slavomir.kluziak@gulbahartobacco.com"') &&
+    constants.includes('"abhijithajikumarofficial@gmail.com"') &&
+    service.includes("STAGE_SIX_EMAIL_DELIVERY_ADDRESS") &&
     service.includes("STAGE_SIX_FIRST_APPROVER") &&
     workspace.includes("STAGE_SIX_FIRST_APPROVER"),
-  "The required first approval must use the shared Slavomir Kluziak constant.",
+  "All Stage 6 delivery and the required first approval must use the shared temporary email constant.",
 );
 assert(
   workspace.includes("!step.isConfigured") &&

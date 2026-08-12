@@ -1,4 +1,7 @@
+export const STAGE_SIX_EMAIL_DELIVERY_ADDRESS =
+  "abhijithajikumarofficial@gmail.com";
+
 export const STAGE_SIX_FIRST_APPROVER = {
   name: "Slavomir Kluziak",
-  email: "slavomir.kluziak@gulbahartobacco.com",
+  email: STAGE_SIX_EMAIL_DELIVERY_ADDRESS,
 } as const;

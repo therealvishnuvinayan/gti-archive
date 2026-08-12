@@ -42,7 +42,10 @@ import {
   STAGE_FIVE_FIELD_KEYS,
   STAGE_FIVE_FIELD_LABELS,
 } from "@/lib/stage-five-fields";
-import { STAGE_SIX_FIRST_APPROVER } from "@/lib/stage-six-constants";
+import {
+  STAGE_SIX_EMAIL_DELIVERY_ADDRESS,
+  STAGE_SIX_FIRST_APPROVER,
+} from "@/lib/stage-six-constants";
 import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
@@ -1023,7 +1026,7 @@ async function sendExternalApproval(
   let result: Awaited<ReturnType<EmailSender>>;
   try {
     result = await sendEmail({
-      to: step.recipientEmail,
+      to: STAGE_SIX_EMAIL_DELIVERY_ADDRESS,
       ...email,
       replyTo: step.requestedBy.email,
     });
@@ -2394,7 +2397,7 @@ export async function handoverProductionUnit(
   let result: Awaited<ReturnType<EmailSender>>;
   try {
     result = await (options.sendEmail ?? sendResendEmail)({
-      to: recipient.recipientEmail,
+      to: STAGE_SIX_EMAIL_DELIVERY_ADDRESS,
       ...email,
       replyTo: requester.email,
     });
