@@ -61,18 +61,18 @@ export function isValidProjectContactEmail(value: string) {
 
 export function normalizeInternationalPhone(value: string) {
   const phone = value.trim();
+  const hasLeadingPlus = phone.startsWith("+");
 
   if (
     !phone ||
     phone.length > MAX_CONTACT_PHONE_LENGTH ||
-    !phone.startsWith("+") ||
-    (phone.match(/\+/g)?.length ?? 0) !== 1 ||
+    (phone.match(/\+/g)?.length ?? 0) !== (hasLeadingPlus ? 1 : 0) ||
     !INTERNATIONAL_PHONE_INPUT_PATTERN.test(phone)
   ) {
     return null;
   }
 
-  const normalized = `+${phone.slice(1).replace(/[^\d]/g, "")}`;
+  const normalized = `+${(hasLeadingPlus ? phone.slice(1) : phone).replace(/[^\d]/g, "")}`;
   return E164_PHONE_PATTERN.test(normalized) ? normalized : null;
 }
 

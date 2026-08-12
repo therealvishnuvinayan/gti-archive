@@ -78,6 +78,8 @@ assert(
 assert(
   workspace.includes("ProductionHandoverRoute.PURCHASE_DEPARTMENT") &&
     workspace.includes("ProductionHandoverRoute.DIRECT_VENDOR") &&
+    workspace.includes("normalizeInternationalPhone(recipientPhone)") &&
+    workspace.includes("the + is optional") &&
     workspace.includes("border-[#c8d5cb]") &&
     workspace.includes("focus-visible:border-[#46906a]") &&
     service.includes("Internal sample requests require an existing project participant.") &&
@@ -85,7 +87,7 @@ assert(
     recipientMigration.includes('ADD COLUMN "recipientRoute"') &&
     recipientMigration.includes('ADD COLUMN "recipientCompany"') &&
     recipientMigration.includes('ADD COLUMN "recipientPhone"'),
-  "Sample requests must mirror the bordered Stage 6 internal/external recipient workflow.",
+  "Sample requests must validate external recipient details consistently and accept international phones with an optional + prefix.",
 );
 assert(
   workspace.includes("unit.rawFileName !== unit.name") &&

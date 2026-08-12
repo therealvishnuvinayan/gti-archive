@@ -54,6 +54,10 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  isValidProjectContactEmail,
+  normalizeInternationalPhone,
+} from "@/lib/project-contact-validation";
 import type { ProjectStageShellRecord } from "@/lib/projects";
 import type { StageSevenWorkspaceData } from "@/lib/stage-seven";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
@@ -215,13 +219,15 @@ function NewSampleRequestDialog({
   const [recipientPhone, setRecipientPhone] = useState(previous?.recipientPhone ?? "");
   const [requestNote, setRequestNote] = useState("");
   const isInternal = recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
+  const recipientEmailIsValid = isValidProjectContactEmail(recipientEmail);
+  const normalizedRecipientPhone = normalizeInternationalPhone(recipientPhone);
   const recipientReady = isInternal
     ? Boolean(recipientUserId)
     : Boolean(
         recipientCompany.trim() &&
           recipientName.trim() &&
-          /^\S+@\S+\.\S+$/.test(recipientEmail.trim()) &&
-          /^\+[\d\s().-]{8,}$/.test(recipientPhone.trim()),
+          recipientEmailIsValid &&
+          normalizedRecipientPhone,
       );
   const ready = Boolean(
     name.trim() &&
@@ -317,8 +323,8 @@ function NewSampleRequestDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Company Name *</span><Input value={recipientCompany} maxLength={160} placeholder="Enter company name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientCompany(event.target.value)} /></label>
             <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Contact Name *</span><Input value={recipientName} maxLength={160} placeholder="Enter contact name" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientName(event.target.value)} /></label>
-            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Email *</span><Input type="email" value={recipientEmail} maxLength={320} placeholder="contact@company.com" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientEmail(event.target.value)} /></label>
-            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Phone *</span><Input type="tel" value={recipientPhone} maxLength={50} placeholder="e.g. +971 50 123 4567" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientPhone(event.target.value)} /><span className="block text-[9px] text-[#77827a]">Include the international country code.</span></label>
+            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Email *</span><Input type="email" value={recipientEmail} maxLength={320} placeholder="contact@company.com" aria-invalid={Boolean(recipientEmail) && !recipientEmailIsValid} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientEmail(event.target.value)} />{recipientEmail && !recipientEmailIsValid ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter a valid email address.</span> : null}</label>
+            <label className="space-y-2"><span className="text-[12px] font-[720] text-[#2d372f]">Phone *</span><Input type="tel" value={recipientPhone} maxLength={50} placeholder="e.g. +971 50 123 4567" aria-invalid={Boolean(recipientPhone) && !normalizedRecipientPhone} className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setRecipientPhone(event.target.value)} />{recipientPhone && !normalizedRecipientPhone ? <span className="block text-[9px] font-[600] text-[#b84e48]">Enter an international number including country code.</span> : <span className="block text-[9px] text-[#77827a]">Include the international country code; the + is optional.</span>}</label>
           </div>
         )}
         <label className="space-y-2">

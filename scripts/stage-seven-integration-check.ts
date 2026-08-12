@@ -274,7 +274,7 @@ async function main() {
       recipientCompany: "ABC Packaging LLC",
       recipientName: "ABC Packaging",
       recipientEmail: "supplier.external@example.test",
-      recipientPhone: "+971 50 123 4567",
+      recipientPhone: "971 50 123 4567",
       requestNote: "Please courier one physical sample before the deadline.",
     };
     await expectRejected(createProductionSampleRound(admin, { ...baseInput, clientRequestId: `admin-${runId}` }, { sendEmail: sendSuccess }), "ADMIN alone must not manage Stage 7");
