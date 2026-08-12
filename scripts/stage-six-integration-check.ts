@@ -35,7 +35,9 @@ import {
   getStageSixWorkspaceData,
   handoverProductionUnit,
   removeProductionApprover,
+  reorderProductionApprover,
 } from "../src/lib/stage-six";
+import { STAGE_SIX_FIRST_APPROVER } from "../src/lib/stage-six-constants";
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Stage 6 integration check failed: ${message}`);
@@ -306,17 +308,19 @@ async function main() {
     check(concurrentAdds.filter((result) => !isError(result) && result.duplicate).length === 1, "concurrent Add Approver submit must create exactly one step");
     const adminConfigure = await configureMarketingDirector(admin, { clientRequestId: `admin-md-${runId}`, projectId: ids.project, productionUnitId: unitA.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId] });
     check(isError(adminConfigure), "ADMIN alone must not configure approvals");
-    const configuredA = await configureMarketingDirector(owner, { clientRequestId: `md-a-${runId}`, projectId: ids.project, productionUnitId: unitA.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId, productionAttachmentId], message: "Required review" });
-    check(!isError(configuredA) && "step" in configuredA && configuredA.step, "Marketing Director collaborator must be assignable");
-    const notification = await prisma.notification.findFirst({ where: { userId: ids.approver, entityId: configuredA.step.id, type: "PRODUCTION_APPROVAL_REQUESTED" } });
-    check(notification?.url === `/production-approvals/${configuredA.step.id}`, "active collaborator must receive a dedicated in-app notification");
+    const configuredA = await configureMarketingDirector(owner, { clientRequestId: `md-a-${runId}`, projectId: ids.project, productionUnitId: unitA.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId, productionAttachmentId], message: "Required review" }, { sendEmail: sendSuccess });
+    check(!isError(configuredA) && "step" in configuredA && configuredA.step, "the fixed first approver must be assignable");
+    const firstApproverMessage = emailLog.at(-1)!;
+    check(firstApproverMessage.to === STAGE_SIX_FIRST_APPROVER.email, "the first approval email must use the fixed Slavomir address");
+    const stepOneToken = approvalToken(firstApproverMessage);
+    check(await prisma.notification.count({ where: { entityId: configuredA.step.id, type: "PRODUCTION_APPROVAL_REQUESTED" } }) === 0, "the fixed external first approver must not receive an in-app notification");
     check(await prisma.notification.count({ where: { entityId: additional.step.id, type: "PRODUCTION_APPROVAL_REQUESTED" } }) === 0, "waiting approvers must not be notified early");
 
     const approverWorkspace = await getStageSixWorkspaceData(approver, ids.project);
     const approverStep = approverWorkspace?.units
       .find((unit) => unit.id === unitA.id)
       ?.approvalSteps.find((step) => step.id === configuredA.step.id);
-    check(approverStep?.reviewHref === `/production-approvals/${configuredA.step.id}`, "the assigned approver must have a direct Stage 6 review link");
+    check(approverStep?.reviewHref === null, "the fixed external first approval must not expose an authenticated review link");
     const ownerWorkspace = await getStageSixWorkspaceData(owner, ids.project);
     const ownerStep = ownerWorkspace?.units
       .find((unit) => unit.id === unitA.id)
@@ -325,8 +329,8 @@ async function main() {
     const outsiderWorkspace = await getStageSixWorkspaceData(outsider, ids.project);
     check(outsiderWorkspace === null, "an outsider must not receive Stage 6 workspace data");
 
-    const exactApproval = await getAuthenticatedProductionApprovalData(approver, configuredA.step.id);
-    check(exactApproval.state === "active", "assigned collaborator must open active approval");
+    const exactApproval = await getExternalProductionApprovalData(stepOneToken);
+    check(exactApproval.state === "active", "Slavomir's exact email token must open the active first approval");
     if (exactApproval.state === "active") {
       check(exactApproval.snapshot.fields.length === 1 && exactApproval.snapshot.fields[0].key === ProjectFileChecklistField.OUTPUT_NAME, "approval snapshot must expose only selected details");
       check(!JSON.stringify(exactApproval.snapshot).includes("Private warning"), "unselected checklist data must not leak");
@@ -336,12 +340,12 @@ async function main() {
     const earlyDecision = await decideProductionApproval({ kind: "external", token: "a".repeat(43) }, { decision: "APPROVE" });
     check(isError(earlyDecision), "invalid or non-active external step must not decide");
     await prisma.projectFileChecklistItem.update({ where: { checklistId_fieldKey: { checklistId: unitA.sourceChecklistId, fieldKey: ProjectFileChecklistField.OUTPUT_NAME } }, data: { value: { text: "Updated before Step 2" } } });
-    const stableApproval = await getAuthenticatedProductionApprovalData(approver, configuredA.step.id);
+    const stableApproval = await getExternalProductionApprovalData(stepOneToken);
     check(stableApproval.state === "active" && JSON.stringify(stableApproval.snapshot).includes("Output 1"), "active approval snapshot must remain stable after Stage 5 edits");
 
     const emailBeforeStepTwo = emailLog.length;
-    const approvedStepOne = await decideProductionApproval({ kind: "authenticated", user: approver, stepId: configuredA.step.id }, { decision: "APPROVE", comment: "Approved by Marketing Director" }, { sendEmail: sendSuccess });
-    check(!isError(approvedStepOne), "active Marketing Director must approve");
+    const approvedStepOne = await decideProductionApproval({ kind: "external", token: stepOneToken }, { decision: "APPROVE", comment: "Approved by Slavomir" }, { sendEmail: sendSuccess });
+    check(!isError(approvedStepOne), "the active fixed first approver must approve");
     const decidedApproverWorkspace = await getStageSixWorkspaceData(approver, ids.project);
     const decidedApproverStep = decidedApproverWorkspace?.units
       .find((unit) => unit.id === unitA.id)
@@ -368,6 +372,15 @@ async function main() {
     const emailCountAfterUnitB = emailLog.length;
     const duplicateConfiguredB = await configureMarketingDirector(owner, { clientRequestId: `md-b-${runId}`, projectId: ids.project, productionUnitId: unitB.id, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Marketing Director B", recipientEmail: "marketing-b@example.test", sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitB.sourceAttachmentId] }, { sendEmail: sendSuccess });
     check(!isError(duplicateConfiguredB) && duplicateConfiguredB.duplicate && emailLog.length === emailCountAfterUnitB, "retrying an external approval request must not resend its email");
+    const waitingBOne = await addProductionApprover(owner, { clientRequestId: `unit-b-extra-one-${runId}`, projectId: ids.project, productionUnitId: unitB.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitB.sourceAttachmentId] });
+    const waitingBTwo = await addProductionApprover(owner, { clientRequestId: `unit-b-extra-two-${runId}`, projectId: ids.project, productionUnitId: unitB.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.secondApprover, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitB.sourceAttachmentId] });
+    check(!isError(waitingBOne) && waitingBOne.step && !isError(waitingBTwo) && waitingBTwo.step, "managers must retain Add Approver while the first request is active");
+    const movedB = await reorderProductionApprover(owner, { projectId: ids.project, productionUnitId: unitB.id, stepId: waitingBTwo.step.id, direction: "UP" });
+    check(!isError(movedB) && movedB.moved, "waiting approval steps must be reorderable while the chain is active");
+    const reorderedB = await prisma.productionApprovalStep.findMany({ where: { productionUnitId: unitB.id, sequence: { gt: 1 } }, orderBy: { sequence: "asc" } });
+    check(reorderedB[0]?.id === waitingBTwo.step.id && reorderedB[1]?.id === waitingBOne.step.id, "the persisted approval order must match the manager's reorder action");
+    check(!isError(await removeProductionApprover(owner, { projectId: ids.project, productionUnitId: unitB.id, stepId: waitingBTwo.step.id })), "a waiting approval can be deleted after the chain starts");
+    check(!isError(await removeProductionApprover(owner, { projectId: ids.project, productionUnitId: unitB.id, stepId: waitingBOne.step.id })), "deleting a waiting approval must compact the remaining chain safely");
     await expectRejected(getProductionApprovalFileUrl({ kind: "external", token: unitBToken }, productionAttachmentId, "download"), "an external approval token must not download another unit's file");
     await prisma.productionApprovalStep.update({ where: { id: configuredB.step.id }, data: { externalTokenExpiresAt: new Date(Date.now() - 1_000) } });
     check((await getExternalProductionApprovalData(unitBToken)).state === "expired", "an expired external approval token must be denied");
@@ -411,11 +424,12 @@ async function main() {
     const rejectUnit = await prisma.projectProductionUnit.findFirstOrThrow({ where: { projectId: ids.rejectProject } });
     const rejectExtra = await addProductionApprover(owner, { clientRequestId: `reject-extra-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.secondApprover, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] });
     check(!isError(rejectExtra), "rejection fixture must have a waiting later step");
-    const rejectMd = await configureMarketingDirector(owner, { clientRequestId: `reject-md-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] });
+    const rejectMd = await configureMarketingDirector(owner, { clientRequestId: `reject-md-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] }, { sendEmail: sendSuccess });
     check(!isError(rejectMd) && "step" in rejectMd && rejectMd.step, "rejection fixture Marketing Director must activate");
+    const rejectToken = approvalToken(emailLog.at(-1)!);
     const concurrentRejections = await Promise.all([
-      decideProductionApproval({ kind: "authenticated", user: approver, stepId: rejectMd.step.id }, { decision: "REJECT", comment: "Needs correction" }),
-      decideProductionApproval({ kind: "authenticated", user: approver, stepId: rejectMd.step.id }, { decision: "REJECT", comment: "Duplicate click" }),
+      decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "REJECT", comment: "Needs correction" }),
+      decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "REJECT", comment: "Duplicate click" }),
     ]);
     check(concurrentRejections.filter((result) => !isError(result)).length === 1, "concurrent rejection clicks must record exactly one decision");
     check(concurrentRejections.filter(isError).length === 1, "the losing concurrent rejection must return a controlled error");

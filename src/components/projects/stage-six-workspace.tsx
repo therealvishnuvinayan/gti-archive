@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   ProductionApprovalRecipientType,
   ProductionApprovalStepStatus,
@@ -12,7 +12,9 @@ import {
 } from "@prisma/client";
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   Check,
   Clock3,
   Download,
@@ -39,6 +41,7 @@ import {
   handoverProductionUnitAction,
   removeProductionApproverAction,
   removeProductionUnitFileAction,
+  reorderProductionApproverAction,
   retryProductionApprovalDispatchAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/6/actions";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
@@ -59,6 +62,7 @@ import type {
   StageSixUnitRecord,
   StageSixWorkspaceData,
 } from "@/lib/stage-six";
+import { STAGE_SIX_FIRST_APPROVER } from "@/lib/stage-six-constants";
 import { uploadProductionFile } from "@/lib/stage-six-upload-client";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -325,10 +329,19 @@ function ApproverDialog({
 }) {
   const [pending, startPending] = useTransition();
   const requestId = useRef(crypto.randomUUID());
-  const [recipientType, setRecipientType] = useState<ProductionApprovalRecipientType>(ProductionApprovalRecipientType.EXISTING_COLLABORATOR);
+  const fixedFirstApprover = mode === "marketing-director";
+  const [recipientType, setRecipientType] = useState<ProductionApprovalRecipientType>(
+    fixedFirstApprover
+      ? ProductionApprovalRecipientType.EXTERNAL_EMAIL
+      : ProductionApprovalRecipientType.EXISTING_COLLABORATOR,
+  );
   const [recipientUserId, setRecipientUserId] = useState("");
-  const [recipientName, setRecipientName] = useState("");
-  const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientName, setRecipientName] = useState(
+    fixedFirstApprover ? STAGE_SIX_FIRST_APPROVER.name : "",
+  );
+  const [recipientEmail, setRecipientEmail] = useState(
+    fixedFirstApprover ? STAGE_SIX_FIRST_APPROVER.email : "",
+  );
   const [fieldKeys, setFieldKeys] = useState<string[]>([]);
   const availableFiles = [unit.sourceFile, ...unit.productionFiles];
   const [fileIds, setFileIds] = useState<string[]>(availableFiles.map((file) => file.id));
@@ -388,6 +401,19 @@ function ApproverDialog({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6 sm:py-5">
+            {fixedFirstApprover ? (
+              <div className="rounded-[14px] border border-[#cfe1d4] bg-[#f4faf5] px-4 py-3">
+                <p className="text-[10px] font-[760] uppercase tracking-[.08em] text-[#55725f]">
+                  Fixed first approver
+                </p>
+                <p className="mt-1 text-[13px] font-[740] text-[#243229]">
+                  {STAGE_SIX_FIRST_APPROVER.name}
+                </p>
+                <p className="mt-0.5 text-[11px] text-[#607068]">
+                  {STAGE_SIX_FIRST_APPROVER.email}
+                </p>
+              </div>
+            ) : (
             <fieldset>
               <legend className="text-[12px] font-[720] text-[#2d372f]">Recipient Type</legend>
               <div className="mt-2 flex flex-wrap gap-3">
@@ -401,18 +427,19 @@ function ApproverDialog({
                 ))}
               </div>
             </fieldset>
+            )}
 
-            {recipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR ? (
+            {!fixedFirstApprover && recipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR ? (
               <Select value={recipientUserId} onValueChange={setRecipientUserId}>
                 <SelectTrigger className="mt-3 h-11 w-full rounded-[12px] border-[#dfe6df] bg-white" aria-label="Select project collaborator"><SelectValue placeholder="Search/select project collaborator" /></SelectTrigger>
                 <SelectContent className="z-[190]">{participants.map((participant) => <SelectItem key={participant.id} value={participant.id}>{participant.name} — {participant.role}</SelectItem>)}</SelectContent>
               </Select>
-            ) : (
+            ) : !fixedFirstApprover ? (
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <Input value={recipientName} placeholder="Name" onChange={(event) => setRecipientName(event.target.value)} />
                 <Input type="email" value={recipientEmail} placeholder="name@example.com" onChange={(event) => setRecipientEmail(event.target.value)} />
               </div>
-            )}
+            ) : null}
 
             <div className="mt-5 flex items-center justify-between gap-3">
               <h3 className="text-[12px] font-[720] text-[#2d372f]">Information to share</h3>
@@ -483,12 +510,20 @@ function ApprovalSection({
   const approved = unit.approvalSteps.filter((step) => step.status === ProductionApprovalStepStatus.APPROVED).length;
   const rejected = unit.approvalSteps.filter((step) => step.status === ProductionApprovalStepStatus.REJECTED).length;
   const pending = unit.approvalSteps.filter((step) => step.status === ProductionApprovalStepStatus.ACTIVE).length;
-  const preparing = unit.status === ProjectProductionUnitStatus.PREPARATION;
+  const chainIsEditable =
+    unit.status === ProjectProductionUnitStatus.PREPARATION ||
+    unit.status === ProjectProductionUnitStatus.APPROVAL_PENDING;
 
   async function remove(stepId: string) {
+    if (!window.confirm("Remove this approval step from the chain?")) return;
     const result = await removeProductionApproverAction({ projectId, productionUnitId: unit.id, stepId });
     if ("error" in result) return showErrorToast("Unable to remove approver.", result.error);
-    showSuccessToast("Approver removed.");
+    showSuccessToast(
+      "Approver removed.",
+      "dispatchError" in result
+        ? `The next approval is ready, but its email failed: ${result.dispatchError}`
+        : undefined,
+    );
     onRefresh();
   }
 
@@ -499,6 +534,26 @@ function ApprovalSection({
     onRefresh();
   }
 
+  async function reorder(stepId: string, direction: "UP" | "DOWN") {
+    const result = await reorderProductionApproverAction({
+      projectId,
+      productionUnitId: unit.id,
+      stepId,
+      direction,
+    });
+    if ("error" in result) return showErrorToast("Unable to reorder approver.", result.error);
+    if (!result.moved) return;
+    showSuccessToast("Approval order updated.");
+    onRefresh();
+  }
+
+  const reorderableSteps = unit.approvalSteps.filter(
+    (step) =>
+      step.sequence > 1 &&
+      !step.isMarketingDirectorRequired &&
+      step.status === ProductionApprovalStepStatus.WAITING,
+  );
+
   return (
     <section className="overflow-hidden rounded-[20px] border border-[#dfe6df] bg-white">
       <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
@@ -506,7 +561,7 @@ function ApprovalSection({
           <h2 className="text-[17px] font-[750] text-[#1c271f]">Approval Chain</h2>
           <p className="mt-1 text-[11px] text-[#727d75]">Strictly sequential and scoped independently to this Production Unit.</p>
         </div>
-        {canManage && preparing ? <Button type="button" variant="outline" size="sm" onClick={() => onOpenDialog("additional")}><Plus className="h-4 w-4" /> Add Approver</Button> : null}
+        {canManage && chainIsEditable ? <Button type="button" variant="outline" size="sm" onClick={() => onOpenDialog("additional")}><Plus className="h-4 w-4" /> Add Approver</Button> : null}
       </div>
       <div className="grid grid-cols-2 gap-2 border-y border-[#e8ede8] bg-[#fbfcfb] p-4 sm:grid-cols-4">
         {[["Total Approvers", unit.approvalSteps.length], ["Approved", approved], ["Pending", pending], ["Rejected", rejected]].map(([label, value]) => <div key={label} className="rounded-[11px] bg-white px-3 py-2"><strong className="block text-[14px] text-[#26312a]">{value}</strong><span className="text-[9px] text-[#78837b]">{label}</span></div>)}
@@ -524,9 +579,15 @@ function ApprovalSection({
             <ApprovalBadge status={step.status} dispatch={step.dispatchStatus} />
             <div className="flex justify-end gap-1">
               {step.reviewHref ? <Button asChild type="button" size="sm"><Link href={step.reviewHref}><ShieldCheck className="h-3.5 w-3.5" /> Review Approval</Link></Button> : null}
-              {canManage && step.sequence === 1 && !step.recipientType && preparing ? <Button type="button" size="sm" onClick={() => onOpenDialog("marketing-director")}><ShieldCheck className="h-3.5 w-3.5" /> Assign</Button> : null}
+              {canManage && step.sequence === 1 && !step.isConfigured && chainIsEditable ? <Button type="button" size="sm" onClick={() => onOpenDialog("marketing-director")}><ShieldCheck className="h-3.5 w-3.5" /> Assign</Button> : null}
               {canManage && step.dispatchStatus === ProductionDispatchStatus.FAILED && step.status === ProductionApprovalStepStatus.ACTIVE ? <Button type="button" variant="outline" size="sm" onClick={() => retry(step.id)}><RefreshCw className="h-3.5 w-3.5" /> Retry</Button> : null}
-              {canManage && preparing && !step.isMarketingDirectorRequired ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove approval step ${step.sequence}`} onClick={() => remove(step.id)}><Trash2 className="h-4 w-4 text-[#aa4e45]" /></Button> : null}
+              {canManage && reorderableSteps.some((candidate) => candidate.id === step.id) ? (
+                <>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Move approval step ${step.sequence} up`} disabled={reorderableSteps[0]?.id === step.id} onClick={() => reorder(step.id, "UP")}><ArrowUp className="h-4 w-4" /></Button>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Move approval step ${step.sequence} down`} disabled={reorderableSteps.at(-1)?.id === step.id} onClick={() => reorder(step.id, "DOWN")}><ArrowDown className="h-4 w-4" /></Button>
+                </>
+              ) : null}
+              {canManage && chainIsEditable && !step.isMarketingDirectorRequired && (step.status === ProductionApprovalStepStatus.WAITING || step.status === ProductionApprovalStepStatus.ACTIVE) ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove approval step ${step.sequence}`} title="Remove approver" onClick={() => remove(step.id)}><Trash2 className="h-4 w-4 text-[#aa4e45]" /></Button> : null}
             </div>
           </div>
         ))}
@@ -655,6 +716,20 @@ export function StageSixWorkspace({
   const [completionError, setCompletionError] = useState("");
   const [completing, startCompleting] = useTransition();
   const activeUnit = useMemo(() => pageData.units.find((unit) => unit.id === activeUnitId) ?? pageData.units[0], [activeUnitId, pageData.units]);
+
+  useEffect(() => {
+    const refreshVisiblePage = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    const intervalId = window.setInterval(refreshVisiblePage, 15_000);
+    window.addEventListener("focus", refreshVisiblePage);
+    document.addEventListener("visibilitychange", refreshVisiblePage);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshVisiblePage);
+      document.removeEventListener("visibilitychange", refreshVisiblePage);
+    };
+  }, [router]);
 
   function refresh() { router.refresh(); }
   function selectUnit(id: string) {

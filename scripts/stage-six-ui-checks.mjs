@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, service, page, schema, approvalWorkspace, externalPage, authenticatedPage, actions] = await Promise.all([
+const [
+  workspace,
+  service,
+  page,
+  schema,
+  approvalWorkspace,
+  externalPage,
+  authenticatedPage,
+  actions,
+  authenticatedActions,
+  externalDecisionRoute,
+  constants,
+] = await Promise.all([
   readFile("src/components/projects/stage-six-workspace.tsx", "utf8"),
   readFile("src/lib/stage-six.ts", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/6/page.tsx", "utf8"),
@@ -10,6 +22,9 @@ const [workspace, service, page, schema, approvalWorkspace, externalPage, authen
   readFile("src/app/external/production-approval/[token]/page.tsx", "utf8"),
   readFile("src/app/production-approvals/[stepId]/page.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/6/actions.ts", "utf8"),
+  readFile("src/app/production-approvals/[stepId]/actions.ts", "utf8"),
+  readFile("src/app/api/external/production-approval/[token]/decision/route.ts", "utf8"),
+  readFile("src/lib/stage-six-constants.ts", "utf8"),
 ]);
 
 for (const content of [
@@ -74,6 +89,41 @@ assert(externalPage.includes('dynamic = "force-dynamic"') && externalPage.includ
 assert(authenticatedPage.includes("getAuthenticatedProductionApprovalData"), "The direct Stage 6 review action must land on the authenticated approval route.");
 assert(service.includes("ProductionApprovalStepStatus.ACTIVE") && service.includes("ProductionApprovalStepStatus.WAITING"), "Sequential activation must be server-enforced.");
 assert(service.includes("recipientUserId === user.id") && service.includes("reviewHref:"), "Stage 6 must derive the direct review action from the authenticated assigned approver.");
+assert(
+  constants.includes('name: "Slavomir Kluziak"') &&
+    constants.includes('email: "slavomir.kluziak@gulbahartobacco.com"') &&
+    service.includes("STAGE_SIX_FIRST_APPROVER") &&
+    workspace.includes("STAGE_SIX_FIRST_APPROVER"),
+  "The required first approval must use the shared Slavomir Kluziak constant.",
+);
+assert(
+  workspace.includes("!step.isConfigured") &&
+    service.includes("isConfigured: Boolean(clientRequestId)"),
+  "The first-step Assign action must be driven by persisted configuration state, not hidden by its fixed recipient placeholder.",
+);
+assert(
+  actions.includes("reorderProductionApproverAction") &&
+    service.includes("reorderProductionApprover") &&
+    workspace.includes("Move approval step") &&
+    workspace.includes("Remove approval step"),
+  "Waiting approval steps must expose manager-only reorder and delete controls backed by server validation.",
+);
+assert(
+  service.includes("Completed approval steps cannot be removed.") &&
+    service.includes("Only waiting approval steps can be reordered."),
+  "Completed decisions must remain immutable and only waiting approvals may be reordered.",
+);
+assert(
+  workspace.includes("ProjectProductionUnitStatus.APPROVAL_PENDING") &&
+    service.includes("Approvers can be added only while this approval chain is active."),
+  "Managers must retain approval-chain controls after the required first request starts.",
+);
+assert(
+  authenticatedActions.includes("publishProjectActivityUpdatedAfterResponse") &&
+    externalDecisionRoute.includes("publishProjectActivityUpdatedAfterResponse") &&
+    workspace.includes("window.setInterval(refreshVisiblePage, 15_000)"),
+  "Authenticated and external decisions must refresh open Stage 6 pages in realtime with a polling fallback.",
+);
 assert(service.includes("ProjectProductionUnitStatus.HANDED_OVER") && service.includes("ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION"), "Stage 6 completion must require handover and unlock only Stage 7.");
 assert(service.includes("user.role === UserRole.SUPER_ADMIN") && !service.includes("user.role === UserRole.ADMIN ||"), "Stage 6 management must not grant ADMIN implicit rights.");
 assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");

@@ -16,14 +16,30 @@ import {
   handoverProductionUnit,
   removeProductionApprover,
   removeProductionUnitFile,
+  reorderProductionApprover,
   retryProductionApprovalDispatch,
 } from "@/lib/stage-six";
+import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/server";
 
 function revalidateStageSix(projectId: string) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/stages/5`);
   revalidatePath(`/projects/${projectId}/stages/6`);
   revalidatePath(`/projects/${projectId}/stages/7`);
+}
+
+function publishStageSixChange(input: {
+  projectId: string;
+  actorId: string;
+  changedEntityId?: string | null;
+}) {
+  publishProjectActivityUpdatedAfterResponse({
+    projectId: input.projectId,
+    stageId: null,
+    eventType: "timeline_updated",
+    changedEntityId: input.changedEntityId ?? null,
+    actorId: input.actorId,
+  });
 }
 
 type ApproverInput = {
@@ -43,6 +59,13 @@ export async function configureMarketingDirectorAction(input: ApproverInput) {
   const user = await requireUser();
   const result = await configureMarketingDirector(user, input);
   revalidateStageSix(input.projectId);
+  if (!("error" in result)) {
+    publishStageSixChange({
+      projectId: input.projectId,
+      actorId: user.id,
+      changedEntityId: input.productionUnitId,
+    });
+  }
   return result;
 }
 
@@ -50,6 +73,13 @@ export async function addProductionApproverAction(input: ApproverInput) {
   const user = await requireUser();
   const result = await addProductionApprover(user, input);
   revalidateStageSix(input.projectId);
+  if (!("error" in result)) {
+    publishStageSixChange({
+      projectId: input.projectId,
+      actorId: user.id,
+      changedEntityId: input.productionUnitId,
+    });
+  }
   return result;
 }
 
@@ -61,6 +91,32 @@ export async function removeProductionApproverAction(input: {
   const user = await requireUser();
   const result = await removeProductionApprover(user, input);
   revalidateStageSix(input.projectId);
+  if (!("error" in result)) {
+    publishStageSixChange({
+      projectId: input.projectId,
+      actorId: user.id,
+      changedEntityId: input.productionUnitId,
+    });
+  }
+  return result;
+}
+
+export async function reorderProductionApproverAction(input: {
+  projectId: string;
+  productionUnitId: string;
+  stepId: string;
+  direction: "UP" | "DOWN";
+}) {
+  const user = await requireUser();
+  const result = await reorderProductionApprover(user, input);
+  revalidateStageSix(input.projectId);
+  if (!("error" in result)) {
+    publishStageSixChange({
+      projectId: input.projectId,
+      actorId: user.id,
+      changedEntityId: input.productionUnitId,
+    });
+  }
   return result;
 }
 
