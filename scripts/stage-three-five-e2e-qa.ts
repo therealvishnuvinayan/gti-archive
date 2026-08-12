@@ -26,6 +26,7 @@ import {
   editProjectConceptFolder,
   getProjectConceptChatContext,
   getProjectConceptFolders,
+  importStageThreeConceptReference,
   markProjectConceptApprovedAttachment,
   markStageFourFinalApprovedAttachment,
 } from "../src/lib/project-concepts";
@@ -790,9 +791,9 @@ async function main() {
   });
   check(
     !isError(conceptBApproval) &&
-      "stageTransition" in conceptBApproval &&
-      conceptBApproval.stageTransition.transitioned,
-    "co-owner approval of the final pending concept must activate Stage 4",
+      conceptBApproval.allConceptsApproved &&
+      !("stageTransition" in conceptBApproval),
+    "final concept approval must wait for explicit owner completion confirmation",
   );
   check(
     isError(await completeStageThreeConcepts(coOwner, { projectId })),
@@ -806,11 +807,10 @@ async function main() {
   check(
     !isError(stageThreeCompletionA) &&
       !isError(stageThreeCompletionB) &&
-      !stageThreeCompletionA.transitioned &&
-      !stageThreeCompletionB.transitioned,
-    "manual Stage 3 completion retries must be idempotent after automatic progression",
+      (stageThreeCompletionA.transitioned || stageThreeCompletionB.transitioned),
+    "manual Stage 3 confirmation must transition once and remain idempotent",
   );
-  const stageThreeCompletion = conceptBApproval.stageTransition;
+  const stageThreeCompletion = stageThreeCompletionA;
   check(
     stageThreeCompletion.approvedCount === 2 &&
       stageThreeCompletion.unapprovedConcepts.length === 0,
@@ -818,9 +818,44 @@ async function main() {
   );
   await notifyStageFourConceptsActivated({
     projectId,
-    folderIds: stageThreeCompletion.promotedFolderIds,
+    folderIds: [],
     actorId: owner.id,
   });
+
+  const stageFourAResult = await createProjectConceptFolder(owner, {
+    projectId,
+    stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+    name: conceptA.name,
+    assignedExecutorId: executorA.id,
+    brief: "Fresh Stage 4 botanical finalization brief.",
+  });
+  const stageFourBResult = await createProjectConceptFolder(owner, {
+    projectId,
+    stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+    name: conceptB.name,
+    assignedExecutorId: executorB.id,
+    brief: "Fresh Stage 4 geometric finalization brief.",
+  });
+  check(
+    !isError(stageFourAResult) && !isError(stageFourBResult),
+    "Stage 4 concepts must be created independently after Stage 3 completes",
+  );
+  const [stageFourAImport, stageFourBImport] = await Promise.all([
+    importStageThreeConceptReference(owner, {
+      projectId,
+      folderId: stageFourAResult.folder.id,
+      sourceConceptId: conceptA.id,
+    }),
+    importStageThreeConceptReference(owner, {
+      projectId,
+      folderId: stageFourBResult.folder.id,
+      sourceConceptId: conceptB.id,
+    }),
+  ]);
+  check(
+    !isError(stageFourAImport) && !isError(stageFourBImport),
+    "approved Stage 3 concepts must be imported explicitly into their Stage 4 chats",
+  );
 
   const stageFourFolders = await prisma.projectConceptFolder.findMany({
     where: {
@@ -844,7 +879,7 @@ async function main() {
           folder.sourceStage3ConceptId &&
           folder.sourceStage3ApprovedAttachmentId,
       ),
-    "only approved A/B concepts must promote with new unstarted taskers, fresh briefs, and source references",
+    "independently created A/B concepts must retain new taskers and explicit source references",
   );
   const stageThreeWorkflow = await prisma.projectWorkflowStage.findUniqueOrThrow({
     where: {
@@ -1062,9 +1097,9 @@ async function main() {
   });
   check(
     !isError(finalBApproval) &&
-      "stageTransition" in finalBApproval &&
-      finalBApproval.stageTransition.transitioned,
-    "Project Owner approval of the final outstanding Stage 4 concept must automatically activate Stage 5",
+      finalBApproval.allConceptsApproved &&
+      !("stageTransition" in finalBApproval),
+    "final Stage 4 approval must wait for explicit owner completion confirmation",
   );
 
   const [stageFourCompletionA, stageFourCompletionB] = await Promise.all([
@@ -1074,11 +1109,10 @@ async function main() {
   check(
     !isError(stageFourCompletionA) &&
       !isError(stageFourCompletionB) &&
-      !stageFourCompletionA.transitioned &&
-      !stageFourCompletionB.transitioned,
-    "manual Stage 4 completion retries must remain idempotent after automatic progression",
+      (stageFourCompletionA.transitioned || stageFourCompletionB.transitioned),
+    "manual Stage 4 confirmation must transition once and remain idempotent",
   );
-  const stageFourCompletion = finalBApproval.stageTransition;
+  const stageFourCompletion = stageFourCompletionA;
   await notifyStageFiveActivated({
     projectId,
     finalFileCount: stageFourCompletion.finalApprovedCount,

@@ -152,12 +152,21 @@ assert(
     workspace.includes("disabled={isCompleting}") &&
     workspace.includes("completionDialogOpen &&\n          stageCompletionReady") &&
     concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
-    concepts.includes("approvedConcepts.length === 0") &&
     concepts.includes("unapprovedConcepts.length > 0") &&
     concepts.includes("Every Stage 3 concept must have an Approved Concept") &&
-    workspace.includes("const stageCompletionReady = allConceptsApproved") &&
+    workspace.includes("isEmptyStageThree || allConceptsApproved") &&
     concepts.includes("Only the Project Owner or Super Admin can complete Stage 3."),
-  "Stage 3/4 completion controls must stay hidden until every concept is approved and be enforced separately from concept management.",
+  "Stage 3 may be skipped only while empty; otherwise Stage 3/4 completion must wait for every created concept and remain owner-authorized.",
+);
+assert(
+  workspace.includes("No Stage 3 concepts have been created") &&
+    workspace.includes("Stage 4 will open without automatically creating any folders") &&
+    workspace.includes('"Continue to Stage 4"') &&
+    workspace.includes('"Continue to Stage 5"') &&
+    workspace.includes('cancelLabel="Cancel"') &&
+    !concepts.includes("const stageTransition = await completeStageThreeConcepts") &&
+    !concepts.includes("const stageTransition = await completeStageFourConcepts"),
+  "Stages 3 and 4 must advance only through their explicit manual continue/skip actions and never from final-file approval.",
 );
 assert(
   history.includes('mode: "work"') &&

@@ -16,6 +16,7 @@ import {
   editProjectConceptFolder,
   getProjectConceptChatContext,
   getProjectConceptFolders,
+  importStageThreeConceptReference,
   markProjectConceptApprovedAttachment,
 } from "../src/lib/project-concepts";
 import {
@@ -92,6 +93,7 @@ async function main() {
   const projectId = `concept-round-one-${runId}`;
   const foreignProjectId = `concept-round-two-foreign-${runId}`;
   const conflictProjectId = `concept-round-three-conflict-${runId}`;
+  const optionalStageThreeProjectId = `concept-round-three-optional-${runId}`;
   const userSpecs = [
     ["super", UserRole.SUPER_ADMIN],
     ["owner", UserRole.COLLABORATOR],
@@ -1191,7 +1193,7 @@ async function main() {
         unlockedAt: null,
       },
     });
-    const attachmentCountBeforePromotion = await prisma.projectAttachment.count({
+    const attachmentCountBeforeImport = await prisma.projectAttachment.count({
       where: { id: replacementFile.id },
     });
     check(
@@ -1212,9 +1214,9 @@ async function main() {
     });
     check(
       !isErrorResult(conceptBApproval) &&
-        "stageTransition" in conceptBApproval &&
-        conceptBApproval.stageTransition.transitioned,
-      "approving the final pending Stage 3 concept must activate Stage 4",
+        conceptBApproval.allConceptsApproved &&
+        !("stageTransition" in conceptBApproval),
+      "approving the final pending Stage 3 concept must wait for explicit completion confirmation",
     );
     const [completion, concurrentCompletion] = await Promise.all([
       completeStageThreeConcepts(owner, { projectId }),
@@ -1223,15 +1225,14 @@ async function main() {
     check(
       !isErrorResult(completion) &&
         !isErrorResult(concurrentCompletion) &&
-        !completion.transitioned &&
-        !concurrentCompletion.transitioned,
-      "concurrent completion retries must resolve idempotently after automatic progression",
+        (completion.transitioned || concurrentCompletion.transitioned),
+      "explicit concurrent completion must transition once and resolve idempotently",
     );
     check(
-      conceptBApproval.stageTransition.approvedCount === 2 &&
-        conceptBApproval.stageTransition.unapprovedConcepts.length === 0 &&
-        completion.approvedCount === 2,
-      "completion must promote every approved concept without leaving pending concepts behind",
+      completion.approvedCount === 2 &&
+        completion.unapprovedConcepts.length === 0 &&
+        concurrentCompletion.approvedCount === 2,
+      "completion must validate every approved concept without leaving pending concepts behind",
     );
     const workflowAfterCompletion = await prisma.projectWorkflowStage.findMany({
       where: {
@@ -1260,6 +1261,32 @@ async function main() {
       unlockedStageFour?.status === ProjectWorkflowStageStatus.AVAILABLE &&
         unlockedStageFour.unlockedAt !== null,
       "completion must unlock Stage 4",
+    );
+    check(
+      completion.promotedFolderIds.length === 0 &&
+        concurrentCompletion.promotedFolderIds.length === 0,
+      "Stage 3 completion must not automatically create or promote Stage 4 folders",
+    );
+
+    const independentStageFourConcept = await createProjectConceptFolder(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      name: "Renamed Accepted Concept",
+      assignedExecutorId: executorA.id,
+    });
+    check(
+      !isErrorResult(independentStageFourConcept),
+      "Stage 4 folders must be created independently after the manual transition",
+    );
+    const explicitImport = await importStageThreeConceptReference(owner, {
+      projectId,
+      folderId: independentStageFourConcept.folder.id,
+      sourceConceptId: conceptA.folder.id,
+    });
+    check(
+      !isErrorResult(explicitImport) &&
+        explicitImport.reference.id === replacementFile.id,
+      "the owner must explicitly import an approved Stage 3 concept into a Stage 4 chat",
     );
 
     const unlockedStageFourContext = await getProjectConceptChatContext(owner, {
@@ -1319,11 +1346,12 @@ async function main() {
       },
     });
     check(
-      promotedConcept.name === "Renamed Accepted Concept" &&
+      promotedConcept.id === independentStageFourConcept.folder.id &&
+        promotedConcept.name === "Renamed Accepted Concept" &&
         promotedConcept.workflowStageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT &&
         promotedConcept.assignedExecutorId === executorA.id &&
         promotedConcept.sourceStage3ApprovedAttachmentId === replacementFile.id,
-      "Stage 4 concept must preserve name, executor, source lineage, and the exact approved binary",
+      "the independently created Stage 4 concept must preserve its identity and the explicitly imported source binary",
     );
     check(
       (await prisma.projectAttachment.findUniqueOrThrow({
@@ -1345,12 +1373,12 @@ async function main() {
         promotedConcept.taskerStage.status === StageStatus.ONGOING &&
         promotedConcept.taskerStage._count.revisions === 0 &&
         promotedConcept.taskerStage._count.attachments === 0,
-      "promoted Stage 4 concept must have a fresh independent unstarted tasker",
+      "explicit import must not replace the independently created Stage 4 tasker or its brief",
     );
     check(
-      attachmentCountBeforePromotion === 1 &&
+      attachmentCountBeforeImport === 1 &&
         (await prisma.projectAttachment.count({ where: { id: replacementFile.id } })) === 1,
-      "promotion must reference the existing binary without copying it",
+      "explicit import must reference the existing binary without copying it",
     );
     check(
       (await prisma.projectStageFileHandoff.count({
@@ -1361,11 +1389,11 @@ async function main() {
 
     await notifyStageFourConceptsActivated({
       projectId,
-      folderIds: completion.promotedFolderIds,
+      folderIds: [],
       actorId: owner.id,
     });
     const activationRecipients = await prisma.notification.findMany({
-      where: { projectId, title: "Stage 4 concepts activated" },
+      where: { projectId, title: "Stage 4 activated" },
       select: { userId: true },
     });
     const activationRecipientIds = activationRecipients.map(
@@ -1378,7 +1406,7 @@ async function main() {
         !activationRecipientIds.includes(owner.id) &&
         !activationRecipientIds.includes(collaborator.id) &&
         !activationRecipientIds.includes(superAdmin.id),
-      "Stage 4 activation notifications must remain manager/assigned-executor scoped",
+      "Stage 4 activation notifications must remain manager/project-executor scoped",
     );
 
     const stageFourEdit = await editProjectConceptFolder(owner, {
@@ -1740,9 +1768,35 @@ async function main() {
     });
     check(
       !isErrorResult(automaticCompletion) &&
-        "stageTransition" in automaticCompletion &&
-        automaticCompletion.stageTransition.transitioned,
-      "approving the final pending concept must automatically complete Stage 3 and activate Stage 4",
+        automaticCompletion.allConceptsApproved &&
+        !("stageTransition" in automaticCompletion),
+      "approving the final pending concept must keep Stage 3 open for explicit confirmation",
+    );
+    check(
+      (await prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId: conflictProjectId,
+            stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+          },
+        },
+      })).status === ProjectWorkflowStageStatus.AVAILABLE &&
+        (await prisma.projectWorkflowStage.findUniqueOrThrow({
+          where: {
+            projectId_stageKey: {
+              projectId: conflictProjectId,
+              stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            },
+          },
+        })).status === ProjectWorkflowStageStatus.LOCKED,
+      "final concept approval must not bypass the Stage 3 completion confirmation",
+    );
+    const confirmedCompletion = await completeStageThreeConcepts(owner, {
+      projectId: conflictProjectId,
+    });
+    check(
+      !isErrorResult(confirmedCompletion) && confirmedCompletion.transitioned,
+      "explicit Stage 3 confirmation must activate Stage 4",
     );
     check(
       (await prisma.projectWorkflowStage.findUniqueOrThrow({
@@ -1761,7 +1815,56 @@ async function main() {
             },
           },
         })).status === ProjectWorkflowStageStatus.AVAILABLE,
-      "automatic concept completion must persist the Stage 3 to Stage 4 workflow transition",
+      "confirmed concept completion must persist the Stage 3 to Stage 4 workflow transition",
+    );
+
+    await prisma.project.create({
+      data: {
+        id: optionalStageThreeProjectId,
+        name: `Optional Stage 3 ${runId}`,
+        ownerId: owner.id,
+        createdById: superAdmin.id,
+        executors: {
+          create: [{ userId: executorA.id, addedById: owner.id }],
+        },
+        workflowStages: {
+          create: workflowAt(ProjectWorkflowStageKey.CONCEPT_CREATION),
+        },
+      },
+    });
+    const skippedStageThree = await completeStageThreeConcepts(owner, {
+      projectId: optionalStageThreeProjectId,
+    });
+    check(
+      !isErrorResult(skippedStageThree) &&
+        skippedStageThree.transitioned &&
+        skippedStageThree.skipped &&
+        skippedStageThree.approvedCount === 0,
+      "an empty Stage 3 must be skippable through the explicit owner action",
+    );
+    const optionalWorkflow = await prisma.projectWorkflowStage.findMany({
+      where: {
+        projectId: optionalStageThreeProjectId,
+        stageKey: {
+          in: [
+            ProjectWorkflowStageKey.CONCEPT_CREATION,
+            ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          ],
+        },
+      },
+      select: { stageKey: true, status: true },
+    });
+    check(
+      optionalWorkflow.find(
+        (stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION,
+      )?.status === ProjectWorkflowStageStatus.COMPLETED &&
+        optionalWorkflow.find(
+          (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        )?.status === ProjectWorkflowStageStatus.AVAILABLE &&
+        (await prisma.projectConceptFolder.count({
+          where: { projectId: optionalStageThreeProjectId },
+        })) === 0,
+      "skipping Stage 3 must unlock an empty Stage 4 without creating concept folders",
     );
 
     const normalStage = await prisma.projectStage.create({
@@ -1795,7 +1898,16 @@ async function main() {
     check(normalApproval.status === ProjectRevisionStatus.APPROVED, "normal stage approval must remain healthy");
   } finally {
     await prisma.project.deleteMany({
-      where: { id: { in: [projectId, foreignProjectId, conflictProjectId] } },
+      where: {
+        id: {
+          in: [
+            projectId,
+            foreignProjectId,
+            conflictProjectId,
+            optionalStageThreeProjectId,
+          ],
+        },
+      },
     });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }

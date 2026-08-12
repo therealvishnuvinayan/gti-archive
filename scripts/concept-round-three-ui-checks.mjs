@@ -77,8 +77,8 @@ assert(
     concepts.includes("submissionReviewStatus: SubmissionReviewStatus.APPROVED") &&
     concepts.includes("status: StageStatus.COMPLETED") &&
     concepts.includes("allConceptsApproved: unapprovedConceptCount === 0") &&
-    concepts.includes("const stageTransition = await completeStageThreeConcepts"),
-  "Designating the approved file must approve its revision and files, complete the concept tasker, and advance automatically after every concept is approved.",
+    !concepts.includes("const stageTransition = await completeStageThreeConcepts"),
+  "Designating the approved file must approve its revision and files and complete the concept tasker without bypassing explicit Stage 3 confirmation.",
 );
 
 assert(
@@ -86,31 +86,29 @@ assert(
     concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
     concepts.includes("Only the Project Owner or Super Admin can complete Stage 3.") &&
     concepts.includes("TransactionIsolationLevel.Serializable") &&
-    concepts.includes("approvedConcepts.length === 0") &&
     concepts.includes("unapprovedConcepts.length > 0") &&
     concepts.includes("Every Stage 3 concept must have an Approved Concept") &&
-    concepts.includes("sourceStage3ConceptId: concept.id") &&
-    concepts.includes("sourceStage3ApprovedAttachmentId: approvedAttachmentId") &&
-    concepts.includes("description: null") &&
-    concepts.includes("actualStartedAt: null") &&
+    concepts.includes("skipped: project.conceptFolders.length === 0") &&
     concepts.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     concepts.includes("ProjectWorkflowStageStatus.AVAILABLE") &&
     !concepts.includes("ProjectStageFileHandoff"),
-  "Owner/Super-Admin-only Stage 3 completion must require and atomically promote every approved concept to fresh Stage 4 taskers without a Stage 5 handoff.",
+  "Owner/Super-Admin-only Stage 3 completion must permit an empty optional stage, validate created concepts, and unlock Stage 4 without automatic promotion.",
 );
 assert(
-  concepts.includes("bySourceId") &&
-    concepts.includes("byNormalizedName") &&
-    concepts.includes("unrelated concept named") &&
-    concepts.includes("transitioned"),
-  "Promotion must be idempotent and fail clearly on unrelated Stage 4 name collisions.",
+  concepts.includes("importStageThreeConceptReference") &&
+    concepts.includes("Choose a Stage 3 concept that has an Approved Concept file") &&
+    concepts.includes("sourceStage3ConceptId: sourceConcept.id") &&
+    concepts.includes("sourceStage3ApprovedAttachmentId: sourceConcept.approvedAttachmentId") &&
+    concepts.includes("availableStageThreeReferences"),
+  "Approved Stage 3 references must be explicitly imported into a Stage 4 chat through a server-authorized action.",
 );
 
 for (const label of [
   "Approved Concept",
   "Not Approved",
   "Changes Requested",
-  "Complete Stage 3",
+  "Skip Stage 3",
+  "Continue to Stage 4",
   "Starting Reference",
   "Stage 3 Completed",
 ]) {
@@ -120,7 +118,7 @@ assert(
   workspace.includes("unapprovedConcepts.map") &&
     workspace.includes("completeStageThreeConceptsAction") &&
     workspace.includes("stageNumber === 3") &&
-    workspace.includes("approvedConceptCount === 0") &&
+    workspace.includes("isEmptyStageThree") &&
     workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
     workspace.includes("folder.startingReference.previewPath") &&
     workspace.includes("folder.startingReference.downloadPath"),
@@ -153,16 +151,15 @@ assert(
 );
 
 assert(
-  actions.includes("markProjectConceptApprovedAttachmentAction") &&
+    actions.includes("markProjectConceptApprovedAttachmentAction") &&
     actions.includes("completeStageThreeConceptsAction") &&
     actions.includes("result.changed") &&
-    actions.includes('"stageTransition" in result') &&
-    actions.includes("result.transitioned || result.createdFolderIds.length > 0") &&
+    !actions.includes('"stageTransition" in result') &&
     notifications.includes("notifyConceptFileApproved") &&
     notifications.includes("notifyStageFourConceptsActivated") &&
     notifications.includes('title: "Concept file approved"') &&
-    notifications.includes('title: "Stage 4 concepts activated"'),
-  "Round 3 actions must revalidate and send scoped, state-change-only notifications.",
+    notifications.includes('title: "Stage 4 activated"'),
+  "Round 3 approval and explicit completion actions must revalidate and send scoped, state-change-only notifications.",
 );
 
-console.log("Stage 3/4 Round 3 approval/promotion UI and security checks passed.");
+console.log("Stage 3/4 optional flow and explicit reference-import UI/security checks passed.");

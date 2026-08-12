@@ -53,8 +53,8 @@ assert(
     concepts.includes("submissionReviewStatus: SubmissionReviewStatus.APPROVED") &&
     concepts.includes("status: StageStatus.COMPLETED") &&
     concepts.includes("allConceptsApproved: conceptsWithoutFinalFile === 0") &&
-    concepts.includes("const stageTransition = await completeStageFourConcepts"),
-  "Final-file approval must approve its revision and files, complete the concept tasker, and advance automatically after every final concept is approved.",
+    !concepts.includes("const stageTransition = await completeStageFourConcepts"),
+  "Final-file approval must approve its revision and files and complete the concept tasker without bypassing explicit Stage 4 confirmation.",
 );
 
 assert(
@@ -87,7 +87,7 @@ for (const label of [
   "Final Approved",
   "In Progress",
   "Changes Requested",
-  "Complete Stage 4",
+  "Continue to Stage 5",
   "Stage 4 Completed",
   "Final Approved File",
   "will continue to Stage 5",
@@ -99,7 +99,7 @@ assert(
   workspace.includes("completeStageFourConceptsAction") &&
     workspace.includes("allConceptsApproved") &&
     workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
-    workspace.includes("confirmDisabled={!allConceptsApproved}") &&
+    workspace.includes("confirmDisabled={!stageCompletionReady}") &&
     concepts.includes("conceptsWithoutFinalFile.length > 0") &&
     concepts.includes("Every Stage 4 concept must receive Final Approval") &&
     !workspace.includes("Final files for Stage 5") &&
@@ -124,16 +124,15 @@ assert(
 );
 
 assert(
-  actions.includes("markStageFourFinalApprovedAttachmentAction") &&
+    actions.includes("markStageFourFinalApprovedAttachmentAction") &&
     actions.includes("completeStageFourConceptsAction") &&
     actions.includes("result.changed") &&
-    actions.includes('"stageTransition" in result') &&
     actions.includes("result.transitioned") &&
     notifications.includes("notifyStageFourFinalFileApproved") &&
     notifications.includes("notifyStageFiveActivated") &&
     notifications.includes('title: "Final concept file approved"') &&
     notifications.includes('title: "Stage 5 available"'),
-  "Round 4 actions must revalidate and emit scoped state-change-only notifications.",
+  "Round 4 approval and explicit completion actions must revalidate and emit scoped state-change-only notifications.",
 );
 
 assert(

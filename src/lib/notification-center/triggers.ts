@@ -201,10 +201,6 @@ export async function notifyStageFourConceptsActivated(input: {
   folderIds: string[];
   actorId: string;
 }) {
-  if (input.folderIds.length === 0) {
-    return;
-  }
-
   const project = await withPrismaRetry(() =>
     prisma.project.findUnique({
       where: { id: input.projectId },
@@ -213,6 +209,7 @@ export async function notifyStageFourConceptsActivated(input: {
         name: true,
         ownerId: true,
         coOwners: { select: { userId: true } },
+        executors: { select: { userId: true } },
         conceptFolders: {
           where: {
             id: { in: input.folderIds },
@@ -231,14 +228,15 @@ export async function notifyStageFourConceptsActivated(input: {
   const recipientUserIds = dedupeRecipients([
     project.ownerId,
     ...project.coOwners.map((coOwner) => coOwner.userId),
+    ...project.executors.map((executor) => executor.userId),
     ...project.conceptFolders.map((folder) => folder.assignedExecutorId),
   ]).filter((userId) => userId !== input.actorId);
 
   await createNotificationsForUsers({
     recipientUserIds,
     type: "NEXT_STAGE_ACTIVATED",
-    title: "Stage 4 concepts activated",
-    message: `${input.folderIds.length} approved concept${input.folderIds.length === 1 ? " is" : "s are"} ready for project development in ${project.name}.`,
+    title: "Stage 4 activated",
+    message: `Stage 4 is ready in ${project.name}. Create final-concept folders and optionally import an approved Stage 3 concept as a starting reference.`,
     entityType: "PROJECT",
     entityId: project.id,
     projectId: project.id,

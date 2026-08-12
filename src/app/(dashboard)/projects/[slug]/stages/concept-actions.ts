@@ -15,6 +15,7 @@ import {
   completeStageThreeConcepts,
   createProjectConceptFolder,
   editProjectConceptFolder,
+  importStageThreeConceptReference,
   markProjectConceptApprovedAttachment,
   markStageFourFinalApprovedAttachment,
   renameProjectConceptFolder,
@@ -83,6 +84,32 @@ export async function editProjectConceptFolderAction(input: {
   }
 }
 
+export async function importStageThreeConceptReferenceAction(input: {
+  projectId: string;
+  folderId: string;
+  sourceConceptId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await importStageThreeConceptReference(user, input);
+
+    if (!("error" in result)) {
+      revalidateConceptStage(input.projectId, "PROJECT_DEVELOPMENT");
+      revalidatePath(
+        `/projects/${input.projectId}/stages/4/concepts/${input.folderId}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] Stage 3 reference import failed", error);
+    return {
+      error: "Unable to import the approved Stage 3 concept right now.",
+    } as const;
+  }
+}
+
 export async function renameProjectConceptFolderAction(input: {
   projectId: string;
   stageKey: ConceptWorkflowStageKey;
@@ -133,26 +160,6 @@ export async function markProjectConceptApprovedAttachmentAction(input: {
         );
       }
 
-      if ("stageTransition" in result) {
-        revalidateConceptStage(input.projectId, "PROJECT_DEVELOPMENT");
-        for (const folderId of result.stageTransition.promotedFolderIds) {
-          revalidatePath(
-            `/projects/${input.projectId}/stages/4/concepts/${folderId}`,
-          );
-        }
-        if (
-          result.stageTransition.transitioned ||
-          result.stageTransition.createdFolderIds.length > 0
-        ) {
-          await runNotificationTask("stage-four-concepts-activated", () =>
-            notifyStageFourConceptsActivated({
-              projectId: input.projectId,
-              folderIds: result.stageTransition.promotedFolderIds,
-              actorId: user.id,
-            }),
-          );
-        }
-      }
     }
 
     return result;
@@ -180,17 +187,11 @@ export async function completeStageThreeConceptsAction(input: {
         "PROJECT_DEVELOPMENT",
       );
 
-      for (const folderId of result.promotedFolderIds) {
-        revalidatePath(
-          `/projects/${input.projectId}/stages/4/concepts/${folderId}`,
-        );
-      }
-
-      if (result.transitioned || result.createdFolderIds.length > 0) {
+      if (result.transitioned) {
         await runNotificationTask("stage-four-concepts-activated", () =>
           notifyStageFourConceptsActivated({
             projectId: input.projectId,
-            folderIds: result.promotedFolderIds,
+            folderIds: [],
             actorId: user.id,
           }),
         );
@@ -219,8 +220,6 @@ export async function markStageFourFinalApprovedAttachmentAction(input: {
       revalidatePath(
         `/projects/${input.projectId}/stages/4/concepts/${input.folderId}`,
       );
-      revalidatePath(`/projects/${input.projectId}/stages/5`);
-
       if (result.changed) {
         await runNotificationTask("stage-four-final-file-approved", () =>
           notifyStageFourFinalFileApproved({
@@ -230,15 +229,6 @@ export async function markStageFourFinalApprovedAttachmentAction(input: {
         );
       }
 
-      if ("stageTransition" in result && result.stageTransition.transitioned) {
-        await runNotificationTask("stage-five-activated", () =>
-          notifyStageFiveActivated({
-            projectId: input.projectId,
-            finalFileCount: result.stageTransition.finalApprovedCount,
-            actorId: user.id,
-          }),
-        );
-      }
     }
 
     return result;

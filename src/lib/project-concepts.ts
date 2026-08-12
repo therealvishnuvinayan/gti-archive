@@ -40,6 +40,12 @@ export type ProjectConceptAttachmentReference = {
   downloadPath: string;
 };
 
+export type ProjectConceptStageThreeReference =
+  ProjectConceptAttachmentReference & {
+    sourceConceptId: string;
+    sourceConceptName: string;
+  };
+
 export type ConceptWorkflowStageKey =
   | typeof ProjectWorkflowStageKey.CONCEPT_CREATION
   | typeof ProjectWorkflowStageKey.PROJECT_DEVELOPMENT;
@@ -95,10 +101,8 @@ export type ProjectConceptChatMode = {
   participantUserIds: string[];
   approvedAttachmentId: string | null;
   isWorkflowCompleted: boolean;
-  startingReference: (ProjectConceptAttachmentReference & {
-    sourceConceptId: string;
-    sourceConceptName: string;
-  }) | null;
+  startingReference: ProjectConceptStageThreeReference | null;
+  availableStageThreeReferences: ProjectConceptStageThreeReference[];
   backHref: string;
   compareHref: string;
 };
@@ -437,13 +441,11 @@ export async function createProjectConceptFolder(
     ProjectWorkflowStageStatus.COMPLETED
   ) {
     return {
-      error: "Concept management is locked because Stage 3 is completed.",
-    } as const;
-  }
-
-  if (input.stageKey !== ProjectWorkflowStageKey.CONCEPT_CREATION) {
-    return {
-      error: "Stage 4 concepts are created from approved Stage 3 concepts in a later workflow round.",
+      error: `Concept management is locked because ${
+        input.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION
+          ? "Stage 3"
+          : "Stage 4"
+      } is completed.`,
     } as const;
   }
 
@@ -526,6 +528,179 @@ export async function createProjectConceptFolder(
       (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
     ) {
       return { error: "A concept folder with this name already exists." } as const;
+    }
+
+    throw error;
+  }
+}
+
+export async function importStageThreeConceptReference(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    folderId: string;
+    sourceConceptId: string;
+  },
+) {
+  try {
+    return await withPrismaRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const folder = await tx.projectConceptFolder.findFirst({
+            where: {
+              id: input.folderId,
+              projectId: input.projectId,
+              workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+              taskerStage: { projectId: input.projectId, isTasker: true },
+            },
+            select: {
+              id: true,
+              taskerStageId: true,
+              assignedExecutorId: true,
+              sourceStage3ConceptId: true,
+              sourceStage3ApprovedAttachmentId: true,
+              project: {
+                select: {
+                  ownerId: true,
+                  coOwners: { select: { userId: true } },
+                  workflowStages: {
+                    where: {
+                      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                    },
+                    select: { status: true },
+                  },
+                },
+              },
+            },
+          });
+
+          if (!folder) {
+            return { error: "Stage 4 concept not found." } as const;
+          }
+
+          const accessContext: ConceptAccessContext = {
+            folderId: folder.id,
+            projectId: input.projectId,
+            taskerStageId: folder.taskerStageId,
+            workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+            assignedExecutorId: folder.assignedExecutorId,
+            ownerId: folder.project.ownerId,
+            coOwnerIds: folder.project.coOwners.map((coOwner) => coOwner.userId),
+          };
+
+          if (!canCompleteProjectConceptStage(user, accessContext)) {
+            return {
+              error: "Only the Project Owner or Super Admin can import an approved Stage 3 concept.",
+            } as const;
+          }
+
+          if (
+            folder.project.workflowStages[0]?.status !==
+            ProjectWorkflowStageStatus.AVAILABLE
+          ) {
+            return { error: "Stage 4 is not currently available." } as const;
+          }
+
+          if (folder.sourceStage3ConceptId) {
+            if (folder.sourceStage3ConceptId === input.sourceConceptId) {
+              const existingSource = await tx.projectConceptFolder.findUnique({
+                where: { id: input.sourceConceptId },
+                select: {
+                  id: true,
+                  name: true,
+                  approvedAttachment: {
+                    select: {
+                      id: true,
+                      originalFileName: true,
+                      mimeType: true,
+                      fileSize: true,
+                    },
+                  },
+                },
+              });
+
+              if (existingSource?.approvedAttachment) {
+                return {
+                  imported: false,
+                  reference: {
+                    ...mapConceptAttachmentReference(existingSource.approvedAttachment),
+                    sourceConceptId: existingSource.id,
+                    sourceConceptName: existingSource.name,
+                  },
+                } as const;
+              }
+            }
+
+            return {
+              error: "This Stage 4 concept already has an imported Stage 3 reference.",
+            } as const;
+          }
+
+          const sourceConcept = await tx.projectConceptFolder.findFirst({
+            where: {
+              id: input.sourceConceptId,
+              projectId: input.projectId,
+              workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+              approvedAttachmentId: { not: null },
+            },
+            select: {
+              id: true,
+              name: true,
+              approvedAttachmentId: true,
+              approvedAttachment: {
+                select: {
+                  id: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                },
+              },
+            },
+          });
+
+          if (!sourceConcept?.approvedAttachmentId || !sourceConcept.approvedAttachment) {
+            return {
+              error: "Choose a Stage 3 concept that has an Approved Concept file.",
+            } as const;
+          }
+
+          await tx.projectConceptFolder.update({
+            where: { id: folder.id },
+            data: {
+              sourceStage3ConceptId: sourceConcept.id,
+              sourceStage3ApprovedAttachmentId: sourceConcept.approvedAttachmentId,
+            },
+          });
+
+          return {
+            imported: true,
+            reference: {
+              ...mapConceptAttachmentReference(sourceConcept.approvedAttachment),
+              sourceConceptId: sourceConcept.id,
+              sourceConceptName: sourceConcept.name,
+            },
+          } as const;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 15_000,
+        },
+      ),
+    );
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return {
+          error: "That Stage 3 concept is already imported into another Stage 4 concept.",
+        } as const;
+      }
+
+      if (error.code === "P2034") {
+        return {
+          error: "The concept reference changed at the same time. Please try again.",
+        } as const;
+      }
     }
 
     throw error;
@@ -960,17 +1135,7 @@ export async function markProjectConceptApprovedAttachment(
       ),
     );
 
-    if ("error" in designation || !designation.allConceptsApproved) {
-      return designation;
-    }
-
-    const stageTransition = await completeStageThreeConcepts(user, {
-      projectId: input.projectId,
-    });
-
-    return "error" in stageTransition
-      ? { ...designation, transitionError: stageTransition.error }
-      : { ...designation, stageTransition };
+    return designation;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
@@ -1167,17 +1332,7 @@ export async function markStageFourFinalApprovedAttachment(
       ),
     );
 
-    if ("error" in designation || !designation.allConceptsApproved) {
-      return designation;
-    }
-
-    const stageTransition = await completeStageFourConcepts(user, {
-      projectId: input.projectId,
-    });
-
-    return "error" in stageTransition
-      ? { ...designation, transitionError: stageTransition.error }
-      : { ...designation, stageTransition };
+    return designation;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
@@ -1202,6 +1357,7 @@ type StageThreeCompletionResult = {
   createdFolderIds: string[];
   promotedFolderIds: string[];
   approvedCount: number;
+  skipped: boolean;
   unapprovedConcepts: Array<{ id: string; name: string }>;
 };
 
@@ -1306,12 +1462,6 @@ export async function completeStageThreeConcepts(
             .filter((folder) => !folder.approvedAttachmentId)
             .map((folder) => ({ id: folder.id, name: folder.name }));
 
-          if (approvedConcepts.length === 0) {
-            return {
-              error: "Create and approve at least one concept before Stage 3 can be completed.",
-            };
-          }
-
           if (unapprovedConcepts.length > 0) {
             return {
               error: `Every Stage 3 concept must have an Approved Concept before Stage 3 can be completed. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`,
@@ -1332,109 +1482,6 @@ export async function completeStageThreeConcepts(
                 error: `The Approved Concept for “${concept.name}” is no longer eligible. Select a valid formal revision file before completing Stage 3.`,
               };
             }
-          }
-
-          const existingStageFour = await tx.projectConceptFolder.findMany({
-            where: {
-              projectId: project.id,
-              workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-            },
-            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-            select: {
-              id: true,
-              name: true,
-              normalizedName: true,
-              sortOrder: true,
-              sourceStage3ConceptId: true,
-              sourceStage3ApprovedAttachmentId: true,
-            },
-          });
-          const bySourceId = new Map(
-            existingStageFour
-              .filter((folder) => folder.sourceStage3ConceptId)
-              .map((folder) => [folder.sourceStage3ConceptId!, folder]),
-          );
-          const byNormalizedName = new Map(
-            existingStageFour.map((folder) => [folder.normalizedName, folder]),
-          );
-
-          for (const concept of approvedConcepts) {
-            const existingPromotion = bySourceId.get(concept.id);
-
-            if (
-              existingPromotion &&
-              existingPromotion.sourceStage3ApprovedAttachmentId !==
-                concept.approvedAttachmentId
-            ) {
-              return {
-                error: `The Stage 4 promotion for “${concept.name}” conflicts with its current Approved Concept file.`,
-              };
-            }
-
-            if (
-              !existingPromotion &&
-              byNormalizedName.has(concept.normalizedName)
-            ) {
-              return {
-                error: `Stage 4 already contains an unrelated concept named “${concept.name}”. Rename it before completing Stage 3.`,
-              };
-            }
-          }
-
-          const createdFolderIds: string[] = [];
-          const promotedFolderIds: string[] = [];
-          let nextSortOrder =
-            existingStageFour.reduce(
-              (maximum, folder) => Math.max(maximum, folder.sortOrder),
-              0,
-            ) + 1;
-
-          for (const concept of approvedConcepts) {
-            const approvedAttachmentId = concept.approvedAttachmentId!;
-            const existingPromotion = bySourceId.get(concept.id);
-
-            if (existingPromotion) {
-              promotedFolderIds.push(existingPromotion.id);
-              continue;
-            }
-
-            const taskerStage = await tx.projectStage.create({
-              data: {
-                projectId: project.id,
-                name: concept.name,
-                description: null,
-                invoiceRequired: false,
-                isTasker: true,
-                actualStartedAt: null,
-                startedById: null,
-                status: StageStatus.ONGOING,
-                order: getTaskerStageOrder(
-                  ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-                  nextSortOrder,
-                ),
-              },
-              select: { id: true },
-            });
-            const promoted = await tx.projectConceptFolder.create({
-              data: {
-                projectId: project.id,
-                workflowStageKey:
-                  ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
-                taskerStageId: taskerStage.id,
-                assignedExecutorId: concept.assignedExecutorId,
-                name: concept.name,
-                normalizedName: concept.normalizedName,
-                sortOrder: nextSortOrder,
-                createdById: user.id,
-                sourceStage3ConceptId: concept.id,
-                sourceStage3ApprovedAttachmentId: approvedAttachmentId,
-              },
-              select: { id: true },
-            });
-
-            createdFolderIds.push(promoted.id);
-            promotedFolderIds.push(promoted.id);
-            nextSortOrder += 1;
           }
 
           const transitioned = completionMode === "TRANSITION";
@@ -1468,9 +1515,10 @@ export async function completeStageThreeConcepts(
 
           return {
             transitioned,
-            createdFolderIds,
-            promotedFolderIds,
+            createdFolderIds: [],
+            promotedFolderIds: [],
             approvedCount: approvedConcepts.length,
+            skipped: project.conceptFolders.length === 0,
             unapprovedConcepts,
           };
         },
@@ -1914,6 +1962,47 @@ export async function getProjectConceptChatContext(
           sourceConceptName: record.sourceStage3Concept.name,
         }
       : null;
+  const availableStageThreeReferences =
+    input.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT &&
+    canCompleteProjectConceptStage(user, accessContext) &&
+    workflowStatus === ProjectWorkflowStageStatus.AVAILABLE &&
+    !startingReference
+      ? await withPrismaRetry(() =>
+          prisma.projectConceptFolder.findMany({
+            where: {
+              projectId: input.projectId,
+              workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+              approvedAttachmentId: { not: null },
+              promotedStage4Concept: null,
+            },
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              name: true,
+              approvedAttachment: {
+                select: {
+                  id: true,
+                  originalFileName: true,
+                  mimeType: true,
+                  fileSize: true,
+                },
+              },
+            },
+          }),
+        ).then((concepts) =>
+          concepts.flatMap((concept) =>
+            concept.approvedAttachment
+              ? [
+                  {
+                    ...mapConceptAttachmentReference(concept.approvedAttachment),
+                    sourceConceptId: concept.id,
+                    sourceConceptName: concept.name,
+                  },
+                ]
+              : [],
+          ),
+        )
+      : [];
 
   return {
     projectId: input.projectId,
@@ -1942,6 +2031,7 @@ export async function getProjectConceptChatContext(
       isWorkflowCompleted:
         workflowStatus === ProjectWorkflowStageStatus.COMPLETED,
       startingReference,
+      availableStageThreeReferences,
       backHref: `/projects/${encodeURIComponent(input.projectId)}/stages/${stageNumber}`,
       compareHref: `${conceptPath}/compare`,
     } satisfies ProjectConceptChatMode,

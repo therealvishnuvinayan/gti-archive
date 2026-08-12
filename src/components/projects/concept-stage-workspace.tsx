@@ -417,7 +417,9 @@ export function ConceptStageWorkspace({
   );
   const allConceptsApproved =
     completionConcepts.length > 0 && unapprovedConcepts.length === 0;
-  const stageCompletionReady = allConceptsApproved;
+  const isEmptyStageThree = stageNumber === 3 && completionConcepts.length === 0;
+  const stageCompletionReady =
+    stageNumber === 3 ? isEmptyStageThree || allConceptsApproved : allConceptsApproved;
 
   function completeCurrentStage() {
     if (!canCompleteStage) {
@@ -427,11 +429,11 @@ export function ConceptStageWorkspace({
       return;
     }
 
-    if (stageNumber === 3 && !allConceptsApproved) {
+    if (stageNumber === 3 && !isEmptyStageThree && !allConceptsApproved) {
       setCompletionError(
         unapprovedConcepts.length > 0
           ? `Every Stage 3 concept must have an Approved Concept before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
-          : "Create and approve at least one concept before Stage 3 can be completed.",
+          : "Approve every created Stage 3 concept before continuing.",
       );
       return;
     }
@@ -458,7 +460,9 @@ export function ConceptStageWorkspace({
       setCompletionDialogOpen(false);
       if (stageNumber === 3 && "approvedCount" in result) {
         showSuccessToast(
-          `Stage 3 completed. ${result.approvedCount} approved concept${result.approvedCount === 1 ? "" : "s"} moved to Stage 4.`,
+          result.skipped
+            ? "Stage 3 skipped. Stage 4 is now available."
+            : `Stage 3 completed with ${result.approvedCount} approved concept${result.approvedCount === 1 ? "" : "s"}. Stage 4 is now available.`,
         );
         router.push(`/projects/${project.id}/stages/4`);
       } else if (stageNumber === 4 && "finalApprovedCount" in result) {
@@ -647,10 +651,14 @@ export function ConceptStageWorkspace({
                 }}
               >
                 <CheckCircle2 className="h-4 w-4" />
-                {stageNumber === 3 ? "Complete Stage 3" : "Complete Stage 4"}
+                {stageNumber === 3
+                  ? isEmptyStageThree
+                    ? "Skip Stage 3"
+                    : "Continue to Stage 4"
+                  : "Continue to Stage 5"}
               </Button>
             ) : null}
-            {stageNumber === 3 && canManageConcepts && !managementLocked ? (
+            {canManageConcepts && !managementLocked ? (
               <Button
                 type="button"
                 variant="outline"
@@ -671,7 +679,9 @@ export function ConceptStageWorkspace({
             <p className="mt-1 text-[12px] text-[#748078]">
               {stageNumber === 3 && canManageConcepts
                 ? "Create the first concept when the name, executor, and brief are ready."
-                : "No concepts are available in this stage."}
+                : stageNumber === 4 && canManageConcepts
+                  ? "Create a final-concept folder, then optionally import an approved Stage 3 concept from its chat."
+                  : "No concepts are available in this stage."}
             </p>
           </div>
         ) : <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -817,23 +827,36 @@ export function ConceptStageWorkspace({
           completionDialogOpen &&
           stageCompletionReady
         }
-        title={`Complete Stage ${stageNumber}?`}
+        title={
+          stageNumber === 3
+            ? isEmptyStageThree
+              ? "Skip Stage 3?"
+              : "Continue to Stage 4?"
+            : "Continue to Stage 5?"
+        }
         description={
           stageNumber === 3
-            ? approvedConceptCount === 0
-              ? "Create and approve at least one concept before Stage 3 can be completed."
+            ? isEmptyStageThree
+              ? "No Stage 3 concepts have been created. Continue directly to Stage 4 only when an initial concept already exists outside this stage."
               : unapprovedConcepts.length > 0
                 ? `Every Stage 3 concept must have an Approved Concept before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
-                : `${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"} will move to Stage 4. This locks Stage 3 approval selection and concept management.`
+                : `Stage 3 will be closed with ${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"}. Stage 4 will open without automatically creating any folders.`
             : approvedConceptCount === 0
               ? "At least one concept must have a Final Approved File before Stage 4 can be completed."
               : unapprovedConcepts.length > 0
                 ? `Every Stage 4 concept must receive Final Approval before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
-                : `${approvedConceptCount} final approved file${approvedConceptCount === 1 ? "" : "s"} will continue to Stage 5.`
+                : `${approvedConceptCount} final approved file${approvedConceptCount === 1 ? "" : "s"} will continue to Stage 5, and Stage 4 concept management will be locked.`
         }
-        confirmLabel={`Complete Stage ${stageNumber}`}
+        confirmLabel={
+          stageNumber === 3
+            ? isEmptyStageThree
+              ? "Skip and Continue"
+              : "Continue to Stage 4"
+            : "Continue to Stage 5"
+        }
+        cancelLabel="Cancel"
         pending={isCompleting}
-        confirmDisabled={!allConceptsApproved}
+        confirmDisabled={!stageCompletionReady}
         error={completionError ?? undefined}
         onConfirm={completeCurrentStage}
         onClose={() => {

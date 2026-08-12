@@ -51,6 +51,7 @@ import {
   setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
 import {
+  importStageThreeConceptReferenceAction,
   markProjectConceptApprovedAttachmentAction,
   markStageFourFinalApprovedAttachmentAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
@@ -1606,12 +1607,16 @@ function ConceptBriefContextCard({
   assignedExecutorName,
   hasAcceptedBrief,
   startingReference,
+  canImportStageThreeReference,
+  onImportStageThreeReference,
 }: {
   brief: string;
   attachments: DisplayAttachmentRecord[];
   assignedExecutorName: string;
   hasAcceptedBrief: boolean;
   startingReference: ProjectConceptChatMode["startingReference"];
+  canImportStageThreeReference: boolean;
+  onImportStageThreeReference: () => void;
 }) {
   return (
     <TimelineFrame
@@ -1671,6 +1676,27 @@ function ConceptBriefContextCard({
               <p className="mt-1.5 text-[10px] leading-4 text-[#708077]">
                 Read-only approved Stage 3 reference. New Stage 4 work remains independent.
               </p>
+            </div>
+          ) : canImportStageThreeReference ? (
+            <div className="flex flex-col gap-3 rounded-[14px] border border-dashed border-[#bcd5c2] bg-[#f7fbf7] p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#4f765d]">
+                  Optional Starting Reference
+                </p>
+                <p className="mt-1 text-[11px] leading-4 text-[#708077]">
+                  Import one approved Stage 3 concept into this Stage 4 chat.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="shrink-0 rounded-full"
+                onClick={onImportStageThreeReference}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Import Approved Concept
+              </Button>
             </div>
           ) : null}
           <p className="whitespace-pre-wrap break-words text-[13px] leading-6 text-[#26312a]">
@@ -2566,6 +2592,15 @@ export function ProjectChatWorkspace({
   );
   const [approvingConceptAttachmentId, setApprovingConceptAttachmentId] =
     useState<string | null>(null);
+  const [stageThreeReferenceDialogOpen, setStageThreeReferenceDialogOpen] =
+    useState(false);
+  const [selectedStageThreeReferenceId, setSelectedStageThreeReferenceId] =
+    useState("");
+  const [stageThreeReferenceError, setStageThreeReferenceError] = useState<
+    string | null
+  >(null);
+  const [isImportingStageThreeReference, setIsImportingStageThreeReference] =
+    useState(false);
   const [commentUploadDialogOpen, setCommentUploadDialogOpen] = useState(false);
   const [commentUploadIntent, setCommentUploadIntent] =
     useState<CommentUploadIntent>("COMMENT_ATTACHMENT");
@@ -2993,13 +3028,6 @@ export function ProjectChatWorkspace({
           : await markProjectConceptApprovedAttachmentAction(repairInput);
 
         if ("error" in result) {
-          return;
-        }
-
-        if ("stageTransition" in result) {
-          router.replace(
-            `/projects/${project.id}/stages/${isStageFourConceptMode ? 5 : 4}`,
-          );
           return;
         }
 
@@ -5987,30 +6015,11 @@ export function ProjectChatWorkspace({
       setConceptApprovalTarget(null);
       closeRevisionReviewDialog();
 
-      if ("transitionError" in result) {
-        showErrorToast(
-          "Submission approved, but the next stage could not be activated.",
-          typeof result.transitionError === "string"
-            ? result.transitionError
-            : undefined,
-        );
-      }
-
       showSuccessToast(
-        "stageTransition" in result
-          ? isStageFourConceptMode
-            ? "Submission approved. Stage 5 is now available."
-            : "Submission approved. Stage 4 is now available."
-          : result.changed
-            ? "Submission approved."
-            : `This submission is already approved as the ${approvedFileLabel}.`,
+        result.changed
+          ? "Submission approved. Return to the concept list to create another concept or continue manually."
+          : `This submission is already approved as the ${approvedFileLabel}.`,
       );
-
-      if ("stageTransition" in result) {
-        router.push(
-          `/projects/${project.id}/stages/${isStageFourConceptMode ? 5 : 4}`,
-        );
-      }
       router.refresh();
     } catch (error) {
       const message =
@@ -7393,6 +7402,33 @@ export function ProjectChatWorkspace({
     archiveMissingMetadataCount === 0;
   const composerPositionClass = isConceptMode ? "" : "sticky bottom-1";
 
+  async function handleImportStageThreeReference() {
+    if (!conceptMode || !selectedStageThreeReferenceId) {
+      setStageThreeReferenceError("Choose an approved Stage 3 concept.");
+      return;
+    }
+
+    setStageThreeReferenceError(null);
+    setIsImportingStageThreeReference(true);
+    const result = await importStageThreeConceptReferenceAction({
+      projectId: project.id,
+      folderId: conceptMode.folderId,
+      sourceConceptId: selectedStageThreeReferenceId,
+    });
+    setIsImportingStageThreeReference(false);
+
+    if ("error" in result) {
+      setStageThreeReferenceError(
+        result.error ?? "Unable to import the approved Stage 3 concept.",
+      );
+      return;
+    }
+
+    setStageThreeReferenceDialogOpen(false);
+    showSuccessToast("Approved Stage 3 concept imported into this chat.");
+    router.refresh();
+  }
+
   return (
     <section
       className={`min-h-0 ${
@@ -7402,6 +7438,99 @@ export function ProjectChatWorkspace({
       }`}
     >
       <ProjectAccessRealtimeGuard projectId={project.id} currentUserId={currentUserId} />
+      {conceptMode && stageThreeReferenceDialogOpen ? (
+        <div
+          className="fixed inset-0 z-[190] flex items-center justify-center bg-[#112118]/35 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="stage-three-reference-dialog-title"
+        >
+          <Card className="w-full max-w-[520px] overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.2)]">
+            <CardHeader className="border-b border-[#e5ebe6]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle
+                    id="stage-three-reference-dialog-title"
+                    className="text-[21px] font-[760] tracking-[-0.03em]"
+                  >
+                    Import Approved Concept
+                  </CardTitle>
+                  <p className="mt-1 text-[12px] leading-5 text-[#6f7a72]">
+                    Add one approved Stage 3 concept as a read-only starting reference in this chat.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={() => setStageThreeReferenceDialogOpen(false)}
+                  disabled={isImportingStageThreeReference}
+                  aria-label="Close import dialog"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5 p-5 sm:p-6">
+              <label className="block space-y-2">
+                <span className="text-[12px] font-[700] text-[#2d372f]">
+                  Approved Stage 3 Concept
+                </span>
+                <Select
+                  value={selectedStageThreeReferenceId}
+                  onValueChange={(value) => {
+                    setSelectedStageThreeReferenceId(value);
+                    setStageThreeReferenceError(null);
+                  }}
+                >
+                  <SelectTrigger className="h-12 rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 shadow-none">
+                    <SelectValue placeholder="Choose an approved concept" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[210]">
+                    {conceptMode.availableStageThreeReferences.map((reference) => (
+                      <SelectItem
+                        key={reference.sourceConceptId}
+                        value={reference.sourceConceptId}
+                      >
+                        {reference.sourceConceptName} · {reference.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              {stageThreeReferenceError ? (
+                <p className="rounded-[12px] border border-[#f0d4d2] bg-[#fff5f4] px-3 py-2 text-[12px] font-semibold text-[#a64038]">
+                  {stageThreeReferenceError}
+                </p>
+              ) : null}
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setStageThreeReferenceDialogOpen(false)}
+                  disabled={isImportingStageThreeReference}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleImportStageThreeReference()}
+                  disabled={
+                    isImportingStageThreeReference || !selectedStageThreeReferenceId
+                  }
+                >
+                  {isImportingStageThreeReference ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  Import into Chat
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
       {conceptMode ? (
         <div className="mb-2 shrink-0 rounded-[18px] border border-[#dbe7dd] bg-white/94 px-2.5 py-2 shadow-[0_8px_20px_rgba(18,35,23,0.04)] sm:px-3">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -7962,6 +8091,19 @@ export function ProjectChatWorkspace({
               }
               hasAcceptedBrief={hasAcceptedBriefInTimeline}
               startingReference={conceptMode.startingReference}
+              canImportStageThreeReference={
+                conceptMode.stageNumber === 4 &&
+                conceptMode.canManage &&
+                !conceptMode.isWorkflowCompleted &&
+                conceptMode.availableStageThreeReferences.length > 0
+              }
+              onImportStageThreeReference={() => {
+                setSelectedStageThreeReferenceId(
+                  conceptMode.availableStageThreeReferences[0]?.sourceConceptId ?? "",
+                );
+                setStageThreeReferenceError(null);
+                setStageThreeReferenceDialogOpen(true);
+              }}
             />
           ) : showBriefContextCard && activeStage ? (
             <StageBriefContextCard
