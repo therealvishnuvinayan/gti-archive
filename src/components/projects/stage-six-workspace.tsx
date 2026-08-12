@@ -291,14 +291,19 @@ function ProductionDetails({ unit }: { unit: StageSixUnitRecord }) {
       <p className="mt-1 text-[11px] text-[#727d75]">Live Stage 5 checklist information for this Production Unit.</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {unit.checklist.map((field) => (
-          <article key={field.key} className="rounded-[14px] border border-[#e3e9e3] bg-[#fbfcfb] px-4 py-3">
+          <article key={field.key} className="min-w-0 overflow-hidden rounded-[14px] border border-[#e3e9e3] bg-[#fbfcfb] px-4 py-3">
             <h3 className="text-[10px] font-[760] uppercase tracking-[.07em] text-[#708078]">{field.label}</h3>
-            <p className={cn("mt-2 whitespace-pre-wrap text-[12px] leading-5", valueText(field.value) === "Not provided" ? "italic text-[#89938c]" : "text-[#344038]")}>{valueText(field.value)}</p>
+            <p className={cn("mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] text-[12px] leading-5", valueText(field.value) === "Not provided" ? "italic text-[#89938c]" : "text-[#344038]")}>{valueText(field.value)}</p>
             {field.attachments.length ? (
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 flex min-w-0 flex-wrap gap-2">
                 {field.attachments.map((file) => (
-                  <a key={file.id} href={`/api/project-assets/${file.id}/download`} className="rounded-full bg-[#eaf4ed] px-2.5 py-1 text-[9px] font-[680] text-[#2e744e]">
-                    {file.name}
+                  <a
+                    key={file.id}
+                    href={`/api/project-assets/${file.id}/download`}
+                    title={file.name}
+                    className="inline-flex min-w-0 max-w-full rounded-full bg-[#eaf4ed] px-2.5 py-1 text-[9px] font-[680] text-[#2e744e]"
+                  >
+                    <span className="truncate">{file.name}</span>
                   </a>
                 ))}
               </div>

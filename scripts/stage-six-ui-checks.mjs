@@ -63,6 +63,13 @@ assert(!workspace.includes("Department / Role"), "The generic Department approva
 assert(!workspace.includes("INITIAL_APPROVAL_STEPS"), "Stage 6 must not use mock approval steps.");
 assert(workspace.includes("UnitSwitcher") && workspace.includes("overflow-x-auto"), "Stage 6 must use the file-card switcher instead of a primary dropdown.");
 assert(workspace.includes("pageData.summary") && workspace.includes("unit.approvalSteps"), "Stage 6 summaries must use real server data.");
+assert(
+  workspace.includes('className="min-w-0 overflow-hidden rounded-[14px]') &&
+    workspace.includes("[overflow-wrap:anywhere]") &&
+    workspace.includes('title={file.name}') &&
+    workspace.includes('className="truncate">{file.name}</span>'),
+  "Production Details must contain long text and truncate attachment names without overflowing their field cards.",
+);
 assert(workspace.includes("step.reviewHref") && workspace.includes("Review Approval"), "An assigned approver must have a direct review action on Stage 6.");
 assert(workspace.includes("max-h-[calc(100dvh-1.5rem)]") && workspace.includes("overflow-y-auto overscroll-contain"), "The approval request dialog must remain bounded by the viewport and scroll its form content.");
 assert(workspace.includes("shrink-0 flex-col-reverse") && workspace.includes("border-t border-[#e7ece8] bg-white"), "The approval request actions must remain in a persistent modal footer.");
