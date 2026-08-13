@@ -3,13 +3,22 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useRef, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FolderKanban,
+  PanelsTopLeft,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 
 import {
   MotionItem,
   MotionSection,
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
+import { FlexibleProjectsBrowser } from "@/components/projects/flexible-projects-browser";
 import { ProjectCard, type ProjectCardItem } from "@/components/projects/project-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -143,6 +152,20 @@ export function ProjectsBrowser({
   );
   const currentSearch = searchParams.toString();
   const currentProjectsHref = currentSearch ? `${pathname}?${currentSearch}` : pathname;
+  const activeProjectView = searchParams.get("view") === "flexible" ? "flexible" : "artwork";
+
+  function switchProjectView(view: "artwork" | "flexible") {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (view === "flexible") {
+      params.set("view", "flexible");
+    } else {
+      params.delete("view");
+    }
+
+    const nextHref = params.size > 0 ? `${pathname}?${params}` : pathname;
+    startTransition(() => router.replace(nextHref, { scroll: false }));
+  }
 
   function navigate(next: {
     status?: ProjectListStatus;
@@ -201,6 +224,45 @@ export function ProjectsBrowser({
 
   return (
     <div className="space-y-5">
+      <MotionSection>
+        <div
+          role="tablist"
+          aria-label="Project type"
+          className="inline-flex max-w-full gap-1 overflow-x-auto rounded-[15px] border border-[#d5ded6] bg-white p-1 shadow-[0_8px_22px_rgba(18,34,25,0.035)]"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeProjectView === "artwork"}
+            onClick={() => switchProjectView("artwork")}
+            className={`flex h-10 shrink-0 items-center gap-2 rounded-[11px] px-4 text-[13px] font-[700] transition sm:px-5 ${
+              activeProjectView === "artwork"
+                ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_9px_20px_rgba(31,112,70,0.22)]"
+                : "text-[#4a554d] hover:bg-[#f0f4f0]"
+            }`}
+          >
+            <FolderKanban className="size-4" /> Artwork Projects
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeProjectView === "flexible"}
+            onClick={() => switchProjectView("flexible")}
+            className={`flex h-10 shrink-0 items-center gap-2 rounded-[11px] px-4 text-[13px] font-[700] transition sm:px-5 ${
+              activeProjectView === "flexible"
+                ? "bg-[linear-gradient(90deg,#2f8d5d,#123f2d)] text-white shadow-[0_9px_20px_rgba(31,112,70,0.22)]"
+                : "text-[#4a554d] hover:bg-[#f0f4f0]"
+            }`}
+          >
+            <PanelsTopLeft className="size-4" /> Flexible Projects
+          </button>
+        </div>
+      </MotionSection>
+
+      {activeProjectView === "flexible" ? (
+        <FlexibleProjectsBrowser />
+      ) : (
+        <div className="space-y-5">
       <MotionSection>
         <header className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -422,6 +484,8 @@ export function ProjectsBrowser({
           </Button>
         </nav>
       ) : null}
+        </div>
+      )}
     </div>
   );
 }
