@@ -33,6 +33,7 @@ import type { PermissionKey } from "@/lib/permissions/definitions";
 import { assertProjectAccess } from "@/lib/project-history";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { sanitizeRichText } from "@/lib/rich-text";
 import {
   buildProjectCompletionDocumentKey,
   createPresignedDownloadUrl,
@@ -1532,7 +1533,7 @@ export async function prepareAuthorityApprovalRequest(
         data: {
           approvalStatus: ProjectCompletionStepStatus.PENDING,
           approvalContactUserId: input.contactUserId,
-          approvalNote: input.note?.trim() || null,
+          approvalNote: sanitizeRichText(input.note) || null,
           approvalSelectedProjectFileIds: selectedFileIds,
           approvalSelectedArchivedFileIds: [],
           approvalRequestedAt: new Date(),
@@ -1609,7 +1610,7 @@ export async function prepareCopyrightTransferRequest(
         data: {
           copyrightStatus: ProjectCompletionStepStatus.PENDING,
           copyrightContactUserId: input.contactUserId,
-          copyrightNote: input.note?.trim() || null,
+          copyrightNote: sanitizeRichText(input.note) || null,
           copyrightRequestedAt: new Date(),
           copyrightCompletedAt: null,
           invoiceStatus: getNextInvoiceStatus(workflow.invoiceStatus),
@@ -1682,7 +1683,7 @@ export async function requestProjectFinalInvoice(
         data: {
           invoiceStatus: ProjectCompletionStepStatus.PENDING,
           invoiceContactUserId: input.contactUserId,
-          invoiceNote: input.note?.trim() || null,
+          invoiceNote: sanitizeRichText(input.note) || null,
           invoiceRequestedAt: new Date(),
           invoiceCompletedAt: null,
           completedAt: null,

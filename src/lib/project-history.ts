@@ -33,6 +33,7 @@ import {
   runNotificationTaskAfterResponse,
 } from "@/lib/notification-center";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
+import { sanitizeRichText } from "@/lib/rich-text";
 import { getVisibleStageEventRecipientUserIds } from "@/lib/notification-center/recipients";
 import {
   assertProjectTimestampVisibleForUser,
@@ -2954,6 +2955,7 @@ export async function createStageRevision(
     attachmentIds?: string[];
   },
 ) {
+  const summary = sanitizeRichText(input.summary) || null;
   const project = await assertProjectAccess(user, input.projectId, input.stageId);
   const stage = project.stages.find((item) => item.id === input.stageId);
 
@@ -3043,7 +3045,7 @@ export async function createStageRevision(
             createdById: user.id,
             revisionNumber,
             title: `Revision ${revisionNumber}`,
-            summary: input.summary?.trim() || null,
+            summary,
             status: ProjectRevisionStatus.PENDING_REVIEW,
             reviewedById: null,
             reviewedAt: null,
@@ -3109,7 +3111,7 @@ export async function createStageRevision(
         createdById: user.id,
         revisionNumber,
         title: `Revision ${revisionNumber}`,
-        summary: input.summary?.trim() || null,
+        summary,
         status: ProjectRevisionStatus.PENDING_REVIEW,
         reviewedById: null,
         reviewedAt: null,
@@ -4789,7 +4791,7 @@ export async function reviewProjectRevision(
     throw new Error("This submission is no longer pending review.");
   }
 
-  const rejectionReason = input.reason?.trim() || "";
+  const rejectionReason = sanitizeRichText(input.reason);
 
   if (input.status === "REJECTED" && !rejectionReason) {
     throw new Error("Revision reason is required.");

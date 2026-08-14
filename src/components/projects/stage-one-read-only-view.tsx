@@ -11,6 +11,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { RichTextContent } from "@/components/ui/rich-text-editor";
 import type {
   ProjectInquiryAttachmentRecord,
   ProjectInquiryPartySelection,
@@ -181,32 +182,19 @@ function ReadOnlyTextBlock({
   label,
   value,
   attachments,
-  displayAsChips = false,
 }: {
   label: string;
   value: string;
   attachments: ProjectInquiryAttachmentRecord[];
-  displayAsChips?: boolean;
 }) {
   return (
     <div className="rounded-[16px] border border-[#e4e9e4] bg-[#fcfdfc] p-4 sm:p-5">
       <p className="text-[13px] font-[720] text-[#253028]">{label}</p>
-      {value.trim() && displayAsChips ? (
-        <div className="mt-3">
-          <ChipList
-            values={value
-              .split(/\r?\n/)
-              .map((entry) => entry.trim())
-              .filter(Boolean)}
-          />
-        </div>
-      ) : value.trim() ? (
-        <p className="mt-3 whitespace-pre-wrap text-[14px] leading-7 text-[#465149]">
-          {value}
-        </p>
-      ) : (
-        <NotProvided className="mt-3 block" />
-      )}
+      <RichTextContent
+        value={value}
+        fallback={<NotProvided className="mt-3 block" />}
+        className="mt-3 text-[14px] leading-7 text-[#465149]"
+      />
       <div className="mt-5 border-t border-[#edf1ed] pt-4">
         <p className="text-[11px] font-[700] uppercase tracking-[0.08em] text-[#7b857e]">
           Attachments
@@ -335,7 +323,6 @@ export function StageOneReadOnlyView({
             label="Key Business Objectives"
             value={inquiry?.businessObjectives ?? ""}
             attachments={inquiry?.attachments.BUSINESS_OBJECTIVES ?? []}
-            displayAsChips
           />
         </div>
       </StageOneViewSection>

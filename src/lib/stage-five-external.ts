@@ -13,6 +13,7 @@ import {
 
 import { hashExternalChecklistToken } from "@/lib/checklist-external-token";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import { publishNotificationChanges } from "@/lib/realtime/server";
 import {
   getStageFiveFieldDefinition,
@@ -461,9 +462,10 @@ export async function submitExternalChecklistResponse(
 }
 
 export async function declineExternalChecklistRequest(token: string, reasonInput: string) {
-  const reason = reasonInput.trim().replace(/\s+/g, " ");
-  if (reason.length < 3) return { error: "Enter a short reason for declining." } as const;
-  if (reason.length > 1_000) return { error: "The decline reason is too long." } as const;
+  const reason = sanitizeRichText(reasonInput);
+  const reasonLength = richTextToPlainText(reason).length;
+  if (reasonLength < 3) return { error: "Enter a short reason for declining." } as const;
+  if (reasonLength > 1_000) return { error: "The decline reason is too long." } as const;
   const tokenHash = hashExternalChecklistToken(token);
   const request = await findActiveExternalRequest(token);
   if (!tokenHash || !request?.recipientEmail) {

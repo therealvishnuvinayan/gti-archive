@@ -45,6 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
+import { RichTextContent, RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -53,7 +54,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import {
   PROFILE_IMAGE_ALLOWED_EXTENSIONS,
@@ -472,9 +472,7 @@ function MasterDataTable({
                             {(isArchiveCategory || isProjectStatusGroup || isProjectStatus) &&
                             "description" in item &&
                             item.description ? (
-                              <p className="mt-1 max-w-[300px] text-[13px] font-[500] text-[#667067]">
-                                {item.description}
-                              </p>
+                              <RichTextContent value={item.description} className="mt-1 line-clamp-2 max-w-[300px] text-[13px] font-[500] text-[#667067]" />
                             ) : null}
                           </div>
                         </div>
@@ -638,7 +636,7 @@ function MasterDataDrawer({
   const isArchiveCategory = tab === "archiveCategories";
   const isProjectStatusGroup = tab === "projectStatusGroups";
   const isProjectStatus = tab === "projectStatuses";
-  const descriptionLength = form.description.trim().length;
+  const descriptionLength = richTextToPlainText(form.description).length;
   const parentOptions = archiveCategories.filter((category) => category.id !== form.id);
   const selectedAccessUsers = archiveCategoryAccessUsers.filter((user) =>
     form.allowedUserIds.includes(user.id),
@@ -772,18 +770,18 @@ function MasterDataDrawer({
                   </label>
                 ) : null}
 
-                <label className="space-y-2">
+                <div className="space-y-2">
                   <span className="block text-[13px] font-[700] text-[#2b352d]">
                     Description
                   </span>
-                  <Textarea
+                  <RichTextEditor
                     value={form.description}
-                    onChange={(event) => onChange("description", event.target.value)}
+                    onChange={(value) => onChange("description", value)}
                     placeholder="Enter description (optional)"
                     maxLength={PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH}
-                    className={`min-h-[132px] rounded-[22px] border ${
-                      fieldErrors.description ? "border-[#e0a8a6]" : "border-line"
-                    }`}
+                    minHeightClassName="min-h-[132px]"
+                    ariaLabel={`${label} description`}
+                    error={fieldErrors.description}
                   />
                   {fieldErrors.description ? (
                     <span className="text-[12px] font-[600] text-[#bb4d49]">
@@ -799,7 +797,7 @@ function MasterDataDrawer({
                       </span>
                     </span>
                   )}
-                </label>
+                </div>
 
                 {isArchiveCategory ? (
                   <>
@@ -1300,7 +1298,7 @@ export function ProjectMasterDataWorkspace({
 
   function handleSubmit() {
     const normalizedName = form.name.trim();
-    const normalizedDescriptionLength = form.description.trim().length;
+    const normalizedDescriptionLength = richTextToPlainText(form.description).length;
     const nextFieldErrors: MasterDataFieldErrors = {};
 
     if (!normalizedName) {

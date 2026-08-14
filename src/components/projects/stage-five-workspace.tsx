@@ -56,9 +56,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
+import { RichTextContent, RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import type { ProjectStageShellRecord } from "@/lib/projects";
 import type {
   StageFiveChecklistValue,
@@ -452,7 +452,7 @@ function StageFiveReadOnlyView({
               </div>
 
               <div className="min-w-0 space-y-3 text-[13px] leading-5 text-[#344038]">
-                {value ? <p className="whitespace-pre-wrap break-words">{value}</p> : null}
+                {value ? <RichTextContent value={value} className="break-words" /> : null}
                 {values.length > 0 ? (
                   <div className="flex flex-wrap gap-2" aria-label={`${item.title} values`}>
                     {values.map((itemValue) => (
@@ -683,15 +683,16 @@ function RequestInformationDialog({
               )}
             </fieldset>
 
-            <label className="mt-5 block space-y-2">
+            <div className="mt-5 block space-y-2">
               <span className="text-[12px] font-[700] text-[#2d372f]">Message (optional)</span>
-              <Textarea
+              <RichTextEditor
                 value={message}
-                className="h-24 min-h-20 max-h-36 resize-y rounded-[14px] border-[#c8d5cb] bg-[#fbfdfb] px-4 py-3 shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15"
                 placeholder={`Please provide the ${field.title.toLocaleLowerCase()} for this project.`}
-                onChange={(event) => setMessage(event.target.value)}
+                ariaLabel="Request message"
+                minHeightClassName="min-h-[96px]"
+                onChange={setMessage}
               />
-            </label>
+            </div>
 
             <p className="mt-4 rounded-[12px] bg-[#f4f7f4] px-3 py-2 text-[10px] leading-4 text-[#748078]">
               Manual recipients receive a secure email link to provide the requested information without a GTI account.
@@ -1102,13 +1103,13 @@ export function StageFiveWorkspace({
 
     if (item.control === "textarea") {
       return (
-        <Textarea
+        <RichTextEditor
           value={value}
           disabled={isSaving}
-          className="min-h-[76px] rounded-[12px] border-[#dfe6df] bg-white py-3 shadow-none"
+          minHeightClassName="min-h-[96px]"
           placeholder={item.placeholder}
-          aria-label={item.title}
-          onChange={(event) => updateText(item.key, event.target.value)}
+          ariaLabel={item.title}
+          onChange={(nextValue) => updateText(item.key, nextValue)}
         />
       );
     }
@@ -1162,13 +1163,13 @@ export function StageFiveWorkspace({
     if (item.control === "text-attachment") {
       return (
         <div className="space-y-3">
-          <Textarea
+          <RichTextEditor
             value={value}
             disabled={isSaving}
-            className="min-h-[72px] rounded-[12px] border-[#dfe6df] bg-white py-3 shadow-none"
+            minHeightClassName="min-h-[96px]"
             placeholder={item.placeholder}
-            aria-label={item.title}
-            onChange={(event) => updateText(item.key, event.target.value)}
+            ariaLabel={item.title}
+            onChange={(nextValue) => updateText(item.key, nextValue)}
           />
           <ChecklistFilePicker
             fieldLabel={`${item.title} reference`}
@@ -1184,13 +1185,13 @@ export function StageFiveWorkspace({
 
     return (
       <div className="space-y-3">
-        <Textarea
+        <RichTextEditor
           value={value}
           disabled={isSaving}
-          className="min-h-[72px] rounded-[12px] border-[#dfe6df] bg-white py-3 shadow-none"
+          minHeightClassName="min-h-[96px]"
           placeholder={item.placeholder}
-          aria-label={item.title}
-          onChange={(event) => updateText(item.key, event.target.value)}
+          ariaLabel={item.title}
+          onChange={(nextValue) => updateText(item.key, nextValue)}
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <ChecklistFilePicker

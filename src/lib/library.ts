@@ -23,6 +23,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { sanitizeRichText } from "@/lib/rich-text";
 import {
   buildManualLibraryAssetKey,
   createPresignedDownloadUrl,
@@ -1154,7 +1155,7 @@ export async function createCompletedManualLibraryAssetFromUpload(
             assetName,
             originalFileName: input.originalFileName.trim(),
             createdByName: normalizeOptionalLibraryText(input.createdByName),
-            description: normalizeOptionalLibraryText(input.description),
+            description: sanitizeRichText(input.description) || null,
             category,
             mimeType: input.mimeType,
             fileSize: input.fileSize,

@@ -1,3 +1,5 @@
+import { richTextToPlainText } from "@/lib/rich-text";
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -17,7 +19,7 @@ function buildWorkflowEmail(input: {
   actionLabel: string;
   actionUrl: string;
 }) {
-  const message = input.message?.trim() || null;
+  const message = richTextToPlainText(input.message) || null;
   const html = `
     <div style="margin:0;padding:32px 0;background:#eef3ec;font-family:Inter,Arial,sans-serif;color:#111712;">
       <div style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #dbe3da;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(20,40,28,.1);">

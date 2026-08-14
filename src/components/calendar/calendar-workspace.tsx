@@ -43,6 +43,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RichTextContent, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -740,9 +741,7 @@ export function CalendarWorkspace({
                 <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#7a837b]">
                   Description
                 </p>
-                <p className="mt-2 whitespace-pre-wrap text-[14px] leading-relaxed text-[#2f3a32]">
-                  {selectedEvent.details}
-                </p>
+                <RichTextContent value={selectedEvent.details} className="mt-2 text-[14px] leading-relaxed text-[#2f3a32]" />
               </div>
             ) : null}
 
@@ -899,7 +898,7 @@ export function CalendarWorkspace({
                   <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${tone.dot}`} />
                   <div className="min-w-0 flex-1">
                     <p className={`text-[11px] leading-[1.25] ${tone.text}`}>
-                      {event.title} {event.details ? `- ${event.details}` : ""}
+                      {event.title} {event.details ? `- ${richTextToPlainText(event.details)}` : ""}
                     </p>
                     <p className="mt-1 text-[10px] text-[#7f877f]">
                     {monthGridLabel.format(parseCalendarDateValue(event.date))} at {event.start}
@@ -1142,7 +1141,7 @@ export function CalendarWorkspace({
                             })}
                           </div>
                           {event.details ? (
-                            <p className="mt-1 text-[10px] text-[#5e6b62]">{event.details}</p>
+                            <p className="mt-1 line-clamp-2 text-[10px] text-[#5e6b62]">{richTextToPlainText(event.details)}</p>
                           ) : null}
                           <p className={`mt-3 text-[10px] ${tone.text}`}>
                             {event.start} - {event.end}

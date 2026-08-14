@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -24,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 
 export type CalendarType = "Projects" | "Events" | "Reminders" | "Payments";
 export type EventTone = "green" | "purple" | "blue" | "amber";
@@ -217,7 +217,7 @@ export function EventDialog({
           ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="sm:col-span-2">
+            <div className="sm:col-span-2">
               <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
                 Title
               </span>
@@ -227,7 +227,7 @@ export function EventDialog({
                 className="h-12 rounded-2xl border-line text-[15px] text-[#18211a]"
                 placeholder="Design review"
               />
-            </label>
+            </div>
 
             <label>
               <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
@@ -293,17 +293,18 @@ export function EventDialog({
               </Select>
             </label>
 
-            <label className="sm:col-span-2">
+            <div className="sm:col-span-2">
               <span className="mb-2 block text-[13px] font-[600] text-[#2d372f]">
                 Details
               </span>
-              <Textarea
+              <RichTextEditor
                 value={form.details}
-                onChange={(event) => onChange("details", event.target.value)}
-                className="min-h-[96px] rounded-2xl border border-line text-[15px] text-[#18211a]"
+                onChange={(value) => onChange("details", value)}
+                minHeightClassName="min-h-[96px]"
+                ariaLabel="Event details"
                 placeholder="Optional notes, location, or attendees"
               />
-            </label>
+            </div>
           </div>
 
           <div className="mt-5">

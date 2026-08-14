@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -102,7 +102,7 @@ function ConceptDetailsDialog({
   );
   const attachmentInputId = useId();
   const cleanName = name.trim().replace(/\s+/g, " ");
-  const cleanBrief = brief.trim();
+  const cleanBrief = richTextToPlainText(brief);
   const detailsLocked = state.mode === "edit" && Boolean(state.folder.actualStartedAt);
   const assignmentLocked =
     detailsLocked && state.mode === "edit" && Boolean(state.folder.assignedExecutorId);
@@ -196,23 +196,24 @@ function ConceptDetailsDialog({
                 </span>
               </label>
 
-              <label className="block space-y-2">
+              <div className="block space-y-2">
                 <span className="text-[12px] font-[700] text-[#2d372f]">Concept Brief *</span>
-                <Textarea
+                <RichTextEditor
                   value={brief}
-                  onChange={(event) => setBrief(event.target.value)}
+                  onChange={setBrief}
                   disabled={detailsLocked}
                   placeholder="Describe the direction, requirements, and expected outcome."
-                  className="min-h-[112px] resize-y rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 py-3 shadow-none focus-visible:border-[#46906a]"
+                  minHeightClassName="min-h-[112px]"
+                  ariaLabel="Concept brief"
                   required
-                  aria-invalid={!cleanBrief}
+                  error={!cleanBrief}
                 />
                 {!cleanBrief ? (
                   <span className="block text-[11px] font-[600] text-[#b84e48]">
                     Concept Brief is required.
                   </span>
                 ) : null}
-              </label>
+              </div>
 
               <div className="space-y-2">
                 <span className="block text-[12px] font-[700] text-[#2d372f]">Brief Attachments</span>
@@ -307,7 +308,7 @@ function ConceptDetailsDialog({
                 onSubmit({
                   name: cleanName,
                   assignedExecutorId,
-                  brief: cleanBrief,
+                  brief,
                   files,
                 })
               }

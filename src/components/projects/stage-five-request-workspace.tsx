@@ -27,7 +27,7 @@ import {
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextContent, RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import type {
   StageFiveChecklistRequestData,
   StageFiveChecklistValue,
@@ -145,7 +145,7 @@ function ResponseSummary({ data }: { data: StageFiveChecklistRequestData }) {
     <div className="space-y-3 rounded-[18px] border border-[#dce7de] bg-[#f8fbf8] p-5">
       <p className="text-[11px] font-[760] uppercase tracking-[0.1em] text-[#587363]">Response</p>
       {value.text ? (
-        <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#26332b]">{value.text}</p>
+        <RichTextContent value={value.text} className="text-[14px] leading-6 text-[#26332b]" />
       ) : null}
       {value.values?.length ? (
         <div className="flex flex-wrap gap-2">
@@ -209,7 +209,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
   }
 
   function declineRequest() {
-    if (!declineReason.trim()) return;
+    if (!richTextToPlainText(declineReason)) return;
     startTransition(async () => {
       const result = await declineStageFiveChecklistRequestAction({
         requestId: data.id,
@@ -281,12 +281,13 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
     }
     if (control === "textarea") {
       return (
-        <Textarea
+        <RichTextEditor
           value={text}
           disabled={disabled}
-          className="min-h-[140px] rounded-[14px] border-[#dce5dd] bg-white shadow-none"
+          minHeightClassName="min-h-[140px]"
           placeholder={data.field.placeholder}
-          onChange={(event) => setText(event.target.value)}
+          ariaLabel={data.field.title}
+          onChange={setText}
         />
       );
     }
@@ -335,12 +336,13 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
     if (control === "text-attachment") {
       return (
         <div className="space-y-4">
-          <Textarea
+          <RichTextEditor
             value={text}
             disabled={disabled}
-            className="min-h-[120px] rounded-[14px] border-[#dce5dd] bg-white shadow-none"
+            minHeightClassName="min-h-[120px]"
             placeholder={data.field.placeholder}
-            onChange={(event) => setText(event.target.value)}
+            ariaLabel={data.field.title}
+            onChange={setText}
           />
           <ChecklistFilePicker
             fieldLabel={`${data.field.title} reference`}
@@ -354,12 +356,13 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
     }
     return (
       <div className="space-y-4">
-        <Textarea
+        <RichTextEditor
           value={text}
           disabled={disabled}
-          className="min-h-[120px] rounded-[14px] border-[#dce5dd] bg-white shadow-none"
+          minHeightClassName="min-h-[120px]"
           placeholder={data.field.placeholder}
-          onChange={(event) => setText(event.target.value)}
+          ariaLabel={data.field.title}
+          onChange={setText}
         />
         <ChecklistFilePicker
           fieldLabel={`${data.field.title} reference`}
@@ -477,9 +480,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
 
           <div className="rounded-[18px] border border-[#e1e8e2] bg-white p-5">
             <p className="text-[11px] font-[760] uppercase tracking-[0.09em] text-[#7a867e]">Message</p>
-            <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-[#344038]">
-              {data.message || `Please provide the ${data.field.title.toLocaleLowerCase()} for this project.`}
-            </p>
+            <RichTextContent value={data.message || `Please provide the ${data.field.title.toLocaleLowerCase()} for this project.`} className="mt-2 text-[14px] leading-6 text-[#344038]" />
           </div>
 
           {completed ? (
@@ -499,7 +500,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
                 <CircleAlert className="h-5 w-5" />
                 <p className="text-[14px] font-[760]">Request declined</p>
               </div>
-              <p className="mt-3 text-[13px] leading-6 text-[#6e514d]">{data.declineReason}</p>
+              <RichTextContent value={data.declineReason} className="mt-3 text-[13px] leading-6 text-[#6e514d]" />
               <p className="mt-2 text-[11px] text-[#92736e]">Declined {formatDate(data.declinedAt)}</p>
             </div>
           ) : requested ? (
@@ -533,16 +534,18 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
 
           {showDecline && !completed && !declined ? (
             <div className="rounded-[18px] border border-[#ecd9d5] bg-[#fffafa] p-5">
-              <label className="block">
+              <div className="block">
                 <span className="text-[13px] font-[720] text-[#493632]">Reason for declining</span>
-                <Textarea
+                <RichTextEditor
                   value={declineReason}
                   disabled={disabled}
-                  className="mt-2 min-h-[100px] rounded-[14px] border-[#e5cfcb] bg-white shadow-none"
+                  className="mt-2 border-[#e5cfcb]"
+                  minHeightClassName="min-h-[100px]"
                   placeholder="Briefly explain why you cannot provide this information."
-                  onChange={(event) => setDeclineReason(event.target.value)}
+                  ariaLabel="Reason for declining"
+                  onChange={setDeclineReason}
                 />
-              </label>
+              </div>
               <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <Button type="button" variant="ghost" disabled={disabled} onClick={() => setShowDecline(false)}>
                   Cancel
@@ -550,7 +553,7 @@ export function StageFiveRequestWorkspace({ data }: { data: StageFiveChecklistRe
                 <Button
                   type="button"
                   variant="destructive"
-                  disabled={disabled || declineReason.trim().length < 3}
+                  disabled={disabled || richTextToPlainText(declineReason).length < 3}
                   onClick={declineRequest}
                 >
                   Confirm Decline

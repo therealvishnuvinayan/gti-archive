@@ -5,7 +5,6 @@ import {
   useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -52,7 +51,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { validateProjectContactInput } from "@/lib/project-contact-validation";
 import type {
   CompleteProjectInquiryInput,
@@ -565,105 +564,6 @@ function MultiEntryInput({
   );
 }
 
-function growTextareaToContent(textarea: HTMLTextAreaElement) {
-  const borderHeight = textarea.offsetHeight - textarea.clientHeight;
-  const contentHeight = textarea.scrollHeight + borderHeight;
-
-  if (contentHeight > textarea.offsetHeight) {
-    textarea.style.height = `${contentHeight}px`;
-  }
-}
-
-function getBusinessObjectiveEntries(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-function BusinessObjectiveTagsInput({
-  value,
-  disabled,
-  error,
-  onChange,
-}: {
-  value: string;
-  disabled: boolean;
-  error?: string;
-  onChange: (value: string) => void;
-}) {
-  const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const entries = getBusinessObjectiveEntries(value);
-
-  function addDraft() {
-    const nextEntry = draft.trim().replace(/\s+/g, " ");
-
-    if (!nextEntry) return;
-
-    const normalizedEntry = nextEntry.toLocaleLowerCase("en");
-    if (!entries.some((entry) => entry.toLocaleLowerCase("en") === normalizedEntry)) {
-      onChange([...entries, nextEntry].join("\n"));
-    }
-    setDraft("");
-  }
-
-  return (
-    <div
-      className={cn(
-        "flex min-h-[104px] cursor-text flex-wrap content-start items-start gap-2 rounded-[14px] border bg-white px-3 py-3 pb-12 pr-14 focus-within:ring-3 focus-within:ring-brand/15",
-        error ? "border-[#c85c54]" : "border-[#dce3dc]",
-        disabled && "cursor-not-allowed bg-[#f6f8f6] opacity-70",
-      )}
-      onClick={() => inputRef.current?.focus()}
-    >
-      {entries.map((entry, index) => (
-        <span
-          key={`${entry.toLocaleLowerCase("en")}-${index}`}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-[9px] bg-[#edf5ef] px-2.5 py-1.5 text-[12px] font-[650] text-[#315f47]"
-        >
-          <span className="max-w-[280px] truncate" title={entry}>
-            {entry}
-          </span>
-          {!disabled ? (
-            <button
-              type="button"
-              aria-label={`Remove objective: ${entry}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onChange(entries.filter((_, entryIndex) => entryIndex !== index).join("\n"));
-              }}
-              className="rounded-full text-[#738079] transition hover:text-[#225f3f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8057]"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          ) : null}
-        </span>
-      ))}
-      <input
-        ref={inputRef}
-        type="text"
-        aria-label="Add a key business objective"
-        disabled={disabled}
-        value={draft}
-        placeholder={entries.length ? "Add another objective" : "Type an objective and press Enter"}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={addDraft}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            addDraft();
-          }
-          if (event.key === "Backspace" && !draft && entries.length) {
-            onChange(entries.slice(0, -1).join("\n"));
-          }
-        }}
-        className="h-8 min-w-[210px] flex-1 bg-transparent px-1 text-[13px] text-[#29322c] outline-none placeholder:text-[#9aa39b]"
-      />
-    </div>
-  );
-}
-
 function AttachmentTextarea({
   projectId,
   field,
@@ -673,7 +573,6 @@ function AttachmentTextarea({
   attachments,
   disabled,
   error,
-  entryMode = "text",
   onValueChange,
   onAttachmentsChange,
 }: {
@@ -685,20 +584,12 @@ function AttachmentTextarea({
   attachments: ProjectInquiryAttachmentRecord[];
   disabled: boolean;
   error?: string;
-  entryMode?: "text" | "business-objectives";
   onValueChange: (value: string) => void;
   onAttachmentsChange: (files: ProjectInquiryAttachmentRecord[]) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
-
-  useLayoutEffect(() => {
-    if (textareaRef.current) {
-      growTextareaToContent(textareaRef.current);
-    }
-  }, [value]);
 
   async function uploadFile(file: File) {
     const requestResponse = await fetch("/api/project-assets/upload-url", {
@@ -781,30 +672,16 @@ function AttachmentTextarea({
   return (
     <div>
       <div className="relative">
-        {entryMode === "business-objectives" ? (
-          <BusinessObjectiveTagsInput
-            value={value}
-            disabled={disabled}
-            error={error}
-            onChange={onValueChange}
-          />
-        ) : (
-          <Textarea
-            ref={textareaRef}
-            aria-label={ariaLabel}
-            value={value}
-            disabled={disabled}
-            onChange={(event) => {
-              onValueChange(event.target.value);
-              growTextareaToContent(event.currentTarget);
-            }}
-            placeholder={placeholder}
-            className={cn(
-              "min-h-[104px] resize-y overflow-y-auto rounded-[14px] bg-white pb-10 pr-16 shadow-none",
-              error ? "border-[#c85c54]" : "border-[#dce3dc]",
-            )}
-          />
-        )}
+        <RichTextEditor
+          ariaLabel={ariaLabel}
+          value={value}
+          disabled={disabled}
+          onChange={onValueChange}
+          placeholder={placeholder}
+          error={error}
+          minHeightClassName="min-h-[112px]"
+          className="[&_.rich-text-prose]:pb-12 [&_.rich-text-prose]:pr-14"
+        />
         <input
           ref={inputRef}
           type="file"
@@ -819,7 +696,7 @@ function AttachmentTextarea({
           onClick={() => inputRef.current?.click()}
           className={cn(
             "absolute bottom-3 grid size-8 place-items-center rounded-full text-[#6f7b73] hover:bg-[#eef5ef] hover:text-brand disabled:opacity-50",
-            entryMode === "business-objectives" ? "right-3" : "right-8",
+            "right-3",
           )}
         >
           {uploading ? (
@@ -1350,18 +1227,12 @@ export function StageOneWorkspace({
                   attachments={attachments.BUSINESS_OBJECTIVES}
                   disabled={readOnly || submitting}
                   error={fieldErrors.businessObjectives || fieldErrors.attachments}
-                  entryMode="business-objectives"
                   onValueChange={(value) => {
                     setBusinessObjectives(value);
                     clearFieldError("businessObjectives");
                   }}
                   onAttachmentsChange={(files) => setAttachments((current) => ({ ...current, BUSINESS_OBJECTIVES: files }))}
                 />
-                {!readOnly ? (
-                  <p className="mt-2 text-[11px] text-[#718078]">
-                    Add each objective separately. Type an objective and press Enter to add it.
-                  </p>
-                ) : null}
               </StageOneFormField>
 
               <StageOneFormField label="Deliverables" error={fieldErrors.deliverables}>

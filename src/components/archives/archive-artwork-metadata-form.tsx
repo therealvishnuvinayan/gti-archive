@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -9,7 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { AppDatePicker } from "@/components/calendar/app-date-picker";
 import {
   archiveArtworkTypeOptions,
@@ -103,14 +103,15 @@ export function ArchiveArtworkMetadataField({
     return (
       <div className="space-y-1.5">
         {label}
-        <Textarea
+        <RichTextEditor
           id={inputId}
           value={value}
-          onChange={(event) => onChange(fileId, field, event.target.value)}
+          onChange={(nextValue) => onChange(fileId, field, nextValue)}
           disabled={disabled}
-          className={`min-h-[88px] rounded-[14px] border ${
-            isMissing ? "border-[#df6f66]" : "border-line"
-          }`}
+          minHeightClassName="min-h-[96px]"
+          ariaLabel={labelText}
+          required={required}
+          error={isMissing}
         />
       </div>
     );

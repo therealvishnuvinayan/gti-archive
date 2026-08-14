@@ -26,6 +26,7 @@ import {
 } from "@/lib/permissions/resolver";
 import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import {
   buildExternalProductionApprovalUrl,
   buildExternalProductionHandoverUrl,
@@ -975,7 +976,7 @@ function validateApproverInput(input: {
 }) {
   if (!validClientRequestId(input.clientRequestId)) return "Invalid request identifier.";
   if (!uniqueAllowedFieldKeys(input.sharedFieldKeys)) return "Unknown shared-information field.";
-  if (input.message && input.message.trim().length > 5_000) return "The approver message is too long.";
+  if (input.message && richTextToPlainText(input.message).length > 5_000) return "The approver message is too long.";
   return null;
 }
 
@@ -1102,7 +1103,7 @@ export async function configureMarketingDirector(
     recipientName: STAGE_SIX_FIRST_APPROVER.name,
     recipientEmail: STAGE_SIX_FIRST_APPROVER.email,
   };
-  const message = input.message?.trim() || null;
+  const message = sanitizeRichText(input.message) || null;
   const access = createProductionApprovalToken();
   let prepared;
   try {
@@ -1237,6 +1238,7 @@ export async function addProductionApprover(
     recipientName: recipient.recipientName,
     recipientEmail: recipient.recipientEmail,
   };
+  const message = sanitizeRichText(input.message) || null;
   try {
     return await withPrismaRetry(() =>
       prisma.$transaction(
@@ -1293,7 +1295,7 @@ export async function addProductionApprover(
             requestedById: user.id,
             sharedFieldKeys: input.sharedFieldKeys,
             selectedFileIds: input.selectedFileIds,
-            message: input.message?.trim() || null,
+            message,
           },
           select: { id: true, productionUnitId: true, sequence: true },
         });
@@ -1668,8 +1670,8 @@ export async function decideProductionApproval(
   if (input.confirmed !== true) {
     return { error: "Confirm Approve or Reject before recording this decision." } as const;
   }
-  const comment = input.comment?.trim() || null;
-  if (comment && comment.length > 5_000) return { error: "The decision comment is too long." } as const;
+  const comment = sanitizeRichText(input.comment) || null;
+  if (comment && richTextToPlainText(comment).length > 5_000) return { error: "The decision comment is too long." } as const;
   const tokenHash = scope.kind === "external" ? hashProductionExternalToken(scope.token) : null;
   if (scope.kind === "external" && !tokenHash) {
     return { error: "This approval link is unavailable." } as const;
@@ -2211,7 +2213,8 @@ export async function handoverProductionUnit(
   if (!validClientRequestId(input.clientRequestId)) return { error: "Invalid request identifier." } as const;
   if (!uniqueAllowedFieldKeys(input.sharedFieldKeys)) return { error: "Unknown shared-information field." } as const;
   if (!input.selectedFileIds.length) return { error: "Select at least one approved production file." } as const;
-  if (input.note && input.note.trim().length > 5_000) return { error: "The handover note is too long." } as const;
+  const note = sanitizeRichText(input.note) || null;
+  if (note && richTextToPlainText(note).length > 5_000) return { error: "The handover note is too long." } as const;
   const isInternal = input.route === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
   if (
     isInternal &&
@@ -2321,7 +2324,7 @@ export async function handoverProductionUnit(
               sharedFieldKeys: input.sharedFieldKeys,
               selectedFileIds: input.selectedFileIds,
               contentSnapshot: snapshot.snapshot as unknown as Prisma.InputJsonValue,
-              note: input.note?.trim() || null,
+              note,
               requestedById: user.id,
               deliveryStatus: ProductionHandoverDeliveryStatus.PENDING,
               failedAt: null,
@@ -2343,7 +2346,7 @@ export async function handoverProductionUnit(
               sharedFieldKeys: input.sharedFieldKeys,
               selectedFileIds: input.selectedFileIds,
               contentSnapshot: snapshot.snapshot as unknown as Prisma.InputJsonValue,
-              note: input.note?.trim() || null,
+              note,
               requestedById: user.id,
               externalTokenHash: access.tokenHash,
               externalTokenCreatedAt: access.createdAt,

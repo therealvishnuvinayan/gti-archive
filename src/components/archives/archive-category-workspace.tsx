@@ -18,6 +18,7 @@ import {
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RichTextContent } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -139,14 +140,6 @@ const archiveMetadataSections: Array<{
     ],
   },
 ];
-
-function formatArchiveMetadataValue(
-  value: ArchiveArtworkMetadata[keyof ArchiveArtworkMetadata] | null | undefined,
-) {
-  const normalized = typeof value === "string" ? value.trim() : value;
-
-  return normalized || "—";
-}
 
 function uniqueValues(items: ArchivedProjectFileRecord[], key: keyof ArchivedProjectFileRecord) {
   return Array.from(new Set(items.map((item) => item[key] as string).filter(Boolean))).sort(
@@ -313,10 +306,7 @@ export function ArchiveCategoryWorkspace({
                 {categoryTitle}
               </h1>
             </div>
-            <p className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]">
-              {categoryDescription ||
-                "Final archived files, completion documents, and manual archive uploads are read-only. Allowed users can view or download files in this category."}
-            </p>
+            <RichTextContent value={categoryDescription} fallback="Final archived files, completion documents, and manual archive uploads are read-only. Allowed users can view or download files in this category." className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#5f695f]" />
           </div>
           <ArchiveUploadButton
             canUploadAssets={canUploadArchives}
@@ -626,9 +616,7 @@ export function ArchiveCategoryWorkspace({
                                 </h5>
                                 <dl className="mt-3 grid gap-2">
                                   {section.fields.map((field) => {
-                                    const value = formatArchiveMetadataValue(
-                                      item.artworkMetadata?.[field.key],
-                                    );
+                                    const value = item.artworkMetadata?.[field.key];
 
                                     return (
                                       <div
@@ -638,9 +626,7 @@ export function ArchiveCategoryWorkspace({
                                         <dt className="text-[11px] font-[800] leading-5 text-[#6b766e]">
                                           {field.label}
                                         </dt>
-                                        <dd className="whitespace-pre-wrap break-words text-[12px] font-[700] leading-5 text-[#1f2922]">
-                                          {value}
-                                        </dd>
+                                        <dd className="break-words text-[12px] font-[700] leading-5 text-[#1f2922]"><RichTextContent value={value} fallback="—" /></dd>
                                       </div>
                                     );
                                   })}

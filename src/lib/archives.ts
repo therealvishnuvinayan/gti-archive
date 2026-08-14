@@ -35,6 +35,7 @@ import {
   assertProjectAccess,
 } from "@/lib/project-history";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { sanitizeRichText } from "@/lib/rich-text";
 import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
 import {
   createPresignedDownloadUrl,
@@ -1494,19 +1495,19 @@ function validateArchiveArtworkMetadataInput(input: {
       }) ?? input.file.approvedAt,
     clientBrandOwner: input.metadata.clientBrandOwner.trim(),
     regulatoryClearance: normalizeArchiveMetadataValue(input.metadata.regulatoryClearance),
-    fontsUsed: input.metadata.fontsUsed.trim(),
-    imagesPhotography: input.metadata.imagesPhotography.trim(),
-    illustrationsIcons: input.metadata.illustrationsIcons.trim(),
-    colourCodes: input.metadata.colourCodes.trim(),
-    thirdPartyLogosIp: normalizeArchiveMetadataValue(input.metadata.thirdPartyLogosIp),
+    fontsUsed: sanitizeRichText(input.metadata.fontsUsed),
+    imagesPhotography: sanitizeRichText(input.metadata.imagesPhotography),
+    illustrationsIcons: sanitizeRichText(input.metadata.illustrationsIcons),
+    colourCodes: sanitizeRichText(input.metadata.colourCodes),
+    thirdPartyLogosIp: sanitizeRichText(input.metadata.thirdPartyLogosIp) || null,
     supplierPrinter: normalizeArchiveMetadataValue(input.metadata.supplierPrinter),
-    outputFilesList: normalizeArchiveMetadataValue(input.metadata.outputFilesList),
+    outputFilesList: sanitizeRichText(input.metadata.outputFilesList) || null,
     printProofRef: normalizeArchiveMetadataValue(input.metadata.printProofRef),
     packagingDielineRef: normalizeArchiveMetadataValue(input.metadata.packagingDielineRef),
-    changeLog: input.metadata.changeLog.trim(),
+    changeLog: sanitizeRichText(input.metadata.changeLog),
     relatedArtworks: normalizeArchiveMetadataValue(input.metadata.relatedArtworks),
     briefSpecLink: normalizeArchiveMetadataValue(input.metadata.briefSpecLink),
-    generalNotes: normalizeArchiveMetadataValue(input.metadata.generalNotes),
+    generalNotes: sanitizeRichText(input.metadata.generalNotes) || null,
   };
 }
 

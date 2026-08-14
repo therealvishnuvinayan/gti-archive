@@ -27,6 +27,7 @@ import {
   type ProjectPermissionContext,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import {
   getProjectStageAccessRecordById,
 } from "@/lib/project-stage-data";
@@ -201,9 +202,9 @@ function normalizeOptionalText(
   field: keyof ProjectInquiryFieldErrors,
   fieldErrors: ProjectInquiryFieldErrors,
 ) {
-  const normalized = value?.trim() ?? "";
+  const normalized = sanitizeRichText(value);
 
-  if (normalized.length > MAX_TEXT_LENGTH) {
+  if (richTextToPlainText(normalized).length > MAX_TEXT_LENGTH) {
     fieldErrors[field] = `Keep this field under ${MAX_TEXT_LENGTH.toLocaleString()} characters.`;
   }
 

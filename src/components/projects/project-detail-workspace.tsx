@@ -28,6 +28,7 @@ import { StageActivitySummary } from "@/components/projects/stage-activity-summa
 import type { ProjectFlowRecord, ProjectStageRecord } from "@/lib/projects";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { RichTextContent } from "@/components/ui/rich-text-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   MotionItem,
@@ -472,9 +473,9 @@ export function ProjectDetailWorkspace({
               <h2 className="text-[20px] font-[800] leading-tight text-[#111712]">
                 Project Brief
               </h2>
-              <p className="dashboard-scroll-thin mt-2 max-h-[18rem] overflow-y-auto whitespace-pre-wrap break-words pr-3 text-left text-[14px] font-[500] leading-6 text-[#303a33]">
-                {project.description.trim() || "Project brief is not available."}
-              </p>
+              <div className="dashboard-scroll-thin mt-2 max-h-[18rem] overflow-y-auto break-words pr-3 text-left text-[14px] font-[500] leading-6 text-[#303a33]">
+                <RichTextContent value={project.description} fallback="Project brief is not available." />
+              </div>
             </div>
           </div>
         </MotionItem>

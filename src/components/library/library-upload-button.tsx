@@ -8,6 +8,7 @@ import { AssetTagSelector } from "@/components/assets/asset-tag-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -15,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   libraryUploadCategoryOptions,
   type LibraryItemRecord,
@@ -912,18 +912,19 @@ export function LibraryUploadButton({
                   initialOptions={assetTagOptions}
                 />
 
-                <label className="sm:col-span-2">
+                <div className="sm:col-span-2">
                   <span className="mb-2 block text-[13px] font-[700] text-[#2d372f]">
                     Description
                   </span>
-                  <Textarea
+                  <RichTextEditor
                     value={description}
-                    onChange={(event) => setDescription(event.target.value)}
+                    onChange={setDescription}
                     disabled={isUploading}
-                    className="min-h-[88px] rounded-2xl border border-line"
+                    minHeightClassName="min-h-[96px]"
+                    ariaLabel="Library asset description"
                     placeholder="Optional"
                   />
-                </label>
+                </div>
               </div>
 
               <div className="mt-5">

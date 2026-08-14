@@ -14,8 +14,8 @@ import {
 import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RichTextContent, RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import type { ProjectCompletionSummary } from "@/lib/archives";
 import type {
   ProjectCompletionArchivedFileOption,
@@ -1140,11 +1140,13 @@ function ProjectCompletionChecklistBody({
                   <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
                     Optional Note
                   </p>
-                  <Textarea
+                  <RichTextEditor
                     value={approvalNote}
-                    onChange={(event) => setApprovalNote(event.target.value)}
+                    onChange={setApprovalNote}
                     placeholder="Add any approval note or message."
-                    className="mt-2 min-h-[110px] rounded-[16px] border-[#d6e1d7]"
+                    className="mt-2 border-[#d6e1d7]"
+                    minHeightClassName="min-h-[110px]"
+                    ariaLabel="Authority approval note"
                   />
                 </div>
 
@@ -1187,9 +1189,7 @@ function ProjectCompletionChecklistBody({
                   </p>
                 ) : null}
                 {workflowState.approvalNote ? (
-                  <p className="mt-2 text-[12px] text-[#5f6b62]">
-                    Note: {workflowState.approvalNote}
-                  </p>
+                  <div className="mt-2 text-[12px] text-[#5f6b62]"><span className="font-[650]">Note: </span><RichTextContent value={workflowState.approvalNote} className="inline" /></div>
                 ) : null}
               </div>
 
@@ -1310,11 +1310,13 @@ function ProjectCompletionChecklistBody({
                   <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
                     Optional Note
                   </p>
-                  <Textarea
+                  <RichTextEditor
                     value={copyrightNote}
-                    onChange={(event) => setCopyrightNote(event.target.value)}
+                    onChange={setCopyrightNote}
                     placeholder="Add any copyright transfer note."
-                    className="mt-2 min-h-[110px] rounded-[16px] border-[#d6e1d7]"
+                    className="mt-2 border-[#d6e1d7]"
+                    minHeightClassName="min-h-[110px]"
+                    ariaLabel="Copyright transfer note"
                   />
                 </div>
 
@@ -1357,9 +1359,7 @@ function ProjectCompletionChecklistBody({
                   </p>
                 ) : null}
                 {workflowState.copyrightNote ? (
-                  <p className="mt-2 text-[12px] text-[#5f6b62]">
-                    Note: {workflowState.copyrightNote}
-                  </p>
+                  <div className="mt-2 text-[12px] text-[#5f6b62]"><span className="font-[650]">Note: </span><RichTextContent value={workflowState.copyrightNote} className="inline" /></div>
                 ) : null}
               </div>
 
@@ -1467,11 +1467,13 @@ function ProjectCompletionChecklistBody({
                   <p className="text-[12px] font-[700] uppercase tracking-[0.08em] text-[#617062]">
                     Optional Note
                   </p>
-                  <Textarea
+                  <RichTextEditor
                     value={invoiceNote}
-                    onChange={(event) => setInvoiceNote(event.target.value)}
+                    onChange={setInvoiceNote}
                     placeholder="Add any final invoice note."
-                    className="mt-2 min-h-[110px] rounded-[16px] border-[#d6e1d7]"
+                    className="mt-2 border-[#d6e1d7]"
+                    minHeightClassName="min-h-[110px]"
+                    ariaLabel="Final invoice note"
                   />
                 </div>
 
@@ -1526,9 +1528,7 @@ function ProjectCompletionChecklistBody({
                   </p>
                 ) : null}
                 {workflowState.invoiceNote ? (
-                  <p className="mt-2 text-[12px] text-[#5f6b62]">
-                    Note: {workflowState.invoiceNote}
-                  </p>
+                  <div className="mt-2 text-[12px] text-[#5f6b62]"><span className="font-[650]">Note: </span><RichTextContent value={workflowState.invoiceNote} className="inline" /></div>
                 ) : null}
               </div>
 

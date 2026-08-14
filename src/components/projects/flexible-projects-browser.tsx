@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { RichTextContent, RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -28,7 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   FLEXIBLE_PROJECT_FIXTURES,
   type FlexibleProjectFixture,
@@ -75,9 +75,7 @@ function FlexibleProjectCard({ project }: { project: FlexibleProjectFixture }) {
         <h2 className="mt-5 text-[21px] font-[750] leading-[1.2] tracking-[-0.03em] text-[#111712]">
           {project.name}
         </h2>
-        <p className="mt-2 line-clamp-3 min-h-[63px] text-[13px] leading-[21px] text-[#6d756f]">
-          {project.description}
-        </p>
+        <RichTextContent value={project.description} className="mt-2 line-clamp-3 min-h-[63px] text-[13px] leading-[21px] text-[#6d756f]" />
 
         <div className="mt-5 rounded-[17px] border border-[#e4e9e3] bg-[#fafcf9] p-4">
           <div className="flex items-center justify-between gap-4">
@@ -137,12 +135,14 @@ export function FlexibleProjectsBrowser() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deadline, setDeadline] = useState("");
   const [owner, setOwner] = useState("sarah-ahmed");
+  const [description, setDescription] = useState("");
 
   function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCreateOpen(false);
     setDeadline("");
     setOwner("sarah-ahmed");
+    setDescription("");
     showInfoToast(
       "UI prototype only",
       "Flexible Project creation is not connected yet.",
@@ -207,13 +207,16 @@ export function FlexibleProjectsBrowser() {
             <Input required placeholder="e.g. Annual Retail Conference" className={inputClassName} />
           </label>
 
-          <label className="sm:col-span-2">
+          <div className="sm:col-span-2">
             <FieldLabel>Description / Brief</FieldLabel>
-            <Textarea
+            <RichTextEditor
+              value={description}
+              onChange={setDescription}
               placeholder="What should this project deliver?"
-              className="min-h-28 rounded-[16px] border border-[#d9e1d9] shadow-none"
+              minHeightClassName="min-h-28"
+              ariaLabel="Project description and brief"
             />
-          </label>
+          </div>
 
           <div>
             <FieldLabel required>Owner</FieldLabel>

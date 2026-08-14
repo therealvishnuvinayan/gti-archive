@@ -94,11 +94,10 @@ assert(
   "The Production Handover dialog must remain viewport-bounded with a scrollable form and persistent footer.",
 );
 assert(
-  workspace.includes("h-24 min-h-20 max-h-36 resize-y rounded-[14px]") &&
-    workspace.includes("border-[#c8d5cb] bg-[#fbfdfb]") &&
-    workspace.includes("focus-visible:border-[#46906a]") &&
+  workspace.includes('ariaLabel="Optional approval message"') &&
+    workspace.includes('minHeightClassName="min-h-[96px]"') &&
     workspace.includes("Add context or instructions for the approver (optional)."),
-  "The optional approval message must use a controlled height with visible resting and focus boundaries.",
+  "The optional approval message must use the shared rich-text editor with a controlled minimum height.",
 );
 assert(
   workspace.match(/border-\[#c8d5cb\]/g)?.length >= 7 &&

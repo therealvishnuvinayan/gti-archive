@@ -61,12 +61,11 @@ assert(
   "Deliverables must clearly explain how to commit a typed value.",
 );
 assert(
-  workspace.includes("growTextareaToContent") &&
-    workspace.includes("textarea.scrollHeight + borderHeight") &&
-    workspace.includes("contentHeight > textarea.offsetHeight") &&
-    workspace.includes("resize-y overflow-y-auto") &&
-    workspace.includes('entryMode === "business-objectives" ? "right-3" : "right-8"'),
-  "Stage 1 description fields must grow with content while preserving manual vertical resizing.",
+  workspace.includes('import { RichTextEditor } from "@/components/ui/rich-text-editor"') &&
+    workspace.includes('<RichTextEditor') &&
+    workspace.includes('minHeightClassName="min-h-[112px]"') &&
+    workspace.includes('[&_.rich-text-prose]:pb-12'),
+  "Stage 1 description fields must use the shared rich-text editor while preserving attachment space.",
 );
 assert(
   workspace.includes('label="Legal Notes"') &&
@@ -75,12 +74,10 @@ assert(
   "Legal Notes must span the Deadline and Priority rows so its growth does not leave an empty left column.",
 );
 assert(
-  workspace.includes("BusinessObjectiveTagsInput") &&
-    workspace.includes('entryMode="business-objectives"') &&
-    workspace.includes('onChange([...entries, nextEntry].join("\\n"))') &&
-    workspace.includes("Type an objective and press Enter to add it.") &&
-    readOnlyView.includes("displayAsChips"),
-  "Key Business Objectives must support multiple persisted tag-style entries in edit and view modes.",
+  workspace.includes('ariaLabel="Key business objectives"') &&
+    !workspace.includes("BusinessObjectiveTagsInput") &&
+    readOnlyView.includes("RichTextContent"),
+  "Key Business Objectives must use the shared rich-text editor and formatted read-only renderer.",
 );
 assert(
   workspace.includes("onClick={toggleSuggestions}") &&
@@ -249,11 +246,12 @@ assert(
   "Opening or rendering View mode must not perform Stage 1 mutations.",
 );
 assert(
-  readOnlyView.includes('className="mt-3 whitespace-pre-wrap') &&
+  readOnlyView.includes('className="mt-3 text-[14px] leading-7') &&
+    readOnlyView.includes("RichTextContent") &&
     readOnlyView.includes("inquiry?.initialBrief") &&
     readOnlyView.includes("inquiry?.businessObjectives") &&
     readOnlyView.includes("inquiry?.legalNotes"),
-  "Read-only narrative fields must preserve persisted line breaks.",
+  "Read-only narrative fields must preserve persisted rich-text formatting.",
 );
 assert(
   readOnlyView.includes("party.company") &&

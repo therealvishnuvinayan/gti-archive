@@ -50,9 +50,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
+import { RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import type { ProjectStageShellRecord } from "@/lib/projects";
 import {
   STAGE_FIVE_FIELD_DEFINITIONS,
@@ -77,7 +77,7 @@ function valueText(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "Not provided";
   const record = value as { text?: unknown; values?: unknown; included?: unknown };
   const parts = [
-    typeof record.text === "string" ? record.text : "",
+    typeof record.text === "string" ? richTextToPlainText(record.text) : "",
     Array.isArray(record.values)
       ? record.values.filter((item): item is string => typeof item === "string").join(", ")
       : "",
@@ -490,15 +490,16 @@ function ApproverDialog({
                 </label>
               ))}
             </div>
-            <label className="mt-4 block space-y-2">
+            <div className="mt-4 block space-y-2">
               <span className="text-[12px] font-[720] text-[#2d372f]">Optional Message</span>
-              <Textarea
+              <RichTextEditor
                 value={message}
                 placeholder="Add context or instructions for the approver (optional)."
-                className="h-24 min-h-20 max-h-36 resize-y rounded-[14px] border-[#c8d5cb] bg-[#fbfdfb] px-4 py-3 shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15"
-                onChange={(event) => setMessage(event.target.value)}
+                ariaLabel="Optional approval message"
+                minHeightClassName="min-h-[96px]"
+                onChange={setMessage}
               />
-            </label>
+            </div>
           </div>
 
           <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e7ece8] bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
@@ -753,7 +754,7 @@ function HandoverDialog({
         <div className="mt-2 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">{files.map((file) => <label key={file.id} className="flex min-w-0 items-center gap-2 text-[11px]"><input type="checkbox" checked={fileIds.includes(file.id)} onChange={() => toggle(fileIds, file.id, setFileIds)} /><span className="truncate">{file.name}</span></label>)}</div>
         <div className="mt-3 flex items-center justify-between"><h3 className="text-[12px] font-[720]">Relevant technical information</h3><button type="button" className="text-[10px] font-[740] text-[#28714d]" onClick={() => setFieldKeys(fieldKeys.length === STAGE_FIVE_FIELD_DEFINITIONS.length ? [] : STAGE_FIVE_FIELD_DEFINITIONS.map((field) => field.key))}>Select All</button></div>
         <div className="mt-2 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">{STAGE_FIVE_FIELD_DEFINITIONS.map((field) => <label key={field.key} className="flex items-center gap-2 text-[11px]"><input type="checkbox" checked={fieldKeys.includes(field.key)} onChange={() => toggle(fieldKeys, field.key, setFieldKeys)} />{field.title}</label>)}</div>
-            <label className="mt-4 block space-y-2"><span className="text-[12px] font-[720]">Optional handover note</span><Textarea value={note} className="min-h-[90px]" onChange={(event) => setNote(event.target.value)} /></label>
+            <div className="mt-4 block space-y-2"><span className="text-[12px] font-[720]">Optional handover note</span><RichTextEditor value={note} ariaLabel="Optional handover note" minHeightClassName="min-h-[90px]" onChange={setNote} /></div>
         </CardContent>
         <CardFooter className="shrink-0 flex-col items-stretch border-t border-[#e7ece8] bg-white px-6 py-4 sm:px-7">
           <p className="text-[10px] leading-4 text-[#748078]">The recipient receives a time-limited secure link. Files are not exposed through permanent public storage URLs.</p>

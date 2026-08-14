@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { normalizeArchiveCategorySlug } from "@/lib/archive-categories";
 import { requirePermission } from "@/lib/permissions/require";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import {
   PROJECT_MASTER_DATA_CACHE_TAG,
   PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH,
@@ -62,7 +63,7 @@ function normalizeMasterDataInput(input: SaveMasterDataInput) {
   return {
     id: input.id?.trim() || undefined,
     name: input.name.trim(),
-    description: input.description?.trim() || null,
+    description: sanitizeRichText(input.description) || null,
     color: input.color?.trim() || null,
     slug: normalizeArchiveCategorySlug(input.slug || input.name),
     iconUrl: input.iconUrl?.trim() || null,
@@ -113,7 +114,7 @@ function validateMasterDataDescription(
 ) {
   if (
     description &&
-    description.length > PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH
+    richTextToPlainText(description).length > PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH
   ) {
     return `${label} description must be ${PROJECT_MASTER_DATA_DESCRIPTION_MAX_LENGTH} characters or fewer.`;
   }

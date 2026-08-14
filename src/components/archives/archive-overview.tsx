@@ -11,6 +11,7 @@ import {
   MotionStaggerGroup,
 } from "@/components/motion/motion-primitives";
 import { Button } from "@/components/ui/button";
+import { RichTextContent } from "@/components/ui/rich-text-editor";
 import type { ArchiveCategorySummary } from "@/lib/archives";
 
 type ArchiveOverviewProps = {
@@ -88,11 +89,7 @@ export function ArchiveOverview({
                         <h3 className="text-center text-[16px] font-[700] text-[#141915]">
                           {category.title}
                         </h3>
-                        {category.description ? (
-                          <p className="mt-2 line-clamp-2 text-center text-[12px] leading-5 text-[#718072]">
-                            {category.description}
-                          </p>
-                        ) : null}
+                        {category.description ? <RichTextContent value={category.description} className="mt-2 line-clamp-2 text-center text-[12px] leading-5 text-[#718072]" /> : null}
                         <div className="mt-5 rounded-[18px] border border-[#e1e8e1] bg-[#f9fbf9] px-4 py-3 text-center">
                           <p className="text-[20px] font-[700] text-[#111712]">
                             {category.fileCount}

@@ -28,6 +28,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { RichTextContent } from "@/components/ui/rich-text-editor";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -233,9 +234,7 @@ export function FlexibleProjectDetailWorkspace({
             <h1 className="mt-5 max-w-4xl text-[31px] font-[800] leading-[1.08] tracking-[-0.045em] text-[#0f1411] sm:text-[40px] lg:text-[46px]">
               {project.name}
             </h1>
-            <p className="mt-4 max-w-4xl text-[14px] leading-6 text-[#677069] sm:text-[16px] sm:leading-7">
-              {project.description}
-            </p>
+            <RichTextContent value={project.description} className="mt-4 max-w-4xl text-[14px] leading-6 text-[#677069] sm:text-[16px] sm:leading-7" />
 
             <div className="mt-7 rounded-[20px] border border-[#dce3dc] bg-[#fbfcfb] p-5 shadow-[0_8px_24px_rgba(23,39,28,0.03)] sm:p-6">
               <div className="flex items-center justify-between gap-5">
@@ -406,4 +405,3 @@ export function FlexibleProjectDetailWorkspace({
     </section>
   );
 }
-

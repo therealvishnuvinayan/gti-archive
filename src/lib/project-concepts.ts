@@ -21,6 +21,7 @@ import {
   type ConceptAccessContext,
 } from "@/lib/project-concept-access";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { sanitizeRichText } from "@/lib/rich-text";
 import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import {
   getProjectStageAccessRecordById,
@@ -462,7 +463,7 @@ export async function createProjectConceptFolder(
     return { error: "Assigned Executor must be a current project executor." } as const;
   }
 
-  const brief = input.brief?.trim() || null;
+  const brief = sanitizeRichText(input.brief) || null;
   if (!brief) {
     return { error: "Concept Brief is required." } as const;
   }
@@ -863,7 +864,7 @@ export async function editProjectConceptFolder(
     requestedExecutorId !== undefined &&
     requestedExecutorId !== folder.assignedExecutorId;
   const requestedBrief =
-    input.brief === undefined ? undefined : input.brief?.trim() || null;
+    input.brief === undefined ? undefined : sanitizeRichText(input.brief) || null;
   if (input.brief !== undefined && !requestedBrief) {
     return { error: "Concept Brief is required." } as const;
   }

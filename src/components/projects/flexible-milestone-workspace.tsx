@@ -28,7 +28,7 @@ import { FlexiblePrototypeDialog } from "@/components/projects/flexible-prototyp
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextContent, RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import {
   FLEXIBLE_MILESTONE_ACTIVITY_FIXTURES,
   type FlexibleBlockDefinition,
@@ -183,7 +183,7 @@ export function FlexibleMilestoneWorkspace({
 
   function handleProgressSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextUpdate = progressText.trim();
+    const nextUpdate = richTextToPlainText(progressText);
     if (!nextUpdate) return;
 
     addActivity(`Vishnu: ${nextUpdate}`);
@@ -217,9 +217,7 @@ export function FlexibleMilestoneWorkspace({
                 <h1 className="mt-2 text-[30px] font-[800] leading-[1.08] tracking-[-0.045em] text-[#0f1411] sm:text-[39px]">
                   {milestone.name}
                 </h1>
-                <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[#68716a] sm:text-[14px]">
-                  {milestone.description}
-                </p>
+                <RichTextContent value={milestone.description} className="mt-3 max-w-3xl text-[13px] leading-6 text-[#68716a] sm:text-[14px]" />
               </div>
               <Badge className={`self-start px-4 py-2 text-[11px] ${statusStyle(status)}`} variant="outline">
                 <span className="mr-2 size-1.5 rounded-full bg-current" />
@@ -416,17 +414,17 @@ export function FlexibleMilestoneWorkspace({
           }
         >
           <form id="flexible-progress-form" onSubmit={handleProgressSubmit}>
-            <label>
+            <div>
               <span className="mb-2 block text-[12px] font-[700] text-[#3c4740]">Progress update</span>
-              <Textarea
+              <RichTextEditor
                 required
-                autoFocus
                 value={progressText}
-                onChange={(event) => setProgressText(event.target.value)}
+                onChange={setProgressText}
                 placeholder="Waiting for the vendor invoice."
-                className="min-h-36 rounded-[16px] border border-[#d9e1d9] bg-white shadow-none"
+                minHeightClassName="min-h-36"
+                ariaLabel="Progress update"
               />
-            </label>
+            </div>
           </form>
         </FlexiblePrototypeDialog>
       ) : null}

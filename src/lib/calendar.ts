@@ -13,6 +13,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { sanitizeRichText } from "@/lib/rich-text";
 
 export const CALENDAR_CACHE_TAG = "calendar-events";
 
@@ -173,7 +174,7 @@ export function parseCalendarEventInput(
   input: SaveCalendarEventInput,
 ): CalendarEventValidationResult {
   const title = input.title.trim();
-  const details = input.details.trim();
+  const details = sanitizeRichText(input.details);
 
   if (!title) {
     return { error: "Enter an event title." } as const;

@@ -6,6 +6,7 @@ import { AppDatePicker } from "@/components/calendar/app-date-picker";
 import { FlexiblePrototypeDialog } from "@/components/projects/flexible-prototype-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -13,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import type { FlexibleMilestoneFixture } from "@/lib/flexible-project-ui-fixtures";
 
 export type FlexibleMilestoneFormValue = {
@@ -68,7 +68,7 @@ export function FlexibleMilestoneDialog({
       responsible,
       deadline,
       approvalRequired,
-      description: description.trim(),
+      description,
     });
   }
 
@@ -166,15 +166,16 @@ export function FlexibleMilestoneDialog({
           </Select>
         </div>
 
-        <label className="sm:col-span-2">
+        <div className="sm:col-span-2">
           <Label>Description / Notes</Label>
-          <Textarea
+          <RichTextEditor
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={setDescription}
             placeholder="Add context, expected outcomes, or handover notes."
-            className="min-h-28 rounded-[16px] border border-[#d9e1d9] shadow-none"
+            minHeightClassName="min-h-28"
+            ariaLabel="Milestone description and notes"
           />
-        </label>
+        </div>
       </form>
     </FlexiblePrototypeDialog>
   );

@@ -1,3 +1,5 @@
+import { richTextToPlainText } from "@/lib/rich-text";
+
 type ChecklistInformationRequestEmailInput = {
   recipientName?: string | null;
   requesterName: string;
@@ -21,7 +23,7 @@ export function buildChecklistInformationRequestEmail(
   input: ChecklistInformationRequestEmailInput,
 ) {
   const recipientName = input.recipientName?.trim() || "there";
-  const message = input.message?.trim() || null;
+  const message = richTextToPlainText(input.message) || null;
   const subject = `[GTI Archive] Information requested: ${input.fieldLabel} — ${input.projectName}`;
   const rows = [
     ["Project", input.projectName],

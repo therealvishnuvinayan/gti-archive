@@ -11,7 +11,7 @@ import {
 } from "@/components/projects/checklist-file-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextContent, RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import type { StageFiveChecklistValue } from "@/lib/stage-five";
 import type { ExternalChecklistRequestData } from "@/lib/stage-five-external";
 import { uploadExternalStageFiveAttachment } from "@/lib/stage-five-external-upload-client";
@@ -118,7 +118,7 @@ export function StageFiveExternalRequestWorkspace({
       return <Input value={text} disabled={isSubmitting} className={CONTROL_CLASS} placeholder={data.field.placeholder} onChange={(event) => setText(event.target.value)} />;
     }
     if (control === "textarea") {
-      return <Textarea value={text} disabled={isSubmitting} className="min-h-[140px] rounded-[14px] border-[#dce5dd] bg-white shadow-none" placeholder={data.field.placeholder} onChange={(event) => setText(event.target.value)} />;
+      return <RichTextEditor value={text} disabled={isSubmitting} minHeightClassName="min-h-[140px]" ariaLabel={data.field.title} placeholder={data.field.placeholder} onChange={setText} />;
     }
     if (control === "file" || control === "multi-file") {
       return <ChecklistFilePicker fieldLabel={data.field.title} files={files} multiple={control === "multi-file"} disabled={isSubmitting} onChange={setFiles} />;
@@ -137,14 +137,14 @@ export function StageFiveExternalRequestWorkspace({
     if (control === "text-attachment") {
       return (
         <div className="space-y-4">
-          <Textarea value={text} disabled={isSubmitting} className="min-h-[120px] rounded-[14px] border-[#dce5dd] bg-white shadow-none" placeholder={data.field.placeholder} onChange={(event) => setText(event.target.value)} />
+          <RichTextEditor value={text} disabled={isSubmitting} minHeightClassName="min-h-[120px]" ariaLabel={data.field.title} placeholder={data.field.placeholder} onChange={setText} />
           <ChecklistFilePicker fieldLabel={`${data.field.title} reference`} files={files} multiple disabled={isSubmitting} onChange={setFiles} />
         </div>
       );
     }
     return (
       <div className="space-y-4">
-        <Textarea value={text} disabled={isSubmitting} className="min-h-[120px] rounded-[14px] border-[#dce5dd] bg-white shadow-none" placeholder={data.field.placeholder} onChange={(event) => setText(event.target.value)} />
+        <RichTextEditor value={text} disabled={isSubmitting} minHeightClassName="min-h-[120px]" ariaLabel={data.field.title} placeholder={data.field.placeholder} onChange={setText} />
         <ChecklistFilePicker fieldLabel={`${data.field.title} reference`} files={files} multiple disabled={isSubmitting} onChange={setFiles} />
         <button
           type="button"
@@ -204,7 +204,7 @@ export function StageFiveExternalRequestWorkspace({
   }
 
   async function declineRequest() {
-    if (isSubmitting || declineReason.trim().length < 3) return;
+    if (isSubmitting || richTextToPlainText(declineReason).length < 3) return;
     setIsSubmitting(true);
     try {
       const response = await fetch(`/api/external/checklist-request/${encodeURIComponent(token)}/decline`, {
@@ -267,9 +267,7 @@ export function StageFiveExternalRequestWorkspace({
 
       <div className="rounded-[18px] border border-[#e1e8e2] bg-white p-5">
         <p className="text-[10px] font-[760] uppercase tracking-[0.09em] text-[#7a867e]">Message</p>
-        <p className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-[#344038]">
-          {data.message || `Please provide the ${data.field.title.toLocaleLowerCase()} for this project file.`}
-        </p>
+        <RichTextContent value={data.message || `Please provide the ${data.field.title.toLocaleLowerCase()} for this project file.`} className="mt-2 text-[14px] leading-6 text-[#344038]" />
       </div>
 
       <div className="space-y-5 rounded-[20px] border border-[#dfe8e1] bg-[#fbfcfb] p-5 sm:p-6">
@@ -291,12 +289,12 @@ export function StageFiveExternalRequestWorkspace({
 
       {showDecline ? (
         <div className="rounded-[18px] border border-[#ecd9d5] bg-[#fffafa] p-5">
-          <label className="block">
+          <div className="block">
             <span className="text-[13px] font-[720] text-[#493632]">Reason</span>
-            <Textarea value={declineReason} disabled={isSubmitting} className="mt-2 min-h-[100px] rounded-[14px] border-[#e5cfcb] bg-white" placeholder="Briefly explain why you cannot provide this information." onChange={(event) => setDeclineReason(event.target.value)} />
-          </label>
+            <RichTextEditor value={declineReason} disabled={isSubmitting} className="mt-2 border-[#e5cfcb]" minHeightClassName="min-h-[100px]" ariaLabel="Decline reason" placeholder="Briefly explain why you cannot provide this information." onChange={setDeclineReason} />
+          </div>
           <div className="mt-4 flex justify-end">
-            <Button type="button" variant="destructive" disabled={isSubmitting || declineReason.trim().length < 3} onClick={declineRequest}>
+            <Button type="button" variant="destructive" disabled={isSubmitting || richTextToPlainText(declineReason).length < 3} onClick={declineRequest}>
               Confirm
             </Button>
           </div>

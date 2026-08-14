@@ -254,7 +254,8 @@ assert(
     workspace.includes("min-h-0 flex-1 overflow-y-auto overscroll-contain") &&
     workspace.includes("shrink-0 flex-col-reverse") &&
     workspace.includes("border-t border-[#e7ece8] bg-white") &&
-    workspace.includes("h-24 min-h-20 max-h-36 resize-y rounded-[14px]"),
+    workspace.includes('ariaLabel="Request message"') &&
+    workspace.includes('minHeightClassName="min-h-[96px]"'),
   "The Request Information dialog must fit the viewport, scroll its body, and keep its actions visible.",
 );
 assert(

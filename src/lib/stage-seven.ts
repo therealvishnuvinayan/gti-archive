@@ -23,6 +23,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
 import {
   getProjectStageAccessRecordById,
@@ -163,6 +164,14 @@ function normalizeOptionalText(value: string | null | undefined, max: number) {
     throw new StageSevenWorkflowError(`Text must be ${max} characters or fewer.`);
   }
   return text;
+}
+
+function normalizeOptionalRichText(value: string | null | undefined, max: number) {
+  const html = sanitizeRichText(value);
+  if (richTextToPlainText(html).length > max) {
+    throw new StageSevenWorkflowError(`Text must be ${max} characters or fewer.`);
+  }
+  return html || null;
 }
 
 function normalizeEmail(value: string | null | undefined) {
@@ -544,7 +553,7 @@ function validateSampleRequestInput(input: {
     name,
     customTypeName,
     deadline: parseDeadlineDate(input.deadline),
-    requestNote: normalizeOptionalText(input.requestNote, 8_000),
+    requestNote: normalizeOptionalRichText(input.requestNote, 8_000),
   };
 }
 
@@ -689,6 +698,7 @@ async function buildSampleRequestEmail(roundId: string) {
     timeZone: "UTC",
   }).format(round.deadline);
   const greeting = round.recipientName ? `Hello ${round.recipientName},` : "Hello,";
+  const requestNoteText = richTextToPlainText(round.requestNote);
   const subject = `[GTI Archive] Physical Sample Request — ${round.project.name} — ${unitName}`;
   const fileLines = links.map((file) => `- ${file.name}: ${file.url}`);
   const text = [
@@ -701,7 +711,7 @@ async function buildSampleRequestEmail(roundId: string) {
     `Sample Round: ${round.name}`,
     `Sample Type: ${sampleType}`,
     `Deadline: ${deadline}`,
-    ...(round.requestNote ? [`Request Note: ${round.requestNote}`] : []),
+    ...(requestNoteText ? [`Request Note: ${requestNoteText}`] : []),
     "",
     "Please prepare the physical sample based on the approved production material and arrange delivery/courier before the requested deadline.",
     "",
@@ -722,7 +732,7 @@ async function buildSampleRequestEmail(roundId: string) {
         <tr><td style="padding:3px 14px 3px 0"><strong>Sample Type</strong></td><td>${escapeHtml(sampleType)}</td></tr>
         <tr><td style="padding:3px 14px 3px 0"><strong>Deadline</strong></td><td>${escapeHtml(deadline)}</td></tr>
       </table>
-      ${round.requestNote ? `<p><strong>Request Note</strong><br>${escapeHtml(round.requestNote).replaceAll("\n", "<br>")}</p>` : ""}
+      ${requestNoteText ? `<p><strong>Request Note</strong><br>${escapeHtml(requestNoteText).replaceAll("\n", "<br>")}</p>` : ""}
       <p>Please prepare the physical sample based on the approved production material and arrange delivery/courier before the requested deadline.</p>
       <h3>Relevant production files</h3>
       <p>These secure links expire in 7 days.</p>
@@ -1001,7 +1011,7 @@ export async function decidePhysicalSampleRound(
   if (!Object.values(PhysicalSampleDecision).includes(input.decision)) {
     throw new StageSevenWorkflowError("Select Accept or Reject.");
   }
-  const decisionNote = normalizeOptionalText(input.decisionNote, 8_000);
+  const decisionNote = normalizeOptionalRichText(input.decisionNote, 8_000);
   if (input.decision === PhysicalSampleDecision.REJECTED && !decisionNote) {
     throw new StageSevenWorkflowError("Enter a review note before rejecting the sample.");
   }

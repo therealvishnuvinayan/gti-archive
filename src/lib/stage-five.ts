@@ -22,6 +22,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import { publishNotificationChanges } from "@/lib/realtime/server";
 import {
   getProjectStageAccessRecordById,
@@ -437,8 +438,14 @@ function validateChecklistValue(
 ): { error: string } | { value: StageFiveChecklistValue } {
   const field = getStageFiveFieldDefinition(fieldKey);
   if (!field) return { error: "Unknown checklist field." };
-  const text = typeof value.text === "string" ? value.text.trim() : "";
-  if (text.length > 20_000) return { error: `${STAGE_FIVE_FIELD_LABELS[fieldKey]} is too long.` };
+  const rawText = typeof value.text === "string" ? value.text.trim() : "";
+  const richTextControl =
+    field.control === "textarea" ||
+    field.control === "text-attachment" ||
+    field.control === "health-warning";
+  const text = richTextControl ? sanitizeRichText(rawText) : rawText;
+  const textLength = richTextControl ? richTextToPlainText(text).length : text.length;
+  if (textLength > 20_000) return { error: `${STAGE_FIVE_FIELD_LABELS[fieldKey]} is too long.` };
   const values = Array.isArray(value.values)
     ? Array.from(
         new Set(value.values.map((item) => item.trim().replace(/\s+/g, " ")).filter(Boolean)),
@@ -674,8 +681,8 @@ export async function requestStageFiveChecklistInformation(
   );
   if (!checklist) return { error: "The selected Stage 5 file was not found." } as const;
 
-  const message = input.message?.trim() || null;
-  if (message && message.length > 5_000) return { error: "The request message is too long." } as const;
+  const message = sanitizeRichText(input.message) || null;
+  if (message && richTextToPlainText(message).length > 5_000) return { error: "The request message is too long." } as const;
   const existing = await withPrismaRetry(() =>
     prisma.projectFileChecklistRequest.findUnique({
       where: { clientRequestId: input.clientRequestId },
@@ -1421,9 +1428,10 @@ export async function declineStageFiveChecklistRequest(
   user: PermissionUser,
   input: { requestId: string; reason: string },
 ) {
-  const reason = input.reason.trim().replace(/\s+/g, " ");
-  if (reason.length < 3) return { error: "Enter a short reason for declining." } as const;
-  if (reason.length > 1_000) return { error: "The decline reason is too long." } as const;
+  const reason = sanitizeRichText(input.reason);
+  const reasonLength = richTextToPlainText(reason).length;
+  if (reasonLength < 3) return { error: "Enter a short reason for declining." } as const;
+  if (reasonLength > 1_000) return { error: "The decline reason is too long." } as const;
 
   const request = await withPrismaRetry(() =>
     prisma.projectFileChecklistRequest.findFirst({

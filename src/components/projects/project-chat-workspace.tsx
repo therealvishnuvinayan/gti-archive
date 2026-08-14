@@ -113,6 +113,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { RichTextContent, RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -1480,8 +1481,6 @@ function StageBriefContextCard({
   onOpenProjectBrief: () => void;
   onOpenStageBrief: () => void;
 }) {
-  const hasProjectBrief = projectBriefText.length > 0;
-  const hasStageBrief = stageBriefText.length > 0;
   const hasProjectAttachments = projectBriefAttachments.length > 0;
   const hasStageAttachments = stageBriefAttachments.length > 0;
 
@@ -1534,9 +1533,7 @@ function StageBriefContextCard({
                 </Button>
               </div>
               <div className="mt-3 max-h-32 overflow-y-auto pr-1">
-                <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-[#26312a]">
-                  {hasProjectBrief ? projectBriefText : "No project brief has been added."}
-                </p>
+                <RichTextContent value={projectBriefText} fallback="No project brief has been added." className="break-words text-[13px] leading-5 text-[#26312a]" />
               </div>
               {hasProjectAttachments ? (
                 <div className="mt-3">
@@ -1564,9 +1561,7 @@ function StageBriefContextCard({
                 </Button>
               </div>
               <div className="mt-3 max-h-32 overflow-y-auto pr-1">
-                <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-[#26312a]">
-                  {hasStageBrief ? stageBriefText : "No stage brief has been added for this stage."}
-                </p>
+                <RichTextContent value={stageBriefText} fallback="No stage brief has been added for this stage." className="break-words text-[13px] leading-5 text-[#26312a]" />
               </div>
               {hasStageAttachments ? (
                 <div className="mt-3">
@@ -1705,9 +1700,7 @@ function ConceptBriefContextCard({
               </Button>
             </div>
           ) : null}
-          <p className="whitespace-pre-wrap break-words text-[13px] leading-6 text-[#26312a]">
-            {brief || "No concept brief has been added."}
-          </p>
+          <RichTextContent value={brief} fallback="No concept brief has been added." className="break-words text-[13px] leading-6 text-[#26312a]" />
           {attachments.length > 0 ? (
             <div>
               <p className="mb-2 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#718076]">
@@ -2029,9 +2022,7 @@ function BriefDialog({
         <CardContent className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
           {body ? (
             <section className="rounded-[20px] border border-line bg-[#fbfcfa] p-4">
-              <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#253028]">
-                {body}
-              </p>
+              <RichTextContent value={body} className="text-[14px] leading-6 text-[#253028]" />
             </section>
           ) : (
             <div className="rounded-[20px] border border-line bg-[#fbfcfa] px-4 py-5 text-[14px] leading-6 text-[#6a706b]">
@@ -6625,7 +6616,7 @@ export function ProjectChatWorkspace({
 
   async function handleCreateRevision() {
     const activeStageId = activeStage?.id;
-    const summary = revisionSummary.trim();
+    const summary = revisionSummary;
 
     if (!activeStageId) {
       setRevisionDialogError("This project does not have an active stage to upload into.");
@@ -6657,7 +6648,7 @@ export function ProjectChatWorkspace({
       return;
     }
 
-    if (!summary) {
+    if (!richTextToPlainText(summary)) {
       setRevisionDialogError("Enter the revision details before creating it.");
       return;
     }
@@ -7170,9 +7161,9 @@ export function ProjectChatWorkspace({
 
     const revisionEntryId = getRevisionEntryId(reviewRevisionMessage);
     const reviewRevisionLabel = getRevisionLabel(reviewRevisionMessage);
-    const rejectionReason = reviewRejectReason.trim();
+    const rejectionReason = reviewRejectReason;
 
-    if (status === "REJECTED" && !rejectionReason) {
+    if (status === "REJECTED" && !richTextToPlainText(rejectionReason)) {
       setReviewDialogError("Revision reason is required.");
       return;
     }
@@ -8293,9 +8284,7 @@ export function ProjectChatWorkspace({
                           <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
                             {translatedRevisionNoteLabel}
                           </p>
-                          <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-5 text-[#253028]">
-                            {translatedRevisionBody}
-                          </p>
+                          <RichTextContent value={translatedRevisionBody} className="mt-1.5 break-words text-[13px] leading-5 text-[#253028]" />
                         </div>
 
                         {effectiveRejectionReason ? (
@@ -8310,9 +8299,7 @@ export function ProjectChatWorkspace({
                                   }`
                                 : "Requested by Project Owner"}
                             </p>
-                            <p className="mt-2 whitespace-pre-wrap break-words text-[12px] font-semibold leading-5">
-                              {translatedRejectionReason}
-                            </p>
+                            <RichTextContent value={translatedRejectionReason} className="mt-2 break-words text-[12px] font-semibold leading-5" />
                           </div>
                         ) : null}
 
@@ -10516,11 +10503,12 @@ export function ProjectChatWorkspace({
                 <p className="text-[13px] font-semibold text-[#2d372f]">
                   Optional message
                 </p>
-                <Textarea
+                <RichTextEditor
                   value={invoiceRequestNote}
-                  onChange={(event) => setInvoiceRequestNote(event.target.value)}
+                  onChange={setInvoiceRequestNote}
                   placeholder="Please upload the invoice for this completed stage."
-                  className="min-h-[110px] rounded-[18px] border border-line"
+                  minHeightClassName="min-h-[110px]"
+                  ariaLabel="Invoice request message"
                   disabled={isRequestingStageInvoice}
                 />
               </div>
@@ -10602,11 +10590,12 @@ export function ProjectChatWorkspace({
               <div className="space-y-5">
                 <div className="space-y-2">
                   <p className="text-[13px] font-semibold text-[#2d372f]">Revision Notes</p>
-                  <Textarea
+                  <RichTextEditor
                     value={revisionSummary}
-                    onChange={(event) => setRevisionSummary(event.target.value)}
+                    onChange={setRevisionSummary}
                     placeholder="Describe the corrections required for this revision."
-                    className="min-h-[140px] rounded-[18px] border border-line"
+                    minHeightClassName="min-h-[140px]"
+                    ariaLabel="Revision notes"
                     disabled={isUploadingRevision}
                   />
                 </div>
@@ -10843,11 +10832,12 @@ export function ProjectChatWorkspace({
                   <p className="text-[13px] font-semibold text-[#2d372f]">
                     Revision Brief / Reason *
                   </p>
-                  <Textarea
+                  <RichTextEditor
                     value={reviewRejectReason}
-                    onChange={(event) => setReviewRejectReason(event.target.value)}
+                    onChange={setReviewRejectReason}
                     placeholder="Explain what needs to be changed for the next revision."
-                    className="min-h-[120px] rounded-[18px] border border-line"
+                    minHeightClassName="min-h-[120px]"
+                    ariaLabel="Revision brief or reason"
                     disabled={Boolean(pendingRevisionReviewId)}
                   />
                 </div>
@@ -10899,7 +10889,7 @@ export function ProjectChatWorkspace({
                     void handleRevisionReview("REJECTED");
                   }}
                   disabled={
-                    Boolean(pendingRevisionReviewId) || reviewRejectReason.trim().length === 0
+                    Boolean(pendingRevisionReviewId) || richTextToPlainText(reviewRejectReason).length === 0
                   }
                   className="w-full sm:w-auto"
                 >
