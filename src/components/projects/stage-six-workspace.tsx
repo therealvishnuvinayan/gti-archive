@@ -50,6 +50,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
+import {
+  ProjectFormAutosaveStatus,
+  useProjectFormAutosave,
+} from "@/components/ui/project-form-autosave";
 import { RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -364,6 +368,28 @@ function ApproverDialog({
   const availableFiles = [unit.sourceFile, ...unit.productionFiles];
   const [fileIds, setFileIds] = useState<string[]>(availableFiles.map((file) => file.id));
   const [message, setMessage] = useState("");
+  const autosave = useProjectFormAutosave({
+    projectId,
+    formKey: `stage-six-approver:${unit.id}:${mode}`,
+    value: {
+      recipientType,
+      recipientUserId,
+      recipientName,
+      recipientEmail,
+      fieldKeys,
+      fileIds,
+      message,
+    },
+    onRestore: (draft) => {
+      setRecipientType(draft.recipientType);
+      setRecipientUserId(draft.recipientUserId);
+      setRecipientName(draft.recipientName);
+      setRecipientEmail(draft.recipientEmail);
+      setFieldKeys(draft.fieldKeys);
+      setFileIds(draft.fileIds);
+      setMessage(draft.message);
+    },
+  });
   const allSelected = fieldKeys.length === STAGE_FIVE_FIELD_DEFINITIONS.length && fileIds.length === availableFiles.length;
   const recipientReady = recipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR
     ? Boolean(recipientUserId)
@@ -372,6 +398,9 @@ function ApproverDialog({
     recipientReady &&
     (fieldKeys.length > 0 || fileIds.length > 0) &&
     (mode !== "marketing-director" || fileIds.length > 0);
+  const closeWithAutosave = () => {
+    void autosave.flush().finally(onClose);
+  };
 
   function toggle(list: string[], value: string, setter: (value: string[]) => void) {
     setter(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
@@ -399,6 +428,7 @@ function ApproverDialog({
         showErrorToast("Unable to save approver.", result.error);
         return;
       }
+      await autosave.clearDraft().catch(() => undefined);
       showSuccessToast(mode === "marketing-director" ? "Marketing Director approval requested." : "Approver added to the waiting chain.");
       onSaved();
       onClose();
@@ -415,7 +445,7 @@ function ApproverDialog({
               <h2 id="add-approver-title" className="mt-1.5 text-[20px] font-[760] text-[#162019] sm:text-[22px]">{mode === "marketing-director" ? "Assign Marketing Director" : "Add Approver"}</h2>
               {mode === "marketing-director" ? <p className="mt-1 text-[11px] font-[700] text-[#9a6a22]">Marketing Director — Required</p> : null}
             </div>
-            <Button type="button" variant="secondary" size="icon" aria-label="Close approval request" onClick={onClose}><X className="h-4 w-4" /></Button>
+            <Button type="button" variant="secondary" size="icon" aria-label="Close approval request" onClick={closeWithAutosave}><X className="h-4 w-4" /></Button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6 sm:py-5">
@@ -502,8 +532,9 @@ function ApproverDialog({
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e7ece8] bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-            <Button type="button" className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={onClose}>Cancel</Button>
+          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e7ece8] bg-white px-5 py-4 sm:flex-row sm:items-center sm:px-6">
+            <Button type="button" className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={closeWithAutosave}>Cancel</Button>
+            <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="sm:mr-auto" />
             <Button type="button" className="w-full sm:w-auto" disabled={!canSubmit || pending} onClick={save}><Plus className="h-4 w-4" /> {pending ? "Saving..." : mode === "marketing-director" ? "Assign & Request Approval" : "Add Approver"}</Button>
           </div>
         </CardContent>
@@ -688,6 +719,32 @@ function HandoverDialog({
   );
   const [fileIds, setFileIds] = useState(files.map((file) => file.id));
   const [note, setNote] = useState("");
+  const autosave = useProjectFormAutosave({
+    projectId,
+    formKey: `stage-six-handover:${unit.id}`,
+    value: {
+      route,
+      recipientUserId,
+      company,
+      contactName,
+      email,
+      phone,
+      fieldKeys,
+      fileIds,
+      note,
+    },
+    onRestore: (draft) => {
+      setRoute(draft.route);
+      setRecipientUserId(draft.recipientUserId);
+      setCompany(draft.company);
+      setContactName(draft.contactName);
+      setEmail(draft.email);
+      setPhone(draft.phone);
+      setFieldKeys(draft.fieldKeys);
+      setFileIds(draft.fileIds);
+      setNote(draft.note);
+    },
+  });
   const isInternal = route === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
   const effectiveRecipientType = isInternal
     ? ProductionApprovalRecipientType.EXISTING_COLLABORATOR
@@ -695,6 +752,9 @@ function HandoverDialog({
   const recipientReady = isInternal
     ? Boolean(recipientUserId)
     : Boolean(company.trim() && contactName.trim() && /^\S+@\S+\.\S+$/.test(email.trim()) && /^\+[\d\s().-]{8,}$/.test(phone.trim()));
+  const closeWithAutosave = () => {
+    void autosave.flush().finally(onClose);
+  };
 
   function toggle(list: string[], value: string, setter: (next: string[]) => void) {
     setter(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
@@ -725,6 +785,7 @@ function HandoverDialog({
         showErrorToast("Handover delivery failed.", result.error ?? "Delivery failed.");
         return;
       }
+      await autosave.clearDraft().catch(() => undefined);
       showSuccessToast("Production Unit handed over successfully.");
       onSaved();
       onClose();
@@ -736,7 +797,7 @@ function HandoverDialog({
       <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[700px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] p-0 sm:max-h-[calc(100dvh-2.5rem)]">
         <div className="flex shrink-0 items-start justify-between border-b border-[#e7ece8] px-6 py-5 sm:px-7">
           <div><p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">Approved Unit</p><h2 id="production-handover-dialog-title" className="mt-2 text-[22px] font-[760]">Production Handover</h2></div>
-          <Button type="button" variant="secondary" size="icon" onClick={onClose} aria-label="Close production handover dialog"><X className="h-4 w-4" /></Button>
+          <Button type="button" variant="secondary" size="icon" onClick={closeWithAutosave} aria-label="Close production handover dialog"><X className="h-4 w-4" /></Button>
         </div>
         <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5 sm:px-7">
             <p className="text-[12px] font-[720] text-[#2d372f]">Who receives this optional handover?</p>
@@ -758,7 +819,7 @@ function HandoverDialog({
         </CardContent>
         <CardFooter className="shrink-0 flex-col items-stretch border-t border-[#e7ece8] bg-white px-6 py-4 sm:px-7">
           <p className="text-[10px] leading-4 text-[#748078]">The recipient receives a time-limited secure link. Files are not exposed through permanent public storage URLs.</p>
-          <div className="mt-3 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" className="w-full sm:w-auto" disabled={pending} onClick={onClose}>Cancel</Button><Button type="button" className="w-full sm:w-auto" disabled={!recipientReady || !fileIds.length || pending} onClick={sendHandover}><Send className="h-4 w-4" />{pending ? "Sending..." : "Send Handover"}</Button></div>
+          <div className="mt-3 flex flex-col-reverse gap-3 sm:flex-row sm:items-center"><Button type="button" variant="secondary" className="w-full sm:w-auto" disabled={pending} onClick={closeWithAutosave}>Cancel</Button><ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="sm:mr-auto" /><Button type="button" className="w-full sm:w-auto" disabled={!recipientReady || !fileIds.length || pending} onClick={sendHandover}><Send className="h-4 w-4" />{pending ? "Sending..." : "Send Handover"}</Button></div>
         </CardFooter>
       </Card>
     </div>

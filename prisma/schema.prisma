@@ -481,6 +481,7 @@ model User {
   productionSampleFeedbackRecipients  ProductionSampleFeedback[]           @relation("ProductionSampleFeedbackRecipient")
   productionSampleFeedbackSent        ProductionSampleFeedback[]           @relation("ProductionSampleFeedbackSender")
   projectClosures                     ProjectClosure[]                     @relation("ProjectClosureCloser")
+  projectFormDrafts                   ProjectFormDraft[]                   @relation("ProjectFormDraftOwner")
   createdAt                           DateTime                             @default(now())
   updatedAt                           DateTime                             @updatedAt
 }
@@ -621,6 +622,7 @@ model Project {
   inquiry                ProjectInquiry?
   researchWorkspaces     ProjectResearchWorkspace[]
   conceptFolders         ProjectConceptFolder[]
+  formDrafts             ProjectFormDraft[]
   completedAt            DateTime?
   archivedAt             DateTime?
   createdAt              DateTime                       @default(now())
@@ -631,6 +633,24 @@ model Project {
   @@index([isPinned])
   @@index([createdAt])
   @@index([createdById])
+}
+
+model ProjectFormDraft {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation("ProjectFormDraftOwner", fields: [userId], references: [id], onDelete: Cascade)
+  formKey        String   @db.VarChar(191)
+  payload        Json
+  clientId       String   @db.VarChar(64)
+  clientRevision Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([projectId, userId, formKey])
+  @@index([userId, updatedAt])
+  @@index([projectId, updatedAt])
 }
 
 model ProjectCoOwner {

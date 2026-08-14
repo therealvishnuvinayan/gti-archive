@@ -3,7 +3,7 @@
 import NextImage from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import {
   ProjectFileChecklistField,
   ProjectFileChecklistItemStatus,
@@ -56,6 +56,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
+import {
+  ProjectFormAutosaveStatus,
+  useProjectFormAutosave,
+} from "@/components/ui/project-form-autosave";
 import { RichTextContent, RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -89,6 +93,12 @@ type StageFiveDraft = {
   multiValues: Partial<Record<ChecklistFieldKey, string[]>>;
   healthWarningIncluded: boolean;
   statuses: Partial<Record<ChecklistFieldKey, ProjectFileChecklistItemStatus>>;
+};
+
+type StageFiveAutosaveValue = {
+  draft: Omit<StageFiveDraft, "files" | "statuses"> & {
+    files: Partial<Record<ChecklistFieldKey, LocalFileRecord[]>>;
+  };
 };
 
 type ChecklistSaveProgress = {
@@ -174,6 +184,30 @@ function buildStageFiveDrafts(files: StageFiveWorkspaceData["files"]) {
       ];
     }),
   ) as Record<string, StageFiveDraft>;
+}
+
+function buildStageFiveAutosaveValue(draft: StageFiveDraft): StageFiveAutosaveValue {
+  return {
+    draft: {
+      textValues: draft.textValues,
+      multiValues: draft.multiValues,
+      healthWarningIncluded: draft.healthWarningIncluded,
+      files: Object.fromEntries(
+        Object.entries(draft.files).map(([fieldKey, files]) => [
+          fieldKey,
+          (files ?? [])
+            .filter((file) => Boolean(file.attachmentId) && !file.file)
+            .map((file) => ({
+              id: file.id,
+              attachmentId: file.attachmentId,
+              name: file.name,
+              mimeType: file.mimeType,
+              size: file.size,
+            })),
+        ]),
+      ),
+    },
+  };
 }
 
 function mergeResolvedRequestFields(
@@ -540,8 +574,23 @@ function RequestInformationDialog({
   const [recipientName, setRecipientName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const autosave = useProjectFormAutosave({
+    projectId,
+    formKey: `stage-five-information-request:${handoffId}:${field.key}`,
+    value: { recipientMode, participantId, recipientName, email, message },
+    onRestore: (draft) => {
+      setRecipientMode(draft.recipientMode);
+      setParticipantId(draft.participantId);
+      setRecipientName(draft.recipientName);
+      setEmail(draft.email);
+      setMessage(draft.message);
+    },
+  });
   const canPrepare =
     recipientMode === "existing" ? Boolean(participantId) : /^\S+@\S+\.\S+$/.test(email.trim());
+  const closeWithAutosave = () => {
+    void autosave.flush().finally(onClose);
+  };
 
   function sendRequest() {
     if (!canPrepare || isSending) return;
@@ -566,6 +615,7 @@ function RequestInformationDialog({
         if (result.request?.status === "FAILED") requestId.current = null;
         return;
       }
+      await autosave.clearDraft().catch(() => undefined);
       onRequested();
       onClose();
       showSuccessToast(
@@ -600,7 +650,7 @@ function RequestInformationDialog({
                 Choose who should provide this checklist item and add an optional note.
               </p>
             </div>
-            <Button type="button" variant="secondary" size="icon" onClick={onClose}>
+            <Button type="button" variant="secondary" size="icon" onClick={closeWithAutosave}>
               <X className="h-4 w-4" />
               <span className="sr-only">Close request dialog</span>
             </Button>
@@ -699,10 +749,11 @@ function RequestInformationDialog({
             </p>
           </div>
 
-          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e7ece8] bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-            <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={onClose}>
+          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e7ece8] bg-white px-5 py-4 sm:flex-row sm:items-center sm:px-6">
+            <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={closeWithAutosave}>
               Cancel
             </Button>
+            <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="sm:mr-auto" />
             <Button type="button" className="w-full sm:w-auto" disabled={!canPrepare || isSending} onClick={sendRequest}>
               <Send className="h-4 w-4" /> {isSending ? "Sending..." : "Send Request"}
             </Button>
@@ -751,6 +802,36 @@ export function StageFiveWorkspace({
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
   const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
   const activeDraft = drafts[selectedHandoffId];
+  const autosaveValue = useMemo(
+    () => buildStageFiveAutosaveValue(activeDraft ?? {
+      textValues: {},
+      files: {},
+      multiValues: {},
+      healthWarningIncluded: false,
+      statuses: {},
+    }),
+    [activeDraft],
+  );
+  const autosave = useProjectFormAutosave({
+    projectId: project.id,
+    formKey: `stage-five-checklist:${selectedHandoffId || "none"}`,
+    value: autosaveValue,
+    enabled: Boolean(pageData.canEdit && !pageData.stageCompleted && activeDraft),
+    onRestore: ({ draft }) => {
+      if (!selectedHandoffId) return;
+      setDrafts((current) => ({
+        ...current,
+        [selectedHandoffId]: {
+          ...current[selectedHandoffId],
+          textValues: draft.textValues,
+          multiValues: draft.multiValues,
+          healthWarningIncluded: draft.healthWarningIncluded,
+          files: draft.files,
+        },
+      }));
+      setDirtyHandoffIds((current) => new Set(current).add(selectedHandoffId));
+    },
+  });
 
   useEffect(() => {
     if (!initialField) return;
@@ -1048,6 +1129,13 @@ export function StageFiveWorkspace({
             next.delete(submittedHandoffId);
             return next;
           });
+          await autosave.clearDraft({
+            resume: true,
+            baseline: buildStageFiveAutosaveValue({
+              ...activeDraft,
+              files: resolvedFiles,
+            }),
+          }).catch(() => undefined);
           showSuccessToast("File checklist saved.");
           router.refresh();
         } else {
@@ -1436,6 +1524,13 @@ export function StageFiveWorkspace({
                   <FileCheck2 className="h-4 w-4" />
                   {isSaving ? `Saving ${saveProgress?.percent ?? 0}%` : "Save Changes"}
                 </Button>
+                <ProjectFormAutosaveStatus
+                  status={autosave.status}
+                  savedAt={autosave.savedAt}
+                  restoredAt={autosave.restoredAt}
+                  onRetry={() => void autosave.retry()}
+                  className="justify-center"
+                />
                 {isSaving && saveProgress ? (
                   <div
                     role="progressbar"

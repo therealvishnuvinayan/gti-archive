@@ -51,6 +51,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import {
+  ProjectFormAutosaveStatus,
+  useProjectFormAutosave,
+} from "@/components/ui/project-form-autosave";
 import { Textarea } from "@/components/ui/textarea";
 import {
   normalizeProjectResearchTextFileName,
@@ -392,22 +396,41 @@ function FileGalleryCard({
 }
 
 function NewTextFileDialog({
+  projectId,
+  folderId,
   pending,
   progress,
   submitError,
   onSave,
   onClose,
 }: {
+  projectId: string;
+  folderId: string;
   pending: boolean;
   progress: number;
   submitError?: string;
-  onSave: (input: { fileName: string; content: string }) => void;
+  onSave: (
+    input: { fileName: string; content: string },
+    clearDraft: () => Promise<void>,
+  ) => void;
   onClose: () => void;
 }) {
   const [fileName, setFileName] = useState("");
   const [content, setContent] = useState("");
   const [fileNameError, setFileNameError] = useState<string>();
   const [contentError, setContentError] = useState<string>();
+  const autosave = useProjectFormAutosave({
+    projectId,
+    formKey: `stage-two-text-file:${folderId}`,
+    value: { fileName, content },
+    onRestore: (draft) => {
+      setFileName(draft.fileName);
+      setContent(draft.content);
+    },
+  });
+  const closeWithAutosave = () => {
+    void autosave.flush().finally(onClose);
+  };
 
   function save() {
     const normalizedName = normalizeProjectResearchTextFileName(fileName);
@@ -416,7 +439,7 @@ function NewTextFileDialog({
     setContentError("error" in validatedContent ? validatedContent.error : undefined);
 
     if ("error" in normalizedName || "error" in validatedContent) return;
-    onSave({ fileName: normalizedName.fileName, content });
+    onSave({ fileName: normalizedName.fileName, content }, autosave.clearDraft);
   }
 
   if (typeof document === "undefined") return null;
@@ -518,10 +541,11 @@ function NewTextFileDialog({
           ) : null}
           </div>
 
-          <div className="flex shrink-0 justify-end gap-3 border-t border-[#e3e9e4] bg-white px-6 py-4 shadow-[0_-10px_24px_rgba(20,36,25,0.045)] sm:px-7">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+          <div className="flex shrink-0 justify-end gap-3 border-t border-[#e3e9e4] bg-white px-6 py-4 shadow-[0_-10px_24px_rgba(20,36,25,0.045)] sm:items-center sm:px-7">
+            <Button type="button" variant="secondary" onClick={closeWithAutosave} disabled={pending}>
               Cancel
             </Button>
+            <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="mr-auto" />
             <Button type="button" onClick={save} disabled={pending}>
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {pending ? "Saving..." : "Save"}
@@ -656,7 +680,10 @@ export function StageTwoFolderWorkspace({
     }
   }
 
-  async function createTextFile(input: { fileName: string; content: string }) {
+  async function createTextFile(
+    input: { fileName: string; content: string },
+    clearDraft: () => Promise<void>,
+  ) {
     if (!data.canWrite) return;
     setTextFilePending(true);
     setTextFileProgress(0);
@@ -674,6 +701,7 @@ export function StageTwoFolderWorkspace({
         onProgress: setTextFileProgress,
       });
       setFiles((current) => [uploadedFile as FolderFile, ...current]);
+      await clearDraft().catch(() => undefined);
       setTextFileDialogOpen(false);
       showSuccessToast("Text file created.", `${uploadedFile.name} was saved to this folder.`);
     } catch (error) {
@@ -979,10 +1007,12 @@ export function StageTwoFolderWorkspace({
 
       {textFileDialogOpen ? (
         <NewTextFileDialog
+          projectId={data.project.id}
+          folderId={data.folder.id}
           pending={textFilePending}
           progress={textFileProgress}
           submitError={textFileError}
-          onSave={(input) => void createTextFile(input)}
+          onSave={(input, clearDraft) => void createTextFile(input, clearDraft)}
           onClose={() => {
             if (textFilePending) return;
             setTextFileDialogOpen(false);

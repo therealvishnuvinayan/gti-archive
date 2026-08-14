@@ -52,6 +52,10 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import {
+  ProjectFormAutosaveStatus,
+  useProjectFormAutosave,
+} from "@/components/ui/project-form-autosave";
 import { validateProjectContactInput } from "@/lib/project-contact-validation";
 import type {
   CompleteProjectInquiryInput,
@@ -838,6 +842,41 @@ export function StageOneWorkspace({
       targetMarkets,
     ],
   );
+  const autosave = useProjectFormAutosave({
+    projectId: project.id,
+    formKey: "stage-one-project-inquiry",
+    value: draftInquiry,
+    enabled: pageData.canEdit && pageData.workflowStatus !== "COMPLETED",
+    onRestore: (draft) => {
+      setClient(draft.client ?? null);
+      setFinalBeneficiaries(draft.finalBeneficiaries ?? []);
+      setClientOrigin(draft.clientOrigin ?? "EXTERNAL");
+      setTargetMarkets((draft.targetMarkets ?? []).map((market) => market.label));
+      setInitialBrief(draft.initialBrief ?? "");
+      setBusinessObjectives(draft.businessObjectives ?? "");
+      setDeliverables(draft.deliverables ?? []);
+      setInquiryDate(draft.inquiryDate || getTodayDateValue());
+      setDeadline(draft.deadline ?? "");
+      setLegalNotes(draft.legalNotes ?? "");
+      setPriority(draft.priority ?? "");
+      setAttachments(
+        draft.attachments ?? {
+          INITIAL_BRIEF: [],
+          BUSINESS_OBJECTIVES: [],
+          LEGAL_NOTES: [],
+        },
+      );
+      setPartyOptions((current) => {
+        const merged = new Map(
+          current.map((option) => [`${option.source}:${option.id}`, option]),
+        );
+        for (const option of [draft.client, ...(draft.finalBeneficiaries ?? [])]) {
+          if (option) merged.set(`${option.source}:${option.id}`, option);
+        }
+        return [...merged.values()];
+      });
+    },
+  });
   const viewInquiry = pageData.canEdit ? draftInquiry : saved;
   const targetMarketSuggestions = useMemo(
     () =>
@@ -1012,6 +1051,7 @@ export function StageOneWorkspace({
       if (!result.alreadyCompleted) {
         showSuccessToast("Project Inquiry completed.", "Stage 2 is now available.");
       }
+      await autosave.clearDraft().catch(() => undefined);
       router.push(stageTwoHref);
       router.refresh();
     });
@@ -1318,6 +1358,15 @@ export function StageOneWorkspace({
                   All Stages
                 </Link>
               </Button>
+              {pageData.canEdit && pageData.workflowStatus !== "COMPLETED" ? (
+                <ProjectFormAutosaveStatus
+                  status={autosave.status}
+                  savedAt={autosave.savedAt}
+                  restoredAt={autosave.restoredAt}
+                  onRetry={() => void autosave.retry()}
+                  className="sm:ml-auto"
+                />
+              ) : null}
             </div>
           </form>
         </CardContent>

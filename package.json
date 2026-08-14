@@ -44,6 +44,7 @@
     "stage-seven:ui-check": "node scripts/stage-seven-ui-checks.mjs",
     "stage-seven:integration-check": "tsc --project scripts/tsconfig.stage-seven-integration.json && COMPILED_ALIAS_ROOT=.tmp/stage-seven-integration node -r ./scripts/register-compiled-alias.cjs .tmp/stage-seven-integration/scripts/stage-seven-integration-check.js",
     "rich-text:ui-check": "node scripts/rich-text-ui-checks.mjs",
+    "autosave:ui-check": "node scripts/project-form-autosave-checks.mjs",
     "concept-stage:integration-check": "tsc --project scripts/tsconfig.project-concept-integration.json && COMPILED_ALIAS_ROOT=.tmp/project-concept-integration node -r ./scripts/register-compiled-alias.cjs .tmp/project-concept-integration/scripts/project-concept-integration-check.js",
     "concept-round-four:integration-check": "tsc --project scripts/tsconfig.project-concept-integration.json && COMPILED_ALIAS_ROOT=.tmp/project-concept-integration node -r ./scripts/register-compiled-alias.cjs .tmp/project-concept-integration/scripts/project-concept-round-four-integration-check.js",
     "stage-three-five:e2e-qa": "tsc --project scripts/tsconfig.project-concept-integration.json && COMPILED_ALIAS_ROOT=.tmp/project-concept-integration node -r ./scripts/register-compiled-alias.cjs .tmp/project-concept-integration/scripts/stage-three-five-e2e-qa.js",

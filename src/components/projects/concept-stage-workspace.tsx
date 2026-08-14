@@ -36,6 +36,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import {
+  ProjectFormAutosaveStatus,
+  useProjectFormAutosave,
+} from "@/components/ui/project-form-autosave";
 import { RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import {
   Select,
@@ -65,6 +69,8 @@ type FolderDialogState =
   | null;
 
 function ConceptDetailsDialog({
+  projectId,
+  stageKey,
   state,
   executors,
   defaultName,
@@ -72,6 +78,8 @@ function ConceptDetailsDialog({
   onClose,
   onSubmit,
 }: {
+  projectId: string;
+  stageKey: ConceptWorkflowStageKey;
   state: Exclude<FolderDialogState, null>;
   executors: ConceptExecutor[];
   defaultName: string;
@@ -82,7 +90,7 @@ function ConceptDetailsDialog({
     assignedExecutorId: string;
     brief: string;
     files: File[];
-  }) => void;
+  }, clearDraft: () => Promise<void>) => void;
 }) {
   const [name, setName] = useState(
     state.mode === "edit" ? state.folder.name : defaultName,
@@ -100,16 +108,30 @@ function ConceptDetailsDialog({
   const [existingAttachments, setExistingAttachments] = useState(
     state.mode === "edit" ? state.folder.briefAttachments : [],
   );
+  const detailsLocked = state.mode === "edit" && Boolean(state.folder.actualStartedAt);
+  const autosave = useProjectFormAutosave({
+    projectId,
+    formKey: `concept-details:${stageKey}:${state.mode === "edit" ? state.folder.id : "create"}`,
+    value: { name, assignedExecutorId, brief },
+    enabled: !detailsLocked,
+    onRestore: (draft) => {
+      setName(draft.name);
+      setAssignedExecutorId(draft.assignedExecutorId);
+      setBrief(draft.brief);
+    },
+  });
   const attachmentInputId = useId();
   const cleanName = name.trim().replace(/\s+/g, " ");
   const cleanBrief = richTextToPlainText(brief);
-  const detailsLocked = state.mode === "edit" && Boolean(state.folder.actualStartedAt);
   const assignmentLocked =
     detailsLocked && state.mode === "edit" && Boolean(state.folder.assignedExecutorId);
   const canSubmit =
     Boolean(cleanName) &&
     Boolean(assignedExecutorId) &&
     Boolean(cleanBrief);
+  const closeWithAutosave = () => {
+    void autosave.flush().finally(onClose);
+  };
 
   return (
     <div
@@ -136,7 +158,7 @@ function ConceptDetailsDialog({
               type="button"
               variant="secondary"
               size="icon"
-              onClick={onClose}
+              onClick={closeWithAutosave}
               aria-label="Close folder dialog"
             >
               <X className="h-4 w-4" />
@@ -155,7 +177,7 @@ function ConceptDetailsDialog({
                   className="h-12 rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 shadow-none focus-visible:border-[#46906a]"
                   onChange={(event) => setName(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Escape") onClose();
+                    if (event.key === "Escape") closeWithAutosave();
                   }}
                 />
               </label>
@@ -296,21 +318,25 @@ function ConceptDetailsDialog({
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e5ebe6] bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-            <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={onClose}>
+          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e5ebe6] bg-white px-5 py-4 sm:flex-row sm:items-center sm:px-6">
+            <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={closeWithAutosave}>
               Cancel
             </Button>
+            {!detailsLocked ? <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="sm:mr-auto" /> : null}
             <Button
               type="button"
               className="w-full sm:w-auto"
               disabled={!canSubmit}
               onClick={() =>
-                onSubmit({
-                  name: cleanName,
-                  assignedExecutorId,
-                  brief,
-                  files,
-                })
+                onSubmit(
+                  {
+                    name: cleanName,
+                    assignedExecutorId,
+                    brief,
+                    files,
+                  },
+                  autosave.clearDraft,
+                )
               }
             >
               {state.mode === "create" ? "Create Concept" : "Save Changes"}
@@ -509,7 +535,7 @@ export function ConceptStageWorkspace({
     assignedExecutorId: string;
     brief: string;
     files: File[];
-  }) {
+  }, clearDraft: () => Promise<void>) {
     if (!dialog) return;
 
     if (!input.brief.trim()) {
@@ -595,6 +621,7 @@ export function ConceptStageWorkspace({
 
         taskerStageId = result.folder.taskerStageId;
         setFolders((current) => [...current, result.folder]);
+        await clearDraft().catch(() => undefined);
         setDialog(null);
         router.refresh();
         showSuccessToast("Concept created.");
@@ -614,6 +641,7 @@ export function ConceptStageWorkspace({
         (_file, index) => uploadResults[index]?.status === "rejected",
       );
 
+      await clearDraft().catch(() => undefined);
       setDialog(null);
       router.refresh();
       if (failedFiles.length) {
@@ -904,6 +932,8 @@ export function ConceptStageWorkspace({
         <ConceptDetailsDialog
           key={dialog.mode === "edit" ? dialog.folder.id : "create"}
           state={dialog}
+          projectId={project.id}
+          stageKey={stageKey}
           executors={executors}
           defaultName={folders.length === 0 ? "Concept 1" : `Concept ${folders.length + 1}`}
           defaultAssignedExecutorId={selectedExecutorId}

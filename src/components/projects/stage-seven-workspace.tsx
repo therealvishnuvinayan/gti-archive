@@ -46,6 +46,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import {
+  ProjectFormAutosaveStatus,
+  useProjectFormAutosave,
+} from "@/components/ui/project-form-autosave";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -227,6 +231,36 @@ function NewSampleRequestDialog({
   const [recipientEmail, setRecipientEmail] = useState(previous?.recipientEmail ?? "");
   const [recipientPhone, setRecipientPhone] = useState(previous?.recipientPhone ?? "");
   const [requestNote, setRequestNote] = useState("");
+  const autosave = useProjectFormAutosave({
+    projectId,
+    formKey: `stage-seven-sample-request:${unit.id}`,
+    value: {
+      name,
+      type,
+      customTypeName,
+      deadline,
+      recipientRoute,
+      recipientUserId,
+      recipientCompany,
+      recipientName,
+      recipientEmail,
+      recipientPhone,
+      requestNote,
+    },
+    onRestore: (draft) => {
+      setName(draft.name);
+      setType(draft.type);
+      setCustomTypeName(draft.customTypeName);
+      setDeadline(draft.deadline);
+      setRecipientRoute(draft.recipientRoute);
+      setRecipientUserId(draft.recipientUserId);
+      setRecipientCompany(draft.recipientCompany);
+      setRecipientName(draft.recipientName);
+      setRecipientEmail(draft.recipientEmail);
+      setRecipientPhone(draft.recipientPhone);
+      setRequestNote(draft.requestNote);
+    },
+  });
   const isInternal = recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
   const recipientEmailIsValid = isValidProjectContactEmail(recipientEmail);
   const normalizedRecipientPhone = normalizeInternationalPhone(recipientPhone);
@@ -244,6 +278,9 @@ function NewSampleRequestDialog({
       recipientReady &&
       (type !== ProductionSampleRoundType.CUSTOM || customTypeName.trim()),
   );
+  const closeWithAutosave = () => {
+    void autosave.flush().finally(onClose);
+  };
 
   function sendRequest() {
     if (!ready || pending) return;
@@ -282,6 +319,7 @@ function NewSampleRequestDialog({
           result.emailError || "Open the request and retry the email.",
         );
       }
+      await autosave.clearDraft().catch(() => undefined);
       onCreated(result.id);
       onClose();
     });
@@ -291,10 +329,11 @@ function NewSampleRequestDialog({
     <ModalShell
       title="Request Physical Sample"
       eyebrow={unit.name}
-      onClose={onClose}
+      onClose={closeWithAutosave}
       footer={(
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" disabled={pending} onClick={onClose}>Cancel</Button>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+          <Button type="button" variant="secondary" disabled={pending} onClick={closeWithAutosave}>Cancel</Button>
+          <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="sm:mr-auto" />
           <Button type="button" disabled={!ready || pending} onClick={sendRequest}><Send className="h-4 w-4" /> {pending ? "Sending..." : "Send Sample Request"}</Button>
         </div>
       )}
@@ -472,13 +511,26 @@ function SampleRequestDetails({
   const [pending, startPending] = useTransition();
   const [reviewNote, setReviewNote] = useState(round?.decisionNote ?? "");
   const [confirm, setConfirm] = useState<PhysicalSampleDecision | null>(null);
+  const decided = Boolean(round?.decision);
+  const mutable = Boolean(
+    round &&
+      canManage &&
+      !stageCompleted &&
+      !decided &&
+      unit.status !== ProductionSupervisionStatus.SIGNED_OFF,
+  );
+  const reviewAutosave = useProjectFormAutosave({
+    projectId,
+    formKey: `stage-seven-sample-review:${round?.id ?? "none"}`,
+    value: { reviewNote },
+    enabled: mutable,
+    onRestore: (draft) => setReviewNote(draft.reviewNote),
+  });
 
   if (!round) {
     return <aside className="grid min-h-[350px] place-items-center rounded-[18px] border border-[#dfe6df] bg-white px-6 py-12 text-center shadow-[0_10px_28px_rgba(23,39,28,0.035)]"><div><FileStack className="mx-auto h-9 w-9 text-[#a8b1aa]" /><h2 className="mt-3 text-[14px] font-[740] text-[#303b33]">No sample request selected</h2><p className="mt-1 max-w-[300px] text-[10px] leading-4 text-[#849087]">Request a physical sample for {unit.name} to see its delivery and review details here.</p></div></aside>;
   }
 
-  const decided = Boolean(round.decision);
-  const mutable = canManage && !stageCompleted && !decided && unit.status !== ProductionSupervisionStatus.SIGNED_OFF;
   const roundId = round.id;
 
   function retryEmail() {
@@ -503,6 +555,7 @@ function SampleRequestDetails({
         showErrorToast(confirm === PhysicalSampleDecision.ACCEPTED ? "Unable to accept the physical sample." : "Unable to reject the physical sample.", result.error);
         return;
       }
+      await reviewAutosave.clearDraft().catch(() => undefined);
       showSuccessToast(confirm === PhysicalSampleDecision.ACCEPTED ? "Physical sample accepted." : "Physical sample rejected. You can request another sample.");
       setConfirm(null);
       onRefresh();
@@ -517,7 +570,7 @@ function SampleRequestDetails({
       <div className="space-y-5 px-4 py-4 sm:px-5">
         {mutable && round.emailStatus === ProductionDispatchStatus.FAILED ? <div className="flex flex-col gap-3 rounded-[12px] border border-[#f1dbb2] bg-[#fff9ed] p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-[10px] leading-4 text-[#795c2b]">The request is saved, but the provider email was not delivered.</p><Button type="button" size="sm" className="shrink-0 rounded-[10px]" disabled={pending} onClick={retryEmail}><RefreshCw className="h-3.5 w-3.5" /> {pending ? "Retrying..." : "Retry Email"}</Button></div> : null}
         <section className="rounded-[14px] border border-[#dfe6df] bg-[#fafcfa] p-3.5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Physical Sample Review</h3><p className="mt-1 text-[9px] text-[#7c867f]">Record the note and outcome for this sample request.</p></div>{round.decision ? <DecisionBadge decision={round.decision} /> : <div className="grid shrink-0 grid-cols-2 gap-2"><Button type="button" size="sm" variant="outline" className="border-[#d96a60] text-[#b9433a] hover:bg-[#fff3f1]" disabled={!mutable || !richTextToPlainText(reviewNote)} onClick={() => setConfirm(PhysicalSampleDecision.REJECTED)}><XCircle className="h-4 w-4" /> Reject Sample</Button><Button type="button" size="sm" disabled={!mutable} onClick={() => setConfirm(PhysicalSampleDecision.ACCEPTED)}><CheckCircle2 className="h-4 w-4" /> Accept Sample</Button></div>}</div>
-          {round.decision ? <div className="mt-3 border-t border-[#e0e7e0] pt-3"><RichTextContent value={round.decisionNote} fallback={<p className="text-[10px] leading-4 text-[#465149]">No review note was added.</p>} className="text-[10px] leading-4 text-[#465149]" /><p className="mt-2 text-[8px] text-[#849087]">Decided by {round.decidedBy || "Unknown"}{round.decidedAt ? ` · ${formatDateTime(round.decidedAt)}` : ""}</p>{round.decision === PhysicalSampleDecision.REJECTED && canManage && !stageCompleted ? <Button type="button" size="sm" className="mt-3 rounded-[10px]" onClick={onRequestAnother}><Plus className="h-3.5 w-3.5" /> Request Another Sample</Button> : null}</div> : <div className="mt-3 block space-y-2 border-t border-[#e0e7e0] pt-3"><span className="text-[10px] font-[700] text-[#59655d]">Review Note <span className="font-[500] text-[#7c867f]">(required for rejection)</span></span><RichTextEditor value={reviewNote} maxLength={8000} disabled={!mutable} minHeightClassName="min-h-[90px]" ariaLabel="Physical sample review note" placeholder="Add a note for accepting or rejecting this physical sample." onChange={setReviewNote} /></div>}
+          {round.decision ? <div className="mt-3 border-t border-[#e0e7e0] pt-3"><RichTextContent value={round.decisionNote} fallback={<p className="text-[10px] leading-4 text-[#465149]">No review note was added.</p>} className="text-[10px] leading-4 text-[#465149]" /><p className="mt-2 text-[8px] text-[#849087]">Decided by {round.decidedBy || "Unknown"}{round.decidedAt ? ` · ${formatDateTime(round.decidedAt)}` : ""}</p>{round.decision === PhysicalSampleDecision.REJECTED && canManage && !stageCompleted ? <Button type="button" size="sm" className="mt-3 rounded-[10px]" onClick={onRequestAnother}><Plus className="h-3.5 w-3.5" /> Request Another Sample</Button> : null}</div> : <div className="mt-3 block space-y-2 border-t border-[#e0e7e0] pt-3"><span className="text-[10px] font-[700] text-[#59655d]">Review Note <span className="font-[500] text-[#7c867f]">(required for rejection)</span></span><RichTextEditor value={reviewNote} maxLength={8000} disabled={!mutable} minHeightClassName="min-h-[90px]" ariaLabel="Physical sample review note" placeholder="Add a note for accepting or rejecting this physical sample." onChange={setReviewNote} />{mutable ? <ProjectFormAutosaveStatus status={reviewAutosave.status} savedAt={reviewAutosave.savedAt} restoredAt={reviewAutosave.restoredAt} onRetry={() => void reviewAutosave.retry()} /> : null}</div>}
         </section>
         <section className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Provider</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{round.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Internal" : round.recipientRoute === ProductionHandoverRoute.DIRECT_VENDOR ? "External" : "Legacy request"}{round.recipientCompany ? ` · ${round.recipientCompany}` : ""}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.recipientName || "Not provided"}</p><p className="mt-0.5 break-all text-[9px] text-[#758078]">{round.recipientEmail || "Legacy request"}{round.recipientPhone ? ` · ${round.recipientPhone}` : ""}</p></div>
