@@ -17,6 +17,7 @@
   --brand-soft: #dceadf;
   --line: #d9dfd4;
   --font-sans: "Inter", "Segoe UI", "Helvetica Neue", sans-serif;
+  --heading-letter-spacing: 0;
 }
 
 @theme inline {
@@ -49,6 +50,26 @@ body {
   font-family: var(--font-sans);
   font-feature-settings: "cv11", "ss01";
   text-rendering: optimizeLegibility;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    letter-spacing: var(--heading-letter-spacing);
+  }
+}
+
+/*
+ * Older screens use negative tracking utilities on both semantic headings and
+ * custom title elements. Keep intentionally wide tracking intact while
+ * normalizing only the compact title treatments to the shared readable value.
+ */
+:where([class*="tracking-[-"], .tracking-tight, [data-slot="card-title"]) {
+  letter-spacing: var(--heading-letter-spacing);
 }
 
 html.dashboard-document-scroll-lock,
