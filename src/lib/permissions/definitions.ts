@@ -693,7 +693,7 @@ const permissionMetadata: Record<
   },
   "users.update": {
     label: "Update users",
-    description: "Change a user's role or collaborator type assignment.",
+    description: "Change a user's profile photo, role, collaborator type, or archive access.",
     moduleGated: false,
     hardRule: true,
   },

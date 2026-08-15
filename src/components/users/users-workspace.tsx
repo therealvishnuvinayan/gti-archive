@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   Archive,
   CheckCircle2,
+  ImagePlus,
   LockKeyhole,
   PencilLine,
   RotateCcw,
@@ -55,6 +63,14 @@ import {
 } from "@/lib/permissions/preview";
 import { getCollaboratorTypeLabel } from "@/lib/project-collaborator-participant-types";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import {
+  PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+  PROFILE_IMAGE_ALLOWED_MIME_TYPES,
+  buildFileTypeNotAllowedPayload,
+  formatUploadFileTypeError,
+  getUploadErrorMessage,
+  type UploadFileTypeErrorPayload,
+} from "@/lib/upload-validation";
 import type {
   ManagedArchiveAccessLevel,
   ManagedArchiveAssetAccessRecord,
@@ -126,6 +142,10 @@ const profileTypeLabels: Record<PermissionProfileType, string> = {
   collaboratorType: "Collaborator Type",
 };
 
+const maxProfilePhotoBytes = 2 * 1024 * 1024;
+const allowedProfilePhotoTypes = new Set<string>(PROFILE_IMAGE_ALLOWED_MIME_TYPES);
+const profilePhotoAccept = PROFILE_IMAGE_ALLOWED_MIME_TYPES.join(",");
+
 function sortUsers(users: ManagedUserRecord[]) {
   const roleOrder: Record<PermissionRole, number> = {
     SUPER_ADMIN: 0,
@@ -154,6 +174,111 @@ function getInitials(name: string) {
     .join("");
 
   return initials || "GU";
+}
+
+function getManagedUserAvatarSrc(user: Pick<ManagedUserRecord, "id" | "avatarUrl">) {
+  return user.avatarUrl
+    ? `/api/users/${encodeURIComponent(user.id)}/avatar?v=${encodeURIComponent(user.avatarUrl)}`
+    : null;
+}
+
+function validateProfilePhoto(file: File) {
+  if (!allowedProfilePhotoTypes.has(file.type.toLowerCase())) {
+    return formatUploadFileTypeError(
+      buildFileTypeNotAllowedPayload({
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        allowedExtensions: PROFILE_IMAGE_ALLOWED_EXTENSIONS,
+        error: "Profile photo file type is not allowed.",
+      }),
+    );
+  }
+
+  if (file.size > maxProfilePhotoBytes) {
+    return "Profile photo must be smaller than 2MB.";
+  }
+
+  return null;
+}
+
+async function uploadManagedUserPhoto(userId: string, file: File) {
+  const uploadRequest = await fetch(
+    `/api/users/${encodeURIComponent(userId)}/avatar/upload-url`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        fileSize: file.size,
+      }),
+    },
+  );
+  const uploadPayload = (await uploadRequest.json()) as {
+    uploadUrl?: string;
+    storageKey?: string;
+    error?: string;
+  } & Partial<UploadFileTypeErrorPayload>;
+
+  if (!uploadRequest.ok || !uploadPayload.uploadUrl || !uploadPayload.storageKey) {
+    throw new Error(
+      getUploadErrorMessage(uploadPayload, "Unable to prepare the profile photo upload."),
+    );
+  }
+
+  const putResponse = await fetch(uploadPayload.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+
+  if (!putResponse.ok) {
+    throw new Error("Unable to upload the profile photo right now.");
+  }
+
+  return uploadPayload.storageKey;
+}
+
+function ManagedUserAvatar({
+  name,
+  src,
+  sizeClassName,
+  textClassName,
+}: {
+  name: string;
+  src?: string | null;
+  sizeClassName: string;
+  textClassName: string;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const fallback = (
+    <div
+      className={cn(
+        "grid shrink-0 place-items-center rounded-full border border-[#d8e6d7] bg-[radial-gradient(circle_at_top,#f7f4d9,#d7ebb8_60%,#c2d99d)] font-[700] text-[#58764a]",
+        sizeClassName,
+        textClassName,
+      )}
+    >
+      {getInitials(name)}
+    </div>
+  );
+
+  if (!src || imageFailed) {
+    return fallback;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={`${name} profile`}
+      className={cn(
+        "shrink-0 rounded-full border border-[#d8e6d7] object-cover",
+        sizeClassName,
+      )}
+      onError={() => setImageFailed(true)}
+    />
+  );
 }
 
 function getDefaultForm(user: ManagedUserRecord): UserEditForm {
@@ -477,23 +602,33 @@ function EditUserModal({
   user,
   form,
   error,
+  avatarError,
   saving,
   isOpen,
   roleLocked,
+  avatarPreviewSrc,
+  selectedAvatarFileName,
   onClose,
   onChange,
+  onSelectAvatar,
   onSave,
 }: {
   user: ManagedUserRecord | null;
   form: UserEditForm | null;
   error?: string;
+  avatarError?: string;
   saving: boolean;
   isOpen: boolean;
   roleLocked: boolean;
+  avatarPreviewSrc: string | null;
+  selectedAvatarFileName?: string;
   onClose: () => void;
   onChange: <K extends keyof UserEditForm>(field: K, value: UserEditForm[K]) => void;
+  onSelectAvatar: (file: File | null) => void;
   onSave: () => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   if (!isOpen || !user || !form) {
     return null;
   }
@@ -507,7 +642,7 @@ function EditUserModal({
               Edit User
             </h2>
             <p className="mt-3 text-[15px] text-[#707a71]">
-              Update role and collaborator type assignments for this account.
+              Update this account&apos;s profile photo, role, and access assignments.
             </p>
           </div>
           <Button
@@ -531,13 +666,45 @@ function EditUserModal({
           ) : null}
 
           <div className="rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
-            <div className="flex items-center gap-4">
-              <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-[#d8e6d7] bg-[radial-gradient(circle_at_top,#f7f4d9,#d7ebb8_60%,#c2d99d)] text-[24px] font-[700] text-[#58764a]">
-                {getInitials(user.name)}
-              </div>
-              <div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <ManagedUserAvatar
+                key={avatarPreviewSrc || user.id}
+                name={user.name}
+                src={avatarPreviewSrc}
+                sizeClassName="h-20 w-20"
+                textClassName="text-[26px]"
+              />
+              <div className="min-w-0 flex-1">
                 <p className="text-[20px] font-[700] text-[#1a221c]">{user.name}</p>
-                <p className="text-[14px] text-[#6f776f]">{user.email}</p>
+                <p className="truncate text-[14px] text-[#6f776f]">{user.email}</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={profilePhotoAccept}
+                  className="hidden"
+                  onChange={(event) => {
+                    onSelectAvatar(event.target.files?.[0] ?? null);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={saving}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-10 gap-2 rounded-xl border-[#b8d8c0] px-4 text-[13px] font-[600] text-brand"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                    Change Profile Photo
+                  </Button>
+                  <span className="text-[12px] text-[#7a847b]">
+                    {selectedAvatarFileName || "JPG, PNG, GIF or WebP. Max 2MB."}
+                  </span>
+                </div>
+                {avatarError ? (
+                  <p className="mt-2 text-[12px] font-[600] text-[#c34945]">{avatarError}</p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -1308,11 +1475,30 @@ export function UsersWorkspace({
   const [editingUser, setEditingUser] = useState<ManagedUserRecord | null>(null);
   const [form, setForm] = useState<UserEditForm | null>(null);
   const [drawerError, setDrawerError] = useState<string>();
+  const [avatarError, setAvatarError] = useState<string>();
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
   const [isDrawerOpen, setDrawerOpen] = useState(false);
   const [isPermissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const isEditingOwnSuperAdmin =
     editingUser?.id === currentUserId && editingUser.role === "SUPER_ADMIN";
+  const selectedAvatarPreviewSrc = useMemo(() => {
+    if (!selectedAvatarFile) {
+      return null;
+    }
+
+    return URL.createObjectURL(selectedAvatarFile);
+  }, [selectedAvatarFile]);
+  const editingUserAvatarSrc =
+    selectedAvatarPreviewSrc || (editingUser ? getManagedUserAvatarSrc(editingUser) : null);
+
+  useEffect(() => {
+    if (!selectedAvatarPreviewSrc) {
+      return;
+    }
+
+    return () => URL.revokeObjectURL(selectedAvatarPreviewSrc);
+  }, [selectedAvatarPreviewSrc]);
 
   const filteredUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -1344,6 +1530,8 @@ export function UsersWorkspace({
     setEditingUser(user);
     setForm(getDefaultForm(user));
     setDrawerError(undefined);
+    setAvatarError(undefined);
+    setSelectedAvatarFile(null);
     setDrawerOpen(true);
   }
 
@@ -1354,6 +1542,27 @@ export function UsersWorkspace({
 
     setDrawerOpen(false);
     setDrawerError(undefined);
+    setAvatarError(undefined);
+    setSelectedAvatarFile(null);
+  }
+
+  function handleAvatarSelection(file: File | null) {
+    setAvatarError(undefined);
+
+    if (!file) {
+      setSelectedAvatarFile(null);
+      return;
+    }
+
+    const validationError = validateProfilePhoto(file);
+
+    if (validationError) {
+      setSelectedAvatarFile(null);
+      setAvatarError(validationError);
+      return;
+    }
+
+    setSelectedAvatarFile(file);
   }
 
   function handleFormChange<K extends keyof UserEditForm>(
@@ -1389,11 +1598,16 @@ export function UsersWorkspace({
     }
 
     setDrawerError(undefined);
+    setAvatarError(undefined);
 
     startTransition(async () => {
       try {
+        const avatarUrl = selectedAvatarFile
+          ? await uploadManagedUserPhoto(editingUser.id, selectedAvatarFile)
+          : undefined;
         const result = await saveUserAccessAction({
           userId: form.userId,
+          avatarUrl,
           role: form.role,
           collaboratorType: form.collaboratorType,
           archiveAccessLevel: form.archiveAccessLevel,
@@ -1416,6 +1630,7 @@ export function UsersWorkspace({
         );
         setEditingUser(result.user);
         setForm(getDefaultForm(result.user));
+        setSelectedAvatarFile(null);
         setDrawerOpen(false);
         showSuccessToast("User updated successfully.");
         router.refresh();
@@ -1463,7 +1678,7 @@ export function UsersWorkspace({
                   User Directory
                 </h2>
                 <p className="mt-1 text-[14px] text-[#748074]">
-                  Assign roles, collaborator types, and per-user Archive access levels.
+                  Manage profile photos, roles, collaborator types, and Archive access.
                 </p>
               </div>
               <FilterBadge
@@ -1522,9 +1737,13 @@ export function UsersWorkspace({
                     <tr key={user.id}>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#d8e6d7] bg-[radial-gradient(circle_at_top,#f7f4d9,#d7ebb8_60%,#c2d99d)] text-[15px] font-[700] text-[#58764a]">
-                            {getInitials(user.name)}
-                          </div>
+                          <ManagedUserAvatar
+                            key={getManagedUserAvatarSrc(user) || user.id}
+                            name={user.name}
+                            src={getManagedUserAvatarSrc(user)}
+                            sizeClassName="h-11 w-11"
+                            textClassName="text-[15px]"
+                          />
                           <div>
                             <p className="text-[15px] font-[700] text-[#172019]">{user.name}</p>
                             {user.id === currentUserId ? (
@@ -1628,10 +1847,14 @@ export function UsersWorkspace({
         user={editingUser}
         form={form}
         error={drawerError}
+        avatarError={avatarError}
         saving={isPending}
         roleLocked={isEditingOwnSuperAdmin}
+        avatarPreviewSrc={editingUserAvatarSrc}
+        selectedAvatarFileName={selectedAvatarFile?.name}
         onClose={closeDrawer}
         onChange={handleFormChange}
+        onSelectAvatar={handleAvatarSelection}
         onSave={handleSave}
       />
 

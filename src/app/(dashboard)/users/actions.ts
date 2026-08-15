@@ -30,6 +30,10 @@ import { hasPermission } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import {
+  buildUserAvatarPrefix,
+  deleteObjectIfNeeded,
+} from "@/lib/storage/s3";
+import {
   countSuperAdmins,
   getManagedUserPermissionRecord,
   updateManagedUserPermissions,
@@ -39,6 +43,7 @@ import {
 
 type SaveUserAccessInput = {
   userId: string;
+  avatarUrl?: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
   archiveAccessLevel: ManagedArchiveAccessLevel;
@@ -192,6 +197,19 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     return { error: "User not found." };
   }
 
+  const avatarUrl = input.avatarUrl?.trim() || undefined;
+
+  if (avatarUrl && avatarUrl !== existingUser.avatarUrl) {
+    const allowedAvatarPrefix = buildUserAvatarPrefix(userId);
+
+    if (
+      !avatarUrl.startsWith(allowedAvatarPrefix) ||
+      avatarUrl.length <= allowedAvatarPrefix.length
+    ) {
+      return { error: "Invalid profile photo. Please upload the photo again." };
+    }
+  }
+
   if (
     existingUser.id === currentUser.id &&
     existingUser.role === "SUPER_ADMIN" &&
@@ -213,12 +231,17 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
 
   const user = await updateManagedUserPermissions({
     userId,
+    avatarUrl,
     role: input.role,
     collaboratorType: input.collaboratorType,
     archiveAccessLevel: input.archiveAccessLevel,
     archiveAssetIds: input.archiveAssetIds ?? [],
     updatedById: currentUser.id,
   });
+
+  if (avatarUrl && existingUser.avatarUrl && avatarUrl !== existingUser.avatarUrl) {
+    await deleteObjectIfNeeded(existingUser.avatarUrl).catch(() => undefined);
+  }
 
   await revalidatePermissionSensitiveCaches([userId, currentUser.id]);
 

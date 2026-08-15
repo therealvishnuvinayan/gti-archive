@@ -32,6 +32,7 @@ export type ManagedUserRecord = {
   id: string;
   name: string;
   email: string;
+  avatarUrl: string | null;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
   canAccessArchives: boolean;
@@ -42,6 +43,7 @@ export type ManagedUserRecord = {
 
 export type ManagedUserUpdateInput = {
   userId: string;
+  avatarUrl?: string;
   role: PermissionRole;
   collaboratorType: CollaboratorTypeValue;
   archiveAccessLevel: ManagedArchiveAccessLevel;
@@ -181,6 +183,7 @@ function mapManagedUser(user: {
   id: string;
   email: string;
   name: string | null;
+  avatarUrl: string | null;
   role: UserRole;
   collaboratorType: CollaboratorType;
   inviteToken: string | null;
@@ -215,6 +218,7 @@ function mapManagedUser(user: {
     id: user.id,
     name: user.name?.trim() || getFallbackName(user.email),
     email: user.email,
+    avatarUrl: user.avatarUrl,
     role: user.role,
     collaboratorType: user.collaboratorType,
     canAccessArchives: archiveAccessLevel !== "NONE",
@@ -236,6 +240,7 @@ export async function listUsersForPermissionManagement() {
         id: true,
         name: true,
         email: true,
+        avatarUrl: true,
         role: true,
         collaboratorType: true,
         inviteToken: true,
@@ -303,6 +308,7 @@ export async function getManagedUserPermissionRecord(userId: string) {
         id: true,
         name: true,
         email: true,
+        avatarUrl: true,
         role: true,
         collaboratorType: true,
         inviteToken: true,
@@ -496,6 +502,7 @@ export async function updateManagedUserPermissions(
         data: {
           role: input.role,
           collaboratorType: input.collaboratorType as CollaboratorType,
+          ...(input.avatarUrl === undefined ? {} : { avatarUrl: input.avatarUrl }),
         },
         select: {
           id: true,
@@ -562,6 +569,7 @@ export async function updateManagedUserPermissions(
           id: true,
           name: true,
           email: true,
+          avatarUrl: true,
           role: true,
           collaboratorType: true,
           inviteToken: true,
