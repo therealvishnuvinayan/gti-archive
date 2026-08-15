@@ -40,12 +40,10 @@ assert(
   "Project Overview must reuse the compact shared summary instead of a vertical local design.",
 );
 assert(
-  summary.includes("const COMPACT_VISIBLE_PEOPLE = 1") &&
-    summary.includes("const ROOMY_VISIBLE_PEOPLE = 2") &&
-    summary.includes("new ResizeObserver") &&
-    summary.includes("people.slice(0, visibleLimit)") &&
+  summary.includes("people.slice(0, 1)") &&
+    summary.includes("people.length - visiblePeople.length") &&
     summary.includes("+{remainingCount}"),
-  "Shared people summaries must responsively display one or two names followed by +N.",
+  "Shared people summaries must display one name followed by +N whenever more people exist.",
 );
 assert(
   summary.includes("DropdownMenuTrigger asChild") &&
@@ -64,6 +62,10 @@ assert(
 assert(
   summary.includes('"sm:grid-cols-2 xl:grid-cols-4"'),
   "The shared summary must adapt from stacked/two-column layouts to four desktop columns.",
+);
+assert(
+  summary.includes('text-[16px] font-[700] leading-6'),
+  "Project summary values must remain visually prominent beneath their compact labels.",
 );
 assert(
   overview.includes("min-h-[210px]") &&

@@ -27,8 +27,8 @@ const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, acti
 assert(
   workspace.includes("ProjectSummaryStrip") &&
     workspace.includes('columns="two"') &&
-    summary.includes("const COMPACT_VISIBLE_PEOPLE = 1") &&
-    summary.includes("const ROOMY_VISIBLE_PEOPLE = 2"),
+    summary.includes("people.slice(0, 1)") &&
+    summary.includes("+{remainingCount}"),
   "Stage 2 must reuse the compact shared participant summary in its two-column panel.",
 );
 assert(

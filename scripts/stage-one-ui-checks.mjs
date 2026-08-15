@@ -108,11 +108,10 @@ assert(
 
 assert(
   workspace.includes("ProjectFlowSummaryStrip") &&
-    summary.includes("const COMPACT_VISIBLE_PEOPLE = 1") &&
-    summary.includes("const ROOMY_VISIBLE_PEOPLE = 2") &&
-    summary.includes("new ResizeObserver") &&
+    summary.includes("people.slice(0, 1)") &&
+    summary.includes("+{remainingCount}") &&
     summary.includes("DropdownMenuTrigger asChild"),
-  "Stage 1 must reuse the shared responsive participant overflow summary.",
+  "Stage 1 must reuse the shared participant +N overflow summary.",
 );
 
 for (const field of [
