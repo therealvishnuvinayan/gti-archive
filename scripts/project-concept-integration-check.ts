@@ -19,6 +19,7 @@ import {
   getProjectConceptFolders,
   importStageThreeConceptReference,
   markProjectConceptApprovedAttachment,
+  revokeProjectConceptApprovedAttachment,
 } from "../src/lib/project-concepts";
 import {
   canCompleteProjectConceptStage,
@@ -1161,6 +1162,60 @@ async function main() {
       !isErrorResult(repeatedApproval) && !repeatedApproval.changed,
       "repeating the same designation must be idempotent",
     );
+    const unauthorizedRevocation = await revokeProjectConceptApprovedAttachment(
+      executorA,
+      { projectId, folderId: conceptA.folder.id },
+    );
+    check(
+      isErrorResult(unauthorizedRevocation),
+      "the assigned executor must not revoke an Approved Concept",
+    );
+    const revokedApproval = await revokeProjectConceptApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.folder.id,
+    });
+    check(
+      !isErrorResult(revokedApproval) &&
+        revokedApproval.revisionStatus === ProjectRevisionStatus.PENDING_REVIEW,
+      "an authorized reviewer must revoke an Approved Concept before Stage 3 completion",
+    );
+    const revokedApprovalState = await prisma.projectConceptFolder.findUniqueOrThrow({
+      where: { id: conceptA.folder.id },
+      select: {
+        approvedAttachmentId: true,
+        approvedById: true,
+        approvedAt: true,
+        taskerStage: {
+          select: {
+            status: true,
+            completedAt: true,
+            revisions: {
+              where: { id: secondRevision.id },
+              select: { status: true },
+            },
+          },
+        },
+      },
+    });
+    check(
+      revokedApprovalState.approvedAttachmentId === null &&
+        revokedApprovalState.approvedById === null &&
+        revokedApprovalState.approvedAt === null &&
+        revokedApprovalState.taskerStage.status === StageStatus.ONGOING &&
+        revokedApprovalState.taskerStage.completedAt === null &&
+        revokedApprovalState.taskerStage.revisions[0]?.status ===
+          ProjectRevisionStatus.PENDING_REVIEW,
+      "revocation must clear approval audit state, restore Pending Review, and reopen the tasker",
+    );
+    const restoredApproval = await markProjectConceptApprovedAttachment(owner, {
+      projectId,
+      folderId: conceptA.folder.id,
+      attachmentId: secondRevisionFile.id,
+    });
+    check(
+      !isErrorResult(restoredApproval) && restoredApproval.changed,
+      "a revoked Stage 3 submission must be approvable again",
+    );
 
     const replacementFile = await prisma.projectAttachment.create({
       data: {
@@ -1362,6 +1417,67 @@ async function main() {
         !executorBEmptyStageFourView.canManage,
       "a project executor must reach an unlocked empty Stage 4 workspace without seeing unassigned concepts",
     );
+    const completedStageRevocation =
+      await revokeProjectConceptApprovedAttachment(owner, {
+        projectId,
+        folderId: conceptA.folder.id,
+      });
+    check(
+      !isErrorResult(completedStageRevocation) &&
+        completedStageRevocation.reopensWorkflowStage &&
+        completedStageRevocation.resetThroughStageFive,
+      "completed Stage 3 approval revocation must reopen Stage 3 before downstream work starts",
+    );
+    const reopenedStageThree = await prisma.projectWorkflowStage.findMany({
+      where: {
+        projectId,
+        stageKey: {
+          in: [
+            ProjectWorkflowStageKey.CONCEPT_CREATION,
+            ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          ],
+        },
+      },
+      select: { stageKey: true, status: true },
+    });
+    check(
+      reopenedStageThree.find(
+        (stage) => stage.stageKey === ProjectWorkflowStageKey.CONCEPT_CREATION,
+      )?.status === ProjectWorkflowStageStatus.AVAILABLE &&
+        reopenedStageThree.find(
+          (stage) =>
+            stage.stageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        )?.status === ProjectWorkflowStageStatus.LOCKED,
+      "Stage 3 rework must restore a valid available-stage/locked-suffix sequence",
+    );
+    const restoredCompletedStageApproval =
+      await markProjectConceptApprovedAttachment(owner, {
+        projectId,
+        folderId: conceptA.folder.id,
+        attachmentId: replacementFile.id,
+      });
+    check(
+      !isErrorResult(restoredCompletedStageApproval) &&
+        restoredCompletedStageApproval.changed,
+      "a completed Stage 3 approval must be selectable again after rework",
+    );
+    const recompletedStageThree = await completeStageThreeConcepts(owner, {
+      projectId,
+    });
+    check(
+      !isErrorResult(recompletedStageThree) && recompletedStageThree.transitioned,
+      "Stage 3 must complete again and return Stage 4 to the available state",
+    );
+    const stageFourUnlockedAfterRework =
+      await prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId,
+            stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+          },
+        },
+        select: { unlockedAt: true },
+      });
 
     const deletableStageFourTask = await createProjectConceptFolderService(owner, {
       projectId,
@@ -1708,8 +1824,8 @@ async function main() {
     );
     check(
       countsAfterRetry[2].unlockedAt?.getTime() ===
-        unlockedStageFour.unlockedAt?.getTime(),
-      "completion retry must preserve the first Stage 4 unlockedAt timestamp",
+        stageFourUnlockedAfterRework.unlockedAt?.getTime(),
+      "completion retry must preserve the current rework cycle's Stage 4 unlockedAt timestamp",
     );
 
     await prisma.project.create({

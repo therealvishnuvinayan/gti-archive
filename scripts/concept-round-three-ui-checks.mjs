@@ -80,6 +80,27 @@ assert(
     !concepts.includes("const stageTransition = await completeStageThreeConcepts"),
   "Designating the approved file must approve its revision and files and complete the concept tasker without bypassing explicit Stage 3 confirmation.",
 );
+assert(
+  concepts.includes("revokeProjectConceptApprovedAttachment") &&
+    concepts.includes("revokeConceptApprovedAttachment") &&
+    concepts.includes("canReviewProjectConcept(user, accessContext)") &&
+    concepts.includes("reopensWorkflowStage") &&
+    concepts.includes("Stage 6 production work has already started") &&
+    concepts.includes("projectProductionUnit.findMany") &&
+    concepts.includes("cascadedStageFourApproval") &&
+    concepts.includes("removedStageFiveHandoff") &&
+    concepts.includes("sourceStage3ApprovedAttachmentId: attachment.id") &&
+    concepts.includes("status: ProjectWorkflowStageStatus.AVAILABLE") &&
+    concepts.includes("status: ProjectWorkflowStageStatus.LOCKED") &&
+    concepts.includes("approvedAttachmentId: null") &&
+    concepts.includes("approvedById: null") &&
+    concepts.includes("approvedAt: null") &&
+    concepts.includes("status: ProjectRevisionStatus.PENDING_REVIEW") &&
+    concepts.includes("submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW") &&
+    concepts.includes("status: StageStatus.ONGOING") &&
+    concepts.includes("completedAt: null"),
+  "Stage 3 revocation must be reviewer-authorized, cascade through dependent Stage 4/5 records, stop at active Stage 6 work, relink reapproved references, and restore Pending Review.",
+);
 
 assert(
   concepts.includes("completeStageThreeConcepts") &&
@@ -134,6 +155,10 @@ assert(
     chatWorkspace.includes("approvedConceptRevisionNeedingRepair") &&
     chatWorkspace.includes("legacyConceptApprovalRepairRef") &&
     chatWorkspace.includes('status: "APPROVED"') &&
+    chatWorkspace.includes("revokeProjectConceptApprovedAttachmentAction") &&
+    chatWorkspace.includes("Revoke Approved Concept?") &&
+    chatWorkspace.includes("Revoke Approval") &&
+    chatWorkspace.includes("Rework is allowed through completed Stage 5") &&
     chatWorkspace.includes("conceptMode.isWorkflowCompleted") &&
     chatWorkspace.includes("Read-only approved Stage 3 reference") &&
     chatWorkspace.includes("!activeStage?.isTasker"),
@@ -152,6 +177,7 @@ assert(
 
 assert(
     actions.includes("markProjectConceptApprovedAttachmentAction") &&
+    actions.includes("revokeProjectConceptApprovedAttachmentAction") &&
     actions.includes("completeStageThreeConceptsAction") &&
     actions.includes("result.changed") &&
     !actions.includes('"stageTransition" in result') &&

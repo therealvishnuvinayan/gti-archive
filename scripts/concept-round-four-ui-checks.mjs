@@ -56,6 +56,17 @@ assert(
     !concepts.includes("const stageTransition = await completeStageFourConcepts"),
   "Final-file approval must approve its revision and files and complete the concept tasker without bypassing explicit Stage 4 confirmation.",
 );
+assert(
+  concepts.includes("revokeStageFourFinalApprovedAttachment") &&
+    concepts.includes("reopensWorkflowStage") &&
+    concepts.includes("Stage 5 already contains checklist activity") &&
+    concepts.includes("already has Stage 5 activity and cannot be revoked") &&
+    concepts.includes("projectStageFileHandoff.delete") &&
+    concepts.includes("approvedAttachmentId: null") &&
+    concepts.includes("submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW") &&
+    concepts.includes("status: StageStatus.ONGOING"),
+  "Stage 4 revocation must reopen the tasker while protecting completed workflow and meaningful Stage 5 dependencies.",
+);
 
 assert(
   stageFive.includes("hasStageFiveDownstreamActivityForAttachment") &&
@@ -64,6 +75,11 @@ assert(
     stageFive.includes("item._count.attachments > 0") &&
     stageFive.includes("checklist._count.requests > 0"),
   "Stage 5 downstream activity must be defined once from values, statuses, attachments, and requests.",
+);
+
+const stageFourCompletionSource = concepts.slice(
+  concepts.indexOf("export async function completeStageFourConcepts"),
+  concepts.indexOf("export async function getProjectConceptChatContext"),
 );
 
 assert(
@@ -79,7 +95,7 @@ assert(
     concepts.includes("ProjectWorkflowStageStatus.AVAILABLE") &&
     concepts.includes("id: stageFiveWorkflow.id") &&
     concepts.includes("status: ProjectWorkflowStageStatus.LOCKED") &&
-    !concepts.includes("PRODUCTION_AND_HANDOVER"),
+    !stageFourCompletionSource.includes("PRODUCTION_AND_HANDOVER"),
   "Owner/Super-Admin-only Stage 4 completion must atomically hand off final files, unlock Stage 5, and leave Stage 6 untouched.",
 );
 
@@ -117,6 +133,10 @@ for (const label of [
 }
 assert(
   chat.includes("markStageFourFinalApprovedAttachmentAction") &&
+    chat.includes("revokeStageFourFinalApprovedAttachmentAction") &&
+    chat.includes("Revoke Final Approved File?") &&
+    chat.includes("Revoke Approval") &&
+    chat.includes("Stage 5 will be relocked") &&
     chat.includes("conceptMode.canReview") &&
     chat.includes("conceptMode.isWorkflowCompleted") &&
     chat.includes("!activeStage?.isTasker"),
@@ -125,6 +145,7 @@ assert(
 
 assert(
     actions.includes("markStageFourFinalApprovedAttachmentAction") &&
+    actions.includes("revokeStageFourFinalApprovedAttachmentAction") &&
     actions.includes("completeStageFourConceptsAction") &&
     actions.includes("result.changed") &&
     actions.includes("result.transitioned") &&

@@ -27,6 +27,7 @@ import {
   Mic,
   MoreVertical,
   Paperclip,
+  RotateCcw,
   Send,
   Square,
   Trash2,
@@ -54,6 +55,8 @@ import {
   importStageThreeConceptReferenceAction,
   markProjectConceptApprovedAttachmentAction,
   markStageFourFinalApprovedAttachmentAction,
+  revokeProjectConceptApprovedAttachmentAction,
+  revokeStageFourFinalApprovedAttachmentAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { saveCollaboratorAction } from "@/app/(dashboard)/collaboration/actions";
 import {
@@ -2613,6 +2616,12 @@ export function ProjectChatWorkspace({
   );
   const [approvingConceptAttachmentId, setApprovingConceptAttachmentId] =
     useState<string | null>(null);
+  const [revokeConceptApprovalOpen, setRevokeConceptApprovalOpen] =
+    useState(false);
+  const [revokingConceptApproval, setRevokingConceptApproval] = useState(false);
+  const [revokeConceptApprovalError, setRevokeConceptApprovalError] = useState<
+    string | null
+  >(null);
   const [stageThreeReferenceDialogOpen, setStageThreeReferenceDialogOpen] =
     useState(false);
   const [selectedStageThreeReferenceId, setSelectedStageThreeReferenceId] =
@@ -6052,6 +6061,57 @@ export function ProjectChatWorkspace({
     }
   }
 
+  async function confirmConceptApprovalRevocation() {
+    if (!conceptMode || !approvedConceptAttachmentId) {
+      return;
+    }
+
+    setRevokeConceptApprovalError(null);
+    setRevokingConceptApproval(true);
+
+    try {
+      const actionInput = {
+        projectId: project.id,
+        folderId: conceptMode.folderId,
+      };
+      const result = isStageFourConceptMode
+        ? await revokeStageFourFinalApprovedAttachmentAction(actionInput)
+        : await revokeProjectConceptApprovedAttachmentAction(actionInput);
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      setApprovedConceptAttachmentId(null);
+      setRevisionReviewOverrides((current) => ({
+        ...current,
+        [result.revisionId]: {
+          status: "PENDING_REVIEW",
+          rejectionReason: null,
+          reviewedBy: null,
+          reviewedAt: null,
+        },
+      }));
+      setRevokeConceptApprovalOpen(false);
+      closeRevisionReviewDialog();
+      showSuccessToast(
+        "Approval revoked.",
+        result.resetThroughStageFive
+          ? "Stage 3 reopened for rework. Its dependent Stage 4 approval and Stage 5 handoff were reset."
+          : `${approvedFileLabel} was returned to Pending Review.`,
+      );
+      router.refresh();
+    } catch (error) {
+      setRevokeConceptApprovalError(
+        error instanceof Error
+          ? error.message
+          : "Unable to revoke this approval right now.",
+      );
+    } finally {
+      setRevokingConceptApproval(false);
+    }
+  }
+
   function startRevisionReply(message: DisplayChatEntry) {
     if (isChatReadOnly) {
       setComposerError(
@@ -7587,6 +7647,27 @@ export function ProjectChatWorkspace({
                 </div>
               ))}
             </dl>
+            {conceptMode.canReview &&
+            approvedConceptAttachmentId ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-12 w-full shrink-0 rounded-[12px] border-[#e3aaa5] px-3 text-[10px] font-[780] text-[#ad4039] hover:bg-[#fff3f1] hover:text-[#96352f] lg:w-auto"
+                disabled={revokingConceptApproval}
+                onClick={() => {
+                  setRevokeConceptApprovalError(null);
+                  setRevokeConceptApprovalOpen(true);
+                }}
+              >
+                {revokingConceptApproval ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                )}
+                Revoke Approval
+              </Button>
+            ) : null}
             <ConceptDeadlineTimer
               deadline={activeStage?.plannedDueAtValue ?? null}
             />
@@ -10740,6 +10821,32 @@ export function ProjectChatWorkspace({
           if (approvingConceptAttachmentId) return;
           setConceptApprovalTarget(null);
           setConceptApprovalError(null);
+        }}
+      />
+      <ConfirmationDialog
+        isOpen={revokeConceptApprovalOpen}
+        title={
+          isStageFourConceptMode
+            ? "Revoke Final Approved File?"
+            : "Revoke Approved Concept?"
+        }
+        description={
+          isStageFourConceptMode
+            ? "This removes the Final Approved File designation, returns its revision to Pending Review, and reopens Stage 4. Stage 5 will be relocked when it has no checklist activity; otherwise revocation is blocked."
+            : "This starts Stage 3 rework and returns the concept to Pending Review. If it is already used downstream, its dependent Stage 4 approval and Stage 5 handoff/checklist will be reset. Rework is allowed through completed Stage 5, but is blocked after Stage 6 production work begins."
+        }
+        confirmLabel="Revoke Approval"
+        cancelLabel="Keep Approval"
+        tone="destructive"
+        pending={revokingConceptApproval}
+        error={revokeConceptApprovalError ?? undefined}
+        onConfirm={() => {
+          void confirmConceptApprovalRevocation();
+        }}
+        onClose={() => {
+          if (revokingConceptApproval) return;
+          setRevokeConceptApprovalOpen(false);
+          setRevokeConceptApprovalError(null);
         }}
       />
 

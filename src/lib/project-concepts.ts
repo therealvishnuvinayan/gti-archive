@@ -2,6 +2,9 @@ import {
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
+  ProductionApprovalStepStatus,
+  ProductionDispatchStatus,
+  ProjectProductionUnitStatus,
   ProjectRevisionStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
@@ -1270,6 +1273,7 @@ export async function markProjectConceptApprovedAttachment(
               approvedAttachmentId: true,
               approvedById: true,
               approvedAt: true,
+              promotedStage4Concept: { select: { id: true } },
               project: {
                 select: {
                   category: true,
@@ -1360,6 +1364,12 @@ export async function markProjectConceptApprovedAttachment(
                 approvedAt,
               },
             });
+            if (folder.promotedStage4Concept) {
+              await tx.projectConceptFolder.update({
+                where: { id: folder.promotedStage4Concept.id },
+                data: { sourceStage3ApprovedAttachmentId: attachment.id },
+              });
+            }
           }
 
           await approveConceptRevision(tx, {
@@ -1612,6 +1622,511 @@ export async function markStageFourFinalApprovedAttachment(
 
     throw error;
   }
+}
+
+async function revokeConceptApprovedAttachment(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    folderId: string;
+  },
+  workflowStageKey: ConceptWorkflowStageKey,
+  conflictRetryCount = 0,
+) {
+  const stageNumber =
+    workflowStageKey === ProjectWorkflowStageKey.CONCEPT_CREATION ? 3 : 4;
+  const nextWorkflowStageKey =
+    stageNumber === 3
+      ? ProjectWorkflowStageKey.PROJECT_DEVELOPMENT
+      : ProjectWorkflowStageKey.FINAL_LAYOUT;
+  const approvalLabel =
+    stageNumber === 3 ? "Approved Concept" : "Final Approved File";
+
+  try {
+    return await withPrismaRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const folder = await tx.projectConceptFolder.findFirst({
+            where: {
+              id: input.folderId,
+              projectId: input.projectId,
+              workflowStageKey,
+              taskerStage: { projectId: input.projectId, isTasker: true },
+            },
+            select: {
+              id: true,
+              taskerStageId: true,
+              assignedExecutorId: true,
+              approvedAttachmentId: true,
+              approvedAttachment: {
+                select: { id: true, revisionId: true },
+              },
+              promotedStage4Concept: {
+                select: {
+                  id: true,
+                  taskerStageId: true,
+                  approvedAttachmentId: true,
+                  approvedAttachment: {
+                    select: { id: true, revisionId: true },
+                  },
+                },
+              },
+              project: {
+                select: {
+                  ownerId: true,
+                  coOwners: { select: { userId: true } },
+                  workflowStages: {
+                    select: { id: true, stageKey: true, status: true },
+                  },
+                },
+              },
+            },
+          });
+
+          if (!folder) {
+            return { error: `Stage ${stageNumber} concept not found.` } as const;
+          }
+
+          const accessContext: ConceptAccessContext = {
+            folderId: folder.id,
+            projectId: input.projectId,
+            taskerStageId: folder.taskerStageId,
+            workflowStageKey,
+            assignedExecutorId: folder.assignedExecutorId,
+            ownerId: folder.project.ownerId,
+            coOwnerIds: folder.project.coOwners.map((coOwner) => coOwner.userId),
+          };
+
+          if (!canReviewProjectConcept(user, accessContext)) {
+            return {
+              error: `You do not have permission to revoke the ${approvalLabel}.`,
+            } as const;
+          }
+
+          const workflowStage = folder.project.workflowStages.find(
+            (stage) => stage.stageKey === workflowStageKey,
+          );
+          const nextWorkflowStage = folder.project.workflowStages.find(
+            (stage) => stage.stageKey === nextWorkflowStageKey,
+          );
+          const stageFiveWorkflow = folder.project.workflowStages.find(
+            (stage) => stage.stageKey === ProjectWorkflowStageKey.FINAL_LAYOUT,
+          );
+          const stageSixWorkflow = folder.project.workflowStages.find(
+            (stage) =>
+              stage.stageKey ===
+              ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+          );
+          const stageSevenWorkflow = folder.project.workflowStages.find(
+            (stage) =>
+              stage.stageKey ===
+              ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+          );
+          const workflowStatus = workflowStage?.status;
+          if (
+            workflowStatus !== ProjectWorkflowStageStatus.AVAILABLE &&
+            workflowStatus !== ProjectWorkflowStageStatus.COMPLETED
+          ) {
+            return { error: `Stage ${stageNumber} is not currently available.` } as const;
+          }
+          if (!workflowStage || !nextWorkflowStage) {
+            return {
+              error: `Stage ${stageNumber} and Stage ${stageNumber + 1} workflow records are required for revocation.`,
+            } as const;
+          }
+          const reopensWorkflowStage =
+            workflowStatus === ProjectWorkflowStageStatus.COMPLETED;
+
+          if (
+            stageNumber === 3 &&
+            reopensWorkflowStage &&
+            (!stageFiveWorkflow || !stageSixWorkflow || !stageSevenWorkflow)
+          ) {
+            return {
+              error:
+                "Stage 3 through Stage 7 workflow records are required for rework.",
+            } as const;
+          }
+
+          const approvedAttachment = folder.approvedAttachment;
+          if (
+            !folder.approvedAttachmentId ||
+            !approvedAttachment ||
+            !approvedAttachment.revisionId
+          ) {
+            return {
+              error: `This concept does not currently have a designated ${approvalLabel}.`,
+            } as const;
+          }
+
+          let cascadedStageFourApproval = false;
+          let removedStageFiveHandoff = false;
+          let resetThroughStageFive = false;
+          let removedUnusedHandoff = false;
+
+          if (stageNumber === 3) {
+            if (reopensWorkflowStage) {
+              if (
+                stageSixWorkflow!.status ===
+                  ProjectWorkflowStageStatus.COMPLETED ||
+                stageSevenWorkflow!.status !==
+                  ProjectWorkflowStageStatus.LOCKED
+              ) {
+                return {
+                  error:
+                    "Stage 6 production work has already started, so this Stage 3 approval can no longer be revoked.",
+                } as const;
+              }
+
+              const stageSixUnits = await tx.projectProductionUnit.findMany({
+                where: { projectId: input.projectId },
+                select: {
+                  status: true,
+                  approvedAt: true,
+                  handedOverAt: true,
+                  _count: { select: { files: true } },
+                  handover: { select: { id: true } },
+                  supervision: { select: { id: true } },
+                  approvalSteps: {
+                    select: {
+                      sequence: true,
+                      isMarketingDirectorRequired: true,
+                      clientRequestId: true,
+                      requestedById: true,
+                      status: true,
+                      dispatchStatus: true,
+                      activatedAt: true,
+                      sentAt: true,
+                      decidedAt: true,
+                    },
+                  },
+                },
+              });
+              const stageSixHasActivity = stageSixUnits.some((unit) => {
+                const bootstrapStep = unit.approvalSteps[0];
+
+                return (
+                  unit.status !== ProjectProductionUnitStatus.PREPARATION ||
+                  unit.approvedAt !== null ||
+                  unit.handedOverAt !== null ||
+                  unit._count.files > 0 ||
+                  unit.handover !== null ||
+                  unit.supervision !== null ||
+                  unit.approvalSteps.length !== 1 ||
+                  !bootstrapStep ||
+                  bootstrapStep.sequence !== 1 ||
+                  !bootstrapStep.isMarketingDirectorRequired ||
+                  bootstrapStep.clientRequestId !== null ||
+                  bootstrapStep.requestedById !== null ||
+                  bootstrapStep.status !== ProductionApprovalStepStatus.WAITING ||
+                  bootstrapStep.dispatchStatus !==
+                    ProductionDispatchStatus.NOT_SENT ||
+                  bootstrapStep.activatedAt !== null ||
+                  bootstrapStep.sentAt !== null ||
+                  bootstrapStep.decidedAt !== null
+                );
+              });
+
+              if (stageSixHasActivity) {
+                return {
+                  error:
+                    "Stage 6 production work has already started, so this Stage 3 approval can no longer be revoked.",
+                } as const;
+              }
+
+              resetThroughStageFive = [
+                nextWorkflowStage,
+                stageFiveWorkflow!,
+                stageSixWorkflow!,
+              ].some(
+                (stage) =>
+                  stage.status !== ProjectWorkflowStageStatus.LOCKED,
+              );
+            }
+
+            const promotedConcept = folder.promotedStage4Concept;
+            if (promotedConcept) {
+              const promotedApproval = promotedConcept.approvedAttachment;
+              if (
+                promotedConcept.approvedAttachmentId &&
+                (!promotedApproval || !promotedApproval.revisionId)
+              ) {
+                return {
+                  error:
+                    "The dependent Stage 4 approval is incomplete and could not be reset safely.",
+                } as const;
+              }
+
+              if (promotedApproval?.revisionId) {
+                const handoff = await tx.projectStageFileHandoff.findFirst({
+                  where: {
+                    projectId: input.projectId,
+                    sourceWorkflowStageKey:
+                      ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                    sourceAttachmentId: promotedApproval.id,
+                    targetWorkflowStageKey:
+                      ProjectWorkflowStageKey.FINAL_LAYOUT,
+                  },
+                  select: { id: true },
+                });
+
+                if (handoff) {
+                  await tx.projectStageFileHandoff.delete({
+                    where: { id: handoff.id },
+                  });
+                  removedStageFiveHandoff = true;
+                }
+
+                await tx.projectRevision.update({
+                  where: { id: promotedApproval.revisionId },
+                  data: {
+                    status: ProjectRevisionStatus.PENDING_REVIEW,
+                    reviewedById: null,
+                    reviewedAt: null,
+                    rejectionReason: null,
+                  },
+                });
+                await tx.projectAttachment.updateMany({
+                  where: {
+                    projectId: input.projectId,
+                    stageId: promotedConcept.taskerStageId,
+                    revisionId: promotedApproval.revisionId,
+                    status: AttachmentStatus.READY,
+                    assetType: { in: formalConceptAttachmentTypes },
+                  },
+                  data: {
+                    submissionReviewStatus:
+                      SubmissionReviewStatus.PENDING_REVIEW,
+                    reviewedById: null,
+                    reviewedAt: null,
+                    reviewNote: null,
+                  },
+                });
+                cascadedStageFourApproval = true;
+              }
+
+              await tx.projectConceptFolder.update({
+                where: { id: promotedConcept.id },
+                data: {
+                  ...(promotedConcept.approvedAttachmentId
+                    ? {
+                        approvedAttachmentId: null,
+                        approvedById: null,
+                        approvedAt: null,
+                      }
+                    : {}),
+                },
+              });
+              await tx.projectStage.update({
+                where: { id: promotedConcept.taskerStageId },
+                data: {
+                  status: StageStatus.ONGOING,
+                  completedAt: null,
+                },
+              });
+            }
+          }
+
+          if (stageNumber === 4) {
+            if (reopensWorkflowStage) {
+              if (nextWorkflowStage.status === ProjectWorkflowStageStatus.COMPLETED) {
+                return {
+                  error:
+                    "Stage 5 is already completed, so this Final Approved File cannot be revoked.",
+                } as const;
+              }
+
+              const stageFiveHandoffs = await tx.projectStageFileHandoff.findMany({
+                where: {
+                  projectId: input.projectId,
+                  sourceWorkflowStageKey:
+                    ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                  targetWorkflowStageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
+                },
+                select: { sourceAttachmentId: true },
+              });
+              for (const handoff of stageFiveHandoffs) {
+                const handoffActivity =
+                  await hasStageFiveDownstreamActivityForAttachment(tx, {
+                    projectId: input.projectId,
+                    attachmentId: handoff.sourceAttachmentId,
+                  });
+                if (handoffActivity.hasActivity) {
+                  return {
+                    error:
+                      "Stage 5 already contains checklist activity, so this Final Approved File cannot be revoked.",
+                  } as const;
+                }
+              }
+            }
+
+            const downstream = await hasStageFiveDownstreamActivityForAttachment(tx, {
+              projectId: input.projectId,
+              attachmentId: approvedAttachment.id,
+            });
+
+            if (downstream.hasActivity) {
+              return {
+                error:
+                  "This Final Approved File already has Stage 5 activity and cannot be revoked.",
+              } as const;
+            }
+
+            if (downstream.handoffId) {
+              await tx.projectStageFileHandoff.delete({
+                where: { id: downstream.handoffId },
+              });
+              removedUnusedHandoff = true;
+            }
+          }
+
+          if (reopensWorkflowStage) {
+            await tx.projectWorkflowStage.update({
+              where: { id: workflowStage.id },
+              data: {
+                status: ProjectWorkflowStageStatus.AVAILABLE,
+                completedAt: null,
+              },
+            });
+
+            if (stageNumber === 3) {
+              await tx.projectWorkflowStage.updateMany({
+                where: {
+                  projectId: input.projectId,
+                  stageKey: {
+                    in: [
+                      ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+                      ProjectWorkflowStageKey.FINAL_LAYOUT,
+                      ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+                      ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+                    ],
+                  },
+                },
+                data: {
+                  status: ProjectWorkflowStageStatus.LOCKED,
+                  unlockedAt: null,
+                  completedAt: null,
+                },
+              });
+            } else if (
+              nextWorkflowStage.status === ProjectWorkflowStageStatus.AVAILABLE
+            ) {
+              await tx.projectWorkflowStage.update({
+                where: { id: nextWorkflowStage.id },
+                data: {
+                  status: ProjectWorkflowStageStatus.LOCKED,
+                  unlockedAt: null,
+                  completedAt: null,
+                },
+              });
+            }
+          }
+
+          await tx.projectConceptFolder.update({
+            where: { id: folder.id },
+            data: {
+              approvedAttachmentId: null,
+              approvedById: null,
+              approvedAt: null,
+            },
+          });
+          await tx.projectRevision.update({
+            where: { id: approvedAttachment.revisionId },
+            data: {
+              status: ProjectRevisionStatus.PENDING_REVIEW,
+              reviewedById: null,
+              reviewedAt: null,
+              rejectionReason: null,
+            },
+          });
+          await tx.projectAttachment.updateMany({
+            where: {
+              projectId: input.projectId,
+              stageId: folder.taskerStageId,
+              revisionId: approvedAttachment.revisionId,
+              status: AttachmentStatus.READY,
+              assetType: { in: formalConceptAttachmentTypes },
+            },
+            data: {
+              submissionReviewStatus: SubmissionReviewStatus.PENDING_REVIEW,
+              reviewedById: null,
+              reviewedAt: null,
+              reviewNote: null,
+            },
+          });
+          await tx.projectStage.update({
+            where: { id: folder.taskerStageId },
+            data: {
+              status: StageStatus.ONGOING,
+              completedAt: null,
+            },
+          });
+
+          return {
+            changed: true,
+            folderId: folder.id,
+            taskerStageId: folder.taskerStageId,
+            assignedExecutorId: folder.assignedExecutorId,
+            attachmentId: approvedAttachment.id,
+            revisionId: approvedAttachment.revisionId,
+            revisionStatus: ProjectRevisionStatus.PENDING_REVIEW,
+            cascadedStageFourApproval,
+            removedStageFiveHandoff,
+            removedUnusedHandoff,
+            reopensWorkflowStage,
+            resetThroughStageFive,
+          } as const;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 30_000,
+        },
+      ),
+    );
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2034"
+    ) {
+      if (conflictRetryCount < 1) {
+        return revokeConceptApprovedAttachment(
+          user,
+          input,
+          workflowStageKey,
+          conflictRetryCount + 1,
+        );
+      }
+
+      return {
+        error: "The concept approval changed at the same time. Please try again.",
+      } as const;
+    }
+
+    throw error;
+  }
+}
+
+export async function revokeProjectConceptApprovedAttachment(
+  user: PermissionUser,
+  input: { projectId: string; folderId: string },
+) {
+  return revokeConceptApprovedAttachment(
+    user,
+    input,
+    ProjectWorkflowStageKey.CONCEPT_CREATION,
+  );
+}
+
+export async function revokeStageFourFinalApprovedAttachment(
+  user: PermissionUser,
+  input: { projectId: string; folderId: string },
+) {
+  return revokeConceptApprovedAttachment(
+    user,
+    input,
+    ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+  );
 }
 
 type StageThreeCompletionResult = {

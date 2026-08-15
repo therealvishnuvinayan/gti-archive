@@ -19,6 +19,8 @@ import {
   importStageThreeConceptReference,
   markProjectConceptApprovedAttachment,
   markStageFourFinalApprovedAttachment,
+  revokeProjectConceptApprovedAttachment,
+  revokeStageFourFinalApprovedAttachment,
   renameProjectConceptFolder,
   type ConceptWorkflowStageKey,
 } from "@/lib/project-concepts";
@@ -287,6 +289,57 @@ export async function markStageFourFinalApprovedAttachmentAction(input: {
     return {
       error: "Unable to approve this final Stage 4 file right now.",
     } as const;
+  }
+}
+
+export async function revokeProjectConceptApprovedAttachmentAction(input: {
+  projectId: string;
+  folderId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await revokeProjectConceptApprovedAttachment(user, input);
+
+    if (!("error" in result)) {
+      revalidateConceptStage(input.projectId, "CONCEPT_CREATION");
+      revalidateConceptStage(input.projectId, "PROJECT_DEVELOPMENT");
+      revalidatePath(`/projects/${input.projectId}/stages/5`);
+      revalidatePath(`/projects/${input.projectId}/stages/6`);
+      revalidatePath(`/projects/${input.projectId}`);
+      revalidatePath(
+        `/projects/${input.projectId}/stages/3/concepts/${input.folderId}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] approval revocation failed", error);
+    return { error: "Unable to revoke this concept approval right now." } as const;
+  }
+}
+
+export async function revokeStageFourFinalApprovedAttachmentAction(input: {
+  projectId: string;
+  folderId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await revokeStageFourFinalApprovedAttachment(user, input);
+
+    if (!("error" in result)) {
+      revalidateConceptStage(input.projectId, "PROJECT_DEVELOPMENT");
+      revalidatePath(`/projects/${input.projectId}/stages/5`);
+      revalidatePath(
+        `/projects/${input.projectId}/stages/4/concepts/${input.folderId}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] Stage 4 approval revocation failed", error);
+    return { error: "Unable to revoke this final approval right now." } as const;
   }
 }
 
