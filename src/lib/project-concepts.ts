@@ -55,6 +55,7 @@ export type ConceptWorkflowStageKey =
 export type ProjectConceptFolderRecord = {
   id: string;
   name: string;
+  deadline: Date | null;
   canDelete: boolean;
   sortOrder: number;
   taskerStageId: string;
@@ -238,6 +239,7 @@ const conceptFolderSelect = {
     select: {
       description: true,
       actualStartedAt: true,
+      plannedDueAt: true,
       revisions: {
         orderBy: [{ revisionNumber: "desc" }, { createdAt: "desc" }],
         take: 1,
@@ -303,6 +305,7 @@ function mapConceptFolder(
   return {
     id: folder.id,
     name: folder.name,
+    deadline: folder.taskerStage.plannedDueAt,
     canDelete:
       folder.createdById === currentUserId && !folder.promotedStage4Concept,
     sortOrder: folder.sortOrder,
@@ -418,6 +421,7 @@ export async function createProjectConceptFolder(
     stageKey: ConceptWorkflowStageKey;
     name: string;
     assignedExecutorId: string;
+    deadline: string;
     brief?: string | null;
     briefAttachmentIds?: string[];
   },
@@ -475,6 +479,14 @@ export async function createProjectConceptFolder(
   const brief = sanitizeRichText(input.brief) || null;
   if (!brief) {
     return { error: "Concept Brief is required." } as const;
+  }
+
+  const deadline = new Date(input.deadline);
+  if (Number.isNaN(deadline.getTime())) {
+    return { error: "Deadline must be a valid date and time." } as const;
+  }
+  if (deadline.getTime() <= Date.now()) {
+    return { error: "Deadline must be in the future." } as const;
   }
 
   const briefAttachmentIds = [
@@ -538,6 +550,7 @@ export async function createProjectConceptFolder(
               projectId: input.projectId,
               name: validatedName.name,
               description: brief,
+              plannedDueAt: deadline,
               invoiceRequired: false,
               isTasker: true,
               actualStartedAt: null,
@@ -960,6 +973,7 @@ export async function editProjectConceptFolder(
     folderId: string;
     name: string;
     assignedExecutorId?: string;
+    deadline?: string;
     brief?: string | null;
   },
 ) {
@@ -994,6 +1008,7 @@ export async function editProjectConceptFolder(
           select: {
             actualStartedAt: true,
             description: true,
+            plannedDueAt: true,
           },
         },
       },
@@ -1029,6 +1044,19 @@ export async function editProjectConceptFolder(
   }
   const briefChanged =
     requestedBrief !== undefined && requestedBrief !== folder.taskerStage.description;
+  const requestedDeadline =
+    input.deadline === undefined
+      ? folder.taskerStage.plannedDueAt
+      : new Date(input.deadline);
+  if (input.deadline !== undefined && Number.isNaN(requestedDeadline?.getTime())) {
+    return { error: "Deadline must be a valid date and time." } as const;
+  }
+  const deadlineChanged =
+    input.deadline !== undefined &&
+    folder.taskerStage.plannedDueAt?.getTime() !== requestedDeadline?.getTime();
+  if (deadlineChanged && requestedDeadline && requestedDeadline.getTime() <= Date.now()) {
+    return { error: "Deadline must be in the future." } as const;
+  }
 
   if (requestedExecutorId === "") {
     return { error: "Assigned Executor is required." } as const;
@@ -1064,6 +1092,9 @@ export async function editProjectConceptFolder(
           where: { id: folder.taskerStageId },
           data: {
             name: validatedName.name,
+            ...(input.deadline !== undefined
+              ? { plannedDueAt: requestedDeadline }
+              : {}),
             ...(requestedBrief !== undefined ? { description: requestedBrief } : {}),
           },
         }),
@@ -1076,6 +1107,7 @@ export async function editProjectConceptFolder(
         name: validatedName.name,
         taskerStageId: folder.taskerStageId,
         assignedExecutorId: requestedExecutorId ?? folder.assignedExecutorId,
+        deadline: requestedDeadline,
       },
     } as const;
   } catch (error) {

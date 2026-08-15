@@ -44,6 +44,7 @@ export async function createProjectConceptFolderAction(input: {
   stageKey: ConceptWorkflowStageKey;
   name: string;
   assignedExecutorId: string;
+  deadline: string;
   brief?: string | null;
   briefAttachmentIds?: string[];
 }) {
@@ -106,6 +107,7 @@ export async function editProjectConceptFolderAction(input: {
   folderId: string;
   name: string;
   assignedExecutorId?: string;
+  deadline: string;
   brief?: string | null;
 }) {
   const user = await requireUser();

@@ -61,12 +61,16 @@ function isErrorResult(value: unknown): value is { error: string } {
   return Boolean(value && typeof value === "object" && "error" in value);
 }
 
+function futureConceptDeadline() {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString();
+}
+
 async function createProjectConceptFolder(
   user: Parameters<typeof createProjectConceptFolderService>[0],
   input: Omit<
     Parameters<typeof createProjectConceptFolderService>[1],
-    "briefAttachmentIds"
-  >,
+    "briefAttachmentIds" | "deadline"
+  > & { deadline?: string },
 ) {
   const attachmentId = randomUUID();
   await prisma.projectAttachment.create({
@@ -87,6 +91,7 @@ async function createProjectConceptFolder(
 
   return createProjectConceptFolderService(user, {
     ...input,
+    deadline: input.deadline ?? futureConceptDeadline(),
     briefAttachmentIds: [attachmentId],
   });
 }
@@ -225,6 +230,7 @@ async function main() {
       stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
       name: "Missing Brief",
       assignedExecutorId: executorA.id,
+      deadline: futureConceptDeadline(),
       brief: "  ",
       briefAttachmentIds: [],
     });
@@ -235,6 +241,7 @@ async function main() {
       stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
       name: "Missing Attachment",
       assignedExecutorId: executorA.id,
+      deadline: futureConceptDeadline(),
       brief: "A valid brief without a file",
       briefAttachmentIds: [],
     });
@@ -1361,6 +1368,7 @@ async function main() {
       stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
       name: "Temporary Stage 4 Task",
       assignedExecutorId: executorA.id,
+      deadline: futureConceptDeadline(),
       brief: "Delete this temporary final-concept task",
       briefAttachmentIds: [],
     });

@@ -95,6 +95,7 @@ import {
   ProjectCollaboratorsPanel,
   ProjectExecutorsPanel,
 } from "@/components/projects/project-collaborators-panel";
+import { ConceptDeadlineTimer } from "@/components/projects/concept-deadline-timer";
 import { StageTimeRemainingCard } from "@/components/projects/stage-time-remaining-card";
 import {
   SubmissionCaptionDialog,
@@ -7586,6 +7587,9 @@ export function ProjectChatWorkspace({
                 </div>
               ))}
             </dl>
+            <ConceptDeadlineTimer
+              deadline={activeStage?.plannedDueAtValue ?? null}
+            />
           </div>
         </div>
       ) : null}

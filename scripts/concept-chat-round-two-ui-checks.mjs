@@ -16,6 +16,7 @@ const [
   notifications,
   projects,
   assetPreview,
+  deadlineTimer,
 ] = await Promise.all([
   readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/chat/page.tsx", "utf8"),
@@ -37,6 +38,7 @@ const [
   readFile("src/lib/notification-center/triggers.ts", "utf8"),
   readFile("src/lib/projects.ts", "utf8"),
   readFile("src/components/projects/asset-preview-button.tsx", "utf8"),
+  readFile("src/components/projects/concept-deadline-timer.tsx", "utf8"),
 ]);
 
 assert(
@@ -86,6 +88,15 @@ assert(
     workspace.includes("min-width:1680px") &&
     workspace.includes("Stage Overview"),
   "Concept mode needs a lightweight collapsible panel while normal Stage Overview remains intact.",
+);
+assert(
+  workspace.includes("ConceptDeadlineTimer") &&
+    workspace.includes("activeStage?.plannedDueAtValue") &&
+    deadlineTimer.includes("Concept deadline") &&
+    deadlineTimer.includes("Overdue by") &&
+    deadlineTimer.includes("remaining") &&
+    deadlineTimer.includes("window.setInterval(updateNow, 1_000)"),
+  "Concept chat must keep a live, responsive deadline countdown visible independently of the large-screen sidebar.",
 );
 const conceptStatusBlock = workspace.slice(
   workspace.indexOf("Concept Status"),

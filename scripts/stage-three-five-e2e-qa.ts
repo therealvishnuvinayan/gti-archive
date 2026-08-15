@@ -72,12 +72,16 @@ function isError(value: unknown): value is { error: string } {
   return Boolean(value && typeof value === "object" && "error" in value);
 }
 
+function futureConceptDeadline() {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString();
+}
+
 async function createProjectConceptFolder(
   user: Parameters<typeof createProjectConceptFolderService>[0],
   input: Omit<
     Parameters<typeof createProjectConceptFolderService>[1],
-    "briefAttachmentIds"
-  >,
+    "briefAttachmentIds" | "deadline"
+  > & { deadline?: string },
 ) {
   const attachmentId = randomUUID();
   await prisma.projectAttachment.create({
@@ -98,6 +102,7 @@ async function createProjectConceptFolder(
 
   return createProjectConceptFolderService(user, {
     ...input,
+    deadline: input.deadline ?? futureConceptDeadline(),
     briefAttachmentIds: [attachmentId],
   });
 }

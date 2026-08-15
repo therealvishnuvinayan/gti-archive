@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { CalendarClock } from "lucide-react";
 
 import {
   CalendarMonthGrid,
@@ -17,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const timeOptions = Array.from({ length: 48 }, (_, index) => {
   const hours = Math.floor(index / 2);
@@ -53,16 +55,16 @@ function parseDateTimeValue(value: string) {
   };
 }
 
-function formatDisplayDateTime(value: string) {
+function formatDisplayDateTime(value: string, placeholder: string) {
   if (!value || !value.includes("T")) {
-    return "Select date & time";
+    return placeholder;
   }
 
   const [dateValue, timeValue] = value.split("T");
   const date = parseCalendarDateValue(dateValue);
 
   if (Number.isNaN(date.getTime())) {
-    return "Select date & time";
+    return placeholder;
   }
 
   const [hoursString, minutesString] = (timeValue || getDefaultTimeValue()).split(":");
@@ -77,11 +79,17 @@ function formatDisplayDateTime(value: string) {
 }
 
 type DateTimePickerProps = {
-  name: string;
+  name?: string;
   value: string;
   onChange: (value: string) => void;
   minDate?: Date | null;
   maxDate?: Date | null;
+  disabled?: boolean;
+  required?: boolean;
+  placeholder?: string;
+  className?: string;
+  triggerClassName?: string;
+  popoverZIndex?: number;
 };
 
 type PickerPosition = {
@@ -96,6 +104,12 @@ export function DateTimePicker({
   onChange,
   minDate = null,
   maxDate = null,
+  disabled = false,
+  required = false,
+  placeholder = "Select date & time",
+  className,
+  triggerClassName,
+  popoverZIndex = 140,
 }: DateTimePickerProps) {
   const [open, setOpen] = useState(false);
   const [{ date, time }, setDraft] = useState(() => parseDateTimeValue(value));
@@ -203,12 +217,13 @@ export function DateTimePicker({
       ? createPortal(
           <div
             ref={panelRef}
-            className="fixed z-[70]"
+            className="fixed"
             style={{
               top: position.top,
               left: position.left,
               width: position.width,
               maxHeight: "calc(100vh - 32px)",
+              zIndex: popoverZIndex,
             }}
           >
             <Card className="rounded-[22px] border border-line p-4 shadow-[0_20px_50px_rgba(23,39,28,0.16)]">
@@ -241,7 +256,7 @@ export function DateTimePicker({
                     <SelectTrigger className="h-10 rounded-2xl border border-line bg-white text-[13px]">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="z-[120]">
+                    <SelectContent style={{ zIndex: popoverZIndex + 10 }}>
                       {timeOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
@@ -300,12 +315,17 @@ export function DateTimePicker({
       : null;
 
   return (
-    <div ref={containerRef} className="relative">
-      <input type="hidden" name={name} value={value} />
+    <div ref={containerRef} className={cn("relative", className)}>
+      {name ? <input type="hidden" name={name} value={value} /> : null}
       <Button
         type="button"
         variant="secondary"
-        className="mt-3 flex h-[38px] w-full justify-between rounded-2xl border border-line bg-[#f7faf7] px-4 text-left text-[12px] font-normal text-[#18211a]"
+        disabled={disabled}
+        aria-required={required}
+        className={
+          triggerClassName ??
+          "mt-3 flex h-[38px] w-full justify-between rounded-2xl border border-line bg-[#f7faf7] px-4 text-left text-[12px] font-normal text-[#18211a]"
+        }
         onClick={() => {
           const parsed = parseDateTimeValue(value);
           setDraft(parsed);
@@ -313,7 +333,10 @@ export function DateTimePicker({
           setOpen((current) => !current);
         }}
       >
-        <span className="truncate">{formatDisplayDateTime(value)}</span>
+        <span className={value ? "truncate text-[#18211a]" : "truncate text-[#9aa39b]"}>
+          {formatDisplayDateTime(value, placeholder)}
+        </span>
+        <CalendarClock className="h-4 w-4 shrink-0 text-brand" />
       </Button>
       {pickerPanel}
     </div>

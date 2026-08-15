@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import {
   ArrowRight,
+  CalendarClock,
   ChevronRight,
   Folder,
   FolderKanban,
+  Loader2,
   MoreVertical,
   Paperclip,
   Pencil,
@@ -20,6 +22,7 @@ import {
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectFlowSummaryStrip } from "@/components/projects/project-summary-strip";
+import { DateTimePicker } from "@/components/calendar/date-time-picker";
 import {
   createProjectConceptFolderAction,
   completeStageFourConceptsAction,
@@ -28,10 +31,7 @@ import {
   editProjectConceptFolderAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { Button } from "@/components/ui/button";
-import {
-  AssetImageThumbnail,
-  AssetPreviewButton,
-} from "@/components/projects/asset-preview-button";
+import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
@@ -73,6 +73,32 @@ type FolderDialogState =
   | { mode: "edit"; folder: ConceptFolder }
   | null;
 
+function toDateTimeLocalValue(value: Date | string | null | undefined) {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function formatConceptDeadline(value: Date | string | null) {
+  if (!value) return "Deadline not set";
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "Deadline not set";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
 function ConceptDetailsDialog({
   projectId,
   stageKey,
@@ -80,6 +106,7 @@ function ConceptDetailsDialog({
   executors,
   defaultName,
   defaultAssignedExecutorId,
+  pending,
   onClose,
   onSubmit,
 }: {
@@ -89,10 +116,12 @@ function ConceptDetailsDialog({
   executors: ConceptExecutor[];
   defaultName: string;
   defaultAssignedExecutorId?: string | null;
+  pending: boolean;
   onClose: () => void;
   onSubmit: (input: {
     name: string;
     assignedExecutorId: string;
+    deadline: string;
     brief: string;
     files: File[];
   }, clearDraft: () => Promise<void>) => void;
@@ -109,6 +138,9 @@ function ConceptDetailsDialog({
   const [brief, setBrief] = useState(
     state.mode === "edit" ? state.folder.brief ?? "" : "",
   );
+  const [deadline, setDeadline] = useState(
+    state.mode === "edit" ? toDateTimeLocalValue(state.folder.deadline) : "",
+  );
   const [files, setFiles] = useState<File[]>([]);
   const [existingAttachments, setExistingAttachments] = useState(
     state.mode === "edit" ? state.folder.briefAttachments : [],
@@ -117,22 +149,28 @@ function ConceptDetailsDialog({
   const autosave = useProjectFormAutosave({
     projectId,
     formKey: `concept-details:${stageKey}:${state.mode === "edit" ? state.folder.id : "create"}`,
-    value: { name, assignedExecutorId, brief },
+    value: { name, assignedExecutorId, deadline, brief },
     enabled: !detailsLocked,
     onRestore: (draft) => {
       setName(draft.name);
       setAssignedExecutorId(draft.assignedExecutorId);
+      if (typeof draft.deadline === "string") setDeadline(draft.deadline);
       setBrief(draft.brief);
     },
   });
   const attachmentInputId = useId();
   const cleanName = name.trim().replace(/\s+/g, " ");
   const cleanBrief = richTextToPlainText(brief);
+  const parsedDeadline = deadline ? new Date(deadline) : null;
+  const hasValidDeadline = Boolean(
+    parsedDeadline && !Number.isNaN(parsedDeadline.getTime()),
+  );
   const assignmentLocked =
     detailsLocked && state.mode === "edit" && Boolean(state.folder.assignedExecutorId);
   const canSubmit =
     Boolean(cleanName) &&
     Boolean(assignedExecutorId) &&
+    hasValidDeadline &&
     Boolean(cleanBrief);
   const closeWithAutosave = () => {
     void autosave.flush().finally(onClose);
@@ -145,7 +183,10 @@ function ConceptDetailsDialog({
       aria-modal="true"
       aria-labelledby="concept-folder-dialog-title"
     >
-      <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-[680px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.2)] sm:max-h-[calc(100dvh-2.5rem)]">
+      <Card
+        aria-busy={pending}
+        className="flex max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-[680px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.2)] sm:max-h-[calc(100dvh-2.5rem)]"
+      >
         <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-0">
           <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e5ebe6] px-5 py-4 sm:px-6 sm:py-5">
             <div className="min-w-0">
@@ -164,6 +205,7 @@ function ConceptDetailsDialog({
               variant="secondary"
               size="icon"
               onClick={closeWithAutosave}
+              disabled={pending}
               aria-label="Close task dialog"
             >
               <X className="h-4 w-4" />
@@ -221,6 +263,28 @@ function ConceptDetailsDialog({
                     ? "Automatically assigned because this project has one executor."
                     : "Choose the project executor responsible for this concept."}
                 </span>
+              </label>
+
+              <label className="block min-w-0 space-y-2">
+                <span className="text-[12px] font-[700] text-[#2d372f]">Deadline *</span>
+                <DateTimePicker
+                  name="conceptDeadline"
+                  value={deadline}
+                  onChange={setDeadline}
+                  minDate={new Date()}
+                  required
+                  placeholder="Select deadline date and time"
+                  popoverZIndex={190}
+                  triggerClassName="h-12 w-full justify-between rounded-[14px] border border-[#cfdad1] bg-[#fbfdfb] px-4 text-left text-[13px] font-normal text-[#18211a] shadow-none hover:bg-white focus-visible:border-[#46906a] focus-visible:ring-3 focus-visible:ring-[#46906a]/15"
+                />
+                <span className="block text-[11px] leading-4 text-[#748078]">
+                  Set the date and time when this concept task must be completed.
+                </span>
+                {!hasValidDeadline ? (
+                  <span className="block text-[11px] font-[600] text-[#b84e48]">
+                    Deadline is required.
+                  </span>
+                ) : null}
               </label>
 
               <div className="block min-w-0 space-y-2">
@@ -325,19 +389,20 @@ function ConceptDetailsDialog({
           </div>
 
           <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#e5ebe6] bg-white px-5 py-4 sm:flex-row sm:items-center sm:px-6">
-            <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={closeWithAutosave}>
+            <Button type="button" className="w-full sm:w-auto" variant="secondary" onClick={closeWithAutosave} disabled={pending}>
               Cancel
             </Button>
             {!detailsLocked ? <ProjectFormAutosaveStatus status={autosave.status} savedAt={autosave.savedAt} restoredAt={autosave.restoredAt} onRetry={() => void autosave.retry()} className="sm:mr-auto" /> : null}
             <Button
               type="button"
               className="w-full sm:w-auto"
-              disabled={!canSubmit}
+              disabled={!canSubmit || pending}
               onClick={() =>
                 onSubmit(
                   {
                     name: cleanName,
                     assignedExecutorId,
+                    deadline: parsedDeadline?.toISOString() ?? "",
                     brief,
                     files,
                   },
@@ -345,7 +410,14 @@ function ConceptDetailsDialog({
                 )
               }
             >
-              {state.mode === "create" ? "Create Task" : "Save Changes"}
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {pending
+                ? state.mode === "create"
+                  ? "Creating…"
+                  : "Saving…"
+                : state.mode === "create"
+                  ? "Create Task"
+                  : "Save Changes"}
             </Button>
           </div>
         </CardContent>
@@ -542,6 +614,7 @@ export function ConceptStageWorkspace({
   function submitConceptDetails(input: {
     name: string;
     assignedExecutorId: string;
+    deadline: string;
     brief: string;
     files: File[];
   }, clearDraft: () => Promise<void>) {
@@ -563,6 +636,7 @@ export function ConceptStageWorkspace({
           folderId: submittedDialog.folder.id,
           name: input.name,
           assignedExecutorId: input.assignedExecutorId,
+          deadline: input.deadline,
           brief: input.brief,
         });
 
@@ -582,6 +656,7 @@ export function ConceptStageWorkspace({
                   name: result.folder.name,
                   assignedExecutorId: input.assignedExecutorId,
                   assignedExecutor,
+                  deadline: new Date(input.deadline),
                   brief: input.brief.trim() || null,
                 }
               : folder,
@@ -618,6 +693,7 @@ export function ConceptStageWorkspace({
           stageKey,
           name: input.name,
           assignedExecutorId: input.assignedExecutorId,
+          deadline: input.deadline,
           brief: input.brief,
           briefAttachmentIds,
         });
@@ -858,6 +934,14 @@ export function ConceptStageWorkspace({
                       Assigned to: {folder.assignedExecutor?.name || folder.assignedExecutor?.email || "Unassigned"}
                     </span>
                   ) : null}
+                  <span className="mt-1 flex items-center gap-1.5 text-[10px] font-[700] text-[#59665d]">
+                    <CalendarClock className="h-3.5 w-3.5 shrink-0 text-[#2f8057]" />
+                    <span className="truncate">
+                      {folder.deadline
+                        ? `Due ${formatConceptDeadline(folder.deadline)}`
+                        : "Deadline not set"}
+                    </span>
+                  </span>
                   {stageNumber === 3 ? (
                     <span
                       className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.07em] ${
@@ -898,13 +982,6 @@ export function ConceptStageWorkspace({
                         Starting Reference
                       </span>
                       <span className="mt-1 flex min-w-0 items-center gap-1">
-                        <AssetImageThumbnail
-                          fileName={folder.startingReference.name}
-                          mimeType={folder.startingReference.mimeType}
-                          previewPath={folder.startingReference.previewPath}
-                          downloadPath={folder.startingReference.downloadPath}
-                          className="mr-1 h-9 w-12"
-                        />
                         <span className="min-w-0 flex-1 truncate text-[10px] font-[650] text-[#344138]">
                           {folder.startingReference.name}
                         </span>
@@ -991,6 +1068,7 @@ export function ConceptStageWorkspace({
           executors={executors}
           defaultName={folders.length === 0 ? "Concept 1" : `Concept ${folders.length + 1}`}
           defaultAssignedExecutorId={selectedExecutorId}
+          pending={isPending}
           onClose={() => setDialog(null)}
           onSubmit={submitConceptDetails}
         />

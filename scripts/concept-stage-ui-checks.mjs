@@ -94,6 +94,14 @@ assert(
   "The Create Task dialog must contain wide editor controls without collapsing or horizontally scrolling the form.",
 );
 assert(
+  workspace.includes('aria-busy={pending}') &&
+    workspace.includes('disabled={!canSubmit || pending}') &&
+    workspace.includes('"Creating…"') &&
+    workspace.includes('"Saving…"') &&
+    workspace.includes('animate-spin'),
+  "Create/Edit Task must show a pending spinner and status label while preventing duplicate submissions.",
+);
+assert(
   workspace.includes("border-[#cfdad1] bg-[#fbfdfb]") &&
     workspace.includes('minHeightClassName="min-h-[112px]"') &&
     workspace.includes('ariaLabel="Concept brief"') &&
@@ -103,10 +111,24 @@ assert(
   "Concept fields and brief attachments must use clearly bordered, aligned containers.",
 );
 assert(
-  workspace.includes("AssetImageThumbnail") &&
-    workspace.includes('className="mr-1 h-9 w-12"') &&
-    workspace.includes("folder.startingReference.previewPath"),
-  "Stage 4 starting references must show an uncropped image thumbnail in the file row rather than beside the action icons.",
+  !workspace.includes("AssetImageThumbnail") &&
+    workspace.includes("folder.startingReference.previewPath") &&
+    workspace.includes("AssetPreviewButton"),
+  "Stage 4 tasker cards must stay compact without image thumbnails while retaining the preview action.",
+);
+assert(
+  workspace.includes("Deadline *") &&
+    workspace.includes("DateTimePicker") &&
+    !workspace.includes('type="datetime-local"') &&
+    workspace.includes('popoverZIndex={190}') &&
+    workspace.includes("deadline: parsedDeadline?.toISOString()") &&
+    workspace.includes("value: { name, assignedExecutorId, deadline, brief }") &&
+    workspace.includes("formatConceptDeadline(folder.deadline)") &&
+    actions.includes("deadline: string") &&
+    concepts.includes("plannedDueAt: deadline") &&
+    concepts.includes("plannedDueAt: requestedDeadline") &&
+    concepts.includes('error: "Deadline must be in the future."'),
+  "Every new concept task must require, autosave, persist, validate, display, and allow editing its own deadline.",
 );
 assert(
   workspace.includes('assetType: "GENERAL_PROJECT_ASSET"') &&
@@ -120,7 +142,7 @@ assert(
     workspace.includes(">Brief Attachments</span>") &&
     workspace.includes("Concept Brief is required.") &&
     !workspace.includes("At least one Brief Attachment is required.") &&
-    workspace.includes("disabled={!canSubmit}"),
+    workspace.includes("disabled={!canSubmit || pending}"),
   "Concept creation must require a brief while keeping brief attachments optional.",
 );
 assert(
