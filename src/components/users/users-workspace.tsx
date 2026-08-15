@@ -46,8 +46,8 @@ import {
   allPermissionKeys,
   collaboratorTypeValues,
   criticalSuperAdminPermissionKeys,
+  editablePermissionRoleValues,
   permissionProfileTypeValues,
-  permissionRoleValues,
   type CollaboratorTypeValue,
   type PermissionKey,
   type PermissionRole,
@@ -63,6 +63,7 @@ import {
 } from "@/lib/permissions/preview";
 import { getCollaboratorTypeLabel } from "@/lib/project-collaborator-participant-types";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import { getUserRoleLabel } from "@/lib/user-role-compatibility";
 import {
   PROFILE_IMAGE_ALLOWED_EXTENSIONS,
   PROFILE_IMAGE_ALLOWED_MIME_TYPES,
@@ -111,6 +112,7 @@ const roleBadgeStyles: Record<PermissionRole, string> = {
   SUPER_ADMIN: "border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]",
   ADMIN: "border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]",
   COLLABORATOR: "border-[#f4dfbf] bg-[#fff4e4] text-[#cb821e]",
+  USER: "border-[#e2d9f5] bg-[#f5f0ff] text-[#7552a3]",
 };
 
 const statusLabels: Record<ManagedUserStatus, string> = {
@@ -151,6 +153,7 @@ function sortUsers(users: ManagedUserRecord[]) {
     SUPER_ADMIN: 0,
     ADMIN: 1,
     COLLABORATOR: 2,
+    USER: 3,
   };
 
   return [...users].sort((left, right) => {
@@ -721,9 +724,9 @@ function EditUserModal({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {permissionRoleValues.map((role) => (
+                  {editablePermissionRoleValues.map((role) => (
                     <SelectItem key={role} value={role}>
-                      {role}
+                      {getUserRoleLabel(role)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1512,6 +1515,7 @@ export function UsersWorkspace({
         user.name,
         user.email,
         user.role,
+        getUserRoleLabel(user.role),
         getCollaboratorTypeLabel(user.collaboratorType),
         archiveAccessLabels[user.archiveAccessLevel],
         statusLabels[user.status],
@@ -1757,7 +1761,7 @@ export function UsersWorkspace({
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
                         <StatusBadge className={roleBadgeStyles[user.role]}>
-                          {user.role}
+                          {getUserRoleLabel(user.role)}
                         </StatusBadge>
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">

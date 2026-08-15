@@ -1,9 +1,9 @@
 import {
   collaboratorTypeValues,
+  editablePermissionRoleValues,
   permissionDefinitions,
   permissionGroupDefinitions,
   permissionProfileTypeValues,
-  permissionRoleValues,
   type CollaboratorTypeValue,
   type PermissionDefinitionRecord,
   type PermissionGroup,
@@ -11,6 +11,7 @@ import {
   type PermissionRole,
 } from "@/lib/permissions/definitions";
 import { getCollaboratorTypeLabel } from "@/lib/project-collaborator-participant-types";
+import { isEditableUserRole } from "@/lib/user-role-compatibility";
 
 export type PermissionMatrixGroupId = PermissionGroup;
 
@@ -46,7 +47,7 @@ export function getPermissionProfileOptions(
 ): PermissionMatrixProfileOption[] {
   switch (profileType) {
     case "role":
-      return permissionRoleValues.map((role) => ({
+      return editablePermissionRoleValues.map((role) => ({
         value: role,
         label: role,
         description:
@@ -94,5 +95,5 @@ export function isEditableProfileType(value: string): value is PermissionProfile
 }
 
 export function isEditableRoleValue(value: string): value is PermissionRole {
-  return permissionRoleValues.includes(value as PermissionRole);
+  return isEditableUserRole(value);
 }

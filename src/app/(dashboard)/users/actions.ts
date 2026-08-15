@@ -12,7 +12,6 @@ import {
 import {
   collaboratorTypeValues,
   permissionProfileTypeValues,
-  permissionRoleValues,
   type CollaboratorTypeValue,
   type PermissionKey,
   type PermissionProfileType,
@@ -40,6 +39,7 @@ import {
   type ManagedArchiveAccessLevel,
   type ManagedArchiveAssetAccessRecord,
 } from "@/lib/user-permissions";
+import { isEditableUserRole } from "@/lib/user-role-compatibility";
 
 type SaveUserAccessInput = {
   userId: string;
@@ -63,6 +63,10 @@ type PermissionProfileInput = {
   profileType: PermissionProfileType;
   profileKey: string;
 };
+
+function isCurrentlyEditablePermissionProfile(input: PermissionProfileInput) {
+  return input.profileType !== "role" || isEditableUserRole(input.profileKey);
+}
 
 function getSessionCacheTag(token: string) {
   return `session:${token}`;
@@ -183,7 +187,7 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     return { error: "User id is missing." };
   }
 
-  if (!permissionRoleValues.includes(input.role)) {
+  if (!isEditableUserRole(input.role)) {
     return { error: "Choose a valid role." };
   }
 
@@ -511,6 +515,10 @@ export async function getPermissionProfileAction(input: PermissionProfileInput) 
     return { error: "Choose a valid permission profile type." };
   }
 
+  if (!isCurrentlyEditablePermissionProfile(input)) {
+    return { error: "Choose a currently editable role profile." };
+  }
+
   try {
     const profile = await getPermissionProfile(input.profileType, input.profileKey);
 
@@ -541,6 +549,10 @@ export async function savePermissionProfileAction(
 
   if (!permissionProfileTypeValues.includes(input.profileType)) {
     return { error: "Choose a valid permission profile type." };
+  }
+
+  if (!isCurrentlyEditablePermissionProfile(input)) {
+    return { error: "Choose a currently editable role profile." };
   }
 
   try {
@@ -579,6 +591,10 @@ export async function resetPermissionProfileToDefaultsAction(
 
   if (!permissionProfileTypeValues.includes(input.profileType)) {
     return { error: "Choose a valid permission profile type." };
+  }
+
+  if (!isCurrentlyEditablePermissionProfile(input)) {
+    return { error: "Choose a currently editable role profile." };
   }
 
   try {

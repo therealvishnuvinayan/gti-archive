@@ -12,6 +12,7 @@ enum UserRole {
   SUPER_ADMIN
   ADMIN
   COLLABORATOR
+  USER
 }
 
 enum CollaboratorType {

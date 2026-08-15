@@ -1,12 +1,14 @@
 import { projectCollaboratorParticipantTypes } from "../project-collaborator-participant-types";
+import {
+  editableUserRoleValues,
+  userRoleValues,
+  type UserRoleValue,
+} from "../user-role-compatibility";
 
-export const permissionRoleValues = [
-  "SUPER_ADMIN",
-  "ADMIN",
-  "COLLABORATOR",
-] as const;
+export const permissionRoleValues = userRoleValues;
+export const editablePermissionRoleValues = editableUserRoleValues;
 
-export type PermissionRole = (typeof permissionRoleValues)[number];
+export type PermissionRole = UserRoleValue;
 
 export const collaboratorTypeValues = projectCollaboratorParticipantTypes;
 
@@ -828,6 +830,40 @@ export const permissionModuleMap: Record<PermissionKey, ModuleName> = {
   "help.view": "help",
 };
 
+const defaultCollaboratorWorkflowPermissions = [
+  "dashboard.view",
+  "dashboard.viewProjectCounts",
+  "dashboard.viewRecentProjects",
+  "project.list",
+  "project.view",
+  "project.viewParticipants",
+  "stage.view",
+  "stage.acceptBrief",
+  "stage.submitWork",
+  "chat.view",
+  "chat.createComment",
+  "chat.uploadAttachment",
+  "chat.mentionUser",
+  "file.view",
+  "file.download",
+  "file.favorite",
+  "file.uploadAttachment",
+  "file.uploadSubmission",
+  "library.view",
+  "library.filter",
+  "completion.viewChecklist",
+  "completion.uploadInvoice",
+  "calendar.view",
+  "notification.view",
+  "notification.markRead",
+  "settings.viewOwnProfile",
+  "settings.updateOwnProfile",
+  "settings.changeOwnPassword",
+  "compare.view",
+  "compare.createComment",
+  "help.view",
+] as const satisfies readonly PermissionKey[];
+
 export const defaultRolePermissions: Record<PermissionRole, readonly PermissionKey[]> = {
   SUPER_ADMIN: allPermissionKeys,
   ADMIN: [
@@ -903,74 +939,9 @@ export const defaultRolePermissions: Record<PermissionRole, readonly PermissionK
     "compare.createComment",
     "help.view",
   ],
-  COLLABORATOR: [
-    "dashboard.view",
-    "dashboard.viewProjectCounts",
-    "dashboard.viewRecentProjects",
-    "project.list",
-    "project.view",
-    "project.viewParticipants",
-    "stage.view",
-    "stage.acceptBrief",
-    "stage.submitWork",
-    "chat.view",
-    "chat.createComment",
-    "chat.uploadAttachment",
-    "chat.mentionUser",
-    "file.view",
-    "file.download",
-    "file.favorite",
-    "file.uploadAttachment",
-    "file.uploadSubmission",
-    "library.view",
-    "library.filter",
-    "completion.viewChecklist",
-    "completion.uploadInvoice",
-    "calendar.view",
-    "notification.view",
-    "notification.markRead",
-    "settings.viewOwnProfile",
-    "settings.updateOwnProfile",
-    "settings.changeOwnPassword",
-    "compare.view",
-    "compare.createComment",
-    "help.view",
-  ],
+  COLLABORATOR: defaultCollaboratorWorkflowPermissions,
+  USER: defaultCollaboratorWorkflowPermissions,
 };
-
-const defaultCollaboratorWorkflowPermissions = [
-  "dashboard.view",
-  "dashboard.viewProjectCounts",
-  "dashboard.viewRecentProjects",
-  "project.list",
-  "project.view",
-  "project.viewParticipants",
-  "stage.view",
-  "stage.acceptBrief",
-  "stage.submitWork",
-  "chat.view",
-  "chat.createComment",
-  "chat.uploadAttachment",
-  "chat.mentionUser",
-  "file.view",
-  "file.download",
-  "file.favorite",
-  "file.uploadAttachment",
-  "file.uploadSubmission",
-  "library.view",
-  "library.filter",
-  "completion.viewChecklist",
-  "completion.uploadInvoice",
-  "calendar.view",
-  "notification.view",
-  "notification.markRead",
-  "settings.viewOwnProfile",
-  "settings.updateOwnProfile",
-  "settings.changeOwnPassword",
-  "compare.view",
-  "compare.createComment",
-  "help.view",
-] as const satisfies readonly PermissionKey[];
 
 const defaultRestrictedCollaboratorPermissions = [] as const satisfies readonly PermissionKey[];
 

@@ -17,6 +17,7 @@ import type {
   ProjectCollaboratorPermissions,
 } from "@/lib/project-collaborator-permissions";
 import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
+import { isLegacyCollaboratorRole } from "@/lib/user-role-compatibility";
 
 export type PermissionUser = Pick<User, "id" | "role"> & {
   collaboratorType?: User["collaboratorType"] | null;
@@ -143,7 +144,7 @@ export function isProjectExecutor(
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
   if (
-    user.role === UserRole.COLLABORATOR &&
+    isLegacyCollaboratorRole(user.role) &&
     permissionKey === "project.create" &&
     user.collaboratorType !== "GTI_INTERNAL_CLIENT"
   ) {

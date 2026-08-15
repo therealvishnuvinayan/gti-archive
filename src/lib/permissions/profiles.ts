@@ -8,12 +8,14 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import { prisma, withPrismaRetry } from "../prisma";
+import { isUserRole } from "../user-role-compatibility";
 import {
   allPermissionKeys,
   collaboratorTypeValues,
   criticalSuperAdminPermissionKeys,
   defaultCollaboratorTypePermissions,
   defaultRolePermissions,
+  editablePermissionRoleValues,
   permissionDefinitionMap,
   permissionDefinitions,
   permissionProfileTypeValues,
@@ -24,6 +26,10 @@ import {
   type PermissionProfileType,
   type PermissionRole,
 } from "./definitions";
+import {
+  canCollaboratorTypeCreateProjects,
+  resolveEffectivePermissionSet,
+} from "./effective";
 
 export type PermissionProfileState = Record<PermissionKey, boolean>;
 
@@ -56,24 +62,6 @@ type PermissionRow = {
 };
 
 export const PERMISSION_PROFILE_CACHE_TAG = "permission-profiles";
-
-const clientOfGtiDeniedEffectivePermissionKeys = [
-  "archive.view",
-  "archive.uploadFile",
-  "archive.download",
-  "project.completeArchive",
-  "project.viewBudget",
-  "project.updateBudget",
-  "project.update",
-  "project.delete",
-  "project.manageCollaborators",
-] as const satisfies PermissionKey[];
-
-function canCollaboratorTypeCreateProjects(
-  collaboratorType: PrismaCollaboratorType | null | undefined,
-) {
-  return collaboratorType === "GTI_INTERNAL_CLIENT";
-}
 
 function getCollaboratorTypesForPropagatedPermission(permissionKey: PermissionKey) {
   if (permissionKey === "project.create") {
@@ -361,7 +349,7 @@ export async function syncPermissionDefinitions(): Promise<PermissionSyncResult>
             });
           }
 
-          const rolePermissionRows = permissionRoleValues.flatMap((role) =>
+          const rolePermissionRows = editablePermissionRoleValues.flatMap((role) =>
             getProfileDefaultRowData("role", role).map((row) => ({
               role,
               permissionKey: row.permissionKey,
@@ -636,7 +624,9 @@ export async function getPermissionProfileSnapshotForUser(
 ): Promise<PermissionProfileSnapshot> {
   const [roleProfile, collaboratorTypeProfile, archiveAccess] = await Promise.all([
     getCachedRoleProfile(user.role as PermissionRole),
-    getCachedCollaboratorTypeProfile(user.collaboratorType),
+    isUserRole(user.role)
+      ? Promise.resolve(null)
+      : getCachedCollaboratorTypeProfile(user.collaboratorType),
     prisma.userArchiveAccess.findUnique({
       where: {
         userId: user.id,
@@ -649,51 +639,14 @@ export async function getPermissionProfileSnapshotForUser(
   ]);
 
   const rolePermissions = getEnabledPermissionSet(roleProfile.state);
-  const collaboratorTypePermissions = getEnabledPermissionSet(
-    collaboratorTypeProfile.state,
-  );
-  const effectivePermissions = new Set<PermissionKey>();
-
-  for (const permissionKey of allPermissionKeys) {
-    if (!rolePermissions.has(permissionKey)) {
-      continue;
-    }
-
-    if (
-      user.role === UserRole.COLLABORATOR &&
-      permissionKey === "project.create"
-    ) {
-      if (canCollaboratorTypeCreateProjects(user.collaboratorType)) {
-        effectivePermissions.add(permissionKey);
-      }
-
-      continue;
-    }
-
-    if (
-      user.role === UserRole.COLLABORATOR &&
-      !collaboratorTypePermissions.has(permissionKey)
-    ) {
-      continue;
-    }
-
-    effectivePermissions.add(permissionKey);
-  }
-
-  if (user.role === UserRole.SUPER_ADMIN) {
-    for (const permissionKey of criticalSuperAdminPermissionKeys) {
-      effectivePermissions.add(permissionKey);
-    }
-  }
-
-  if (
-    user.role === UserRole.COLLABORATOR &&
-    user.collaboratorType === "CLIENT_OF_GTI"
-  ) {
-    for (const permissionKey of clientOfGtiDeniedEffectivePermissionKeys) {
-      effectivePermissions.delete(permissionKey);
-    }
-  }
+  const collaboratorTypePermissions = collaboratorTypeProfile
+    ? getEnabledPermissionSet(collaboratorTypeProfile.state)
+    : new Set<PermissionKey>();
+  const effectivePermissions = resolveEffectivePermissionSet({
+    user,
+    rolePermissions,
+    collaboratorTypePermissions,
+  });
 
   return {
     effectivePermissions,

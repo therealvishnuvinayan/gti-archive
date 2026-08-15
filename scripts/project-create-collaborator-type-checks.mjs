@@ -61,6 +61,8 @@ for (const collaboratorType of [
 }
 
 const profiles = read("src/lib/permissions/profiles.ts");
+const effectivePermissions = read("src/lib/permissions/effective.ts");
+const permissionRuntime = `${profiles}\n${effectivePermissions}`;
 for (const snippet of [
   "function canCollaboratorTypeCreateProjects",
   'return collaboratorType === "GTI_INTERNAL_CLIENT";',
@@ -74,7 +76,11 @@ for (const snippet of [
   "canCollaboratorTypeCreateProjects(user.collaboratorType)",
   "continue;",
 ]) {
-  assertIncludes(profiles, snippet, `Project-create collaborator type gate ${snippet}`);
+  assertIncludes(
+    permissionRuntime,
+    snippet,
+    `Project-create collaborator type gate ${snippet}`,
+  );
 }
 
 const resolver = read("src/lib/permissions/resolver.ts");
