@@ -394,10 +394,11 @@ export async function updateCollaborator(
     },
     select: {
       id: true,
+      role: true,
     },
   });
 
-  if (!collaborator) {
+  if (!collaborator || collaborator.role !== UserRole.COLLABORATOR) {
     return { error: "This collaborator could not be found." };
   }
 

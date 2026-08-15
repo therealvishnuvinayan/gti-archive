@@ -23,6 +23,7 @@ import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
   hasProjectPermission,
+  isGlobalProjectAdministrator,
   isProjectExecutor,
   type PermissionUser,
   type ProjectPermissionContext,
@@ -4460,7 +4461,7 @@ export async function completeProjectStage(
     user,
     project,
     "stage.markStageComplete",
-    "Only the project owner can mark this stage as complete.",
+    "Only a project owner, co-owner, or administrator can mark this stage as complete.",
   );
 
   if (isProjectStatusCompleted(project.status)) {
@@ -4670,7 +4671,7 @@ export async function reviewStageSubmission(
       "stage.reviewSubmission",
     )
   ) {
-    throw new Error("Only the project owner can review submissions.");
+    throw new Error("Only a project owner, co-owner, or administrator can review submissions.");
   }
 
   if (isProjectStatusCompleted(attachment.project.status)) {
@@ -4779,8 +4780,8 @@ export async function reviewProjectRevision(
       ? "stage.markSubmissionComplete"
       : "stage.requestRevision",
     input.status === "APPROVED"
-      ? "Only the project owner can review this submission."
-      : "Only the project owner can request revisions.",
+      ? "Only a project owner, co-owner, or administrator can review this submission."
+      : "Only a project owner, co-owner, or administrator can request revisions.",
   );
 
   if (isProjectStatusCompleted(revision.project.status)) {
@@ -5077,7 +5078,7 @@ export async function requestStageInvoice(
     user,
     stage.project,
     "stage.markSubmissionComplete",
-    "Only the project owner can request an invoice.",
+    "Only a project owner, co-owner, or administrator can request an invoice.",
   );
 
   if (isProjectStatusCompleted(stage.project.status)) {
@@ -5245,7 +5246,7 @@ async function hasStageSevenEvidenceUploadAccess(
   );
   return Boolean(
     project &&
-      (user.role === UserRole.SUPER_ADMIN ||
+      (isGlobalProjectAdministrator(user) ||
         project.ownerId === user.id ||
         project.coOwners.length),
   );

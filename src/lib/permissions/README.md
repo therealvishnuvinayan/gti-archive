@@ -20,7 +20,7 @@ The database stores editable profile assignments for:
 - global roles
 - collaborator types
 
-Users are assigned to a role and collaborator type. Archive module access also requires a per-user grant for non-Super Admin users. Generic per-user permission overrides and project-specific permission overrides are not implemented.
+Users are assigned to a role and collaborator type. Archive module access also requires a per-user grant for non-administrator users. Generic per-user permission overrides and project-specific permission overrides are not implemented.
 
 Run `pnpm permissions:sync` after schema changes to upsert permission definitions and seed missing profile rows.
 
@@ -30,11 +30,11 @@ Permission keys grant capability only inside a valid business context.
 
 Hard rules still apply:
 
-- project membership still scopes project visibility
-- project budget remains owner-only
+- project membership still scopes standard-user project visibility
+- project budget remains manager-only
 - only project executors can submit work
-- only project owners can review submissions and complete/archive projects
+- project owners and global project administrators can review and complete work
 - notifications remain user-owned
 - file and archive access is checked server-side
 
-`SUPER_ADMIN` keeps emergency fallback access to user and permission management.
+`ADMIN` is the normal global business administrator. `SUPER_ADMIN` keeps emergency fallback access and is protected from product role assignment or mutation.

@@ -201,14 +201,14 @@ assert(
   concepts.includes("const canReview = canReviewProjectConcept") &&
     chatRoute.includes("? conceptMode.canReview") &&
     access.includes("context.coOwnerIds.includes(user.id)") &&
-    access.includes("user.role === UserRole.SUPER_ADMIN") &&
+    access.includes("isGlobalProjectAdministrator(user)") &&
     access.includes("context.assignedExecutorId !== user.id") &&
     workspace.includes("conceptMode.canReview && !conceptMode.isAssignedExecutor") &&
     workspace.includes("latestRevisionMessage?.authorId !== currentUserId") &&
     history.includes("You cannot review your own submission.") &&
     workspace.includes('isConceptMode ? "Request Changes"') &&
     workspace.includes("!activeStage?.isTasker"),
-  "Owner/co-owner/SUPER_ADMIN review and Request Changes must not restore tasker approval.",
+  "Owner/co-owner/global administrator review and Request Changes must not restore tasker approval.",
 );
 assert(
   compareRoute.includes("!context || !context.chatMode.canReview") &&

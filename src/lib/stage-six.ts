@@ -12,7 +12,6 @@ import {
   ProjectProductionUnitStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
-  UserRole,
 } from "@prisma/client";
 
 import {
@@ -22,6 +21,7 @@ import {
 import { sendResendEmail } from "@/lib/email/resend";
 import {
   hasProjectPermission,
+  isGlobalProjectAdministrator,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
@@ -223,7 +223,7 @@ function stageStatus(project: StageProject, key: ProjectWorkflowStageKey) {
 
 export function canManageStageSix(user: PermissionUser, project: StageProject) {
   return (
-    user.role === UserRole.SUPER_ADMIN ||
+    isGlobalProjectAdministrator(user) ||
     project.ownerId === user.id ||
     project.coOwners.some((coOwner) => coOwner.userId === user.id)
   );
@@ -740,7 +740,7 @@ export async function completeStageFive(
           });
           if (!project) return { error: "Project not found." } as const;
           const manager =
-            user.role === UserRole.SUPER_ADMIN ||
+            isGlobalProjectAdministrator(user) ||
             project.ownerId === user.id ||
             project.coOwners.some((entry) => entry.userId === user.id);
           if (!manager) {

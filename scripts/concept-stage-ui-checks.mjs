@@ -218,9 +218,8 @@ for (const helper of [
   assert(access.includes(helper), `Missing centralized concept policy helper: ${helper}`);
 }
 assert(
-  access.includes("user.role === UserRole.SUPER_ADMIN") &&
-    !access.includes("UserRole.ADMIN ||"),
-  "SUPER_ADMIN must be the sole implicit global concept role.",
+  access.includes("isGlobalProjectAdministrator(user)"),
+  "Business administrators must receive implicit global concept authority.",
 );
 assert(
   workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
@@ -233,7 +232,7 @@ assert(
     concepts.includes("unapprovedConcepts.length > 0") &&
     concepts.includes("Every Stage 3 concept must have an Approved Concept") &&
     workspace.includes("isEmptyStageThree || allConceptsApproved") &&
-    concepts.includes("Only the Project Owner or Super Admin can complete Stage 3."),
+    concepts.includes("Only a project owner, co-owner, or administrator can complete Stage 3."),
   "Stage 3 may be skipped only while empty; otherwise Stage 3/4 completion must wait for every created concept and remain owner-authorized.",
 );
 assert(

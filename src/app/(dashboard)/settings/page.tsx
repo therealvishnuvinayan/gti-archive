@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { getUserDisplayName, requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions/resolver";
+import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 
 function formatRole(role: string) {
   return role
@@ -63,7 +64,7 @@ export default async function SettingsPage() {
   const canUpdateProfile = hasPermission(user, "settings.updateOwnProfile");
   const canChangePassword = hasPermission(user, "settings.changeOwnPassword");
   const canViewUsers =
-    user.role === "SUPER_ADMIN" && hasPermission(user, "users.view");
+    isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view");
 
   return (
     <DashboardLayout>

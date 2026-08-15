@@ -45,7 +45,7 @@ assert(
 );
 
 for (const snippet of [
-  "user.role === UserRole.SUPER_ADMIN",
+  "isGlobalProjectAdministrator",
   "isProjectCoOwner",
   "isProjectExecutor",
   'case "stage.acceptBrief"',
@@ -57,7 +57,7 @@ for (const snippet of [
 const projectHistory = read("src/lib/project-history.ts");
 for (const snippet of [
   '"stage.markSubmissionComplete"',
-  '"Only the project owner can request an invoice."',
+  '"Only a project owner, co-owner, or administrator can request an invoice."',
   "isProjectExecutorUser",
   "executor.userId === requestedFromId",
 ]) {

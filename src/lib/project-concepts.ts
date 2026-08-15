@@ -833,7 +833,7 @@ export async function importStageThreeConceptReference(
 
           if (!canCompleteProjectConceptStage(user, accessContext)) {
             return {
-              error: "Only the Project Owner or Super Admin can import an approved Stage 3 concept.",
+              error: "Only a project owner, co-owner, or administrator can import an approved Stage 3 concept.",
             } as const;
           }
 
@@ -2204,7 +2204,7 @@ export async function completeStageThreeConcepts(
           if (!canCompleteProjectConceptStage(user, managerContext)) {
             return {
               error:
-                "Only the Project Owner or Super Admin can complete Stage 3.",
+                "Only a project owner, co-owner, or administrator can complete Stage 3.",
             };
           }
 
@@ -2405,7 +2405,7 @@ export async function completeStageFourConcepts(
           if (!canCompleteProjectConceptStage(user, managerContext)) {
             return {
               error:
-                "Only the Project Owner or Super Admin can complete Stage 4.",
+                "Only a project owner, co-owner, or administrator can complete Stage 4.",
             };
           }
 

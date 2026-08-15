@@ -1,11 +1,13 @@
 import {
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
-  UserRole,
   type Prisma,
 } from "@prisma/client";
 
-import type { PermissionUser } from "@/lib/permissions/resolver";
+import {
+  isGlobalProjectAdministrator,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 const researchAccessProjectSelect = {
@@ -43,7 +45,7 @@ export function getProjectResearchAccess(
     }>;
   },
 ): ProjectResearchAccess {
-  const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
+  const isGlobalAdministrator = isGlobalProjectAdministrator(user);
   const isProjectOwner = context.project.ownerId === user.id;
   const isProjectCoOwner = context.project.coOwners.some(
     (coOwner) => coOwner.userId === user.id,
@@ -72,8 +74,8 @@ export function getProjectResearchAccess(
     isOwnWorkspace,
     canRead:
       stageAvailable &&
-      (isSuperAdmin || isOwnWorkspace || isProjectOwner || isProjectCoOwner),
-    canWrite: stageAvailable && (isSuperAdmin || isOwnWorkspace),
+      (isGlobalAdministrator || isOwnWorkspace || isProjectOwner || isProjectCoOwner),
+    canWrite: stageAvailable && (isGlobalAdministrator || isOwnWorkspace),
     isProjectOwner,
     isProjectCoOwner,
     isProjectParticipant,

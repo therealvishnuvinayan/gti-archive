@@ -158,7 +158,7 @@ assert(service.includes("ProductionApprovalStepStatus.ACTIVE") && service.includ
 assert(service.includes("recipientUserId === user.id") && service.includes("reviewHref:"), "Stage 6 must derive the direct review action from the authenticated assigned approver.");
 assert(
   constants.includes('name: "Slavomir Kluziak"') &&
-    constants.includes('"slavomir.kluziak@gulbahartobacco.com"') &&
+    constants.includes('"abhijithajikumarofficial@gmail.com"') &&
     service.includes("STAGE_SIX_EMAIL_DELIVERY_ADDRESS") &&
     service.includes("STAGE_SIX_FIRST_APPROVER") &&
     workspace.includes("STAGE_SIX_FIRST_APPROVER"),
@@ -219,7 +219,7 @@ assert(
     stageSevenWorkspace.includes("the optional handover is not required"),
   "Stage 7 must accept approved units even when the optional Stage 6 handover is skipped.",
 );
-assert(service.includes("user.role === UserRole.SUPER_ADMIN") && !service.includes("user.role === UserRole.ADMIN ||"), "Stage 6 management must not grant ADMIN implicit rights.");
+assert(service.includes("isGlobalProjectAdministrator(user)"), "Stage 6 management must grant business administrators global authority.");
 assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");
 
 console.log("Stage 6 production and handover UI/security checks passed.");

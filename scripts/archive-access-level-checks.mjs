@@ -136,7 +136,7 @@ for (const snippet of [
   "searchArchiveAssetsForAccessAction",
   "selectedAssets.length",
   "GTI Client users cannot receive Archive access.",
-  "Super Admins always retain full Archive access.",
+  "Administrators always receive full Archive access.",
 ]) {
   assertIncludes(usersWorkspace, snippet, `Archive access UI ${snippet}`);
 }

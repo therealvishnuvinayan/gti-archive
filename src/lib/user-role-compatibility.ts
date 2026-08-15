@@ -9,9 +9,8 @@ export const userRoleValues = [
 
 export type UserRoleValue = (typeof userRoleValues)[number];
 
-// Round 1 keeps USER out of operational creation and management surfaces.
+// Round 2 keeps the root role and future USER role out of product assignment.
 export const editableUserRoleValues = [
-  "SUPER_ADMIN",
   "ADMIN",
   "COLLABORATOR",
 ] as const satisfies readonly UserRoleValue[];
@@ -34,8 +33,16 @@ export function isSuperAdminRole(role: RoleLike) {
   return role === "SUPER_ADMIN";
 }
 
+export function isProtectedRootRole(role: RoleLike) {
+  return isSuperAdminRole(role);
+}
+
 export function isAdminRole(role: RoleLike) {
   return role === "ADMIN";
+}
+
+export function isBusinessAdministratorRole(role: RoleLike) {
+  return isSuperAdminRole(role) || isAdminRole(role);
 }
 
 export function isLegacyCollaboratorRole(role: RoleLike) {

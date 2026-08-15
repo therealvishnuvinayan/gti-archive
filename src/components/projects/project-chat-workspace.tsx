@@ -10023,7 +10023,7 @@ export function ProjectChatWorkspace({
               : !hasOfficialStageSubmission
                 ? "Invoice is required before completing this stage. Submit work first to request an invoice."
               : "Invoice is required before completing this stage. Request invoice from the executor."
-            : "This will mark the current stage as completed. Only the project owner can do this."
+            : "This will mark the current stage as completed. Project owners, co-owners, and administrators can do this."
         }
         confirmLabel={
           stageInvoiceMissing

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
-import { AttachmentStatus, UserRole } from "@prisma/client";
+import { AttachmentStatus } from "@prisma/client";
 
 import { requireUser } from "@/lib/auth";
 import { CALENDAR_CACHE_TAG } from "@/lib/calendar";
@@ -33,13 +33,16 @@ import {
   deleteObjectIfNeeded,
 } from "@/lib/storage/s3";
 import {
-  countSuperAdmins,
   getManagedUserPermissionRecord,
   updateManagedUserPermissions,
   type ManagedArchiveAccessLevel,
   type ManagedArchiveAssetAccessRecord,
 } from "@/lib/user-permissions";
-import { isEditableUserRole } from "@/lib/user-role-compatibility";
+import {
+  isBusinessAdministratorRole,
+  isEditableUserRole,
+  isProtectedRootRole,
+} from "@/lib/user-role-compatibility";
 
 type SaveUserAccessInput = {
   userId: string;
@@ -126,10 +129,13 @@ function updatePermissionProfileCache(
   updateTag(getPermissionProfileCacheTag(profileType, profileKey));
 }
 
-async function requireSuperAdminPermission(permissionKey: PermissionKey) {
+async function requireBusinessAdministratorPermission(permissionKey: PermissionKey) {
   const currentUser = await requireUser();
 
-  if (currentUser.role !== UserRole.SUPER_ADMIN || !hasPermission(currentUser, permissionKey)) {
+  if (
+    !isBusinessAdministratorRole(currentUser.role) ||
+    !hasPermission(currentUser, permissionKey)
+  ) {
     return null;
   }
 
@@ -175,10 +181,10 @@ function getArchiveAssetSearchRecord(input: {
 }
 
 export async function saveUserAccessAction(input: SaveUserAccessInput) {
-  const currentUser = await requireSuperAdminPermission("users.update");
+  const currentUser = await requireBusinessAdministratorPermission("users.update");
 
   if (!currentUser) {
-    return { error: "Only super admins with user update access can update users." };
+    return { error: "Only administrators with user update access can update users." };
   }
 
   const userId = input.userId.trim();
@@ -201,6 +207,10 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     return { error: "User not found." };
   }
 
+  if (isProtectedRootRole(existingUser.role)) {
+    return { error: "Protected Super Admin accounts cannot be changed here." };
+  }
+
   const avatarUrl = input.avatarUrl?.trim() || undefined;
 
   if (avatarUrl && avatarUrl !== existingUser.avatarUrl) {
@@ -211,25 +221,6 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
       avatarUrl.length <= allowedAvatarPrefix.length
     ) {
       return { error: "Invalid profile photo. Please upload the photo again." };
-    }
-  }
-
-  if (
-    existingUser.id === currentUser.id &&
-    existingUser.role === "SUPER_ADMIN" &&
-    input.role !== "SUPER_ADMIN"
-  ) {
-    return {
-      error:
-        "You cannot change your own Super Admin role. Ask another Super Admin to update your role.",
-    };
-  }
-
-  if (existingUser.role === "SUPER_ADMIN" && input.role !== "SUPER_ADMIN") {
-    const superAdminCount = await countSuperAdmins();
-
-    if (superAdminCount <= 1) {
-      return { error: "At least one SUPER_ADMIN must remain in the system." };
     }
   }
 
@@ -258,10 +249,10 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
 export async function searchArchiveAssetsForAccessAction(
   input: SearchArchiveAccessAssetsInput,
 ) {
-  const currentUser = await requireSuperAdminPermission("users.update");
+  const currentUser = await requireBusinessAdministratorPermission("users.update");
 
   if (!currentUser) {
-    return { error: "Only super admins with user update access can search archive assets." };
+    return { error: "Only administrators with user update access can search archive assets." };
   }
 
   const query = normalizeArchiveAssetSearchTerm(input.query);
@@ -505,10 +496,12 @@ export async function searchArchiveAssetsForAccessAction(
 }
 
 export async function getPermissionProfileAction(input: PermissionProfileInput) {
-  const currentUser = await requireSuperAdminPermission("users.managePermissions");
+  const currentUser = await requireBusinessAdministratorPermission(
+    "users.managePermissions",
+  );
 
   if (!currentUser || !hasPermission(currentUser, "settings.managePermissions")) {
-    return { error: "Only super admins with permission management access can manage profiles." };
+    return { error: "Only administrators with permission management access can manage profiles." };
   }
 
   if (!permissionProfileTypeValues.includes(input.profileType)) {
@@ -541,10 +534,12 @@ export async function savePermissionProfileAction(
     state: Record<string, boolean>;
   },
 ) {
-  const currentUser = await requireSuperAdminPermission("users.managePermissions");
+  const currentUser = await requireBusinessAdministratorPermission(
+    "users.managePermissions",
+  );
 
   if (!currentUser || !hasPermission(currentUser, "settings.managePermissions")) {
-    return { error: "Only super admins with permission management access can manage profiles." };
+    return { error: "Only administrators with permission management access can manage profiles." };
   }
 
   if (!permissionProfileTypeValues.includes(input.profileType)) {
@@ -583,10 +578,12 @@ export async function savePermissionProfileAction(
 export async function resetPermissionProfileToDefaultsAction(
   input: PermissionProfileInput,
 ) {
-  const currentUser = await requireSuperAdminPermission("users.managePermissions");
+  const currentUser = await requireBusinessAdministratorPermission(
+    "users.managePermissions",
+  );
 
   if (!currentUser || !hasPermission(currentUser, "settings.managePermissions")) {
-    return { error: "Only super admins with permission management access can manage profiles." };
+    return { error: "Only administrators with permission management access can manage profiles." };
   }
 
   if (!permissionProfileTypeValues.includes(input.profileType)) {
@@ -622,10 +619,12 @@ export async function resetPermissionProfileToDefaultsAction(
 }
 
 export async function syncPermissionDefinitionsAction() {
-  const currentUser = await requireSuperAdminPermission("users.managePermissions");
+  const currentUser = await requireBusinessAdministratorPermission(
+    "users.managePermissions",
+  );
 
   if (!currentUser || !hasPermission(currentUser, "settings.managePermissions")) {
-    return { error: "Only super admins with permission management access can sync definitions." };
+    return { error: "Only administrators with permission management access can sync definitions." };
   }
 
   try {

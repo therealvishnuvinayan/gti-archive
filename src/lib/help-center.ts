@@ -589,8 +589,8 @@ export const helpSections: HelpSection[] = [
         title: "Access rules",
         items: [
           "Flux AI is controlled by the View Flux AI permission.",
-          "By default, only SUPER_ADMIN users can access Flux AI.",
-          "ADMIN and COLLABORATOR users need the Flux AI permission explicitly granted before they can see or use it.",
+          "By default, ADMIN and SUPER_ADMIN users can access Flux AI with full Archive scope.",
+          "COLLABORATOR users need the Flux AI permission and valid Archive access before they can use it.",
           "All collaborator types are denied Flux AI access by default.",
           "Hiding the sidebar item is not the only protection; the page and APIs are also permission-protected server-side.",
         ],
@@ -925,7 +925,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "Business rules to remember",
         items: [
-          "Only the project owner reviews and completes submissions.",
+          "Project owners and global administrators review and complete submissions.",
           "Only Executors submit formal revisions; collaborators cannot submit or review revisions.",
           "A required stage invoice must be uploaded before the owner can complete that stage.",
           "Old revisions remain visible as project history and should not disappear when a new revision is submitted.",
@@ -945,8 +945,8 @@ export const helpSections: HelpSection[] = [
       {
         title: "Roles and responsibilities",
         items: [
-          "SUPER_ADMIN manages users, permission profiles, master data, and broad system administration.",
-          "ADMIN manages day-to-day projects and collaboration workflows within their allowed scope.",
+          "SUPER_ADMIN is a protected root and recovery identity that cannot be assigned through normal user management.",
+          "ADMIN manages users, permissions, master data, Archives, and all project workflows.",
           "COLLABORATOR accesses only assigned projects or allowed modules.",
           "Project Owner controls the project, budget, submission review, and final completion authority.",
           "Executor accepts briefs, starts work, and submits revisions for owner review.",
@@ -1012,7 +1012,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "What Users & Permissions controls",
         items: [
-          "User role assignment: SUPER_ADMIN, ADMIN, or COLLABORATOR.",
+          "Normal user role assignment supports ADMIN or COLLABORATOR during the current transition.",
           "Collaborator type assignment, such as GTI internal client, sister company internal client, freelancer, agency, vendor, or client of GTI.",
           "Global role permission profiles and collaborator type permission profiles through Manage Permissions.",
           "Permission definition sync after a new permission key is added to the product.",
@@ -1025,7 +1025,7 @@ export const helpSections: HelpSection[] = [
           "The user receives the permissions enabled for their role profile.",
           "If the user is a COLLABORATOR, those role permissions are further limited by their collaborator type profile.",
           "SUPER_ADMIN keeps critical user and permission management permissions even when saved profiles are edited.",
-          "Project ownership, executor status, and membership hard rules are checked after the global permission profile allows an action.",
+          "ADMIN and SUPER_ADMIN have global project authority; standard users remain subject to ownership, executor, and membership rules.",
         ],
       },
       {
@@ -1034,9 +1034,9 @@ export const helpSections: HelpSection[] = [
           "Project budget visibility and budget edits remain owner-controlled.",
           "Only Executors accept briefs, submit stage work, and upload formal submissions.",
           "Only Executors upload stage invoices.",
-          "Only the project owner reviews submissions, requests revisions, completes stages, and completes the final archive.",
+          "Project owners and global project administrators review submissions, request revisions, complete stages, and complete final archives.",
           "Checklist actions for approval proof and copyright documents remain owner-only.",
-          "Users and permission profile management remain SUPER_ADMIN-only in the current product.",
+          "ADMIN and SUPER_ADMIN can manage users and editable permission profiles, while protected SUPER_ADMIN identities cannot be mutated.",
         ],
       },
       {
@@ -1089,7 +1089,7 @@ export const helpSections: HelpSection[] = [
           "Preview common formats like images or PDFs when supported; otherwise download the file.",
           "Use Library quick menus for Project Assets, Quotations/Invoices, From Users, and Favourites.",
           "Use Library filters such as search, project, date, creator, file type, and favorites where available.",
-          "Delete should require confirmation and remain limited to allowed users such as the project owner or super admin.",
+          "Delete should require confirmation and remain limited to allowed users such as project owners, co-owners, or administrators.",
         ],
       },
       {
@@ -1293,7 +1293,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "Users and permission profiles",
         items: [
-          "Users & Permissions is for user directory management and is intended for super-admin oversight.",
+          "Users & Permissions is for administrators who manage the user directory and editable permission profiles.",
           "Manage Permissions defines global capabilities by role and collaborator type rather than by editing every user one by one.",
           "Use permission profiles to scale safely when many collaborators need consistent access patterns.",
         ],

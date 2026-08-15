@@ -17,8 +17,10 @@ import { hasPermission } from "../src/lib/permissions/resolver";
 import {
   getUserRoleLabel,
   isAdminRole,
+  isBusinessAdministratorRole,
   isKnownUserRole,
   isLegacyCollaboratorRole,
+  isProtectedRootRole,
   isStandardUserRole,
   isSuperAdminRole,
   isUserRole,
@@ -29,7 +31,7 @@ function read(relativePath: string) {
 }
 
 const expectedRoles = ["SUPER_ADMIN", "ADMIN", "COLLABORATOR", "USER"];
-const expectedEditableRoles = ["SUPER_ADMIN", "ADMIN", "COLLABORATOR"];
+const expectedEditableRoles = ["ADMIN", "COLLABORATOR"];
 const expectedUserPermissions: PermissionKey[] = [
   "dashboard.view",
   "dashboard.viewProjectCounts",
@@ -73,7 +75,11 @@ for (const role of expectedRoles) {
 }
 assert.equal(isKnownUserRole("NOT_A_ROLE"), false);
 assert.equal(isSuperAdminRole(UserRole.SUPER_ADMIN), true);
+assert.equal(isProtectedRootRole(UserRole.SUPER_ADMIN), true);
 assert.equal(isAdminRole(UserRole.ADMIN), true);
+assert.equal(isBusinessAdministratorRole(UserRole.SUPER_ADMIN), true);
+assert.equal(isBusinessAdministratorRole(UserRole.ADMIN), true);
+assert.equal(isBusinessAdministratorRole(UserRole.USER), false);
 assert.equal(isLegacyCollaboratorRole(UserRole.COLLABORATOR), true);
 assert.equal(isUserRole(UserRole.USER), true);
 assert.equal(isStandardUserRole(UserRole.COLLABORATOR), true);
@@ -195,8 +201,8 @@ assert.match(
 );
 assert.match(
   permissionProfiles,
-  /isUserRole\(user\.role\)[\s\S]*?Promise\.resolve\(null\)[\s\S]*?getCachedCollaboratorTypeProfile/,
-  "USER snapshots must bypass Collaborator Type profile loading.",
+  /isLegacyCollaboratorRole\(user\.role\)[\s\S]*?getCachedCollaboratorTypeProfile[\s\S]*?Promise\.resolve\(null\)/,
+  "Only legacy COLLABORATOR snapshots may load Collaborator Type profiles.",
 );
 
 const usersWorkspace = read("src/components/users/users-workspace.tsx");

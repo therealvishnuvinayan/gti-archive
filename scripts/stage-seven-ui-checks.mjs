@@ -177,11 +177,10 @@ assert(
 );
 
 assert(
-  service.includes("user.role === UserRole.SUPER_ADMIN") &&
+  service.includes("isGlobalProjectAdministrator(user)") &&
     service.includes("project.ownerId === user.id") &&
-    service.includes("project.coOwners.some") &&
-    !service.includes("user.role === UserRole.ADMIN ||"),
-  "Only Owner, Co-Owner, and SUPER_ADMIN may manage Stage 7.",
+    service.includes("project.coOwners.some"),
+  "Owner, Co-Owner, and global administrators may manage Stage 7.",
 );
 assert(
   service.includes("requestReferenceFileIds") &&

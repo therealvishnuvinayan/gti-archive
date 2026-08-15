@@ -5,10 +5,13 @@ import {
   ProjectResearchFolderSystemKey,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
-  UserRole,
 } from "@prisma/client";
 
-import { hasProjectPermission, type PermissionUser } from "@/lib/permissions/resolver";
+import {
+  hasProjectPermission,
+  isGlobalProjectAdministrator,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
@@ -180,7 +183,7 @@ export async function getProjectResearchPageData(
     )?.status,
   );
 
-  const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
+  const isGlobalAdministrator = isGlobalProjectAdministrator(user);
   const isOwner = project.ownerId === user.id;
   const isCoOwner = project.coOwners.some((record) => record.userId === user.id);
   const isExecutor = project.executors.some((record) => record.userId === user.id);
@@ -192,7 +195,13 @@ export async function getProjectResearchPageData(
     ...project.collaborators.map((record) => record.userId),
   ]);
 
-  if (!isSuperAdmin && !isOwner && !isCoOwner && !isExecutor && !isCollaborator) {
+  if (
+    !isGlobalAdministrator &&
+    !isOwner &&
+    !isCoOwner &&
+    !isExecutor &&
+    !isCollaborator
+  ) {
     return null;
   }
 
@@ -201,7 +210,7 @@ export async function getProjectResearchPageData(
       where: {
         projectId,
         ownerUserId:
-          !isSuperAdmin && !isOwner && !isCoOwner
+          !isGlobalAdministrator && !isOwner && !isCoOwner
             ? user.id
             : { in: [...participantIds] },
       },

@@ -1,6 +1,5 @@
 import {
   Prisma,
-  UserRole,
   type CollaboratorType as PrismaCollaboratorType,
   type User,
 } from "@prisma/client";
@@ -8,7 +7,10 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import { prisma, withPrismaRetry } from "../prisma";
-import { isUserRole } from "../user-role-compatibility";
+import {
+  isBusinessAdministratorRole,
+  isLegacyCollaboratorRole,
+} from "../user-role-compatibility";
 import {
   allPermissionKeys,
   collaboratorTypeValues,
@@ -62,6 +64,7 @@ type PermissionRow = {
 };
 
 export const PERMISSION_PROFILE_CACHE_TAG = "permission-profiles";
+const PERMISSION_PROFILE_CACHE_VERSION = "round2-admin-authority-v1";
 
 function getCollaboratorTypesForPropagatedPermission(permissionKey: PermissionKey) {
   if (permissionKey === "project.create") {
@@ -236,7 +239,7 @@ const getCachedRoleProfile = cache(async (role: PermissionRole) => {
           },
         }),
       ),
-    ["permission-profile", "role", role],
+    [PERMISSION_PROFILE_CACHE_VERSION, "permission-profile", "role", role],
     {
       tags: [
         PERMISSION_PROFILE_CACHE_TAG,
@@ -275,7 +278,12 @@ const getCachedCollaboratorTypeProfile = cache(
             },
           }),
         ),
-      ["permission-profile", "collaboratorType", collaboratorType],
+      [
+        PERMISSION_PROFILE_CACHE_VERSION,
+        "permission-profile",
+        "collaboratorType",
+        collaboratorType,
+      ],
       {
         tags: [
           PERMISSION_PROFILE_CACHE_TAG,
@@ -624,9 +632,9 @@ export async function getPermissionProfileSnapshotForUser(
 ): Promise<PermissionProfileSnapshot> {
   const [roleProfile, collaboratorTypeProfile, archiveAccess] = await Promise.all([
     getCachedRoleProfile(user.role as PermissionRole),
-    isUserRole(user.role)
-      ? Promise.resolve(null)
-      : getCachedCollaboratorTypeProfile(user.collaboratorType),
+    isLegacyCollaboratorRole(user.role)
+      ? getCachedCollaboratorTypeProfile(user.collaboratorType)
+      : Promise.resolve(null),
     prisma.userArchiveAccess.findUnique({
       where: {
         userId: user.id,
@@ -654,7 +662,7 @@ export async function getPermissionProfileSnapshotForUser(
     collaboratorTypePermissions,
     archiveAccessGranted: Boolean(archiveAccess && archiveAccess.level !== "NONE"),
     archiveAccessLevel:
-      user.role === UserRole.SUPER_ADMIN
+      isBusinessAdministratorRole(user.role)
         ? "FULL"
         : archiveAccess?.level ?? "NONE",
   };

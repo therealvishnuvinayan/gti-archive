@@ -21,6 +21,7 @@ import { PROJECT_WORKFLOW_STAGE_DEFINITIONS } from "@/lib/project-workflow";
 import {
   hasPermission,
   hasProjectPermission,
+  isGlobalProjectAdministrator,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -178,7 +179,7 @@ function dashboardProjectWhere(user: DashboardUser): Prisma.ProjectWhereInput {
     return { id: "__dashboard_permission_denied__" };
   }
 
-  if (user.role === UserRole.SUPER_ADMIN) return {};
+  if (isGlobalProjectAdministrator(user)) return {};
 
   return {
     OR: [
@@ -319,7 +320,7 @@ function buildKpis(input: {
   const completed = summaries.filter(
     (item) => item.workflow.businessStatus === "COMPLETED",
   ).length;
-  const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
+  const isGlobalAdministrator = isGlobalProjectAdministrator(user);
   const isManager = summaries.some(
     ({ project }) =>
       project.ownerId === user.id ||
@@ -341,7 +342,7 @@ function buildKpis(input: {
   let completedValue = completed;
   let completedNote = "Finished accessible projects";
 
-  if (isSuperAdmin) {
+  if (isGlobalAdministrator) {
     totalLabel = "Total Projects";
     activeLabel = "Active Projects";
     activeNote = "Currently in progress";
@@ -371,7 +372,9 @@ function buildKpis(input: {
     {
       label: totalLabel,
       value: summaries.length,
-      note: isSuperAdmin ? "Global V2 portfolio" : "Based on your relationships",
+      note: isGlobalAdministrator
+        ? "Global V2 portfolio"
+        : "Based on your relationships",
       href: "/projects?status=ALL&sort=updated",
       icon: "projects" as const,
       tone: "green" as const,
@@ -408,8 +411,8 @@ function buildKpis(input: {
 
 /**
  * Builds the V2 operational dashboard from the same workflow rows used by the
- * project workspaces. ADMIN is deliberately relationship-scoped here; only
- * SUPER_ADMIN receives a global portfolio.
+ * project workspaces. Business administrators receive a global portfolio;
+ * standard users remain relationship-scoped.
  */
 export async function getDashboardSnapshot(
   user: DashboardUser,
@@ -1017,7 +1020,7 @@ export async function getDashboardSnapshot(
     .filter(
       ({ project, workflow }) =>
         !project.archivedAt &&
-        (workflow.businessStatus !== null || user.role === UserRole.SUPER_ADMIN),
+        (workflow.businessStatus !== null || isGlobalProjectAdministrator(user)),
     )
     .slice(0, 6)
     .map(({ project, workflow }) => {
@@ -1057,7 +1060,7 @@ export async function getDashboardSnapshot(
       .slice(0, 5),
     recentProjects,
     scopeLabel:
-      user.role === UserRole.SUPER_ADMIN
+      isGlobalProjectAdministrator(user)
         ? "Global portfolio"
         : "Projects connected to you",
   };

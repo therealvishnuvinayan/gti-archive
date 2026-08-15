@@ -63,7 +63,12 @@ import {
 } from "@/lib/permissions/preview";
 import { getCollaboratorTypeLabel } from "@/lib/project-collaborator-participant-types";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
-import { getUserRoleLabel } from "@/lib/user-role-compatibility";
+import {
+  getUserRoleLabel,
+  isBusinessAdministratorRole,
+  isLegacyCollaboratorRole,
+  isProtectedRootRole,
+} from "@/lib/user-role-compatibility";
 import {
   PROFILE_IMAGE_ALLOWED_EXTENSIONS,
   PROFILE_IMAGE_ALLOWED_MIME_TYPES,
@@ -286,10 +291,11 @@ function ManagedUserAvatar({
 
 function getDefaultForm(user: ManagedUserRecord): UserEditForm {
   const archiveAccessLevel =
-    user.collaboratorType === "CLIENT_OF_GTI"
-      ? "NONE"
-      : user.role === "SUPER_ADMIN"
-        ? "FULL"
+    isBusinessAdministratorRole(user.role)
+      ? "FULL"
+      : isLegacyCollaboratorRole(user.role) &&
+          user.collaboratorType === "CLIENT_OF_GTI"
+        ? "NONE"
         : user.archiveAccessLevel;
 
   return {
@@ -608,7 +614,6 @@ function EditUserModal({
   avatarError,
   saving,
   isOpen,
-  roleLocked,
   avatarPreviewSrc,
   selectedAvatarFileName,
   onClose,
@@ -622,7 +627,6 @@ function EditUserModal({
   avatarError?: string;
   saving: boolean;
   isOpen: boolean;
-  roleLocked: boolean;
   avatarPreviewSrc: string | null;
   selectedAvatarFileName?: string;
   onClose: () => void;
@@ -718,7 +722,6 @@ function EditUserModal({
               <Select
                 value={form.role}
                 onValueChange={(value) => onChange("role", value as PermissionRole)}
-                disabled={roleLocked}
               >
                 <SelectTrigger className="h-[54px] rounded-[16px] border border-[#dce4dc] px-4 text-[16px] shadow-none">
                   <SelectValue />
@@ -731,11 +734,6 @@ function EditUserModal({
                   ))}
                 </SelectContent>
               </Select>
-              {roleLocked ? (
-                <p className="mt-2 text-[13px] leading-5 text-[#6f776f]">
-                  You cannot change your own Super Admin role.
-                </p>
-              ) : null}
             </label>
 
             <label className="block">
@@ -785,10 +783,13 @@ function EditUserModal({
                   description: "Allow only the archive assets selected below.",
                 },
               ].map((option) => {
-                const isClientHardDenied = form.collaboratorType === "CLIENT_OF_GTI";
-                const isSuperAdminLocked = form.role === "SUPER_ADMIN" && !isClientHardDenied;
+                const isClientHardDenied =
+                  isLegacyCollaboratorRole(form.role) &&
+                  form.collaboratorType === "CLIENT_OF_GTI";
+                const isAdministratorLocked =
+                  isBusinessAdministratorRole(form.role) && !isClientHardDenied;
                 const isChecked =
-                  (isSuperAdminLocked && option.level === "FULL") ||
+                  (isAdministratorLocked && option.level === "FULL") ||
                   (isClientHardDenied && option.level === "NONE") ||
                   form.archiveAccessLevel === option.level;
 
@@ -796,7 +797,7 @@ function EditUserModal({
                   <button
                     key={option.level}
                     type="button"
-                    disabled={saving || isSuperAdminLocked || isClientHardDenied}
+                    disabled={saving || isAdministratorLocked || isClientHardDenied}
                     onClick={() => onChange("archiveAccessLevel", option.level)}
                     className={cn(
                       "rounded-[18px] border px-4 py-4 text-left transition-colors",
@@ -830,20 +831,22 @@ function EditUserModal({
               })}
             </div>
 
-            {form.role === "SUPER_ADMIN" && form.collaboratorType !== "CLIENT_OF_GTI" ? (
+            {isBusinessAdministratorRole(form.role) ? (
               <p className="mt-3 rounded-[14px] bg-[#f8fbff] px-4 py-3 text-[12px] leading-5 text-[#5f6c75]">
-                Super Admins always retain full Archive access.
+                Administrators always receive full Archive access.
               </p>
             ) : null}
 
-            {form.collaboratorType === "CLIENT_OF_GTI" ? (
+            {isLegacyCollaboratorRole(form.role) &&
+            form.collaboratorType === "CLIENT_OF_GTI" ? (
               <p className="mt-3 rounded-[14px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] leading-5 text-[#bb4d49]">
                 GTI Client users cannot receive Archive access.
               </p>
             ) : null}
 
             {form.archiveAccessLevel === "PARTIAL" &&
-            form.collaboratorType !== "CLIENT_OF_GTI" ? (
+            (!isLegacyCollaboratorRole(form.role) ||
+              form.collaboratorType !== "CLIENT_OF_GTI") ? (
               <ArchiveAssetAccessPicker
                 selectedAssets={form.archiveAssetAccesses}
                 disabled={saving}
@@ -869,7 +872,7 @@ function EditUserModal({
             disabled={
               saving ||
               (form.archiveAccessLevel === "PARTIAL" &&
-                form.role !== "SUPER_ADMIN" &&
+                !isBusinessAdministratorRole(form.role) &&
                 form.archiveAssetAccesses.length === 0)
             }
             className="min-w-[184px] rounded-[16px]"
@@ -1483,8 +1486,6 @@ export function UsersWorkspace({
   const [isDrawerOpen, setDrawerOpen] = useState(false);
   const [isPermissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const isEditingOwnSuperAdmin =
-    editingUser?.id === currentUserId && editingUser.role === "SUPER_ADMIN";
   const selectedAvatarPreviewSrc = useMemo(() => {
     if (!selectedAvatarFile) {
       return null;
@@ -1527,7 +1528,7 @@ export function UsersWorkspace({
   }, [query, users]);
 
   function openDrawer(user: ManagedUserRecord) {
-    if (!canUpdateUsers) {
+    if (!canUpdateUsers || isProtectedRootRole(user.role)) {
       return;
     }
 
@@ -1580,11 +1581,14 @@ export function UsersWorkspace({
 
       const next = { ...current, [field]: value };
 
-      if (next.collaboratorType === "CLIENT_OF_GTI") {
-        next.archiveAccessLevel = "NONE";
-        next.archiveAssetAccesses = [];
-      } else if (field === "role" && value === "SUPER_ADMIN") {
+      if (isBusinessAdministratorRole(next.role)) {
         next.archiveAccessLevel = "FULL";
+        next.archiveAssetAccesses = [];
+      } else if (
+        isLegacyCollaboratorRole(next.role) &&
+        next.collaboratorType === "CLIENT_OF_GTI"
+      ) {
+        next.archiveAccessLevel = "NONE";
         next.archiveAssetAccesses = [];
       }
 
@@ -1687,7 +1691,7 @@ export function UsersWorkspace({
               </div>
               <FilterBadge
                 icon={<LockKeyhole className="h-4 w-4 text-brand" />}
-                text="SUPER_ADMIN only"
+                text="Administrators with access"
               />
             </div>
 
@@ -1780,7 +1784,7 @@ export function UsersWorkspace({
                         </StatusBadge>
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
-                        {canUpdateUsers ? (
+                        {canUpdateUsers && !isProtectedRootRole(user.role) ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -1791,6 +1795,10 @@ export function UsersWorkspace({
                             <PencilLine className="h-3.5 w-3.5" />
                             Edit User
                           </Button>
+                        ) : isProtectedRootRole(user.role) ? (
+                          <StatusBadge className="border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]">
+                            Protected root
+                          </StatusBadge>
                         ) : (
                           <StatusBadge className="border-[#dde4dd] bg-[#f8faf8] text-[#556058]">
                             Read only
@@ -1853,7 +1861,6 @@ export function UsersWorkspace({
         error={drawerError}
         avatarError={avatarError}
         saving={isPending}
-        roleLocked={isEditingOwnSuperAdmin}
         avatarPreviewSrc={editingUserAvatarSrc}
         selectedAvatarFileName={selectedAvatarFile?.name}
         onClose={closeDrawer}

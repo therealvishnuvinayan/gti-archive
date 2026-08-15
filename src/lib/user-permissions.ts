@@ -14,6 +14,11 @@ import {
   isProjectCollaboratorParticipantType,
 } from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  isBusinessAdministratorRole,
+  isLegacyCollaboratorRole,
+  isProtectedRootRole,
+} from "@/lib/user-role-compatibility";
 
 export type ManagedUserStatus = "ACTIVE" | "INVITED" | "INVITE_EXPIRED";
 export type ManagedArchiveAccessLevel = "NONE" | "FULL" | "PARTIAL";
@@ -168,12 +173,15 @@ function getEffectiveManagedArchiveAccessLevel(user: {
   collaboratorType: CollaboratorType;
   archiveAccess?: { level: ArchiveAccessLevel } | null;
 }): ManagedArchiveAccessLevel {
-  if (user.collaboratorType === CollaboratorType.CLIENT_OF_GTI) {
-    return "NONE";
+  if (isBusinessAdministratorRole(user.role)) {
+    return "FULL";
   }
 
-  if (user.role === UserRole.SUPER_ADMIN) {
-    return "FULL";
+  if (
+    isLegacyCollaboratorRole(user.role) &&
+    user.collaboratorType === CollaboratorType.CLIENT_OF_GTI
+  ) {
+    return "NONE";
   }
 
   return user.archiveAccess?.level ?? "NONE";
@@ -366,16 +374,6 @@ export async function getManagedUserPermissionRecord(userId: string) {
   return user ? mapManagedUser(user) : null;
 }
 
-export async function countSuperAdmins() {
-  return withPrismaRetry(() =>
-    prisma.user.count({
-      where: {
-        role: UserRole.SUPER_ADMIN,
-      },
-    }),
-  );
-}
-
 function normalizeArchiveAssetIds(assetIds: string[] | undefined) {
   const projectFileIds = new Set<string>();
   const manualFileIds = new Set<string>();
@@ -460,12 +458,15 @@ function getRequestedArchiveAccessLevel(
     throw new Error("Choose a valid archive access level.");
   }
 
-  if (input.collaboratorType === CollaboratorType.CLIENT_OF_GTI) {
-    return ArchiveAccessLevel.NONE;
+  if (isBusinessAdministratorRole(input.role)) {
+    return ArchiveAccessLevel.FULL;
   }
 
-  if (input.role === UserRole.SUPER_ADMIN) {
-    return ArchiveAccessLevel.FULL;
+  if (
+    isLegacyCollaboratorRole(input.role) &&
+    input.collaboratorType === CollaboratorType.CLIENT_OF_GTI
+  ) {
+    return ArchiveAccessLevel.NONE;
   }
 
   return input.archiveAccessLevel as ArchiveAccessLevel;
@@ -474,12 +475,29 @@ function getRequestedArchiveAccessLevel(
 export async function updateManagedUserPermissions(
   input: ManagedUserUpdateInput,
 ) {
+  if (isProtectedRootRole(input.role)) {
+    throw new Error("SUPER_ADMIN cannot be assigned through user management.");
+  }
+
   if (!isProjectCollaboratorParticipantType(input.collaboratorType)) {
     throw new Error("Choose a valid collaborator type.");
   }
 
   const updatedUser = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
+      const existingUser = await tx.user.findUnique({
+        where: { id: input.userId },
+        select: { role: true },
+      });
+
+      if (!existingUser) {
+        throw new Error("User not found.");
+      }
+
+      if (isProtectedRootRole(existingUser.role)) {
+        throw new Error("Protected Super Admin accounts cannot be changed here.");
+      }
+
       const archiveAccessLevel = getRequestedArchiveAccessLevel(input);
       const archiveAssetSelection = normalizeArchiveAssetIds(input.archiveAssetIds);
 

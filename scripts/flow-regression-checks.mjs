@@ -52,7 +52,7 @@ const resolver = read("src/lib/permissions/resolver.ts");
 assertIncludesAll(
   resolver,
   [
-    "user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN",
+    "isBusinessAdministratorRole(user.role)",
     "project.ownerId === user.id",
     "isProjectCoOwner",
     "hasProjectCollaboratorGrant(user, project, \"canInteract\")",

@@ -1,6 +1,5 @@
 import {
   Prisma,
-  UserRole,
   type Project,
   type ProjectCoOwner,
   type ProjectCollaborator,
@@ -17,7 +16,10 @@ import type {
   ProjectCollaboratorPermissions,
 } from "@/lib/project-collaborator-permissions";
 import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
-import { isLegacyCollaboratorRole } from "@/lib/user-role-compatibility";
+import {
+  isBusinessAdministratorRole,
+  isLegacyCollaboratorRole,
+} from "@/lib/user-role-compatibility";
 
 export type PermissionUser = Pick<User, "id" | "role"> & {
   collaboratorType?: User["collaboratorType"] | null;
@@ -107,7 +109,13 @@ function hasProjectArchiveAccessGrant(
 }
 
 export function isProjectAdmin(user: Pick<PermissionUser, "role">) {
-  return user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN;
+  return isGlobalProjectAdministrator(user);
+}
+
+export function isGlobalProjectAdministrator(
+  user: Pick<PermissionUser, "role">,
+) {
+  return isBusinessAdministratorRole(user.role);
 }
 
 export function isProjectOwner(
@@ -129,7 +137,7 @@ function isProjectOwnerOrCoOwner(
   project: ProjectPermissionContext,
 ) {
   return (
-    user.role === UserRole.SUPER_ADMIN ||
+    isGlobalProjectAdministrator(user) ||
     isProjectOwner(user, project) ||
     isProjectCoOwner(user, project)
   );
@@ -159,16 +167,19 @@ export function isClientOfGtiUser(
     collaboratorType?: PermissionUser["collaboratorType"];
   },
 ) {
-  return user.collaboratorType === "CLIENT_OF_GTI";
+  return (
+    isLegacyCollaboratorRole(user.role) &&
+    user.collaboratorType === "CLIENT_OF_GTI"
+  );
 }
 
 export function getArchiveAccessLevel(user: PermissionUser) {
-  if (isClientOfGtiUser(user)) {
-    return "NONE" as const;
+  if (isGlobalProjectAdministrator(user)) {
+    return "FULL" as const;
   }
 
-  if (user.role === UserRole.SUPER_ADMIN) {
-    return "FULL" as const;
+  if (isClientOfGtiUser(user)) {
+    return "NONE" as const;
   }
 
   return user.permissionProfileSnapshot?.archiveAccessLevel ?? "NONE";
@@ -252,8 +263,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     projectCounts: hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
-    users:
-      user.role === UserRole.SUPER_ADMIN && hasPermission(user, "users.view"),
+    users: isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view"),
     notifications: hasPermission(user, "notification.view"),
     library: hasPermission(user, "library.view"),
     archives: canUseArchives(user),

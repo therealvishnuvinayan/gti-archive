@@ -85,7 +85,7 @@ const stageFourCompletionSource = concepts.slice(
 assert(
   concepts.includes("completeStageFourConcepts") &&
     concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
-    concepts.includes("Only the Project Owner or Super Admin can complete Stage 4.") &&
+    concepts.includes("Only a project owner, co-owner, or administrator can complete Stage 4.") &&
     concepts.includes("At least one concept must have a Final Approved File before Stage 4 can be completed.") &&
     concepts.includes("projectStageFileHandoff.upsert") &&
     concepts.includes("projectFileChecklist.upsert") &&
@@ -96,7 +96,7 @@ assert(
     concepts.includes("id: stageFiveWorkflow.id") &&
     concepts.includes("status: ProjectWorkflowStageStatus.LOCKED") &&
     !stageFourCompletionSource.includes("PRODUCTION_AND_HANDOVER"),
-  "Owner/Super-Admin-only Stage 4 completion must atomically hand off final files, unlock Stage 5, and leave Stage 6 untouched.",
+  "Owner/co-owner/administrator Stage 4 completion must atomically hand off final files, unlock Stage 5, and leave Stage 6 untouched.",
 );
 
 for (const label of [

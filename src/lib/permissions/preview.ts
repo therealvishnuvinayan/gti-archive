@@ -51,11 +51,9 @@ export function getPermissionProfileOptions(
         value: role,
         label: role,
         description:
-          role === "SUPER_ADMIN"
-            ? "System administrators with protected user and permission management access."
-            : role === "ADMIN"
-              ? "Operational administrators with configurable management access."
-              : "Scoped collaborators limited by collaborator type and hard business rules.",
+          role === "ADMIN"
+            ? "Business administrators with configurable access across the application."
+            : "Scoped collaborators limited by collaborator type and hard business rules.",
       }));
     case "collaboratorType":
       return collaboratorTypeValues.map((type) => ({

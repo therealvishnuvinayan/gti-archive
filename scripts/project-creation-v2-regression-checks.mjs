@@ -195,7 +195,7 @@ assert(
 for (const snippet of [
   "isProjectOwnerOrCoOwner",
   "isProjectExecutor",
-  "UserRole.SUPER_ADMIN",
+  "isGlobalProjectAdministrator",
   "ownerId: user.id",
   "coOwners:",
   "collaborators:",

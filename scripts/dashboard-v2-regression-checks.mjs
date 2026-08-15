@@ -66,13 +66,13 @@ assert(
 );
 
 assert(
-  service.includes("if (user.role === UserRole.SUPER_ADMIN) return {};") &&
+  service.includes("if (isGlobalProjectAdministrator(user)) return {};") &&
     service.includes("{ ownerId: user.id }") &&
     service.includes("coOwners: { some: { userId: user.id } }") &&
     service.includes("executors: { some: { userId: user.id } }") &&
     service.includes("collaborators: { some: { userId: user.id } }") &&
-    !service.includes("user.role === UserRole.ADMIN) return {}"),
-  "Dashboard scope must be global only for SUPER_ADMIN and relationship-based for everyone else.",
+    service.includes("const isGlobalAdministrator = isGlobalProjectAdministrator(user)"),
+  "Dashboard scope must be global for business administrators and relationship-based for standard users.",
 );
 assert(
   service.includes("projectId: { in: activeProjectIds }"),
