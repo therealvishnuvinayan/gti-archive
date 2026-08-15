@@ -9053,6 +9053,20 @@ export function ProjectChatWorkspace({
                   >
                     Add Comments
                   </Button>
+                  {conceptMode ? (
+                    <Button
+                      asChild
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-full text-[12px]"
+                    >
+                      <Link href={conceptMode.backHref}>
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Concept Taskers
+                      </Link>
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </Card>
@@ -9060,14 +9074,32 @@ export function ProjectChatWorkspace({
 
           {isChatReadOnly ? (
             <Card className={`${composerPositionClass} z-30 mx-auto w-full max-w-[980px] shrink-0 rounded-[20px] border border-[#dbe7dd] bg-[#f7fbf6]/96 p-3 shadow-[0_14px_34px_rgba(18,35,23,0.08)] backdrop-blur [@media_(min-width:1536px)_and_(min-height:900px)]:static [@media_(min-width:1536px)_and_(min-height:900px)]:mt-2 [@media_(min-width:1536px)_and_(min-height:900px)]:rounded-[22px] [@media_(min-width:1536px)_and_(min-height:900px)]:bg-[#f7fbf6] [@media_(min-width:1536px)_and_(min-height:900px)]:p-4 [@media_(min-width:1536px)_and_(min-height:900px)]:shadow-none`}>
-              <p className="text-[14px] font-semibold text-[#173120]">
-                {isProjectCompleted ? "Project chat is locked." : "Stage chat is read-only."}
-              </p>
-              <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
-                {isProjectCompleted
-                  ? "This project has been completed. Only final archived files and completion documents remain available for viewing or download."
-                  : "This stage has been completed. Existing conversations remain available for reference, but new comments and attachments are disabled."}
-              </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold text-[#173120]">
+                    {isProjectCompleted ? "Project chat is locked." : "Stage chat is read-only."}
+                  </p>
+                  <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
+                    {isProjectCompleted
+                      ? "This project has been completed. Only final archived files and completion documents remain available for viewing or download."
+                      : "This stage has been completed. Existing conversations remain available for reference, but new comments and attachments are disabled."}
+                  </p>
+                </div>
+                {conceptMode && !showLatestRevisionActionBar ? (
+                  <Button
+                    asChild
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="w-full shrink-0 rounded-full text-[12px] sm:w-auto"
+                  >
+                    <Link href={conceptMode.backHref}>
+                      <ArrowLeft className="h-4 w-4" />
+                      Back to Concept Taskers
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
             </Card>
           ) : (
             <Card
@@ -9303,6 +9335,20 @@ export function ProjectChatWorkspace({
                       : "w-full overflow-x-auto border-t border-[#e5ece5] pt-1 sm:flex-wrap sm:gap-2 sm:overflow-visible sm:pt-2"
                   }`}
                 >
+                  {conceptMode && !showLatestRevisionActionBar ? (
+                    <Button
+                      asChild
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 shrink-0 rounded-full px-2 text-[11px] font-[750] text-[#405248]"
+                    >
+                      <Link href={conceptMode.backHref}>
+                        <ArrowLeft className="h-4 w-4" />
+                        <span>Taskers</span>
+                      </Link>
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghost"

@@ -107,6 +107,13 @@ assert(
     workspace.includes('status: "PENDING_REVIEW"'),
   "Authorized Stage 3/4 reviewers must receive a confirmed, responsive approval-revocation action that restores Pending Review.",
 );
+assert(
+  workspace.includes("Back to Concept Taskers") &&
+    workspace.includes("href={conceptMode.backHref}") &&
+    workspace.indexOf("Back to Concept Taskers") >
+      workspace.indexOf("Latest revision actions"),
+  "Concept chat must repeat its tasker navigation in the lower action area.",
+);
 const conceptStatusBlock = workspace.slice(
   workspace.indexOf("Concept Status"),
   workspace.indexOf("<StageTimeRemainingCard", workspace.indexOf("Concept Status")),
