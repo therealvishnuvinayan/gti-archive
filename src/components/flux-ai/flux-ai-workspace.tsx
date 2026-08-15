@@ -7,6 +7,7 @@ import {
   ArrowRight,
   FileArchive,
   FolderArchive,
+  History,
   Loader2,
   Search,
 } from "lucide-react";
@@ -20,23 +21,9 @@ type FluxArchiveSearchResponse = {
   recent: boolean;
   results: ArchiveSearchResult[];
   message: string;
+  recentSearches?: string[];
   error?: string;
 };
-
-const suggestedSearches = [
-  {
-    label: "Find an archive by name",
-    prefix: "find ",
-  },
-  {
-    label: "Search archived projects",
-    prefix: "show archived project ",
-  },
-  {
-    label: "Find an archived file",
-    prefix: "search archive ",
-  },
-] as const;
 
 const matchLabels: Record<ArchiveSearchResult["matchedOn"], string> = {
   ARCHIVE_NAME: "Archive name",
@@ -126,23 +113,19 @@ function ArchiveResultCard({ result }: { result: ArchiveSearchResult }) {
   );
 }
 
-export function FluxAiWorkspace() {
+export function FluxAiWorkspace({
+  initialRecentSearches,
+}: {
+  initialRecentSearches: string[];
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
+  const [recentSearches, setRecentSearches] = useState(initialRecentSearches);
   const [response, setResponse] = useState<FluxArchiveSearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
-  function selectSuggestion(prefix: string) {
-    setQuery(prefix);
-    inputRef.current?.focus();
-  }
-
-  async function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const submittedQuery = query.trim();
-
+  async function runSearch(submittedQuery: string) {
     if (!submittedQuery || isSearching) {
       inputRef.current?.focus();
       return;
@@ -166,6 +149,9 @@ export function FluxAiWorkspace() {
       }
 
       setResponse(payload);
+      if (payload.recentSearches) {
+        setRecentSearches(payload.recentSearches);
+      }
     } catch (searchError) {
       setResponse(null);
       setError(
@@ -176,6 +162,16 @@ export function FluxAiWorkspace() {
     } finally {
       setIsSearching(false);
     }
+  }
+
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void runSearch(query.trim());
+  }
+
+  function selectRecentSearch(recentQuery: string) {
+    setQuery(recentQuery);
+    void runSearch(recentQuery);
   }
 
   return (
@@ -225,23 +221,28 @@ export function FluxAiWorkspace() {
           </Button>
         </form>
 
-        <div className="mt-5">
-          <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#778178]">
-            Suggested searches
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {suggestedSearches.map((suggestion) => (
-              <button
-                key={suggestion.label}
-                type="button"
-                onClick={() => selectSuggestion(suggestion.prefix)}
-                className="rounded-full border border-[#dce7dc] bg-[#f8fbf8] px-4 py-2 text-[12px] font-[700] text-[#3f4d43] transition hover:border-brand/35 hover:bg-[#eef7ef] hover:text-brand"
-              >
-                {suggestion.label}
-              </button>
-            ))}
+        {recentSearches.length > 0 ? (
+          <div className="mt-5">
+            <p className="flex items-center gap-2 text-[12px] font-[800] uppercase tracking-[0.08em] text-[#778178]">
+              <History className="h-3.5 w-3.5" />
+              Recent searches
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {recentSearches.map((recentQuery) => (
+                <button
+                  key={recentQuery}
+                  type="button"
+                  disabled={isSearching}
+                  title={recentQuery}
+                  onClick={() => selectRecentSearch(recentQuery)}
+                  className="max-w-full truncate rounded-full border border-[#dce7dc] bg-[#f8fbf8] px-4 py-2 text-[12px] font-[700] text-[#3f4d43] transition hover:border-brand/35 hover:bg-[#eef7ef] hover:text-brand disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {recentQuery}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
 
       <div aria-live="polite">

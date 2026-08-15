@@ -46,6 +46,7 @@ for (const snippet of [
   'hasPermission(user, "fluxAi.view")',
   "canUseArchives(user)",
   "searchArchivesForUser",
+  "recordFluxAiSearch",
   "No archives matched",
   '"Cache-Control": "no-store"',
 ]) {
@@ -84,9 +85,10 @@ for (const snippet of [
   "Flux AI",
   "Search your archived projects and files.",
   'placeholder="Search archives..."',
-  "Find an archive by name",
-  "Search archived projects",
-  "Find an archived file",
+  "Recent searches",
+  "initialRecentSearches",
+  "selectRecentSearch",
+  "recentSearches.length > 0",
   'fetch("/api/flux-ai/search"',
   "Open Archive",
   "Matched file",
@@ -104,6 +106,10 @@ for (const forbidden of [
   "/api/flux-ai/chat",
   "/api/flux-ai/create-project",
   "/api/flux-ai/validate-draft",
+  "Suggested searches",
+  "Find an archive by name",
+  "Search archived projects",
+  "Find an archived file",
 ]) {
   assertNotIncludes(workspace, forbidden, `Removed Flux AI UI ${forbidden}`);
 }
@@ -112,9 +118,30 @@ const fluxPage = read("src/app/(dashboard)/flux-ai/page.tsx");
 for (const snippet of [
   'hasPermission(user, "fluxAi.view")',
   "canUseArchives(user)",
-  "<FluxAiWorkspace />",
+  "getRecentFluxAiSearches(user.id)",
+  "<FluxAiWorkspace initialRecentSearches={initialRecentSearches} />",
 ]) {
   assertIncludes(fluxPage, snippet, `Flux AI page ${snippet}`);
+}
+
+const searchHistory = read("src/lib/flux-ai-search-history.ts");
+for (const snippet of [
+  "RECENT_FLUX_AI_SEARCH_LIMIT = 5",
+  "STORED_FLUX_AI_SEARCH_LIMIT = 20",
+  "userId_normalizedQuery",
+  "fluxAiSearchHistory.upsert",
+  "skip: STORED_FLUX_AI_SEARCH_LIMIT",
+]) {
+  assertIncludes(searchHistory, snippet, `Flux AI recent search history ${snippet}`);
+}
+
+const schema = read("prisma/schema.prisma");
+for (const snippet of [
+  "model FluxAiSearchHistory",
+  "@@unique([userId, normalizedQuery])",
+  "@@index([userId, searchedAt])",
+]) {
+  assertIncludes(schema, snippet, `Flux AI recent search schema ${snippet}`);
 }
 for (const forbidden of [
   "getCollaborators",

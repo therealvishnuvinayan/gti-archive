@@ -568,6 +568,7 @@ export const helpSections: HelpSection[] = [
           "Find archived projects by project name.",
           "Find an archive from an archived filename.",
           "Understand simple wording such as “find”, “search archive”, and “show archived project”.",
+          "Show the signed-in user's five most recent searches for quick reuse.",
           "Open a result in the existing Archives module.",
         ],
       },

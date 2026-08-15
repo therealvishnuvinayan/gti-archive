@@ -433,6 +433,7 @@ model User {
   grantedArchiveAssetAccesses         UserArchiveAssetAccess[]             @relation("UserArchiveAssetAccessGrantedBy")
   createdArchiveCategoryAccesses      ArchiveCategoryAccess[]              @relation("ArchiveCategoryAccessCreatedBy")
   fluxAiConversations                 FluxAiConversation[]
+  fluxAiSearchHistory                 FluxAiSearchHistory[]
   manualLibraryAssets                 ManualLibraryAsset[]                 @relation("ManualLibraryAssetUploadedBy")
   notifications                       Notification[]
   fileFavorites                       FileFavorite[]
@@ -1641,6 +1642,18 @@ model FluxAiMessage {
 
   @@index([conversationId, createdAt])
   @@index([conversationId, role, createdAt])
+}
+
+model FluxAiSearchHistory {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query           String   @db.VarChar(240)
+  normalizedQuery String   @db.VarChar(240)
+  searchedAt      DateTime @default(now())
+
+  @@unique([userId, normalizedQuery])
+  @@index([userId, searchedAt])
 }
 
 model ProjectAttachment {

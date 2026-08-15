@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { searchArchivesForUser } from "@/lib/archives";
 import { getCurrentUser } from "@/lib/auth";
+import { recordFluxAiSearch } from "@/lib/flux-ai-search-history";
 import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
 
 export const runtime = "nodejs";
@@ -76,11 +77,13 @@ export async function POST(request: Request) {
           search.results.length === 1 ? "" : "s"
         }.`
       : `No archives matched '${searchedLabel}'.`;
+    const recentSearches = await recordFluxAiSearch(user.id, query).catch(() => null);
 
     return NextResponse.json(
       {
         ...search,
         message,
+        ...(recentSearches ? { recentSearches } : {}),
       },
       {
         headers: {
