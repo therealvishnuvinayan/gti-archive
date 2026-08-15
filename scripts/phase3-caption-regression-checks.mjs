@@ -130,10 +130,19 @@ for (const snippet of [
   "canAddCaptions={canAddCaptions}",
   "isCaptionableStageSubmissionAttachment",
   "stageSubmissionCaptionHelpText",
+  "handleFrameClick",
+  "onClick={handleFrameClick}",
   "Save Caption",
 ]) {
   assertIncludes(compareWorkspace, snippet, `compare caption UI ${snippet}`);
 }
+assert(
+  !compareWorkspace.includes("onDoubleClick") &&
+    !compareWorkspace.includes("handleFrameDoubleClick") &&
+    captionDialog.includes("onClick={handleFrameClick}") &&
+    !captionDialog.includes("onDoubleClick"),
+  "All comparison and submission caption placement must use one click after caption mode is selected.",
+);
 
 const chatPage = read("src/app/(dashboard)/projects/[slug]/chat/page.tsx");
 const comparePage = read("src/app/(dashboard)/projects/[slug]/compare/page.tsx");

@@ -399,7 +399,7 @@ function ComparisonViewerSurface({
     };
   }, []);
 
-  function handleFrameDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
+  function handleFrameClick(event: React.MouseEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("[data-comment-interactive='true']")) {
       return;
     }
@@ -704,7 +704,7 @@ function ComparisonViewerSurface({
               transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
               transition: isPanning ? "none" : "transform 120ms ease",
             }}
-            onDoubleClick={handleFrameDoubleClick}
+            onClick={handleFrameClick}
           >
             <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2">
               <span className="rounded-full bg-white/90 px-3 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#235f3d] shadow-[0_8px_18px_rgba(19,34,24,0.08)]">
@@ -796,7 +796,6 @@ function ComparisonViewerSurface({
             data-comment-interactive="true"
             className="absolute inset-x-3 bottom-3 z-40 mx-auto max-h-[calc(100%-1.5rem)] w-[min(20rem,calc(100%-1.5rem))] overflow-y-auto rounded-[18px] border border-[#d8e5d9] bg-white p-3 shadow-[0_18px_36px_rgba(14,31,20,0.14)] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:mx-0 sm:w-80"
             onPointerDown={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
@@ -826,7 +825,6 @@ function ComparisonViewerSurface({
             data-comment-interactive="true"
             className="absolute inset-x-3 bottom-3 z-40 mx-auto max-h-[calc(100%-1.5rem)] w-[min(22rem,calc(100%-1.5rem))] overflow-y-auto rounded-[20px] border border-[#d8e5d9] bg-white p-4 shadow-[0_20px_38px_rgba(14,31,20,0.16)] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:mx-0 sm:w-[22rem]"
             onPointerDown={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
             <p className="text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2c8b58]">
