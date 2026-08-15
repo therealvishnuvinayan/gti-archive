@@ -87,7 +87,7 @@ async function ConceptStageContent({
         currentUserId={user.id}
         eyebrow="Concept Workspace"
         title={`Stage ${stageNumber} - ${stageTitle}`}
-        description="Create and manage concept folders."
+        description="Create and manage concept taskers."
         icon={<FolderKanban className="h-4 w-4" />}
       />
       <Suspense fallback={<StageSectionLoadingShell rows={3} />}>

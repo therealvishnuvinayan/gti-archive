@@ -13,6 +13,7 @@ import {
 import {
   completeStageThreeConcepts,
   createProjectConceptFolder as createProjectConceptFolderService,
+  deleteProjectConceptFolder,
   editProjectConceptFolder,
   getProjectConceptChatContext,
   getProjectConceptFolders,
@@ -238,8 +239,28 @@ async function main() {
       briefAttachmentIds: [],
     });
     check(!isErrorResult(missingAttachment), "new concepts must allow an optional brief attachment");
-    await prisma.projectConceptFolder.delete({ where: { id: missingAttachment.folder.id } });
-    await prisma.projectStage.delete({ where: { id: missingAttachment.folder.taskerStageId } });
+    check(missingAttachment.folder.canDelete, "the task creator must receive delete access");
+    const nonCreatorDelete = await deleteProjectConceptFolder(coOwner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      folderId: missingAttachment.folder.id,
+    });
+    check(isErrorResult(nonCreatorDelete), "a non-creator must not delete a concept task");
+    const creatorDelete = await deleteProjectConceptFolder(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      folderId: missingAttachment.folder.id,
+    });
+    check(!isErrorResult(creatorDelete), "the creator must delete their Stage 3 task");
+    check(
+      (await prisma.projectConceptFolder.count({
+        where: { id: missingAttachment.folder.id },
+      })) === 0 &&
+        (await prisma.projectStage.count({
+          where: { id: missingAttachment.folder.taskerStageId },
+        })) === 0,
+      "task deletion must remove both its concept record and tasker stage",
+    );
 
     const conceptA = await createProjectConceptFolder(owner, {
       projectId,
@@ -252,7 +273,10 @@ async function main() {
     const taskerA = await prisma.projectStage.findUniqueOrThrow({
       where: { id: conceptA.folder.taskerStageId },
     });
-    check(taskerA.description === "First direction", "brief must use ProjectStage.description");
+    check(
+      taskerA.description === "<p>First direction</p>",
+      "rich-text brief must use ProjectStage.description",
+    );
     check(taskerA.actualStartedAt === null, "new tasker must not be accepted automatically");
     check(taskerA.startedById === null, "new tasker starter must remain null");
     check(taskerA.status === StageStatus.ONGOING, "new tasker must remain ONGOING");
@@ -732,7 +756,7 @@ async function main() {
     check(
       rejectedRevision.reviewedById === coOwner.id &&
         rejectedRevision.reviewedAt !== null &&
-        rejectedRevision.rejectionReason === "Please revise this direction.",
+        rejectedRevision.rejectionReason === "<p>Please revise this direction.</p>",
       "Request Changes must persist reviewer, reviewedAt, and reason",
     );
     const requestChangesRecipients = await getVisibleStageEventRecipientUserIds(
@@ -1332,6 +1356,22 @@ async function main() {
       "a project executor must reach an unlocked empty Stage 4 workspace without seeing unassigned concepts",
     );
 
+    const deletableStageFourTask = await createProjectConceptFolderService(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      name: "Temporary Stage 4 Task",
+      assignedExecutorId: executorA.id,
+      brief: "Delete this temporary final-concept task",
+      briefAttachmentIds: [],
+    });
+    check(!isErrorResult(deletableStageFourTask), "the owner must create a Stage 4 task");
+    const deletedStageFourTask = await deleteProjectConceptFolder(owner, {
+      projectId,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      folderId: deletableStageFourTask.folder.id,
+    });
+    check(!isErrorResult(deletedStageFourTask), "the creator must delete their Stage 4 task");
+
     const independentStageFourConcept = await createProjectConceptFolder(owner, {
       projectId,
       stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
@@ -1433,7 +1473,7 @@ async function main() {
     );
     check(
       promotedConcept.taskerStage.description ===
-        "Independent Stage 4 refinement brief" &&
+        "<p>Independent Stage 4 refinement brief</p>" &&
         promotedConcept.taskerStage.actualStartedAt === null &&
         promotedConcept.taskerStage.startedById === null &&
         promotedConcept.taskerStage.status === StageStatus.ONGOING &&

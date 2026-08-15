@@ -39,29 +39,59 @@ const [
 ]);
 
 for (const label of [
-  "Create Concept",
+  "Create Task",
+  "Concept Taskers",
   "Concept Name *",
   "Assigned Executor *",
   "Concept Brief",
   "Brief Attachments",
   "Viewing Executor",
   "All Executors",
-  "No concepts yet",
+  "No taskers yet",
   "Concept 1",
-  "Edit Concept",
+  "Edit Task",
+  "Delete Task",
 ]) {
   assert(workspace.includes(label), `Missing Round 1 concept UI: ${label}`);
 }
 
+assert(
+  route.includes('description="Create and manage concept taskers."') &&
+    workspace.includes("Manage your concept taskers.") &&
+    !workspace.includes("Create Concept") &&
+    !workspace.includes("Concept Folders"),
+  "Stage 3/4 must present concept containers as taskers and label creation as Create Task.",
+);
+assert(
+  concepts.includes("createdById: true") &&
+    concepts.includes("folder.createdById === currentUserId") &&
+    concepts.includes("!folder.promotedStage4Concept") &&
+    concepts.includes("export async function deleteProjectConceptFolder") &&
+    concepts.includes("Only the person who created this task can delete it.") &&
+    concepts.includes("tx.projectConceptFolder.delete") &&
+    concepts.includes("tx.projectStage.delete") &&
+    actions.includes("deleteProjectConceptFolderAction") &&
+    workspace.includes("folder.canDelete") &&
+    workspace.includes('tone="destructive"') &&
+    workspace.includes("all of its chat, captions, submissions, and attachments"),
+  "Task deletion must be creator-only, dependency-aware, server-enforced, and explicitly confirmed in Stage 3/4.",
+);
 assert(
   workspace.includes("SelectTrigger") && workspace.includes("SelectContent"),
   "Executor controls must use the themed select component rather than a native select.",
 );
 assert(
   workspace.includes("max-h-[calc(100dvh-1.5rem)]") &&
-    workspace.includes("min-h-0 flex-1 overflow-y-auto overscroll-contain") &&
+    workspace.includes("min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain") &&
     workspace.includes("flex shrink-0 flex-col-reverse gap-3 border-t"),
   "The concept details dialog must fit the viewport, scroll its fields, and keep actions accessible.",
+);
+assert(
+  workspace.includes("max-w-[680px]") &&
+    workspace.includes("overflow-x-hidden overflow-y-auto") &&
+    workspace.includes("grid min-w-0 gap-5") &&
+    workspace.includes('className="min-w-0 max-w-full"'),
+  "The Create Task dialog must contain wide editor controls without collapsing or horizontally scrolling the form.",
 );
 assert(
   workspace.includes("border-[#cfdad1] bg-[#fbfdfb]") &&
@@ -180,7 +210,7 @@ assert(
 );
 assert(
   workspace.includes("No Stage 3 concepts have been created") &&
-    workspace.includes("Stage 4 will open without automatically creating any folders") &&
+    workspace.includes("Stage 4 will open without automatically creating any taskers") &&
     workspace.includes('"Continue to Stage 4"') &&
     workspace.includes("Go to Stage 4") &&
     workspace.includes('href={`/projects/${project.id}/stages/4`}') &&

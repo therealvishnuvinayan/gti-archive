@@ -31,6 +31,7 @@ import {
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
 import { hasStageFiveDownstreamActivityForAttachment } from "@/lib/stage-five";
+import { deleteObjectIfNeeded } from "@/lib/storage/s3";
 
 export type ProjectConceptAttachmentReference = {
   id: string;
@@ -54,6 +55,7 @@ export type ConceptWorkflowStageKey =
 export type ProjectConceptFolderRecord = {
   id: string;
   name: string;
+  canDelete: boolean;
   sortOrder: number;
   taskerStageId: string;
   assignedExecutorId: string | null;
@@ -136,12 +138,12 @@ function validateConceptFolderName(value: string):
   const name = cleanConceptFolderName(value);
 
   if (!name) {
-    return { error: "Folder name is required." };
+    return { error: "Task name is required." };
   }
 
   if (name.length > CONCEPT_FOLDER_NAME_MAX_LENGTH) {
     return {
-      error: `Folder names can be up to ${CONCEPT_FOLDER_NAME_MAX_LENGTH} characters.`,
+      error: `Task names can be up to ${CONCEPT_FOLDER_NAME_MAX_LENGTH} characters.`,
     };
   }
 
@@ -195,6 +197,7 @@ function getTaskerStageOrder(stageKey: ConceptWorkflowStageKey, sortOrder: numbe
 const conceptFolderSelect = {
   id: true,
   name: true,
+  createdById: true,
   sortOrder: true,
   taskerStageId: true,
   assignedExecutorId: true,
@@ -212,6 +215,9 @@ const conceptFolderSelect = {
   },
   sourceStage3Concept: {
     select: { id: true, name: true },
+  },
+  promotedStage4Concept: {
+    select: { id: true },
   },
   sourceStage3ApprovedAttachment: {
     select: {
@@ -292,10 +298,13 @@ function mapConceptFolder(
   folder: Prisma.ProjectConceptFolderGetPayload<{
     select: typeof conceptFolderSelect;
   }>,
+  currentUserId: string,
 ): ProjectConceptFolderRecord {
   return {
     id: folder.id,
     name: folder.name,
+    canDelete:
+      folder.createdById === currentUserId && !folder.promotedStage4Concept,
     sortOrder: folder.sortOrder,
     taskerStageId: folder.taskerStageId,
     assignedExecutorId: folder.assignedExecutorId,
@@ -379,7 +388,7 @@ export async function getProjectConceptFolders(
   }
 
   return {
-    folders: displayedFolders.map(mapConceptFolder),
+    folders: displayedFolders.map((folder) => mapConceptFolder(folder, user.id)),
     canManage,
     canCompleteStage,
     workflowStatus: getWorkflowStageStatus(project, stageKey) ?? null,
@@ -438,7 +447,7 @@ export async function createProjectConceptFolder(
     : null;
 
   if (!project || !managerContext || !canManageProjectConcept(user, managerContext)) {
-    return { error: "You do not have permission to create concept folders." } as const;
+    return { error: "You do not have permission to create concept tasks." } as const;
   }
 
   if (
@@ -579,7 +588,7 @@ export async function createProjectConceptFolder(
       ),
     );
 
-    return { folder: mapConceptFolder(folder) } as const;
+    return { folder: mapConceptFolder(folder, user.id) } as const;
   } catch (error) {
     if (
       error instanceof Error &&
@@ -595,7 +604,157 @@ export async function createProjectConceptFolder(
       (error instanceof Error && error.message === "DUPLICATE_CONCEPT_FOLDER") ||
       (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
     ) {
-      return { error: "A concept folder with this name already exists." } as const;
+      return { error: "A concept task with this name already exists." } as const;
+    }
+
+    throw error;
+  }
+}
+
+export async function deleteProjectConceptFolder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    stageKey: ConceptWorkflowStageKey;
+    folderId: string;
+  },
+) {
+  const project = await getAuthorizedConceptProject(
+    user,
+    input.projectId,
+    input.stageKey,
+  );
+
+  if (!project) {
+    return { error: "You do not have permission to delete this task." } as const;
+  }
+
+  try {
+    const result = await withPrismaRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const workflowStage = await tx.projectWorkflowStage.findUnique({
+            where: {
+              projectId_stageKey: {
+                projectId: input.projectId,
+                stageKey: input.stageKey,
+              },
+            },
+            select: { status: true },
+          });
+
+          if (workflowStage?.status === ProjectWorkflowStageStatus.COMPLETED) {
+            return {
+              error: "Task management is locked because this workflow stage is completed.",
+            } as const;
+          }
+
+          const folder = await tx.projectConceptFolder.findFirst({
+            where: {
+              id: input.folderId,
+              projectId: input.projectId,
+              workflowStageKey: input.stageKey,
+            },
+            select: {
+              id: true,
+              name: true,
+              taskerStageId: true,
+              assignedExecutorId: true,
+              createdById: true,
+              promotedStage4Concept: { select: { id: true } },
+              taskerStage: {
+                select: {
+                  attachments: {
+                    select: { id: true, storageKey: true, bucket: true },
+                  },
+                },
+              },
+            },
+          });
+
+          if (
+            !folder ||
+            !canViewProjectConcept(
+              user,
+              getConceptAccessContext(project, folder, input.stageKey),
+            )
+          ) {
+            return { error: "Task not found." } as const;
+          }
+
+          if (folder.createdById !== user.id) {
+            return { error: "Only the person who created this task can delete it." } as const;
+          }
+
+          if (folder.promotedStage4Concept) {
+            return {
+              error: "This task cannot be deleted because it is already used in Stage 4.",
+            } as const;
+          }
+
+          const attachmentStorage = folder.taskerStage.attachments;
+          const attachmentIds = attachmentStorage.map((attachment) => attachment.id);
+
+          await tx.notification.deleteMany({
+            where: {
+              projectId: input.projectId,
+              OR: [
+                { stageId: folder.taskerStageId },
+                { entityId: folder.id },
+                ...(attachmentIds.length > 0
+                  ? [{ attachmentId: { in: attachmentIds } }]
+                  : []),
+              ],
+            },
+          });
+          await tx.projectFormDraft.deleteMany({
+            where: {
+              projectId: input.projectId,
+              formKey: `concept-details:${input.stageKey}:${folder.id}`,
+            },
+          });
+          await tx.projectConceptFolder.delete({ where: { id: folder.id } });
+          await tx.projectStage.delete({ where: { id: folder.taskerStageId } });
+
+          return {
+            folder: {
+              id: folder.id,
+              name: folder.name,
+              taskerStageId: folder.taskerStageId,
+            },
+            attachmentStorage,
+          } as const;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 15_000,
+        },
+      ),
+    );
+
+    if ("error" in result) {
+      return result;
+    }
+
+    await Promise.allSettled(
+      result.attachmentStorage.map((attachment) =>
+        deleteObjectIfNeeded(attachment.storageKey, attachment.bucket),
+      ),
+    );
+
+    return { folder: result.folder } as const;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2003") {
+        return {
+          error: "This task cannot be deleted because it is already used by later project work.",
+        } as const;
+      }
+
+      if (error.code === "P2034") {
+        return { error: "The task changed at the same time. Please try again." } as const;
+      }
     }
 
     throw error;
@@ -817,7 +976,7 @@ export async function editProjectConceptFolder(
   );
 
   if (!project) {
-    return { error: "You do not have permission to rename concept folders." } as const;
+    return { error: "You do not have permission to rename concept tasks." } as const;
   }
 
   const folder = await withPrismaRetry(() =>
@@ -842,12 +1001,12 @@ export async function editProjectConceptFolder(
   );
 
   if (!folder) {
-    return { error: "Concept folder not found." } as const;
+    return { error: "Concept task not found." } as const;
   }
 
   const accessContext = getConceptAccessContext(project, folder, input.stageKey);
   if (!canManageProjectConcept(user, accessContext)) {
-    return { error: "You do not have permission to edit concept folders." } as const;
+    return { error: "You do not have permission to edit concept tasks." } as const;
   }
 
   if (
@@ -921,7 +1080,7 @@ export async function editProjectConceptFolder(
     } as const;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { error: "A concept folder with this name already exists." } as const;
+      return { error: "A concept task with this name already exists." } as const;
     }
 
     throw error;

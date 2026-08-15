@@ -122,8 +122,8 @@ export function getDashboardBackNavigation(
 
     return topbar(
       `/projects/${projectId}/stages/${stageNumber}#concept-folders`,
-      "Concept Folders",
-      `Back to Stage ${stageNumber} Concept Folders`,
+      "Concept Taskers",
+      `Back to Stage ${stageNumber} Concept Taskers`,
     );
   }
 

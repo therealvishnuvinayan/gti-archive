@@ -61,6 +61,13 @@ assert(
 );
 
 assert(
+  editor.includes("w-full min-w-0 max-w-full overflow-visible") &&
+    editor.includes("overflow-x-auto overscroll-x-contain") &&
+    editor.includes("[overflow-wrap:anywhere]"),
+  "The shared rich-text editor must contain its toolbar and long content inside narrow forms.",
+);
+
+assert(
   [stageOne, concept, stageFive, stageSix, stageSeven, chat].every((source) =>
     source.includes("RichTextEditor"),
   ),

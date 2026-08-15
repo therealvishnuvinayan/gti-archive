@@ -140,7 +140,7 @@ export function RichTextEditor({
         "aria-required": String(required),
         "aria-invalid": String(Boolean(error)),
         class: cn(
-          "rich-text-prose dashboard-scroll-thin w-full px-4 py-3 text-[13px] leading-6 text-[#29322c] outline-none",
+          "rich-text-prose dashboard-scroll-thin w-full min-w-0 break-words px-4 py-3 text-[13px] leading-6 text-[#29322c] [overflow-wrap:anywhere] outline-none",
           minHeightClassName,
         ),
       },
@@ -197,7 +197,7 @@ export function RichTextEditor({
     <div
       data-slot="rich-text-editor"
       className={cn(
-        "relative overflow-visible rounded-[16px] border bg-white transition focus-within:ring-3 focus-within:ring-brand/15",
+        "relative w-full min-w-0 max-w-full overflow-visible rounded-[16px] border bg-white transition focus-within:ring-3 focus-within:ring-brand/15",
         error ? "border-[#c85c54]" : "border-[#d9e0d9] focus-within:border-[#7eac8e]",
         disabled && "bg-[#f6f8f6] opacity-70",
         className,
@@ -206,7 +206,7 @@ export function RichTextEditor({
       <div
         role="toolbar"
         aria-label={`${ariaLabel} formatting`}
-        className="dashboard-scroll-thin flex min-h-11 items-center gap-0.5 overflow-x-auto border-b border-[#e5eae5] bg-[#f9fbf9] px-2 py-1.5 first:rounded-t-[15px]"
+        className="dashboard-scroll-thin flex min-h-11 w-full min-w-0 max-w-full items-center gap-0.5 overflow-x-auto overscroll-x-contain border-b border-[#e5eae5] bg-[#f9fbf9] px-2 py-1.5 first:rounded-t-[15px]"
       >
         <ToolbarButton label="Paragraph" active={editor?.isActive("paragraph")} disabled={disabled || !editor} onClick={() => editor?.chain().focus().setParagraph().run()}><Pilcrow className="size-4" /></ToolbarButton>
         <ToolbarButton label="Heading" active={editor?.isActive("heading", { level: 2 })} disabled={disabled || !editor} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="size-4" /></ToolbarButton>

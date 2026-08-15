@@ -12,6 +12,7 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  Trash2,
   X,
   CheckCircle2,
   Download,
@@ -23,6 +24,7 @@ import {
   createProjectConceptFolderAction,
   completeStageFourConceptsAction,
   completeStageThreeConceptsAction,
+  deleteProjectConceptFolderAction,
   editProjectConceptFolderAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { Button } from "@/components/ui/button";
@@ -140,15 +142,15 @@ function ConceptDetailsDialog({
       aria-modal="true"
       aria-labelledby="concept-folder-dialog-title"
     >
-      <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[540px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.2)] sm:max-h-[calc(100dvh-2.5rem)]">
-        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+      <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-[680px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] shadow-[0_32px_80px_rgba(14,31,20,0.2)] sm:max-h-[calc(100dvh-2.5rem)]">
+        <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-0">
           <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e5ebe6] px-5 py-4 sm:px-6 sm:py-5">
-            <div>
+            <div className="min-w-0">
               <h2
                 id="concept-folder-dialog-title"
                 className="text-[21px] font-[760] tracking-[-0.03em] text-[#162019]"
               >
-                {state.mode === "create" ? "Create Concept" : "Edit Concept"}
+                {state.mode === "create" ? "Create Task" : "Edit Task"}
               </h2>
               <p className="mt-1 text-[12px] leading-5 text-[#6f7a72]">
                 Assign one project executor and keep the concept brief with its tasker.
@@ -159,15 +161,15 @@ function ConceptDetailsDialog({
               variant="secondary"
               size="icon"
               onClick={closeWithAutosave}
-              aria-label="Close folder dialog"
+              aria-label="Close task dialog"
             >
               <X className="h-4 w-4" />
             </Button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
-            <div className="grid gap-5">
-              <label className="block space-y-2">
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+            <div className="grid min-w-0 gap-5">
+              <label className="block min-w-0 space-y-2">
                 <span className="text-[12px] font-[700] text-[#2d372f]">Concept Name *</span>
                 <Input
                   autoFocus
@@ -182,7 +184,7 @@ function ConceptDetailsDialog({
                 />
               </label>
 
-              <label className="block space-y-2">
+              <label className="block min-w-0 space-y-2">
                 <span className="text-[12px] font-[700] text-[#2d372f]">Assigned Executor *</span>
                 <Select
                   value={assignedExecutorId}
@@ -192,7 +194,7 @@ function ConceptDetailsDialog({
                     (state.mode === "create" && executors.length === 1)
                   }
                 >
-                  <SelectTrigger className="h-12 rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 shadow-none focus-visible:border-[#46906a]">
+                  <SelectTrigger className="h-12 w-full min-w-0 rounded-[14px] border-[#cfdad1] bg-[#fbfdfb] px-4 shadow-none focus-visible:border-[#46906a]">
                     <SelectValue placeholder="Select a project executor" />
                   </SelectTrigger>
                   <SelectContent className="z-[180]">
@@ -218,7 +220,7 @@ function ConceptDetailsDialog({
                 </span>
               </label>
 
-              <div className="block space-y-2">
+              <div className="block min-w-0 space-y-2">
                 <span className="text-[12px] font-[700] text-[#2d372f]">Concept Brief *</span>
                 <RichTextEditor
                   value={brief}
@@ -226,6 +228,7 @@ function ConceptDetailsDialog({
                   disabled={detailsLocked}
                   placeholder="Describe the direction, requirements, and expected outcome."
                   minHeightClassName="min-h-[112px]"
+                  className="min-w-0 max-w-full"
                   ariaLabel="Concept brief"
                   required
                   error={!cleanBrief}
@@ -237,7 +240,7 @@ function ConceptDetailsDialog({
                 ) : null}
               </div>
 
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 <span className="block text-[12px] font-[700] text-[#2d372f]">Brief Attachments</span>
                 <Input
                   id={attachmentInputId}
@@ -250,7 +253,7 @@ function ConceptDetailsDialog({
                 <label
                   htmlFor={attachmentInputId}
                   aria-disabled={detailsLocked}
-                  className={`flex min-h-[76px] items-center gap-3 rounded-[14px] border border-dashed border-[#b9c9bc] bg-[#f8fbf8] px-4 py-3 transition ${detailsLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#65a47d] hover:bg-[#f3f9f5]"}`}
+                  className={`flex min-h-[76px] min-w-0 items-center gap-3 rounded-[14px] border border-dashed border-[#b9c9bc] bg-[#f8fbf8] px-4 py-3 transition ${detailsLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#65a47d] hover:bg-[#f3f9f5]"}`}
                 >
                   <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#e7f2ea] text-[#2f8057]">
                     <Paperclip className="h-4 w-4" />
@@ -339,7 +342,7 @@ function ConceptDetailsDialog({
                 )
               }
             >
-              {state.mode === "create" ? "Create Concept" : "Save Changes"}
+              {state.mode === "create" ? "Create Task" : "Save Changes"}
             </Button>
           </div>
         </CardContent>
@@ -459,8 +462,11 @@ export function ConceptStageWorkspace({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isCompleting, startCompletionTransition] = useTransition();
+  const [isDeleting, startDeleteTransition] = useTransition();
   const [folders, setFolders] = useState<ConceptFolder[]>(initialFolders);
   const [dialog, setDialog] = useState<FolderDialogState>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ConceptFolder | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
   const [completionError, setCompletionError] = useState<string | null>(null);
   const managementLocked = stageWorkflowStatus === "COMPLETED";
@@ -615,7 +621,7 @@ export function ConceptStageWorkspace({
 
         if ("error" in result) {
           await discardConceptBriefAttachments(briefAttachmentIds);
-          showErrorToast(result.error ?? "Unable to create the concept folder.");
+          showErrorToast(result.error ?? "Unable to create the task.");
           return;
         }
 
@@ -624,7 +630,7 @@ export function ConceptStageWorkspace({
         await clearDraft().catch(() => undefined);
         setDialog(null);
         router.refresh();
-        showSuccessToast("Concept created.");
+        showSuccessToast("Task created.");
         return;
       }
 
@@ -650,8 +656,32 @@ export function ConceptStageWorkspace({
           `Retry: ${failedFiles.map((file) => file.name).join(", ")}`,
         );
       } else {
-        showSuccessToast("Concept updated.");
+        showSuccessToast("Task updated.");
       }
+    });
+  }
+
+  function deleteTask() {
+    if (!deleteTarget) return;
+
+    const task = deleteTarget;
+    setDeleteError(null);
+    startDeleteTransition(async () => {
+      const result = await deleteProjectConceptFolderAction({
+        projectId: project.id,
+        stageKey,
+        folderId: task.id,
+      });
+
+      if ("error" in result) {
+        setDeleteError(result.error ?? "Unable to delete the task.");
+        return;
+      }
+
+      setFolders((current) => current.filter((folder) => folder.id !== task.id));
+      setDeleteTarget(null);
+      showSuccessToast("Task deleted.", `${task.name} was removed.`);
+      router.refresh();
     });
   }
 
@@ -670,7 +700,7 @@ export function ConceptStageWorkspace({
           Stage {stageNumber} - {stageTitle}
         </h1>
         <p className="mt-3 text-[14px] leading-6 text-[#68736b]">
-          Create and manage concept folders.
+          Create and manage concept taskers.
         </p>
       </header> : null}
 
@@ -691,10 +721,10 @@ export function ConceptStageWorkspace({
                 id="concept-folders-heading"
                 className="text-[20px] font-[760] tracking-[-0.025em] text-[#18211b]"
               >
-                Concept Folders
+                Concept Taskers
               </h2>
               <p className="mt-1 text-[13px] leading-5 text-[#707a73]">
-                Manage your concept folders.
+                Manage your concept taskers.
               </p>
             </div>
           </div>
@@ -786,7 +816,7 @@ export function ConceptStageWorkspace({
                 onClick={() => setDialog({ mode: "create" })}
               >
                 <Plus className="h-4 w-4" />
-                Create Concept
+                Create Task
               </Button>
             ) : null}
           </div>
@@ -794,13 +824,13 @@ export function ConceptStageWorkspace({
 
         {folders.length === 0 ? (
           <div className="mt-6 rounded-[20px] border border-dashed border-[#cfdacf] bg-[#f8faf8] px-6 py-10 text-center">
-            <p className="text-[16px] font-[740] text-[#273129]">No concepts yet</p>
+            <p className="text-[16px] font-[740] text-[#273129]">No taskers yet</p>
             <p className="mt-1 text-[12px] text-[#748078]">
               {stageNumber === 3 && canManageConcepts
-                ? "Create the first concept when the name, executor, and brief are ready."
+                ? "Create the first task when the name, executor, and brief are ready."
                 : stageNumber === 4 && canManageConcepts
-                  ? "Create a final-concept folder, then optionally import an approved Stage 3 concept from its chat."
-                  : "No concepts are available in this stage."}
+                  ? "Create a final-concept tasker, then optionally import an approved Stage 3 concept from its chat."
+                  : "No taskers are available in this stage."}
             </p>
           </div>
         ) : <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -895,30 +925,44 @@ export function ConceptStageWorkspace({
                     </span>
                   ) : null}
                 </span>
-                {canManageConcepts && !managementLocked ? <DropdownMenu>
+                {(canManageConcepts || folder.canDelete) && !managementLocked ? <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className="relative z-10 size-8 shrink-0 text-[#758078]"
-                      aria-label={`Folder actions for ${folder.name}`}
+                      aria-label={`Tasker actions for ${folder.name}`}
                     >
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        setDialog({
-                          mode: "edit",
-                          folder,
-                        })
-                      }
-                    >
-                      <Pencil className="h-4 w-4" />
-                      Edit Concept
-                    </DropdownMenuItem>
+                    {canManageConcepts ? (
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          setDialog({
+                            mode: "edit",
+                            folder,
+                          })
+                        }
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Edit Task
+                      </DropdownMenuItem>
+                    ) : null}
+                    {folder.canDelete ? (
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onSelect={() => {
+                          setDeleteError(null);
+                          setDeleteTarget(folder);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete Task
+                      </DropdownMenuItem>
+                    ) : null}
                   </DropdownMenuContent>
                 </DropdownMenu> : null}
                 <ChevronRight className="h-4 w-4 shrink-0 text-[#8b958e]" aria-hidden="true" />
@@ -943,6 +987,27 @@ export function ConceptStageWorkspace({
       ) : null}
 
       <ConfirmationDialog
+        isOpen={Boolean(deleteTarget)}
+        title="Delete task?"
+        description={
+          deleteTarget
+            ? `Delete “${deleteTarget.name}” and all of its chat, captions, submissions, and attachments? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete Task"
+        cancelLabel="Cancel"
+        tone="destructive"
+        pending={isDeleting}
+        error={deleteError ?? undefined}
+        onConfirm={deleteTask}
+        onClose={() => {
+          if (isDeleting) return;
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+      />
+
+      <ConfirmationDialog
         isOpen={
           canCompleteStage &&
           completionDialogOpen &&
@@ -961,7 +1026,7 @@ export function ConceptStageWorkspace({
               ? "No Stage 3 concepts have been created. Continue directly to Stage 4 only when an initial concept already exists outside this stage."
               : unapprovedConcepts.length > 0
                 ? `Every Stage 3 concept must have an Approved Concept before completion. Pending: ${unapprovedConcepts.map((concept) => concept.name).join(", ")}.`
-                : `Stage 3 will be closed with ${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"}. Stage 4 will open without automatically creating any folders.`
+                : `Stage 3 will be closed with ${approvedConceptCount} approved concept${approvedConceptCount === 1 ? "" : "s"}. Stage 4 will open without automatically creating any taskers.`
             : approvedConceptCount === 0
               ? "At least one concept must have a Final Approved File before Stage 4 can be completed."
               : unapprovedConcepts.length > 0

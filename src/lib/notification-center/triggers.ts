@@ -236,7 +236,7 @@ export async function notifyStageFourConceptsActivated(input: {
     recipientUserIds,
     type: "NEXT_STAGE_ACTIVATED",
     title: "Stage 4 activated",
-    message: `Stage 4 is ready in ${project.name}. Create final-concept folders and optionally import an approved Stage 3 concept as a starting reference.`,
+    message: `Stage 4 is ready in ${project.name}. Create final-concept taskers and optionally import an approved Stage 3 concept as a starting reference.`,
     entityType: "PROJECT",
     entityId: project.id,
     projectId: project.id,

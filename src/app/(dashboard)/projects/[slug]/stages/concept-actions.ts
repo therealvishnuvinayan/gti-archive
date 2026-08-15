@@ -14,6 +14,7 @@ import {
   completeStageFourConcepts,
   completeStageThreeConcepts,
   createProjectConceptFolder,
+  deleteProjectConceptFolder,
   editProjectConceptFolder,
   importStageThreeConceptReference,
   markProjectConceptApprovedAttachment,
@@ -66,7 +67,36 @@ export async function createProjectConceptFolderAction(input: {
     return result;
   } catch (error) {
     console.error("[project-concepts] create failed", error);
-    return { error: "Unable to create the concept folder right now." } as const;
+    return { error: "Unable to create the task right now." } as const;
+  }
+}
+
+export async function deleteProjectConceptFolderAction(input: {
+  projectId: string;
+  stageKey: ConceptWorkflowStageKey;
+  folderId: string;
+}) {
+  const user = await requireUser();
+
+  try {
+    const result = await deleteProjectConceptFolder(user, input);
+
+    if ("folder" in result && result.folder) {
+      const folder = result.folder;
+      revalidateConceptStage(input.projectId, input.stageKey);
+      publishProjectActivityUpdatedAfterResponse({
+        projectId: input.projectId,
+        stageId: folder.taskerStageId,
+        eventType: "participant_access_changed",
+        changedEntityId: folder.id,
+        actorId: user.id,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[project-concepts] delete failed", error);
+    return { error: "Unable to delete the task right now." } as const;
   }
 }
 
@@ -146,7 +176,7 @@ export async function renameProjectConceptFolderAction(input: {
     return result;
   } catch (error) {
     console.error("[project-concepts] rename failed", error);
-    return { error: "Unable to rename the concept folder right now." } as const;
+    return { error: "Unable to rename the task right now." } as const;
   }
 }
 
