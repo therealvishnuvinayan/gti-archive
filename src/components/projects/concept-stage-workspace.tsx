@@ -28,7 +28,10 @@ import {
   editProjectConceptFolderAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/concept-actions";
 import { Button } from "@/components/ui/button";
-import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  AssetImageThumbnail,
+  AssetPreviewButton,
+} from "@/components/projects/asset-preview-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
@@ -895,6 +898,13 @@ export function ConceptStageWorkspace({
                         Starting Reference
                       </span>
                       <span className="mt-1 flex min-w-0 items-center gap-1">
+                        <AssetImageThumbnail
+                          fileName={folder.startingReference.name}
+                          mimeType={folder.startingReference.mimeType}
+                          previewPath={folder.startingReference.previewPath}
+                          downloadPath={folder.startingReference.downloadPath}
+                          className="mr-1 h-9 w-12"
+                        />
                         <span className="min-w-0 flex-1 truncate text-[10px] font-[650] text-[#344138]">
                           {folder.startingReference.name}
                         </span>

@@ -15,6 +15,7 @@ const [
   access,
   notifications,
   projects,
+  assetPreview,
 ] = await Promise.all([
   readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/chat/page.tsx", "utf8"),
@@ -35,6 +36,7 @@ const [
   readFile("src/lib/project-concept-access.ts", "utf8"),
   readFile("src/lib/notification-center/triggers.ts", "utf8"),
   readFile("src/lib/projects.ts", "utf8"),
+  readFile("src/components/projects/asset-preview-button.tsx", "utf8"),
 ]);
 
 assert(
@@ -68,6 +70,15 @@ assert(
     workspace.includes("Brief Attachments") &&
     workspace.includes("hasAcceptedBrief"),
   "Concept Brief text, attachments, and compact acceptance state must be present.",
+);
+assert(
+  workspace.includes("AssetImageThumbnail") &&
+    workspace.includes("AssetPreviewButton") &&
+    assetPreview.includes("export function AssetImageThumbnail") &&
+    assetPreview.includes('aria-label={`Preview image ${fileName}`}') &&
+    assetPreview.includes('loading="lazy"') &&
+    assetPreview.includes('className="h-full w-full object-contain"'),
+  "Stage 3/4 chat image documents must place a small uncropped thumbnail in the document visual area while retaining the full preview action.",
 );
 assert(
   workspace.includes("Concept Status") &&

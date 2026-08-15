@@ -2,13 +2,16 @@ import Link from "next/link";
 import {
   CalendarDays,
   Download,
-  Eye,
   FileText,
   ListChecks,
   Mail,
   Phone,
 } from "lucide-react";
 
+import {
+  AssetImageThumbnail,
+  AssetPreviewButton,
+} from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RichTextContent } from "@/components/ui/rich-text-editor";
@@ -223,9 +226,18 @@ function ReadOnlyAttachmentList({
             key={attachment.id}
             className="flex min-w-0 flex-col gap-3 rounded-[13px] border border-[#e1e7e1] bg-white px-3.5 py-3 sm:flex-row sm:items-center"
           >
-            <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#edf5ef] text-[#367252]">
-              <FileText className="h-4 w-4" />
-            </span>
+            {attachment.mimeType.startsWith("image/") ? (
+              <AssetImageThumbnail
+                fileName={attachment.originalFileName}
+                mimeType={attachment.mimeType}
+                previewPath={`/api/project-assets/${attachment.id}/preview`}
+                downloadPath={`/api/project-assets/${attachment.id}/download`}
+              />
+            ) : (
+              <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[#edf5ef] text-[#367252]">
+                <FileText className="h-4 w-4" />
+              </span>
+            )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-[680] text-[#2a352d]">
                 {attachment.originalFileName}
@@ -235,15 +247,15 @@ function ReadOnlyAttachmentList({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <a
-                href={`/api/project-assets/${attachment.id}/preview`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-[#dce4dd] px-3 text-[12px] font-[650] text-[#3d5546] transition hover:bg-[#f3f7f3]"
-              >
-                <Eye className="h-3.5 w-3.5" />
-                Preview
-              </a>
+              <AssetPreviewButton
+                fileName={attachment.originalFileName}
+                mimeType={attachment.mimeType}
+                previewPath={`/api/project-assets/${attachment.id}/preview`}
+                downloadPath={`/api/project-assets/${attachment.id}/download`}
+                iconOnly={false}
+                label="Preview"
+                triggerClassName="h-9 rounded-[10px] border border-[#dce4dd] px-3 text-[12px] font-[650] text-[#3d5546] hover:bg-[#f3f7f3]"
+              />
               <a
                 href={`/api/project-assets/${attachment.id}/download`}
                 className="grid size-9 place-items-center rounded-[10px] border border-[#dce4dd] text-[#3d5546] transition hover:bg-[#f3f7f3]"

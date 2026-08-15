@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Check, Download, Eye, FileText, ShieldCheck, X } from "lucide-react";
+import { Check, Download, FileText, ShieldCheck, X } from "lucide-react";
 
 import { decideAuthenticatedProductionApprovalAction } from "@/app/production-approvals/[stepId]/actions";
+import { AssetImageThumbnail, AssetPreviewButton } from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { RichTextContent, RichTextEditor } from "@/components/ui/rich-text-editor";
@@ -91,7 +92,7 @@ export function ProductionApprovalWorkspace({
         </dl>
         {data.message ? <section className="rounded-[14px] bg-[#f4f7f4] p-4"><h2 className="text-[10px] font-[760] uppercase tracking-[.08em] text-[#758179]">Message</h2><p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[#455149]">{data.message}</p></section> : null}
 
-        <section><h2 className="text-[15px] font-[750] text-[#253029]">Files</h2><div className="mt-3 space-y-3">{data.snapshot.files.map((file) => <div key={file.id} className="flex flex-col gap-3 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:flex-row sm:items-center"><span className="grid size-10 place-items-center rounded-[10px] bg-[#eaf4ed] text-[#347455]"><FileText className="h-5 w-5" /></span><div className="min-w-0 flex-1"><p className="truncate text-[12px] font-[720]">{file.name}</p><p className="mt-1 text-[10px] text-[#78837b]">{file.isSource ? "Stage 5 source" : "Production file"}</p></div><div className="flex gap-2"><Button asChild type="button" variant="secondary" size="sm"><a href={`${basePath}/${file.id}/preview`} target="_blank" rel="noreferrer"><Eye className="h-3.5 w-3.5" /> Preview</a></Button><Button asChild type="button" variant="secondary" size="sm"><a href={`${basePath}/${file.id}/download`}><Download className="h-3.5 w-3.5" /> Download</a></Button></div></div>)}</div></section>
+        <section><h2 className="text-[15px] font-[750] text-[#253029]">Files</h2><div className="mt-3 space-y-3">{data.snapshot.files.map((file) => <div key={file.id} className="flex flex-col gap-3 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:flex-row sm:items-center">{file.mimeType.startsWith("image/") ? <AssetImageThumbnail fileName={file.name} mimeType={file.mimeType} previewPath={`${basePath}/${file.id}/preview`} downloadPath={`${basePath}/${file.id}/download`} /> : <span className="grid size-10 place-items-center rounded-[10px] bg-[#eaf4ed] text-[#347455]"><FileText className="h-5 w-5" /></span>}<div className="min-w-0 flex-1"><p className="truncate text-[12px] font-[720]">{file.name}</p><p className="mt-1 text-[10px] text-[#78837b]">{file.isSource ? "Stage 5 source" : "Production file"}</p></div><div className="flex gap-2"><AssetPreviewButton fileName={file.name} mimeType={file.mimeType} previewPath={`${basePath}/${file.id}/preview`} downloadPath={`${basePath}/${file.id}/download`} iconOnly={false} label="Preview" triggerClassName="border border-[#dce5dd] bg-white shadow-none" /><Button asChild type="button" variant="secondary" size="sm"><a href={`${basePath}/${file.id}/download`}><Download className="h-3.5 w-3.5" /> Download</a></Button></div></div>)}</div></section>
 
         <section><h2 className="text-[15px] font-[750] text-[#253029]">Shared Information</h2><div className="mt-3 grid gap-3 sm:grid-cols-2">{data.snapshot.fields.map((field) => <article key={field.key} className="rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4"><h3 className="text-[10px] font-[760] uppercase tracking-[.07em] text-[#758179]">{field.label}</h3><p className="mt-2 whitespace-pre-wrap text-[12px] leading-5 text-[#455149]">{valueText(field.value)}</p>{field.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{field.attachments.map((file) => <a key={file.id} href={`${basePath}/${file.id}/download`} className="rounded-full bg-[#eaf4ed] px-2.5 py-1 text-[9px] font-[680] text-[#2e744e]">{file.name}</a>)}</div> : null}</article>)}</div></section>
 

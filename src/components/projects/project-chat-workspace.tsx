@@ -65,7 +65,10 @@ import {
   getStageSubmissionAttachments,
   isCaptionableStageSubmissionAttachment,
 } from "@/lib/comparison-utils";
-import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  AssetImageThumbnail,
+  AssetPreviewButton,
+} from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ChatLanguagePicker } from "@/components/projects/chat-language-picker";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
@@ -1652,7 +1655,16 @@ function ConceptBriefContextCard({
                 Starting Reference · {startingReference.sourceConceptName}
               </p>
               <div className="mt-2 flex min-w-0 items-center gap-2">
-                <FileText className="h-4 w-4 shrink-0 text-brand" />
+                {startingReference.mimeType.startsWith("image/") ? (
+                  <AssetImageThumbnail
+                    fileName={startingReference.name}
+                    mimeType={startingReference.mimeType}
+                    previewPath={startingReference.previewPath}
+                    downloadPath={startingReference.downloadPath}
+                  />
+                ) : (
+                  <FileText className="h-4 w-4 shrink-0 text-brand" />
+                )}
                 <span className="min-w-0 flex-1 truncate text-[12px] font-[680] text-[#2d3a31]">
                   {startingReference.name}
                 </span>
@@ -1797,13 +1809,24 @@ function AttachmentHistoryList({
               className={`w-full min-w-0 max-w-full overflow-hidden rounded-[14px] border px-3 py-2.5 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)] ${attachmentCardClassName}`}
             >
               <div className="flex min-w-0 items-start gap-3">
-                <div
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-[10px] font-semibold ${getFileBadgeClass(
-                    attachment.fileTypeLabel,
-                  )}`}
-                >
-                  {attachment.fileTypeLabel}
-                </div>
+                {!attachment.uploadState &&
+                attachment.mimeType.startsWith("image/") &&
+                attachment.previewPath ? (
+                  <AssetImageThumbnail
+                    fileName={attachment.originalFileName}
+                    mimeType={attachment.mimeType}
+                    previewPath={attachment.previewPath}
+                    downloadPath={attachment.downloadPath}
+                  />
+                ) : (
+                  <div
+                    className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-[10px] font-semibold ${getFileBadgeClass(
+                      attachment.fileTypeLabel,
+                    )}`}
+                  >
+                    {attachment.fileTypeLabel}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <p className="min-w-0 max-w-full flex-1 truncate text-[12px] font-semibold text-[#111712]">

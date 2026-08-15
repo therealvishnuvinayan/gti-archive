@@ -40,7 +40,10 @@ import {
 } from "lucide-react";
 
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
-import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  AssetImageThumbnail,
+  AssetPreviewButton,
+} from "@/components/projects/asset-preview-button";
 import {
   completeStageFiveAction,
   requestStageFiveChecklistInformationAction,
@@ -506,7 +509,17 @@ function StageFiveReadOnlyView({
                         key={file.id}
                         className="inline-flex max-w-full items-center gap-2 rounded-[10px] border border-[#dfe6df] bg-[#f7faf7] px-3 py-2 text-[11px]"
                       >
-                        <FileImage className="h-3.5 w-3.5 shrink-0 text-[#438060]" />
+                        {file.attachmentId && file.mimeType.startsWith("image/") ? (
+                          <AssetImageThumbnail
+                            fileName={file.name}
+                            mimeType={file.mimeType}
+                            previewPath={`/api/project-assets/${file.attachmentId}/preview`}
+                            downloadPath={`/api/project-assets/${file.attachmentId}/download`}
+                            className="h-8 w-10"
+                          />
+                        ) : (
+                          <FileImage className="h-3.5 w-3.5 shrink-0 text-[#438060]" />
+                        )}
                         <span className="max-w-[320px] truncate font-[650]">{file.name}</span>
                         <span className="shrink-0 text-[#7c867f]">{formatFileSize(file.size)}</span>
                         {file.attachmentId ? (

@@ -11,7 +11,10 @@ import {
   prepareCopyrightTransferRequestAction,
   requestProjectFinalInvoiceAction,
 } from "@/app/(dashboard)/projects/actions";
-import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  AssetImageThumbnail,
+  AssetPreviewButton,
+} from "@/components/projects/asset-preview-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RichTextContent, RichTextEditor } from "@/components/ui/rich-text-editor";
@@ -247,13 +250,22 @@ function ArchiveFileList({
           className="rounded-[16px] border border-[#d7e5d9] bg-white px-3 py-3 text-[#111712] shadow-[0_10px_22px_rgba(18,35,23,0.06)]"
         >
           <div className="flex items-start gap-3">
-            <div
-              className={`grid h-9 min-w-9 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
-                file.fileTypeLabel,
-              )}`}
-            >
-              {file.fileTypeLabel}
-            </div>
+            {file.mimeType.startsWith("image/") ? (
+              <AssetImageThumbnail
+                fileName={file.finalArchiveFileName}
+                mimeType={file.mimeType}
+                previewPath={file.previewPath}
+                downloadPath={file.downloadPath}
+              />
+            ) : (
+              <div
+                className={`grid h-9 min-w-9 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
+                  file.fileTypeLabel,
+                )}`}
+              >
+                {file.fileTypeLabel}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate text-[12px] font-[700] text-[#111712]">
@@ -313,13 +325,22 @@ function CompletionDocumentList({
           className="rounded-[16px] border border-[#d7e5d9] bg-white px-3 py-3 shadow-[0_10px_22px_rgba(18,35,23,0.06)]"
         >
           <div className="flex items-start gap-3">
-            <div
-              className={`grid h-9 min-w-9 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
-                document.fileTypeLabel,
-              )}`}
-            >
-              {document.fileTypeLabel}
-            </div>
+            {document.mimeType.startsWith("image/") ? (
+              <AssetImageThumbnail
+                fileName={document.archiveFileName}
+                mimeType={document.mimeType}
+                previewPath={document.previewPath}
+                downloadPath={document.downloadPath}
+              />
+            ) : (
+              <div
+                className={`grid h-9 min-w-9 place-items-center rounded-md text-[10px] font-[800] ${getFileBadgeClass(
+                  document.fileTypeLabel,
+                )}`}
+              >
+                {document.fileTypeLabel}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate text-[12px] font-[700] text-[#111712]">
@@ -418,6 +439,12 @@ function FileSelectionList({
               disabled={disabled}
               onChange={() => onToggle(file.id)}
               className="mt-0.5 h-4 w-4 rounded border-[#cad5cb] text-brand"
+            />
+            <AssetImageThumbnail
+              fileName={file.finalArchiveFileName}
+              mimeType={file.mimeType}
+              previewPath={file.previewPath}
+              downloadPath={file.downloadPath}
             />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">

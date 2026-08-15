@@ -22,7 +22,10 @@ import {
   removeProjectCollaboratorAction,
   setProjectCollaboratorChatVisibilityAction,
 } from "@/app/(dashboard)/projects/actions";
-import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  AssetImageThumbnail,
+  AssetPreviewButton,
+} from "@/components/projects/asset-preview-button";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectCollaboratorsPanel } from "@/components/projects/project-collaborators-panel";
 import {
@@ -171,6 +174,12 @@ function ComparisonSelectionCard({
       {submission ? (
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
+            <AssetImageThumbnail
+              fileName={submission.originalFileName}
+              mimeType={submission.mimeType}
+              previewPath={submission.previewPath}
+              downloadPath={submission.downloadPath}
+            />
             <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] leading-none text-[#2b8b56]">
               {formatSubmissionLabel(submission)}
             </span>
@@ -1334,6 +1343,12 @@ export function ProjectCompareWorkspace({
                     className="rounded-[18px] border border-[#e1e8e2] bg-[#fbfcfb] p-4"
                   >
                     <div className="flex flex-wrap items-center gap-2">
+                      <AssetImageThumbnail
+                        fileName={submission.originalFileName}
+                        mimeType={submission.mimeType}
+                        previewPath={submission.previewPath}
+                        downloadPath={submission.downloadPath}
+                      />
                       <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-[#edf7ef] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] leading-none text-[#2b8b56]">
                         {formatSubmissionLabel(submission)}
                       </span>

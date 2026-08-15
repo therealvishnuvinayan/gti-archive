@@ -103,6 +103,12 @@ assert(
   "Concept fields and brief attachments must use clearly bordered, aligned containers.",
 );
 assert(
+  workspace.includes("AssetImageThumbnail") &&
+    workspace.includes('className="mr-1 h-9 w-12"') &&
+    workspace.includes("folder.startingReference.previewPath"),
+  "Stage 4 starting references must show an uncropped image thumbnail in the file row rather than beside the action icons.",
+);
+assert(
   workspace.includes('assetType: "GENERAL_PROJECT_ASSET"') &&
     workspace.includes("/api/project-assets/upload-url") &&
     workspace.includes("/api/project-assets/complete") &&

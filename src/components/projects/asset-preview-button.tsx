@@ -7,6 +7,7 @@ import { Download, Eye, FileText, ImageIcon, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 type AssetPreviewButtonProps = {
   fileName: string;
@@ -27,6 +28,14 @@ type AssetPreviewDialogProps = {
   textContentPath?: string | null;
   downloadPath?: string | null;
   onClose: () => void;
+};
+
+type AssetImageThumbnailProps = {
+  fileName: string;
+  mimeType: string;
+  previewPath: string;
+  downloadPath?: string | null;
+  className?: string;
 };
 
 function isPreviewableAsset(
@@ -287,6 +296,64 @@ export function AssetPreviewButton({
           mimeType={mimeType}
           previewPath={previewPath}
           textContentPath={textContentPath}
+          downloadPath={downloadPath}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+export function AssetImageThumbnail({
+  fileName,
+  mimeType,
+  previewPath,
+  downloadPath,
+  className,
+}: AssetImageThumbnailProps) {
+  const [open, setOpen] = useState(false);
+  const [failedThumbnailPath, setFailedThumbnailPath] = useState<string>();
+
+  if (
+    !mimeType.startsWith("image/") ||
+    failedThumbnailPath === previewPath
+  ) {
+    return null;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className={cn(
+          "group relative h-10 w-14 shrink-0 overflow-hidden rounded-[9px] border border-[#d8e2d9] bg-[#f4f7f4] shadow-[0_3px_10px_rgba(22,40,28,0.08)] outline-none transition hover:border-[#86b397] focus-visible:ring-2 focus-visible:ring-[#3f8f63] focus-visible:ring-offset-2",
+          className,
+        )}
+        onClick={() => setOpen(true)}
+        aria-label={`Preview image ${fileName}`}
+        title={`Preview ${fileName}`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={previewPath}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailedThumbnailPath(previewPath)}
+          className="h-full w-full object-contain"
+        />
+        <span className="absolute inset-0 grid place-items-center bg-[#102218]/40 text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+          <Eye className="h-3.5 w-3.5" />
+        </span>
+      </button>
+
+      {open ? (
+        <AssetPreviewDialog
+          isOpen
+          fileName={fileName}
+          mimeType={mimeType}
+          previewPath={previewPath}
           downloadPath={downloadPath}
           onClose={() => setOpen(false)}
         />

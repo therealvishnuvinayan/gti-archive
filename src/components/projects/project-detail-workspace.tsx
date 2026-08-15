@@ -13,7 +13,10 @@ import {
   WalletCards,
 } from "lucide-react";
 
-import { AssetPreviewButton } from "@/components/projects/asset-preview-button";
+import {
+  AssetImageThumbnail,
+  AssetPreviewButton,
+} from "@/components/projects/asset-preview-button";
 import { AttachmentFavoriteButton } from "@/components/projects/attachment-favorite-button";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import {
@@ -531,16 +534,24 @@ export function ProjectDetailWorkspace({
                       key={attachment.id}
                       className="flex items-start justify-between gap-3 rounded-[18px] border border-[#e2e8e1] bg-[#fbfcfa] px-3.5 py-3"
                     >
-                      <div className="min-w-0">
-                        <p className="truncate text-[12px] font-[800] leading-5 text-[#243028]">
-                          {attachment.originalFileName}
-                        </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[10px] font-[600] leading-4 text-[#7a837b]">
-                          <span>{attachment.fileSizeLabel}</span>
-                          <span>·</span>
-                          <span>{attachment.uploadedBy}</span>
-                          <span>·</span>
-                          <span>{attachment.uploadedAt}</span>
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <AssetImageThumbnail
+                          fileName={attachment.originalFileName}
+                          mimeType={attachment.mimeType}
+                          previewPath={attachment.previewPath}
+                          downloadPath={attachment.downloadPath}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-[12px] font-[800] leading-5 text-[#243028]">
+                            {attachment.originalFileName}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[10px] font-[600] leading-4 text-[#7a837b]">
+                            <span>{attachment.fileSizeLabel}</span>
+                            <span>·</span>
+                            <span>{attachment.uploadedBy}</span>
+                            <span>·</span>
+                            <span>{attachment.uploadedAt}</span>
+                          </div>
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">

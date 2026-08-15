@@ -18,7 +18,6 @@ import {
   Check,
   Clock3,
   Download,
-  Eye,
   FileCheck2,
   FileImage,
   FileText,
@@ -44,6 +43,10 @@ import {
   reorderProductionApproverAction,
   retryProductionApprovalDispatchAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/6/actions";
+import {
+  AssetImageThumbnail,
+  AssetPreviewButton,
+} from "@/components/projects/asset-preview-button";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectStageSummary } from "@/components/projects/project-stage-summary";
 import { Button } from "@/components/ui/button";
@@ -127,11 +130,15 @@ function FileIcon({ file }: { file: ProductionFileRecord }) {
 function FileActions({ file, pathPrefix = "/api/project-assets" }: { file: ProductionFileRecord; pathPrefix?: string }) {
   return (
     <div className="flex gap-2">
-      <Button asChild type="button" variant="secondary" size="sm" className="rounded-[10px] shadow-none">
-        <a href={`${pathPrefix}/${file.id}/preview`} target="_blank" rel="noreferrer">
-          <Eye className="h-3.5 w-3.5" /> Preview
-        </a>
-      </Button>
+      <AssetPreviewButton
+        fileName={file.name}
+        mimeType={file.mimeType}
+        previewPath={`${pathPrefix}/${file.id}/preview`}
+        downloadPath={`${pathPrefix}/${file.id}/download`}
+        iconOnly={false}
+        label="Preview"
+        triggerClassName="rounded-[10px] border border-[#dce5dd] bg-white shadow-none"
+      />
       <Button asChild type="button" variant="secondary" size="sm" className="rounded-[10px] shadow-none">
         <a href={`${pathPrefix}/${file.id}/download`}>
           <Download className="h-3.5 w-3.5" /> Download
@@ -283,7 +290,16 @@ function FilesSection({
       <div className="mt-4 space-y-3">
         {[unit.sourceFile, ...productionFiles].map((file) => (
           <div key={file.id} className="flex flex-col gap-3 rounded-[14px] border border-[#e2e8e2] bg-[#fbfcfb] p-4 sm:flex-row sm:items-center">
-            <span className="grid size-10 shrink-0 place-items-center rounded-[11px] bg-[#edf5ef] text-[#347455]"><FileIcon file={file} /></span>
+            {file.mimeType.startsWith("image/") ? (
+              <AssetImageThumbnail
+                fileName={file.name}
+                mimeType={file.mimeType}
+                previewPath={`/api/project-assets/${file.id}/preview`}
+                downloadPath={`/api/project-assets/${file.id}/download`}
+              />
+            ) : (
+              <span className="grid size-10 shrink-0 place-items-center rounded-[11px] bg-[#edf5ef] text-[#347455]"><FileIcon file={file} /></span>
+            )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-[12px] font-[720] text-[#27322b]">{file.name}</p>
               <p className="mt-1 text-[10px] text-[#77827a]">{file.isSource ? "Stage 5 source" : "Production file"} · {formatFileSize(file.size)}</p>

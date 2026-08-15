@@ -155,6 +155,17 @@ assert(
   "The gallery must show real image thumbnails and polished type-specific fallback cards.",
 );
 assert(
+  assetPreview.includes("export function AssetImageThumbnail") &&
+    assetPreview.includes('mimeType.startsWith("image/")') &&
+    assetPreview.includes("src={previewPath}") &&
+    assetPreview.includes('loading="lazy"') &&
+    assetPreview.includes('aria-label={`Preview image ${fileName}`}') &&
+    assetPreview.includes("onClick={() => setOpen(true)}") &&
+    assetPreview.includes("h-10 w-14 shrink-0 overflow-hidden") &&
+    assetPreview.includes('className="h-full w-full object-contain"'),
+  "The shared project preview control must provide a small, uncropped, clickable image thumbnail for document visual areas.",
+);
+assert(
   folderWorkspace.includes("TextFileVisual") &&
     folderWorkspace.includes("?excerpt=1") &&
     folderWorkspace.includes("This text file is empty.") &&
