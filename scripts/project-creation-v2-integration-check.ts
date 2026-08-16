@@ -132,6 +132,7 @@ async function main() {
       workflowStages: true,
       stages: true,
       researchWorkspaces: { include: { folders: true } },
+      privateFolders: true,
     },
   });
   assert(created, "Created project must be persisted.");
@@ -269,8 +270,9 @@ async function main() {
     "A malformed legacy project must return a diagnostic instead of a business status.",
   );
   assert(
-    created.researchWorkspaces.length === 6,
-    "Every distinct owner, co-owner, executor, and collaborator needs one Stage 2 workspace.",
+    created.researchWorkspaces.length === 1 &&
+      created.researchWorkspaces[0].ownerUserId === created.ownerId,
+    "A new project must create only the owner's canonical shared Stage 2 workspace.",
   );
   assert(
     created.researchWorkspaces.every(
@@ -278,7 +280,12 @@ async function main() {
         workspace.folders.length === 7 &&
         new Set(workspace.folders.map((folder) => folder.systemKey)).size === 7,
     ),
-    "Every Stage 2 workspace needs exactly seven unique predefined folders.",
+    "The canonical Stage 2 workspace needs exactly seven unique predefined folders.",
+  );
+  assert(
+    created.privateFolders.length === 6 &&
+      new Set(created.privateFolders.map((folder) => folder.ownerUserId)).size === 6,
+    "Every owner, co-owner, executor, and collaborator needs one private folder.",
   );
   assert(
     created.category === null &&

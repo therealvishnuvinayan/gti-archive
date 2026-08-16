@@ -745,7 +745,7 @@ export function StageTwoFolderWorkspace({
           >
             {context === "research" ? (
               <ProjectBackButton
-                href={`/projects/${data.project.id}/stages/2?workspace=${encodeURIComponent(data.workspace.id)}`}
+                href={`/projects/${data.project.id}/stages/2`}
                 label="Research workspace"
                 ariaLabel="Back to Stage 2 Research Workspace"
               />
@@ -776,7 +776,7 @@ export function StageTwoFolderWorkspace({
                       ? `Only you can access this folder · ${files.length} ${files.length === 1 ? "file" : "files"}`
                       : context === "user-shared"
                         ? `Shared project reference · ${files.length} ${files.length === 1 ? "file" : "files"}`
-                        : `${data.workspace.ownerName}'s folder set · ${files.length} ${files.length === 1 ? "file" : "files"}`}
+                        : `Shared project research · ${files.length} ${files.length === 1 ? "file" : "files"}`}
                   </p>
                 </div>
               </div>

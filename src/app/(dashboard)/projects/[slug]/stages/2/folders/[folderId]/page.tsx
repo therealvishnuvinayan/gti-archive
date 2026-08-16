@@ -1,3 +1,6 @@
+import { UserRole } from "@prisma/client";
+import { redirect } from "next/navigation";
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectAccessUnavailableState } from "@/components/projects/project-route-state";
 import { StageTwoFolderWorkspace } from "@/components/projects/stage-two-folder-workspace";
@@ -7,13 +10,10 @@ import { decodeRouteParam } from "@/lib/route-params";
 
 export default async function ProjectResearchFolderPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string; folderId: string }>;
-  searchParams: Promise<{ workspace?: string }>;
 }) {
   const { slug, folderId: encodedFolderId } = await params;
-  const { workspace } = await searchParams;
   const folderId = decodeRouteParam(encodedFolderId);
   const user = await requireUser();
 
@@ -46,12 +46,10 @@ export default async function ProjectResearchFolderPage({
         />
       ) : (
         <ProjectAccessUnavailableState
-          parentHref={`/projects/${slug}/stages/2${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`}
+          parentHref={`/projects/${slug}/stages/2`}
           parentLabel="Research workspace"
         />
       )}
     </DashboardLayout>
   );
 }
-import { UserRole } from "@prisma/client";
-import { redirect } from "next/navigation";

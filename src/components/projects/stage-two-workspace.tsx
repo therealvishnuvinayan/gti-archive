@@ -16,7 +16,7 @@ import {
   ChevronRight,
   File,
   Folder,
-  FolderKanban,
+  FolderKey,
   Grid2X2,
   List,
   ListChecks,
@@ -35,7 +35,6 @@ import {
   deleteProjectResearchFolderAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/2/actions";
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
-import { ProjectSummaryStrip } from "@/components/projects/project-summary-strip";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,120 +63,6 @@ const sortLabels: Record<FolderSort, string> = {
   "name-desc": "Name (Z–A)",
   "files-desc": "Most files",
 };
-
-function getInitials(name: string) {
-  return (
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part) => part[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase() || "PF"
-  );
-}
-
-function ProjectSummary({ data }: { data: NonNullable<ProjectResearchPageData> }) {
-  const people = (names: string[], group: string) =>
-    names.map((name, index) => ({ id: `${group}-${index}`, name }));
-
-  return (
-    <ProjectSummaryStrip
-      projectName={data.project.name}
-      owner={
-        data.project.ownerName
-          ? { id: "project-owner", name: data.project.ownerName }
-          : null
-      }
-      coOwners={people(data.project.coOwnerNames, "co-owner")}
-      executors={people(data.project.executorNames, "executor")}
-      emptyPeopleLabel="None assigned"
-      columns="two"
-    />
-  );
-}
-
-function WorkspaceSwitch({
-  data,
-  compact = false,
-}: {
-  data: NonNullable<ProjectResearchPageData>;
-  compact?: boolean;
-}) {
-  const router = useRouter();
-  const selected = data.selectedWorkspace;
-
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden border border-[#dce6dd] bg-[linear-gradient(145deg,#f9fcf9_0%,#f1f8f3_100%)]",
-        compact
-          ? "rounded-[14px] px-2.5 py-2 shadow-none"
-          : "rounded-[20px] p-5 shadow-[0_14px_34px_rgba(31,78,51,0.07)]",
-      )}
-    >
-      <div className="relative">
-        <div className={cn("items-center justify-between gap-3", compact ? "hidden" : "flex")}>
-          <p className="text-[10px] font-[760] uppercase tracking-[0.13em] text-[#718078]">
-            Viewing folder set
-          </p>
-          {!selected.canWrite ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#e6ece7] px-2 py-1 text-[10px] font-[700] text-[#647168]">
-              <LockKeyhole className="h-3 w-3" /> Read-only
-            </span>
-          ) : null}
-        </div>
-        <div className={cn("flex items-center", compact ? "gap-2" : "mt-4 gap-3")}>
-          <span className={cn("grid shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#3b9666,#17613e)] font-[760] text-white", compact ? "size-8 text-[10px]" : "size-11 text-[13px]")}>
-            {getInitials(selected.ownerName)}
-          </span>
-          <div className={cn("min-w-0 flex-1", compact && "max-w-[160px]")}>
-            <p className={cn("truncate font-[740] text-[#1d2821]", compact ? "text-[12px]" : "text-[14px]")}>
-              {selected.ownerName}
-            </p>
-            <p className={cn("truncate text-[#718078]", compact ? "text-[10px]" : "mt-0.5 text-[11px]")}>{selected.role}</p>
-          </div>
-          {data.workspaceOptions.length > 1 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="secondary" size="sm" className="rounded-[12px] bg-white shadow-none">
-                  Switch <ChevronDown className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                collisionPadding={16}
-                className="min-w-[250px] overscroll-contain"
-                style={{
-                  maxHeight: "min(420px, var(--radix-dropdown-menu-content-available-height))",
-                  overflowY: "auto",
-                }}
-              >
-                <DropdownMenuLabel className="sticky top-0 z-10 bg-white">View folder set</DropdownMenuLabel>
-                {data.workspaceOptions.map((option) => (
-                  <DropdownMenuItem
-                    key={option.id}
-                    onSelect={() =>
-                      router.replace(
-                        `/projects/${data.project.id}/stages/2?workspace=${encodeURIComponent(option.id)}`,
-                      )
-                    }
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-[680]">{option.name}</span>
-                      <span className="block truncate text-[11px] text-[#7c8780]">{option.role}</span>
-                    </span>
-                    {selected.id === option.id ? <Check className="h-4 w-4 text-brand" /> : null}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function FolderArtwork({ action = false }: { action?: boolean }) {
   return (
@@ -333,7 +218,7 @@ function NewFolderDialog({
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-[22px] font-[760] tracking-[-0.03em] text-[#162019]">Create a folder</h2>
-              <p className="mt-1 text-[13px] text-[#6f7a72]">Add a flat custom folder to this participant&apos;s workspace.</p>
+              <p className="mt-1 text-[13px] text-[#6f7a72]">Add a flat custom folder to the shared project workspace.</p>
             </div>
             <Button type="button" variant="secondary" size="icon" onClick={onClose} disabled={pending}>
               <X className="h-4 w-4" /><span className="sr-only">Close</span>
@@ -371,11 +256,9 @@ function NewFolderDialog({
 export function StageTwoWorkspace({
   data,
   currentUserId,
-  showChrome = true,
 }: {
   data: NonNullable<ProjectResearchPageData>;
   currentUserId: string;
-  showChrome?: boolean;
 }) {
   const router = useRouter();
   const [view, setView] = useState<FolderView>("grid");
@@ -411,7 +294,7 @@ export function StageTwoWorkspace({
   }, [folderRecords, sort]);
 
   async function uploadFilesToFolder(folder: FolderRecord, files: File[]) {
-    if (!data.selectedWorkspace.canWrite || files.length === 0) return;
+    if (!data.sharedWorkspace.canWrite || files.length === 0) return;
 
     const progress = files.map(() => 0);
     setFolderUploads((current) => ({
@@ -466,7 +349,6 @@ export function StageTwoWorkspace({
     startTransition(async () => {
       const result = await createProjectResearchFolderAction({
         projectId: data.project.id,
-        workspaceId: data.selectedWorkspace.id,
         name,
       });
       if ("error" in result) {
@@ -494,7 +376,6 @@ export function StageTwoWorkspace({
     startTransition(async () => {
       const result = await deleteProjectResearchFolderAction({
         projectId: data.project.id,
-        workspaceId: data.selectedWorkspace.id,
         folderId: folder.id,
       });
       if ("error" in result) {
@@ -543,41 +424,18 @@ export function StageTwoWorkspace({
         if (event.dataTransfer.types.includes("Files")) event.preventDefault();
       }}
     >
-      {showChrome ? (
-        <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
-      ) : null}
+      <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
       <Card
-        className={cn(
-          "overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]",
-          !showChrome && "mt-5",
-        )}
+        className="mt-5 overflow-hidden rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]"
       >
         <CardContent className="p-0">
-          {showChrome ? <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
-            {showChrome ? <div className="flex items-center gap-2 text-[11px] font-[760] uppercase tracking-[0.13em] text-[#4d765d]">
-              <FolderKanban className="h-4 w-4" /> Shared research workspace
-            </div> : null}
-            {showChrome ? <h1 className="mt-3 text-[28px] font-[780] tracking-[-0.04em] text-[#111713] sm:text-[34px]">
-              Stage 2 - Project Research and Planning
-            </h1> : null}
-            <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <ProjectSummary data={data} />
-              <WorkspaceSwitch data={data} />
-            </div>
-          </div> : null}
-
-          <div className={cn("bg-[#fbfcfb] px-5 py-6 sm:px-7 lg:px-9 lg:py-7", showChrome && "border-t border-[#e9eee9]")}>
+          <div className="bg-[#fbfcfb] px-5 py-6 sm:px-7 lg:px-9 lg:py-7">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex items-start gap-3">
                 <span className="grid size-10 place-items-center rounded-[12px] bg-[#eaf4ec] text-[#2e754f]"><Folder className="h-5 w-5" /></span>
-                <div><h2 className="text-[18px] font-[750] text-[#1b261f]">Shared folders</h2><p className="mt-0.5 text-[12px] text-[#758078]">Files and folders in {data.selectedWorkspace.ownerName}&apos;s workspace.</p></div>
+                <div><h2 className="text-[18px] font-[750] text-[#1b261f]">Shared folders</h2><p className="mt-0.5 text-[12px] text-[#758078]">Shared project research files and folders.</p></div>
               </div>
               <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end xl:w-auto xl:flex-nowrap">
-                {!showChrome ? (
-                  <div className="min-w-0 sm:flex-1 xl:flex-none">
-                    <WorkspaceSwitch data={data} compact />
-                  </div>
-                ) : null}
                 <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
                   <div className="inline-flex shrink-0 rounded-[12px] border border-[#dce3dc] bg-white p-1">
                     {(["grid", "list"] as FolderView[]).map((option) => (
@@ -599,9 +457,9 @@ export function StageTwoWorkspace({
                   key={folder.id}
                   folder={folder}
                   view={view}
-                  href={`/projects/${data.project.id}/stages/2/folders/${folder.id}?workspace=${encodeURIComponent(data.selectedWorkspace.id)}`}
-                  canWrite={data.selectedWorkspace.canWrite}
-                  canDelete={data.selectedWorkspace.canDeleteFolders}
+                  href={`/projects/${data.project.id}/stages/2/folders/${folder.id}`}
+                  canWrite={data.sharedWorkspace.canWrite}
+                  canDelete={data.sharedWorkspace.canDeleteFolders}
                   upload={folderUploads[folder.id]}
                   onDropFiles={(targetFolder, files) =>
                     void uploadFilesToFolder(targetFolder, files)
@@ -612,11 +470,50 @@ export function StageTwoWorkspace({
                   }}
                 />
               ))}
-              {data.selectedWorkspace.canWrite ? (
+              {data.sharedWorkspace.canWrite ? (
                 <button type="button" onClick={() => { setFolderError(undefined); setDialogOpen(true); }} className={cn("group border border-dashed border-[#a9c6b2] bg-[linear-gradient(145deg,#f8fcf9,#eef7f1)] text-[#286b49]", view === "grid" ? "flex min-h-[154px] flex-col items-center justify-center rounded-[20px] p-5" : "flex w-full items-center gap-4 rounded-[17px] px-4 py-3.5")}>
                   <FolderArtwork action /><span className={view === "grid" ? "mt-3" : "flex-1 text-left"}><span className="block text-[14px] font-[720]">New Folder</span><span className="text-[11px] text-[#718079]">Create a new folder</span></span>
                 </button>
               ) : null}
+            </div>
+          </div>
+
+          <div className="border-t border-[#dfe6df] bg-white px-5 py-6 sm:px-7 lg:px-9 lg:py-7">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 place-items-center rounded-[12px] bg-[#edf1fb] text-[#52688f]"><FolderKey className="h-5 w-5" /></span>
+              <div>
+                <h2 className="text-[18px] font-[750] text-[#1b261f]">Private Folders</h2>
+                <p className="mt-0.5 text-[12px] text-[#758078]">Your private files are owner-only. Other participant folders are classified.</p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {data.myPrivateFolder ? (
+                <Link
+                  href={data.myPrivateFolder.href}
+                  className="group flex min-h-[154px] items-center gap-4 rounded-[20px] border border-[#cfdbea] bg-white p-5 shadow-[0_10px_28px_rgba(38,58,92,0.05)] transition hover:-translate-y-0.5 hover:border-[#aebfd8] hover:shadow-[0_18px_38px_rgba(38,58,92,0.1)]"
+                >
+                  <span className="grid size-14 shrink-0 place-items-center rounded-[16px] bg-[#edf1fb] text-[#52688f]"><FolderKey className="h-8 w-8" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] font-[740] text-[#202a23]">My Private Folder</span>
+                    <span className="mt-2 inline-flex rounded-full bg-[#edf1fb] px-2.5 py-1 text-[10px] font-[720] text-[#52688f]">Owner only</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-[#71809e] transition group-hover:translate-x-0.5" />
+                </Link>
+              ) : null}
+              {data.classifiedFolders.map((folder) => (
+                <div
+                  key={folder.key}
+                  title={`Classified — only ${folder.ownerName} can access this folder.`}
+                  className="flex min-h-[154px] cursor-default items-center gap-4 rounded-[20px] border border-[#e0e3e0] bg-[#f8f9f8] p-5"
+                >
+                  <span className="grid size-14 shrink-0 place-items-center rounded-[16px] bg-[#e8ebe9] text-[#69736c]"><LockKeyhole className="h-8 w-8" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] font-[740] text-[#353d37]">{folder.ownerName}&apos;s Folder</span>
+                    <span className="mt-1 block truncate text-[10px] text-[#858e87]">{folder.role}</span>
+                    <span className="mt-2 inline-flex rounded-full bg-[#e4e7e5] px-2.5 py-1 text-[10px] font-[800] uppercase tracking-[0.08em] text-[#59625c]">Classified</span>
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -634,7 +531,7 @@ export function StageTwoWorkspace({
         title="Delete folder?"
         description={
           folderToDelete
-            ? `Delete “${folderToDelete.name}” and every file inside it? This permanently removes them from your private workspace and cannot be undone.`
+            ? `Delete “${folderToDelete.name}” and every file inside it? This permanently removes them from the shared project workspace and cannot be undone.`
             : ""
         }
         confirmLabel="Delete folder"

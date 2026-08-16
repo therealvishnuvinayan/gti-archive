@@ -63,7 +63,6 @@ import {
   getProjectStageAccessRecordById,
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
-import { ensureProjectResearchWorkspace } from "@/lib/project-research";
 import { ensureProjectPrivateFolder } from "@/lib/project-private-folders";
 import { canViewProjectConcept } from "@/lib/project-concept-access";
 import {
@@ -1527,7 +1526,6 @@ export async function updateProjectCollaborators(
   );
 
   for (const userId of validIds) {
-    await ensureProjectResearchWorkspace(projectId, userId);
     await ensureProjectPrivateFolder(projectId, userId);
   }
 
@@ -1792,7 +1790,6 @@ export async function setProjectCollaboratorChatVisibility(
         },
       }),
     );
-    await ensureProjectResearchWorkspace(input.projectId, input.collaboratorId);
     await ensureProjectPrivateFolder(input.projectId, input.collaboratorId);
   }
 

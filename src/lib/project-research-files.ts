@@ -230,26 +230,22 @@ export async function deleteProjectResearchFile(
 
 export async function deleteProjectResearchFolder(
   user: ProjectHistoryAccessUser,
-  input: { projectId: string; workspaceId: string; folderId: string },
+  input: { projectId: string; folderId: string },
 ) {
-  const { folder: accessFolder, access } = await getResearchFolderAccess(user, {
+  const { access } = await getResearchFolderAccess(user, {
     projectId: input.projectId,
     folderId: input.folderId,
   });
 
-  if (accessFolder.workspaceId !== input.workspaceId) {
-    return { error: "Folder not found." } as const;
-  }
-
-  if (!access.canWrite || !access.isOwnWorkspace) {
+  if (!access.canWrite) {
     return {
-      error: "Only the owner of this private folder set can delete its folders.",
+      error: "You do not have permission to delete this shared folder.",
     } as const;
   }
 
   const folder = await withPrismaRetry(() =>
-    prisma.projectResearchFolder.findUnique({
-      where: { id: input.folderId },
+    prisma.projectResearchFolder.findFirst({
+      where: { id: input.folderId, workspaceId: access.workspaceId },
       select: {
         id: true,
         name: true,
@@ -259,7 +255,7 @@ export async function deleteProjectResearchFolder(
     }),
   );
 
-  if (!folder || folder.workspaceId !== input.workspaceId) {
+  if (!folder) {
     return { error: "Folder not found." } as const;
   }
 
@@ -272,7 +268,7 @@ export async function deleteProjectResearchFolder(
       where: {
         id: folder.id,
         workspaceId: folder.workspaceId,
-        workspace: { projectId: input.projectId, ownerUserId: user.id },
+        workspace: { projectId: input.projectId },
       },
     }),
   );

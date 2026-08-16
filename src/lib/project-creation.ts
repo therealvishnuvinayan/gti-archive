@@ -2,7 +2,7 @@ import { UserRole, type User } from "@prisma/client";
 
 import { normalizeProjectCollaboratorPermissions } from "./project-collaborator-permissions";
 import { prisma, withPrismaRetry } from "./prisma";
-import { ensureProjectResearchWorkspaceTx } from "./project-research";
+import { ensureCanonicalProjectResearchWorkspaceTx } from "./project-research";
 import { ensureProjectPrivateFolderTx } from "./project-private-folders";
 import { getInitialProjectWorkflowStageData } from "./project-workflow";
 import { isBusinessAdministratorRole } from "./user-role-compatibility";
@@ -222,8 +222,8 @@ export async function createProjectV2(
         },
       });
 
+      await ensureCanonicalProjectResearchWorkspaceTx(tx, project.id);
       for (const participantId of participantIds) {
-        await ensureProjectResearchWorkspaceTx(tx, project.id, participantId);
         await ensureProjectPrivateFolderTx(tx, project.id, participantId);
       }
 
@@ -537,8 +537,8 @@ export async function updateProjectV2(
         });
       }
 
+      await ensureCanonicalProjectResearchWorkspaceTx(tx, projectId);
       for (const participantId of participantIds) {
-        await ensureProjectResearchWorkspaceTx(tx, projectId, participantId);
         await ensureProjectPrivateFolderTx(tx, projectId, participantId);
       }
     }, { timeout: 30_000 }),

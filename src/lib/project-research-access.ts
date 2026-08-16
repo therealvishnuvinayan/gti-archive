@@ -28,7 +28,7 @@ export type ProjectResearchAccess = {
   projectId: string;
   workspaceId: string;
   workspaceOwnerUserId: string;
-  isOwnWorkspace: boolean;
+  isCanonicalWorkspace: boolean;
   canRead: boolean;
   canWrite: boolean;
   isProjectOwner: boolean;
@@ -59,7 +59,8 @@ export function getProjectResearchAccess(
   const isCollaborator = context.project.collaborators.some(
     (collaborator) => collaborator.userId === user.id,
   );
-  const isOwnWorkspace = context.workspaceOwnerUserId === user.id;
+  const isCanonicalWorkspace =
+    context.workspaceOwnerUserId === context.project.ownerId;
   const isProjectParticipant =
     isProjectOwner || isProjectCoOwner || isExecutor || isCollaborator;
   const workflowStatus = context.project.workflowStages.find(
@@ -71,7 +72,7 @@ export function getProjectResearchAccess(
     workflowStatus === ProjectWorkflowStageStatus.COMPLETED;
   const isCanonicalSharedFolder =
     user.role === UserRole.USER &&
-    context.workspaceOwnerUserId === context.project.ownerId &&
+    isCanonicalWorkspace &&
     (context.folderSystemKey === ProjectResearchFolderSystemKey.BRIEF ||
       context.folderSystemKey === ProjectResearchFolderSystemKey.TECH) &&
     isProjectParticipant;
@@ -80,9 +81,11 @@ export function getProjectResearchAccess(
     projectId: context.projectId,
     workspaceId: context.workspaceId,
     workspaceOwnerUserId: context.workspaceOwnerUserId,
-    isOwnWorkspace,
-    canRead: isCanonicalSharedFolder || (stageAvailable && isGlobalAdministrator),
-    canWrite: stageAvailable && isGlobalAdministrator,
+    isCanonicalWorkspace,
+    canRead:
+      isCanonicalSharedFolder ||
+      (isCanonicalWorkspace && stageAvailable && isGlobalAdministrator),
+    canWrite: isCanonicalWorkspace && stageAvailable && isGlobalAdministrator,
     isProjectOwner,
     isProjectCoOwner,
     isProjectParticipant,
@@ -93,21 +96,33 @@ export async function getResearchFolderAccess(
   user: Pick<PermissionUser, "id" | "role">,
   input: { projectId: string; folderId: string },
 ) {
+  const project = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id: input.projectId },
+      select: researchAccessProjectSelect,
+    }),
+  );
+
+  if (!project?.ownerId) {
+    throw new Error("Research folder not found.");
+  }
+  const ownerUserId = project.ownerId;
+
   const folder = await withPrismaRetry(() =>
     prisma.projectResearchFolder.findFirst({
       where: {
         id: input.folderId,
-        workspace: { projectId: input.projectId },
+        workspace: {
+          projectId: input.projectId,
+          ownerUserId,
+        },
       },
       select: {
         id: true,
         systemKey: true,
         workspaceId: true,
         workspace: {
-          select: {
-            ownerUserId: true,
-            project: { select: researchAccessProjectSelect },
-          },
+          select: { ownerUserId: true },
         },
       },
     }),
@@ -124,7 +139,7 @@ export async function getResearchFolderAccess(
       workspaceId: folder.workspaceId,
       workspaceOwnerUserId: folder.workspace.ownerUserId,
       folderSystemKey: folder.systemKey,
-      project: folder.workspace.project,
+      project,
     }),
   };
 }

@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, actions, service, access, files, storage, uploadClient, textFile, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
+const [workspace, folderWorkspace, assetPreview, page, folderPage, actions, service, access, files, storage, uploadClient, textFile, migration, schema, overview, uploadRoute, completeRoute, deleteRoute, downloadRoute] = await Promise.all([
   readFile("src/components/projects/stage-two-workspace.tsx", "utf8"),
-  readFile("src/components/projects/project-summary-strip.tsx", "utf8"),
   readFile("src/components/projects/stage-two-folder-workspace.tsx", "utf8"),
   readFile("src/components/projects/asset-preview-button.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/stages/2/page.tsx", "utf8"),
@@ -25,22 +24,7 @@ const [workspace, summary, folderWorkspace, assetPreview, page, folderPage, acti
 ]);
 
 assert(
-  workspace.includes("ProjectSummaryStrip") &&
-    workspace.includes('columns="two"') &&
-    summary.includes("people.slice(0, 1)") &&
-    summary.includes("+{remainingCount}"),
-  "Stage 2 must reuse the compact shared participant summary in its two-column panel.",
-);
-assert(
-  workspace.includes("<WorkspaceSwitch data={data} compact />") &&
-    workspace.includes("compact = false") &&
-    !workspace.includes("{showChrome ? <ProjectSummary data={data} /> : <div />}") &&
-    workspace.includes('!showChrome && "mt-5"'),
-  "Streamed Stage 2 must use a compact folder-set switch without an empty header column.",
-);
-assert(
   workspace.includes("gap-4 xl:flex-row xl:items-center xl:justify-between") &&
-    workspace.includes("min-w-0 sm:flex-1 xl:flex-none") &&
     workspace.includes("flex w-full min-w-0 items-center gap-2 sm:w-auto") &&
     workspace.includes("min-w-0 flex-1 justify-between rounded-[12px]") &&
     workspace.includes('<span className="truncate">{sortLabels[sort]}</span>'),
@@ -50,17 +34,35 @@ assert(
 for (const folderName of ["Brief", "Market & Competition", "Tech", "Vendors", "Finance", "Legal", "Pitch"]) {
   assert(service.includes(`name: "${folderName}"`), `Missing predefined Stage 2 folder: ${folderName}`);
 }
-for (const text of ["Stage 2 - Project Research and Planning", "Viewing folder set", "Shared folders", "New Folder", "Next Stage", "All Stages", "Default order", "Name (A–Z)", "Read-only"]) {
-  assert(workspace.includes(text), `Missing connected Stage 2 UI content: ${text}`);
+for (const text of ["Shared folders", "Shared project research files and folders.", "Private Folders", "My Private Folder", "Classified", "New Folder", "Next Stage", "All Stages", "Default order", "Name (A–Z)"]) {
+  assert(`${workspace}\n${page}`.includes(text), `Missing connected Stage 2 UI content: ${text}`);
 }
-assert(workspace.includes("workspace=${encodeURIComponent(option.id)}"), "Workspace switching must use stable URL state.");
 assert(
-  workspace.includes("collisionPadding={16}") &&
-    workspace.includes('maxHeight: "min(420px, var(--radix-dropdown-menu-content-available-height))"') &&
-    workspace.includes('overflowY: "auto"') &&
-    workspace.includes("overscroll-contain") &&
-    workspace.includes('className="sticky top-0 z-10 bg-white"'),
-  "The workspace switch menu must remain inside the viewport with an independently scrollable user list.",
+  !workspace.includes("WorkspaceSwitch") &&
+    !workspace.includes("workspaceOptions") &&
+    !workspace.includes("Viewing folder set") &&
+    !workspace.includes("workspace=") &&
+    !page.includes("searchParams") &&
+    !folderPage.includes("searchParams") &&
+    !folderWorkspace.includes("workspace="),
+  "Stage 2 must not expose or honor participant-workspace switching state.",
+);
+assert(
+  service.includes("projectId_ownerUserId") &&
+    service.includes("ownerUserId") &&
+    service.includes("sharedWorkspace") &&
+    !service.includes("requestedWorkspaceId") &&
+    !service.includes("workspaceOptions") &&
+    !service.includes("projectResearchWorkspace.findMany"),
+  "Stage 2 landing data must resolve only the project owner's canonical shared workspace.",
+);
+assert(
+  workspace.includes("data.myPrivateFolder.href") &&
+    workspace.includes("data.classifiedFolders.map") &&
+    workspace.includes('LockKeyhole className="h-8 w-8"') &&
+    service.includes("projectPrivateFolder.findUnique") &&
+    !service.includes("projectPrivateFolder.findMany"),
+  "Stage 2 private-folder cards must expose only the current participant's folder and classified placeholders.",
 );
 assert(
   workspace.includes('const stageThreeHref = `/projects/${data.project.id}/stages/3`') &&
@@ -71,12 +73,12 @@ assert(
 assert(workspace.includes("createProjectResearchFolderAction") && actions.includes("createProjectResearchFolder"), "New Folder must call the persisted server action.");
 assert(
   workspace.includes("deleteProjectResearchFolderAction") &&
-    workspace.includes("canDelete={data.selectedWorkspace.canDeleteFolders}") &&
+    workspace.includes("canDelete={data.sharedWorkspace.canDeleteFolders}") &&
     workspace.includes('title="Delete folder?"') &&
     actions.includes("deleteProjectResearchFolder") &&
-    files.includes("!access.canWrite || !access.isOwnWorkspace") &&
+    files.includes("if (!access.canWrite)") &&
     files.includes("deleteAttachmentForUser(user, file.attachmentId)"),
-  "Folder deletion must be confirmed, remove contained files, and remain strictly private to the workspace owner.",
+  "Folder deletion must be confirmed, remove contained files, and require shared-workspace manager access.",
 );
 assert(
   service.includes("if (existingWorkspace)") &&
@@ -280,7 +282,13 @@ assert(
   ),
   "Encoded research folder ids must be decoded at every dynamic route boundary.",
 );
-assert(access.includes("isGlobalProjectAdministrator") && access.includes("isOwnWorkspace") && access.includes("isProjectCoOwner"), "Workspace access must enforce global administrator authority and standard-user relationships.");
+assert(
+  access.includes("isGlobalProjectAdministrator") &&
+    access.includes("isCanonicalWorkspace") &&
+    access.includes("context.workspaceOwnerUserId === context.project.ownerId") &&
+    access.includes("isProjectCoOwner"),
+  "Workspace access must enforce global administrator authority and canonical owner-workspace identity.",
+);
 assert(files.includes("assertResearchFolderWriteAccess") && files.includes("getAttachmentDownloadUrlForUser") && files.includes("deleteAttachmentForUser"), "Research files must reuse secured attachment infrastructure.");
 assert(
   files.includes("projectResearchFolderFile.findUnique") &&

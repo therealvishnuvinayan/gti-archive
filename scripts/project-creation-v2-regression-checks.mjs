@@ -73,7 +73,7 @@ for (const snippet of [
   "membershipIds",
   "isExecutor: executorIdSet.has(participant.id)",
   "skipDuplicates: true",
-  "ensureProjectResearchWorkspaceTx",
+  "ensureCanonicalProjectResearchWorkspaceTx",
   'type: "COLLABORATOR_ADDED"',
   "tx.notification.createMany",
 ]) {

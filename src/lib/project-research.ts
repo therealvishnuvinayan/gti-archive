@@ -15,7 +15,10 @@ import {
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import { getProjectStageAccessRecordById } from "@/lib/project-stage-data";
-import { getProjectResearchAccess } from "@/lib/project-research-access";
+import {
+  getProjectResearchAccess,
+  getResearchFolderAccess,
+} from "@/lib/project-research-access";
 
 export const PROJECT_RESEARCH_SYSTEM_FOLDERS = [
   { key: ProjectResearchFolderSystemKey.BRIEF, name: "Brief", sortOrder: 1 },
@@ -43,11 +46,24 @@ export function cleanProjectResearchFolderName(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
-export async function ensureProjectResearchWorkspaceTx(
+export async function ensureCanonicalProjectResearchWorkspaceTx(
   tx: Prisma.TransactionClient,
   projectId: string,
-  ownerUserId: string,
 ) {
+  const project = await tx.project.findUnique({
+    where: { id: projectId },
+    select: { ownerId: true },
+  });
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  if (!project.ownerId) {
+    throw new Error("Project owner is required for the shared research workspace.");
+  }
+
+  const ownerUserId = project.ownerId;
   const existingWorkspace = await tx.projectResearchWorkspace.findUnique({
     where: { projectId_ownerUserId: { projectId, ownerUserId } },
     select: { id: true },
@@ -75,54 +91,10 @@ export async function ensureProjectResearchWorkspaceTx(
   });
 }
 
-export async function ensureProjectResearchWorkspace(
-  projectId: string,
-  ownerUserId: string,
-) {
+export async function ensureCanonicalProjectResearchWorkspace(projectId: string) {
   return withPrismaRetry(() =>
     prisma.$transaction((tx) =>
-      ensureProjectResearchWorkspaceTx(tx, projectId, ownerUserId),
-    ),
-  );
-}
-
-export async function ensureProjectResearchWorkspacesForProjectTx(
-  tx: Prisma.TransactionClient,
-  projectId: string,
-) {
-  const project = await tx.project.findUnique({
-    where: { id: projectId },
-    select: {
-      ownerId: true,
-      coOwners: { select: { userId: true } },
-      executors: { select: { userId: true } },
-      collaborators: { select: { userId: true } },
-    },
-  });
-
-  if (!project) {
-    throw new Error("Project not found.");
-  }
-
-  const participantIds = new Set([
-    ...(project.ownerId ? [project.ownerId] : []),
-    ...project.coOwners.map((record) => record.userId),
-    ...project.executors.map((record) => record.userId),
-    ...project.collaborators.map((record) => record.userId),
-  ]);
-
-  for (const participantId of participantIds) {
-    await ensureProjectResearchWorkspaceTx(tx, projectId, participantId);
-  }
-
-  return [...participantIds];
-}
-
-export async function ensureProjectResearchWorkspacesForProject(projectId: string) {
-  return withPrismaRetry(() =>
-    prisma.$transaction(
-      (tx) => ensureProjectResearchWorkspacesForProjectTx(tx, projectId),
-      { timeout: 30_000 },
+      ensureCanonicalProjectResearchWorkspaceTx(tx, projectId),
     ),
   );
 }
@@ -168,7 +140,6 @@ export type ProjectResearchPageData = Awaited<
 export async function getProjectResearchPageData(
   user: ResearchUser,
   projectId: string,
-  requestedWorkspaceId?: string | null,
 ) {
   const project = await getProjectStageAccessRecordById(projectId);
 
@@ -183,11 +154,6 @@ export async function getProjectResearchPageData(
     )?.status,
   );
 
-  const isGlobalAdministrator = isGlobalProjectAdministrator(user);
-  const isOwner = project.ownerId === user.id;
-  const isCoOwner = project.coOwners.some((record) => record.userId === user.id);
-  const isExecutor = project.executors.some((record) => record.userId === user.id);
-  const isCollaborator = project.collaborators.some((record) => record.userId === user.id);
   const participantIds = new Set([
     ...(project.ownerId ? [project.ownerId] : []),
     ...project.coOwners.map((record) => record.userId),
@@ -195,52 +161,31 @@ export async function getProjectResearchPageData(
     ...project.collaborators.map((record) => record.userId),
   ]);
 
-  if (
-    !isGlobalAdministrator &&
-    !isOwner &&
-    !isCoOwner &&
-    !isExecutor &&
-    !isCollaborator
-  ) {
+  if (!isGlobalProjectAdministrator(user) || !project.ownerId) {
     return null;
   }
+  const ownerUserId = project.ownerId;
 
-  const workspaces = await withPrismaRetry(() =>
-    prisma.projectResearchWorkspace.findMany({
+  const sharedWorkspace = await withPrismaRetry(() =>
+    prisma.projectResearchWorkspace.findUnique({
       where: {
-        projectId,
-        ownerUserId:
-          !isGlobalAdministrator && !isOwner && !isCoOwner
-            ? user.id
-            : { in: [...participantIds] },
+        projectId_ownerUserId: { projectId, ownerUserId },
       },
-      relationLoadStrategy: "join",
       select: {
         id: true,
         ownerUserId: true,
-        owner: { select: { id: true, name: true, email: true } },
       },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }),
   );
 
-  if (workspaces.length === 0) {
+  if (!sharedWorkspace) {
     return null;
   }
 
-  const ownWorkspace = workspaces.find((workspace) => workspace.ownerUserId === user.id);
-  const requestedWorkspace = workspaces.find(
-    (workspace) => workspace.id === requestedWorkspaceId,
-  );
-  const ownerWorkspace = workspaces.find(
-    (workspace) => workspace.ownerUserId === project.ownerId,
-  );
-  const selectedWorkspace =
-    requestedWorkspace ?? ownWorkspace ?? ownerWorkspace ?? workspaces[0];
   const access = getProjectResearchAccess(user, {
     projectId,
-    workspaceId: selectedWorkspace.id,
-    workspaceOwnerUserId: selectedWorkspace.ownerUserId,
+    workspaceId: sharedWorkspace.id,
+    workspaceOwnerUserId: sharedWorkspace.ownerUserId,
     project,
   });
 
@@ -248,25 +193,37 @@ export async function getProjectResearchPageData(
     return null;
   }
 
-  const folders = await withPrismaRetry(() =>
-    prisma.projectResearchFolder.findMany({
-      where: { workspaceId: selectedWorkspace.id },
-      relationLoadStrategy: "join",
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: {
-        id: true,
-        name: true,
-        isSystem: true,
-        systemKey: true,
-        sortOrder: true,
-        _count: {
-          select: {
-            files: { where: { attachment: { status: AttachmentStatus.READY } } },
+  const [folders, ownPrivateFolder] = await Promise.all([
+    withPrismaRetry(() =>
+      prisma.projectResearchFolder.findMany({
+        where: { workspaceId: sharedWorkspace.id },
+        relationLoadStrategy: "join",
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          isSystem: true,
+          systemKey: true,
+          sortOrder: true,
+          _count: {
+            select: {
+              files: { where: { attachment: { status: AttachmentStatus.READY } } },
+            },
           },
         },
-      },
-    }),
-  );
+      }),
+    ),
+    participantIds.has(user.id)
+      ? withPrismaRetry(() =>
+          prisma.projectPrivateFolder.findUnique({
+            where: {
+              projectId_ownerUserId: { projectId, ownerUserId: user.id },
+            },
+            select: { id: true },
+          }),
+        )
+      : Promise.resolve(null),
+  ]);
 
   const participantRole = new Map<string, string>();
   if (project.owner) participantRole.set(project.owner.id, "Project Owner");
@@ -284,29 +241,17 @@ export async function getProjectResearchPageData(
     project: {
       id: project.id,
       name: project.name,
-      ownerName: project.owner ? displayName(project.owner) : "Not assigned",
-      coOwnerNames: project.coOwners.map((record) => displayName(record.user)),
-      executorNames: project.executors.map((record) => displayName(record.user)),
     },
     workflowStatus:
       project.workflowStages.find(
         (stage) =>
           stage.stageKey === ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
       )?.status ?? ProjectWorkflowStageStatus.LOCKED,
-    selectedWorkspace: {
-      id: selectedWorkspace.id,
-      ownerUserId: selectedWorkspace.ownerUserId,
-      ownerName: displayName(selectedWorkspace.owner),
-      role: participantRole.get(selectedWorkspace.ownerUserId) ?? "Project Participant",
+    sharedWorkspace: {
+      id: sharedWorkspace.id,
       canWrite: access.canWrite,
-      canDeleteFolders: access.canWrite && access.isOwnWorkspace,
+      canDeleteFolders: access.canWrite,
     },
-    workspaceOptions: workspaces.map((workspace) => ({
-      id: workspace.id,
-      ownerUserId: workspace.ownerUserId,
-      name: displayName(workspace.owner),
-      role: participantRole.get(workspace.ownerUserId) ?? "Project Participant",
-    })),
     folders: folders.map((folder) => ({
       id: folder.id,
       name: folder.name,
@@ -315,12 +260,37 @@ export async function getProjectResearchPageData(
       sortOrder: folder.sortOrder,
       fileCount: folder._count.files,
     })),
+    myPrivateFolder: ownPrivateFolder
+      ? {
+          href: `/projects/${projectId}/workspace/private/${ownPrivateFolder.id}`,
+        }
+      : null,
+    classifiedFolders: [...participantIds]
+      .filter((participantId) => participantId !== user.id)
+      .map((participantId) => {
+        const participant =
+          project.owner?.id === participantId
+            ? project.owner
+            : project.coOwners.find((record) => record.userId === participantId)?.user ??
+              project.executors.find((record) => record.userId === participantId)?.user ??
+              project.collaborators.find((record) => record.userId === participantId)?.user;
+
+        return participant
+          ? {
+              ownerName: displayName(participant),
+              role: participantRole.get(participantId) ?? "Project Participant",
+            }
+          : null;
+      })
+      .filter((folder): folder is { ownerName: string; role: string } => Boolean(folder))
+      .sort((left, right) => left.ownerName.localeCompare(right.ownerName))
+      .map((folder, index) => ({ key: `classified-${index + 1}`, ...folder })),
   };
 }
 
 export async function createProjectResearchFolder(
   user: ResearchUser,
-  input: { projectId: string; workspaceId: string; name: string },
+  input: { projectId: string; name: string },
 ) {
   const name = cleanProjectResearchFolderName(input.name);
 
@@ -334,13 +304,24 @@ export async function createProjectResearchFolder(
     } as const;
   }
 
+  const project = await getProjectStageAccessRecordById(input.projectId);
+
+  if (!project?.ownerId) {
+    return { error: "Shared research workspace not found." } as const;
+  }
+  const ownerUserId = project.ownerId;
+
   const workspace = await withPrismaRetry(() =>
-    prisma.projectResearchWorkspace.findFirst({
-      where: { id: input.workspaceId, projectId: input.projectId },
+    prisma.projectResearchWorkspace.findUnique({
+      where: {
+        projectId_ownerUserId: {
+          projectId: input.projectId,
+          ownerUserId,
+        },
+      },
       select: {
         id: true,
         ownerUserId: true,
-        project: { select: researchProjectSelect },
       },
     }),
   );
@@ -353,7 +334,7 @@ export async function createProjectResearchFolder(
     projectId: input.projectId,
     workspaceId: workspace.id,
     workspaceOwnerUserId: workspace.ownerUserId,
-    project: workspace.project,
+    project,
   });
 
   if (!access.canWrite) {
@@ -364,7 +345,7 @@ export async function createProjectResearchFolder(
     const folder = await withPrismaRetry(() =>
       prisma.projectResearchFolder.create({
         data: {
-          workspaceId: input.workspaceId,
+          workspaceId: workspace.id,
           name,
           normalizedName: normalizeProjectResearchFolderName(name),
           isSystem: false,
@@ -388,11 +369,19 @@ export async function getProjectResearchFolderPageData(
   user: ResearchUser,
   input: { projectId: string; folderId: string },
 ) {
+  const { access } = await getResearchFolderAccess(user, input).catch(() => ({
+    access: null,
+  }));
+
+  if (!access?.canRead) {
+    return null;
+  }
+
   const folder = await withPrismaRetry(() =>
     prisma.projectResearchFolder.findFirst({
       where: {
         id: input.folderId,
-        workspace: { projectId: input.projectId },
+        workspaceId: access.workspaceId,
       },
       relationLoadStrategy: "join",
       select: {
@@ -431,18 +420,6 @@ export async function getProjectResearchFolderPageData(
   );
 
   if (!folder) {
-    return null;
-  }
-
-  const access = getProjectResearchAccess(user, {
-    projectId: input.projectId,
-    workspaceId: folder.workspace.id,
-    workspaceOwnerUserId: folder.workspace.ownerUserId,
-    folderSystemKey: folder.systemKey,
-    project: folder.workspace.project,
-  });
-
-  if (!access.canRead) {
     return null;
   }
 

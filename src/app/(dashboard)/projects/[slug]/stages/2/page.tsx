@@ -48,11 +48,9 @@ async function StageTwoUnavailableContent({
 async function StageTwoContent({
   slug,
   userPromise,
-  workspaceId,
 }: {
   slug: string;
   userPromise: Promise<StageTwoPageUser>;
-  workspaceId?: string;
 }) {
   const user = await userPromise;
   const project = await getProjectStageShellById(slug, user);
@@ -94,7 +92,6 @@ async function StageTwoContent({
         <StageTwoDataContent
           slug={slug}
           user={user}
-          workspaceId={workspaceId}
         />
       </Suspense>
     </section>
@@ -104,16 +101,14 @@ async function StageTwoContent({
 async function StageTwoDataContent({
   slug,
   user,
-  workspaceId,
 }: {
   slug: string;
   user: StageTwoPageUser;
-  workspaceId?: string;
 }) {
   let data = null;
 
   try {
-    data = await getProjectResearchPageData(user, slug, workspaceId);
+    data = await getProjectResearchPageData(user, slug);
   } catch {
     data = null;
   }
@@ -124,23 +119,19 @@ async function StageTwoDataContent({
 
   return (
     <StageTwoWorkspace
-      key={data.selectedWorkspace.id}
+      key={data.sharedWorkspace.id}
       data={data}
       currentUserId={user.id}
-      showChrome={false}
     />
   );
 }
 
 export default async function StageTwoPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ workspace?: string }>;
 }) {
   const { slug } = await params;
-  const { workspace } = await searchParams;
   const user = await requireUser();
 
   if (!isBusinessAdministratorRole(user.role)) {
@@ -157,7 +148,7 @@ export default async function StageTwoPage({
       }}
     >
       <Suspense fallback={<StageRouteInitialShell />}>
-        <StageTwoContent slug={slug} userPromise={userPromise} workspaceId={workspace} />
+        <StageTwoContent slug={slug} userPromise={userPromise} />
       </Suspense>
     </DashboardLayout>
   );

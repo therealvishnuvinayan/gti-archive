@@ -85,8 +85,11 @@ assert.match(history, /Use the private folder upload endpoint/);
 
 assert.match(researchAccess, /ProjectResearchFolderSystemKey\.BRIEF/);
 assert.match(researchAccess, /ProjectResearchFolderSystemKey\.TECH/);
-assert.match(researchAccess, /canWrite: stageAvailable && isGlobalAdministrator/);
-assert.match(stageTwoPage, /user\.role === UserRole\.USER/);
+assert.match(
+  researchAccess,
+  /canWrite: isCanonicalWorkspace && stageAvailable && isGlobalAdministrator/,
+);
+assert.match(stageTwoPage, /!isBusinessAdministratorRole\(user\.role\)/);
 assert.match(stageTwoPage, /redirect\(`\/projects\/\$\{slug\}`\)/);
 assert.match(stageTwoFolderPage, /user\.role === UserRole\.USER/);
 assert.match(conceptRoute, /user\.role === UserRole\.USER/);

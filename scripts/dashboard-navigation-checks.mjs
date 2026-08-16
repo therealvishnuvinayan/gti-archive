@@ -52,7 +52,7 @@ for (const stage of ["1", "2", "3", "4", "5", "6", "7"]) {
   });
 }
 
-expectNavigation("/projects/project-1/stages/2/folders/folder-1", { owner: "page" }, "workspace=workspace-1");
+expectNavigation("/projects/project-1/stages/2/folders/folder-1", { owner: "page" });
 expectNavigation("/projects/project-1/stages/3/concepts/concept-1", {
   owner: "topbar",
   href: "/projects/project-1/stages/3#concept-folders",
@@ -128,7 +128,8 @@ assert.equal(
   "The shared folder workspace must define one contextual parent control per research/private context.",
 );
 assert(
-  stageTwoFolder.includes("?workspace=${encodeURIComponent(data.workspace.id)}") &&
+  stageTwoFolder.includes('href={`/projects/${data.project.id}/stages/2`}') &&
+    !stageTwoFolder.includes("workspace=") &&
     stageTwoFolder.includes('ariaLabel="Back to Stage 2 Research Workspace"') &&
     stageTwoFolder.includes('ariaLabel="Back to project workspace"') &&
     !stageTwoFolderPage.includes("leadingContent"),

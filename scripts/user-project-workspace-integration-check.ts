@@ -315,7 +315,6 @@ async function main() {
     );
     const forbiddenFolder = await createProjectResearchFolder(users.userOne, {
       projectId,
-      workspaceId: ownerWorkspace.id,
       name: "Forbidden USER Folder",
     });
     check(isError(forbiddenFolder), "USER folder creation in research must be denied");

@@ -12,7 +12,6 @@ import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 export async function createProjectResearchFolderAction(input: {
   projectId: string;
-  workspaceId: string;
   name: string;
 }) {
   const user = await requireUser();
@@ -31,7 +30,6 @@ export async function createProjectResearchFolderAction(input: {
 
 export async function deleteProjectResearchFolderAction(input: {
   projectId: string;
-  workspaceId: string;
   folderId: string;
 }) {
   const user = await requireUser();
