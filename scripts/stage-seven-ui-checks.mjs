@@ -43,7 +43,8 @@ for (const content of [
   "Physical Sample Review",
   "Accept Sample",
   "Reject Sample",
-  "Retry Email",
+  "Resend Request",
+  "Delete Request",
   "Received",
   "Not Received",
   "Accept / Reject",
@@ -129,8 +130,9 @@ assert(
   workspace.indexOf("Physical Sample Review") < workspace.lastIndexOf("Request Note") &&
     workspace.indexOf("Reject Sample") < workspace.indexOf("Review Note") &&
     workspace.includes("provider email was not delivered") &&
-    workspace.indexOf("Retry Email") < workspace.indexOf("Request Created"),
-  "Review decisions and email retry must stay at the top of the selected request panel.",
+    workspace.indexOf("Resend Request") < workspace.indexOf("Request Created") &&
+    workspace.indexOf("Delete Request") < workspace.indexOf("Request Created"),
+  "Review decisions, resend, and delete actions must stay at the top of the selected request panel.",
 );
 assert(
   workspace.includes("const canRequest = Boolean(selectedUnit && data.canManage") &&
@@ -144,6 +146,7 @@ assert(
 for (const action of [
   "createProductionSampleRoundAction",
   "retryProductionSampleRequestEmailAction",
+  "deleteProductionSampleRoundAction",
   "decidePhysicalSampleRoundAction",
   "closeStageSevenProjectAction",
 ]) {
@@ -212,6 +215,19 @@ assert(
     service.includes("return { duplicate: true }") &&
     workspace.includes("The request is saved, but the provider email was not delivered."),
   "Sample requests must persist before delivery and support audited, idempotent retry.",
+);
+assert(
+  service.includes("export async function deleteProductionSampleRound") &&
+    service.includes("Accepted or rejected sample requests cannot be deleted.") &&
+    service.includes("tx.notification.deleteMany") &&
+    service.includes("tx.productionSampleRound.deleteMany") &&
+    service.includes("latestRemainingRound") &&
+    service.includes('reason: "deleted"') &&
+    service.includes("ProductionDispatchStatus.SENT") &&
+    workspace.includes('title="Delete physical sample request?"') &&
+    workspace.includes('confirmLabel="Delete Request"') &&
+    workspace.includes('tone="destructive"'),
+  "Managers must be able to resend or delete undecided requests with a destructive custom confirmation while decided history remains immutable.",
 );
 assert(
   service.includes("PhysicalSampleDecision.ACCEPTED") &&

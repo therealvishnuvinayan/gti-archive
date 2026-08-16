@@ -977,7 +977,7 @@ export async function retryProductionSampleRequestEmail(
   options: { sendEmail?: EmailSender } = {},
 ) {
   await getManagerProject(user, input.projectId);
-  const claimed = await serializable(async (tx) => {
+  await serializable(async (tx) => {
     await assertStageSevenActive(tx, input.projectId);
     const round = await tx.productionSampleRound.findFirst({
       where: {
@@ -996,14 +996,19 @@ export async function retryProductionSampleRequestEmail(
           },
         },
       },
-      select: { id: true, decision: true, emailStatus: true },
+      select: {
+        id: true,
+        decision: true,
+        emailStatus: true,
+        supervision: { select: { status: true } },
+      },
     });
     if (!round) throw new StageSevenWorkflowError("Sample request not found.");
     if (round.decision) {
       throw new StageSevenWorkflowError("Decided sample requests are read-only.");
     }
-    if (round.emailStatus === ProductionDispatchStatus.SENT) {
-      return { duplicate: true } as const;
+    if (round.supervision.status === ProductionSupervisionStatus.SIGNED_OFF) {
+      throw new StageSevenWorkflowError("Accepted Production Units are read-only.");
     }
     if (round.emailStatus === ProductionDispatchStatus.PENDING) {
       throw new StageSevenWorkflowError("This sample request email is already being sent.");
@@ -1012,7 +1017,11 @@ export async function retryProductionSampleRequestEmail(
       where: {
         id: round.id,
         emailStatus: {
-          in: [ProductionDispatchStatus.FAILED, ProductionDispatchStatus.NOT_SENT],
+          in: [
+            ProductionDispatchStatus.FAILED,
+            ProductionDispatchStatus.NOT_SENT,
+            ProductionDispatchStatus.SENT,
+          ],
         },
         decision: null,
       },
@@ -1023,17 +1032,10 @@ export async function retryProductionSampleRequestEmail(
       },
     });
     if (!updated.count) {
-      throw new StageSevenWorkflowError("This sample request email could not be claimed for retry.");
+      throw new StageSevenWorkflowError("This sample request email could not be claimed for sending.");
     }
-    return { duplicate: false } as const;
+    return true;
   });
-  if (claimed.duplicate) {
-    return {
-      duplicate: true,
-      emailStatus: ProductionDispatchStatus.SENT,
-      emailError: null,
-    } as const;
-  }
   const delivery = await deliverSampleRequestEmail(
     input.sampleRoundId,
     options.sendEmail ?? sendResendEmail,
@@ -1043,6 +1045,90 @@ export async function retryProductionSampleRequestEmail(
     emailStatus: delivery.status,
     emailError: delivery.error,
   } as const;
+}
+
+export async function deleteProductionSampleRound(
+  user: PermissionUser,
+  input: { projectId: string; productionUnitId: string; sampleRoundId: string },
+) {
+  await getManagerProject(user, input.projectId);
+  const deleted = await serializable(async (tx) => {
+    await assertStageSevenActive(tx, input.projectId);
+    const round = await tx.productionSampleRound.findFirst({
+      where: {
+        id: input.sampleRoundId,
+        projectId: input.projectId,
+        supervision: {
+          productionUnitId: input.productionUnitId,
+          productionUnit: {
+            projectId: input.projectId,
+            status: {
+              in: [
+                ProjectProductionUnitStatus.HANDOVER_READY,
+                ProjectProductionUnitStatus.HANDED_OVER,
+              ],
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        decision: true,
+        recipientUserId: true,
+        supervisionId: true,
+        supervision: { select: { status: true } },
+      },
+    });
+    if (!round) throw new StageSevenWorkflowError("Sample request not found.");
+    if (round.decision) {
+      throw new StageSevenWorkflowError(
+        "Accepted or rejected sample requests cannot be deleted.",
+      );
+    }
+    await tx.notification.deleteMany({
+      where: {
+        entityType: NotificationEntityType.SAMPLE_ROUND,
+        entityId: round.id,
+      },
+    });
+    const removed = await tx.productionSampleRound.deleteMany({
+      where: { id: round.id, decision: null },
+    });
+    if (!removed.count) {
+      throw new StageSevenWorkflowError(
+        "This sample request was completed before it could be deleted.",
+      );
+    }
+
+    const latestRemainingRound = await tx.productionSampleRound.findFirst({
+      where: { supervisionId: round.supervisionId },
+      orderBy: [{ sequence: "desc" }, { id: "desc" }],
+      select: { decision: true },
+    });
+    if (round.supervision.status !== ProductionSupervisionStatus.SIGNED_OFF) {
+      await tx.projectProductionSupervision.update({
+        where: { id: round.supervisionId },
+        data: {
+          status: !latestRemainingRound
+            ? ProductionSupervisionStatus.NOT_STARTED
+            : latestRemainingRound.decision === PhysicalSampleDecision.REJECTED
+              ? ProductionSupervisionStatus.REVISIONS_NEEDED
+              : ProductionSupervisionStatus.IN_REVIEW,
+          signedOffById: null,
+          signedOffAt: null,
+        },
+      });
+    }
+    return { recipientUserId: round.recipientUserId };
+  });
+
+  if (deleted.recipientUserId) {
+    await publishNotificationChanges({
+      recipientUserIds: [deleted.recipientUserId],
+      reason: "deleted",
+    });
+  }
+  return { deleted: true } as const;
 }
 
 export async function decidePhysicalSampleRound(

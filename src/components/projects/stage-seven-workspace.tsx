@@ -27,6 +27,7 @@ import {
   Plus,
   RefreshCw,
   Send,
+  Trash2,
   X,
   XCircle,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import {
 import {
   closeStageSevenProjectAction,
   createProductionSampleRoundAction,
+  deleteProductionSampleRoundAction,
   decidePhysicalSampleRoundAction,
   retryProductionSampleRequestEmailAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/7/actions";
@@ -511,13 +513,11 @@ function SampleRequestDetails({
   const [pending, startPending] = useTransition();
   const [reviewNote, setReviewNote] = useState(round?.decisionNote ?? "");
   const [confirm, setConfirm] = useState<PhysicalSampleDecision | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const decided = Boolean(round?.decision);
+  const canDelete = Boolean(round && canManage && !stageCompleted && !decided);
   const mutable = Boolean(
-    round &&
-      canManage &&
-      !stageCompleted &&
-      !decided &&
-      unit.status !== ProductionSupervisionStatus.SIGNED_OFF,
+    canDelete && unit.status !== ProductionSupervisionStatus.SIGNED_OFF,
   );
   const reviewAutosave = useProjectFormAutosave({
     projectId,
@@ -533,16 +533,35 @@ function SampleRequestDetails({
 
   const roundId = round.id;
 
-  function retryEmail() {
+  function resendEmail() {
     if (pending) return;
     startPending(async () => {
       const result = await retryProductionSampleRequestEmailAction({ projectId, productionUnitId: unit.id, sampleRoundId: roundId });
       if ("error" in result) {
-        showErrorToast("Unable to retry the sample request email.", result.error);
+        showErrorToast("Unable to resend the sample request email.", result.error);
         return;
       }
       if (result.emailStatus === ProductionDispatchStatus.SENT) showSuccessToast("Physical sample request email sent.");
       else showErrorToast("The sample request email failed again.", result.emailError || "Please retry later.");
+      onRefresh();
+    });
+  }
+
+  function deleteRequest() {
+    if (pending) return;
+    startPending(async () => {
+      const result = await deleteProductionSampleRoundAction({
+        projectId,
+        productionUnitId: unit.id,
+        sampleRoundId: roundId,
+      });
+      if ("error" in result) {
+        showErrorToast("Unable to delete the physical sample request.", result.error);
+        return;
+      }
+      await reviewAutosave.clearDraft().catch(() => undefined);
+      setDeleteConfirm(false);
+      showSuccessToast("Physical sample request deleted.");
       onRefresh();
     });
   }
@@ -566,16 +585,17 @@ function SampleRequestDetails({
     <aside className="min-w-0 rounded-[18px] border border-[#dfe6df] bg-white shadow-[0_10px_28px_rgba(23,39,28,0.035)]" aria-labelledby="selected-round-heading">
       <div className="border-b border-[#e5ebe5] px-4 py-4 sm:px-5">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[9px] font-[760] uppercase tracking-[0.08em] text-[#7d8780]">Selected Sample Request</p><h2 id="selected-round-heading" className="mt-1.5 text-[15px] font-[760] leading-5 text-[#1f2a22]">Round {round.sequence} — {round.name}</h2><p className="mt-1 text-[9px] text-[#758078]">{round.type === ProductionSampleRoundType.CUSTOM ? round.customTypeName : ROUND_TYPE_LABELS[round.type]}</p></div><ReceiptStatusBadge round={round} /></div>
+        {canDelete ? <div className="mt-3 flex flex-wrap justify-end gap-2">{mutable ? <Button type="button" size="sm" variant="outline" className="rounded-[10px]" disabled={pending || round.emailStatus === ProductionDispatchStatus.PENDING} onClick={resendEmail}><RefreshCw className="h-3.5 w-3.5" /> {round.emailStatus === ProductionDispatchStatus.SENT ? "Resend Request" : round.emailStatus === ProductionDispatchStatus.FAILED ? "Retry Send" : "Send Request"}</Button> : null}<Button type="button" size="sm" variant="destructive" className="rounded-[10px]" disabled={pending} onClick={() => setDeleteConfirm(true)}><Trash2 className="h-3.5 w-3.5" /> Delete Request</Button></div> : null}
       </div>
       <div className="space-y-5 px-4 py-4 sm:px-5">
-        {mutable && round.emailStatus === ProductionDispatchStatus.FAILED ? <div className="flex flex-col gap-3 rounded-[12px] border border-[#f1dbb2] bg-[#fff9ed] p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-[10px] leading-4 text-[#795c2b]">The request is saved, but the provider email was not delivered.</p><Button type="button" size="sm" className="shrink-0 rounded-[10px]" disabled={pending} onClick={retryEmail}><RefreshCw className="h-3.5 w-3.5" /> {pending ? "Retrying..." : "Retry Email"}</Button></div> : null}
+        {mutable && round.emailStatus === ProductionDispatchStatus.FAILED ? <div className="rounded-[12px] border border-[#f1dbb2] bg-[#fff9ed] p-3"><p className="text-[10px] leading-4 text-[#795c2b]">The request is saved, but the provider email was not delivered. Use Retry Send above to try again.</p></div> : null}
         <section className="rounded-[14px] border border-[#dfe6df] bg-[#fafcfa] p-3.5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Physical Sample Review</h3><p className="mt-1 text-[9px] text-[#7c867f]">Record the note and outcome for this sample request.</p></div>{round.decision ? <DecisionBadge decision={round.decision} /> : <div className="grid shrink-0 grid-cols-2 gap-2"><Button type="button" size="sm" variant="outline" className="border-[#d96a60] text-[#b9433a] hover:bg-[#fff3f1]" disabled={!mutable || !richTextToPlainText(reviewNote)} onClick={() => setConfirm(PhysicalSampleDecision.REJECTED)}><XCircle className="h-4 w-4" /> Reject Sample</Button><Button type="button" size="sm" disabled={!mutable} onClick={() => setConfirm(PhysicalSampleDecision.ACCEPTED)}><CheckCircle2 className="h-4 w-4" /> Accept Sample</Button></div>}</div>
           {round.decision ? <div className="mt-3 border-t border-[#e0e7e0] pt-3"><RichTextContent value={round.decisionNote} fallback={<p className="text-[10px] leading-4 text-[#465149]">No review note was added.</p>} className="text-[10px] leading-4 text-[#465149]" /><p className="mt-2 text-[8px] text-[#849087]">Decided by {round.decidedBy || "Unknown"}{round.decidedAt ? ` · ${formatDateTime(round.decidedAt)}` : ""}</p>{round.decision === PhysicalSampleDecision.REJECTED && canManage && !stageCompleted ? <Button type="button" size="sm" className="mt-3 rounded-[10px]" onClick={onRequestAnother}><Plus className="h-3.5 w-3.5" /> Request Another Sample</Button> : null}</div> : <div className="mt-3 block space-y-2 border-t border-[#e0e7e0] pt-3"><span className="text-[10px] font-[700] text-[#59655d]">Review Note <span className="font-[500] text-[#7c867f]">(required for rejection)</span></span><RichTextEditor value={reviewNote} maxLength={8000} disabled={!mutable} minHeightClassName="min-h-[90px]" ariaLabel="Physical sample review note" placeholder="Add a note for accepting or rejecting this physical sample." onChange={setReviewNote} />{mutable ? <ProjectFormAutosaveStatus status={reviewAutosave.status} savedAt={reviewAutosave.savedAt} restoredAt={reviewAutosave.restoredAt} onRetry={() => void reviewAutosave.retry()} /> : null}</div>}
         </section>
         <section className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Provider</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{round.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Internal" : round.recipientRoute === ProductionHandoverRoute.DIRECT_VENDOR ? "External" : "Legacy request"}{round.recipientCompany ? ` · ${round.recipientCompany}` : ""}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.recipientName || "Not provided"}</p><p className="mt-0.5 break-all text-[9px] text-[#758078]">{round.recipientEmail || "Legacy request"}{round.recipientPhone ? ` · ${round.recipientPhone}` : ""}</p></div>
           <div className={cn("rounded-[11px] border px-3 py-2.5", round.overdue ? "border-[#efcbc5] bg-[#fff6f4]" : "border-[#e2e8e2] bg-[#fafcfa]")}><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Deadline</p><p className={cn("mt-1 text-[10px] font-[700]", round.overdue ? "text-[#b8473e]" : "text-[#39443c]")}>{formatDate(round.deadline)}</p>{round.overdue ? <p className="mt-0.5 text-[9px] font-[700] text-[#b8473e]">{overdueLabel(round.deadline)}</p> : null}</div>
-          <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Email Status</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{EMAIL_STATUS_LABELS[round.emailStatus]}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.emailSentAt ? `Sent ${formatDateTime(round.emailSentAt)}` : round.emailError || "Not delivered"}</p></div>
+          <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Email Status</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{EMAIL_STATUS_LABELS[round.emailStatus]}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.emailStatus === ProductionDispatchStatus.FAILED ? round.emailError || "Not delivered" : round.emailSentAt ? `Sent ${formatDateTime(round.emailSentAt)}` : "Not delivered"}</p></div>
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Request Created</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{formatDateTime(round.createdAt)}</p></div>
         </section>
         <section><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Request Note</h3><div className="mt-2 rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><RichTextContent value={round.requestNote} fallback={<p className="text-[10px] leading-4 text-[#4c584f]">No request note was added.</p>} className="text-[10px] leading-4 text-[#4c584f]" /></div></section>
@@ -583,6 +603,7 @@ function SampleRequestDetails({
       </div>
       <ConfirmationDialog isOpen={confirm === PhysicalSampleDecision.ACCEPTED} title="Accept this physical sample?" description={`This will mark ${unit.name} as accepted for Stage 7 and lock further sample requests.`} confirmLabel="Accept Sample" pending={pending} onConfirm={decide} onClose={() => setConfirm(null)} />
       <ConfirmationDialog isOpen={confirm === PhysicalSampleDecision.REJECTED} title="Reject this physical sample?" description="The rejection and review note will remain as permanent history. You may then request another physical sample." confirmLabel="Reject Sample" tone="destructive" pending={pending} onConfirm={decide} onClose={() => setConfirm(null)} />
+      <ConfirmationDialog isOpen={deleteConfirm} title="Delete physical sample request?" description={`This permanently removes Round ${round.sequence} — ${round.name}. The recipient will no longer be able to open this request.`} confirmLabel="Delete Request" tone="destructive" pending={pending} onConfirm={deleteRequest} onClose={() => setDeleteConfirm(false)} />
     </aside>
   );
 }

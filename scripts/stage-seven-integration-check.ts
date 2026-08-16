@@ -21,6 +21,7 @@ import { prisma } from "../src/lib/prisma";
 import {
   closeStageSevenProject,
   createProductionSampleRound,
+  deleteProductionSampleRound,
   decidePhysicalSampleRound,
   getStageSevenWorkspaceData,
   processStageSevenOverdueDeadlines,
@@ -321,8 +322,14 @@ async function main() {
     check(firstEmail.text.includes("Retail Carton") && firstEmail.text.includes("Retail carton courier sample") && firstEmail.text.includes("Production Sample") && firstEmail.text.includes("Please courier one physical sample"), "the professional email must include project-unit-round-type-deadline-note context");
     check(firstEmail.text.includes("unit-1-source.pdf") && firstEmail.text.includes("unit-1-production-reference.pdf") && !firstEmail.text.includes("unit-2-source.pdf") && !firstEmail.text.includes("Foreign Pack"), "email links must be scoped to the selected Stage 6 unit");
     check((firstEmail.text.match(/X-Amz-/g) ?? []).length >= 2, "reference files must use expiring signed download links");
-    const duplicateRetry = await retryProductionSampleRequestEmail(coOwner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id }, { sendEmail: sendSuccess });
-    check(duplicateRetry.duplicate && sentEmailCount() === 1, "retrying an already sent request must be idempotent");
+    const resent = await retryProductionSampleRequestEmail(coOwner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id }, { sendEmail: sendSuccess });
+    check(!resent.duplicate && resent.emailStatus === ProductionDispatchStatus.SENT && sentEmailCount() === 2, "an already sent request must support an explicit resend");
+    check((await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: failed.id } })).emailAttemptCount === 3, "resend must increment the audited email attempt count");
+
+    await expectRejected(deleteProductionSampleRound(executor, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: parallelRequest.id }), "an executor must not delete physical sample requests");
+    const deletedPending = await deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: parallelRequest.id });
+    check(deletedPending.deleted && (await prisma.productionSampleRound.findUnique({ where: { id: parallelRequest.id } })) === null, "a manager must be able to delete an undecided physical sample request");
+    check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.IN_REVIEW, "deleting one pending request must preserve the status derived from remaining requests");
 
     await expectRejected(decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Executor cannot decide." }), "executors must not decide physical sample requests");
     await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED }), "rejection must require a physical review note");
@@ -334,7 +341,14 @@ async function main() {
     check(rejectedRow.status === ProductionSampleRoundStatus.COMPLETED && (await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.REVISIONS_NEEDED, "rejection must map to Rejected while preserving the legacy status field");
     check((await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Ignored duplicate note" })).duplicate, "the same final decision must be idempotent");
     await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.ACCEPTED }), "a rejected round must never be overwritten as accepted");
+    await expectRejected(deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id }), "rejected sample-request history must not be deletable");
 
+    const stalePendingRound = await createProductionSampleRound(coOwner, {
+      ...baseInput,
+      clientRequestId: `stale-pending-${runId}`,
+      name: "Parallel request to remove after acceptance",
+      deadline: deadlineDate(4),
+    }, { sendEmail: sendSuccess });
     const acceptedRound = await createProductionSampleRound(coOwner, {
       ...baseInput,
       clientRequestId: `accepted-round-${runId}`,
@@ -350,6 +364,27 @@ async function main() {
     check(acceptedSupervision.status === ProductionSupervisionStatus.SIGNED_OFF && acceptedSupervision.signedOffById === ids.superAdmin && Boolean(acceptedSupervision.signedOffAt), "acceptance must mark the unit Accepted with signer audit");
     check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: units[0].id } })).status === ProjectProductionUnitStatus.HANDED_OVER, "Stage 7 must not mutate the Stage 6 HANDED_OVER state");
     await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `locked-unit-${runId}` }, { sendEmail: sendSuccess }), "accepted units must lock further sample requests");
+    await expectRejected(retryProductionSampleRequestEmail(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: stalePendingRound.id }, { sendEmail: sendSuccess }), "accepted units must block resending older undecided requests");
+    await deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: stalePendingRound.id });
+    check((await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.SIGNED_OFF, "deleting an older undecided request must preserve an accepted Production Unit");
+    await expectRejected(deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: acceptedRound.id }), "accepted sample-request history must not be deletable");
+
+    const deletableInternalRound = await createProductionSampleRound(owner, {
+      projectId: ids.project,
+      productionUnitId: units[1].id,
+      clientRequestId: `delete-internal-${runId}`,
+      name: "Temporary internal sample request",
+      type: ProductionSampleRoundType.PRE_PRODUCTION_SAMPLE,
+      deadline: deadlineDate(2),
+      recipientRoute: ProductionHandoverRoute.PURCHASE_DEPARTMENT,
+      recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR,
+      recipientUserId: ids.executor,
+      requestNote: "This request will be deleted by the integration check.",
+    }, { sendEmail: sendSuccess });
+    check((await prisma.notification.count({ where: { type: "PRODUCTION_SAMPLE_REQUESTED", entityId: deletableInternalRound.id, userId: ids.executor } })) === 1, "an internal request must create its recipient notification before deletion");
+    await deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: deletableInternalRound.id });
+    check((await prisma.notification.count({ where: { entityType: "SAMPLE_ROUND", entityId: deletableInternalRound.id } })) === 0, "deleting an internal request must remove its recipient notification");
+    check((await getStageSevenWorkspaceData(executor, ids.project, units[1].id, deletableInternalRound.id)) === null, "a deleted request must disappear from the internal recipient workspace");
 
     const overdueRound = await createProductionSampleRound(superAdmin, {
       projectId: ids.project,

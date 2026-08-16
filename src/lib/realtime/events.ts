@@ -39,7 +39,7 @@ export function getNotificationChannelName(userId: string) {
 export type NotificationRealtimeChangedPayload = {
   eventId: string;
   recipientUserId: string;
-  reason: "created" | "read-state-updated";
+  reason: "created" | "deleted" | "read-state-updated";
   changedAt: string;
 };
 

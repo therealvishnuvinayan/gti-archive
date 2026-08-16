@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth";
 import {
   closeStageSevenProject,
   createProductionSampleRound,
+  deleteProductionSampleRound,
   decidePhysicalSampleRound,
   retryProductionSampleRequestEmail,
   StageSevenWorkflowError,
@@ -65,6 +66,17 @@ export async function retryProductionSampleRequestEmailAction(input: {
   const user = await requireUser();
   return stageSevenAction(input.projectId, () =>
     retryProductionSampleRequestEmail(user, input),
+  );
+}
+
+export async function deleteProductionSampleRoundAction(input: {
+  projectId: string;
+  productionUnitId: string;
+  sampleRoundId: string;
+}) {
+  const user = await requireUser();
+  return stageSevenAction(input.projectId, () =>
+    deleteProductionSampleRound(user, input),
   );
 }
 
