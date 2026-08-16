@@ -61,7 +61,10 @@ import {
   PROJECT_RESEARCH_TEXT_FILE_MAX_BYTES,
   validateProjectResearchTextContent,
 } from "@/lib/project-research-text-file";
-import { uploadProjectResearchFile } from "@/lib/project-research-upload-client";
+import {
+  uploadProjectPrivateFile,
+  uploadProjectResearchFile,
+} from "@/lib/project-research-upload-client";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -561,9 +564,11 @@ function NewTextFileDialog({
 export function StageTwoFolderWorkspace({
   data,
   currentUserId,
+  context = "research",
 }: {
   data: FolderData;
   currentUserId: string;
+  context?: "research" | "user-shared" | "private";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -585,7 +590,14 @@ export function StageTwoFolderWorkspace({
   const [textFilePending, setTextFilePending] = useState(false);
   const [textFileProgress, setTextFileProgress] = useState(0);
   const [textFileError, setTextFileError] = useState<string>();
-  const baseApi = `/api/projects/${data.project.id}/research/folders/${data.folder.id}`;
+  const isPrivateFolder = context === "private";
+  const baseApi = isPrivateFolder
+    ? `/api/projects/${data.project.id}/private-folders/${data.folder.id}`
+    : `/api/projects/${data.project.id}/research/folders/${data.folder.id}`;
+  const uploadFolderFile = isPrivateFolder
+    ? uploadProjectPrivateFile
+    : uploadProjectResearchFile;
+  const projectWorkspaceHref = `/projects/${data.project.id}`;
 
   const visibleFiles = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("en");
@@ -625,7 +637,7 @@ export function StageTwoFolderWorkspace({
         const key = pending[index].key;
         updateUpload(key, { status: "uploading", progress: 0 });
         try {
-          const uploadedFile = await uploadProjectResearchFile({
+          const uploadedFile = await uploadFolderFile({
             projectId: data.project.id,
             folderId: data.folder.id,
             file,
@@ -693,7 +705,7 @@ export function StageTwoFolderWorkspace({
       const textFile = new window.File([input.content], input.fileName, {
         type: "text/plain",
       });
-      const uploadedFile = await uploadProjectResearchFile({
+      const uploadedFile = await uploadFolderFile({
         projectId: data.project.id,
         folderId: data.folder.id,
         file: textFile,
@@ -731,11 +743,19 @@ export function StageTwoFolderWorkspace({
             aria-label="Folder navigation"
             className="sticky top-0 z-40 flex min-w-0 items-center gap-2 border-b border-[#e6ece7] bg-white/95 px-5 py-3 backdrop-blur-sm sm:px-8"
           >
-            <ProjectBackButton
-              href={`/projects/${data.project.id}/stages/2?workspace=${encodeURIComponent(data.workspace.id)}`}
-              label="Research workspace"
-              ariaLabel="Back to Stage 2 Research Workspace"
-            />
+            {context === "research" ? (
+              <ProjectBackButton
+                href={`/projects/${data.project.id}/stages/2?workspace=${encodeURIComponent(data.workspace.id)}`}
+                label="Research workspace"
+                ariaLabel="Back to Stage 2 Research Workspace"
+              />
+            ) : (
+              <ProjectBackButton
+                href={projectWorkspaceHref}
+                label="Workspace"
+                ariaLabel="Back to project workspace"
+              />
+            )}
             <span className="text-[#a0aaa2]">/</span>
             <span className="max-w-[220px] truncate text-[12px] font-[700] text-[#536158]">
               {data.folder.name}
@@ -752,14 +772,19 @@ export function StageTwoFolderWorkspace({
                     {data.folder.name}
                   </h1>
                   <p className="mt-0.5 text-[11px] text-[#77827a]">
-                    {data.workspace.ownerName}&apos;s folder set · {files.length} {files.length === 1 ? "file" : "files"}
+                    {context === "private"
+                      ? `Only you can access this folder · ${files.length} ${files.length === 1 ? "file" : "files"}`
+                      : context === "user-shared"
+                        ? `Shared project reference · ${files.length} ${files.length === 1 ? "file" : "files"}`
+                        : `${data.workspace.ownerName}'s folder set · ${files.length} ${files.length === 1 ? "file" : "files"}`}
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {!data.canWrite ? (
                   <span className="inline-flex h-10 items-center gap-2 rounded-[11px] bg-[#e9eeea] px-3 text-[11px] font-[700] text-[#627067]">
-                    <LockKeyhole className="h-3.5 w-3.5" /> Read-only workspace
+                    <LockKeyhole className="h-3.5 w-3.5" />
+                    {context === "user-shared" ? "Read-only folder" : "Read-only workspace"}
                   </span>
                 ) : (
                   <DropdownMenu>

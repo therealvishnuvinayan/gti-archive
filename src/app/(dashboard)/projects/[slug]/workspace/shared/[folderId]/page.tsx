@@ -1,41 +1,39 @@
+import { UserRole } from "@prisma/client";
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { ProjectBackButton } from "@/components/projects/project-back-button";
 import { ProjectAccessUnavailableState } from "@/components/projects/project-route-state";
 import { StageTwoFolderWorkspace } from "@/components/projects/stage-two-folder-workspace";
 import { requireUser } from "@/lib/auth";
 import { getProjectResearchFolderPageData } from "@/lib/project-research";
 import { decodeRouteParam } from "@/lib/route-params";
 
-export default async function ProjectResearchFolderPage({
+export default async function UserSharedFolderPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string; folderId: string }>;
-  searchParams: Promise<{ workspace?: string }>;
 }) {
   const { slug, folderId: encodedFolderId } = await params;
-  const { workspace } = await searchParams;
   const folderId = decodeRouteParam(encodedFolderId);
   const user = await requireUser();
-
-  if (user.role === UserRole.USER) {
-    redirect(`/projects/${slug}`);
-  }
-
   let data = null;
 
-  try {
-    data = await getProjectResearchFolderPageData(user, {
-      projectId: slug,
-      folderId,
-    });
-  } catch {
-    data = null;
+  if (user.role === UserRole.USER) {
+    try {
+      data = await getProjectResearchFolderPageData(user, {
+        projectId: slug,
+        folderId,
+      });
+    } catch {
+      data = null;
+    }
   }
 
   return (
     <DashboardLayout
       topbarProps={{
-        searchPlaceholder: "Search for projects, folders, files...",
+        searchPlaceholder: "Search files...",
+        leadingContent: <ProjectBackButton href={`/projects/${slug}`} />,
       }}
     >
       {data ? (
@@ -43,15 +41,14 @@ export default async function ProjectResearchFolderPage({
           key={data.folder.id}
           data={data}
           currentUserId={user.id}
+          context="user-shared"
         />
       ) : (
         <ProjectAccessUnavailableState
-          parentHref={`/projects/${slug}/stages/2${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`}
-          parentLabel="Research workspace"
+          parentHref={`/projects/${slug}`}
+          parentLabel="Workspace"
         />
       )}
     </DashboardLayout>
   );
 }
-import { UserRole } from "@prisma/client";
-import { redirect } from "next/navigation";

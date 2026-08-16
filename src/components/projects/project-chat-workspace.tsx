@@ -1358,6 +1358,7 @@ function SystemActivityCard({
   alignment = "left",
   action,
   currentUserDisplayName,
+  activityLabelOverride,
   titleOverride,
   bodyOverride,
 }: {
@@ -1365,6 +1366,7 @@ function SystemActivityCard({
   alignment?: TimelineAlignment;
   action?: ReactNode;
   currentUserDisplayName: string;
+  activityLabelOverride?: string | null;
   titleOverride?: string | null;
   bodyOverride?: string | null;
 }) {
@@ -1399,7 +1401,7 @@ function SystemActivityCard({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="rounded-full bg-white/65 px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[0.08em] text-[#657269]">
-                {meta.label}
+                {activityLabelOverride ?? meta.label}
               </span>
               <span className="text-[10px] font-semibold text-[#7a837b]">
                 {message.createdAt}
@@ -1614,6 +1616,7 @@ function ConceptBriefContextCard({
   attachments,
   assignedExecutorName,
   hasAcceptedBrief,
+  stageNeutral,
   startingReference,
   canImportStageThreeReference,
   onImportStageThreeReference,
@@ -1622,6 +1625,7 @@ function ConceptBriefContextCard({
   attachments: DisplayAttachmentRecord[];
   assignedExecutorName: string;
   hasAcceptedBrief: boolean;
+  stageNeutral: boolean;
   startingReference: ProjectConceptChatMode["startingReference"];
   canImportStageThreeReference: boolean;
   onImportStageThreeReference: () => void;
@@ -1691,7 +1695,9 @@ function ConceptBriefContextCard({
                 </Button>
               </div>
               <p className="mt-1.5 text-[10px] leading-4 text-[#708077]">
-                Read-only approved Stage 3 reference. New Stage 4 work remains independent.
+                {stageNeutral
+                  ? "Read-only approved concept reference. New work remains independent."
+                  : "Read-only approved Stage 3 reference. New Stage 4 work remains independent."}
               </p>
             </div>
           ) : canImportStageThreeReference ? (
@@ -2542,6 +2548,7 @@ export function ProjectChatWorkspace({
 }: ProjectChatWorkspaceProps) {
   const router = useRouter();
   const isConceptMode = conceptMode?.type === "concept";
+  const isStageNeutralConceptMode = Boolean(conceptMode?.stageNeutral);
   const draftComposerMaxHeight = isConceptMode ? 96 : 168;
   const isStageFourConceptMode =
     conceptMode?.workflowStageKey === "PROJECT_DEVELOPMENT";
@@ -3422,11 +3429,15 @@ export function ProjectChatWorkspace({
     : !activeStage
       ? "No active stage selected."
       : isStageCompleted
-        ? "Stage is completed."
+        ? isStageNeutralConceptMode
+          ? "Concept work is completed."
+          : "Stage is completed."
         : isProjectCompleted
           ? "Project is completed."
           : activeStage.status === "pending"
-            ? "Stage is pending."
+            ? isStageNeutralConceptMode
+              ? "Concept work is pending."
+              : "Stage is pending."
             : !hasAcceptedBrief
               ? "Accept the brief before submitting work."
               : hasPendingRevisionReview
@@ -3480,7 +3491,9 @@ export function ProjectChatWorkspace({
     ? "Brief acceptance required"
     : "Waiting for project executor";
   const briefAcceptanceWaitingBody = isProjectExecutor
-    ? "You need to accept the brief before submitting work for this stage."
+    ? isStageNeutralConceptMode
+      ? "You need to accept the brief before submitting concept work."
+      : "You need to accept the brief before submitting work for this stage."
     : "Waiting for project executor to accept brief.";
   const selectedOutputLanguage =
     getSupportedLanguageByCode(selectedOutputLanguageCode) ?? DEFAULT_CHAT_LANGUAGE;
@@ -3847,13 +3860,16 @@ export function ProjectChatWorkspace({
       title: "Brief accepted",
       author: actorName,
       role: "project executor",
-      body: `${displayActorName} accepted the project and stage brief and started work on this stage.`,
+      body: isStageNeutralConceptMode
+        ? `${displayActorName} accepted the concept brief and started work on this concept.`
+        : `${displayActorName} accepted the project and stage brief and started work on this stage.`,
       createdAt: activeStage.actualStartedAt,
     };
   }, [
     activeStage,
     currentUserDisplayName,
     hasBriefAcceptedSystemMessage,
+    isStageNeutralConceptMode,
   ]);
   const getParticipantRoleLabel = useCallback(
     (userId: string) => {
@@ -3872,14 +3888,20 @@ export function ProjectChatWorkspace({
       );
 
       if (!collaborator) {
-        return "Stage Chat";
+        return isStageNeutralConceptMode ? "Project Team" : "Stage Chat";
       }
 
       return collaborator.group === "external"
         ? "External Collaborator"
         : "Internal Team";
     },
-    [currentUserId, currentUserRoleLabel, project.collaborators, project.executors],
+    [
+      currentUserId,
+      currentUserRoleLabel,
+      isStageNeutralConceptMode,
+      project.collaborators,
+      project.executors,
+    ],
   );
   const hasLocalOrConfirmedRealtimeMessage = useCallback(
     (clientTempId: string) => {
@@ -7606,13 +7628,21 @@ export function ProjectChatWorkspace({
             >
               <Link href={conceptMode.backHref}>
                 <ArrowLeft className="h-3.5 w-3.5" />
-                Back to Stage {conceptMode.stageNumber}
+                {isStageNeutralConceptMode
+                  ? "Back to Workspace"
+                  : `Back to Stage ${conceptMode.stageNumber}`}
               </Link>
             </Button>
-            <dl className="grid min-w-0 flex-1 grid-cols-2 divide-x divide-[#e2e9e2] overflow-hidden rounded-[12px] bg-[#f7faf6] lg:grid-cols-4">
+            <dl
+              className={`grid min-w-0 flex-1 grid-cols-2 divide-x divide-[#e2e9e2] overflow-hidden rounded-[12px] bg-[#f7faf6] ${
+                isStageNeutralConceptMode ? "lg:grid-cols-3" : "lg:grid-cols-4"
+              }`}
+            >
               {[
                 ["Project", project.title],
-                ["Stage", conceptMode.stageLabel],
+                ...(isStageNeutralConceptMode
+                  ? []
+                  : [["Stage", conceptMode.stageLabel]]),
                 ["Concept", conceptMode.conceptName],
                 [
                   "Assigned Executor",
@@ -8137,6 +8167,9 @@ export function ProjectChatWorkspace({
                 currentUserDisplayName,
               )}
               currentUserDisplayName={currentUserDisplayName}
+              activityLabelOverride={
+                isStageNeutralConceptMode ? "Concept update" : undefined
+              }
             />
           ) : null}
 
@@ -8150,6 +8183,7 @@ export function ProjectChatWorkspace({
                 "Unassigned"
               }
               hasAcceptedBrief={hasAcceptedBriefInTimeline}
+              stageNeutral={isStageNeutralConceptMode}
               startingReference={conceptMode.startingReference}
               canImportStageThreeReference={
                 conceptMode.stageNumber === 4 &&
@@ -8191,10 +8225,14 @@ export function ProjectChatWorkspace({
           {displayedMessages.length === 0 ? (
             <Card className="border border-dashed border-[#d8e1d8] px-6 py-10 text-left">
               <CardTitle className="text-[20px] font-semibold tracking-tight">
-                {activeStage?.label ?? "Stage"} History
+                {isStageNeutralConceptMode
+                  ? "Concept Activity"
+                  : `${activeStage?.label ?? "Stage"} History`}
               </CardTitle>
               <p className="mt-2 text-[14px] text-[#6e776f]">
-                No revisions or comments have been added to this stage yet.
+                {isStageNeutralConceptMode
+                  ? "No revisions or comments have been added to this concept yet."
+                  : "No revisions or comments have been added to this stage yet."}
               </p>
               <p className="mt-1 text-[13px] text-[#8a938c]">
                 {showBriefContextCard
@@ -8261,6 +8299,9 @@ export function ProjectChatWorkspace({
                     bodyOverride={translatedSystemBody}
                     action={action}
                     currentUserDisplayName={currentUserDisplayName}
+                    activityLabelOverride={
+                      isStageNeutralConceptMode ? "Concept update" : undefined
+                    }
                   />
                 );
               })()
@@ -8914,7 +8955,9 @@ export function ProjectChatWorkspace({
                     Action required
                   </p>
                   <p className="mt-0.5 truncate text-[13px] font-[800] text-[#173120]">
-                    Accept the brief to start work on {activeStage?.label ?? "this stage"}.
+                    {isStageNeutralConceptMode
+                      ? "Accept the brief to start work on this concept."
+                      : `Accept the brief to start work on ${activeStage?.label ?? "this stage"}.`}
                   </p>
                 </div>
                 <Button
@@ -9047,7 +9090,9 @@ export function ProjectChatWorkspace({
                     >
                       <Link href={conceptMode.backHref}>
                         <ArrowLeft className="h-4 w-4" />
-                        Back to Concept Taskers
+                        {isStageNeutralConceptMode
+                          ? "Back to Workspace"
+                          : "Back to Concept Taskers"}
                       </Link>
                     </Button>
                   ) : null}
@@ -9061,12 +9106,18 @@ export function ProjectChatWorkspace({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-[14px] font-semibold text-[#173120]">
-                    {isProjectCompleted ? "Project chat is locked." : "Stage chat is read-only."}
+                    {isProjectCompleted
+                      ? "Project chat is locked."
+                      : isStageNeutralConceptMode
+                        ? "Concept activity is read-only."
+                        : "Stage chat is read-only."}
                   </p>
                   <p className="mt-1 text-[12px] leading-5 text-[#5f6b62]">
                     {isProjectCompleted
                       ? "This project has been completed. Only final archived files and completion documents remain available for viewing or download."
-                      : "This stage has been completed. Existing conversations remain available for reference, but new comments and attachments are disabled."}
+                      : isStageNeutralConceptMode
+                        ? "This concept work has been completed. Existing conversations remain available for reference, but new comments and attachments are disabled."
+                        : "This stage has been completed. Existing conversations remain available for reference, but new comments and attachments are disabled."}
                   </p>
                 </div>
                 {conceptMode && !showLatestRevisionActionBar ? (
@@ -9079,7 +9130,9 @@ export function ProjectChatWorkspace({
                   >
                     <Link href={conceptMode.backHref}>
                       <ArrowLeft className="h-4 w-4" />
-                      Back to Concept Taskers
+                      {isStageNeutralConceptMode
+                        ? "Back to Workspace"
+                        : "Back to Concept Taskers"}
                     </Link>
                   </Button>
                 ) : null}
@@ -9263,7 +9316,11 @@ export function ProjectChatWorkspace({
                       setDraftSelectionStart(-1);
                     }
                   }}
-                  placeholder="Add a comment or upload files for this stage revision history."
+                  placeholder={
+                    isStageNeutralConceptMode
+                      ? "Add a comment or upload files for this concept activity."
+                      : "Add a comment or upload files for this stage revision history."
+                  }
                   rows={1}
                   className={`box-border w-full min-w-0 resize-none overflow-y-hidden border border-transparent bg-white/70 text-[#29322c] shadow-none outline-none placeholder:text-[#9aa39b] focus-visible:ring-0 ${
                     isConceptMode
@@ -9329,7 +9386,9 @@ export function ProjectChatWorkspace({
                     >
                       <Link href={conceptMode.backHref}>
                         <ArrowLeft className="h-4 w-4" />
-                        <span>Taskers</span>
+                        <span>
+                          {isStageNeutralConceptMode ? "Workspace" : "Taskers"}
+                        </span>
                       </Link>
                     </Button>
                   ) : null}
@@ -9862,7 +9921,11 @@ export function ProjectChatWorkspace({
                 onKeyUp={(event) => {
                   setDraftSelectionStart(event.currentTarget.selectionStart ?? draft.length);
                 }}
-                placeholder="Add a comment or upload files for this stage revision history."
+                placeholder={
+                  isStageNeutralConceptMode
+                    ? "Add a comment or upload files for this concept activity."
+                    : "Add a comment or upload files for this stage revision history."
+                }
                 className="box-border min-h-[340px] flex-1 resize-none rounded-[22px] border border-[#dfe8df] bg-[#fbfcfa] px-4 py-4 text-[15px] leading-6 text-[#29322c] shadow-inner outline-none placeholder:text-[#9aa39b] focus-visible:ring-3 focus-visible:ring-brand/15"
                 disabled={isSendingComment || isChatReadOnly}
               />
@@ -9958,7 +10021,7 @@ export function ProjectChatWorkspace({
         title={isConceptMode ? "Accept concept brief and start work?" : "Accept brief and start work?"}
         description={
           isConceptMode
-            ? "This confirms that you reviewed the Concept Brief and are starting work on this concept. The existing tasker timer starts from this moment."
+            ? "This confirms that you reviewed the Concept Brief and are starting work on this concept. The work timer starts from this moment."
             : "This confirms that you have reviewed the Project Brief and Stage Brief and are starting work on this stage. The stage timer will start from this moment."
         }
         confirmLabel="Accept & Start Work"

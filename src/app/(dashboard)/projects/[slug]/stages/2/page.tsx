@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { ProjectWorkflowStageKey } from "@prisma/client";
+import { ProjectWorkflowStageKey, UserRole } from "@prisma/client";
+import { redirect } from "next/navigation";
 import { FolderKanban } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -139,7 +140,13 @@ export default async function StageTwoPage({
 }) {
   const { slug } = await params;
   const { workspace } = await searchParams;
-  const userPromise = requireUser();
+  const user = await requireUser();
+
+  if (user.role === UserRole.USER) {
+    redirect(`/projects/${slug}`);
+  }
+
+  const userPromise = Promise.resolve(user);
 
   return (
     <DashboardLayout

@@ -399,6 +399,7 @@ export async function getProjectResearchFolderPageData(
         id: true,
         name: true,
         isSystem: true,
+        systemKey: true,
         workspace: {
           select: {
             id: true,
@@ -437,6 +438,7 @@ export async function getProjectResearchFolderPageData(
     projectId: input.projectId,
     workspaceId: folder.workspace.id,
     workspaceOwnerUserId: folder.workspace.ownerUserId,
+    folderSystemKey: folder.systemKey,
     project: folder.workspace.project,
   });
 

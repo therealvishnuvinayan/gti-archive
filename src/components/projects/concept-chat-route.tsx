@@ -1,3 +1,5 @@
+import { UserRole } from "@prisma/client";
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectAccessUnavailableState } from "@/components/projects/project-route-state";
 import { ProjectChatRoute } from "@/app/(dashboard)/projects/[slug]/chat/page";
@@ -30,12 +32,21 @@ export async function ConceptChatRoute({
     );
   }
 
+  const conceptMode =
+    user.role === UserRole.USER
+      ? {
+          ...context.chatMode,
+          stageNeutral: true,
+          backHref: `/projects/${encodeURIComponent(projectId)}`,
+        }
+      : context.chatMode;
+
   return (
     <ProjectChatRoute
       slug={projectId}
       stage={context.folder.taskerStageId}
       taskerStageId={context.folder.taskerStageId}
-      conceptMode={context.chatMode}
+      conceptMode={conceptMode}
     />
   );
 }

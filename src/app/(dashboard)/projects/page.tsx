@@ -1,7 +1,9 @@
+import { UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectsBrowser } from "@/components/projects/projects-browser";
+import { UserProjectsBrowser } from "@/components/projects/user-projects-browser";
 import { requireUser } from "@/lib/auth";
 import {
   PROJECT_LIST_ROLES,
@@ -16,6 +18,13 @@ import {
   getProjectsList,
 } from "@/lib/projects";
 import { hasPermission } from "@/lib/permissions/resolver";
+import {
+  getUserProjectsList,
+  USER_PROJECT_FILTERS,
+  USER_PROJECT_SORTS,
+  type UserProjectFilter,
+  type UserProjectSort,
+} from "@/lib/user-projects";
 
 type ProjectSortValue =
   | "updated"
@@ -66,12 +75,68 @@ function normalizeSort(value: string | undefined): ProjectSortValue {
     : "updated";
 }
 
+function normalizeUserFilter(value: string | undefined): UserProjectFilter {
+  return USER_PROJECT_FILTERS.includes(value as UserProjectFilter)
+    ? (value as UserProjectFilter)
+    : "ALL";
+}
+
+function normalizeUserSort(value: string | undefined): UserProjectSort {
+  return USER_PROJECT_SORTS.includes(value as UserProjectSort)
+    ? (value as UserProjectSort)
+    : "updated";
+}
+
 export default async function ProjectsPage({
   searchParams,
 }: {
   searchParams: Promise<ProjectSearchParams>;
 }) {
-  const data = await loadProjectsPageData(searchParams);
+  const resolvedSearchParams = await searchParams;
+  const user = await requireUser();
+
+  if (!hasPermission(user, "project.list")) {
+    redirect("/no-access");
+  }
+
+  if (user.role === UserRole.USER) {
+    const activeFilter = normalizeUserFilter(resolvedSearchParams.status);
+    const activeSort = normalizeUserSort(resolvedSearchParams.sort);
+    const query = resolvedSearchParams.q?.trim() ?? "";
+    const currentPage = Math.max(
+      1,
+      Number.parseInt(resolvedSearchParams.page ?? "1", 10) || 1,
+    );
+    const result = await getUserProjectsList(
+      {
+        filter: activeFilter,
+        query,
+        sort: activeSort,
+        page: currentPage,
+      },
+      user,
+    );
+
+    return (
+      <DashboardLayout>
+        <UserProjectsBrowser
+          projects={result.projects}
+          projectCount={result.total}
+          currentPage={currentPage}
+          pageSize={result.pageSize}
+          hasAnyProjects={result.hasAnyProjects}
+          activeFilter={activeFilter}
+          activeSort={activeSort}
+          query={query}
+        />
+      </DashboardLayout>
+    );
+  }
+
+  const data = await loadManagementProjectsPageData(
+    resolvedSearchParams,
+    user,
+  );
 
   return (
     <DashboardLayout>
@@ -111,11 +176,11 @@ type ProjectSearchParams = {
   page?: string;
 };
 
-async function loadProjectsPageData(
-  searchParams: Promise<ProjectSearchParams>,
+async function loadManagementProjectsPageData(
+  resolvedSearchParams: ProjectSearchParams,
+  user: Awaited<ReturnType<typeof requireUser>>,
 ) {
   const pageStartedAt = performance.now();
-  const resolvedSearchParams = await searchParams;
   const activeStatus = normalizeStatus(resolvedSearchParams.status);
   const activeSort = normalizeSort(resolvedSearchParams.sort);
   const activeStage = normalizeStage(resolvedSearchParams.stage);
@@ -127,12 +192,6 @@ async function loadProjectsPageData(
     1,
     Number.parseInt(resolvedSearchParams.page ?? "1", 10) || 1,
   );
-  const user = await requireUser();
-
-  if (!hasPermission(user, "project.list")) {
-    redirect("/no-access");
-  }
-
   const [projectResult, projectCounts, filterOptions] = await Promise.all([
     getProjectsList(
       {

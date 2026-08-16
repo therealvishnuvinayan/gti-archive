@@ -292,6 +292,16 @@ async function main() {
       addedById: ids.root,
     },
   });
+  await prisma.projectPrivateFolder.createMany({
+    data: [ids.root, ids.admin, ids.collaborator, ids.user].map(
+      (ownerUserId) => ({
+        id: `${FIXTURE_PREFIX}-private-${ownerUserId}`,
+        projectId: ids.project,
+        ownerUserId,
+      }),
+    ),
+    skipDuplicates: true,
+  });
   await prisma.projectTagAssignment.create({
     data: { projectId: ids.project, tagId: ids.projectTag },
   });

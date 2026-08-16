@@ -64,6 +64,7 @@ import {
   type ProjectStageAccessRecord,
 } from "@/lib/project-stage-data";
 import { ensureProjectResearchWorkspace } from "@/lib/project-research";
+import { ensureProjectPrivateFolder } from "@/lib/project-private-folders";
 import { canViewProjectConcept } from "@/lib/project-concept-access";
 import {
   defaultProjectStatusGroupSlugs,
@@ -1527,6 +1528,7 @@ export async function updateProjectCollaborators(
 
   for (const userId of validIds) {
     await ensureProjectResearchWorkspace(projectId, userId);
+    await ensureProjectPrivateFolder(projectId, userId);
   }
 
   const assignments = await withPrismaRetry(() =>
@@ -1791,6 +1793,7 @@ export async function setProjectCollaboratorChatVisibility(
       }),
     );
     await ensureProjectResearchWorkspace(input.projectId, input.collaboratorId);
+    await ensureProjectPrivateFolder(input.projectId, input.collaboratorId);
   }
 
   if (assignment.chatVisibilityPaused === input.paused) {

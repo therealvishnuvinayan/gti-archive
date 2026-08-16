@@ -48,6 +48,7 @@ import {
   assertProjectResearchFileAccess,
   assertResearchFolderWriteAccess,
 } from "@/lib/project-research-access";
+import { assertProjectPrivateAttachmentAccess } from "@/lib/project-private-folders";
 import {
   assertConceptTaskerAccessIfNeeded,
   canViewProjectConcept,
@@ -5255,8 +5256,14 @@ export async function requestAttachmentUpload(
 
   const isProjectResearchFile =
     input.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE;
+  const isProjectPrivateFile =
+    input.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE;
   const isStageSevenEvidence =
     input.assetType === AttachmentAssetType.SAMPLE_ROUND_EVIDENCE;
+
+  if (isProjectPrivateFile) {
+    return { error: "Use the private folder upload endpoint." };
+  }
 
   if (
     !isFormalStageSubmission &&
@@ -6078,6 +6085,10 @@ export async function completeAttachmentUpload(
   const isProjectResearchFile =
     attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE;
 
+  if (attachment.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE) {
+    throw new Error("Use the private folder completion endpoint.");
+  }
+
   if (isProjectResearchFile) {
     if (!options?.researchFolderId) {
       throw new Error("Research uploads must be completed from their folder.");
@@ -6552,6 +6563,17 @@ export async function getAttachmentDownloadUrlForUser(
     });
   }
 
+  if (attachment.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE) {
+    await assertProjectPrivateAttachmentAccess(user, attachment.id);
+
+    return createPresignedDownloadUrl({
+      bucket: attachment.bucket,
+      storageKey: attachment.storageKey,
+      fileName: attachment.originalFileName,
+      mimeType: attachment.mimeType,
+    });
+  }
+
   const project = await assertProjectAccess(user, attachment.projectId);
   assertProjectWorkflowPermission(
     user,
@@ -6607,6 +6629,17 @@ export async function getAttachmentPreviewUrlForUser(
 
   if (attachment.assetType === AttachmentAssetType.PROJECT_RESEARCH_FILE) {
     await assertProjectResearchFileAccess(user, attachment.id, "read");
+
+    return createPresignedPreviewUrl({
+      bucket: attachment.bucket,
+      storageKey: attachment.storageKey,
+      fileName: attachment.originalFileName,
+      mimeType: attachment.mimeType,
+    });
+  }
+
+  if (attachment.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE) {
+    await assertProjectPrivateAttachmentAccess(user, attachment.id);
 
     return createPresignedPreviewUrl({
       bucket: attachment.bucket,
@@ -6700,6 +6733,21 @@ export async function deleteAttachmentForUser(
           data: { status: AttachmentStatus.DELETED },
         }),
       ]),
+    );
+    return;
+  }
+
+  if (attachment.assetType === AttachmentAssetType.PROJECT_PRIVATE_FILE) {
+    await assertProjectPrivateAttachmentAccess(user, attachment.id);
+
+    await deleteObjectIfNeeded(attachment.storageKey, attachment.bucket).catch(
+      () => undefined,
+    );
+    await withPrismaRetry(() =>
+      prisma.projectAttachment.update({
+        where: { id: attachment.id },
+        data: { status: AttachmentStatus.DELETED },
+      }),
     );
     return;
   }

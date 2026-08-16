@@ -242,6 +242,7 @@ enum AttachmentAssetType {
   FINAL_ARCHIVE
   GENERAL_PROJECT_ASSET
   PROJECT_RESEARCH_FILE
+  PROJECT_PRIVATE_FILE
   FILE_CHECKLIST_ATTACHMENT
   SAMPLE_ROUND_EVIDENCE
 }
@@ -437,6 +438,7 @@ model User {
   createdContactDirectoryEntries      ContactDirectoryEntry[]              @relation("ContactDirectoryEntryCreator")
   projectInquiryPartySelections       ProjectInquiryParty[]                @relation("ProjectInquiryPartyUser")
   researchWorkspaces                  ProjectResearchWorkspace[]           @relation("ProjectResearchWorkspaceOwner")
+  projectPrivateFolders               ProjectPrivateFolder[]               @relation("ProjectPrivateFolderOwner")
   createdResearchFolders              ProjectResearchFolder[]              @relation("ProjectResearchFolderCreator")
   addedResearchFolderFiles            ProjectResearchFolderFile[]          @relation("ProjectResearchFolderFileAdder")
   createdConceptFolders               ProjectConceptFolder[]               @relation("ProjectConceptFolderCreator")
@@ -590,6 +592,7 @@ model Project {
   workflowStages         ProjectWorkflowStage[]
   inquiry                ProjectInquiry?
   researchWorkspaces     ProjectResearchWorkspace[]
+  privateFolders         ProjectPrivateFolder[]
   conceptFolders         ProjectConceptFolder[]
   formDrafts             ProjectFormDraft[]
   completedAt            DateTime?
@@ -801,6 +804,20 @@ model ProjectResearchFolderFile {
   @@unique([folderId, attachmentId])
   @@index([folderId, createdAt])
   @@index([addedById])
+}
+
+model ProjectPrivateFolder {
+  id          String              @id @default(cuid())
+  projectId   String
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ownerUserId String
+  owner       User                @relation("ProjectPrivateFolderOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  files       ProjectAttachment[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([projectId, ownerUserId])
+  @@index([ownerUserId])
 }
 
 model ProjectConceptFolder {
@@ -1657,6 +1674,8 @@ model ProjectAttachment {
   assetTags                  ProjectAttachmentAssetTagAssignment[]
   inquiryAssociations        ProjectInquiryAttachment[]
   researchFolderFile         ProjectResearchFolderFile?
+  privateFolderId            String?
+  privateFolder              ProjectPrivateFolder?                 @relation(fields: [privateFolderId], references: [id], onDelete: SetNull)
   stageFileHandoffs          ProjectStageFileHandoff[]             @relation("ProjectStageFileHandoffSourceAttachment")
   sourceFileChecklists       ProjectFileChecklist[]                @relation("ProjectFileChecklistSourceAttachment")
   sourceProductionUnits      ProjectProductionUnit[]               @relation("ProjectProductionUnitSourceAttachment")
@@ -1679,6 +1698,7 @@ model ProjectAttachment {
   @@index([commentId, createdAt])
   @@index([uploadedById])
   @@index([reviewedById])
+  @@index([privateFolderId, createdAt])
   @@index([checklistResponseRequestId])
   @@index([uploadSource])
   @@index([status])
