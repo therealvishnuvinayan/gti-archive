@@ -192,7 +192,6 @@ async function main() {
   const ownerWorkspace = workspaces.find((item) => item.ownerUserId === users.owner.id)!;
   const executorWorkspace = workspaces.find((item) => item.ownerUserId === users.executor.id)!;
   const ownerBrief = ownerWorkspace.folders.find((folder) => folder.systemKey === "BRIEF")!;
-  const executorBrief = executorWorkspace.folders.find((folder) => folder.systemKey === "BRIEF")!;
   const custom = await createProjectResearchFolder(users.owner, { projectId, workspaceId: ownerWorkspace.id, name: "  Customer   Interviews " });
   check(12, "folder" in custom && custom.folder?.name === "Customer Interviews", "custom folder must persist trimmed whitespace");
   const duplicateCustom = await createProjectResearchFolder(users.owner, { projectId, workspaceId: ownerWorkspace.id, name: "customer interviews" });
@@ -213,20 +212,20 @@ async function main() {
     `non-participant SUPER_ADMIN must default to owner workspace (actual=${superAdminPage?.selectedWorkspace.ownerUserId ?? "null"}, options=${superAdminPage?.workspaceOptions.map((item) => item.ownerUserId).join(",") ?? "none"})`,
   );
   const executorPage = await getProjectResearchPageData(users.executor, projectId);
-  check(17, executorPage?.selectedWorkspace.ownerUserId === users.executor.id, "participant must default to own workspace");
+  check(17, executorPage === null, "USER must not receive the editable participant Stage 2 workspace");
   check(18, superAdminPage?.workspaceOptions.length === 5, "SUPER_ADMIN must see all current participant workspaces");
   const ownerPage = await getProjectResearchPageData(users.owner, projectId, executorWorkspace.id);
   check(19, ownerPage?.selectedWorkspace.id === executorWorkspace.id, "owner must switch to other workspaces");
   const coOwnerPage = await getProjectResearchPageData(users.coOwner, projectId, executorWorkspace.id);
   check(20, coOwnerPage?.selectedWorkspace.id === executorWorkspace.id, "co-owner must switch to other workspaces");
   const executorCross = await getProjectResearchPageData(users.executor, projectId, ownerWorkspace.id);
-  check(21, executorCross?.selectedWorkspace.id === executorWorkspace.id, "executor cannot switch to another workspace");
+  check(21, executorCross === null, "USER must not switch into another Stage 2 workspace");
   const collaboratorPage = await getProjectResearchPageData(users.collaborator, projectId, ownerWorkspace.id);
-  check(22, collaboratorPage?.selectedWorkspace.ownerUserId === users.collaborator.id, "normal collaborator cannot switch to another workspace");
+  check(22, collaboratorPage === null, "normal USER collaborator must not receive Stage 2 workspace data");
   check(23, ownerPage?.selectedWorkspace.canWrite === true && coOwnerPage?.selectedWorkspace.canWrite === true, "ADMIN owner/co-owner must retain global Stage 2 write access");
   const superAdminCross = await getProjectResearchPageData(users.superAdmin, projectId, executorWorkspace.id);
   check(24, superAdminCross?.selectedWorkspace.canWrite === true, "SUPER_ADMIN must write cross-workspace");
-  check(63, executorPage?.selectedWorkspace.canDeleteFolders === true, "workspace owners must receive folder deletion controls");
+  check(63, executorPage === null, "USER must not receive folder deletion controls");
   check(64, ownerPage?.selectedWorkspace.canDeleteFolders === false && superAdminCross?.selectedWorkspace.canDeleteFolders === false, "cross-workspace viewers must never receive folder deletion controls");
 
   const ownerPitch = ownerWorkspace.folders.find((folder) => folder.systemKey === "PITCH")!;
@@ -245,19 +244,19 @@ async function main() {
   await ensureProjectResearchWorkspace(projectId, users.owner.id);
   check(67, !(await prisma.projectResearchFolder.findFirst({ where: { workspaceId: ownerWorkspace.id, systemKey: "PITCH" } })), "an intentionally deleted predefined folder must not be recreated");
 
-  const upload = await requestProjectResearchFileUpload(users.executor, {
+  const upload = await requestProjectResearchFileUpload(users.owner, {
     projectId,
-    folderId: executorBrief.id,
+    folderId: ownerBrief.id,
     originalFileName: "floor-plan.dwg",
     mimeType: "application/acad",
     fileSize: 512,
   });
-  check(25, !("error" in upload), "own-workspace upload must be prepared");
+  check(25, !("error" in upload), "ADMIN owner workspace upload must be prepared");
   check(27, !("error" in upload), "generic CAD file type must be accepted");
   if ("error" in upload) throw new Error(String(upload.error));
-  const completedFile = await completeProjectResearchFileUpload(users.executor, {
+  const completedFile = await completeProjectResearchFileUpload(users.owner, {
     projectId,
-    folderId: executorBrief.id,
+    folderId: ownerBrief.id,
     attachmentId: upload.attachmentId,
   });
   check(
@@ -268,12 +267,12 @@ async function main() {
     "upload completion must return the persisted gallery file metadata",
   );
 
-  const uploadTwo = await requestProjectResearchFileUpload(users.executor, { projectId, folderId: executorBrief.id, originalFileName: "research.bundle", mimeType: "application/octet-stream", fileSize: 256 });
+  const uploadTwo = await requestProjectResearchFileUpload(users.owner, { projectId, folderId: ownerBrief.id, originalFileName: "research.bundle", mimeType: "application/octet-stream", fileSize: 256 });
   check(26, !("error" in uploadTwo), "a second file in a multi-file selection must be accepted");
   if ("error" in uploadTwo) throw new Error(String(uploadTwo.error));
-  const completedFileTwo = await completeProjectResearchFileUpload(users.executor, {
+  const completedFileTwo = await completeProjectResearchFileUpload(users.owner, {
     projectId,
-    folderId: executorBrief.id,
+    folderId: ownerBrief.id,
     attachmentId: uploadTwo.attachmentId,
   });
   check(
@@ -283,30 +282,30 @@ async function main() {
     "independently completed files must each return their own persisted record",
   );
   const association = await prisma.projectResearchFolderFile.findUnique({ where: { attachmentId: upload.attachmentId } });
-  check(28, association?.folderId === executorBrief.id, "file association must target the exact folder");
+  check(28, association?.folderId === ownerBrief.id, "file association must target the exact folder");
 
-  const textUpload = await requestProjectResearchFileUpload(users.executor, {
+  const textUpload = await requestProjectResearchFileUpload(users.owner, {
     projectId,
-    folderId: executorBrief.id,
+    folderId: ownerBrief.id,
     originalFileName: "Market research notes.txt",
     mimeType: "text/plain",
     fileSize: new TextEncoder().encode(multilineText).byteLength,
   });
   check(57, !("error" in textUpload), "plain-text files must use the existing upload preparation pipeline");
   if ("error" in textUpload) throw new Error(String(textUpload.error));
-  const completedTextFile = await completeProjectResearchFileUpload(users.executor, {
+  const completedTextFile = await completeProjectResearchFileUpload(users.owner, {
     projectId,
-    folderId: executorBrief.id,
+    folderId: ownerBrief.id,
     attachmentId: textUpload.attachmentId,
   });
   check(58, completedTextFile?.name === "Market research notes.txt" && completedTextFile.mimeType === "text/plain", "saved text attachments must retain their .txt name and text/plain MIME type");
   const textAssociation = await prisma.projectResearchFolderFile.findUnique({ where: { attachmentId: textUpload.attachmentId } });
-  check(59, textAssociation?.folderId === executorBrief.id, "saved text files must associate with the exact Stage 2 folder");
-  const textFolderPage = await getProjectResearchFolderPageData(users.executor, { projectId, folderId: executorBrief.id });
+  check(59, textAssociation?.folderId === ownerBrief.id, "saved text files must associate with the exact Stage 2 folder");
+  const textFolderPage = await getProjectResearchFolderPageData(users.owner, { projectId, folderId: ownerBrief.id });
   check(60, textFolderPage?.files.some((file) => file.id === textAssociation?.id && file.mimeType === "text/plain"), "saved text files must appear in the real folder file dataset");
-  const textDownloadUrl = await getProjectResearchFileDownloadUrl(users.executor, { projectId, folderId: executorBrief.id, fileId: textAssociation!.id });
+  const textDownloadUrl = await getProjectResearchFileDownloadUrl(users.owner, { projectId, folderId: ownerBrief.id, fileId: textAssociation!.id });
   check(61, textDownloadUrl.length > 0, "saved text files must use the normal secure download path");
-  await deleteProjectResearchFile(users.executor, { projectId, folderId: executorBrief.id, fileId: textAssociation!.id });
+  await deleteProjectResearchFile(users.owner, { projectId, folderId: ownerBrief.id, fileId: textAssociation!.id });
   check(62, !(await prisma.projectResearchFolderFile.findUnique({ where: { id: textAssociation!.id } })), "authorized users must delete created text files normally");
 
   const foreignProjectId = await mustCreateProject("Stage 2 foreign project");
@@ -319,22 +318,29 @@ async function main() {
   check(30, crossWorkspaceRejected, "unauthorized cross-workspace upload must fail");
 
   const refreshedExecutor = await getProjectResearchPageData(users.executor, projectId);
-  check(31, refreshedExecutor?.folders.find((folder) => folder.id === executorBrief.id)?.fileCount === 2, "real READY file count must update");
-  const folderPage = await getProjectResearchFolderPageData(users.executor, { projectId, folderId: executorBrief.id });
+  const refreshedOwner = await getProjectResearchPageData(users.owner, projectId);
+  check(31, refreshedExecutor === null && refreshedOwner?.folders.find((folder) => folder.id === ownerBrief.id)?.fileCount === 2, "real READY file count must update without exposing editable USER Stage 2 data");
+  const folderPage = await getProjectResearchFolderPageData(users.owner, { projectId, folderId: ownerBrief.id });
   check(32, folderPage?.files.length === 2 && folderPage.files[0].name && folderPage.files[0].uploadedBy && folderPage.files[0].uploadedAt, "file list must return real metadata");
-  const downloadUrl = await getProjectResearchFileDownloadUrl(users.owner, { projectId, folderId: executorBrief.id, fileId: association!.id });
+  const userSharedFolderPage = await getProjectResearchFolderPageData(users.executor, { projectId, folderId: ownerBrief.id });
+  check(68, userSharedFolderPage?.files.length === 2 && userSharedFolderPage.canWrite === false, "USER must read canonical owner Brief without mutation access");
+  const userSharedDownload = await getProjectResearchFileDownloadUrl(users.executor, { projectId, folderId: ownerBrief.id, fileId: association!.id });
+  check(69, userSharedDownload.length > 0, "USER must download canonical shared Brief files");
+  let userSharedDeleteRejected = false;
+  try { await deleteProjectResearchFile(users.executor, { projectId, folderId: ownerBrief.id, fileId: association!.id }); } catch { userSharedDeleteRejected = true; }
+  check(70, userSharedDeleteRejected, "USER must not delete canonical shared Brief files");
+  const downloadUrl = await getProjectResearchFileDownloadUrl(users.owner, { projectId, folderId: ownerBrief.id, fileId: association!.id });
   check(33, typeof downloadUrl === "string" && downloadUrl.length > 0, "authorized cross-workspace download must succeed");
   let unauthorizedDownload = false;
-  try { await getProjectResearchFileDownloadUrl(users.outsider, { projectId, folderId: executorBrief.id, fileId: association!.id }); } catch { unauthorizedDownload = true; }
+  try { await getProjectResearchFileDownloadUrl(users.outsider, { projectId, folderId: ownerBrief.id, fileId: association!.id }); } catch { unauthorizedDownload = true; }
   check(34, unauthorizedDownload, "unauthorized download must fail");
   let unauthorizedDelete = false;
-  try { await deleteProjectResearchFile(users.outsider, { projectId, folderId: executorBrief.id, fileId: association!.id }); } catch { unauthorizedDelete = true; }
+  try { await deleteProjectResearchFile(users.outsider, { projectId, folderId: ownerBrief.id, fileId: association!.id }); } catch { unauthorizedDelete = true; }
   check(36, unauthorizedDelete, "unrelated USER cross-workspace delete must fail");
-  await deleteProjectResearchFile(users.superAdmin, { projectId, folderId: executorBrief.id, fileId: association!.id });
+  await deleteProjectResearchFile(users.superAdmin, { projectId, folderId: ownerBrief.id, fileId: association!.id });
   check(35, !(await prisma.projectResearchFolderFile.findUnique({ where: { id: association!.id } })) && (await prisma.projectAttachment.findUniqueOrThrow({ where: { id: upload.attachmentId } })).status === AttachmentStatus.DELETED, "authorized delete must remove association and mark attachment deleted");
 
-  check(37, refreshedExecutor?.folders.every((folder) => Number.isInteger(folder.fileCount)), "folder cards must receive real database counts");
-  const refreshedOwner = await getProjectResearchPageData(users.owner, projectId);
+  check(37, refreshedOwner?.folders.every((folder) => Number.isInteger(folder.fileCount)), "folder cards must receive real database counts");
   check(38, refreshedOwner?.folders.some((folder) => folder.name === "Customer Interviews"), "custom folder must survive refresh");
   check(39, (await getProjectResearchPageData(users.owner, projectId, executorWorkspace.id))?.selectedWorkspace.id === executorWorkspace.id, "workspace query selection must survive refresh");
 

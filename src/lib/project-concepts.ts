@@ -91,6 +91,7 @@ export type ProjectConceptFolderRecord = {
 
 export type ProjectConceptChatMode = {
   type: "concept";
+  stageNeutral?: boolean;
   folderId: string;
   workflowStageKey: ConceptWorkflowStageKey;
   stageNumber: 3 | 4;

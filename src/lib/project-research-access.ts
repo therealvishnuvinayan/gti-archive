@@ -1,6 +1,8 @@
 import {
+  ProjectResearchFolderSystemKey,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
+  UserRole,
   type Prisma,
 } from "@prisma/client";
 
@@ -40,6 +42,7 @@ export function getProjectResearchAccess(
     projectId: string;
     workspaceId: string;
     workspaceOwnerUserId: string;
+    folderSystemKey?: ProjectResearchFolderSystemKey | null;
     project: Prisma.ProjectGetPayload<{
       select: typeof researchAccessProjectSelect;
     }>;
@@ -66,16 +69,20 @@ export function getProjectResearchAccess(
   const stageAvailable =
     workflowStatus === ProjectWorkflowStageStatus.AVAILABLE ||
     workflowStatus === ProjectWorkflowStageStatus.COMPLETED;
+  const isCanonicalSharedFolder =
+    user.role === UserRole.USER &&
+    context.workspaceOwnerUserId === context.project.ownerId &&
+    (context.folderSystemKey === ProjectResearchFolderSystemKey.BRIEF ||
+      context.folderSystemKey === ProjectResearchFolderSystemKey.TECH) &&
+    isProjectParticipant;
 
   return {
     projectId: context.projectId,
     workspaceId: context.workspaceId,
     workspaceOwnerUserId: context.workspaceOwnerUserId,
     isOwnWorkspace,
-    canRead:
-      stageAvailable &&
-      (isGlobalAdministrator || isOwnWorkspace || isProjectOwner || isProjectCoOwner),
-    canWrite: stageAvailable && (isGlobalAdministrator || isOwnWorkspace),
+    canRead: isCanonicalSharedFolder || (stageAvailable && isGlobalAdministrator),
+    canWrite: stageAvailable && isGlobalAdministrator,
     isProjectOwner,
     isProjectCoOwner,
     isProjectParticipant,
@@ -94,6 +101,7 @@ export async function getResearchFolderAccess(
       },
       select: {
         id: true,
+        systemKey: true,
         workspaceId: true,
         workspace: {
           select: {
@@ -115,6 +123,7 @@ export async function getResearchFolderAccess(
       projectId: input.projectId,
       workspaceId: folder.workspaceId,
       workspaceOwnerUserId: folder.workspace.ownerUserId,
+      folderSystemKey: folder.systemKey,
       project: folder.workspace.project,
     }),
   };

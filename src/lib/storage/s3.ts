@@ -162,6 +162,7 @@ type BuildProjectAssetKeyInput = {
   revisionId?: string | null;
   commentId?: string | null;
   researchFolderId?: string | null;
+  privateFolderId?: string | null;
   assetType: AttachmentAssetType;
   safeFileName: string;
 };
@@ -172,6 +173,7 @@ export function buildProjectAssetKey({
   revisionId,
   commentId,
   researchFolderId,
+  privateFolderId,
   assetType,
   safeFileName,
 }: BuildProjectAssetKeyInput) {
@@ -243,6 +245,13 @@ export function buildProjectAssetKey({
       }
 
       return `projects/${projectId}/research/${researchFolderId}/${safeFileName}`;
+    }
+    case AttachmentAssetType.PROJECT_PRIVATE_FILE: {
+      if (!privateFolderId) {
+        throw new Error("Project private assets require privateFolderId.");
+      }
+
+      return `projects/${projectId}/private/${privateFolderId}/${safeFileName}`;
     }
     case AttachmentAssetType.GENERAL_PROJECT_ASSET:
     default:

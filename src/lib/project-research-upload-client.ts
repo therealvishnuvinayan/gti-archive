@@ -42,20 +42,17 @@ function putResearchFile(
   });
 }
 
-export async function uploadProjectResearchFile({
-  projectId,
-  folderId,
+async function uploadFolderFile({
+  baseApi,
   file,
   onProgress,
   createdTextFile = false,
 }: {
-  projectId: string;
-  folderId: string;
+  baseApi: string;
   file: File;
   onProgress: (progress: number) => void;
   createdTextFile?: boolean;
 }) {
-  const baseApi = `/api/projects/${projectId}/research/folders/${folderId}`;
   let attachmentId: string | undefined;
 
   try {
@@ -111,4 +108,38 @@ export async function uploadProjectResearchFile({
     }
     throw error;
   }
+}
+
+export function uploadProjectResearchFile({
+  projectId,
+  folderId,
+  ...input
+}: {
+  projectId: string;
+  folderId: string;
+  file: File;
+  onProgress: (progress: number) => void;
+  createdTextFile?: boolean;
+}) {
+  return uploadFolderFile({
+    baseApi: `/api/projects/${projectId}/research/folders/${folderId}`,
+    ...input,
+  });
+}
+
+export function uploadProjectPrivateFile({
+  projectId,
+  folderId,
+  ...input
+}: {
+  projectId: string;
+  folderId: string;
+  file: File;
+  onProgress: (progress: number) => void;
+  createdTextFile?: boolean;
+}) {
+  return uploadFolderFile({
+    baseApi: `/api/projects/${projectId}/private-folders/${folderId}`,
+    ...input,
+  });
 }
