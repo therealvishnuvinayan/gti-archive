@@ -23,14 +23,24 @@ function getTopbarProps(
 ) {
   const navigation = getDashboardBackNavigation(pathname, searchParams);
   if (navigation.owner !== "topbar") return {};
+  const isCompareWorkspace =
+    /^\/projects\/[^/]+\/compare$/.test(pathname) ||
+    /^\/projects\/[^/]+\/stages\/[34]\/concepts\/[^/]+\/compare$/.test(pathname);
 
   return {
     leadingContent: (
-      <ProjectBackButton
-        href={navigation.href}
-        label={navigation.label}
-        ariaLabel={navigation.ariaLabel}
-      />
+      <div className="flex min-w-0 items-center gap-3">
+        <ProjectBackButton
+          href={navigation.href}
+          label={navigation.label}
+          ariaLabel={navigation.ariaLabel}
+        />
+        {isCompareWorkspace ? (
+          <h1 className="max-w-[110px] truncate text-[15px] font-semibold tracking-[-0.02em] text-[#111712] sm:max-w-none sm:text-[18px]">
+            Compare Submissions
+          </h1>
+        ) : null}
+      </div>
     ),
   };
 }

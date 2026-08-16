@@ -17,6 +17,7 @@ const [
   projects,
   assetPreview,
   deadlineTimer,
+  dashboardAppFrame,
 ] = await Promise.all([
   readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
   readFile("src/app/(dashboard)/projects/[slug]/chat/page.tsx", "utf8"),
@@ -39,6 +40,7 @@ const [
   readFile("src/lib/projects.ts", "utf8"),
   readFile("src/components/projects/asset-preview-button.tsx", "utf8"),
   readFile("src/components/projects/concept-deadline-timer.tsx", "utf8"),
+  readFile("src/components/layout/dashboard-app-frame.tsx", "utf8"),
 ]);
 
 assert(
@@ -244,12 +246,55 @@ assert(
 );
 assert(
   compareWorkspace.includes("mx-auto w-full min-w-0 max-w-[1600px]") &&
-    compareWorkspace.includes(
-      "[grid-template-columns:repeat(auto-fit,minmax(min(100%,28rem),1fr))]",
-    ) &&
+    compareWorkspace.includes("sm:grid-cols-2") &&
+    compareWorkspace.includes("xl:grid-cols-[minmax(0,1fr)_300px]") &&
     compareWorkspace.includes("min-h-0 min-w-0 max-w-full") &&
     compareWorkspace.includes("[&>span]:min-w-0"),
-  "Concept comparison cards and the overlay viewer must remain aligned within the available viewport.",
+  "Compact concept selectors and the overlay workspace must remain aligned within the available viewport.",
+);
+assert(
+  dashboardAppFrame.includes("isCompareWorkspace") &&
+    dashboardAppFrame.includes("Compare Submissions") &&
+    compareWorkspace.includes("md:h-[calc(100dvh-180px)]") &&
+    compareWorkspace.includes("md:h-auto md:flex-1") &&
+    compareWorkspace.includes("fitPadding = fullscreenMode ? 12 : 20") &&
+    compareWorkspace.includes("useState(initialComments.length > 0)") &&
+    compareWorkspace.includes("captionsPanelOpen ?") &&
+    compareWorkspace.includes("Captions {comments.length}") &&
+    compareWorkspace.includes('bg-[#f3f5f1]') &&
+    compareWorkspace.includes("Add Caption") &&
+    compareWorkspace.includes("Available Submissions") &&
+    !compareWorkspace.includes("bg-[linear-gradient(135deg,#2f8d5d,#46a470)]") &&
+    !compareWorkspace.includes('fixed inset-0 z-[100] bg-[#0f1311]'),
+  "Comparison must use compact topbar context, viewport-height artwork, collapsible captions, and a light maximize workspace.",
+);
+for (const { viewportHeight, expectedCardHeight, minimumArtworkHeight } of [
+  { viewportHeight: 768, expectedCardHeight: 588, minimumArtworkHeight: 470 },
+  { viewportHeight: 800, expectedCardHeight: 620, minimumArtworkHeight: 500 },
+  { viewportHeight: 900, expectedCardHeight: 720, minimumArtworkHeight: 600 },
+]) {
+  const calculatedCardHeight = Math.min(760, Math.max(500, viewportHeight - 180));
+  const calculatedArtworkHeight = calculatedCardHeight - 112;
+  assert.equal(
+    calculatedCardHeight,
+    expectedCardHeight,
+    `Comparison card height must remain viewport-derived at ${viewportHeight}px.`,
+  );
+  assert(
+    calculatedArtworkHeight >= minimumArtworkHeight,
+    `Artwork must remain substantial without scrolling at ${viewportHeight}px.`,
+  );
+}
+const primaryComparisonIndex = compareWorkspace.indexOf(
+  "{hasEnoughSubmissions && baseSubmission && compareSubmission ? (",
+);
+const availableSubmissionsIndex = compareWorkspace.indexOf(
+  "{submissions.length > 0 ? (",
+  primaryComparisonIndex,
+);
+assert(
+  primaryComparisonIndex >= 0 && availableSubmissionsIndex > primaryComparisonIndex,
+  "Available Submissions must remain after the primary first-viewport comparison workspace.",
 );
 const comparisonFrameIndex = compareWorkspace.indexOf("ref={frameRef}");
 const pendingCaptionMarkerIndex = compareWorkspace.indexOf(
@@ -261,7 +306,7 @@ const pendingCaptionEditorIndex = compareWorkspace.indexOf(
   pendingCaptionMarkerIndex,
 );
 assert(
-  compareWorkspace.includes("relative min-h-0 border p-4") &&
+  compareWorkspace.includes("relative min-h-0 border p-2.5") &&
     pendingCaptionMarkerIndex > comparisonFrameIndex &&
     pendingCaptionEditorIndex > pendingCaptionMarkerIndex &&
     compareWorkspace.includes('data-caption-overlay-layer="true"') &&
