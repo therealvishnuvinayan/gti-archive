@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,12 +33,17 @@ export function ConfirmationDialog({
   onConfirm,
   onClose,
 }: ConfirmationDialogProps) {
-  if (!isOpen) {
+  if (!isOpen || typeof document === "undefined") {
     return null;
   }
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
       <Card className="w-full max-w-[520px] rounded-[28px] border border-[#e1e7e1] shadow-[0_35px_90px_rgba(11,26,18,0.22)]">
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 p-6 sm:p-7">
           <div>
@@ -90,6 +96,7 @@ export function ConfirmationDialog({
           </div>
         </CardContent>
       </Card>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   AttachmentStatus,
   Prisma,
@@ -574,45 +576,80 @@ export async function saveStageFiveChecklist(
           select: { fieldKey: true, status: true },
         });
         const statusByField = new Map(existing.map((item) => [item.fieldKey, item.status]));
-        const result: Array<{ fieldKey: ProjectFileChecklistField; status: ProjectFileChecklistItemStatus }> = [];
-
-        for (const item of prepared) {
+        const itemsWithStatus = prepared.map((item) => {
           const filled = valueIsFilled(item.value, item.attachmentIds);
           const status = filled
             ? ProjectFileChecklistItemStatus.FILLED
             : statusByField.get(item.fieldKey) === ProjectFileChecklistItemStatus.REQUESTED
               ? ProjectFileChecklistItemStatus.REQUESTED
               : ProjectFileChecklistItemStatus.PENDING;
-          const saved = await tx.projectFileChecklistItem.upsert({
-            where: { checklistId_fieldKey: { checklistId: checklist.id, fieldKey: item.fieldKey } },
-            update: { value: item.value as Prisma.InputJsonValue, status, updatedById: user.id },
-            create: {
-              checklistId: checklist.id,
-              fieldKey: item.fieldKey,
-              value: item.value as Prisma.InputJsonValue,
-              status,
-              updatedById: user.id,
-            },
-            select: { id: true },
-          });
-          await tx.projectFileChecklistItemAttachment.deleteMany({
-            where: {
-              checklistItemId: saved.id,
-              ...(item.attachmentIds.length ? { attachmentId: { notIn: item.attachmentIds } } : {}),
-            },
-          });
-          if (item.attachmentIds.length) {
-            await tx.projectFileChecklistItemAttachment.createMany({
-              data: item.attachmentIds.map((attachmentId) => ({
-                checklistItemId: saved.id,
-                attachmentId,
-              })),
-              skipDuplicates: true,
-            });
+
+          return { ...item, status };
+        });
+        const upsertRows = itemsWithStatus.map((item) =>
+          Prisma.sql`(
+            ${randomUUID()},
+            ${checklist.id},
+            ${item.fieldKey}::"ProjectFileChecklistField",
+            ${JSON.stringify(item.value)}::jsonb,
+            ${item.status}::"ProjectFileChecklistItemStatus",
+            ${user.id},
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+          )`,
+        );
+        const saved = await tx.$queryRaw<
+          Array<{ id: string; fieldKey: ProjectFileChecklistField }>
+        >(Prisma.sql`
+          INSERT INTO "ProjectFileChecklistItem" (
+            "id",
+            "checklistId",
+            "fieldKey",
+            "value",
+            "status",
+            "updatedById",
+            "createdAt",
+            "updatedAt"
+          )
+          VALUES ${Prisma.join(upsertRows)}
+          ON CONFLICT ("checklistId", "fieldKey") DO UPDATE SET
+            "value" = EXCLUDED."value",
+            "status" = EXCLUDED."status",
+            "updatedById" = EXCLUDED."updatedById",
+            "updatedAt" = CURRENT_TIMESTAMP
+          RETURNING "id", "fieldKey"
+        `);
+        const checklistItemIdByField = new Map(
+          saved.map((item) => [item.fieldKey, item.id] as const),
+        );
+        const checklistItemIds = saved.map((item) => item.id);
+
+        await tx.projectFileChecklistItemAttachment.deleteMany({
+          where: { checklistItemId: { in: checklistItemIds } },
+        });
+
+        const attachmentLinks = itemsWithStatus.flatMap((item) => {
+          const checklistItemId = checklistItemIdByField.get(item.fieldKey);
+          if (!checklistItemId) {
+            throw new Error("Unable to resolve a saved checklist item.");
           }
-          result.push({ fieldKey: item.fieldKey, status });
+
+          return item.attachmentIds.map((attachmentId) => ({
+            checklistItemId,
+            attachmentId,
+          }));
+        });
+        if (attachmentLinks.length > 0) {
+          await tx.projectFileChecklistItemAttachment.createMany({
+            data: attachmentLinks,
+            skipDuplicates: true,
+          });
         }
-        return result;
+
+        return itemsWithStatus.map((item) => ({
+          fieldKey: item.fieldKey,
+          status: item.status,
+        }));
       },
       { maxWait: 5_000, timeout: 25_000 },
     ),

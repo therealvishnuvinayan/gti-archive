@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, fieldDefinitions, filePicker, requestWorkspace, requestPage, requestActions, summaryAlias, summary, page, workflowAccess, overview, schema, chatWorkspace, service, actions, uploadClient, requestUploadRoute, requestCompleteRoute, requestSourcePreviewRoute, requestSourceDownloadRoute, stageFourWorkspace, conceptActions, emailTemplate, migration, integrityMigration, responseMigration, attachmentScopeMigration, auth, signInPage, signInActions] =
+const [workspace, fieldDefinitions, filePicker, requestWorkspace, requestPage, requestActions, summaryAlias, summary, page, workflowAccess, overview, schema, chatWorkspace, service, actions, uploadClient, requestUploadRoute, requestCompleteRoute, requestSourcePreviewRoute, requestSourceDownloadRoute, stageFourWorkspace, conceptActions, emailTemplate, migration, integrityMigration, responseMigration, attachmentScopeMigration, auth, signInPage, signInActions, confirmationDialog] =
   await Promise.all([
     readFile("src/components/projects/stage-five-workspace.tsx", "utf8"),
     readFile("src/lib/stage-five-fields.ts", "utf8"),
@@ -33,6 +33,7 @@ const [workspace, fieldDefinitions, filePicker, requestWorkspace, requestPage, r
     readFile("src/lib/auth.ts", "utf8"),
     readFile("src/app/sign-in/page.tsx", "utf8"),
     readFile("src/app/sign-in/actions.ts", "utf8"),
+    readFile("src/components/ui/confirmation-dialog.tsx", "utf8"),
   ]);
 
 const [externalPage, externalWorkspace, externalService, externalToken, secureToken, externalUploadClient, externalUploadRoute, externalSubmitRoute, externalDeclineRoute, externalMigration, rateLimit, nextConfig] =
@@ -334,6 +335,21 @@ assert(
     service.includes("saveStageFiveChecklist") &&
     actions.includes("saveStageFiveChecklistAction"),
   "Stage 5 must keep independent per-file drafts and persist them explicitly.",
+);
+assert(
+  workspace.includes("stageFiveDraftFingerprint(activeDraft) === stageFiveDraftFingerprint(draft)") &&
+    workspace.includes("const dirtyIds = dirtyHandoffIdsRef.current") &&
+    workspace.includes("const hasUnsavedChecklistChanges = unsavedHandoffIds.size > 0") &&
+    workspace.includes("}, [committedDrafts]);") &&
+    !workspace.includes("}, [pageData.files, dirtyHandoffIds]);"),
+  "Stage 5 completion must use real draft differences and avoid stale server-prop synchronization.",
+);
+assert(
+  confirmationDialog.includes('createPortal(') &&
+    confirmationDialog.includes('document.body') &&
+    confirmationDialog.includes('role="dialog"') &&
+    confirmationDialog.includes('aria-modal="true"'),
+  "The Stage 5 confirmation must escape the animated dashboard container through the shared dialog portal.",
 );
 assert(
   workspace.indexOf("CHECKLIST_ITEMS.map") < workspace.indexOf('border-t border-[#e7ece7] bg-[#fbfcfb] px-4 py-5') &&

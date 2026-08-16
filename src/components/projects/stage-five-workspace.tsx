@@ -213,6 +213,36 @@ function buildStageFiveAutosaveValue(draft: StageFiveDraft): StageFiveAutosaveVa
   };
 }
 
+function stageFiveDraftFingerprint(
+  draft: Pick<
+    StageFiveDraft,
+    "textValues" | "files" | "multiValues" | "healthWarningIncluded"
+  >,
+) {
+  return JSON.stringify({
+    textValues: STAGE_FIVE_FIELD_KEYS.map((fieldKey) => [
+      fieldKey,
+      draft.textValues[fieldKey] ?? "",
+    ]),
+    files: STAGE_FIVE_FIELD_KEYS.map((fieldKey) => [
+      fieldKey,
+      (draft.files[fieldKey] ?? [])
+        .map((file) => [
+          file.attachmentId ?? "",
+          file.name,
+          file.mimeType,
+          file.size,
+        ])
+        .sort(([left], [right]) => String(left).localeCompare(String(right))),
+    ]),
+    multiValues: STAGE_FIVE_FIELD_KEYS.map((fieldKey) => [
+      fieldKey,
+      draft.multiValues[fieldKey] ?? [],
+    ]),
+    healthWarningIncluded: draft.healthWarningIncluded,
+  });
+}
+
 function mergeResolvedRequestFields(
   current: StageFiveDraft,
   server: StageFiveDraft,
@@ -804,8 +834,13 @@ export function StageFiveWorkspace({
       ? initialHandoffId ?? firstHandoffId
       : firstHandoffId,
   );
-  const [drafts, setDrafts] = useState(() => buildStageFiveDrafts(pageData.files));
+  const committedDrafts = useMemo(
+    () => buildStageFiveDrafts(pageData.files),
+    [pageData.files],
+  );
+  const [drafts, setDrafts] = useState(() => committedDrafts);
   const [dirtyHandoffIds, setDirtyHandoffIds] = useState<Set<string>>(() => new Set());
+  const dirtyHandoffIdsRef = useRef(dirtyHandoffIds);
   const [isSaving, startSaving] = useTransition();
   const [saveProgress, setSaveProgress] = useState<ChecklistSaveProgress | null>(null);
   const [isRequestActionPending, startRequestAction] = useTransition();
@@ -815,6 +850,22 @@ export function StageFiveWorkspace({
   const [requestField, setRequestField] = useState<ChecklistDefinition | null>(null);
   const activeFile = pageData.files.find((file) => file.handoffId === selectedHandoffId);
   const activeDraft = drafts[selectedHandoffId];
+  const unsavedHandoffIds = useMemo(() => {
+    const next = new Set<string>();
+    for (const file of pageData.files) {
+      const draft = drafts[file.handoffId];
+      const committedDraft = committedDrafts[file.handoffId];
+      if (
+        draft &&
+        committedDraft &&
+        stageFiveDraftFingerprint(draft) !== stageFiveDraftFingerprint(committedDraft)
+      ) {
+        next.add(file.handoffId);
+      }
+    }
+    return next;
+  }, [committedDrafts, drafts, pageData.files]);
+  const hasUnsavedChecklistChanges = unsavedHandoffIds.size > 0;
   const autosaveValue = useMemo(
     () => buildStageFiveAutosaveValue(activeDraft ?? {
       textValues: {},
@@ -832,6 +883,17 @@ export function StageFiveWorkspace({
     enabled: Boolean(pageData.canEdit && !pageData.stageCompleted && activeDraft),
     onRestore: ({ draft }) => {
       if (!selectedHandoffId) return;
+      if (
+        activeDraft &&
+        stageFiveDraftFingerprint(activeDraft) === stageFiveDraftFingerprint(draft)
+      ) {
+        updateDirtyHandoffIds((current) => {
+          const next = new Set(current);
+          next.delete(selectedHandoffId);
+          return next;
+        });
+        return;
+      }
       setDrafts((current) => ({
         ...current,
         [selectedHandoffId]: {
@@ -842,7 +904,7 @@ export function StageFiveWorkspace({
           files: draft.files,
         },
       }));
-      setDirtyHandoffIds((current) => new Set(current).add(selectedHandoffId));
+      updateDirtyHandoffIds((current) => new Set(current).add(selectedHandoffId));
     },
   });
 
@@ -857,18 +919,26 @@ export function StageFiveWorkspace({
   }, [initialField, selectedHandoffId, mode]);
 
   useEffect(() => {
-    const serverDrafts = buildStageFiveDrafts(pageData.files);
+    const dirtyIds = dirtyHandoffIdsRef.current;
     setDrafts((current) =>
       Object.fromEntries(
-        Object.entries(serverDrafts).map(([handoffId, serverDraft]) => [
+        Object.entries(committedDrafts).map(([handoffId, serverDraft]) => [
           handoffId,
-          dirtyHandoffIds.has(handoffId) && current[handoffId]
+          dirtyIds.has(handoffId) && current[handoffId]
             ? mergeResolvedRequestFields(current[handoffId], serverDraft)
             : serverDraft,
         ]),
       ),
     );
-  }, [pageData.files, dirtyHandoffIds]);
+  }, [committedDrafts]);
+
+  function updateDirtyHandoffIds(updater: (current: Set<string>) => Set<string>) {
+    setDirtyHandoffIds((current) => {
+      const next = updater(current);
+      dirtyHandoffIdsRef.current = next;
+      return next;
+    });
+  }
 
   function updateSelectedFile(handoffId: string) {
     const params = new URLSearchParams(window.location.search);
@@ -878,7 +948,7 @@ export function StageFiveWorkspace({
   }
 
   function completeStage() {
-    if (isCompleting || dirtyHandoffIds.size > 0) return;
+    if (isCompleting || hasUnsavedChecklistChanges) return;
     setCompletionError("");
     startCompleting(async () => {
       const result = await completeStageFiveAction({ projectId: project.id });
@@ -912,7 +982,7 @@ export function StageFiveWorkspace({
       ...current,
       [selectedHandoffId]: updater(current[selectedHandoffId]),
     }));
-    setDirtyHandoffIds((current) => new Set(current).add(selectedHandoffId));
+    updateDirtyHandoffIds((current) => new Set(current).add(selectedHandoffId));
   }
 
   function updateText(key: ChecklistFieldKey, value: string) {
@@ -1137,7 +1207,7 @@ export function StageFiveWorkspace({
           totalUploads: uploadTasks.length,
         });
         if (failedUploads === 0) {
-          setDirtyHandoffIds((current) => {
+          updateDirtyHandoffIds((current) => {
             const next = new Set(current);
             next.delete(submittedHandoffId);
             return next;
@@ -1531,7 +1601,7 @@ export function StageFiveWorkspace({
                 <Button
                   type="button"
                   className="w-full"
-                  disabled={isSaving || !dirtyHandoffIds.has(selectedHandoffId)}
+                  disabled={isSaving || !unsavedHandoffIds.has(selectedHandoffId)}
                   onClick={saveChecklist}
                 >
                   <FileCheck2 className="h-4 w-4" />
@@ -1591,13 +1661,13 @@ export function StageFiveWorkspace({
               </Button>
             ) : pageData.canComplete ? (
               <div className="text-right">
-                {dirtyHandoffIds.size > 0 ? (
+                {hasUnsavedChecklistChanges ? (
                   <p className="mb-2 text-[10px] font-[650] text-[#9a6a22]">Save checklist changes before completion.</p>
                 ) : null}
                 <Button
                   type="button"
                   className="min-w-[180px] rounded-[13px]"
-                  disabled={dirtyHandoffIds.size > 0}
+                  disabled={isSaving || isCompleting || hasUnsavedChecklistChanges}
                   onClick={() => {
                     setCompletionError("");
                     setShowCompletionDialog(true);
