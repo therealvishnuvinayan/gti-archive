@@ -173,10 +173,7 @@ const attentionRank: Record<DashboardAttentionItem["severity"], number> = {
 };
 
 function dashboardProjectWhere(user: DashboardUser): Prisma.ProjectWhereInput {
-  if (
-    !hasPermission(user, "project.list") &&
-    !hasPermission(user, "project.view")
-  ) {
+  if (!hasPermission(user, "project.view")) {
     return { id: "__dashboard_permission_denied__" };
   }
 

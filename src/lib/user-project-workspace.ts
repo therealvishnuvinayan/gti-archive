@@ -5,7 +5,7 @@ import {
   UserRole,
 } from "@prisma/client";
 
-import { hasPermission } from "@/lib/permissions/resolver";
+import { canUseProjects } from "@/lib/permissions/resolver";
 import {
   buildAccessibleProjectsWhere,
   type ProjectAccessUser,
@@ -67,7 +67,7 @@ export async function getUserProjectWorkspace(
 ): Promise<UserProjectWorkspaceData | null> {
   if (
     currentUser.role !== UserRole.USER ||
-    !hasPermission(currentUser, "project.list")
+    !canUseProjects(currentUser)
   ) {
     return null;
   }

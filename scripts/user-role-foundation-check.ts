@@ -14,6 +14,7 @@ import { resolveEffectivePermissionSet } from "../src/lib/permissions/effective"
 import { getAuthenticatedDefaultRoute } from "../src/lib/permissions/fallback-route";
 import {
   canCreateProjects,
+  canUseProjects,
   getSidebarVisibility,
   hasPermission,
   hasProjectPermission,
@@ -96,6 +97,37 @@ assert.equal(
   hasPermission({ id: "user", role: UserRole.USER }, "project.create"),
   false,
 );
+
+function userWithProjectPermissions(permissionKeys: PermissionKey[]) {
+  const permissions = new Set(permissionKeys);
+  return {
+    id: "project-permission-user",
+    role: UserRole.USER,
+    permissionProfileSnapshot: {
+      effectivePermissions: permissions,
+      rolePermissions: permissions,
+      archiveAccessGranted: false,
+      archiveAccessLevel: "NONE" as const,
+    },
+  };
+}
+
+const userWithProjectListOnly = userWithProjectPermissions(["project.list"]);
+assert.equal(canUseProjects(userWithProjectListOnly), false);
+assert.equal(getSidebarVisibility(userWithProjectListOnly).projects, false);
+assert.equal(getAuthenticatedDefaultRoute(userWithProjectListOnly), "/no-access");
+
+const userWithProjectViewOnly = userWithProjectPermissions(["project.view"]);
+assert.equal(canUseProjects(userWithProjectViewOnly), false);
+assert.equal(getSidebarVisibility(userWithProjectViewOnly).projects, false);
+
+const userWithProjectModuleAccess = userWithProjectPermissions([
+  "project.list",
+  "project.view",
+]);
+assert.equal(canUseProjects(userWithProjectModuleAccess), true);
+assert.equal(getSidebarVisibility(userWithProjectModuleAccess).projects, true);
+assert.equal(getAuthenticatedDefaultRoute(userWithProjectModuleAccess), "/projects");
 
 const userWithForgedCreatePermission = {
   id: "user",

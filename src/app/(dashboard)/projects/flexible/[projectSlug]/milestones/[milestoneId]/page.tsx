@@ -4,7 +4,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { FlexibleMilestoneWorkspace } from "@/components/projects/flexible-milestone-workspace";
 import { requireUser } from "@/lib/auth";
 import { getFlexibleMilestoneFixture } from "@/lib/flexible-project-ui-fixtures";
-import { hasPermission } from "@/lib/permissions/resolver";
+import { canUseProjects } from "@/lib/permissions/resolver";
 
 export default async function FlexibleMilestonePrototypePage({
   params,
@@ -13,7 +13,7 @@ export default async function FlexibleMilestonePrototypePage({
 }) {
   const [{ projectSlug, milestoneId }, user] = await Promise.all([params, requireUser()]);
 
-  if (!hasPermission(user, "project.list")) {
+  if (!canUseProjects(user)) {
     redirect("/no-access");
   }
 
@@ -29,4 +29,3 @@ export default async function FlexibleMilestonePrototypePage({
     </DashboardLayout>
   );
 }
-

@@ -4,7 +4,7 @@ import {
   UserRole,
 } from "@prisma/client";
 
-import { hasPermission } from "@/lib/permissions/resolver";
+import { canUseProjects } from "@/lib/permissions/resolver";
 import {
   buildAccessibleProjectsWhere,
   type ProjectAccessUser,
@@ -217,7 +217,7 @@ export async function getUserProjectsList(
 ) {
   if (
     currentUser.role !== UserRole.USER ||
-    !hasPermission(currentUser, "project.list")
+    !canUseProjects(currentUser)
   ) {
     return { projects: [], total: 0, hasAnyProjects: false, pageSize: USER_PROJECT_PAGE_SIZE };
   }

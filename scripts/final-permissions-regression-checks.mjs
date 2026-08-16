@@ -15,6 +15,16 @@ const dashboard = read("src/lib/dashboard.ts");
 const dashboardWorkspace = read(
   "src/components/dashboard/dashboard-workspace.tsx",
 );
+const projects = read("src/lib/projects.ts");
+const projectsPage = read("src/app/(dashboard)/projects/page.tsx");
+const projectDetailPage = read(
+  "src/app/(dashboard)/projects/[slug]/page.tsx",
+);
+const projectDetailLayout = read(
+  "src/app/(dashboard)/projects/[slug]/layout.tsx",
+);
+const userProjects = read("src/lib/user-projects.ts");
+const userProjectWorkspace = read("src/lib/user-project-workspace.ts");
 includes(
   resolver,
   "if (!hasProjectPermissionGrant(user, permissionKey))",
@@ -29,6 +39,43 @@ includes(
   resolver,
   "user.projectCreationAccessGranted === true",
   "USER project creation must require an explicit per-user grant",
+);
+includes(
+  resolver,
+  "export function canUseProjects",
+  "Projects module access must have a centralized permission gate",
+);
+includes(
+  resolver,
+  'hasPermission(user, "project.list") &&',
+  "Projects module access must require project.list",
+);
+includes(
+  resolver,
+  'hasPermission(user, "project.view")',
+  "Projects module access and sidebar must require project.view",
+);
+includes(
+  projects,
+  '!currentUser || !hasPermission(currentUser, "project.view")',
+  "project queries must return the denied scope without project.view",
+);
+includes(projectsPage, "!canUseProjects(user)", "Projects list route gate");
+includes(
+  projectDetailPage,
+  '!hasPermission(user, "project.view")',
+  "project detail route gate",
+);
+includes(
+  projectDetailLayout,
+  '!hasPermission(user, "project.view")',
+  "nested project route gate",
+);
+includes(userProjects, "!canUseProjects(currentUser)", "USER project list data gate");
+includes(
+  userProjectWorkspace,
+  "!canUseProjects(currentUser)",
+  "USER project detail data gate",
 );
 includes(
   dashboard,

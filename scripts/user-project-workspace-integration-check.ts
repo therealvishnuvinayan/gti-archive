@@ -37,6 +37,7 @@ import {
 } from "../src/lib/project-research";
 import { requestProjectResearchFileUpload } from "../src/lib/project-research-files";
 import { prisma } from "../src/lib/prisma";
+import type { PermissionKey } from "../src/lib/permissions/definitions";
 import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
 
 function check(condition: unknown, message: string): asserts condition {
@@ -351,6 +352,19 @@ async function main() {
     });
     const workspace = await getUserProjectWorkspace(projectId, users.userOne);
     check(workspace, "related USER must receive the stage-neutral workspace");
+    const listOnlyPermissions = new Set<PermissionKey>(["project.list"]);
+    check(
+      (await getUserProjectWorkspace(projectId, {
+        ...users.userOne,
+        permissionProfileSnapshot: {
+          effectivePermissions: listOnlyPermissions,
+          rolePermissions: listOnlyPermissions,
+          archiveAccessGranted: false,
+          archiveAccessLevel: "NONE",
+        },
+      })) === null,
+      "project.list must not expose the USER project workspace when project.view is disabled",
+    );
     check(workspace.sharedFolders.map((folder) => folder.name).join(",") === "Brief,Tech", "workspace must expose exactly Brief and Tech");
     check(workspace.sharedFolders[0]?.fileCount === 1, "canonical Brief file count is incorrect");
     check(workspace.assignedConcepts.length === 3, "only USER One assigned concepts must be returned");

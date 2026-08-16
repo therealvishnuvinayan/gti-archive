@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { UserRole } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -13,6 +14,7 @@ import {
   ProjectNotFoundState,
 } from "@/components/projects/project-route-state";
 import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 import {
   getProjectRouteAvailability,
   getProjectStageShellById,
@@ -95,6 +97,10 @@ export default async function ProjectDetailPage({
 }) {
   const { slug } = await params;
   const user = await requireUser();
+
+  if (!hasPermission(user, "project.view")) {
+    redirect("/no-access");
+  }
 
   if (user.role === UserRole.USER) {
     return (

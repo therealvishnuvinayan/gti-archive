@@ -41,6 +41,7 @@ import {
 } from "@/lib/project-collaborator-permissions";
 import { getFavoriteAttachmentIdSetForUser } from "@/lib/file-favorite-queries";
 import {
+  canUseProjects,
   getAccessibleProjectsWhere,
   hasPermission,
   hasProjectPermission,
@@ -907,7 +908,7 @@ async function getProjectAttachmentsVisibleToUser(
 export function buildAccessibleProjectsWhere(
   currentUser?: ProjectAccessUser,
 ): Prisma.ProjectWhereInput {
-  if (!currentUser) {
+  if (!currentUser || !hasPermission(currentUser, "project.view")) {
     return {
       id: "__permission_denied__",
     };
@@ -1960,7 +1961,7 @@ function buildProjectsWhere(
 export async function getProjectListFilterOptions(
   currentUser: ProjectAccessUser,
 ): Promise<ProjectListFilterOptions> {
-  if (!hasPermission(currentUser, "project.list")) {
+  if (!canUseProjects(currentUser)) {
     return {
       owners: [],
       executors: [],
@@ -2210,7 +2211,7 @@ export async function getProjectsList(
   filter: ProjectsListFilter,
   currentUser: ProjectAccessUser,
 ) {
-  if (!hasPermission(currentUser, "project.list")) {
+  if (!canUseProjects(currentUser)) {
     return { projects: [], total: 0 };
   }
 

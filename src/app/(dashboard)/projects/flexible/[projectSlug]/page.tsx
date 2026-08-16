@@ -4,7 +4,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { FlexibleProjectDetailWorkspace } from "@/components/projects/flexible-project-detail-workspace";
 import { requireUser } from "@/lib/auth";
 import { getFlexibleProjectFixture } from "@/lib/flexible-project-ui-fixtures";
-import { hasPermission } from "@/lib/permissions/resolver";
+import { canUseProjects } from "@/lib/permissions/resolver";
 
 export default async function FlexibleProjectPrototypePage({
   params,
@@ -13,7 +13,7 @@ export default async function FlexibleProjectPrototypePage({
 }) {
   const [{ projectSlug }, user] = await Promise.all([params, requireUser()]);
 
-  if (!hasPermission(user, "project.list")) {
+  if (!canUseProjects(user)) {
     redirect("/no-access");
   }
 
@@ -26,4 +26,3 @@ export default async function FlexibleProjectPrototypePage({
     </DashboardLayout>
   );
 }
-

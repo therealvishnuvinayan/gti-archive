@@ -17,7 +17,7 @@ import {
   getProjectListFilterOptions,
   getProjectsList,
 } from "@/lib/projects";
-import { canCreateProjects, hasPermission } from "@/lib/permissions/resolver";
+import { canCreateProjects, canUseProjects } from "@/lib/permissions/resolver";
 import {
   getUserProjectsList,
   USER_PROJECT_FILTERS,
@@ -95,7 +95,7 @@ export default async function ProjectsPage({
   const resolvedSearchParams = await searchParams;
   const user = await requireUser();
 
-  if (!hasPermission(user, "project.list")) {
+  if (!canUseProjects(user)) {
     redirect("/no-access");
   }
 
