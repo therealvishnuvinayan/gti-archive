@@ -165,10 +165,7 @@ export function getArchiveAccessLevel(user: PermissionUser) {
 }
 
 export function canUseArchives(user: PermissionUser) {
-  return (
-    hasPermission(user, "archive.view") &&
-    getArchiveAccessLevel(user) !== "NONE"
-  );
+  return hasPermission(user, "archive.view");
 }
 
 export function canUseFluxAi(user: PermissionUser) {

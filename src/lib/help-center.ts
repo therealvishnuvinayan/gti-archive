@@ -591,7 +591,7 @@ export const helpSections: HelpSection[] = [
           "Flux AI is controlled by the View Flux AI permission.",
           "By default, ADMIN and SUPER_ADMIN users can access Flux AI with full Archive scope.",
           "The Flux AI permission controls whether USER accounts can open the module.",
-          "Archive access for USER accounts is controlled separately by an explicit per-user entitlement and determines which results they can find.",
+          "The View archives role permission opens Archives for USER accounts; per-user Archive scope determines which additional assets they can find.",
           "Hiding the sidebar item is not the only protection; the page and APIs are also permission-protected server-side.",
         ],
       },
@@ -977,7 +977,7 @@ export const helpSections: HelpSection[] = [
         items: [
           "The Collaboration page is used to invite collaborators, edit collaborator details, and review module gate settings.",
           "A directory user needs a name and a valid email address before the USER account can be saved.",
-          "Archive access for a USER can be No access, Partial access, or Full access.",
+          "A USER with View archives can see accessible project archives, selected archive assets, or the full permitted archive scope.",
           "Detailed actions come from the USER role profile, project relationships, and explicit project grants.",
           "Deleting a collaborator is blocked when that user is already referenced by project history. Remove or reduce access instead.",
         ],
@@ -1012,7 +1012,7 @@ export const helpSections: HelpSection[] = [
         title: "What Users & Permissions controls",
         items: [
           "Normal user role assignment supports ADMIN or USER.",
-          "Per-user Archive access can be No access, Partial access, or Full access.",
+          "Per-user Archive scope can retain project archives, allow selected assets, or add the full permitted archive scope.",
           "Global ADMIN and USER role permission profiles are available through Manage Permissions.",
           "Permission definition sync after a new permission key is added to the product.",
         ],

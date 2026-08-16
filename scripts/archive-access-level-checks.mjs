@@ -63,7 +63,7 @@ for (const snippet of [
   "export function getArchiveAccessLevel",
   'archiveAccessLevel ?? "NONE"',
   'return "FULL" as const;',
-  'getArchiveAccessLevel(user) !== "NONE"',
+  'return hasPermission(user, "archive.view");',
 ]) {
   assertIncludes(resolver, snippet, `Archive access resolver ${snippet}`);
 }
@@ -79,8 +79,10 @@ for (const snippet of [
 
 for (const snippet of [
   "function hasPartialArchiveAccess",
+  "function hasExplicitArchiveAssetAccess",
   "getArchivedProjectFileAccessWhere",
   "getManualArchiveFileAccessWhere",
+  'return { id: "__no_access__" };',
   "getArchiveCategoryAssetGrantWhere",
   "return canUseArchives(user);",
   "assertCanAccessArchivedProjectFileAsset",
@@ -130,9 +132,9 @@ for (const forbidden of ["storageKey", "bucket", "downloadPath", "previewPath"])
 
 for (const snippet of [
   "ArchiveAssetAccessPicker",
-  "No Access",
-  "Full Access",
-  "Partial Access",
+  "Project Archives",
+  "Full Archive Scope",
+  "Selected Assets",
   "searchArchiveAssetsForAccessAction",
   "selectedAssets.length",
   "Administrators always receive full Archive access.",

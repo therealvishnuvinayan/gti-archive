@@ -15,6 +15,7 @@ const dashboard = read("src/lib/dashboard.ts");
 const dashboardWorkspace = read(
   "src/components/dashboard/dashboard-workspace.tsx",
 );
+const archives = read("src/lib/archives.ts");
 const projects = read("src/lib/projects.ts");
 const projectsPage = read("src/app/(dashboard)/projects/page.tsx");
 const projectDetailPage = read(
@@ -39,6 +40,21 @@ includes(
   resolver,
   "user.projectCreationAccessGranted === true",
   "USER project creation must require an explicit per-user grant",
+);
+includes(
+  resolver,
+  'return hasPermission(user, "archive.view");',
+  "archive.view must independently grant Archives module access",
+);
+includes(
+  archives,
+  "function hasExplicitArchiveAssetAccess",
+  "per-user Archive levels must constrain asset scope rather than module entry",
+);
+includes(
+  archives,
+  'return { id: "__no_access__" };',
+  "users without explicit Archive asset scope must not receive manual archive files",
 );
 includes(
   resolver,

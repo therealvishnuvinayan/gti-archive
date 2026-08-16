@@ -14,6 +14,7 @@ import { resolveEffectivePermissionSet } from "../src/lib/permissions/effective"
 import { getAuthenticatedDefaultRoute } from "../src/lib/permissions/fallback-route";
 import {
   canCreateProjects,
+  canUseArchives,
   canUseProjects,
   getSidebarVisibility,
   hasPermission,
@@ -199,17 +200,52 @@ assert.deepEqual(
     users: false,
     notifications: true,
     library: true,
-    archives: false,
+    archives: true,
     settings: false,
     help: true,
   },
-  "USER module toggles must drive navigation while Archive data remains entitlement-scoped.",
+  "USER module toggles must drive navigation while Archive asset scope remains independently constrained.",
 );
 assert.equal(
   getAuthenticatedDefaultRoute(userWithViewModules),
   "/flux-ai",
   "A USER whose first available module is Flux AI must receive its accessible route.",
 );
+
+const archivePermissionOnlyUser = {
+  id: "archive-permission-user",
+  role: UserRole.USER,
+  permissionProfileSnapshot: {
+    effectivePermissions: new Set<PermissionKey>(["archive.view"]),
+    rolePermissions: new Set<PermissionKey>(["archive.view"]),
+    archiveAccessGranted: false,
+    archiveAccessLevel: "NONE" as const,
+  },
+};
+assert.equal(
+  canUseArchives(archivePermissionOnlyUser),
+  true,
+  "archive.view must grant module access without a separate per-user entitlement.",
+);
+assert.equal(getSidebarVisibility(archivePermissionOnlyUser).archives, true);
+assert.equal(getAuthenticatedDefaultRoute(archivePermissionOnlyUser), "/archives");
+
+const archiveScopeWithoutPermissionUser = {
+  ...archivePermissionOnlyUser,
+  id: "archive-scope-only-user",
+  permissionProfileSnapshot: {
+    effectivePermissions: new Set<PermissionKey>(),
+    rolePermissions: new Set<PermissionKey>(),
+    archiveAccessGranted: true,
+    archiveAccessLevel: "FULL" as const,
+  },
+};
+assert.equal(
+  canUseArchives(archiveScopeWithoutPermissionUser),
+  false,
+  "A per-user archive asset scope must not bypass a disabled archive.view permission.",
+);
+assert.equal(getSidebarVisibility(archiveScopeWithoutPermissionUser).archives, false);
 
 const restrictedAdmin = {
   id: "admin",

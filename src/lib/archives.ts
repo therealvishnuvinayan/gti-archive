@@ -380,6 +380,10 @@ function hasPartialArchiveAccess(user: ArchiveAccessUser) {
   return getArchiveAccessLevel(user) === "PARTIAL";
 }
 
+function hasExplicitArchiveAssetAccess(user: ArchiveAccessUser) {
+  return getArchiveAccessLevel(user) !== "NONE";
+}
+
 function getArchivedProjectFileAccessWhere(
   user: ArchiveAccessUser,
 ): Prisma.ArchivedProjectFileWhereInput {
@@ -403,6 +407,10 @@ function getArchivedProjectFileAccessWhere(
 function getManualArchiveFileAccessWhere(
   user: ArchiveAccessUser,
 ): Prisma.ManualArchiveFileWhereInput {
+  if (!hasExplicitArchiveAssetAccess(user)) {
+    return { id: "__no_access__" };
+  }
+
   if (hasPartialArchiveAccess(user)) {
     return {
       userArchiveAccesses: {
@@ -2141,7 +2149,7 @@ export async function listArchiveCategorySummaries(user: ArchiveAccessUser) {
     throw new Error("You do not have permission to view archives.");
   }
 
-  const canAccessManualArchiveFiles = canUseArchives(user);
+  const canAccessManualArchiveFiles = hasExplicitArchiveAssetAccess(user);
 
   const [categories, archivedFiles, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
@@ -3243,7 +3251,7 @@ export async function listArchivedFilesByCategory(
     throw new Error("You do not have permission to view this archive category.");
   }
 
-  const canAccessManualArchiveFiles = canUseArchives(user);
+  const canAccessManualArchiveFiles = hasExplicitArchiveAssetAccess(user);
 
   const [files, manualArchiveFiles] = await withPrismaRetry(() =>
     Promise.all([
@@ -4329,6 +4337,10 @@ async function assertCanAccessManualArchiveFileAsset(
   message = "You do not have permission to access this archive file.",
 ) {
   assertCanUseArchives(user, message);
+
+  if (!hasExplicitArchiveAssetAccess(user)) {
+    throw new Error(message);
+  }
 
   if (!manualArchiveFile.archiveCategoryId) {
     throw new Error("Archived file not found.");

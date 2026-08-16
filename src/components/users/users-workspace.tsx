@@ -127,13 +127,13 @@ const statusBadgeStyles: Record<ManagedUserStatus, string> = {
 };
 
 const archiveAccessLabels: Record<ManagedArchiveAccessLevel, string> = {
-  NONE: "No Access",
-  FULL: "Full Access",
-  PARTIAL: "Partial Access",
+  NONE: "Project Archives",
+  FULL: "Full Archive Scope",
+  PARTIAL: "Selected Assets",
 };
 
 const archiveAccessBadgeStyles: Record<ManagedArchiveAccessLevel, string> = {
-  NONE: "border-[#f3d1cf] bg-[#fff0ef] text-[#d6544d]",
+  NONE: "border-[#e1eadf] bg-[#f7faf6] text-[#617060]",
   FULL: "border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]",
   PARTIAL: "border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]",
 };
@@ -764,23 +764,23 @@ function EditUserModal({
           <div className="mt-5 rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
             <p className="text-[16px] font-[700] text-[#18201a]">Archive Access</p>
             <p className="mt-1 text-[13px] leading-5 text-[#748074]">
-              Choose whether this user can open Archives and whether they can view all archive assets or only selected assets.
+              The View archives role permission controls module access. Choose the additional archive asset scope available inside the module.
             </p>
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
               {[
                 {
                   level: "NONE" as const,
-                  title: "No Access",
-                  description: "Hide Archives and block archive asset access.",
+                  title: "Project Archives",
+                  description: "Show accessible project archives without manual archive files.",
                 },
                 {
                   level: "FULL" as const,
-                  title: "Full Access",
-                  description: "Allow all archive assets permitted by profile and category rules.",
+                  title: "Full Archive Scope",
+                  description: "Add all manual archive assets permitted by category rules.",
                 },
                 {
                   level: "PARTIAL" as const,
-                  title: "Partial Access",
+                  title: "Selected Assets",
                   description: "Allow only the archive assets selected below.",
                 },
               ].map((option) => {
@@ -1378,7 +1378,7 @@ function ManagePermissionsModal({
               />
               <FilterBadge
                 icon={<Archive className="h-4 w-4 text-brand" />}
-                text="Archive access is per user"
+                text="Archive asset scope is per user"
               />
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -1788,7 +1788,7 @@ export function UsersWorkspace({
                 Permission model
               </p>
               <p className="mt-1 text-[14px] leading-6 text-[#748074]">
-                Effective access comes from the account role. Archive module access also requires a per-user Archive access level.
+                Effective module access comes from the account role. Per-user Archive settings refine which archive assets are visible.
               </p>
             </div>
             {canManagePermissions ? (
