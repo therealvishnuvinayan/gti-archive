@@ -42,6 +42,7 @@ for (const relativePath of removedFluxPaths) {
 }
 
 const searchRoute = read("src/app/api/flux-ai/search/route.ts");
+const searchHistoryRoute = read("src/app/api/flux-ai/search-history/route.ts");
 for (const snippet of [
   "canUseFluxAi(user)",
   "searchArchivesForUser",
@@ -50,6 +51,16 @@ for (const snippet of [
   '"Cache-Control": "no-store"',
 ]) {
   assertIncludes(searchRoute, snippet, `Flux AI search route ${snippet}`);
+}
+for (const snippet of [
+  "export async function DELETE",
+  "getCurrentUser",
+  "canUseFluxAi(user)",
+  "clearRecentFluxAiSearches(user.id)",
+  "deleteRecentFluxAiSearch(user.id, query)",
+  '"Cache-Control": "no-store"',
+]) {
+  assertIncludes(searchHistoryRoute, snippet, `Flux AI search-history route ${snippet}`);
 }
 for (const forbidden of [
   "OpenAI",
@@ -90,6 +101,10 @@ for (const snippet of [
   "Recent searches",
   "initialRecentSearches",
   "selectRecentSearch",
+  "Remove recent search",
+  "Clear All",
+  'fetch("/api/flux-ai/search-history"',
+  'title="Clear all recent searches?"',
   "recentSearches.length > 0",
   'fetch("/api/flux-ai/search"',
   "Open Archive",
@@ -138,6 +153,10 @@ for (const snippet of [
   "STORED_FLUX_AI_SEARCH_LIMIT = 20",
   "userId_normalizedQuery",
   "fluxAiSearchHistory.upsert",
+  "deleteRecentFluxAiSearch",
+  "clearRecentFluxAiSearches",
+  "where: { userId, normalizedQuery }",
+  "deleteMany({ where: { userId } })",
   "skip: STORED_FLUX_AI_SEARCH_LIMIT",
 ]) {
   assertIncludes(searchHistory, snippet, `Flux AI recent search history ${snippet}`);

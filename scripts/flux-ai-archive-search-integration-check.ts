@@ -16,6 +16,12 @@ import {
   type PermissionKey,
 } from "../src/lib/permissions/definitions";
 import type { PermissionProfileSnapshot } from "../src/lib/permissions/profiles";
+import {
+  clearRecentFluxAiSearches,
+  deleteRecentFluxAiSearch,
+  getRecentFluxAiSearches,
+  recordFluxAiSearch,
+} from "../src/lib/flux-ai-search-history";
 
 function loadLocalEnvironment() {
   const contents = readFileSync(".env", "utf8");
@@ -49,6 +55,7 @@ const fixtureIds: {
   searchCategoryId?: string;
   searchManualArchiveId?: string;
   searchAssetTagId?: string;
+  searchHistoryUserIds?: string[];
 } = {};
 
 function check(condition: unknown, message: string): asserts condition {
@@ -148,6 +155,42 @@ async function main() {
   });
 
   check(superAdmin, "a SUPER_ADMIN user is required for the real-data check");
+
+  const historyRunId = randomUUID();
+  const historyUserOneId = `flux-history-one-${historyRunId}`;
+  const historyUserTwoId = `flux-history-two-${historyRunId}`;
+  fixtureIds.searchHistoryUserIds = [historyUserOneId, historyUserTwoId];
+  await prisma.user.createMany({
+    data: [historyUserOneId, historyUserTwoId].map((id) => ({
+      id,
+      email: `${id}@example.test`,
+      name: id,
+      passwordHash: "flux-history-integration-only",
+      role: UserRole.USER,
+    })),
+  });
+  await recordFluxAiSearch(historyUserOneId, "First history query");
+  await recordFluxAiSearch(historyUserOneId, "Second history query");
+  await recordFluxAiSearch(historyUserTwoId, "First history query");
+  const afterIndividualDelete = await deleteRecentFluxAiSearch(
+    historyUserOneId,
+    "  FIRST   HISTORY QUERY  ",
+  );
+  check(
+    afterIndividualDelete.length === 1 &&
+      afterIndividualDelete[0] === "Second history query",
+    "individual deletion must normalize the query and remove only the signed-in user's matching search",
+  );
+  check(
+    (await getRecentFluxAiSearches(historyUserTwoId))[0] === "First history query",
+    "individual deletion must not affect another user's search history",
+  );
+  await clearRecentFluxAiSearches(historyUserOneId);
+  check(
+    (await getRecentFluxAiSearches(historyUserOneId)).length === 0 &&
+      (await getRecentFluxAiSearches(historyUserTwoId)).length === 1,
+    "Clear All must remove only the requesting user's search history",
+  );
 
   const projectArchive = await prisma.projectArchive.findFirst({
     where: {
@@ -573,6 +616,11 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    if (fixtureIds.searchHistoryUserIds?.length) {
+      await prisma.user.deleteMany({
+        where: { id: { in: fixtureIds.searchHistoryUserIds } },
+      });
+    }
     if (fixtureIds.searchManualArchiveId) {
       await prisma.manualArchiveFile.deleteMany({
         where: { id: fixtureIds.searchManualArchiveId },

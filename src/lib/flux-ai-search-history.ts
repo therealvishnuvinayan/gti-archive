@@ -2,9 +2,13 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 export const RECENT_FLUX_AI_SEARCH_LIMIT = 5;
 const STORED_FLUX_AI_SEARCH_LIMIT = 20;
+export const MAX_FLUX_AI_SEARCH_QUERY_LENGTH = 240;
 
 function normalizeSearchQuery(query: string) {
-  const displayQuery = query.trim().replace(/\s+/g, " ").slice(0, 240);
+  const displayQuery = query
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, MAX_FLUX_AI_SEARCH_QUERY_LENGTH);
 
   return {
     displayQuery,
@@ -73,6 +77,38 @@ export async function recordFluxAiSearch(userId: string, query: string) {
       });
 
       return recentSearches.map((search) => search.query);
+    }),
+  );
+}
+
+export async function deleteRecentFluxAiSearch(userId: string, query: string) {
+  const { normalizedQuery } = normalizeSearchQuery(query);
+
+  if (!normalizedQuery) {
+    return getRecentFluxAiSearches(userId);
+  }
+
+  return withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      await tx.fluxAiSearchHistory.deleteMany({
+        where: { userId, normalizedQuery },
+      });
+      const recentSearches = await tx.fluxAiSearchHistory.findMany({
+        where: { userId },
+        orderBy: [{ searchedAt: "desc" }, { id: "desc" }],
+        take: RECENT_FLUX_AI_SEARCH_LIMIT,
+        select: { query: true },
+      });
+      return recentSearches.map((search) => search.query);
+    }),
+  );
+}
+
+export async function clearRecentFluxAiSearches(userId: string) {
+  return withPrismaRetry(() =>
+    prisma.$transaction(async (tx) => {
+      await tx.fluxAiSearchHistory.deleteMany({ where: { userId } });
+      return [] as string[];
     }),
   );
 }

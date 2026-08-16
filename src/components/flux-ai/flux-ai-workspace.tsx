@@ -10,11 +10,15 @@ import {
   History,
   Loader2,
   Search,
+  Trash2,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import type { ArchiveSearchResult } from "@/lib/archives";
+import { showErrorToast, showSuccessToast } from "@/lib/toast";
 
 type FluxArchiveSearchResponse = {
   query: string;
@@ -126,6 +130,8 @@ export function FluxAiWorkspace({
   const [response, setResponse] = useState<FluxArchiveSearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [historyMutation, setHistoryMutation] = useState<string | null>(null);
+  const [clearHistoryConfirm, setClearHistoryConfirm] = useState(false);
 
   async function runSearch(submittedQuery: string) {
     if (!submittedQuery || isSearching) {
@@ -174,6 +180,41 @@ export function FluxAiWorkspace({
   function selectRecentSearch(recentQuery: string) {
     setQuery(recentQuery);
     void runSearch(recentQuery);
+  }
+
+  async function updateSearchHistory(input: {
+    query?: string;
+    clearAll?: boolean;
+  }) {
+    const mutationKey = input.clearAll ? "__clear_all__" : input.query!;
+    if (historyMutation) return;
+    setHistoryMutation(mutationKey);
+    try {
+      const request = await fetch("/api/flux-ai/search-history", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const payload = (await request.json()) as {
+        recentSearches?: string[];
+        error?: string;
+      };
+      if (!request.ok || !payload.recentSearches) {
+        throw new Error(payload.error || "Unable to update recent searches.");
+      }
+      setRecentSearches(payload.recentSearches);
+      if (input.clearAll) {
+        setClearHistoryConfirm(false);
+        showSuccessToast("Recent searches cleared.");
+      }
+    } catch (historyError) {
+      showErrorToast(
+        "Unable to update recent searches.",
+        historyError instanceof Error ? historyError.message : undefined,
+      );
+    } finally {
+      setHistoryMutation(null);
+    }
   }
 
   return (
@@ -225,22 +266,51 @@ export function FluxAiWorkspace({
 
         {recentSearches.length > 0 ? (
           <div className="mt-5">
-            <p className="flex items-center gap-2 text-[12px] font-[800] uppercase tracking-[0.08em] text-[#778178]">
-              <History className="h-3.5 w-3.5" />
-              Recent searches
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="flex items-center gap-2 text-[12px] font-[800] uppercase tracking-[0.08em] text-[#778178]">
+                <History className="h-3.5 w-3.5" />
+                Recent searches
+              </p>
+              <button
+                type="button"
+                disabled={Boolean(historyMutation)}
+                onClick={() => setClearHistoryConfirm(true)}
+                className="flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-[750] text-[#9d4b43] transition hover:bg-[#fff2f0] disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Clear All
+              </button>
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {recentSearches.map((recentQuery) => (
-                <button
+                <span
                   key={recentQuery}
-                  type="button"
-                  disabled={isSearching}
-                  title={recentQuery}
-                  onClick={() => selectRecentSearch(recentQuery)}
-                  className="max-w-full truncate rounded-full border border-[#dce7dc] bg-[#f8fbf8] px-4 py-2 text-[12px] font-[700] text-[#3f4d43] transition hover:border-brand/35 hover:bg-[#eef7ef] hover:text-brand disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex max-w-full items-center overflow-hidden rounded-full border border-[#dce7dc] bg-[#f8fbf8] text-[#3f4d43] transition focus-within:border-brand/35 hover:border-brand/35 hover:bg-[#eef7ef] hover:text-brand"
                 >
-                  {recentQuery}
-                </button>
+                  <button
+                    type="button"
+                    disabled={isSearching || Boolean(historyMutation)}
+                    title={recentQuery}
+                    onClick={() => selectRecentSearch(recentQuery)}
+                    className="min-w-0 max-w-[min(30rem,calc(100vw-9rem))] truncate py-2 pl-4 pr-2 text-left text-[12px] font-[700] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {recentQuery}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(historyMutation)}
+                    aria-label={`Remove recent search: ${recentQuery}`}
+                    title="Remove recent search"
+                    onClick={() => void updateSearchHistory({ query: recentQuery })}
+                    className="mr-1 grid size-7 shrink-0 place-items-center rounded-full text-[#879188] transition hover:bg-[#fbe6e3] hover:text-[#a8443b] disabled:opacity-50"
+                  >
+                    {historyMutation === recentQuery ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <X className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </span>
               ))}
             </div>
           </div>
@@ -290,6 +360,16 @@ export function FluxAiWorkspace({
           </section>
         ) : null}
       </div>
+      <ConfirmationDialog
+        isOpen={clearHistoryConfirm}
+        title="Clear all recent searches?"
+        description="This permanently removes your Flux AI search history. Other users’ search history is not affected."
+        confirmLabel="Clear All"
+        tone="destructive"
+        pending={historyMutation === "__clear_all__"}
+        onConfirm={() => void updateSearchHistory({ clearAll: true })}
+        onClose={() => setClearHistoryConfirm(false)}
+      />
     </section>
   );
 }
