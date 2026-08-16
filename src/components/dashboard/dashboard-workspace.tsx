@@ -468,7 +468,9 @@ export function DashboardWorkspace({
         <ProjectsByStage stages={snapshot.stages} />
         <MyWork items={snapshot.myWork} />
       </div>
-      <RecentProjects projects={snapshot.recentProjects} />
+      {snapshot.canViewRecentProjects ? (
+        <RecentProjects projects={snapshot.recentProjects} />
+      ) : null}
     </div>
   );
 }

@@ -11,6 +11,10 @@ const includes = (source, fragment, message) =>
   check(source.includes(fragment), message);
 
 const resolver = read("src/lib/permissions/resolver.ts");
+const dashboard = read("src/lib/dashboard.ts");
+const dashboardWorkspace = read(
+  "src/components/dashboard/dashboard-workspace.tsx",
+);
 includes(
   resolver,
   "if (!hasProjectPermissionGrant(user, permissionKey))",
@@ -25,6 +29,21 @@ includes(
   resolver,
   "user.projectCreationAccessGranted === true",
   "USER project creation must require an explicit per-user grant",
+);
+includes(
+  dashboard,
+  '"dashboard.viewRecentProjects"',
+  "dashboard snapshot must enforce recent-project visibility",
+);
+includes(
+  dashboard,
+  "const recentProjects = canViewRecentProjects",
+  "dashboard snapshot must omit denied recent-project data",
+);
+includes(
+  dashboardWorkspace,
+  "snapshot.canViewRecentProjects ?",
+  "dashboard UI must hide the denied Recent Projects panel",
 );
 
 for (const stageNumber of [1, 2, 5, 6, 7]) {

@@ -120,8 +120,14 @@ assert(
   "Dashboard empty states are incomplete.",
 );
 assert(
-  service.includes(".slice(0, 6)") && service.includes("updatedAt"),
-  "Recent Projects must be bounded and use Project.updatedAt recency.",
+  service.includes('hasPermission(\n    user,\n    "dashboard.viewRecentProjects"') &&
+    service.includes("const recentProjects = canViewRecentProjects") &&
+    service.includes(": [];") &&
+    service.includes(".slice(0, 6)") &&
+    service.includes("updatedAt") &&
+    workspace.includes("snapshot.canViewRecentProjects ?") &&
+    workspace.includes("<RecentProjects projects={snapshot.recentProjects} />"),
+  "Recent Projects must require its effective permission at the data and UI boundaries, remain bounded, and use Project.updatedAt recency.",
 );
 assert(
   page.includes("canCreateProjects(user)"),

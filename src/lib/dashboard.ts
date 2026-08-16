@@ -110,6 +110,7 @@ export type DashboardSnapshot = {
   stages: DashboardStageSummary[];
   myWork: DashboardWorkSummaryItem[];
   recentProjects: DashboardRecentProject[];
+  canViewRecentProjects: boolean;
   scopeLabel: string;
 };
 
@@ -418,6 +419,10 @@ export async function getDashboardSnapshot(
   user: DashboardUser,
   now = new Date(),
 ): Promise<DashboardSnapshot> {
+  const canViewRecentProjects = hasPermission(
+    user,
+    "dashboard.viewRecentProjects",
+  );
   const projects = await withPrismaRetry(() =>
     prisma.project.findMany({
       where: dashboardProjectWhere(user),
@@ -1017,31 +1022,34 @@ export async function getDashboardSnapshot(
     href: `/projects?status=ACTIVE&stage=${stage.number}&sort=updated`,
   }));
 
-  const recentProjects = summaries
-    .filter(
-      ({ project, workflow }) =>
-        !project.archivedAt &&
-        (workflow.businessStatus !== null || isGlobalProjectAdministrator(user)),
-    )
-    .slice(0, 6)
-    .map(({ project, workflow }) => {
-      const ownerName = displayName(project.owner);
-      return {
-        id: project.id,
-        name: project.name,
-        href: `/projects/${project.id}`,
-        stageNumber: workflow.currentStageNumber,
-        stageName: workflow.currentStageName,
-        businessStatus: workflow.businessStatus,
-        workflowDiagnosticLabel:
-          user.role === UserRole.SUPER_ADMIN
-            ? workflow.workflowDiagnosticLabel
-            : null,
-        ownerName,
-        ownerInitials: initials(ownerName),
-        updatedLabel: formatRecentTime(project.updatedAt, now),
-      };
-    });
+  const recentProjects = canViewRecentProjects
+    ? summaries
+        .filter(
+          ({ project, workflow }) =>
+            !project.archivedAt &&
+            (workflow.businessStatus !== null ||
+              isGlobalProjectAdministrator(user)),
+        )
+        .slice(0, 6)
+        .map(({ project, workflow }) => {
+          const ownerName = displayName(project.owner);
+          return {
+            id: project.id,
+            name: project.name,
+            href: `/projects/${project.id}`,
+            stageNumber: workflow.currentStageNumber,
+            stageName: workflow.currentStageName,
+            businessStatus: workflow.businessStatus,
+            workflowDiagnosticLabel:
+              user.role === UserRole.SUPER_ADMIN
+                ? workflow.workflowDiagnosticLabel
+                : null,
+            ownerName,
+            ownerInitials: initials(ownerName),
+            updatedLabel: formatRecentTime(project.updatedAt, now),
+          };
+        })
+    : [];
 
   return {
     kpis: buildKpis({
@@ -1060,6 +1068,7 @@ export async function getDashboardSnapshot(
       .filter((item) => item.count > 0)
       .slice(0, 5),
     recentProjects,
+    canViewRecentProjects,
     scopeLabel:
       isGlobalProjectAdministrator(user)
         ? "Global portfolio"
