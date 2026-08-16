@@ -3,7 +3,6 @@ type InviteEmailPayload = {
   collaboratorEmail: string;
   inviterName: string;
   inviteUrl: string;
-  collaboratorType: string;
 };
 
 export function buildCollaboratorInviteEmail({
@@ -11,7 +10,6 @@ export function buildCollaboratorInviteEmail({
   collaboratorEmail,
   inviterName,
   inviteUrl,
-  collaboratorType,
 }: InviteEmailPayload) {
   const subject = `You’ve been invited to GTI Archive`;
   const safeName = collaboratorName || collaboratorEmail;
@@ -23,7 +21,7 @@ export function buildCollaboratorInviteEmail({
           <div style="font-size:13px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.78;">GTI Archive</div>
           <h1 style="margin:18px 0 10px; font-size:36px; line-height:1.04; font-weight:700;">You’ve been invited</h1>
           <p style="margin:0; max-width:480px; font-size:16px; line-height:1.7; color:rgba(255,255,255,0.9);">
-            ${inviterName} invited you to collaborate in GTI Archive as ${collaboratorType}.
+            ${inviterName} invited you to collaborate in GTI Archive as an internal user.
           </p>
         </div>
 
@@ -32,7 +30,7 @@ export function buildCollaboratorInviteEmail({
             Hello ${safeName},
           </p>
           <p style="margin:0 0 24px; font-size:15px; line-height:1.8; color:#4d5a51;">
-            Your account has been prepared. Use the button below to set your password and activate your collaborator access.
+            Your account has been prepared. Use the button below to set your password and activate your user account.
           </p>
 
           <div style="text-align:center; margin:30px 0 28px;">
@@ -59,7 +57,7 @@ export function buildCollaboratorInviteEmail({
   const text = [
     "You’ve been invited to GTI Archive",
     "",
-    `${inviterName} invited you as ${collaboratorType}.`,
+    `${inviterName} invited you as an internal user.`,
     "",
     `Set your password: ${inviteUrl}`,
   ].join("\n");

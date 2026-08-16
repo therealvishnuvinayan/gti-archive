@@ -1,22 +1,14 @@
 import {
   ArchiveAccessLevel,
   AttachmentStatus,
-  CollaboratorType,
   Prisma,
   UserRole,
 } from "@prisma/client";
 
-import type {
-  CollaboratorTypeValue,
-  PermissionRole,
-} from "@/lib/permissions/definitions";
-import {
-  isProjectCollaboratorParticipantType,
-} from "@/lib/project-collaborator-participant-types";
+import type { PermissionRole } from "@/lib/permissions/definitions";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import {
   isBusinessAdministratorRole,
-  isLegacyCollaboratorRole,
   isProtectedRootRole,
 } from "@/lib/user-role-compatibility";
 
@@ -39,7 +31,6 @@ export type ManagedUserRecord = {
   email: string;
   avatarUrl: string | null;
   role: PermissionRole;
-  collaboratorType: CollaboratorTypeValue;
   canAccessArchives: boolean;
   archiveAccessLevel: ManagedArchiveAccessLevel;
   archiveAssetAccesses: ManagedArchiveAssetAccessRecord[];
@@ -50,7 +41,6 @@ export type ManagedUserUpdateInput = {
   userId: string;
   avatarUrl?: string;
   role: PermissionRole;
-  collaboratorType: CollaboratorTypeValue;
   archiveAccessLevel: ManagedArchiveAccessLevel;
   archiveAssetIds?: string[];
   updatedById?: string | null;
@@ -170,18 +160,10 @@ function mapArchiveAssetAccess(
 
 function getEffectiveManagedArchiveAccessLevel(user: {
   role: UserRole;
-  collaboratorType: CollaboratorType;
   archiveAccess?: { level: ArchiveAccessLevel } | null;
 }): ManagedArchiveAccessLevel {
   if (isBusinessAdministratorRole(user.role)) {
     return "FULL";
-  }
-
-  if (
-    isLegacyCollaboratorRole(user.role) &&
-    user.collaboratorType === CollaboratorType.CLIENT_OF_GTI
-  ) {
-    return "NONE";
   }
 
   return user.archiveAccess?.level ?? "NONE";
@@ -193,7 +175,6 @@ function mapManagedUser(user: {
   name: string | null;
   avatarUrl: string | null;
   role: UserRole;
-  collaboratorType: CollaboratorType;
   inviteToken: string | null;
   inviteExpiresAt: Date | null;
   inviteAcceptedAt: Date | null;
@@ -228,7 +209,6 @@ function mapManagedUser(user: {
     email: user.email,
     avatarUrl: user.avatarUrl,
     role: user.role,
-    collaboratorType: user.collaboratorType,
     canAccessArchives: archiveAccessLevel !== "NONE",
     archiveAccessLevel,
     archiveAssetAccesses,
@@ -250,7 +230,6 @@ export async function listUsersForPermissionManagement() {
         email: true,
         avatarUrl: true,
         role: true,
-        collaboratorType: true,
         inviteToken: true,
         inviteExpiresAt: true,
         inviteAcceptedAt: true,
@@ -318,7 +297,6 @@ export async function getManagedUserPermissionRecord(userId: string) {
         email: true,
         avatarUrl: true,
         role: true,
-        collaboratorType: true,
         inviteToken: true,
         inviteExpiresAt: true,
         inviteAcceptedAt: true,
@@ -452,7 +430,7 @@ async function validateArchiveAssetSelection(
 }
 
 function getRequestedArchiveAccessLevel(
-  input: Pick<ManagedUserUpdateInput, "role" | "collaboratorType" | "archiveAccessLevel">,
+  input: Pick<ManagedUserUpdateInput, "role" | "archiveAccessLevel">,
 ) {
   if (!archiveAccessLevelValues.includes(input.archiveAccessLevel)) {
     throw new Error("Choose a valid archive access level.");
@@ -460,13 +438,6 @@ function getRequestedArchiveAccessLevel(
 
   if (isBusinessAdministratorRole(input.role)) {
     return ArchiveAccessLevel.FULL;
-  }
-
-  if (
-    isLegacyCollaboratorRole(input.role) &&
-    input.collaboratorType === CollaboratorType.CLIENT_OF_GTI
-  ) {
-    return ArchiveAccessLevel.NONE;
   }
 
   return input.archiveAccessLevel as ArchiveAccessLevel;
@@ -477,10 +448,6 @@ export async function updateManagedUserPermissions(
 ) {
   if (isProtectedRootRole(input.role)) {
     throw new Error("SUPER_ADMIN cannot be assigned through user management.");
-  }
-
-  if (!isProjectCollaboratorParticipantType(input.collaboratorType)) {
-    throw new Error("Choose a valid collaborator type.");
   }
 
   const updatedUser = await withPrismaRetry(() =>
@@ -519,7 +486,6 @@ export async function updateManagedUserPermissions(
         },
         data: {
           role: input.role,
-          collaboratorType: input.collaboratorType as CollaboratorType,
           ...(input.avatarUrl === undefined ? {} : { avatarUrl: input.avatarUrl }),
         },
         select: {
@@ -589,7 +555,6 @@ export async function updateManagedUserPermissions(
           email: true,
           avatarUrl: true,
           role: true,
-          collaboratorType: true,
           inviteToken: true,
           inviteExpiresAt: true,
           inviteAcceptedAt: true,

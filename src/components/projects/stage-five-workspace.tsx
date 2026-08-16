@@ -689,7 +689,7 @@ function RequestInformationDialog({
                   aria-pressed={recipientMode === "existing"}
                   onClick={() => setRecipientMode("existing")}
                 >
-                  Existing collaborator
+                  Project participant
                 </button>
                 <button
                   type="button"
@@ -713,7 +713,7 @@ function RequestInformationDialog({
                 >
                   <SelectTrigger
                     className="mt-3 h-11 w-full rounded-[12px] border border-[#dfe6df] bg-white px-4 text-[13px] text-[#344038] shadow-none"
-                    aria-label="Select an existing collaborator"
+                    aria-label="Select a project participant"
                   >
                     <SelectValue placeholder="Select a collaborator" />
                   </SelectTrigger>

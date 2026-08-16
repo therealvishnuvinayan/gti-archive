@@ -3,7 +3,6 @@ import path from "node:path";
 import process from "node:process";
 
 import {
-  CollaboratorType,
   Prisma,
   PrismaClient,
   UserRole,
@@ -18,7 +17,7 @@ import { getPasswordValidationErrors } from "../src/lib/password-rules";
 import { deleteObjectIfNeeded } from "../src/lib/storage/s3";
 
 const PROJECT_ROOT = process.cwd();
-const EXPECTED_MIGRATION_COUNT = 69;
+const EXPECTED_MIGRATION_COUNT = 70;
 const CANONICAL_ROOT_EMAIL = "superadmin@gti-archive.com";
 const RESET_CONFIRMATION = "DELETE_ALL_DEVELOPMENT_BUSINESS_DATA";
 const S3_CONFIRMATION = "DELETE_RECORDED_DEVELOPMENT_S3_OBJECTS";
@@ -29,7 +28,6 @@ export const PRESERVED_TABLE_CATEGORIES = {
   "Permission catalog and compatibility profiles": [
     "PermissionDefinition",
     "RolePermission",
-    "CollaboratorTypePermission",
   ],
   "Project master data": [
     "ProjectCategory",
@@ -147,7 +145,6 @@ const EXPECTED_RESTRICTIVE_FOREIGN_KEYS = [
   "ArchiveArtworkMetadata_ArchiveArtworkMetadata_sourceAttachmentId_fkey_ProjectAttachment_RESTRICT",
   "ArchivedProjectFile_ArchivedProjectFile_archivedById_fkey_User_RESTRICT",
   "ArchivedProjectFile_ArchivedProjectFile_sourceAttachmentId_fkey_ProjectAttachment_RESTRICT",
-  "CollaboratorTypePermission_CollaboratorTypePermission_permissionKey_fkey_PermissionDefinition_RESTRICT",
   "ComparisonComment_ComparisonComment_createdById_fkey_User_RESTRICT",
   "ContactDirectoryEntry_ContactDirectoryEntry_createdById_fkey_User_RESTRICT",
   "ManualArchiveFile_ManualArchiveFile_uploadedById_fkey_User_RESTRICT",
@@ -1185,7 +1182,6 @@ function printSeedProjection(manifest: SeedManifest | null) {
     console.log("- SUPER_ADMIN: 1 required");
     console.log("- ADMIN: unknown; approved real list required");
     console.log("- USER: unknown; approved real list required");
-    console.log("- COLLABORATOR: 0");
     return;
   }
 
@@ -1204,7 +1200,6 @@ function printSeedProjection(manifest: SeedManifest | null) {
         : ""
     }`,
   );
-  console.log("- COLLABORATOR: 0");
   console.log(
     `- Manifest execution approval: ${manifest.approvedForExecution ? "yes" : "no"}`,
   );
@@ -1274,7 +1269,6 @@ async function seedUsers(
         email: account.email,
         passwordHash: account.passwordHash,
         role: account.role,
-        collaboratorType: CollaboratorType.GTI_INTERNAL_CLIENT,
       },
     });
   }
@@ -1289,7 +1283,6 @@ async function verifySeededUsers(
       email: true,
       name: true,
       role: true,
-      collaboratorType: true,
       passwordHash: true,
     },
     orderBy: { email: "asc" },
@@ -1311,7 +1304,6 @@ async function verifySeededUsers(
       !expected ||
       user.name !== expected.name ||
       user.role !== expected.role ||
-      user.collaboratorType !== CollaboratorType.GTI_INTERNAL_CLIENT ||
       !verifyAuthPassword(expected.password, user.passwordHash)
     ) {
       throw new Error(`Seeded account verification failed: ${user.email}`);
@@ -1328,7 +1320,6 @@ async function verifySeededUsers(
     SUPER_ADMIN: 1,
     ADMIN: accounts.filter((account) => account.role === UserRole.ADMIN).length,
     USER: accounts.filter((account) => account.role === UserRole.USER).length,
-    COLLABORATOR: 0,
   };
 
   for (const role of Object.values(UserRole)) {
@@ -1583,7 +1574,7 @@ async function runReset(options: CliOptions) {
       `Deleted rows reported by ordered statements: ${Object.values(deletedCounts).reduce((sum, count) => sum + count, 0)}`,
     );
     console.log(
-      `Seeded roles: SUPER_ADMIN=${finalRoleCounts.SUPER_ADMIN} ADMIN=${finalRoleCounts.ADMIN} USER=${finalRoleCounts.USER} COLLABORATOR=${finalRoleCounts.COLLABORATOR}`,
+      `Seeded roles: SUPER_ADMIN=${finalRoleCounts.SUPER_ADMIN} ADMIN=${finalRoleCounts.ADMIN} USER=${finalRoleCounts.USER}`,
     );
     console.log(`Project=${postCounts.Project ?? 0}`);
     console.log(`Session=${postCounts.Session ?? 0}`);

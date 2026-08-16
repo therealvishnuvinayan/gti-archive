@@ -40,7 +40,7 @@ async function main() {
   const user = await prisma.user.findFirst({
     where: { role: UserRole.SUPER_ADMIN },
     orderBy: { createdAt: "asc" },
-    select: { id: true, role: true, collaboratorType: true },
+    select: { id: true, role: true },
   });
   const project = await prisma.project.findFirst({
     where: {

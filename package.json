@@ -20,7 +20,7 @@
     "flux-ai:archive-search-integration-check": "tsc --project scripts/tsconfig.flux-ai-archive-search-integration.json && COMPILED_ALIAS_ROOT=.tmp/flux-ai-archive-search-integration node -r ./scripts/register-compiled-alias.cjs .tmp/flux-ai-archive-search-integration/scripts/flux-ai-archive-search-integration-check.js",
     "phase0:check": "node scripts/phase0-regression-checks.mjs",
     "phase3:check": "node scripts/phase3-caption-regression-checks.mjs",
-    "project-create:collaborator-type-check": "node scripts/project-create-collaborator-type-checks.mjs",
+    "project-create:role-check": "node scripts/project-create-final-role-checks.mjs",
     "project-create:v2-check": "node scripts/project-creation-v2-regression-checks.mjs",
     "projects:v2-check": "node scripts/projects-v2-dashboard-checks.mjs",
     "project-list:workflow-check": "tsc --project scripts/tsconfig.project-list-workflow.json && COMPILED_ALIAS_ROOT=.tmp/project-list-workflow node -r ./scripts/register-compiled-alias.cjs .tmp/project-list-workflow/scripts/project-list-workflow-check.js",

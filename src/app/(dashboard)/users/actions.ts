@@ -10,9 +10,7 @@ import {
   COLLABORATORS_CACHE_TAG,
 } from "@/lib/collaboration";
 import {
-  collaboratorTypeValues,
   permissionProfileTypeValues,
-  type CollaboratorTypeValue,
   type PermissionKey,
   type PermissionProfileType,
   type PermissionRole,
@@ -48,7 +46,6 @@ type SaveUserAccessInput = {
   userId: string;
   avatarUrl?: string;
   role: PermissionRole;
-  collaboratorType: CollaboratorTypeValue;
   archiveAccessLevel: ManagedArchiveAccessLevel;
   archiveAssetIds?: string[];
 };
@@ -197,10 +194,6 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     return { error: "Choose a valid role." };
   }
 
-  if (!collaboratorTypeValues.includes(input.collaboratorType)) {
-    return { error: "Choose a valid collaborator type." };
-  }
-
   const existingUser = await getManagedUserPermissionRecord(userId);
 
   if (!existingUser) {
@@ -228,7 +221,6 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     userId,
     avatarUrl,
     role: input.role,
-    collaboratorType: input.collaboratorType,
     archiveAccessLevel: input.archiveAccessLevel,
     archiveAssetIds: input.archiveAssetIds ?? [],
     updatedById: currentUser.id,

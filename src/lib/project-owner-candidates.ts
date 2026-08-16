@@ -25,9 +25,7 @@ export async function getEligibleProjectOwnerCandidates(): Promise<
   const users = await withPrismaRetry(() =>
     prisma.user.findMany({
       where: {
-        role: {
-          not: UserRole.SUPER_ADMIN,
-        },
+        role: UserRole.ADMIN,
       },
       orderBy: [{ name: "asc" }, { email: "asc" }],
       select: {

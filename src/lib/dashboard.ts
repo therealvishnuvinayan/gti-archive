@@ -27,7 +27,7 @@ import {
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
 
-type DashboardUser = Pick<User, "id" | "role" | "collaboratorType"> &
+type DashboardUser = Pick<User, "id" | "role"> &
   PermissionUser;
 
 export type DashboardKpiIcon =

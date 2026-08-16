@@ -1,10 +1,5 @@
 import { UserRole, type User } from "@prisma/client";
 
-import {
-  getCollaboratorTypeGroup,
-  getDefaultProjectCollaboratorParticipantType,
-  isProjectCollaboratorParticipantType,
-} from "./project-collaborator-participant-types";
 import { normalizeProjectCollaboratorPermissions } from "./project-collaborator-permissions";
 import { prisma, withPrismaRetry } from "./prisma";
 import { ensureProjectResearchWorkspaceTx } from "./project-research";
@@ -63,7 +58,7 @@ export async function createProjectV2(
   input: CreateProjectV2Input,
 ): Promise<CreateProjectV2Result> {
   const name = input.name.trim();
-  const ownerId = input.ownerId.trim();
+  const ownerId = creator.id;
   const coOwnerIds = normalizeIdList(input.coOwnerIds);
   const executorIds = normalizeIdList(input.executorIds);
   const rawCollaboratorIds: unknown = input.collaboratorIds ?? [];
@@ -74,10 +69,6 @@ export async function createProjectV2(
 
   if (!name) {
     fieldErrors.name = "Project name is required.";
-  }
-
-  if (!ownerId) {
-    fieldErrors.ownerId = "Select one project owner.";
   }
 
   if (hasDuplicates(coOwnerIds)) {
@@ -119,7 +110,6 @@ export async function createProjectV2(
       select: {
         id: true,
         role: true,
-        collaboratorType: true,
       },
     }),
   );
@@ -128,32 +118,29 @@ export async function createProjectV2(
 
   if (!owner) {
     fieldErrors.ownerId = "The selected project owner no longer exists.";
-  } else if (owner.role === UserRole.SUPER_ADMIN && owner.id !== creator.id) {
-    fieldErrors.ownerId =
-      "Select an operational owner or keep yourself as the project owner.";
   }
 
   const invalidCoOwner = coOwnerIds.find((userId) => {
     const user = userById.get(userId);
-    return !user || user.role === UserRole.SUPER_ADMIN;
+    return !user || user.role !== UserRole.ADMIN;
   });
 
   if (invalidCoOwner) {
     fieldErrors.coOwnerIds =
-      "Every co-owner must be an existing eligible user who is not a Super Admin.";
+      "Every co-owner must be an existing Admin user.";
   }
 
   const invalidExecutor = executorIds.find(
-    (userId) => userById.get(userId)?.role !== UserRole.COLLABORATOR,
+    (userId) => userById.get(userId)?.role !== UserRole.USER,
   );
 
   if (invalidExecutor) {
     fieldErrors.executorIds =
-      "Every executor must be an existing eligible collaborator.";
+      "Every executor must be an existing User account.";
   }
 
   const invalidCollaborator = collaboratorIds.find(
-    (userId) => userById.get(userId)?.role !== UserRole.COLLABORATOR,
+    (userId) => userById.get(userId)?.role !== UserRole.USER,
   );
 
   if (invalidCollaborator) {
@@ -208,19 +195,10 @@ export async function createProjectV2(
           collaborators: {
             createMany: {
               data: membershipUsers.map((participant) => {
-                const participantType = isProjectCollaboratorParticipantType(
-                  participant.collaboratorType,
-                )
-                  ? participant.collaboratorType
-                  : getDefaultProjectCollaboratorParticipantType(
-                      getCollaboratorTypeGroup(participant.collaboratorType),
-                    );
-
                 return {
                   userId: participant.id,
                   addedById: creator.id,
-                  participantType,
-                  ...normalizeProjectCollaboratorPermissions(null, participantType, {
+                  ...normalizeProjectCollaboratorPermissions(null, {
                     isExecutor: executorIdSet.has(participant.id),
                   }),
                 };
@@ -347,7 +325,31 @@ export async function updateProjectV2(
   input: CreateProjectV2Input,
 ): Promise<UpdateProjectV2Result> {
   const name = input.name.trim();
-  const ownerId = input.ownerId.trim();
+
+  if (!projectId.trim()) {
+    return { error: "Project not found." };
+  }
+
+  const existingProject = await withPrismaRetry(() =>
+    prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerId: true },
+    }),
+  );
+
+  if (!existingProject) {
+    return { error: "Project not found." };
+  }
+
+  const ownerId = existingProject.ownerId;
+
+  if (!ownerId) {
+    return {
+      error: "This project has no owner and cannot be edited until its ownership is repaired.",
+      fieldErrors: { ownerId: "Project owner is missing." },
+    };
+  }
+
   const coOwnerIds = normalizeIdList(input.coOwnerIds);
   const executorIds = normalizeIdList(input.executorIds);
   const rawCollaboratorIds: unknown = input.collaboratorIds ?? [];
@@ -356,13 +358,7 @@ export async function updateProjectV2(
     : [];
   const fieldErrors: CreateProjectV2FieldErrors = {};
 
-  if (!projectId.trim()) {
-    return { error: "Project not found." };
-  }
-
   if (!name) fieldErrors.name = "Project name is required.";
-  if (!ownerId) fieldErrors.ownerId = "Select one project owner.";
-
   if (hasDuplicates(coOwnerIds)) {
     fieldErrors.coOwnerIds = "A co-owner can only be selected once.";
   } else if (ownerId && coOwnerIds.includes(ownerId)) {
@@ -390,7 +386,7 @@ export async function updateProjectV2(
   const users = await withPrismaRetry(() =>
     prisma.user.findMany({
       where: { id: { in: participantIds } },
-      select: { id: true, role: true, collaboratorType: true },
+      select: { id: true, role: true },
     }),
   );
   const userById = new Map(users.map((user) => [user.id, user] as const));
@@ -398,33 +394,30 @@ export async function updateProjectV2(
 
   if (!owner) {
     fieldErrors.ownerId = "The selected project owner no longer exists.";
-  } else if (owner.role === UserRole.SUPER_ADMIN && owner.id !== actor.id) {
-    fieldErrors.ownerId =
-      "Select an operational owner or keep yourself as the project owner.";
   }
 
   if (
     coOwnerIds.some((userId) => {
       const user = userById.get(userId);
-      return !user || user.role === UserRole.SUPER_ADMIN;
+      return !user || user.role !== UserRole.ADMIN;
     })
   ) {
     fieldErrors.coOwnerIds =
-      "Every co-owner must be an existing eligible user who is not a Super Admin.";
+      "Every co-owner must be an existing Admin user.";
   }
 
   if (
     executorIds.some(
-      (userId) => userById.get(userId)?.role !== UserRole.COLLABORATOR,
+      (userId) => userById.get(userId)?.role !== UserRole.USER,
     )
   ) {
     fieldErrors.executorIds =
-      "Every executor must be an existing eligible collaborator.";
+      "Every executor must be an existing User account.";
   }
 
   if (
     collaboratorIds.some(
-      (userId) => userById.get(userId)?.role !== UserRole.COLLABORATOR,
+      (userId) => userById.get(userId)?.role !== UserRole.USER,
     )
   ) {
     fieldErrors.collaboratorIds =
@@ -456,7 +449,6 @@ export async function updateProjectV2(
           collaborators: {
             select: {
               userId: true,
-              participantType: true,
               canInteract: true,
               canAddCaptions: true,
               canDownloadFiles: true,
@@ -494,7 +486,7 @@ export async function updateProjectV2(
 
       await tx.project.update({
         where: { id: projectId },
-        data: { name, ownerId },
+        data: { name },
       });
       await tx.projectCoOwner.deleteMany({
         where: {
@@ -526,20 +518,9 @@ export async function updateProjectV2(
       });
 
       for (const userId of membershipIds) {
-        const user = userById.get(userId);
-        if (!user) continue;
-
         const existing = existingCollaboratorById.get(userId);
-        const participantType =
-          existing?.participantType &&
-          isProjectCollaboratorParticipantType(existing.participantType)
-            ? existing.participantType
-            : getDefaultProjectCollaboratorParticipantType(
-                getCollaboratorTypeGroup(user.collaboratorType),
-              );
         const data = {
-          participantType,
-          ...normalizeProjectCollaboratorPermissions(existing, participantType, {
+          ...normalizeProjectCollaboratorPermissions(existing, {
             isExecutor: executorIdSet.has(userId),
           }),
         };

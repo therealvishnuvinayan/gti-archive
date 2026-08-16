@@ -40,12 +40,10 @@ function assertError(
 const superAdmin = {
   id: "inquiry-super-admin",
   role: UserRole.SUPER_ADMIN,
-  collaboratorType: "GTI_INTERNAL_CLIENT" as const,
 };
 const outsider = {
   id: "inquiry-outsider",
-  role: UserRole.COLLABORATOR,
-  collaboratorType: "EXTERNAL_VENDOR" as const,
+  role: UserRole.USER,
 };
 
 async function createProject(id: string, name: string) {
@@ -123,24 +121,21 @@ async function main() {
         email: "inquiry-collaborator-a@example.test",
         name: "Collaborator A",
         passwordHash: "x",
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "GTI_INTERNAL_CLIENT",
+        role: UserRole.USER,
       },
       {
         id: "inquiry-collaborator-b",
         email: "inquiry-collaborator-b@example.test",
         name: "Collaborator B",
         passwordHash: "x",
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "EXTERNAL_AGENCY",
+        role: UserRole.USER,
       },
       {
         id: outsider.id,
         email: "inquiry-outsider@example.test",
         name: "Outsider",
         passwordHash: "x",
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "EXTERNAL_VENDOR",
+        role: UserRole.USER,
       },
     ],
   });
@@ -358,12 +353,18 @@ async function main() {
       attachments: true,
     },
   });
-  assert(persisted.initialBrief === richInput.initialBrief, "Initial Brief must persist.");
   assert(
-    persisted.businessObjectives === richInput.businessObjectives,
+    persisted.initialBrief === "<p>Persisted initial brief</p>",
+    "Initial Brief must persist.",
+  );
+  assert(
+    persisted.businessObjectives === "<p>Persisted business objectives</p>",
     "Business Objectives must persist.",
   );
-  assert(persisted.legalNotes === richInput.legalNotes, "Legal Notes must persist.");
+  assert(
+    persisted.legalNotes === "<p>Persisted legal notes</p>",
+    "Legal Notes must persist.",
+  );
   assert(persisted.targetMarkets.length === 3, "Multiple target markets must persist.");
   assert(
     persisted.targetMarkets.some(
@@ -620,7 +621,6 @@ async function main() {
       projectId: mainProject.id,
       userId: "inquiry-collaborator-a",
       addedById: superAdmin.id,
-      participantType: "GTI_INTERNAL_CLIENT",
     },
   });
   const preserveProjectCollaborators = await completeProjectInquiry(

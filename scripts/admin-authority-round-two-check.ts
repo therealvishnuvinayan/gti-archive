@@ -10,7 +10,6 @@ import {
 
 import {
   allPermissionKeys,
-  defaultCollaboratorTypePermissions,
   defaultRolePermissions,
   editablePermissionRoleValues,
   type PermissionKey,
@@ -51,22 +50,18 @@ function assertIncludes(source: string, value: string, message: string) {
 const admin = {
   id: "unrelated-admin",
   role: UserRole.ADMIN,
-  collaboratorType: "CLIENT_OF_GTI" as const,
 };
 const superAdmin = {
   id: "root",
   role: UserRole.SUPER_ADMIN,
-  collaboratorType: "CLIENT_OF_GTI" as const,
 };
 const collaborator = {
-  id: "legacy-collaborator",
-  role: UserRole.COLLABORATOR,
-  collaboratorType: "GTI_INTERNAL_CLIENT" as const,
+  id: "project-participant",
+  role: UserRole.USER,
 };
 const futureUser = {
-  id: "future-user",
+  id: "user",
   role: UserRole.USER,
-  collaboratorType: "CLIENT_OF_GTI" as const,
 };
 const unrelatedProject = {
   ownerId: "owner",
@@ -82,50 +77,38 @@ assert.equal(isGlobalProjectAdministrator(superAdmin), true);
 assert.equal(isGlobalProjectAdministrator(collaborator), false);
 assert.equal(isProtectedRootRole(UserRole.SUPER_ADMIN), true);
 assert.equal(isProtectedRootRole(UserRole.ADMIN), false);
-assert.equal(isStandardUserRole(UserRole.COLLABORATOR), true);
 assert.equal(isStandardUserRole(UserRole.USER), true);
 
 assert.deepEqual(defaultRolePermissions.ADMIN, allPermissionKeys);
 assert.deepEqual(defaultRolePermissions.SUPER_ADMIN, allPermissionKeys);
 assert.equal(defaultRolePermissions.ADMIN.length, allPermissionKeys.length);
-assert.equal(defaultRolePermissions.COLLABORATOR.length, 31);
 assert.equal(defaultRolePermissions.USER.length, 31);
-assert.deepEqual(
-  defaultRolePermissions.USER,
-  defaultRolePermissions.COLLABORATOR,
-);
-assert.deepEqual(editablePermissionRoleValues, ["ADMIN", "COLLABORATOR"]);
+assert.deepEqual(editablePermissionRoleValues, ["ADMIN", "USER"]);
 
 const adminEffectivePermissions = resolveEffectivePermissionSet({
   user: admin,
   rolePermissions: new Set(defaultRolePermissions.ADMIN),
-  collaboratorTypePermissions: new Set(),
 });
 assert.deepEqual([...adminEffectivePermissions], [...allPermissionKeys]);
 
 const superAdminEffectivePermissions = resolveEffectivePermissionSet({
   user: superAdmin,
   rolePermissions: new Set(defaultRolePermissions.SUPER_ADMIN),
-  collaboratorTypePermissions: new Set(),
 });
 assert.deepEqual([...superAdminEffectivePermissions], [...allPermissionKeys]);
 
 const collaboratorEffectivePermissions = resolveEffectivePermissionSet({
   user: collaborator,
-  rolePermissions: new Set(defaultRolePermissions.COLLABORATOR),
-  collaboratorTypePermissions: new Set(
-    defaultCollaboratorTypePermissions.GTI_INTERNAL_CLIENT,
-  ),
+  rolePermissions: new Set(defaultRolePermissions.USER),
 });
 assert.deepEqual(
   [...collaboratorEffectivePermissions],
-  [...defaultRolePermissions.COLLABORATOR],
+  [...defaultRolePermissions.USER],
 );
 
 const userEffectivePermissions = resolveEffectivePermissionSet({
   user: futureUser,
   rolePermissions: new Set(defaultRolePermissions.USER),
-  collaboratorTypePermissions: new Set(),
 });
 assert.deepEqual([...userEffectivePermissions], [...defaultRolePermissions.USER]);
 
@@ -178,13 +161,7 @@ assert.equal(canUseArchives(admin), true);
 assert.equal(canUseArchives(superAdmin), true);
 assert.equal(getArchiveAccessLevel(futureUser), "NONE");
 assert.equal(canUseArchives(futureUser), false);
-assert.equal(
-  getArchiveAccessLevel({
-    ...collaborator,
-    collaboratorType: "CLIENT_OF_GTI",
-  }),
-  "NONE",
-);
+assert.equal(getArchiveAccessLevel(collaborator), "NONE");
 
 const adminSidebar = getSidebarVisibility(admin);
 assert.equal(adminSidebar.users, true);
@@ -318,14 +295,14 @@ assertIncludes(
 const collaborationService = read("src/lib/collaboration.ts");
 assert.match(
   collaborationService,
-  /const collaborator = await prisma\.user\.findUnique\([\s\S]*?role: true,[\s\S]*?collaborator\.role !== UserRole\.COLLABORATOR/,
-  "Forged collaboration updates must not demote a protected root or another non-collaborator account.",
+  /const collaborator = await prisma\.user\.findUnique\([\s\S]*?role: true,[\s\S]*?collaborator\.role !== UserRole\.USER/,
+  "Forged collaboration updates must not mutate a protected root or another non-user account.",
 );
 assert.equal(
-  (collaborationService.match(/collaborator\.role !== UserRole\.COLLABORATOR/g) ?? [])
+  (collaborationService.match(/collaborator\.role !== UserRole\.USER/g) ?? [])
     .length,
   2,
-  "Collaborator update and deletion must both reject non-collaborator targets, including roots.",
+  "Collaboration update and deletion must both reject non-user targets, including roots.",
 );
 
 const avatarUpload = read("src/app/api/users/[userId]/avatar/upload-url/route.ts");
@@ -386,24 +363,24 @@ assertIncludes(
 const profiles = read("src/lib/permissions/profiles.ts");
 assertIncludes(
   profiles,
-  "isLegacyCollaboratorRole(user.role)",
-  "Only legacy COLLABORATOR snapshots should load type profiles.",
+  'getPermissionProfileCacheTag("role", role)',
+  "Only role profiles should be available.",
 );
 assertIncludes(
   profiles,
-  'PERMISSION_PROFILE_CACHE_VERSION = "round2-admin-authority-v1"',
-  "Round 2 must version permission-profile caches so existing ADMIN sessions reload defaults.",
+  'PERMISSION_PROFILE_CACHE_VERSION = "final-account-roles-v1"',
+  "Final role architecture must version permission-profile caches.",
 );
 const projectCreation = read("src/lib/project-creation.ts");
 assertIncludes(
   projectCreation,
-  "UserRole.SUPER_ADMIN",
-  "Project creation must continue excluding root assignment.",
+  "const ownerId = creator.id",
+  "Project creation must fix ownership to the creator.",
 );
-assert.equal(projectCreation.includes("UserRole.USER"), false);
+assertIncludes(projectCreation, "UserRole.USER", "Executors and participants must be USER accounts.");
 
 const schema = read("prisma/schema.prisma");
-assert.match(schema, /role\s+UserRole\s+@default\(COLLABORATOR\)/);
+assert.match(schema, /role\s+UserRole\s+@default\(USER\)/);
 
 console.log(
   `Round 2 ADMIN authority checks passed (${allPermissionKeys.length} catalog permissions).`,

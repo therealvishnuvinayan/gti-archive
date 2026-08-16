@@ -46,7 +46,7 @@ for (const content of [
   "Add Approver",
   "Information to share",
   "Select All",
-  "Existing Collaborator",
+  "Project Participant",
   "External Email",
   "Internal",
   "External",

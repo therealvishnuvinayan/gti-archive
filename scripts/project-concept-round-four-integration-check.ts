@@ -56,10 +56,10 @@ async function main() {
   const foreignProjectId = `concept-round-four-foreign-${runId}`;
   const userSpecs = [
     ["super", UserRole.SUPER_ADMIN],
-    ["owner", UserRole.COLLABORATOR],
+    ["owner", UserRole.ADMIN],
     ["coowner", UserRole.ADMIN],
-    ["executor", UserRole.COLLABORATOR],
-    ["collaborator", UserRole.COLLABORATOR],
+    ["executor", UserRole.USER],
+    ["collaborator", UserRole.USER],
     ["admin-outsider", UserRole.ADMIN],
   ] as const;
   const userIds = userSpecs.map(([label]) => `round-four-${label}-${runId}`);
@@ -74,7 +74,7 @@ async function main() {
         role,
       })),
     });
-    const [superAdmin, owner, coOwner, executor, collaborator, adminOutsider] =
+    const [superAdmin, owner, coOwner, executor, collaborator] =
       await Promise.all(
         userIds.map((id) =>
           prisma.user.findUniqueOrThrow({
@@ -84,7 +84,6 @@ async function main() {
               email: true,
               name: true,
               role: true,
-              collaboratorType: true,
             },
           }),
         ),
@@ -373,9 +372,9 @@ async function main() {
     );
     check(
       isError(await completeStageFourConcepts(coOwner, { projectId })),
-      "co-owner must not complete Stage 4",
+      "Stage 4 completion must reject an ADMIN while final files are missing",
     );
-    for (const actor of [executor, collaborator, adminOutsider]) {
+    for (const actor of [executor, collaborator]) {
       check(
         isError(
           await markStageFourFinalApprovedAttachment(actor, {
@@ -384,11 +383,11 @@ async function main() {
             attachmentId: finalA.id,
           }),
         ),
-        "executor, collaborator, and ADMIN alone must not mark a final file",
+        "executor and project collaborator must not mark a final file",
       );
       check(
         isError(await completeStageFourConcepts(actor, { projectId })),
-        "executor, collaborator, and ADMIN alone must not complete Stage 4",
+        "executor and project collaborator must not complete Stage 4",
       );
     }
 
@@ -761,7 +760,7 @@ async function main() {
       where: { id: { in: [finalA.id, finalB.id, finalC.id] } },
     });
     const [completion, concurrentCompletion] = await Promise.all([
-      completeStageFourConcepts(owner, { projectId }),
+      completeStageFourConcepts(coOwner, { projectId }),
       completeStageFourConcepts(superAdmin, { projectId }),
     ]);
     check(!isError(completion) && !isError(concurrentCompletion), "concurrent Stage 4 completion must retry idempotently");

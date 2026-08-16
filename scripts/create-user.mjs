@@ -84,7 +84,7 @@ const roleFlag = getArg("--role");
 
 if (!email || !password) {
   console.error(
-    "Usage: pnpm users:create --email <email> --password <password> [--name <name>] [--role SUPER_ADMIN|ADMIN|COLLABORATOR]",
+    "Usage: pnpm users:create --email <email> --password <password> [--name <name>] [--role SUPER_ADMIN|ADMIN|USER]",
   );
   process.exit(1);
 }
@@ -101,7 +101,7 @@ const role =
     ? UserRole.SUPER_ADMIN
     : roleFlag === "ADMIN"
       ? UserRole.ADMIN
-      : UserRole.COLLABORATOR;
+      : UserRole.USER;
 const normalizedEmail = normalizeAuthEmail(email);
 
 try {

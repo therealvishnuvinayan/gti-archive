@@ -61,13 +61,13 @@ for (const snippet of [
 
 for (const snippet of [
   "export function getArchiveAccessLevel",
-  'return "NONE" as const;',
+  'archiveAccessLevel ?? "NONE"',
   'return "FULL" as const;',
   'getArchiveAccessLevel(user) !== "NONE"',
-  'user.collaboratorType === "CLIENT_OF_GTI"',
 ]) {
   assertIncludes(resolver, snippet, `Archive access resolver ${snippet}`);
 }
+assertNotIncludes(resolver, "isClientOfGtiUser", "Removed client-type Archive override");
 
 for (const snippet of [
   "archiveAccessLevel",
@@ -135,7 +135,6 @@ for (const snippet of [
   "Partial Access",
   "searchArchiveAssetsForAccessAction",
   "selectedAssets.length",
-  "GTI Client users cannot receive Archive access.",
   "Administrators always receive full Archive access.",
 ]) {
   assertIncludes(usersWorkspace, snippet, `Archive access UI ${snippet}`);

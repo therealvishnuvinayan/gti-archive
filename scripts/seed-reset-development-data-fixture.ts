@@ -175,7 +175,6 @@ async function main() {
         email: "old-root@reset-fixture.example.test",
         passwordHash,
         role: "SUPER_ADMIN",
-        collaboratorType: "GTI_INTERNAL_CLIENT",
         avatarUrl: `users/${ids.root}/avatar/fixture.png`,
       },
       {
@@ -184,15 +183,13 @@ async function main() {
         email: "old-admin@reset-fixture.example.test",
         passwordHash,
         role: "ADMIN",
-        collaboratorType: "GTI_INTERNAL_CLIENT",
       },
       {
         id: ids.collaborator,
         name: "Fixture Collaborator",
         email: "old-collaborator@reset-fixture.example.test",
         passwordHash,
-        role: "COLLABORATOR",
-        collaboratorType: "EXTERNAL_AGENCY",
+        role: "USER",
       },
       {
         id: ids.user,
@@ -200,7 +197,6 @@ async function main() {
         email: "old-user@reset-fixture.example.test",
         passwordHash,
         role: "USER",
-        collaboratorType: "GTI_INTERNAL_CLIENT",
       },
     ],
   });
@@ -276,7 +272,6 @@ async function main() {
     data: [ids.collaborator, ids.user].map((userId) => ({
       projectId: ids.project,
       userId,
-      participantType: "GTI_INTERNAL_CLIENT" as const,
       canInteract: true,
       addedById: ids.root,
     })),

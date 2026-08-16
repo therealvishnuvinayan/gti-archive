@@ -133,11 +133,11 @@ async function main() {
   const optionalStageThreeProjectId = `concept-round-three-optional-${runId}`;
   const userSpecs = [
     ["super", UserRole.SUPER_ADMIN],
-    ["owner", UserRole.COLLABORATOR],
+    ["owner", UserRole.ADMIN],
     ["coowner", UserRole.ADMIN],
-    ["executor-a", UserRole.COLLABORATOR],
-    ["executor-b", UserRole.COLLABORATOR],
-    ["collaborator", UserRole.COLLABORATOR],
+    ["executor-a", UserRole.USER],
+    ["executor-b", UserRole.USER],
+    ["collaborator", UserRole.USER],
     ["admin-outsider", UserRole.ADMIN],
   ] as const;
   const userIds = userSpecs.map(([label]) => `concept-${label}-${runId}`);
@@ -162,7 +162,6 @@ async function main() {
               email: true,
               name: true,
               role: true,
-              collaboratorType: true,
             },
           }),
         ),
@@ -356,8 +355,8 @@ async function main() {
     check(ownerView?.canCompleteStage, "owner must be able to complete the concept stage");
     check(superView?.canCompleteStage, "SUPER_ADMIN must be able to complete the concept stage");
     check(
-      coOwnerView?.canCompleteStage === false,
-      "co-owner concept management must not grant stage completion",
+      coOwnerView?.canCompleteStage === true,
+      "ADMIN co-owners receive global stage completion authority",
     );
     check(
       executorAView?.folders.length === 1 && executorAView.folders[0].id === conceptA.folder.id,
@@ -378,8 +377,8 @@ async function main() {
       "normal collaborator must be denied",
     );
     check(
-      (await getProjectConceptFolders(adminOutsider, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION)) === null,
-      "ADMIN role alone must not grant concept access",
+      (await getProjectConceptFolders(adminOutsider, projectId, ProjectWorkflowStageKey.CONCEPT_CREATION)) !== null,
+      "ADMIN receives global concept access",
     );
 
     const accessA = await getProjectConceptAccessContext({
@@ -398,9 +397,9 @@ async function main() {
       "SUPER_ADMIN must complete concept stages",
     );
     check(
-      !canCompleteProjectConceptStage(coOwner, accessA) &&
+      canCompleteProjectConceptStage(coOwner, accessA) &&
         !canCompleteProjectConceptStage(executorA, accessA),
-      "co-owner and executor must not complete concept stages",
+      "ADMIN co-owners can complete concept stages while executors cannot",
     );
     check(canReviewProjectConcept(owner, accessA), "owner must review concepts");
     check(canReviewProjectConcept(coOwner, accessA), "co-owner must review concepts");
@@ -418,7 +417,7 @@ async function main() {
     check(canViewProjectConcept(superAdmin, accessA), "SUPER_ADMIN must view concepts");
     check(canWorkOnProjectConcept(executorA, accessA), "assigned executor must work");
     check(!canViewProjectConcept(executorB, accessA), "other executor must not view");
-    check(!canViewProjectConcept(adminOutsider, accessA), "unrelated ADMIN must not view");
+    check(canViewProjectConcept(adminOutsider, accessA), "ADMIN must view globally");
 
     const [ownerChatContext, coOwnerChatContext, superChatContext, executorChatContext] =
       await Promise.all(
@@ -719,16 +718,6 @@ async function main() {
     check(
       (await prisma.projectCompletionWorkflow.count({ where: { projectId } })) === 0,
       "blocked tasker approval must not initialize project completion",
-    );
-    await expectRejected(
-      reviewProjectRevision(adminOutsider, {
-        projectId,
-        stageId: conceptA.folder.taskerStageId,
-        revisionId: firstRevision.id,
-        status: "REJECTED",
-        reason: "ADMIN role alone must not review.",
-      }),
-      "ADMIN role alone must not review a concept",
     );
     await expectRejected(
       reviewProjectRevision(collaborator, {
@@ -1058,16 +1047,6 @@ async function main() {
     );
     check(
       isErrorResult(
-        await markProjectConceptApprovedAttachment(adminOutsider, {
-          projectId,
-          folderId: conceptA.folder.id,
-          attachmentId: secondRevisionFile.id,
-        }),
-      ),
-      "ADMIN role alone must not designate an Approved Concept",
-    );
-    check(
-      isErrorResult(
         await markProjectConceptApprovedAttachment(collaborator, {
           projectId,
           folderId: conceptA.folder.id,
@@ -1337,7 +1316,7 @@ async function main() {
     });
     check(
       isErrorResult(await completeStageThreeConcepts(coOwner, { projectId })),
-      "co-owner must be rejected by the Stage 3 completion service",
+      "Stage 3 completion must reject an ADMIN while a concept is still unapproved",
     );
     const prematureCompletion = await completeStageThreeConcepts(owner, { projectId });
     check(
@@ -1358,7 +1337,7 @@ async function main() {
       "approving the final pending Stage 3 concept must wait for explicit completion confirmation",
     );
     const [completion, concurrentCompletion] = await Promise.all([
-      completeStageThreeConcepts(owner, { projectId }),
+      completeStageThreeConcepts(coOwner, { projectId }),
       completeStageThreeConcepts(superAdmin, { projectId }),
     ]);
     check(

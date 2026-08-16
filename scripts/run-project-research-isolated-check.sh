@@ -11,22 +11,18 @@ while IFS='=' read -r key value; do
   export "$key=$value"
 done < .env
 
-chain_schema="codex_stage2_chain_20260807"
-backfill_schema="codex_stage2_backfill_20260807"
+chain_database="codex_stage2_chain_20260807"
+backfill_database="codex_stage2_backfill_20260807"
 temporary_root="$(mktemp -d)"
 postgres_data="$temporary_root/postgres-data"
 postgres_socket="$temporary_root/postgres-socket"
 postgres_port="55439"
 
-if [[ ! "$chain_schema" =~ '^codex_stage2_[a-z0-9_]+$' ]] ||
-   [[ ! "$backfill_schema" =~ '^codex_stage2_[a-z0-9_]+$' ]]; then
-  echo "Unsafe disposable schema name."
+if [[ ! "$chain_database" =~ '^codex_stage2_[a-z0-9_]+$' ]] ||
+   [[ ! "$backfill_database" =~ '^codex_stage2_[a-z0-9_]+$' ]]; then
+  echo "Unsafe disposable database name."
   exit 1
 fi
-
-schema_url() {
-  node -e 'const url = new URL(process.argv[1]); url.searchParams.set("schema", process.argv[2]); process.stdout.write(url.toString())' "$DATABASE_URL" "$1"
-}
 
 cleanup() {
   if [[ -d "$postgres_data" ]]; then
@@ -48,10 +44,11 @@ export AWS_ACCESS_KEY_ID="stage-two-integration"
 export AWS_SECRET_ACCESS_KEY="stage-two-integration"
 export S3_USE_ACCELERATE_ENDPOINT="false"
 
-chain_url="$(schema_url "$chain_schema")"
-backfill_url="$(schema_url "$backfill_schema")"
+chain_url="postgresql://$postgres_user@127.0.0.1:$postgres_port/$chain_database"
+backfill_url="postgresql://$postgres_user@127.0.0.1:$postgres_port/$backfill_database"
 
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE SCHEMA \"$chain_schema\"; CREATE SCHEMA \"$backfill_schema\";" >/dev/null
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$chain_database\";" >/dev/null
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$backfill_database\";" >/dev/null
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1" >/dev/null
 
 DATABASE_URL="$chain_url" pnpm prisma migrate deploy
@@ -69,28 +66,26 @@ done
 
 DATABASE_URL="$backfill_url" pnpm prisma migrate deploy --schema "$temporary_root/prisma/schema.prisma"
 
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL >/dev/null
-SET search_path TO "$backfill_schema";
-INSERT INTO "User" ("id", "email", "passwordHash", "role", "collaboratorType", "createdAt", "updatedAt") VALUES
-  ('backfill-owner', 'backfill-owner@example.test', 'x', 'ADMIN', 'GTI_INTERNAL_CLIENT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('backfill-co-owner', 'backfill-co@example.test', 'x', 'COLLABORATOR', 'GTI_INTERNAL_CLIENT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('backfill-executor', 'backfill-executor@example.test', 'x', 'COLLABORATOR', 'EXTERNAL_AGENCY', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('backfill-collaborator', 'backfill-collaborator@example.test', 'x', 'COLLABORATOR', 'EXTERNAL_VENDOR', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+psql "$backfill_url" -v ON_ERROR_STOP=1 <<SQL >/dev/null
+INSERT INTO "User" ("id", "email", "passwordHash", "role", "createdAt", "updatedAt") VALUES
+  ('backfill-owner', 'backfill-owner@example.test', 'x', 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('backfill-co-owner', 'backfill-co@example.test', 'x', 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('backfill-executor', 'backfill-executor@example.test', 'x', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('backfill-collaborator', 'backfill-collaborator@example.test', 'x', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 INSERT INTO "Project" ("id", "name", "ownerId", "createdById", "createdAt", "updatedAt")
 VALUES ('backfill-project', 'Backfill Project', 'backfill-owner', 'backfill-owner', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 INSERT INTO "ProjectCoOwner" ("projectId", "userId", "createdAt") VALUES ('backfill-project', 'backfill-co-owner', CURRENT_TIMESTAMP);
 INSERT INTO "ProjectExecutor" ("projectId", "userId", "createdAt", "updatedAt") VALUES ('backfill-project', 'backfill-executor', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-INSERT INTO "ProjectCollaborator" ("projectId", "userId", "participantType", "createdAt") VALUES
-  ('backfill-project', 'backfill-executor', 'EXTERNAL_AGENCY', CURRENT_TIMESTAMP),
-  ('backfill-project', 'backfill-collaborator', 'EXTERNAL_VENDOR', CURRENT_TIMESTAMP);
+INSERT INTO "ProjectCollaborator" ("projectId", "userId", "createdAt") VALUES
+  ('backfill-project', 'backfill-executor', CURRENT_TIMESTAMP),
+  ('backfill-project', 'backfill-collaborator', CURRENT_TIMESTAMP);
 INSERT INTO "ContactDirectoryEntry" ("id", "name", "createdById", "createdAt", "updatedAt")
 VALUES ('manual-contact-without-user', 'Manual Contact', 'backfill-owner', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 SQL
 
 DATABASE_URL="$backfill_url" pnpm prisma migrate deploy
 
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL
-SET search_path TO "$backfill_schema";
+psql "$backfill_url" -v ON_ERROR_STOP=1 <<SQL
 DO \$\$
 BEGIN
   IF (SELECT COUNT(*) FROM "ProjectResearchWorkspace" WHERE "projectId" = 'backfill-project') <> 4 THEN

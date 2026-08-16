@@ -16,10 +16,10 @@ function expectThrow(callback: () => unknown, message: string) {
 }
 
 function main() {
-  assert.equal(PRESERVED_TABLES.length, 10, "preserved table count");
+  assert.equal(PRESERVED_TABLES.length, 9, "preserved table count");
   assert.equal(DISPOSABLE_TABLES.length, 66, "disposable table count");
-  assert.equal(EXPECTED_TABLES.length, 76, "audited table count");
-  assert.equal(new Set(EXPECTED_TABLES).size, 76, "table classifications overlap");
+  assert.equal(EXPECTED_TABLES.length, 75, "audited table count");
+  assert.equal(new Set(EXPECTED_TABLES).size, 75, "table classifications overlap");
   assert(PRESERVED_TABLES.includes("_prisma_migrations"));
   assert(PRESERVED_TABLES.includes("PermissionDefinition"));
   assert(!DISPOSABLE_TABLES.includes("PermissionDefinition"));

@@ -113,23 +113,23 @@ async function main() {
         email: `${id}@example.test`,
         name: ["Stage Five Super Admin", "Stage Five Owner", "Stage Five Recipient", "Stage Five Outsider"][index],
         passwordHash: "isolated-integration-test-only",
-        role: index === 0 ? UserRole.SUPER_ADMIN : index === 1 ? UserRole.ADMIN : UserRole.COLLABORATOR,
+        role: index === 0 ? UserRole.SUPER_ADMIN : index === 1 ? UserRole.ADMIN : UserRole.USER,
       })),
     });
   }
   const users = await prisma.user.findMany({
     ...(isolated ? { where: { id: { in: createdUserIds } } } : {}),
-    select: { id: true, name: true, email: true, role: true, collaboratorType: true },
+    select: { id: true, name: true, email: true, role: true },
     orderBy: { createdAt: "asc" },
   });
   const superAdmin = users.find((user) => user.role === UserRole.SUPER_ADMIN);
   const owner = users.find((user) => user.role !== UserRole.SUPER_ADMIN);
   const recipient = users.find(
-    (user) => user.role === UserRole.COLLABORATOR && user.id !== owner?.id,
+    (user) => user.role === UserRole.USER && user.id !== owner?.id,
   );
   const outsider = users.find(
     (user) =>
-      user.role === UserRole.COLLABORATOR &&
+      user.role === UserRole.USER &&
       user.id !== owner?.id &&
       user.id !== recipient?.id,
   );
@@ -583,7 +583,7 @@ async function main() {
     check(
       declinedData?.status === ProjectFileChecklistRequestWorkflowStatus.DECLINED &&
         declinedData.declinedAt &&
-        declinedData.declineReason === "The approved barcode has not been issued yet.",
+        declinedData.declineReason === "<p>The approved barcode has not been issued yet.</p>",
       "declined requests must remain readable with timestamp and reason",
     );
 
@@ -736,7 +736,7 @@ async function main() {
     check(
       externalTextItem?.status === ProjectFileChecklistItemStatus.FILLED &&
         (externalTextItem.value as { text?: string } | null)?.text ===
-          "Approved external tax stamp reference",
+          "<p>Approved external tax stamp reference</p>",
       "external response data must update the real selected-file checklist item",
     );
     const failedClientRequestId = `failed_${randomUUID()}`;

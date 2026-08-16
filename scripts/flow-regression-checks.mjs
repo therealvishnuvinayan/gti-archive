@@ -34,20 +34,6 @@ await runExistingPhaseChecks();
 const pngOnlyHelpText =
   "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.";
 
-const participantTypes = read("src/lib/project-collaborator-participant-types.ts");
-assertIncludesAll(
-  participantTypes,
-  [
-    "GTI_INTERNAL_CLIENT",
-    "GTI_SISTER_COMPANY_INTERNAL_CLIENT",
-    "EXTERNAL_FREELANCER",
-    "EXTERNAL_AGENCY",
-    "EXTERNAL_VENDOR",
-    "CLIENT_OF_GTI",
-  ],
-  "participant type coverage",
-);
-
 const resolver = read("src/lib/permissions/resolver.ts");
 assertIncludesAll(
   resolver,
@@ -63,7 +49,6 @@ assertIncludesAll(
     "case \"file.uploadSubmission\":",
     "return isProjectExecutor(user, project);",
     "case \"compare.createComment\":\n      return canAddProjectCaptions(user, project);",
-    "isArchiveSensitivePermission(permissionKey) && isClientOfGtiUser(user)",
     "archives: canUseArchives(user)",
   ],
   "project permission resolver",
@@ -74,7 +59,7 @@ assertIncludesAll(
   collaboratorPermissions,
   [
     "canAccessProjectArchives: false",
-    "permissions.canAccessProjectArchives = false",
+    "canInteract: true",
     "canInteract: Boolean(input.canInteract)",
     "canAddCaptions: Boolean(input.canAddCaptions)",
     "canViewBudget: Boolean(input.canViewBudget)",

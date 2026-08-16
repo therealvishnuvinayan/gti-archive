@@ -73,7 +73,6 @@ import {
   ProjectWorkflowStageStatus,
   SubmissionReviewStatus,
 } from "@prisma/client";
-import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
 import type { ProjectCollaboratorPermissions } from "@/lib/project-collaborator-permissions";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 
@@ -1191,7 +1190,6 @@ export async function saveProjectCollaboratorsAction(
   collaborators: Array<{
     id?: string;
     userId?: string;
-    participantType?: ProjectCollaboratorParticipantType | null;
   } & Partial<ProjectCollaboratorPermissions>>,
 ) {
   const user = await requireUser();

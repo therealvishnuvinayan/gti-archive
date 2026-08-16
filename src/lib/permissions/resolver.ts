@@ -16,13 +16,9 @@ import type {
   ProjectCollaboratorPermissions,
 } from "@/lib/project-collaborator-permissions";
 import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
-import {
-  isBusinessAdministratorRole,
-  isLegacyCollaboratorRole,
-} from "@/lib/user-role-compatibility";
+import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 
 export type PermissionUser = Pick<User, "id" | "role"> & {
-  collaboratorType?: User["collaboratorType"] | null;
   permissionProfileSnapshot?: PermissionProfileSnapshot | null;
 };
 
@@ -102,10 +98,7 @@ function hasProjectArchiveAccessGrant(
   user: PermissionUser,
   project: ProjectPermissionContext,
 ) {
-  return (
-    !isClientOfGtiUser(user) &&
-    hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives")
-  );
+  return hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives");
 }
 
 export function isProjectAdmin(user: Pick<PermissionUser, "role">) {
@@ -151,35 +144,12 @@ export function isProjectExecutor(
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
-  if (
-    isLegacyCollaboratorRole(user.role) &&
-    permissionKey === "project.create" &&
-    user.collaboratorType !== "GTI_INTERNAL_CLIENT"
-  ) {
-    return false;
-  }
-
   return getBasePermissionSet(user).has(permissionKey);
-}
-
-export function isClientOfGtiUser(
-  user: Pick<PermissionUser, "role"> & {
-    collaboratorType?: PermissionUser["collaboratorType"];
-  },
-) {
-  return (
-    isLegacyCollaboratorRole(user.role) &&
-    user.collaboratorType === "CLIENT_OF_GTI"
-  );
 }
 
 export function getArchiveAccessLevel(user: PermissionUser) {
   if (isGlobalProjectAdministrator(user)) {
     return "FULL" as const;
-  }
-
-  if (isClientOfGtiUser(user)) {
-    return "NONE" as const;
   }
 
   return user.permissionProfileSnapshot?.archiveAccessLevel ?? "NONE";
@@ -203,15 +173,6 @@ export function assertCanUseArchives(
 
 export function getUserPermissionSet(user: PermissionUser) {
   return getBasePermissionSet(user);
-}
-
-function isArchiveSensitivePermission(permissionKey: PermissionKey) {
-  return (
-    permissionKey === "archive.view" ||
-    permissionKey === "archive.download" ||
-    permissionKey === "archive.uploadFile" ||
-    permissionKey === "project.completeArchive"
-  );
 }
 
 function hasProjectPermissionGrant(
@@ -239,7 +200,6 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
     permissionKey === "collaborator.inviteToProject" ||
     permissionKey === "collaborator.removeFromProject" ||
     permissionKey === "collaborator.pauseVisibility" ||
-    permissionKey === "collaborator.changeType" ||
     permissionKey === "collaborator.changeAccess" ||
     permissionKey === "stage.reviewSubmission" ||
     permissionKey === "stage.requestRevision" ||
@@ -317,10 +277,6 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
-  if (isArchiveSensitivePermission(permissionKey) && isClientOfGtiUser(user)) {
-    return false;
-  }
-
   if (
     isProjectOwnerOrCoOwner(user, project) &&
     isProjectOwnerManagePermission(permissionKey)
@@ -411,7 +367,6 @@ export function hasProjectPermission(
       return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "collaborator.inviteToProject":
     case "collaborator.removeFromProject":
-    case "collaborator.changeType":
     case "collaborator.changeAccess":
       return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "stage.acceptBrief":

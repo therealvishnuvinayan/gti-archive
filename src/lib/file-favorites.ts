@@ -19,7 +19,7 @@ import { assertConceptTaskerAccessIfNeeded } from "@/lib/project-concept-access"
 
 type FavoriteAccessUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "collaboratorType"
+  "id" | "email" | "name" | "role"
 > &
   PermissionUser;
 

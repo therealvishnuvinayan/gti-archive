@@ -18,7 +18,7 @@ import {
 } from "@prisma/client";
 
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
-import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
+import { getUserRoleLabel } from "@/lib/user-role-compatibility";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
@@ -112,7 +112,7 @@ async function ensureFinalCompletionWorkflowExistsTx(
 
 type AccessUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "collaboratorType"
+  "id" | "email" | "name" | "role"
 > &
   PermissionUser;
 
@@ -149,7 +149,7 @@ type StageHistoryQueryRecord = {
   updatedAt?: Date;
   createdBy: Pick<
     User,
-    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+    "id" | "name" | "email" | "role" | "avatarUrl"
   >;
   attachments: Array<{
     id: string;
@@ -176,7 +176,7 @@ type StageCommentQueryRecord = {
   updatedAt?: Date;
   author: Pick<
     User,
-    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+    "id" | "name" | "email" | "role" | "avatarUrl"
   >;
   mentions: Array<{
     mentionedUserId: string;
@@ -211,7 +211,7 @@ type StageComparisonQueryRecord = {
   updatedAt?: Date;
   createdBy: Pick<
     User,
-    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+    "id" | "name" | "email" | "role" | "avatarUrl"
   >;
   baseAttachment: {
     id: string;
@@ -408,12 +408,12 @@ function getDisplayName(user: Pick<User, "name" | "email">) {
   return user.name?.trim() || user.email;
 }
 
-function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
+function getActorRole(user: Pick<User, "role">) {
   if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
     return "Internal Team";
   }
 
-  return getCollaboratorRoleLabel(user.collaboratorType);
+  return getUserRoleLabel(user.role);
 }
 
 function getProfileAvatarSrc(user: Pick<User, "avatarUrl">) {
@@ -1725,7 +1725,6 @@ export async function getProjectStageChatMessages(
             name: true,
             email: true,
             role: true,
-            collaboratorType: true,
             avatarUrl: true,
           },
         },
@@ -1906,7 +1905,6 @@ export async function getProjectStageChatMessages(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -1975,7 +1973,6 @@ export async function getProjectStageChatMessages(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -2213,7 +2210,6 @@ async function findStageChatCommentForRealtime(input: {
             name: true,
             email: true,
             role: true,
-            collaboratorType: true,
             avatarUrl: true,
           },
         },
@@ -2362,7 +2358,6 @@ export async function getStageChatUpdatesForUser(
               name: true,
               email: true,
               role: true,
-              collaboratorType: true,
               avatarUrl: true,
             },
           },
@@ -2424,7 +2419,6 @@ export async function getStageChatUpdatesForUser(
               name: true,
               email: true,
               role: true,
-              collaboratorType: true,
               avatarUrl: true,
             },
           },
@@ -2481,7 +2475,6 @@ export async function getStageChatUpdatesForUser(
               name: true,
               email: true,
               role: true,
-              collaboratorType: true,
               avatarUrl: true,
             },
           },
@@ -2731,7 +2724,6 @@ export async function getProjectStageHistory(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -2779,7 +2771,6 @@ export async function getProjectStageHistory(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -2832,7 +2823,6 @@ export async function getProjectStageHistory(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -5055,7 +5045,6 @@ export async function requestStageInvoice(
             collaborators: {
               select: {
                 userId: true,
-                participantType: true,
                 user: {
                   select: {
                     name: true,

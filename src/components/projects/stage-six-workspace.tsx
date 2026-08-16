@@ -482,7 +482,7 @@ function ApproverDialog({
               <legend className="text-[12px] font-[720] text-[#2d372f]">Recipient Type</legend>
               <div className="mt-2 flex flex-wrap gap-3">
                 {[
-                  [ProductionApprovalRecipientType.EXISTING_COLLABORATOR, "Existing Collaborator"],
+                  [ProductionApprovalRecipientType.EXISTING_COLLABORATOR, "Project Participant"],
                   [ProductionApprovalRecipientType.EXTERNAL_EMAIL, "External Email"],
                 ].map(([value, label]) => (
                   <label key={value} className="flex items-center gap-2 rounded-[11px] border border-[#dfe6df] bg-white px-3 py-2 text-[11px] font-[650] text-[#455149]">

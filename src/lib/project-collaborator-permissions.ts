@@ -1,5 +1,3 @@
-import type { ProjectCollaboratorParticipantType } from "@/lib/project-collaborator-participant-types";
-
 export const projectCollaboratorPermissionKeys = [
   "canInteract",
   "canAddCaptions",
@@ -48,31 +46,10 @@ const emptyProjectCollaboratorPermissions: ProjectCollaboratorPermissions = {
   canAccessProjectArchives: false,
 };
 
-export function isClientOfGtiParticipantType(
-  participantType: ProjectCollaboratorParticipantType | null | undefined,
-) {
-  return participantType === "CLIENT_OF_GTI";
-}
-
-export function isInternalProjectParticipantType(
-  participantType: ProjectCollaboratorParticipantType | null | undefined,
-) {
-  return (
-    participantType === "GTI_INTERNAL_CLIENT" ||
-    participantType === "GTI_SISTER_COMPANY_INTERNAL_CLIENT"
-  );
-}
-
-export function getDefaultProjectCollaboratorPermissions(
-  participantType: ProjectCollaboratorParticipantType | null | undefined,
-  options: { isExecutor?: boolean } = {},
-): ProjectCollaboratorPermissions {
-  const canInteract =
-    Boolean(options.isExecutor) || isInternalProjectParticipantType(participantType);
-
+export function getDefaultProjectCollaboratorPermissions(): ProjectCollaboratorPermissions {
   return {
     ...emptyProjectCollaboratorPermissions,
-    canInteract,
+    canInteract: true,
   };
 }
 
@@ -81,10 +58,9 @@ export function normalizeProjectCollaboratorPermissions(
     | Partial<Record<ProjectCollaboratorPermissionKey, boolean | null | undefined>>
     | null
     | undefined,
-  participantType: ProjectCollaboratorParticipantType | null | undefined,
   options: { isExecutor?: boolean } = {},
 ): ProjectCollaboratorPermissions {
-  const defaults = getDefaultProjectCollaboratorPermissions(participantType, options);
+  const defaults = getDefaultProjectCollaboratorPermissions();
   const permissions = {
     ...defaults,
     ...Object.fromEntries(
@@ -94,10 +70,6 @@ export function normalizeProjectCollaboratorPermissions(
       ]),
     ),
   } as ProjectCollaboratorPermissions;
-
-  if (isClientOfGtiParticipantType(participantType)) {
-    permissions.canAccessProjectArchives = false;
-  }
 
   if (options.isExecutor) {
     permissions.canInteract = true;

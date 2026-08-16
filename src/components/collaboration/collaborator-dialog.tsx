@@ -5,25 +5,9 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  getCollaboratorTypeLabel,
-  projectCollaboratorParticipantTypes,
-  type ProjectCollaboratorParticipantType,
-} from "@/lib/project-collaborator-participant-types";
-
-export type CollaboratorType = ProjectCollaboratorParticipantType;
-
 export type CollaboratorForm = {
   name: string;
   email: string;
-  type: CollaboratorType;
 };
 
 type CollaboratorDialogProps = {
@@ -65,8 +49,8 @@ export function CollaboratorDialog({
               </h2>
               <p className="mt-1 text-[14px] text-[#6a706b]">
                 {mode === "invite"
-                  ? "Add a collaborator and set their business type."
-                  : "Update collaborator details and business type."}
+                  ? "Invite an internal user to the collaboration directory."
+                  : "Update this internal user's collaboration details."}
               </p>
             </div>
             <Button
@@ -87,7 +71,7 @@ export function CollaboratorDialog({
             </div>
           ) : null}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4">
             <label className="space-y-2">
               <span className="block text-[13px] font-[600] text-[#2d372f]">Name</span>
               <Input
@@ -99,25 +83,6 @@ export function CollaboratorDialog({
             </label>
 
             <label className="space-y-2">
-              <span className="block text-[13px] font-[600] text-[#2d372f]">Type</span>
-              <Select
-                value={form.type}
-                onValueChange={(value) => onChange("type", value as CollaboratorType)}
-              >
-                <SelectTrigger className="rounded-2xl border border-line">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {projectCollaboratorParticipantTypes.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {getCollaboratorTypeLabel(type)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-
-            <label className="space-y-2 sm:col-span-2">
               <span className="block text-[13px] font-[600] text-[#2d372f]">Email</span>
               <Input
                 type="email"

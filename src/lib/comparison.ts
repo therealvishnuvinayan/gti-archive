@@ -25,7 +25,7 @@ import {
   canReviewProjectConcept,
   getProjectConceptAccessContext,
 } from "@/lib/project-concept-access";
-import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
+import { getUserRoleLabel } from "@/lib/user-role-compatibility";
 import {
   canBypassCollaboratorVisibility,
   getProjectCollaboratorVisibilityState,
@@ -37,7 +37,7 @@ import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
 
 type AccessUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "collaboratorType"
+  "id" | "email" | "name" | "role"
 > &
   PermissionUser;
 
@@ -45,12 +45,12 @@ function getDisplayName(user: Pick<User, "name" | "email">) {
   return user.name?.trim() || user.email;
 }
 
-function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
+function getActorRole(user: Pick<User, "role">) {
   if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
     return "Internal Team";
   }
 
-  return getCollaboratorRoleLabel(user.collaboratorType);
+  return getUserRoleLabel(user.role);
 }
 
 function formatComparisonTimestamp(date: Date | string | number) {
@@ -150,7 +150,7 @@ function mapComparisonCommentRecord(comment: {
   yPercent: number;
   body: string;
   createdAt: Date;
-  createdBy: Pick<User, "name" | "email" | "role" | "collaboratorType">;
+  createdBy: Pick<User, "name" | "email" | "role">;
 }): ComparisonCommentRecord {
   return {
     id: comment.id,
@@ -174,7 +174,7 @@ function mapSubmissionCaptionRecord(
     yPercent: number;
     body: string;
     createdAt: Date;
-    createdBy: Pick<User, "name" | "email" | "role" | "collaboratorType">;
+    createdBy: Pick<User, "name" | "email" | "role">;
   },
   attachment: {
     id: string;
@@ -568,7 +568,6 @@ export async function getComparisonCommentsForPair(
             name: true,
             email: true,
             role: true,
-            collaboratorType: true,
           },
         },
       },
@@ -621,7 +620,6 @@ export async function getSubmissionCaptionsForAttachment(
             name: true,
             email: true,
             role: true,
-            collaboratorType: true,
           },
         },
       },
@@ -693,7 +691,6 @@ export async function createSubmissionCaption(
             name: true,
             email: true,
             role: true,
-            collaboratorType: true,
           },
         },
       },
@@ -796,7 +793,6 @@ export async function createComparisonComment(
             name: true,
             email: true,
             role: true,
-            collaboratorType: true,
           },
         },
       },
