@@ -23,6 +23,8 @@
     "project-create:role-check": "node scripts/project-create-final-role-checks.mjs",
     "project-create:v2-check": "node scripts/project-creation-v2-regression-checks.mjs",
     "projects:v2-check": "node scripts/projects-v2-dashboard-checks.mjs",
+    "projects:user-check": "tsc --project scripts/tsconfig.user-projects.json && COMPILED_ALIAS_ROOT=.tmp/user-projects node -r ./scripts/register-compiled-alias.cjs .tmp/user-projects/scripts/user-projects-page-check.js",
+    "projects:user-integration-check": "tsc --project scripts/tsconfig.user-projects-integration.json && COMPILED_ALIAS_ROOT=.tmp/user-projects-integration node -r ./scripts/register-compiled-alias.cjs .tmp/user-projects-integration/scripts/user-projects-integration-check.js",
     "project-list:workflow-check": "tsc --project scripts/tsconfig.project-list-workflow.json && COMPILED_ALIAS_ROOT=.tmp/project-list-workflow node -r ./scripts/register-compiled-alias.cjs .tmp/project-list-workflow/scripts/project-list-workflow-check.js",
     "workflow:lock-check": "tsc --project scripts/tsconfig.workflow-lock.json && COMPILED_ALIAS_ROOT=.tmp/workflow-lock node -r ./scripts/register-compiled-alias.cjs .tmp/workflow-lock/scripts/workflow-lock-regression-check.js",
     "dashboard:v2-check": "node scripts/dashboard-v2-regression-checks.mjs",
