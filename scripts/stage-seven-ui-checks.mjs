@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, recipientMigration, cronRoute, datePicker] =
+const [workspace, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, recipientMigration, notificationMigration, notificationPresenter, cronRoute, datePicker] =
   await Promise.all([
     readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/7/page.tsx", "utf8"),
@@ -13,6 +13,8 @@ const [workspace, page, actions, service, dashboard, schema, baseMigration, corr
     readFile("prisma/migrations/20260809233000_correct_stage_seven_sample_round/migration.sql", "utf8"),
     readFile("prisma/migrations/20260809235900_stage_seven_physical_sample_requests/migration.sql", "utf8"),
     readFile("prisma/migrations/20260812130000_stage_seven_sample_request_recipients/migration.sql", "utf8"),
+    readFile("prisma/migrations/20260817100000_add_production_sample_requested_notification/migration.sql", "utf8"),
+    readFile("src/lib/notification-center/presenter.ts", "utf8"),
     readFile("src/app/api/internal/stage-seven/overdue/route.ts", "utf8"),
     readFile("src/components/calendar/app-date-picker.tsx", "utf8"),
   ]);
@@ -180,6 +182,19 @@ assert(
   service.includes("isGlobalProjectAdministrator(user)") &&
     service.includes('hasProjectPermission(user, project, "stage.view")'),
   "Only business administrators with effective Stage access may manage Stage 7.",
+);
+assert(
+  schema.includes("PRODUCTION_SAMPLE_REQUESTED") &&
+    notificationMigration.includes("PRODUCTION_SAMPLE_REQUESTED") &&
+    service.includes("NotificationType.PRODUCTION_SAMPLE_REQUESTED") &&
+    service.includes("publishNotificationChanges") &&
+    service.includes("stage7-physical-sample-requested:${created.id}:${recipient.recipientUserId}") &&
+    notificationPresenter.includes('"PRODUCTION_SAMPLE_REQUESTED"') &&
+    service.includes("const assignedRecipientId = canManage ? null : user.id") &&
+    service.includes("some: { recipientUserId: assignedRecipientId }") &&
+    service.includes("participants: canManage ? getParticipants(project) : []") &&
+    !page.includes("isBusinessAdministratorRole(user.role)"),
+  "Internal sample recipients must receive a realtime notification and a request-scoped read-only Stage 7 view.",
 );
 assert(
   service.includes("requestReferenceFileIds") &&

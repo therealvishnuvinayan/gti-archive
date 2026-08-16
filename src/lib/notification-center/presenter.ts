@@ -38,6 +38,7 @@ export const workflowNotificationTypes = [
   "PRODUCTION_APPROVAL_APPROVED",
   "PRODUCTION_APPROVAL_REJECTED",
   "PRODUCTION_HANDOVER_COMPLETED",
+  "PRODUCTION_SAMPLE_REQUESTED",
 ] as const satisfies readonly PrismaNotificationType[];
 
 const workflowNotificationTypeSet = new Set<PrismaNotificationType>(workflowNotificationTypes);
@@ -85,6 +86,7 @@ export function mapTypeFilterToNotificationTypes(
         "PRODUCTION_APPROVAL_APPROVED",
         "PRODUCTION_APPROVAL_REJECTED",
         "PRODUCTION_HANDOVER_COMPLETED",
+        "PRODUCTION_SAMPLE_REQUESTED",
       ];
     case "Copyright":
       return ["COPYRIGHT_TRANSFER_REQUIRED", "COPYRIGHT_DOCUMENT_UPLOADED"];
@@ -129,6 +131,7 @@ function mapNotificationType(type: PrismaNotificationType): NotificationType {
     case "PRODUCTION_APPROVAL_APPROVED":
     case "PRODUCTION_APPROVAL_REJECTED":
     case "PRODUCTION_HANDOVER_COMPLETED":
+    case "PRODUCTION_SAMPLE_REQUESTED":
       return "Approval";
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
@@ -177,6 +180,7 @@ function mapNotificationContextLabel(type: PrismaNotificationType) {
     case "PRODUCTION_APPROVAL_APPROVED":
     case "PRODUCTION_APPROVAL_REJECTED":
     case "PRODUCTION_HANDOVER_COMPLETED":
+    case "PRODUCTION_SAMPLE_REQUESTED":
       return "Approval";
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
@@ -225,6 +229,7 @@ function mapNotificationContextTone(type: PrismaNotificationType): NotificationC
     case "PRODUCTION_APPROVAL_APPROVED":
     case "PRODUCTION_APPROVAL_REJECTED":
     case "PRODUCTION_HANDOVER_COMPLETED":
+    case "PRODUCTION_SAMPLE_REQUESTED":
       return "approval";
     case "COPYRIGHT_TRANSFER_REQUIRED":
     case "COPYRIGHT_DOCUMENT_UPLOADED":
@@ -272,6 +277,7 @@ function mapNotificationVisualKind(type: PrismaNotificationType): NotificationVi
       return "archive-created";
     case "APPROVAL_REQUIRED":
     case "PRODUCTION_APPROVAL_REQUESTED":
+    case "PRODUCTION_SAMPLE_REQUESTED":
       return "approval-required";
     case "APPROVAL_PROOF_UPLOADED":
     case "PRODUCTION_APPROVAL_APPROVED":

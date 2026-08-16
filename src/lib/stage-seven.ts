@@ -23,6 +23,7 @@ import {
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { publishNotificationChanges } from "@/lib/realtime/server";
 import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
 import {
@@ -331,7 +332,10 @@ export async function getStageSevenWorkspaceData(
   selectedRoundId?: string | null,
 ): Promise<StageSevenWorkspaceData | null> {
   const project = await getAuthorizedStageSevenProject(user, projectId);
-  if (!project || !canManageStageSeven(user, project)) return null;
+  if (!project) return null;
+
+  const canManage = canManageStageSeven(user, project);
+  const assignedRecipientId = canManage ? null : user.id;
 
   const [units, closure] = await withPrismaRetry(() =>
     prisma.$transaction([
@@ -344,6 +348,17 @@ export async function getStageSevenWorkspaceData(
               ProjectProductionUnitStatus.HANDED_OVER,
             ],
           },
+          ...(assignedRecipientId
+            ? {
+                supervision: {
+                  is: {
+                    sampleRounds: {
+                      some: { recipientUserId: assignedRecipientId },
+                    },
+                  },
+                },
+              }
+            : {}),
         },
         orderBy: [{ approvedAt: "asc" }, { id: "asc" }],
         include: {
@@ -364,6 +379,9 @@ export async function getStageSevenWorkspaceData(
             include: {
               signedOffBy: { select: { name: true, email: true } },
               sampleRounds: {
+                ...(assignedRecipientId
+                  ? { where: { recipientUserId: assignedRecipientId } }
+                  : {}),
                 orderBy: [{ sequence: "asc" }, { id: "asc" }],
                 include: {
                   decidedBy: { select: { name: true, email: true } },
@@ -376,6 +394,8 @@ export async function getStageSevenWorkspaceData(
       prisma.projectClosure.findUnique({ where: { projectId } }),
     ]),
   );
+
+  if (!canManage && !units.length) return null;
 
   const currentDate = startOfUtcDate(new Date());
   const mappedUnits: StageSevenWorkspaceData["units"] = units.map((unit) => {
@@ -450,10 +470,10 @@ export async function getStageSevenWorkspaceData(
   const allRounds = mappedUnits.flatMap((unit) => unit.rounds);
 
   return {
-    canManage: canManageStageSeven(user, project),
+    canManage,
     stageCompleted: stageStatus(project) === ProjectWorkflowStageStatus.COMPLETED,
     projectClosedAt: closure?.closedAt.toISOString() ?? null,
-    participants: getParticipants(project),
+    participants: canManage ? getParticipants(project) : [],
     selectedUnitId: resolvedUnitId,
     selectedRoundId: resolvedRoundId,
     units: mappedUnits,
@@ -912,10 +932,33 @@ export async function createProductionSampleRound(
       },
       select: { id: true, emailStatus: true, emailError: true },
     });
+
+    if (recipient.recipientUserId) {
+      await tx.notification.create({
+        data: {
+          userId: recipient.recipientUserId,
+          type: NotificationType.PRODUCTION_SAMPLE_REQUESTED,
+          title: "Physical sample requested",
+          message: `${validated.name} for ${productionUnitName(unit)} in ${project.name} has been assigned to you.`,
+          entityType: NotificationEntityType.SAMPLE_ROUND,
+          entityId: created.id,
+          projectId: input.projectId,
+          url: `/projects/${input.projectId}/stages/7?unit=${input.productionUnitId}&round=${created.id}`,
+          dedupeKey: `stage7-physical-sample-requested:${created.id}:${recipient.recipientUserId}`,
+        },
+      });
+    }
+
     return { ...created, duplicate: false } as const;
   });
 
   if (prepared.duplicate) return prepared;
+  if (recipient.recipientUserId) {
+    await publishNotificationChanges({
+      recipientUserIds: [recipient.recipientUserId],
+      reason: "created",
+    });
+  }
   const delivery = await deliverSampleRequestEmail(
     prepared.id,
     options.sendEmail ?? sendResendEmail,

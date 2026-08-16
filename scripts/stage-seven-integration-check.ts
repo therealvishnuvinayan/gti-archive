@@ -365,6 +365,37 @@ async function main() {
     }, { sendEmail: sendSuccess });
     const internalRound = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: overdueRound.id } });
     check(internalRound.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT && internalRound.recipientType === ProductionApprovalRecipientType.EXISTING_COLLABORATOR && internalRound.recipientUserId === ids.executor, "internal sample requests must persist the selected project participant");
+    const requestNotifications = await prisma.notification.findMany({
+      where: {
+        type: "PRODUCTION_SAMPLE_REQUESTED",
+        entityId: overdueRound.id,
+      },
+    });
+    check(
+      requestNotifications.length === 1 &&
+        requestNotifications[0].userId === ids.executor &&
+        requestNotifications[0].entityType === "SAMPLE_ROUND" &&
+        requestNotifications[0].url === `/projects/${ids.project}/stages/7?unit=${units[1].id}&round=${overdueRound.id}`,
+      "the selected internal recipient must receive one notification linked to the assigned request",
+    );
+    const recipientWorkspace = await getStageSevenWorkspaceData(
+      executor,
+      ids.project,
+      units[1].id,
+      overdueRound.id,
+    );
+    check(
+      recipientWorkspace?.canManage === false &&
+        recipientWorkspace.participants.length === 0 &&
+        recipientWorkspace.units.length === 1 &&
+        recipientWorkspace.units[0].rounds.length === 1 &&
+        recipientWorkspace.units[0].rounds[0].id === overdueRound.id,
+      "the internal recipient must receive a read-only workspace containing only assigned sample requests",
+    );
+    check(
+      (await getStageSevenWorkspaceData(collaborator, ids.project, units[1].id, overdueRound.id)) === null,
+      "an unassigned project participant must not gain Stage 7 request access",
+    );
     await expectRejected(closeStageSevenProject(owner, { projectId: ids.project }), "project completion must remain blocked while any unit is not accepted");
     const overdueFirst = await processStageSevenOverdueDeadlines(new Date());
     check(overdueFirst.attemptedNotifications >= 2, "a pending past-deadline request must be processed as overdue");
