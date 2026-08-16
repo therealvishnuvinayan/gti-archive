@@ -12,6 +12,7 @@ import {
 import {
   createProjectAccessRealtimeClient,
   isStageChatRealtimeClientEnabled,
+  type ProjectAccessRealtimeClient,
 } from "@/lib/realtime/client";
 
 type UseProjectAccessRealtimeInput = {
@@ -53,12 +54,12 @@ function isProjectAccessRevokedPayload(
   );
 }
 
-function ignoreCleanupError(label: string, error: unknown) {
+function ignoreProjectAccessRealtimeError(label: string, error: unknown) {
   if (process.env.NODE_ENV === "production") {
     return;
   }
 
-  console.info(`[ably:project-access] cleanup ${label} ignored`, {
+  console.info(`[ably:project-access] ${label} ignored`, {
     error: error instanceof Error ? error.message : String(error),
   });
 }
@@ -70,12 +71,25 @@ function runProjectAccessCleanup(label: string, task: () => unknown) {
 
     if (typeof maybePromise?.catch === "function") {
       void (maybePromise as Promise<unknown>).catch((error) => {
-        ignoreCleanupError(label, error);
+        ignoreProjectAccessRealtimeError(`cleanup ${label}`, error);
       });
     }
   } catch (error) {
-    ignoreCleanupError(label, error);
+    ignoreProjectAccessRealtimeError(`cleanup ${label}`, error);
   }
+}
+
+function closeProjectAccessRealtimeClient(client: ProjectAccessRealtimeClient) {
+  if (
+    client.connection.state === "closed" ||
+    client.connection.state === "closing"
+  ) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    runProjectAccessCleanup("client close", () => client.close());
+  }, 0);
 }
 
 export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
@@ -139,10 +153,16 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
     };
 
     client.connection.on("connected", handleRealtimeReconnected);
-    void channel.subscribe(
-      PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
-      handleAccessRevoked,
-    );
+    void channel
+      .subscribe(
+        PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
+        handleAccessRevoked,
+      )
+      .catch((error) => {
+        if (!cancelled) {
+          ignoreProjectAccessRealtimeError("subscribe access.revoked", error);
+        }
+      });
     void channel
       .subscribe(
         PROJECT_ACCESS_REALTIME_EVENTS.activityUpdated,
@@ -150,11 +170,18 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
       )
       .then(() => {
         subscribed = true;
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          ignoreProjectAccessRealtimeError("subscribe activity.updated", error);
+        }
       });
 
     return () => {
       cancelled = true;
-      client.connection.off("connected", handleRealtimeReconnected);
+      runProjectAccessCleanup("connection off", () =>
+        client.connection.off("connected", handleRealtimeReconnected),
+      );
       runProjectAccessCleanup("unsubscribe access.revoked", () =>
         channel.unsubscribe(
           PROJECT_ACCESS_REALTIME_EVENTS.accessRevoked,
@@ -167,7 +194,7 @@ export function useProjectAccessRealtime(input: UseProjectAccessRealtimeInput) {
           handleActivityUpdated,
         ),
       );
-      client.close();
+      closeProjectAccessRealtimeClient(client);
     };
   }, [input.currentUserId, input.projectId]);
 }
