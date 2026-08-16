@@ -125,6 +125,15 @@ assert(
     !workspace.includes("Send to Stage 5"),
   "Stage 4 completion must stay hidden until every concept is finally approved and retire the temporary file-picker handoff UI.",
 );
+assert(
+  workspace.includes("stageNumber === 4 && folder.approvedAttachment") &&
+    workspace.includes("folder.approvedAttachment.previewPath") &&
+    workspace.includes("folder.approvedAttachment.downloadPath") &&
+    workspace.includes("!folder.approvedAttachment &&") &&
+    workspace.includes("folder.startingReference ?") &&
+    workspace.includes("Starting Reference · Stage 3"),
+  "Stage 4 cards must preview their own final approved file and use the Stage 3 file only as a clearly labelled pre-approval reference.",
+);
 
 for (const label of [
   "Mark Final Approved File",
