@@ -1853,6 +1853,7 @@ async function resolveConceptApprovalRevocationEligibility(
               activatedAt: true,
               sentAt: true,
               decidedAt: true,
+              removedAt: true,
             },
           },
         },
@@ -1877,7 +1878,8 @@ async function resolveConceptApprovalRevocationEligibility(
           bootstrapStep.dispatchStatus !== ProductionDispatchStatus.NOT_SENT ||
           bootstrapStep.activatedAt !== null ||
           bootstrapStep.sentAt !== null ||
-          bootstrapStep.decidedAt !== null
+          bootstrapStep.decidedAt !== null ||
+          bootstrapStep.removedAt !== null
         );
       });
 

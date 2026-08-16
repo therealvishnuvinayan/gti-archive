@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  ProjectResearchFolderSystemKey,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
   UserRole,
@@ -197,7 +198,7 @@ const researchProject = {
   ownerId: "owner",
   coOwners: [] as Array<{ userId: string }>,
   executors: [{ userId: "executor" }],
-  collaborators: [] as Array<{ userId: string }>,
+  collaborators: [{ userId: collaborator.id }],
   workflowStages: [
     {
       stageKey: ProjectWorkflowStageKey.PROJECT_RESEARCH_AND_PLANNING,
@@ -208,7 +209,7 @@ const researchProject = {
 const adminResearchAccess = getProjectResearchAccess(admin, {
   projectId: "project",
   workspaceId: "workspace",
-  workspaceOwnerUserId: "executor",
+  workspaceOwnerUserId: researchProject.ownerId,
   project: researchProject,
 });
 assert.equal(adminResearchAccess.canRead, true);
@@ -216,10 +217,11 @@ assert.equal(adminResearchAccess.canWrite, true);
 const collaboratorResearchAccess = getProjectResearchAccess(collaborator, {
   projectId: "project",
   workspaceId: "workspace",
-  workspaceOwnerUserId: "executor",
+  workspaceOwnerUserId: researchProject.ownerId,
+  folderSystemKey: ProjectResearchFolderSystemKey.BRIEF,
   project: researchProject,
 });
-assert.equal(collaboratorResearchAccess.canRead, false);
+assert.equal(collaboratorResearchAccess.canRead, true);
 assert.equal(collaboratorResearchAccess.canWrite, false);
 
 const laterStageProject = {

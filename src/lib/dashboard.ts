@@ -514,6 +514,7 @@ export async function getDashboardSnapshot(
                 updatedAt: true,
                 sourceAttachment: { select: { originalFileName: true } },
                 approvalSteps: {
+                  where: { removedAt: null },
                   select: {
                     id: true,
                     status: true,

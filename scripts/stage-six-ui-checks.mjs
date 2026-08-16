@@ -15,6 +15,7 @@ const [
   approvalEmail,
   constants,
   migration,
+  removalMigration,
   stageSevenService,
   stageSevenWorkspace,
 ] = await Promise.all([
@@ -31,6 +32,7 @@ const [
   readFile("src/lib/email/production-workflow.ts", "utf8"),
   readFile("src/lib/stage-six-constants.ts", "utf8"),
   readFile("prisma/migrations/20260812090000_stage_six_optional_handover_contacts/migration.sql", "utf8"),
+  readFile("prisma/migrations/20260816230000_stage_six_approval_step_removal_audit/migration.sql", "utf8"),
   readFile("src/lib/stage-seven.ts", "utf8"),
   readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
 ]);
@@ -42,7 +44,7 @@ for (const content of [
   "Production Files",
   "Production Details",
   "Approval Chain",
-  "Marketing Director — Required",
+  "Marketing Director",
   "Add Approver",
   "Information to share",
   "Select All",
@@ -117,8 +119,16 @@ for (const model of [
   assert(schema.includes(`model ${model}`), `Missing Stage 6 model: ${model}`);
 }
 assert(schema.includes("sourceHandoffId") && schema.includes("sourceChecklistId") && schema.includes("sourceAttachmentId"), "Production Unit lineage must remain explicit.");
-assert(schema.includes("isMarketingDirectorRequired") && schema.includes("@@unique([productionUnitId, sequence])"), "The required first step and per-unit sequence must be persisted.");
+assert(schema.includes("isMarketingDirectorRequired") && schema.includes("@@unique([productionUnitId, sequence])"), "The historical Marketing Director flag and per-unit sequence must be persisted.");
 assert(schema.includes("sharedFieldKeys") && schema.includes("selectedFileIds") && schema.includes("sharedSnapshot"), "Selective sharing and stable snapshots must be persisted.");
+assert(
+  schema.includes("removedAt") &&
+    schema.includes("removedByUserId") &&
+    schema.includes("statusAtRemoval") &&
+    removalMigration.includes('ADD COLUMN "removedAt"') &&
+    removalMigration.includes('ADD COLUMN "statusAtRemoval"'),
+  "Approval removal must be represented by additive audit fields and a forward migration.",
+);
 assert(schema.includes("externalTokenHash") && !schema.includes("externalToken        String"), "Only external token hashes may be stored.");
 assert(
   schema.includes("recipientCompany") &&
@@ -162,7 +172,7 @@ assert(
     service.includes("STAGE_SIX_EMAIL_DELIVERY_ADDRESS") &&
     service.includes("STAGE_SIX_FIRST_APPROVER") &&
     workspace.includes("STAGE_SIX_FIRST_APPROVER"),
-  "All Stage 6 delivery and the required first approval must use the shared temporary email constant.",
+  "All Stage 6 delivery and the initial Marketing Director approval must use the shared temporary email constant.",
 );
 assert(
   workspace.includes("!step.isConfigured") &&
@@ -179,19 +189,24 @@ assert(
 assert(
   !workspace.includes("window.confirm") &&
     workspace.includes('title="Remove approver?"') &&
-    workspace.includes('confirmLabel="Remove approver"') &&
+    workspace.includes('confirmLabel="Remove"') &&
     workspace.includes('tone="destructive"'),
   "Stage 6 approver deletion must use the custom destructive confirmation dialog.",
 );
 assert(
-  service.includes("Completed approval steps cannot be removed.") &&
-    service.includes("Only waiting approval steps can be reordered."),
-  "Completed decisions must remain immutable and only waiting approvals may be reordered.",
+  service.includes("statusAtRemoval: step.status") &&
+    service.includes("removedByUserId: user.id") &&
+    service.includes("externalTokenRevokedAt: removedAt") &&
+    service.includes("removedAt: null") &&
+    workspace.includes("Removed approval history"),
+  "Removal must preserve the prior status and decision audit while excluding the step from live paths.",
 );
 assert(
-  workspace.includes("ProjectProductionUnitStatus.APPROVAL_PENDING") &&
-    service.includes("Approvers can be added only while this approval chain is active."),
-  "Managers must retain approval-chain controls after the required first request starts.",
+  workspace.includes("unit.status !== ProjectProductionUnitStatus.HANDED_OVER") &&
+    service.includes("ProjectProductionUnitStatus.REJECTED") &&
+    service.includes("ProjectProductionUnitStatus.HANDOVER_READY") &&
+    service.includes("This approval chain is locked after handover or Stage 6 completion."),
+  "Managers must retain Add/Remove configuration through pending, rejected, and approved states until the permanent lock.",
 );
 assert(
   authenticatedActions.includes("publishProjectActivityUpdatedAfterResponse") &&
@@ -200,11 +215,17 @@ assert(
   "Authenticated and external decisions must refresh open Stage 6 pages in realtime with a polling fallback.",
 );
 assert(
-  service.includes("unit.status !== ProjectProductionUnitStatus.HANDOVER_READY") &&
-    service.includes("unit.status !== ProjectProductionUnitStatus.HANDED_OVER") &&
-    workspace.includes("Handover is optional") &&
+  service.includes('? ("NOT_REQUIRED" as const)') &&
+    service.includes('approvalState === "NOT_REQUIRED" || approvalState === "APPROVED"') &&
+    service.includes("unit.approvalSteps.length > 0") &&
+    service.includes("approvedAt: null") &&
+    workspace.includes("Approval not required") &&
+    workspace.includes("0 active approvers") &&
+    workspace.includes("unit.handoverBlocker") &&
+    workspace.includes("pageData.summary.ready") &&
+    workspace.includes("Approval is optional when no active approvers exist") &&
     service.includes("ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION"),
-  "Stage 6 completion must require approval, allow optional handover, and unlock only Stage 7.",
+  "Stage 6 must derive Approval Not Required for zero live approvers, preserve other handover blockers, and unlock only Stage 7 when every unit is ready.",
 );
 assert(
   service.includes("Internal handover requires an existing project participant.") &&

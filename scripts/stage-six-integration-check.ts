@@ -263,6 +263,8 @@ async function main() {
     const coOwner = { id: ids.coOwner, role: UserRole.ADMIN };
     const approver = { id: ids.approver, role: UserRole.USER };
     const outsider = { id: ids.outsider, role: UserRole.USER };
+    const admin = { id: ids.admin, role: UserRole.ADMIN };
+    const superAdmin = { id: ids.superAdmin, role: UserRole.SUPER_ADMIN };
     const completedFive = await completeStageFive(owner, { projectId: ids.project });
     check(!isError(completedFive), "owner must complete Stage 5");
     check(completedFive.productionUnitCount === 2, "two Stage 5 files must create two units");
@@ -283,11 +285,11 @@ async function main() {
       (await getStageSixWorkspaceData(approver, ids.project)) === null,
       "project membership must not expose the Stage 6 manager workspace to a USER",
     );
+    check(await getStageSixWorkspaceData(admin, ids.project), "ADMIN must have Stage 6 manager authority");
+    check(await getStageSixWorkspaceData(superAdmin, ids.project), "SUPER_ADMIN must have Stage 6 manager authority");
     check(unitA.sourceHandoffId && unitA.sourceChecklistId && unitA.sourceAttachmentId, "Production Unit must preserve full Stage 5 lineage");
-    const protectedStep = requiredSteps.find((step) => step.productionUnitId === unitA.id);
-    check(protectedStep, "the first Production Unit must have its required step");
-    const protectedRemoval = await removeProductionApprover(owner, { projectId: ids.project, productionUnitId: unitA.id, stepId: protectedStep.id });
-    check(isError(protectedRemoval), "Marketing Director Step 1 must not be removable");
+    const initialStep = requiredSteps.find((step) => step.productionUnitId === unitA.id);
+    check(initialStep, "the first Production Unit must have its initial Marketing Director step");
     const productionAttachmentId = `s6-production-${runId}`;
     await prisma.projectAttachment.create({ data: { id: productionAttachmentId, projectId: ids.project, uploadedById: ids.owner, fileName: `production-${runId}.pdf`, originalFileName: "Production-A.pdf", mimeType: "application/pdf", fileSize: 2048, bucket: "stage-six-integration", storageKey: `stage-six/${runId}/production-a`, assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET, status: AttachmentStatus.READY } });
     const associated = await addProductionUnitFile(owner, { projectId: ids.project, productionUnitId: unitA.id, attachmentId: productionAttachmentId });
@@ -435,22 +437,123 @@ async function main() {
     const completedRejectFive = await completeStageFive(owner, { projectId: ids.rejectProject });
     check(!isError(completedRejectFive), "rejection fixture Stage 5 must complete");
     const rejectUnit = await prisma.projectProductionUnit.findFirstOrThrow({ where: { projectId: ids.rejectProject } });
-    const rejectExtra = await addProductionApprover(owner, { clientRequestId: `reject-extra-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.secondApprover, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] });
-    check(!isError(rejectExtra), "rejection fixture must have a waiting later step");
-    const rejectMd = await configureMarketingDirector(owner, { clientRequestId: `reject-md-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] }, { sendEmail: sendSuccess });
-    check(!isError(rejectMd) && "step" in rejectMd && rejectMd.step, "rejection fixture Marketing Director must activate");
+    const bootstrap = await prisma.productionApprovalStep.findFirstOrThrow({ where: { productionUnitId: rejectUnit.id, isMarketingDirectorRequired: true } });
+    await prisma.projectAttachment.update({
+      where: { id: rejectUnit.sourceAttachmentId },
+      data: { status: AttachmentStatus.UPLOADING },
+    });
+    const removedBootstrap = await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: bootstrap.id });
+    check(!isError(removedBootstrap), "the historical Marketing Director Step 1 must be removable by a manager");
+    const emptyWorkspace = await getStageSixWorkspaceData(owner, ids.rejectProject);
+    const emptyUnit = emptyWorkspace?.units.find((unit) => unit.id === rejectUnit.id);
+    check(emptyUnit?.approvalSteps.length === 0 && emptyUnit.removedApprovalSteps.length === 1, "removed bootstrap must leave an empty live chain and visible audit history");
+    check(emptyUnit?.approvalState === "NOT_REQUIRED", "zero live approvers must derive Approval Not Required");
+    check(emptyUnit?.handoverReady === false && emptyUnit.handoverBlocker?.includes("production source"), "a missing non-approval production prerequisite must still block handover");
+    const blockedZeroHandover = await handoverProductionUnit(owner, { clientRequestId: `zero-blocked-handover-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, route: ProductionHandoverRoute.PURCHASE_DEPARTMENT, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.secondApprover, sharedFieldKeys: [], selectedFileIds: [rejectUnit.sourceAttachmentId] }, { sendEmail: sendSuccess });
+    check(isError(blockedZeroHandover), "zero approvers must not bypass a missing required production source");
+
+    await prisma.projectAttachment.update({
+      where: { id: rejectUnit.sourceAttachmentId },
+      data: { status: AttachmentStatus.READY },
+    });
+    const recalculatedZeroWorkspace = await getStageSixWorkspaceData(owner, ids.rejectProject);
+    const recalculatedZeroUnit = recalculatedZeroWorkspace?.units.find((unit) => unit.id === rejectUnit.id);
+    check(recalculatedZeroUnit?.approvalState === "NOT_REQUIRED" && recalculatedZeroUnit.handoverReady, "finishing the missing non-approval prerequisite must make the zero chain handover-ready");
+    const availableZeroHandover = await handoverProductionUnit(owner, { clientRequestId: `zero-ready-handover-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, route: ProductionHandoverRoute.PURCHASE_DEPARTMENT, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.secondApprover, sharedFieldKeys: [], selectedFileIds: [rejectUnit.sourceAttachmentId] }, { sendEmail: sendFailure });
+    check(isError(availableZeroHandover) && availableZeroHandover.error.includes("email could not be sent"), "zero approvers with ready production prerequisites must reach the real handover delivery path");
+    const emailCountBeforeTemporaryApprover = emailLog.length;
+    const temporaryApprover = await addProductionApprover(owner, { clientRequestId: `zero-temporary-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Temporary Reviewer", recipientEmail: "temporary@example.test", sharedFieldKeys: [], selectedFileIds: [rejectUnit.sourceAttachmentId] }, { sendEmail: sendSuccess });
+    check(!isError(temporaryApprover) && temporaryApprover.step && emailLog.length === emailCountBeforeTemporaryApprover + 1, "adding the first approver after a zero chain must activate and dispatch exactly once");
+    const temporaryToken = approvalToken(emailLog.at(-1)!);
+    check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: rejectUnit.id } })).status === ProjectProductionUnitStatus.APPROVAL_PENDING, "adding after Approval Not Required must block handover again");
+    const removedTemporary = await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: temporaryApprover.step.id }, { sendEmail: sendSuccess });
+    check(!isError(removedTemporary), "the last active approval step must be removable");
+    check((await getExternalProductionApprovalData(temporaryToken)).state !== "active" && isError(await decideProductionApproval({ kind: "external", token: temporaryToken }, { decision: "APPROVE", confirmed: true })), "last-active-step removal must revoke its request token");
+    check(await prisma.notification.count({ where: { entityType: "PRODUCTION_APPROVAL", entityId: temporaryApprover.step.id } }) === 0, "a zero-active chain must retain no outstanding active approval notification");
+    const readyWithoutApproval = await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: rejectUnit.id } });
+    check(readyWithoutApproval.status === ProjectProductionUnitStatus.HANDOVER_READY && readyWithoutApproval.approvedAt === null, "zero approvers plus ready production prerequisites must be handover-ready without a fake approval audit");
+    const readyWithoutApprovalWorkspace = await getStageSixWorkspaceData(owner, ids.rejectProject);
+    const readyWithoutApprovalUnit = readyWithoutApprovalWorkspace?.units.find((unit) => unit.id === rejectUnit.id);
+    check(readyWithoutApprovalUnit?.approvalState === "NOT_REQUIRED" && readyWithoutApprovalUnit.handoverReady && readyWithoutApprovalWorkspace?.summary.approvalNotRequired === 1, "the workspace must display Approval Not Required and expose handover readiness");
+
+    const firstFlexible = await addProductionApprover(owner, { clientRequestId: `reject-first-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Flexible First", recipientEmail: "first@example.test", sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] }, { sendEmail: sendSuccess });
+    check(!isError(firstFlexible) && firstFlexible.step, "an empty chain must allow Add Approver and activate its first live step");
     const rejectToken = approvalToken(emailLog.at(-1)!);
+    const rejectExtra = await addProductionApprover(owner, { clientRequestId: `reject-extra-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.secondApprover, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] });
+    check(!isError(rejectExtra) && rejectExtra.step, "an active chain must allow a future waiting approver");
+    check(await prisma.notification.count({ where: { entityId: rejectExtra.step.id, type: "PRODUCTION_APPROVAL_REQUESTED" } }) === 0, "a future approver must not receive an early request");
+    check(isError(await addProductionApprover(approver, { clientRequestId: `forged-add-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [], selectedFileIds: [rejectFixture.sourceIds[0]] })), "a USER recipient cannot add approval steps");
     const concurrentRejections = await Promise.all([
       decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "REJECT", comment: "Needs correction", confirmed: true }),
       decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "REJECT", comment: "Duplicate click", confirmed: true }),
     ]);
     check(concurrentRejections.filter((result) => !isError(result)).length === 1, "concurrent rejection clicks must record exactly one decision");
     check(concurrentRejections.filter(isError).length === 1, "the losing concurrent rejection must return a controlled error");
-    const rejectedState = await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: rejectUnit.id }, include: { approvalSteps: { orderBy: { sequence: "asc" } } } });
+    const rejectedAuditBeforeRemoval = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: firstFlexible.step.id } });
+    const rejectedState = await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: rejectUnit.id }, include: { approvalSteps: { where: { removedAt: null }, orderBy: { sequence: "asc" } } } });
     check(rejectedState.status === ProjectProductionUnitStatus.REJECTED && rejectedState.approvalSteps[1].status === ProductionApprovalStepStatus.WAITING && !rejectedState.approvalSteps[1].sentAt, "rejection must stop the chain and preserve undispatched waiting steps");
+    const addedAfterRejection = await addProductionApprover(owner, { clientRequestId: `after-rejection-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] });
+    check(!isError(addedAfterRejection) && addedAfterRejection.step, "a rejected chain must remain open to Add Approver");
+    check(isError(await removeProductionApprover(approver, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: firstFlexible.step.id })), "a USER cannot forge removal of a rejected step");
+    check(isError(await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: unitA.id, stepId: firstFlexible.step.id })), "cross-unit removal must be rejected");
+
+    const removeRejected = await removeProductionApprover(coOwner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: firstFlexible.step.id }, { sendEmail: sendSuccess });
+    check(!isError(removeRejected), "a Co-Owner must be able to remove the rejected step and resume the chain");
+    check(isError(await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: firstFlexible.step.id })), "double remove must be rejected");
+    check((await getExternalProductionApprovalData(rejectToken)).state !== "active", "the removed recipient token must no longer be usable");
+    check(isError(await decideProductionApproval({ kind: "external", token: rejectToken }, { decision: "APPROVE", confirmed: true })), "a stale removed recipient cannot decide");
+    const rejectedAudit = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: firstFlexible.step.id } });
+    check(rejectedAudit.removedAt && rejectedAudit.statusAtRemoval === ProductionApprovalStepStatus.REJECTED && rejectedAudit.decisionComment === rejectedAuditBeforeRemoval.decisionComment && rejectedAudit.decidedAt?.getTime() === rejectedAuditBeforeRemoval.decidedAt?.getTime(), "the persisted rejection decision and comment must remain intact after removal");
+    const resumed = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: rejectExtra.step.id } });
+    check(resumed.status === ProductionApprovalStepStatus.ACTIVE, "removing the rejected step must activate the next eligible step exactly once");
+    check(await prisma.notification.count({ where: { entityId: rejectExtra.step.id, type: "PRODUCTION_APPROVAL_REQUESTED" } }) === 1, "resumed internal approver must receive exactly one request notification");
+
+    check(!isError(await decideProductionApproval({ kind: "authenticated", user: { id: ids.secondApprover, role: UserRole.USER }, stepId: rejectExtra.step.id }, { decision: "APPROVE", comment: "Recovered", confirmed: true })), "resumed approver must be able to approve");
+    check(!isError(await decideProductionApproval({ kind: "authenticated", user: approver, stepId: addedAfterRejection.step.id }, { decision: "APPROVE", confirmed: true })), "the next sequential approver must approve");
+    check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: rejectUnit.id } })).status === ProjectProductionUnitStatus.HANDOVER_READY, "remaining live approvals must complete after rejected-step removal");
+
+    const afterApproved = await addProductionApprover(coOwner, { clientRequestId: `after-approved-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXTERNAL_EMAIL, recipientName: "Late Reviewer", recipientEmail: "late@example.test", sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] }, { sendEmail: sendSuccess });
+    check(!isError(afterApproved) && afterApproved.step, "an approved chain must remain open to Add Approver before Stage 6 completion");
+    const afterApprovedToken = approvalToken(emailLog.at(-1)!);
+    const afterActiveFuture = await addProductionApprover(owner, { clientRequestId: `after-active-future-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.secondApprover, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [rejectFixture.sourceIds[0]] });
+    check(!isError(afterActiveFuture) && afterActiveFuture.step, "adding while another approver is active must append a waiting step");
+    check(await prisma.notification.count({ where: { entityId: afterActiveFuture.step.id, type: "PRODUCTION_APPROVAL_REQUESTED" } }) === 0, "the newly appended future approver must not be notified early");
+    check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: rejectUnit.id } })).status === ProjectProductionUnitStatus.APPROVAL_PENDING, "adding after approval must reopen sequential execution");
+    const approvedAuditBeforeRemoval = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: rejectExtra.step.id } });
+    check(!isError(await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: rejectExtra.step.id })), "an approved step must be removable without destroying its audit");
+    const approvedAuditAfterRemoval = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: rejectExtra.step.id } });
+    check(approvedAuditAfterRemoval.removedAt && approvedAuditAfterRemoval.statusAtRemoval === ProductionApprovalStepStatus.APPROVED && approvedAuditAfterRemoval.decidedAt?.getTime() === approvedAuditBeforeRemoval.decidedAt?.getTime(), "approved decision timestamps must remain unchanged after removal");
+    check(!isError(await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: afterApproved.step.id })), "the current active approver must be removable");
+    check((await getExternalProductionApprovalData(afterApprovedToken)).state !== "active" && isError(await decideProductionApproval({ kind: "external", token: afterApprovedToken }, { decision: "APPROVE", confirmed: true })), "removing an active approver must revoke its outstanding token");
+    const activatedAfterRemoval = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: afterActiveFuture.step.id } });
+    check(activatedAfterRemoval.status === ProductionApprovalStepStatus.ACTIVE && await prisma.notification.count({ where: { entityId: afterActiveFuture.step.id, type: "PRODUCTION_APPROVAL_REQUESTED" } }) === 1, "removing an active step must activate and notify the next eligible approver exactly once");
+    const liveAfterRemoval = await prisma.productionApprovalStep.findMany({ where: { productionUnitId: rejectUnit.id, removedAt: null }, select: { sequence: true, status: true } });
+    check(liveAfterRemoval.filter((step) => step.status === ProductionApprovalStepStatus.ACTIVE).length === 1, "a chain mutation must leave at most one live active step");
+    check(new Set(liveAfterRemoval.map((step) => step.sequence)).size === liveAfterRemoval.length, "live approval sequence numbers must remain unique");
+    check(!isError(await decideProductionApproval({ kind: "authenticated", user: { id: ids.secondApprover, role: UserRole.USER }, stepId: afterActiveFuture.step.id }, { decision: "APPROVE", confirmed: true })), "the step activated by active-step removal must be decidable");
+    check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: rejectUnit.id } })).status === ProjectProductionUnitStatus.HANDOVER_READY, "the resumed live chain must complete normally");
 
     const workspace = await getStageSixWorkspaceData(owner, ids.rejectProject);
-    check(workspace?.summary.rejected === 1 && workspace.units.length === 1, "Stage 6 real status summary must reflect persisted unit data");
+    const flexibleUnit = workspace?.units.find((unit) => unit.id === rejectUnit.id);
+    check(flexibleUnit?.approvalSteps.length === 2 && flexibleUnit.approvalSteps.every((step) => step.status === ProductionApprovalStepStatus.APPROVED), "active summary rows must exclude all removed approvals");
+    check(flexibleUnit?.removedApprovalSteps.length === 5, "removed waiting, active, approved, and rejected audit rows must stay visible");
+    check(workspace?.summary.approved === 1 && workspace.units.length === 1, "Stage 6 real status summary must reflect the live chain");
+
+    for (const liveStep of flexibleUnit?.approvalSteps ?? []) {
+      check(!isError(await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: liveStep.id })), "approved live steps must remain audit-removable before Stage 6 completion");
+    }
+    const zeroAfterApprovedHistory = await getStageSixWorkspaceData(owner, ids.rejectProject);
+    const zeroAfterApprovedUnit = zeroAfterApprovedHistory?.units.find((unit) => unit.id === rejectUnit.id);
+    check(zeroAfterApprovedUnit?.approvalState === "NOT_REQUIRED" && zeroAfterApprovedUnit.approvalSteps.length === 0 && zeroAfterApprovedUnit.handoverReady, "removing every approved live step must restore Approval Not Required and preserve handover readiness");
+    check(zeroAfterApprovedUnit?.removedApprovalSteps.filter((step) => step.statusAtRemoval === ProductionApprovalStepStatus.APPROVED).length === 3, "removed approved decisions must remain in historical audit rows when the active chain reaches zero");
+    check((await prisma.projectProductionUnit.findUniqueOrThrow({ where: { id: rejectUnit.id } })).approvedAt === null, "Approval Not Required must never retain an approvedAt audit value");
+
+    const completedFlexible = await completeStageSix(owner, { projectId: ids.rejectProject });
+    check(!isError(completedFlexible), "a ready zero-approver unit must allow Stage 6 completion");
+    check(isError(await addProductionApprover(owner, { clientRequestId: `after-complete-${runId}`, projectId: ids.rejectProject, productionUnitId: rejectUnit.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [], selectedFileIds: [rejectFixture.sourceIds[0]] })), "Add Approver must be blocked after Stage 6 completion");
+    check(isError(await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: addedAfterRejection.step.id })), "removal must be blocked after Stage 6 completion");
+    check(isError(await reorderProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: addedAfterRejection.step.id, direction: "UP" })), "reorder must be blocked after Stage 6 completion");
+    check(isError(await addProductionApprover(owner, { clientRequestId: `after-handover-${runId}`, projectId: ids.project, productionUnitId: unitA.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [], selectedFileIds: [unitA.sourceAttachmentId] })), "Add Approver must be blocked after permanent handover");
     console.log("Stage 5 -> Stage 6 production, approval, handover, security, and Stage 7 unlock integration checks passed.");
   } finally {
     await prisma.project.deleteMany({ where: { id: { in: [ids.project, ids.rejectProject, ids.foreignProject] } } });

@@ -93,8 +93,8 @@ function valueText(value: unknown) {
   return parts.join(" · ") || "Not provided";
 }
 
-function statusLabel(status: ProjectProductionUnitStatus) {
-  switch (status) {
+function statusLabel(unit: StageSixUnitRecord) {
+  switch (unit.status) {
     case ProjectProductionUnitStatus.PREPARATION:
       return "Preparation";
     case ProjectProductionUnitStatus.APPROVAL_PENDING:
@@ -102,7 +102,7 @@ function statusLabel(status: ProjectProductionUnitStatus) {
     case ProjectProductionUnitStatus.REJECTED:
       return "Rejected";
     case ProjectProductionUnitStatus.HANDOVER_READY:
-      return "Approved";
+      return unit.approvalState === "NOT_REQUIRED" ? "Handover Ready" : "Approved";
     case ProjectProductionUnitStatus.HANDED_OVER:
       return "Handed Over";
   }
@@ -179,7 +179,7 @@ function UnitSwitcher({
             <span className="min-w-0">
               <strong className="block truncate text-[12px] font-[720] text-[#27322b]">{unit.name}</strong>
               <span className={cn("mt-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-[740]", unitStatusClass(unit.status))}>
-                {statusLabel(unit.status)}
+                {statusLabel(unit)}
               </span>
             </span>
           </button>
@@ -193,8 +193,10 @@ function StageSummary({ data }: { data: StageSixWorkspaceData }) {
   const items = [
     ["Production Units", data.summary.total],
     ["Approved", data.summary.approved],
+    ["Approval Not Required", data.summary.approvalNotRequired],
     ["Pending Approval", data.summary.pending],
     ["Rejected", data.summary.rejected],
+    ["Ready for Handover", data.summary.ready],
     ["Handed Over", data.summary.handedOver],
   ] as const;
   return (
@@ -445,7 +447,7 @@ function ApproverDialog({
         return;
       }
       await autosave.clearDraft().catch(() => undefined);
-      showSuccessToast(mode === "marketing-director" ? "Marketing Director approval requested." : "Approver added to the waiting chain.");
+      showSuccessToast(mode === "marketing-director" ? "Marketing Director approval requested." : "Approver added to the approval chain.");
       onSaved();
       onClose();
     });
@@ -459,7 +461,7 @@ function ApproverDialog({
             <div>
               <p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">Approval Chain</p>
               <h2 id="add-approver-title" className="mt-1.5 text-[20px] font-[760] text-[#162019] sm:text-[22px]">{mode === "marketing-director" ? "Assign Marketing Director" : "Add Approver"}</h2>
-              {mode === "marketing-director" ? <p className="mt-1 text-[11px] font-[700] text-[#9a6a22]">Marketing Director — Required</p> : null}
+              {mode === "marketing-director" ? <p className="mt-1 text-[11px] font-[700] text-[#9a6a22]">Initial approval role</p> : null}
             </div>
             <Button type="button" variant="secondary" size="icon" aria-label="Close approval request" onClick={closeWithAutosave}><X className="h-4 w-4" /></Button>
           </div>
@@ -468,7 +470,7 @@ function ApproverDialog({
             {fixedFirstApprover ? (
               <div className="rounded-[14px] border border-[#cfe1d4] bg-[#f4faf5] px-4 py-3">
                 <p className="text-[10px] font-[760] uppercase tracking-[.08em] text-[#55725f]">
-                  Fixed first approver
+                  Initial approver
                 </p>
                 <p className="mt-1 text-[13px] font-[740] text-[#243229]">
                   {STAGE_SIX_FIRST_APPROVER.name}
@@ -570,21 +572,26 @@ function ApprovalSection({
   projectId,
   unit,
   canManage,
+  stageCompleted,
   onOpenDialog,
   onRefresh,
 }: {
   projectId: string;
   unit: StageSixUnitRecord;
   canManage: boolean;
+  stageCompleted: boolean;
   onOpenDialog: (mode: ApproverDialogMode) => void;
   onRefresh: () => void;
 }) {
   const approved = unit.approvalSteps.filter((step) => step.status === ProductionApprovalStepStatus.APPROVED).length;
   const rejected = unit.approvalSteps.filter((step) => step.status === ProductionApprovalStepStatus.REJECTED).length;
-  const pending = unit.approvalSteps.filter((step) => step.status === ProductionApprovalStepStatus.ACTIVE).length;
+  const pending = unit.approvalSteps.filter(
+    (step) =>
+      step.status === ProductionApprovalStepStatus.ACTIVE ||
+      step.status === ProductionApprovalStepStatus.WAITING,
+  ).length;
   const chainIsEditable =
-    unit.status === ProjectProductionUnitStatus.PREPARATION ||
-    unit.status === ProjectProductionUnitStatus.APPROVAL_PENDING;
+    !stageCompleted && unit.status !== ProjectProductionUnitStatus.HANDED_OVER;
   const [stepToRemoveId, setStepToRemoveId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [removing, startRemoving] = useTransition();
@@ -655,12 +662,17 @@ function ApprovalSection({
       <div className="grid grid-cols-2 gap-2 border-y border-[#e8ede8] bg-[#fbfcfb] p-4 sm:grid-cols-4">
         {[["Total Approvers", unit.approvalSteps.length], ["Approved", approved], ["Pending", pending], ["Rejected", rejected]].map(([label, value]) => <div key={label} className="rounded-[11px] bg-white px-3 py-2"><strong className="block text-[14px] text-[#26312a]">{value}</strong><span className="text-[9px] text-[#78837b]">{label}</span></div>)}
       </div>
+      {unit.approvalState === "NOT_REQUIRED" ? (
+        <div className="border-b border-[#dce9df] bg-[#f3f9f4] px-5 py-4 text-[11px] text-[#35664a]">
+          <strong>Approval not required</strong> · 0 active approvers
+        </div>
+      ) : null}
       <div>
-        {unit.approvalSteps.map((step) => (
+        {unit.approvalSteps.map((step, index) => (
           <div key={step.id} className="grid gap-3 border-b border-[#e8ede8] px-5 py-4 last:border-b-0 sm:grid-cols-[44px_minmax(0,1fr)_auto_auto] sm:items-center">
-            <span className="grid size-9 place-items-center rounded-[10px] border border-[#dfe6df] bg-[#f8faf8] text-[12px] font-[740]">{step.sequence}</span>
+            <span className="grid size-9 place-items-center rounded-[10px] border border-[#dfe6df] bg-[#f8faf8] text-[12px] font-[740]">{index + 1}</span>
             <div className="min-w-0">
-              <p className="truncate text-[12px] font-[720] text-[#27322b]">{step.isMarketingDirectorRequired ? "Marketing Director — Required" : step.recipientName}</p>
+              <p className="truncate text-[12px] font-[720] text-[#27322b]">{step.isMarketingDirectorRequired ? "Marketing Director" : step.recipientName}</p>
               <p className="mt-1 truncate text-[10px] text-[#77827a]">{step.recipientType ? `${step.recipientName}${step.recipientEmail ? ` · ${step.recipientEmail}` : ""}` : "Recipient not assigned"}</p>
               {step.failureMessage ? <p className="mt-1 text-[10px] text-[#a54b43]">{step.failureMessage}</p> : null}
               {step.decisionComment ? <p className="mt-1 text-[10px] italic text-[#657168]">“{step.decisionComment}”</p> : null}
@@ -670,25 +682,43 @@ function ApprovalSection({
               {step.reviewHref ? <Button asChild type="button" size="sm"><Link href={step.reviewHref}><ShieldCheck className="h-3.5 w-3.5" /> Review Approval</Link></Button> : null}
               {canManage && step.sequence === 1 && !step.isConfigured && chainIsEditable ? <Button type="button" size="sm" onClick={() => onOpenDialog("marketing-director")}><ShieldCheck className="h-3.5 w-3.5" /> Assign</Button> : null}
               {canManage && step.dispatchStatus === ProductionDispatchStatus.FAILED && step.status === ProductionApprovalStepStatus.ACTIVE ? <Button type="button" variant="outline" size="sm" onClick={() => retry(step.id)}><RefreshCw className="h-3.5 w-3.5" /> Retry</Button> : null}
-              {canManage && reorderableSteps.some((candidate) => candidate.id === step.id) ? (
+              {canManage && chainIsEditable && reorderableSteps.some((candidate) => candidate.id === step.id) ? (
                 <>
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Move approval step ${step.sequence} up`} disabled={reorderableSteps[0]?.id === step.id} onClick={() => reorder(step.id, "UP")}><ArrowUp className="h-4 w-4" /></Button>
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Move approval step ${step.sequence} down`} disabled={reorderableSteps.at(-1)?.id === step.id} onClick={() => reorder(step.id, "DOWN")}><ArrowDown className="h-4 w-4" /></Button>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Move approval step ${index + 1} up`} disabled={reorderableSteps[0]?.id === step.id} onClick={() => reorder(step.id, "UP")}><ArrowUp className="h-4 w-4" /></Button>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Move approval step ${index + 1} down`} disabled={reorderableSteps.at(-1)?.id === step.id} onClick={() => reorder(step.id, "DOWN")}><ArrowDown className="h-4 w-4" /></Button>
                 </>
               ) : null}
-              {canManage && chainIsEditable && !step.isMarketingDirectorRequired && (step.status === ProductionApprovalStepStatus.WAITING || step.status === ProductionApprovalStepStatus.ACTIVE) ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove approval step ${step.sequence}`} title="Remove approver" onClick={() => { setRemoveError(null); setStepToRemoveId(step.id); }}><Trash2 className="h-4 w-4 text-[#aa4e45]" /></Button> : null}
+              {canManage && chainIsEditable ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove approval step ${index + 1}`} title="Remove approver" onClick={() => { setRemoveError(null); setStepToRemoveId(step.id); }}><Trash2 className="h-4 w-4 text-[#aa4e45]" /></Button> : null}
             </div>
           </div>
         ))}
+        {unit.approvalSteps.length === 0 ? <p className="px-5 py-7 text-center text-[11px] text-[#77827a]">No active approvers. Approval is not required unless an approver is added before handover.</p> : null}
       </div>
       {unit.status === ProjectProductionUnitStatus.REJECTED ? (
         <div className="flex gap-2 border-t border-[#f0d5d1] bg-[#fff7f5] px-5 py-4 text-[11px] leading-5 text-[#9b5149]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />The chain stopped at rejection. Prior approvals are preserved. Restart Approval Chain is intentionally deferred.</div>
       ) : null}
+      {unit.removedApprovalSteps.length > 0 ? (
+        <div className="border-t border-[#e8ede8] bg-[#fafbfa] px-5 py-4">
+          <p className="text-[10px] font-[760] uppercase tracking-[.09em] text-[#78837b]">Removed approval history</p>
+          <div className="mt-3 space-y-2">
+            {unit.removedApprovalSteps.map((step) => (
+              <div key={step.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[11px] border border-[#e3e8e4] bg-white px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-[700] text-[#465149]">Step {step.sequence} · {step.recipientName}</p>
+                  <p className="mt-0.5 text-[9px] text-[#7b857e]">Removed{step.removedByName ? ` by ${step.removedByName}` : ""}{step.removedAt ? ` · ${new Date(step.removedAt).toLocaleString()}` : ""}</p>
+                  {step.decisionComment ? <p className="mt-1 text-[10px] italic text-[#657168]">“{step.decisionComment}”</p> : null}
+                </div>
+                <span className="rounded-full bg-[#eef1ee] px-2.5 py-1 text-[9px] font-[750] text-[#667168]">Removed after {step.statusAtRemoval ?? step.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <ConfirmationDialog
         isOpen={Boolean(stepToRemove)}
         title="Remove approver?"
-        description={stepToRemove ? `Remove ${stepToRemove.recipientName} from this approval chain? The remaining approval order will be updated automatically.` : ""}
-        confirmLabel="Remove approver"
+        description={stepToRemove ? `${stepToRemove.recipientName} will be removed from this Production Unit's approval chain.` : ""}
+        confirmLabel="Remove"
         tone="destructive"
         pending={removing}
         error={removeError ?? undefined}
@@ -730,8 +760,9 @@ function HandoverDialog({
       .filter((step) => step.status === ProductionApprovalStepStatus.APPROVED)
       .flatMap((step) => step.selectedFileIds),
   );
-  const files = [unit.sourceFile, ...unit.productionFiles].filter((file) =>
-    approvedFileIds.has(file.id),
+  const files = [unit.sourceFile, ...unit.productionFiles].filter(
+    (file) =>
+      unit.approvalState === "NOT_REQUIRED" || approvedFileIds.has(file.id),
   );
   const [fileIds, setFileIds] = useState(files.map((file) => file.id));
   const [note, setNote] = useState("");
@@ -812,7 +843,7 @@ function HandoverDialog({
     <div className="fixed inset-0 z-[170] flex items-start justify-center overflow-y-auto bg-[#112118]/45 p-3 backdrop-blur-[2px] sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="production-handover-dialog-title">
       <Card className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[700px] flex-col overflow-hidden rounded-[24px] border-[#dfe6df] p-0 sm:max-h-[calc(100dvh-2.5rem)]">
         <div className="flex shrink-0 items-start justify-between border-b border-[#e7ece8] px-6 py-5 sm:px-7">
-          <div><p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">Approved Unit</p><h2 id="production-handover-dialog-title" className="mt-2 text-[22px] font-[760]">Production Handover</h2></div>
+          <div><p className="text-[10px] font-[760] uppercase tracking-[.12em] text-[#4c795e]">Handover-ready Unit</p><h2 id="production-handover-dialog-title" className="mt-2 text-[22px] font-[760]">Production Handover</h2></div>
           <Button type="button" variant="secondary" size="icon" onClick={closeWithAutosave} aria-label="Close production handover dialog"><X className="h-4 w-4" /></Button>
         </div>
         <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5 sm:px-7">
@@ -827,7 +858,7 @@ function HandoverDialog({
           <label className="space-y-1.5"><span className="text-[11px] font-[700] text-[#3f4b43]">Email</span><Input type="email" value={email} placeholder="contact@company.com" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setEmail(event.target.value)} /></label>
           <label className="space-y-1.5"><span className="text-[11px] font-[700] text-[#3f4b43]">Phone</span><Input type="tel" value={phone} placeholder="e.g. +971 50 123 4567" className="rounded-[12px] border-[#c8d5cb] bg-[#fbfdfb] shadow-none focus-visible:border-[#46906a] focus-visible:ring-[#46906a]/15" onChange={(event) => setPhone(event.target.value)} /><span className="block text-[9px] text-[#77827a]">Include the international country code.</span></label>
         </div>}
-        <h3 className="mt-6 text-[12px] font-[720]">Approved production files</h3>
+        <h3 className="mt-6 text-[12px] font-[720]">{unit.approvalState === "NOT_REQUIRED" ? "Production files" : "Approved production files"}</h3>
         <div className="mt-2 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">{files.map((file) => <label key={file.id} className="flex min-w-0 items-center gap-2 text-[11px]"><input type="checkbox" checked={fileIds.includes(file.id)} onChange={() => toggle(fileIds, file.id, setFileIds)} /><span className="truncate">{file.name}</span></label>)}</div>
         <div className="mt-3 flex items-center justify-between"><h3 className="text-[12px] font-[720]">Relevant technical information</h3><button type="button" className="text-[10px] font-[740] text-[#28714d]" onClick={() => setFieldKeys(fieldKeys.length === STAGE_FIVE_FIELD_DEFINITIONS.length ? [] : STAGE_FIVE_FIELD_DEFINITIONS.map((field) => field.key))}>Select All</button></div>
         <div className="mt-2 grid gap-2 rounded-[14px] border border-[#e1e8e2] bg-[#fafcfa] p-4 sm:grid-cols-2">{STAGE_FIVE_FIELD_DEFINITIONS.map((field) => <label key={field.key} className="flex items-center gap-2 text-[11px]"><input type="checkbox" checked={fieldKeys.includes(field.key)} onChange={() => toggle(fieldKeys, field.key, setFieldKeys)} />{field.title}</label>)}</div>
@@ -846,11 +877,11 @@ function HandoverSection({ unit, canManage, onOpen }: { unit: StageSixUnitRecord
   return (
     <section className="rounded-[20px] border border-[#dfe6df] bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div><div className="flex items-center gap-2"><h2 className="text-[17px] font-[750] text-[#1c271f]">Production Handover</h2><span className="rounded-full bg-[#f0f3f0] px-2 py-0.5 text-[9px] font-[740] uppercase tracking-[.06em] text-[#6d786f]">Optional</span></div><p className="mt-1 text-[11px] text-[#727d75]">After final approval, optionally send the production package internally or externally.</p></div>
-        {canManage && unit.status === ProjectProductionUnitStatus.HANDOVER_READY ? <Button type="button" onClick={onOpen}><PackageCheck className="h-4 w-4" /> Send Optional Handover</Button> : null}
+        <div><div className="flex items-center gap-2"><h2 className="text-[17px] font-[750] text-[#1c271f]">Production Handover</h2><span className="rounded-full bg-[#f0f3f0] px-2 py-0.5 text-[9px] font-[740] uppercase tracking-[.06em] text-[#6d786f]">Optional</span></div><p className="mt-1 text-[11px] text-[#727d75]">Once this unit is ready, optionally send the production package internally or externally.</p></div>
+        {canManage && unit.handoverReady && unit.status !== ProjectProductionUnitStatus.HANDED_OVER ? <Button type="button" onClick={onOpen}><PackageCheck className="h-4 w-4" /> Send Optional Handover</Button> : null}
       </div>
       {unit.handover ? <div className={cn("mt-4 rounded-[14px] border px-4 py-3 text-[11px]", unit.handover.deliveryStatus === "FAILED" ? "border-[#f0c9c7] bg-[#fff2f1] text-[#9b5149]" : "border-[#d8e6dc] bg-[#f3f8f4] text-[#41604c]")}><strong>{unit.handover.route === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Internal" : "External"}</strong>{unit.handover.recipientCompany ? ` · ${unit.handover.recipientCompany}` : ""} · {unit.handover.recipientName} · {unit.handover.recipientEmail}{unit.handover.recipientPhone ? ` · ${unit.handover.recipientPhone}` : ""}{unit.handover.failureMessage ? <p className="mt-1">{unit.handover.failureMessage}</p> : null}</div> : null}
-      {unit.status === ProjectProductionUnitStatus.HANDED_OVER ? <p className="mt-4 flex items-center gap-2 text-[11px] font-[700] text-[#2e744e]"><Check className="h-4 w-4" /> Handed over successfully.</p> : unit.status !== ProjectProductionUnitStatus.HANDOVER_READY ? <p className="mt-4 flex items-center gap-2 text-[11px] text-[#8a7452]"><Clock3 className="h-4 w-4" /> Complete this unit’s approval chain first.</p> : null}
+      {unit.status === ProjectProductionUnitStatus.HANDED_OVER ? <p className="mt-4 flex items-center gap-2 text-[11px] font-[700] text-[#2e744e]"><Check className="h-4 w-4" /> Handed over successfully.</p> : unit.handoverBlocker ? <p className="mt-4 flex items-center gap-2 text-[11px] text-[#8a7452]"><Clock3 className="h-4 w-4" /> {unit.handoverBlocker}</p> : null}
     </section>
   );
 }
@@ -933,7 +964,7 @@ export function StageSixWorkspace({
               onRefresh={refresh}
             />
             <ProductionDetails unit={activeUnit} />
-            <ApprovalSection projectId={project.id} unit={activeUnit} canManage={pageData.canManage} onOpenDialog={setApproverDialog} onRefresh={refresh} />
+            <ApprovalSection projectId={project.id} unit={activeUnit} canManage={pageData.canManage} stageCompleted={pageData.stageCompleted} onOpenDialog={setApproverDialog} onRefresh={refresh} />
             <HandoverSection unit={activeUnit} canManage={pageData.canManage} onOpen={() => setHandoverDialog(true)} />
           </div>
         ) : (
@@ -942,13 +973,13 @@ export function StageSixWorkspace({
 
         <div className="flex flex-col-reverse gap-3 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
           <Button asChild type="button" variant="outline" className="min-w-[160px]"><Link href={`/projects/${project.id}`}><ListChecks className="h-4 w-4" /> All Stages</Link></Button>
-          {pageData.stageCompleted ? <Button asChild type="button" className="min-w-[180px]"><Link href={`/projects/${project.id}/stages/7`}>Next Stage <ArrowRight className="h-4 w-4" /></Link></Button> : pageData.canManage ? <div className="text-right"><Button type="button" className="min-w-[180px]" disabled={!pageData.units.length || pageData.summary.approved !== pageData.summary.total} onClick={() => { setCompletionError(""); setCompletionDialog(true); }}><Check className="h-4 w-4" /> Complete Stage 6</Button>{pageData.summary.approved !== pageData.summary.total ? <p className="mt-2 text-[10px] text-[#8a7452]">Every Production Unit must complete its approval chain. Handover is optional.</p> : null}</div> : <p className="text-[11px] text-[#77827a]">Owner or Co-Owner management required.</p>}
+          {pageData.stageCompleted ? <Button asChild type="button" className="min-w-[180px]"><Link href={`/projects/${project.id}/stages/7`}>Next Stage <ArrowRight className="h-4 w-4" /></Link></Button> : pageData.canManage ? <div className="text-right"><Button type="button" className="min-w-[180px]" disabled={!pageData.units.length || pageData.summary.ready !== pageData.summary.total} onClick={() => { setCompletionError(""); setCompletionDialog(true); }}><Check className="h-4 w-4" /> Complete Stage 6</Button>{pageData.summary.ready !== pageData.summary.total ? <p className="mt-2 text-[10px] text-[#8a7452]">Every Production Unit must be ready for handover. Approval is optional when no active approvers exist.</p> : null}</div> : <p className="text-[11px] text-[#77827a]">Owner or Co-Owner management required.</p>}
         </div>
       </CardContent></Card>
 
       {activeUnit && approverDialog ? <ApproverDialog mode={approverDialog} projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setApproverDialog(null)} onSaved={refresh} /> : null}
       {activeUnit && handoverDialog ? <HandoverDialog projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setHandoverDialog(false)} onSaved={refresh} /> : null}
-      <ConfirmationDialog isOpen={completionDialog} title="Complete Stage 6" description="All Production Units have completed approval. Complete Stage 6 and unlock Stage 7? Optional handovers can be skipped." confirmLabel="Complete Stage 6" pending={completing} error={completionError || undefined} onConfirm={complete} onClose={() => { if (!completing) setCompletionDialog(false); }} />
+      <ConfirmationDialog isOpen={completionDialog} title="Complete Stage 6" description="All Production Units are ready. Complete Stage 6 and unlock Stage 7? Approval-not-required units and optional handovers can proceed without a decision record." confirmLabel="Complete Stage 6" pending={completing} error={completionError || undefined} onConfirm={complete} onClose={() => { if (!completing) setCompletionDialog(false); }} />
     </section>
   );
 }

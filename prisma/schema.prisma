@@ -453,6 +453,7 @@ model User {
   productionApprovalAssignments       ProductionApprovalStep[]             @relation("ProductionApprovalRecipient")
   productionApprovalsRequested        ProductionApprovalStep[]             @relation("ProductionApprovalRequester")
   productionApprovalDecisions         ProductionApprovalStep[]             @relation("ProductionApprovalDecider")
+  productionApprovalRemovals          ProductionApprovalStep[]             @relation("ProductionApprovalRemover")
   productionHandoversRequested        ProjectProductionHandover[]          @relation("ProjectProductionHandoverRequester")
   productionHandoverAssignments       ProjectProductionHandover[]          @relation("ProjectProductionHandoverRecipient")
   productionHandoversCompleted        ProjectProductionHandover[]          @relation("ProjectProductionHandoverCompleter")
@@ -1227,6 +1228,10 @@ model ProductionApprovalStep {
   decidedByUser               User?                            @relation("ProductionApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
   decisionComment             String?                          @db.Text
   decidedAt                   DateTime?
+  removedAt                   DateTime?
+  removedByUserId             String?
+  removedByUser               User?                            @relation("ProductionApprovalRemover", fields: [removedByUserId], references: [id], onDelete: SetNull)
+  statusAtRemoval             ProductionApprovalStepStatus?
   createdAt                   DateTime                         @default(now())
   updatedAt                   DateTime                         @updatedAt
 
@@ -1236,6 +1241,8 @@ model ProductionApprovalStep {
   @@index([requestedById])
   @@index([dispatchStatus, status])
   @@index([decidedByUserId])
+  @@index([removedByUserId])
+  @@index([productionUnitId, removedAt, sequence])
 }
 
 model ProjectProductionHandover {
