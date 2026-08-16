@@ -221,8 +221,11 @@ assert(
     service.includes("projectClosure.create") &&
     service.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     !service.includes("projectArchive.create") &&
+    workspace.includes("const remainingUnits = data.units.filter") &&
+    workspace.includes("const canClose = data.canManage") &&
+    workspace.includes("disabled={!canClose || pending}") &&
     workspace.includes("Archiving remains a separate action."),
-  "Manual project completion must require every unit accepted and remain separate from archive.",
+  "Manual project completion must stay disabled until every unit is accepted, remain server-enforced, and stay separate from archive.",
 );
 assert(
   workspace.includes("overflow-x-auto") &&
