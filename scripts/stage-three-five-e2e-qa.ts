@@ -26,6 +26,7 @@ import {
   completeStageThreeConcepts,
   createProjectConceptFolder as createProjectConceptFolderService,
   editProjectConceptFolder,
+  getConceptApprovalRevocationEligibility,
   getProjectConceptChatContext,
   getProjectConceptFolders,
   importStageThreeConceptReference,
@@ -244,6 +245,13 @@ function getExternalToken(email: SendEmailInput | null) {
 }
 
 async function main() {
+  process.env.AWS_REGION ||= "us-east-1";
+  process.env.AWS_ACCESS_KEY_ID ||= "stage-three-five-test";
+  process.env.AWS_SECRET_ACCESS_KEY ||= "stage-three-five-test-secret";
+  process.env.AWS_S3_BUCKET ||= "stage-three-five-integration";
+  process.env.S3_USE_ACCELERATE_ENDPOINT ||= "false";
+  process.env.STAGE_E2E_SKIP_S3_PUT ||= "1";
+
   const runId = randomUUID();
   const runLabel = runId.slice(0, 8);
   const userSpecs = [
@@ -1417,6 +1425,24 @@ async function main() {
       (await getExternalChecklistRequestData(externalToken)).state === "completed",
     "external response must update only the real Final B checklist and revoke reuse",
   );
+  const [protectedFinalEligibility, protectedFinalContext] = await Promise.all([
+    getConceptApprovalRevocationEligibility(owner, {
+      projectId,
+      folderId: stageFourA.id,
+      workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+    }),
+    getProjectConceptChatContext(owner, {
+      projectId,
+      folderId: stageFourA.id,
+      stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+    }),
+  ]);
+  check(
+    !protectedFinalEligibility.canRevoke &&
+      protectedFinalEligibility.reason === "STAGE5_DEPENDENCY_EXISTS" &&
+      protectedFinalContext?.chatMode.approvalRevocationEligibility.canRevoke === false,
+    "Stage 5 checklist requests, responses, values, or attachments must hide Stage 4 Revoke Approval",
+  );
 
   const protectedReplacement = await markStageFourFinalApprovedAttachment(owner, {
     projectId,
@@ -1465,10 +1491,57 @@ async function main() {
     orderBy: { createdAt: "asc" },
     select: { id: true },
   });
+  const [untouchedStageSixEligibility, untouchedStageSixContext, executorRevokeEligibility] =
+    await Promise.all([
+      getConceptApprovalRevocationEligibility(owner, {
+        projectId,
+        folderId: conceptA.id,
+        workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      }),
+      getProjectConceptChatContext(owner, {
+        projectId,
+        folderId: conceptA.id,
+        stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      }),
+      getConceptApprovalRevocationEligibility(executorA, {
+        projectId,
+        folderId: conceptA.id,
+        workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      }),
+    ]);
+  check(
+    untouchedStageSixEligibility.canRevoke &&
+      untouchedStageSixContext?.chatMode.isWorkflowCompleted === true &&
+      untouchedStageSixContext.chatMode.approvalRevocationEligibility.canRevoke,
+    "completed Stage 5 with untouched Stage 6 bootstrap units must keep Stage 3 Revoke Approval visible",
+  );
+  check(
+    !executorRevokeEligibility.canRevoke &&
+      executorRevokeEligibility.reason === "UNAUTHORIZED",
+    "a USER executor must never receive Stage 3 revocation eligibility",
+  );
   await prisma.projectProductionUnit.update({
     where: { id: stageSixUnit.id },
     data: { status: ProjectProductionUnitStatus.APPROVAL_PENDING },
   });
+  const [startedStageSixEligibility, startedStageSixContext] = await Promise.all([
+    getConceptApprovalRevocationEligibility(owner, {
+      projectId,
+      folderId: conceptA.id,
+      workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+    }),
+    getProjectConceptChatContext(owner, {
+      projectId,
+      folderId: conceptA.id,
+      stageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+    }),
+  ]);
+  check(
+    !startedStageSixEligibility.canRevoke &&
+      startedStageSixEligibility.reason === "STAGE6_PRODUCTION_STARTED" &&
+      startedStageSixContext?.chatMode.approvalRevocationEligibility.canRevoke === false,
+    "actual Stage 6 production activity must hide Stage 3 Revoke Approval",
+  );
   const startedStageSixRevocation =
     await revokeProjectConceptApprovedAttachment(owner, {
       projectId,
@@ -1485,6 +1558,16 @@ async function main() {
     where: { id: stageSixUnit.id },
     data: { status: ProjectProductionUnitStatus.PREPARATION },
   });
+  const restoredStageThreeEligibility =
+    await getConceptApprovalRevocationEligibility(owner, {
+      projectId,
+      folderId: conceptA.id,
+      workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+    });
+  check(
+    restoredStageThreeEligibility.canRevoke,
+    "Stage 3 Revoke Approval must return when Stage 6 is restored to its untouched bootstrap state",
+  );
 
   const stageThreeRework = await revokeProjectConceptApprovedAttachment(owner, {
     projectId,
@@ -1546,6 +1629,17 @@ async function main() {
       (await prisma.projectProductionUnit.count({ where: { projectId } })) === 1,
     "rework must reset only the dependent Stage 4 approval and Stage 5/6 lineage",
   );
+  const revokedStageThreeEligibility =
+    await getConceptApprovalRevocationEligibility(owner, {
+      projectId,
+      folderId: conceptA.id,
+      workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+    });
+  check(
+    !revokedStageThreeEligibility.canRevoke &&
+      revokedStageThreeEligibility.reason === "NOT_APPROVED",
+    "a revoked Stage 3 concept must no longer expose Revoke Approval",
+  );
   const reworkedStageThreeApproval =
     await markProjectConceptApprovedAttachment(owner, {
       projectId,
@@ -1560,6 +1654,16 @@ async function main() {
         select: { sourceStage3ApprovedAttachmentId: true },
       })).sourceStage3ApprovedAttachmentId === revisionThree.attachmentIds[0],
     "the dependent Stage 4 task must relink to the newly approved Stage 3 file",
+  );
+  check(
+    (
+      await getConceptApprovalRevocationEligibility(owner, {
+        projectId,
+        folderId: conceptA.id,
+        workflowStageKey: ProjectWorkflowStageKey.CONCEPT_CREATION,
+      })
+    ).canRevoke,
+    "a re-approved Stage 3 concept must expose Revoke Approval again when downstream work remains safe",
   );
 
   console.log(

@@ -7661,7 +7661,7 @@ export function ProjectChatWorkspace({
                 </div>
               ))}
             </dl>
-            {conceptMode.canReview &&
+            {conceptMode.approvalRevocationEligibility.canRevoke &&
             approvedConceptAttachmentId ? (
               <Button
                 type="button"

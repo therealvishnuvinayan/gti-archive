@@ -81,7 +81,9 @@ assert(
 );
 assert(
   concepts.includes("revokeProjectConceptApprovedAttachment") &&
-    concepts.includes("revokeConceptApprovedAttachment") &&
+    concepts.includes("getConceptApprovalRevocationEligibility") &&
+    concepts.includes("resolveConceptApprovalRevocationEligibility") &&
+    concepts.includes('"STAGE6_PRODUCTION_STARTED"') &&
     concepts.includes("canReviewProjectConcept(user, accessContext)") &&
     concepts.includes("reopensWorkflowStage") &&
     concepts.includes("Stage 6 production work has already started") &&
@@ -155,6 +157,7 @@ assert(
     chatWorkspace.includes("legacyConceptApprovalRepairRef") &&
     chatWorkspace.includes('status: "APPROVED"') &&
     chatWorkspace.includes("revokeProjectConceptApprovedAttachmentAction") &&
+    chatWorkspace.includes("conceptMode.approvalRevocationEligibility.canRevoke") &&
     chatWorkspace.includes("Revoke Approved Concept?") &&
     chatWorkspace.includes("Revoke Approval") &&
     chatWorkspace.includes("Rework is allowed through completed Stage 5") &&

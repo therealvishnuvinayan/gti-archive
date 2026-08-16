@@ -321,10 +321,10 @@ async function main() {
     check(await prisma.notification.count({ where: { entityId: additional.step.id, type: "PRODUCTION_APPROVAL_REQUESTED" } }) === 0, "waiting approvers must not be notified early");
 
     const approverWorkspace = await getStageSixWorkspaceData(approver, ids.project);
-    const approverStep = approverWorkspace?.units
-      .find((unit) => unit.id === unitA.id)
-      ?.approvalSteps.find((step) => step.id === configuredA.step.id);
-    check(approverStep?.reviewHref === null, "the fixed external first approval must not expose an authenticated review link");
+    check(
+      approverWorkspace === null,
+      "the fixed external first approval must not expose a USER manager workspace or authenticated review link",
+    );
     const ownerWorkspace = await getStageSixWorkspaceData(owner, ids.project);
     const ownerStep = ownerWorkspace?.units
       .find((unit) => unit.id === unitA.id)
@@ -356,10 +356,10 @@ async function main() {
     const approvedStepOne = await decideProductionApproval({ kind: "external", token: stepOneToken }, { decision: "APPROVE", comment: "Approved by Slavomir", confirmed: true }, { sendEmail: sendSuccess });
     check(!isError(approvedStepOne), "the active fixed first approver must approve");
     const decidedApproverWorkspace = await getStageSixWorkspaceData(approver, ids.project);
-    const decidedApproverStep = decidedApproverWorkspace?.units
-      .find((unit) => unit.id === unitA.id)
-      ?.approvalSteps.find((step) => step.id === configuredA.step.id);
-    check(decidedApproverStep?.reviewHref === null, "the direct review action must disappear after the assigned approver decides");
+    check(
+      decidedApproverWorkspace === null,
+      "the USER manager workspace and direct review action must remain unavailable after the external approver decides",
+    );
     check(emailLog.length === emailBeforeStepTwo + 1, "only the next external approver must be emailed");
     const stepTwoToken = approvalToken(emailLog.at(-1)!);
     const storedStepTwo = await prisma.productionApprovalStep.findUniqueOrThrow({ where: { id: additional.step.id } });

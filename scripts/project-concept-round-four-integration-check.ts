@@ -14,6 +14,8 @@ import {
 
 import {
   completeStageFourConcepts,
+  getConceptApprovalRevocationEligibility,
+  getProjectConceptChatContext,
   markProjectConceptApprovedAttachment,
   markStageFourFinalApprovedAttachment,
   revokeProjectConceptApprovedAttachment,
@@ -851,6 +853,34 @@ async function main() {
       attachmentId: alternateA.id,
     });
     check(isError(lockedReplacement), "final designation must lock after Stage 4 completion");
+    const [completedStageFourEligibility, completedStageFourContext, executorEligibility] =
+      await Promise.all([
+        getConceptApprovalRevocationEligibility(owner, {
+          projectId,
+          folderId: conceptA.id,
+          workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        }),
+        getProjectConceptChatContext(owner, {
+          projectId,
+          folderId: conceptA.id,
+          stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        }),
+        getConceptApprovalRevocationEligibility(executor, {
+          projectId,
+          folderId: conceptA.id,
+          workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        }),
+      ]);
+    check(
+      completedStageFourEligibility.canRevoke &&
+        completedStageFourContext?.chatMode.isWorkflowCompleted === true &&
+        completedStageFourContext.chatMode.approvalRevocationEligibility.canRevoke,
+      "an authorized reviewer must see Revoke Approval on completed Stage 4 when only empty initialized handoffs/checklists exist",
+    );
+    check(
+      !executorEligibility.canRevoke && executorEligibility.reason === "UNAUTHORIZED",
+      "an assigned USER executor must not receive Stage 4 revocation eligibility",
+    );
     const completedStageRevocation =
       await revokeStageFourFinalApprovedAttachment(owner, {
         projectId,
@@ -860,6 +890,17 @@ async function main() {
       !isError(completedStageRevocation) &&
         completedStageRevocation.reopensWorkflowStage,
       "final approval revocation must safely reopen completed Stage 4 before Stage 5 work begins",
+    );
+    const revokedStageFourEligibility =
+      await getConceptApprovalRevocationEligibility(owner, {
+        projectId,
+        folderId: conceptA.id,
+        workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      });
+    check(
+      !revokedStageFourEligibility.canRevoke &&
+        revokedStageFourEligibility.reason === "NOT_APPROVED",
+      "a revoked Stage 4 concept must no longer expose Revoke Approval",
     );
     const reopenedWorkflow = await prisma.projectWorkflowStage.findMany({
       where: {
@@ -898,6 +939,16 @@ async function main() {
       !isError(restoredCompletion) && restoredCompletion.transitioned,
       "Stage 4 must complete again after the restored approval",
     );
+    const reapprovedStageFourEligibility =
+      await getConceptApprovalRevocationEligibility(owner, {
+        projectId,
+        folderId: conceptA.id,
+        workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+      });
+    check(
+      reapprovedStageFourEligibility.canRevoke,
+      "a re-approved completed Stage 4 concept must expose Revoke Approval while its initialized Stage 5 handoff remains untouched",
+    );
 
     const stageFiveData = await getStageFiveWorkspaceData(owner, projectId);
     check(
@@ -925,6 +976,25 @@ async function main() {
       ],
     });
     check(!isError(saved), "existing Stage 5 Edit persistence must work for a real final handoff");
+    const [protectedStageFourEligibility, protectedStageFourContext] =
+      await Promise.all([
+        getConceptApprovalRevocationEligibility(owner, {
+          projectId,
+          folderId: conceptA.id,
+          workflowStageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        }),
+        getProjectConceptChatContext(owner, {
+          projectId,
+          folderId: conceptA.id,
+          stageKey: ProjectWorkflowStageKey.PROJECT_DEVELOPMENT,
+        }),
+      ]);
+    check(
+      !protectedStageFourEligibility.canRevoke &&
+        protectedStageFourEligibility.reason === "STAGE5_DEPENDENCY_EXISTS" &&
+        protectedStageFourContext?.chatMode.approvalRevocationEligibility.canRevoke === false,
+      "meaningful Stage 5 checklist activity must hide Stage 4 Revoke Approval using the same eligibility result as the server",
+    );
     const selectedB = await getStageFiveWorkspaceData(owner, projectId, handoffB.handoffId);
     check(
       selectedB?.files

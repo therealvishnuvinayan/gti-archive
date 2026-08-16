@@ -58,6 +58,9 @@ assert(
 );
 assert(
   concepts.includes("revokeStageFourFinalApprovedAttachment") &&
+    concepts.includes("getConceptApprovalRevocationEligibility") &&
+    concepts.includes("resolveConceptApprovalRevocationEligibility") &&
+    concepts.includes('"STAGE5_DEPENDENCY_EXISTS"') &&
     concepts.includes("reopensWorkflowStage") &&
     concepts.includes("Stage 5 already contains checklist activity") &&
     concepts.includes("already has Stage 5 activity and cannot be revoked") &&
@@ -134,6 +137,7 @@ for (const label of [
 assert(
   chat.includes("markStageFourFinalApprovedAttachmentAction") &&
     chat.includes("revokeStageFourFinalApprovedAttachmentAction") &&
+    chat.includes("conceptMode.approvalRevocationEligibility.canRevoke") &&
     chat.includes("Revoke Final Approved File?") &&
     chat.includes("Revoke Approval") &&
     chat.includes("Stage 5 will be relocked") &&
