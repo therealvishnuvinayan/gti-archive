@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "environment": "development",
+  "approvedForExecution": false,
+  "superAdmin": {
+    "name": "Super Admin",
+    "email": "superadmin@gti-archive.com",
+    "passwordEnv": "RESET_SUPER_ADMIN_PASSWORD"
+  },
+  "admins": [],
+  "users": []
+}

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "remoteDevelopmentTargets": [
+    {
+      "label": "GTI Archive Neon development",
+      "host": "ep-purple-math-apk5ma0b-pooler.c-7.us-east-1.aws.neon.tech",
+      "database": "neondb",
+      "neonProjectId": "odd-lab-06003296",
+      "neonBranchId": "br-divine-field-apcyflb7",
+      "neonEndpointId": "ep-purple-math-apk5ma0b"
+    }
+  ],
+  "localDisposableDatabasePrefix": "gti_archive_reset_test_"
+}

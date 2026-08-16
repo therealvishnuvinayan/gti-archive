@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": "../.tmp/reset-development-data",
+    "rootDir": "..",
+    "target": "ES2022"
+  },
+  "include": [
+    "reset-development-data.ts",
+    "reset-development-data-check.ts",
+    "seed-reset-development-data-fixture.ts"
+  ]
+}
