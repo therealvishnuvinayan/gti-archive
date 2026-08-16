@@ -29,10 +29,15 @@ for (const snippet of [
 
 for (const source of [uploadRoute, previewRoute]) {
   assert(
-    source.includes("UserRole.SUPER_ADMIN") && source.includes("hasPermission"),
-    "Managed-user avatar routes must remain restricted to permitted super admins.",
+    source.includes("isBusinessAdministratorRole") && source.includes("hasPermission"),
+    "Managed-user avatar routes must remain restricted to permitted administrators.",
   );
 }
+
+assert(
+  uploadRoute.includes("isProtectedRootRole(targetUser.role)"),
+  "Managed-user avatar uploads must not mutate protected root accounts.",
+);
 
 for (const snippet of [
   "buildUserAvatarKey(targetUser.id",
@@ -61,4 +66,4 @@ assert(
   "Managed-user records and updates must persist avatar state.",
 );
 
-console.log("Super-admin managed-user avatar checks passed.");
+console.log("Administrator managed-user avatar checks passed.");

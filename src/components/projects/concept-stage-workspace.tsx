@@ -560,7 +560,7 @@ export function ConceptStageWorkspace({
   function completeCurrentStage() {
     if (!canCompleteStage) {
       setCompletionError(
-        `Only the Project Owner or Super Admin can complete Stage ${stageNumber}.`,
+        `Only a project owner, co-owner, or administrator can complete Stage ${stageNumber}.`,
       );
       return;
     }

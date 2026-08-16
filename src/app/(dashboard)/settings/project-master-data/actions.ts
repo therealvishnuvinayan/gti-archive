@@ -48,7 +48,7 @@ async function requireAdminUser() {
   return user;
 }
 
-async function requireSuperAdminUser() {
+async function requireMasterDataDeletePermission() {
   const user = await requireUser();
   requirePermission(
     user,
@@ -894,7 +894,7 @@ export async function setArchiveCategoryStatusAction(input: ToggleMasterDataInpu
 }
 
 export async function deleteProjectCategoryAction(id: string) {
-  await requireSuperAdminUser();
+  await requireMasterDataDeletePermission();
 
   const category = await withPrismaRetry(() =>
     prisma.projectCategory.findUnique({
@@ -934,7 +934,7 @@ export async function deleteProjectCategoryAction(id: string) {
 }
 
 export async function deleteProjectTagAction(id: string) {
-  await requireSuperAdminUser();
+  await requireMasterDataDeletePermission();
 
   const tag = await withPrismaRetry(() =>
     prisma.projectTag.findUnique({
@@ -975,7 +975,7 @@ export async function deleteProjectTagAction(id: string) {
 }
 
 export async function deleteProjectStatusGroupAction(id: string) {
-  await requireSuperAdminUser();
+  await requireMasterDataDeletePermission();
 
   const group = await withPrismaRetry(() =>
     prisma.projectStatusGroupOption.findUnique({
@@ -1015,7 +1015,7 @@ export async function deleteProjectStatusGroupAction(id: string) {
 }
 
 export async function deleteProjectStatusAction(id: string) {
-  await requireSuperAdminUser();
+  await requireMasterDataDeletePermission();
 
   const status = await withPrismaRetry(() =>
     prisma.projectStatusOption.findUnique({
@@ -1055,7 +1055,7 @@ export async function deleteProjectStatusAction(id: string) {
 }
 
 export async function deleteAssetTagAction(id: string) {
-  await requireSuperAdminUser();
+  await requireMasterDataDeletePermission();
 
   const tag = await withPrismaRetry(() =>
     prisma.assetTag.findUnique({
@@ -1104,7 +1104,7 @@ export async function deleteAssetTagAction(id: string) {
 }
 
 export async function deleteArchiveCategoryAction(id: string) {
-  await requireSuperAdminUser();
+  await requireMasterDataDeletePermission();
 
   const category = await withPrismaRetry(() =>
     prisma.archiveCategory.findUnique({

@@ -19,6 +19,7 @@ import { buildChecklistInformationRequestEmail } from "@/lib/email/checklist-inf
 import { sendResendEmail } from "@/lib/email/resend";
 import {
   hasProjectPermission,
+  isGlobalProjectAdministrator,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -1144,7 +1145,7 @@ export async function cancelStageFiveChecklistRequest(
   if (
     !project ||
     !hasProjectPermission(user, project, "file.uploadAttachment") ||
-    (user.role !== UserRole.SUPER_ADMIN && request.requestedById !== user.id)
+    (!isGlobalProjectAdministrator(user) && request.requestedById !== user.id)
   ) {
     return { error: "You do not have permission to cancel this request." } as const;
   }

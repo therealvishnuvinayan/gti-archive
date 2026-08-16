@@ -62,10 +62,9 @@ for (const snippet of [
   "input.collaboratorIds ?? []",
   "hasMalformedIds(rawCollaboratorIds)",
   "new Set(normalizeIdList(rawCollaboratorIds))",
-  "owner.role === UserRole.SUPER_ADMIN &&",
-  "owner.id !== creator.id",
-  "user.role === UserRole.SUPER_ADMIN",
-  "UserRole.COLLABORATOR",
+  "const ownerId = creator.id",
+  "user.role !== UserRole.ADMIN",
+  "UserRole.USER",
   "invalidCollaborator",
   "prisma.$transaction",
   "coOwners:",
@@ -97,7 +96,7 @@ for (const legacyField of [
   assert(!projectCreateBlock.includes(legacyField), `V2 creation must not fabricate ${legacyField}`);
 }
 
-assertIncludes(candidates, "not: UserRole.SUPER_ADMIN", "Role-based Super Admin filtering");
+assertIncludes(candidates, "role: UserRole.ADMIN", "ADMIN-only co-owner candidates");
 assert(!/email|name/.test(candidates.slice(candidates.indexOf("where:"), candidates.indexOf("orderBy:"))), "Owner eligibility must not infer role from name or email.");
 
 for (const snippet of [
@@ -112,10 +111,10 @@ for (const snippet of [
 }
 
 for (const snippet of [
-  "initialProject?.ownerId ?? currentUser.id",
-  "uniqueOptions.set(currentUser.id, currentUser)",
+  "const ownerId = initialProject?.ownerId ?? currentUser.id",
+  "The project owner is fixed when the project is created.",
 ]) {
-  assertIncludes(form, snippet, `Current user owner default ${snippet}`);
+  assertIncludes(form, snippet, `Fixed project owner behavior ${snippet}`);
 }
 
 for (const snippet of [
@@ -195,7 +194,7 @@ assert(
 for (const snippet of [
   "isProjectOwnerOrCoOwner",
   "isProjectExecutor",
-  "UserRole.SUPER_ADMIN",
+  "isGlobalProjectAdministrator",
   "ownerId: user.id",
   "coOwners:",
   "collaborators:",

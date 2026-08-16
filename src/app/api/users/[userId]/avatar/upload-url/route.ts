@@ -1,4 +1,3 @@
-import { UserRole } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -15,6 +14,10 @@ import {
   PROFILE_IMAGE_ALLOWED_EXTENSIONS,
   buildFileTypeNotAllowedPayload,
 } from "@/lib/upload-validation";
+import {
+  isBusinessAdministratorRole,
+  isProtectedRootRole,
+} from "@/lib/user-role-compatibility";
 
 type UploadAvatarPayload = {
   fileName?: string;
@@ -34,11 +37,11 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   if (
-    currentUser.role !== UserRole.SUPER_ADMIN ||
+    !isBusinessAdministratorRole(currentUser.role) ||
     !hasPermission(currentUser, "users.update")
   ) {
     return NextResponse.json(
-      { error: "Only super admins with user update access can change user photos." },
+      { error: "Only administrators with user update access can change user photos." },
       { status: 403 },
     );
   }
@@ -53,12 +56,19 @@ export async function POST(request: Request, { params }: RouteContext) {
   const targetUser = await withPrismaRetry(() =>
     prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true },
+      select: { id: true, role: true },
     }),
   );
 
   if (!targetUser) {
     return NextResponse.json({ error: "User not found." }, { status: 404 });
+  }
+
+  if (isProtectedRootRole(targetUser.role)) {
+    return NextResponse.json(
+      { error: "Protected Super Admin accounts cannot be changed here." },
+      { status: 403 },
+    );
   }
 
   const payload = (await request.json().catch(() => null)) as UploadAvatarPayload | null;

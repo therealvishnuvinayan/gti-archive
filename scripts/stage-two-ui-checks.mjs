@@ -280,7 +280,7 @@ assert(
   ),
   "Encoded research folder ids must be decoded at every dynamic route boundary.",
 );
-assert(access.includes("UserRole.SUPER_ADMIN") && access.includes("isOwnWorkspace") && access.includes("isProjectCoOwner"), "Workspace access must enforce real roles and relations.");
+assert(access.includes("isGlobalProjectAdministrator") && access.includes("isOwnWorkspace") && access.includes("isProjectCoOwner"), "Workspace access must enforce global administrator authority and standard-user relationships.");
 assert(files.includes("assertResearchFolderWriteAccess") && files.includes("getAttachmentDownloadUrlForUser") && files.includes("deleteAttachmentForUser"), "Research files must reuse secured attachment infrastructure.");
 assert(
   files.includes("projectResearchFolderFile.findUnique") &&

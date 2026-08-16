@@ -267,7 +267,6 @@ export function CalendarWorkspace({
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
-    type: "GTI_INTERNAL_CLIENT",
   });
   const [form, setForm] = useState<CalendarFormState>(
     getDefaultForm(formatCalendarDateValue(today)),
@@ -333,7 +332,6 @@ export function CalendarWorkspace({
     setCollaboratorForm({
       name: "",
       email: "",
-      type: "GTI_INTERNAL_CLIENT",
     });
     setCollaboratorDialogError(undefined);
     setTimeout(() => {

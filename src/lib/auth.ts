@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { cache } from "react";
 import type { User } from "@prisma/client";
 import { cookies } from "next/headers";
@@ -7,6 +7,16 @@ import { redirect } from "next/navigation";
 
 import { getPermissionProfileSnapshotForUser } from "@/lib/permissions/profiles";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  normalizeAuthEmail,
+  verifyAuthPassword,
+} from "@/lib/auth-password";
+
+export {
+  hashAuthPassword,
+  normalizeAuthEmail,
+  verifyAuthPassword,
+} from "@/lib/auth-password";
 
 export const SESSION_COOKIE_NAME = "gti_session";
 
@@ -41,14 +51,6 @@ export class AuthError extends Error {
   }
 }
 
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
-
-export function normalizeAuthEmail(email: string) {
-  return normalizeEmail(email);
-}
-
 function getFallbackName(email: string) {
   const [localPart] = email.split("@");
 
@@ -59,36 +61,8 @@ function getFallbackName(email: string) {
     .join(" ");
 }
 
-export function hashAuthPassword(password: string) {
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password: string, storedHash: string) {
-  const [salt, hash] = storedHash.split(":");
-
-  if (!salt || !hash) {
-    return false;
-  }
-
-  const storedBuffer = Buffer.from(hash, "hex");
-  const derivedBuffer = scryptSync(password, salt, 64);
-
-  if (storedBuffer.length !== derivedBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(storedBuffer, derivedBuffer);
-}
-
-export function verifyAuthPassword(password: string, storedHash: string) {
-  return verifyPassword(password, storedHash);
-}
-
 function validateCredentials(email: string, password: string) {
-  const normalizedEmail = normalizeEmail(email);
+  const normalizedEmail = normalizeAuthEmail(email);
 
   if (!normalizedEmail || !normalizedEmail.includes("@")) {
     throw new AuthError("Enter a valid email address.");

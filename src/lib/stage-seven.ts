@@ -14,12 +14,12 @@ import {
   ProjectProductionUnitStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
-  UserRole,
 } from "@prisma/client";
 
 import { sendResendEmail } from "@/lib/email/resend";
 import {
   hasProjectPermission,
+  isGlobalProjectAdministrator,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -123,7 +123,7 @@ export function canManageStageSeven(
   project: StageProject,
 ) {
   return (
-    user.role === UserRole.SUPER_ADMIN ||
+    isGlobalProjectAdministrator(user) ||
     project.ownerId === user.id ||
     project.coOwners.some((coOwner) => coOwner.userId === user.id)
   );
@@ -293,7 +293,7 @@ async function getManagerProject(user: PermissionUser, projectId: string) {
   const project = await getAuthorizedStageSevenProject(user, projectId);
   if (!project || !canManageStageSeven(user, project)) {
     throw new StageSevenWorkflowError(
-      "Only the project owner, a project co-owner, or a Super Admin can manage Stage 7.",
+      "Only a project owner, co-owner, or administrator can manage Stage 7.",
     );
   }
   if (project.archivedAt) {
@@ -1091,7 +1091,7 @@ export async function closeStageSevenProject(
   const project = await getAuthorizedStageSevenProject(user, input.projectId);
   if (!project || !canManageStageSeven(user, project)) {
     throw new StageSevenWorkflowError(
-      "Only the project owner, a project co-owner, or a Super Admin can complete the project.",
+      "Only a project owner, co-owner, or administrator can complete the project.",
     );
   }
   if (project.archivedAt) throw new StageSevenWorkflowError("Archived projects are read-only.");

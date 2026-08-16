@@ -194,11 +194,11 @@ async function main() {
   try {
     await prisma.user.createMany({
       data: [
-        [ids.owner, UserRole.COLLABORATOR],
-        [ids.coOwner, UserRole.COLLABORATOR],
-        [ids.approver, UserRole.COLLABORATOR],
-        [ids.secondApprover, UserRole.COLLABORATOR],
-        [ids.outsider, UserRole.COLLABORATOR],
+        [ids.owner, UserRole.ADMIN],
+        [ids.coOwner, UserRole.ADMIN],
+        [ids.approver, UserRole.USER],
+        [ids.secondApprover, UserRole.USER],
+        [ids.outsider, UserRole.USER],
         [ids.admin, UserRole.ADMIN],
         [ids.superAdmin, UserRole.SUPER_ADMIN],
       ].map(([id, role]) => ({
@@ -259,14 +259,10 @@ async function main() {
       },
     });
 
-    const owner = { id: ids.owner, role: UserRole.COLLABORATOR };
-    const coOwner = { id: ids.coOwner, role: UserRole.COLLABORATOR };
-    const approver = { id: ids.approver, role: UserRole.COLLABORATOR };
-    const outsider = { id: ids.outsider, role: UserRole.COLLABORATOR };
-    const admin = { id: ids.admin, role: UserRole.ADMIN };
-
-    const deniedStageFive = await completeStageFive(admin, { projectId: ids.project });
-    check(isError(deniedStageFive), "ADMIN alone must not complete Stage 5");
+    const owner = { id: ids.owner, role: UserRole.ADMIN };
+    const coOwner = { id: ids.coOwner, role: UserRole.ADMIN };
+    const approver = { id: ids.approver, role: UserRole.USER };
+    const outsider = { id: ids.outsider, role: UserRole.USER };
     const completedFive = await completeStageFive(owner, { projectId: ids.project });
     check(!isError(completedFive), "owner must complete Stage 5");
     check(completedFive.productionUnitCount === 2, "two Stage 5 files must create two units");
@@ -306,8 +302,6 @@ async function main() {
     const additional = concurrentAdds.find((result) => !isError(result) && !result.duplicate);
     check(additional && !isError(additional) && "step" in additional && additional.step && additional.step.sequence === 2, "additional approver must append after required Step 1");
     check(concurrentAdds.filter((result) => !isError(result) && result.duplicate).length === 1, "concurrent Add Approver submit must create exactly one step");
-    const adminConfigure = await configureMarketingDirector(admin, { clientRequestId: `admin-md-${runId}`, projectId: ids.project, productionUnitId: unitA.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId] });
-    check(isError(adminConfigure), "ADMIN alone must not configure approvals");
     const configuredA = await configureMarketingDirector(owner, { clientRequestId: `md-a-${runId}`, projectId: ids.project, productionUnitId: unitA.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [ProjectFileChecklistField.OUTPUT_NAME], selectedFileIds: [unitA.sourceAttachmentId, productionAttachmentId], message: "Required review" }, { sendEmail: sendSuccess });
     check(!isError(configuredA) && "step" in configuredA && configuredA.step, "the fixed first approver must be assignable");
     const firstApproverMessage = emailLog.at(-1)!;

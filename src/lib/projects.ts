@@ -11,7 +11,6 @@ import {
   UserRole,
 } from "@prisma/client";
 import type {
-  CollaboratorType,
   Project,
   ProjectCollaborator,
   ProjectExecutor,
@@ -21,14 +20,6 @@ import type {
   User,
 } from "@prisma/client";
 
-import {
-  getCollaboratorRoleLabel,
-  getCollaboratorTypeGroup,
-  getDefaultProjectCollaboratorParticipantType,
-  getProjectCollaboratorTypeMeta,
-  isProjectCollaboratorParticipantType,
-  type ProjectCollaboratorParticipantType,
-} from "@/lib/project-collaborator-participant-types";
 import {
   DEFAULT_PROJECT_PRIORITY,
   formatProjectPriority,
@@ -135,10 +126,10 @@ type ProjectStatusRelation = {
 
 type ProjectWithCreator = Project & {
   createdBy: Pick<User, "name" | "email">;
-  owner?: Pick<User, "id" | "name" | "email" | "collaboratorType"> | null;
+  owner?: Pick<User, "id" | "name" | "email"> | null;
   coOwners?: Array<{
     userId: string;
-    user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
+    user: Pick<User, "id" | "name" | "email">;
   }>;
   workflowStages?: ProjectWorkflowStage[];
   status: ProjectStatusRelation;
@@ -147,25 +138,13 @@ type ProjectWithCreator = Project & {
   }>;
   executors?: Array<
     ProjectExecutor & {
-      user: Pick<
-        User,
-        | "id"
-        | "name"
-        | "email"
-        | "collaboratorType"
-      >;
+      user: Pick<User, "id" | "name" | "email">;
     }
   >;
   stages: ProjectStageWithStarter[];
   collaborators?: Array<
     ProjectCollaborator & {
-      user: Pick<
-        User,
-        | "id"
-        | "name"
-        | "email"
-        | "collaboratorType"
-      >;
+      user: Pick<User, "id" | "name" | "email">;
     }
   >;
   attachments: Array<{
@@ -287,7 +266,6 @@ export type ProjectCollaboratorRecord = ProjectCollaboratorPermissions & {
   email?: string;
   role: string;
   group: "internal" | "external";
-  participantType: ProjectCollaboratorParticipantType | null;
   chatVisibilityPaused: boolean;
   access: "owner" | "view";
   removable?: boolean;
@@ -671,31 +649,19 @@ function formatAttachmentFileSize(fileSize: number) {
   return `${fileSize} B`;
 }
 
-function mapCollaboratorTypeToGroup(type: CollaboratorType): "internal" | "external" {
-  return getCollaboratorTypeGroup(type);
-}
-
 function mapProjectCollaboratorAssignmentToRecord(
   assignment: ProjectCollaborator & {
-    user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
+    user: Pick<User, "id" | "name" | "email">;
   },
 ): ProjectCollaboratorRecord {
-  const fallbackGroup = mapCollaboratorTypeToGroup(assignment.user.collaboratorType);
-  const participantType =
-    (assignment.participantType as ProjectCollaboratorParticipantType | null) ??
-    getDefaultProjectCollaboratorParticipantType(fallbackGroup);
-  const permissions = normalizeProjectCollaboratorPermissions(
-    assignment,
-    participantType,
-  );
+  const permissions = normalizeProjectCollaboratorPermissions(assignment);
 
   return {
     id: assignment.user.id,
     name: assignment.user.name?.trim() || assignment.user.email,
     email: assignment.user.email,
-    role: getCollaboratorRoleLabel(assignment.user.collaboratorType),
-    group: getProjectCollaboratorTypeMeta(participantType).group,
-    participantType,
+    role: "Project Participant",
+    group: "internal",
     ...permissions,
     chatVisibilityPaused: assignment.chatVisibilityPaused,
     access: "view",
@@ -704,19 +670,15 @@ function mapProjectCollaboratorAssignmentToRecord(
 }
 
 function mapProjectOwnerToRecord(
-  user: Pick<User, "id" | "name" | "email" | "collaboratorType">,
+  user: Pick<User, "id" | "name" | "email">,
   role: "Project Owner" | "Project Co-Owner",
 ): ProjectCollaboratorRecord {
-  const group = mapCollaboratorTypeToGroup(user.collaboratorType);
-  const participantType = getDefaultProjectCollaboratorParticipantType(group);
-
   return {
     id: user.id,
     name: user.name?.trim() || user.email,
     email: user.email,
     role,
-    group,
-    participantType,
+    group: "internal",
     canInteract: true,
     canAddCaptions: true,
     canDownloadFiles: true,
@@ -738,7 +700,7 @@ function compareProjectExecutorRecords(
 
 function mapProjectExecutorAssignmentToRecord(
   assignment: ProjectExecutor & {
-    user: Pick<User, "id" | "name" | "email" | "collaboratorType">;
+    user: Pick<User, "id" | "name" | "email">;
   },
   visibilityStateByUserId: ReadonlyMap<string, boolean>,
 ): ProjectExecutorRecord {
@@ -747,7 +709,7 @@ function mapProjectExecutorAssignmentToRecord(
     name: assignment.user.name?.trim() || assignment.user.email,
     email: assignment.user.email,
     roleLabel: "Executor",
-    group: mapCollaboratorTypeToGroup(assignment.user.collaboratorType),
+    group: "internal",
     chatVisibilityPaused: visibilityStateByUserId.get(assignment.user.id) ?? false,
   };
 }
@@ -1406,7 +1368,6 @@ export async function updateProjectCollaborators(
   collaborators: Array<{
     id?: string;
     userId?: string;
-    participantType?: ProjectCollaboratorParticipantType | null;
   } & Partial<ProjectCollaboratorPermissions>>,
   actor: ProjectAccessUser,
 ) {
@@ -1423,7 +1384,6 @@ export async function updateProjectCollaborators(
   const normalizedCollaborators = collaborators.reduce<
     Array<{
       id: string;
-      participantType: ProjectCollaboratorParticipantType | null;
       permissions: ProjectCollaboratorPermissions | null;
     }>
   >((current, collaborator) => {
@@ -1433,18 +1393,12 @@ export async function updateProjectCollaborators(
       return current;
     }
 
-    const participantType =
-      collaborator.participantType &&
-      isProjectCollaboratorParticipantType(collaborator.participantType)
-        ? collaborator.participantType
-        : null;
     const hasSubmittedPermissions = Object.keys(
       pickProjectCollaboratorPermissions(collaborator),
     ).some((key) => typeof collaborator[key as keyof ProjectCollaboratorPermissions] === "boolean");
 
     current.push({
       id,
-      participantType,
       permissions: hasSubmittedPermissions
         ? pickProjectCollaboratorPermissions(collaborator)
         : null,
@@ -1460,11 +1414,10 @@ export async function updateProjectCollaborators(
             id: {
               in: normalizedIds,
             },
-            role: UserRole.COLLABORATOR,
+            role: "USER",
           },
           select: {
             id: true,
-            collaboratorType: true,
           },
         }),
       )
@@ -1476,17 +1429,6 @@ export async function updateProjectCollaborators(
     throw new Error("One or more selected collaborators could not be found.");
   }
 
-  const validCollaboratorTypeMap = new Map(
-    validCollaborators.map((collaborator) => [
-      collaborator.id,
-      mapCollaboratorTypeToGroup(collaborator.collaboratorType),
-    ]),
-  );
-  const validCollaboratorMap = new Map(
-    normalizedCollaborators
-      .filter((collaborator) => validIds.includes(collaborator.id))
-      .map((collaborator) => [collaborator.id, collaborator.participantType] as const),
-  );
   const submittedPermissionMap = new Map(
     normalizedCollaborators
       .filter((collaborator) => validIds.includes(collaborator.id))
@@ -1500,7 +1442,6 @@ export async function updateProjectCollaborators(
       },
       select: {
         userId: true,
-        participantType: true,
         canInteract: true,
         canAddCaptions: true,
         canDownloadFiles: true,
@@ -1522,18 +1463,11 @@ export async function updateProjectCollaborators(
   );
   const executorIdSet = new Set(projectExecutors.map((executor) => executor.userId));
   const existingIds = new Set(existingAssignments.map((assignment) => assignment.userId));
-  const existingParticipantTypeMap = new Map(
-    existingAssignments.map((assignment) => [
-      assignment.userId,
-      assignment.participantType as ProjectCollaboratorParticipantType | null,
-    ]),
-  );
   const existingPermissionMap = new Map(
     existingAssignments.map((assignment) => [
       assignment.userId,
       normalizeProjectCollaboratorPermissions(
         assignment,
-        assignment.participantType as ProjectCollaboratorParticipantType | null,
         { isExecutor: executorIdSet.has(assignment.userId) },
       ),
     ]),
@@ -1544,16 +1478,9 @@ export async function updateProjectCollaborators(
     .filter((userId) => !nextIds.has(userId));
   const idsToCreate = validIds.filter((userId) => !existingIds.has(userId));
   const idsToUpdate = validIds.filter((userId) => existingIds.has(userId));
-  const resolveParticipantType = (userId: string) =>
-    validCollaboratorMap.get(userId) ??
-    existingParticipantTypeMap.get(userId) ??
-    getDefaultProjectCollaboratorParticipantType(
-      validCollaboratorTypeMap.get(userId) ?? "external",
-    );
-  const resolvePermissions = (userId: string, participantType: ProjectCollaboratorParticipantType) =>
+  const resolvePermissions = (userId: string) =>
     normalizeProjectCollaboratorPermissions(
       submittedPermissionMap.get(userId) ?? existingPermissionMap.get(userId),
-      participantType,
       { isExecutor: executorIdSet.has(userId) },
     );
 
@@ -1571,36 +1498,26 @@ export async function updateProjectCollaborators(
             }),
           ]
         : []),
-      ...idsToUpdate.map((userId) => {
-        const participantType = resolveParticipantType(userId);
-
-        return prisma.projectCollaborator.update({
+      ...idsToUpdate.map((userId) =>
+        prisma.projectCollaborator.update({
           where: {
             projectId_userId: {
               projectId,
               userId,
             },
           },
-          data: {
-            participantType,
-            ...resolvePermissions(userId, participantType),
-          },
-        });
-      }),
+          data: resolvePermissions(userId),
+        }),
+      ),
       ...(idsToCreate.length > 0
         ? [
             prisma.projectCollaborator.createMany({
-              data: idsToCreate.map((userId) => {
-                const participantType = resolveParticipantType(userId);
-
-                return {
+              data: idsToCreate.map((userId) => ({
                   projectId,
                   userId,
                   addedById: actor.id,
-                  participantType,
-                  ...resolvePermissions(userId, participantType),
-                };
-              }),
+                  ...resolvePermissions(userId),
+                })),
               skipDuplicates: true,
             }),
           ]
@@ -1626,7 +1543,6 @@ export async function updateProjectCollaborators(
             id: true,
             name: true,
             email: true,
-            collaboratorType: true,
           },
         },
       },
@@ -1689,7 +1605,6 @@ async function getProjectCollaboratorAssignments(projectId: string) {
             id: true,
             name: true,
             email: true,
-            collaboratorType: true,
           },
         },
       },
@@ -1713,7 +1628,6 @@ export async function getProjectExecutors(projectId: string) {
                 id: true,
                 name: true,
                 email: true,
-                collaboratorType: true,
               },
             },
           },
@@ -1849,18 +1763,15 @@ export async function setProjectCollaboratorChatVisibility(
           id: input.collaboratorId,
         },
         select: {
-          collaboratorType: true,
+          id: true,
+          role: true,
         },
       }),
     );
 
-    if (!targetUser) {
+    if (!targetUser || targetUser.role !== UserRole.USER) {
       throw new Error("Collaborator not found.");
     }
-
-    const participantType = getDefaultProjectCollaboratorParticipantType(
-      mapCollaboratorTypeToGroup(targetUser.collaboratorType),
-    );
 
     assignment = await withPrismaRetry(() =>
       prisma.projectCollaborator.create({
@@ -1868,12 +1779,9 @@ export async function setProjectCollaboratorChatVisibility(
           projectId: input.projectId,
           userId: input.collaboratorId,
           addedById: actor.id,
-          participantType,
-          ...normalizeProjectCollaboratorPermissions(
-            null,
-            participantType,
-            { isExecutor: isExecutorTarget },
-          ),
+          ...normalizeProjectCollaboratorPermissions(null, {
+            isExecutor: isExecutorTarget,
+          }),
         },
         select: {
           projectId: true,
@@ -2455,7 +2363,6 @@ export async function getProjectById(
                 id: true,
                 name: true,
                 email: true,
-                collaboratorType: true,
               },
             },
             coOwners: {
@@ -2465,7 +2372,6 @@ export async function getProjectById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },
@@ -2477,7 +2383,6 @@ export async function getProjectById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },
@@ -2518,7 +2423,6 @@ export async function getProjectById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },
@@ -2625,7 +2529,6 @@ export async function getProjectShellById(
                 id: true,
                 name: true,
                 email: true,
-                collaboratorType: true,
               },
             },
             coOwners: {
@@ -2635,7 +2538,6 @@ export async function getProjectShellById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },
@@ -2647,7 +2549,6 @@ export async function getProjectShellById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },
@@ -2693,7 +2594,6 @@ export async function getProjectShellById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },
@@ -2841,7 +2741,6 @@ export async function getProjectChatShellById(
                 id: true,
                 name: true,
                 email: true,
-                collaboratorType: true,
               },
             },
             coOwners: {
@@ -2854,7 +2753,6 @@ export async function getProjectChatShellById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },
@@ -2869,7 +2767,6 @@ export async function getProjectChatShellById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },
@@ -2929,7 +2826,6 @@ export async function getProjectChatShellById(
                     id: true,
                     name: true,
                     email: true,
-                    collaboratorType: true,
                   },
                 },
               },

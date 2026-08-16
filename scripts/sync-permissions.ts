@@ -7,9 +7,6 @@ async function main() {
   console.log("Permission definitions synced.");
   console.log(`Definitions: ${result.definitionsSynced}`);
   console.log(`Role rows seeded: ${result.rolePermissionsSeeded}`);
-  console.log(
-    `Collaborator type rows seeded: ${result.collaboratorTypePermissionsSeeded}`,
-  );
 }
 
 main()

@@ -11,25 +11,7 @@ datasource db {
 enum UserRole {
   SUPER_ADMIN
   ADMIN
-  COLLABORATOR
-}
-
-enum CollaboratorType {
-  GTI_INTERNAL_CLIENT
-  GTI_SISTER_COMPANY_INTERNAL_CLIENT
-  EXTERNAL_FREELANCER
-  EXTERNAL_AGENCY
-  EXTERNAL_VENDOR
-  CLIENT_OF_GTI
-}
-
-enum ProjectCollaboratorParticipantType {
-  GTI_INTERNAL_CLIENT
-  GTI_SISTER_COMPANY_INTERNAL_CLIENT
-  EXTERNAL_FREELANCER
-  EXTERNAL_AGENCY
-  EXTERNAL_VENDOR
-  CLIENT_OF_GTI
+  USER
 }
 
 enum StageStatus {
@@ -297,10 +279,12 @@ enum ActivityLogAction {
   ASSET_UPLOADED
   COMMENT_ATTACHMENT_UPLOADED
   REVISION_CREATED
+  ARCHIVE_SNAPSHOT_SAVED
   FINAL_ARCHIVED
 }
 
 enum ArchiveRecordStatus {
+  SAVED
   COMPLETED
   ARCHIVED
 }
@@ -398,8 +382,7 @@ model User {
   bio                                 String?
   passwordHash                        String
   passwordChangedAt                   DateTime?
-  role                                UserRole                             @default(COLLABORATOR)
-  collaboratorType                    CollaboratorType                     @default(GTI_INTERNAL_CLIENT)
+  role                                UserRole                             @default(USER)
   inviteToken                         String?                              @unique
   inviteExpiresAt                     DateTime?
   inviteAcceptedAt                    DateTime?
@@ -535,16 +518,15 @@ model PasswordResetToken {
 }
 
 model PermissionDefinition {
-  id                          String                       @id @default(cuid())
-  key                         String                       @unique
-  label                       String
-  description                 String
-  group                       String
-  isSystem                    Boolean                      @default(true)
-  rolePermissions             RolePermission[]
-  collaboratorTypePermissions CollaboratorTypePermission[]
-  createdAt                   DateTime                     @default(now())
-  updatedAt                   DateTime                     @updatedAt
+  id              String           @id @default(cuid())
+  key             String           @unique
+  label           String
+  description     String
+  group           String
+  isSystem        Boolean          @default(true)
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model RolePermission {
@@ -558,20 +540,6 @@ model RolePermission {
 
   @@unique([role, permissionKey])
   @@index([role])
-  @@index([permissionKey])
-}
-
-model CollaboratorTypePermission {
-  id               String               @id @default(cuid())
-  collaboratorType CollaboratorType
-  permissionKey    String
-  permission       PermissionDefinition @relation(fields: [permissionKey], references: [key], onDelete: Restrict)
-  enabled          Boolean              @default(true)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-
-  @@unique([collaboratorType, permissionKey])
-  @@index([collaboratorType])
   @@index([permissionKey])
 }
 
@@ -1451,7 +1419,6 @@ model ProjectCollaborator {
   project                  Project                              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   userId                   String
   user                     User                                 @relation("ProjectCollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
-  participantType          ProjectCollaboratorParticipantType?
   canInteract              Boolean                              @default(false)
   canAddCaptions           Boolean                              @default(false)
   canDownloadFiles         Boolean                              @default(false)
@@ -1821,8 +1788,8 @@ model ProjectArchive {
   id                String                @id @default(cuid())
   projectId         String                @unique
   project           Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  finalStageId      String
-  finalStage        ProjectStage          @relation("ProjectArchiveFinalStage", fields: [finalStageId], references: [id], onDelete: Restrict)
+  finalStageId      String?
+  finalStage        ProjectStage?         @relation("ProjectArchiveFinalStage", fields: [finalStageId], references: [id], onDelete: Restrict)
   archivedById      String
   archivedBy        User                  @relation("ProjectArchiveArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
   projectName       String

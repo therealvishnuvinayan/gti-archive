@@ -84,7 +84,7 @@ for (const content of [
   "Filled",
   "Requested",
   "Request",
-  "Existing collaborator",
+  "Project participant",
   "Manual email",
   "All Stages",
   "Next Stage",
@@ -239,7 +239,7 @@ assert(
 );
 assert(
   workspace.includes("requestStageFiveChecklistInformationAction") &&
-    workspace.includes("Existing collaborator") &&
+    workspace.includes("Project participant") &&
     workspace.includes("Manual email") &&
     workspace.includes("Send Request") &&
     !workspace.includes("Request functionality will be connected"),

@@ -33,7 +33,6 @@ function getDefaultForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "GTI_INTERNAL_CLIENT",
   };
 }
 
@@ -96,7 +95,6 @@ export function CollaborationWorkspace({
     setForm({
       name: collaborator.name,
       email: collaborator.email,
-      type: collaborator.type,
     });
     setDialogError(undefined);
     setPageNotice(undefined);
@@ -202,8 +200,8 @@ export function CollaborationWorkspace({
                 Collaboration
               </h1>
               <p className="mt-3 max-w-[760px] text-[15px] leading-6 text-[#6f7771]">
-                Manage collaborator contact records and invitation details here. Detailed role,
-                collaborator type, and access preset permissions are managed from Users.
+                Manage USER account contact records and invitation details here. Role permissions
+                and per-user Archive access are managed from Users.
               </p>
             </div>
 
@@ -250,7 +248,7 @@ export function CollaborationWorkspace({
                   Collaborators
                 </h2>
                 <p className="mt-2 text-[14px] text-[#6f7771]">
-                  Contact records and collaborator type settings.
+                  Internal users available for project and calendar collaboration.
                 </p>
               </div>
 
@@ -267,8 +265,8 @@ export function CollaborationWorkspace({
                   className={cn(
                     "hidden items-center gap-4 border-b border-[#e4e9e4] px-5 py-4 lg:grid",
                     canShowActions
-                      ? "grid-cols-[minmax(220px,1.25fr)_minmax(220px,1fr)_170px_96px]"
-                      : "grid-cols-[minmax(220px,1.25fr)_minmax(220px,1fr)_170px]",
+                      ? "grid-cols-[minmax(220px,1.25fr)_minmax(220px,1fr)_96px]"
+                      : "grid-cols-[minmax(220px,1.25fr)_minmax(220px,1fr)]",
                   )}
                 >
                   <span className="text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
@@ -276,9 +274,6 @@ export function CollaborationWorkspace({
                   </span>
                   <span className="text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
                     Email
-                  </span>
-                  <span className="text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
-                    Collaborator Type
                   </span>
                   {canShowActions ? (
                     <span className="text-right text-[12px] font-[700] uppercase tracking-[0.18em] text-[#818982]">
@@ -295,8 +290,8 @@ export function CollaborationWorkspace({
                       className={cn(
                         "grid gap-4 px-5 py-4 lg:items-center",
                         canShowActions
-                          ? "lg:grid-cols-[minmax(220px,1.25fr)_minmax(220px,1fr)_170px_96px]"
-                          : "lg:grid-cols-[minmax(220px,1.25fr)_minmax(220px,1fr)_170px]",
+                          ? "lg:grid-cols-[minmax(220px,1.25fr)_minmax(220px,1fr)_96px]"
+                          : "lg:grid-cols-[minmax(220px,1.25fr)_minmax(220px,1fr)]",
                       )}
                     >
                       <div className="flex min-w-0 items-center gap-3">
@@ -316,15 +311,6 @@ export function CollaborationWorkspace({
                       <p className="hidden truncate text-[14px] text-[#5f6b62] lg:block">
                         {collaborator.email}
                       </p>
-
-                      <div>
-                        <Badge
-                          variant="outline"
-                          className="border-[#e1eadf] bg-[#f8fbf8] text-[#4d6552]"
-                        >
-                          {collaborator.typeLabel}
-                        </Badge>
-                      </div>
 
                       {canShowActions ? (
                         <div className="flex justify-end gap-2">

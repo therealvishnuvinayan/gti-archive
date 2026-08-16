@@ -4,21 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Search, UserPlus, X } from "lucide-react";
 
 import type { CollaboratorRecord } from "@/lib/collaboration";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  getCollaboratorTypeLabel,
-  projectCollaboratorParticipantTypes,
-} from "@/lib/project-collaborator-participant-types";
 
 type CollaboratorPickerDialogProps = {
   isOpen: boolean;
@@ -59,8 +47,6 @@ export function CollaboratorPickerDialog({
   confirmLabel = "Add Collaborators",
 }: CollaboratorPickerDialogProps) {
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] =
-    useState<"all" | CollaboratorRecord["type"]>("all");
 
   useEffect(() => {
     if (!isOpen || saving) {
@@ -80,17 +66,15 @@ export function CollaboratorPickerDialog({
   const filteredCollaborators = useMemo(
     () =>
       collaborators.filter((collaborator) => {
-        const matchesType =
-          typeFilter === "all" ? true : collaborator.type === typeFilter;
         const normalizedQuery = query.trim().toLowerCase();
         const matchesQuery = normalizedQuery
           ? collaborator.name.toLowerCase().includes(normalizedQuery) ||
             collaborator.email.toLowerCase().includes(normalizedQuery)
           : true;
 
-        return matchesType && matchesQuery;
+        return matchesQuery;
       }),
-    [collaborators, query, typeFilter],
+    [collaborators, query],
   );
 
   if (!isOpen) {
@@ -134,7 +118,7 @@ export function CollaboratorPickerDialog({
             </div>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+          <div>
             <div className="relative">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8e978f]" />
               <Input
@@ -145,25 +129,6 @@ export function CollaboratorPickerDialog({
                 disabled={saving}
               />
             </div>
-            <Select
-              value={typeFilter}
-              onValueChange={(value) =>
-                setTypeFilter(value as "all" | CollaboratorRecord["type"])
-              }
-              disabled={saving}
-            >
-              <SelectTrigger className="rounded-2xl border border-line">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {projectCollaboratorParticipantTypes.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {getCollaboratorTypeLabel(type)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <div className="mt-5 max-h-[380px] space-y-3 overflow-y-auto pr-1">
@@ -194,16 +159,6 @@ export function CollaboratorPickerDialog({
                         {collaborator.email}
                       </p>
                     </div>
-                    <Badge
-                      variant="secondary"
-                      className={
-                        collaborator.typeGroup === "internal"
-                          ? "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]"
-                          : "border border-[#f1dfcf] bg-[#fff4ea] text-[#ca7b3b]"
-                      }
-                    >
-                      {collaborator.typeLabel}
-                    </Badge>
                     <div
                       className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border ${
                         selected

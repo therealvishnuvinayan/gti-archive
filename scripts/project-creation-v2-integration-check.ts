@@ -56,36 +56,31 @@ async function main() {
         id: ids.coOwner,
         email: `${ids.coOwner}@example.test`,
         passwordHash: "x",
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "GTI_INTERNAL_CLIENT",
+        role: UserRole.ADMIN,
       },
       {
         id: ids.executorA,
         email: `${ids.executorA}@example.test`,
         passwordHash: "x",
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "EXTERNAL_AGENCY",
+        role: UserRole.USER,
       },
       {
         id: ids.executorB,
         email: `${ids.executorB}@example.test`,
         passwordHash: "x",
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "GTI_INTERNAL_CLIENT",
+        role: UserRole.USER,
       },
       {
         id: ids.collaboratorA,
         email: `${ids.collaboratorA}@example.test`,
         passwordHash: "x",
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "EXTERNAL_VENDOR",
+        role: UserRole.USER,
       },
       {
         id: ids.collaboratorB,
         email: `${ids.collaboratorB}@example.test`,
         passwordHash: "x",
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "GTI_INTERNAL_CLIENT",
+        role: UserRole.USER,
       },
       {
         id: ids.otherSuperAdmin,
@@ -124,7 +119,7 @@ async function main() {
     created.createdById === ids.creator,
     "Creator audit identity must remain separate.",
   );
-  assert(created.ownerId === ids.owner, "Operational owner must be persisted.");
+  assert(created.ownerId === ids.creator, "The project creator must be the fixed owner.");
   assert(
     !created.coOwners.some((item) => item.userId === ids.creator),
     "SUPER_ADMIN creator must not be a co-owner.",
@@ -140,45 +135,38 @@ async function main() {
   );
   assert(
     !created.collaborators.some(
-      (item) => item.userId === ids.owner || item.userId === ids.coOwner,
+      (item) => item.userId === ids.creator || item.userId === ids.coOwner,
     ),
     "Owner and co-owner access must not require duplicate collaborator membership.",
   );
-  assert(
-    created.collaborators.find((item) => item.userId === ids.executorA)
-      ?.participantType === "EXTERNAL_AGENCY",
-    "Executor participant type must match the selected user.",
-  );
-
-  const externalCollaborator = created.collaborators.find(
+  const firstCollaborator = created.collaborators.find(
     (item) => item.userId === ids.collaboratorA,
   );
-  const internalCollaborator = created.collaborators.find(
+  const secondCollaborator = created.collaborators.find(
     (item) => item.userId === ids.collaboratorB,
   );
-  assert(externalCollaborator, "External collaborator membership must exist.");
-  assert(internalCollaborator, "Internal collaborator membership must exist.");
+  assert(firstCollaborator, "First collaborator membership must exist.");
+  assert(secondCollaborator, "Second collaborator membership must exist.");
   assert(
-    !externalCollaborator.canInteract &&
-      !externalCollaborator.canAddCaptions &&
-      !externalCollaborator.canDownloadFiles &&
-      !externalCollaborator.canViewBudget &&
-      !externalCollaborator.canViewVendorInfo &&
-      !externalCollaborator.canAccessProjectArchives,
-    "External collaborators must receive existing default permission grants only.",
+    firstCollaborator.canInteract &&
+      !firstCollaborator.canAddCaptions &&
+      !firstCollaborator.canDownloadFiles &&
+      !firstCollaborator.canViewBudget &&
+      !firstCollaborator.canViewVendorInfo &&
+      !firstCollaborator.canAccessProjectArchives,
+    "Project participants must receive the uniform explicit default grants.",
   );
   assert(
-    internalCollaborator.canInteract &&
-      !internalCollaborator.canViewBudget &&
-      !internalCollaborator.canViewVendorInfo,
-    "Internal collaborators must receive the existing internal defaults.",
+    secondCollaborator.canInteract &&
+      !secondCollaborator.canViewBudget &&
+      !secondCollaborator.canViewVendorInfo,
+    "Every project participant must receive the same defaults.",
   );
   assert(
     !hasProjectPermission(
       {
         id: ids.collaboratorA,
-        role: UserRole.COLLABORATOR,
-        collaboratorType: "EXTERNAL_VENDOR",
+        role: UserRole.USER,
       },
       created,
       "project.manageCollaborators",
@@ -289,8 +277,8 @@ async function main() {
     where: { projectId: created.id },
   });
   assert(
-    notifications.length === 6,
-    "Owner, co-owner, executors, and additional collaborators must each be notified once.",
+    notifications.length === 5,
+    "The non-creator co-owner, executors, and additional collaborators must each be notified once.",
   );
   assert(
     notifications.filter((item) => item.type === "COLLABORATOR_ADDED").length ===
@@ -392,10 +380,9 @@ async function main() {
   );
   assert("error" in invalidUsers, "Invalid user IDs must fail.");
   assert(
-    invalidUsers.fieldErrors?.ownerId &&
-      invalidUsers.fieldErrors?.executorIds &&
+    invalidUsers.fieldErrors?.executorIds &&
       invalidUsers.fieldErrors?.collaboratorIds,
-    "Invalid owner, executor, and collaborator IDs must be identified.",
+    "Invalid executor and collaborator IDs must be identified while submitted ownerId is ignored.",
   );
 
   const ineligibleCollaborator = await createProjectV2(
@@ -427,7 +414,7 @@ async function main() {
     {
       name: "Owner overlap",
       ownerId: ids.owner,
-      coOwnerIds: [ids.owner],
+      coOwnerIds: [ids.creator],
       executorIds: [ids.executorA],
     },
   );
@@ -443,17 +430,6 @@ async function main() {
     },
   );
   assertValidationError(noExecutors, "executorIds");
-
-  const superAdminOwner = await createProjectV2(
-    { id: ids.creator },
-    {
-      name: "SA owner",
-      ownerId: ids.otherSuperAdmin,
-      coOwnerIds: [],
-      executorIds: [ids.executorA],
-    },
-  );
-  assertValidationError(superAdminOwner, "ownerId");
 
   const superAdminCoOwner = await createProjectV2(
     { id: ids.creator },
@@ -510,7 +486,7 @@ async function main() {
   );
   await prisma.$executeRawUnsafe(`DROP FUNCTION fail_v2_notification_insert()`);
 
-  console.log("Project creation V2 collaborator integration checks passed.");
+  console.log("Project creation V2 final-role integration checks passed.");
 }
 
 main()

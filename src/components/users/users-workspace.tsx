@@ -44,11 +44,8 @@ import {
 } from "@/components/ui/select";
 import {
   allPermissionKeys,
-  collaboratorTypeValues,
   criticalSuperAdminPermissionKeys,
-  permissionProfileTypeValues,
-  permissionRoleValues,
-  type CollaboratorTypeValue,
+  editablePermissionRoleValues,
   type PermissionKey,
   type PermissionRole,
 } from "@/lib/permissions/definitions";
@@ -61,8 +58,12 @@ import {
   type PermissionMatrixGroupId,
   type PermissionProfileType,
 } from "@/lib/permissions/preview";
-import { getCollaboratorTypeLabel } from "@/lib/project-collaborator-participant-types";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
+import {
+  getUserRoleLabel,
+  isBusinessAdministratorRole,
+  isProtectedRootRole,
+} from "@/lib/user-role-compatibility";
 import {
   PROFILE_IMAGE_ALLOWED_EXTENSIONS,
   PROFILE_IMAGE_ALLOWED_MIME_TYPES,
@@ -89,7 +90,6 @@ type UsersWorkspaceProps = {
 type UserEditForm = {
   userId: string;
   role: PermissionRole;
-  collaboratorType: CollaboratorTypeValue;
   archiveAccessLevel: ManagedArchiveAccessLevel;
   archiveAssetAccesses: ManagedArchiveAssetAccessRecord[];
 };
@@ -110,7 +110,7 @@ const criticalSuperAdminPermissionKeySet = new Set<PermissionKey>(
 const roleBadgeStyles: Record<PermissionRole, string> = {
   SUPER_ADMIN: "border-[#d5e7d6] bg-[#eef8ef] text-[#2f7f53]",
   ADMIN: "border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]",
-  COLLABORATOR: "border-[#f4dfbf] bg-[#fff4e4] text-[#cb821e]",
+  USER: "border-[#e2d9f5] bg-[#f5f0ff] text-[#7552a3]",
 };
 
 const statusLabels: Record<ManagedUserStatus, string> = {
@@ -137,11 +137,6 @@ const archiveAccessBadgeStyles: Record<ManagedArchiveAccessLevel, string> = {
   PARTIAL: "border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]",
 };
 
-const profileTypeLabels: Record<PermissionProfileType, string> = {
-  role: "Role",
-  collaboratorType: "Collaborator Type",
-};
-
 const maxProfilePhotoBytes = 2 * 1024 * 1024;
 const allowedProfilePhotoTypes = new Set<string>(PROFILE_IMAGE_ALLOWED_MIME_TYPES);
 const profilePhotoAccept = PROFILE_IMAGE_ALLOWED_MIME_TYPES.join(",");
@@ -150,7 +145,7 @@ function sortUsers(users: ManagedUserRecord[]) {
   const roleOrder: Record<PermissionRole, number> = {
     SUPER_ADMIN: 0,
     ADMIN: 1,
-    COLLABORATOR: 2,
+    USER: 2,
   };
 
   return [...users].sort((left, right) => {
@@ -283,16 +278,13 @@ function ManagedUserAvatar({
 
 function getDefaultForm(user: ManagedUserRecord): UserEditForm {
   const archiveAccessLevel =
-    user.collaboratorType === "CLIENT_OF_GTI"
-      ? "NONE"
-      : user.role === "SUPER_ADMIN"
-        ? "FULL"
-        : user.archiveAccessLevel;
+    isBusinessAdministratorRole(user.role)
+      ? "FULL"
+      : user.archiveAccessLevel;
 
   return {
     userId: user.id,
     role: user.role,
-    collaboratorType: user.collaboratorType,
     archiveAccessLevel,
     archiveAssetAccesses:
       archiveAccessLevel === "PARTIAL" ? user.archiveAssetAccesses : [],
@@ -322,18 +314,6 @@ function hasPermissionProfileChanges(
 ) {
   return allPermissionKeys.some(
     (permissionKey) => currentState[permissionKey] !== savedState[permissionKey],
-  );
-}
-
-function isPermissionUnavailableForProfile(input: {
-  permissionKey: PermissionKey;
-  profileType: PermissionProfileType;
-  profileKey: string;
-}) {
-  return (
-    input.profileType === "collaboratorType" &&
-    input.permissionKey === "project.create" &&
-    input.profileKey !== "GTI_INTERNAL_CLIENT"
   );
 }
 
@@ -605,7 +585,6 @@ function EditUserModal({
   avatarError,
   saving,
   isOpen,
-  roleLocked,
   avatarPreviewSrc,
   selectedAvatarFileName,
   onClose,
@@ -619,7 +598,6 @@ function EditUserModal({
   avatarError?: string;
   saving: boolean;
   isOpen: boolean;
-  roleLocked: boolean;
   avatarPreviewSrc: string | null;
   selectedAvatarFileName?: string;
   onClose: () => void;
@@ -709,54 +687,26 @@ function EditUserModal({
             </div>
           </div>
 
-          <div className="mt-6 grid gap-5 md:grid-cols-2">
+          <div className="mt-6 max-w-md">
             <label className="block">
               <span className="mb-2 block text-[15px] font-[600] text-[#2a342d]">Role</span>
               <Select
                 value={form.role}
                 onValueChange={(value) => onChange("role", value as PermissionRole)}
-                disabled={roleLocked}
               >
                 <SelectTrigger className="h-[54px] rounded-[16px] border border-[#dce4dc] px-4 text-[16px] shadow-none">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {permissionRoleValues.map((role) => (
+                  {editablePermissionRoleValues.map((role) => (
                     <SelectItem key={role} value={role}>
-                      {role}
+                      {getUserRoleLabel(role)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {roleLocked ? (
-                <p className="mt-2 text-[13px] leading-5 text-[#6f776f]">
-                  You cannot change your own Super Admin role.
-                </p>
-              ) : null}
             </label>
 
-            <label className="block">
-              <span className="mb-2 block text-[15px] font-[600] text-[#2a342d]">
-                Collaborator Type
-              </span>
-              <Select
-                value={form.collaboratorType}
-                onValueChange={(value) =>
-                  onChange("collaboratorType", value as CollaboratorTypeValue)
-                }
-              >
-                <SelectTrigger className="h-[54px] rounded-[16px] border border-[#dce4dc] px-4 text-[16px] shadow-none">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {collaboratorTypeValues.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {getCollaboratorTypeLabel(type)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
           </div>
 
           <div className="mt-5 rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
@@ -782,18 +732,16 @@ function EditUserModal({
                   description: "Allow only the archive assets selected below.",
                 },
               ].map((option) => {
-                const isClientHardDenied = form.collaboratorType === "CLIENT_OF_GTI";
-                const isSuperAdminLocked = form.role === "SUPER_ADMIN" && !isClientHardDenied;
+                const isAdministratorLocked = isBusinessAdministratorRole(form.role);
                 const isChecked =
-                  (isSuperAdminLocked && option.level === "FULL") ||
-                  (isClientHardDenied && option.level === "NONE") ||
+                  (isAdministratorLocked && option.level === "FULL") ||
                   form.archiveAccessLevel === option.level;
 
                 return (
                   <button
                     key={option.level}
                     type="button"
-                    disabled={saving || isSuperAdminLocked || isClientHardDenied}
+                    disabled={saving || isAdministratorLocked}
                     onClick={() => onChange("archiveAccessLevel", option.level)}
                     className={cn(
                       "rounded-[18px] border px-4 py-4 text-left transition-colors",
@@ -827,20 +775,13 @@ function EditUserModal({
               })}
             </div>
 
-            {form.role === "SUPER_ADMIN" && form.collaboratorType !== "CLIENT_OF_GTI" ? (
+            {isBusinessAdministratorRole(form.role) ? (
               <p className="mt-3 rounded-[14px] bg-[#f8fbff] px-4 py-3 text-[12px] leading-5 text-[#5f6c75]">
-                Super Admins always retain full Archive access.
+                Administrators always receive full Archive access.
               </p>
             ) : null}
 
-            {form.collaboratorType === "CLIENT_OF_GTI" ? (
-              <p className="mt-3 rounded-[14px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] leading-5 text-[#bb4d49]">
-                GTI Client users cannot receive Archive access.
-              </p>
-            ) : null}
-
-            {form.archiveAccessLevel === "PARTIAL" &&
-            form.collaboratorType !== "CLIENT_OF_GTI" ? (
+            {form.archiveAccessLevel === "PARTIAL" ? (
               <ArchiveAssetAccessPicker
                 selectedAssets={form.archiveAssetAccesses}
                 disabled={saving}
@@ -866,7 +807,7 @@ function EditUserModal({
             disabled={
               saving ||
               (form.archiveAccessLevel === "PARTIAL" &&
-                form.role !== "SUPER_ADMIN" &&
+                !isBusinessAdministratorRole(form.role) &&
                 form.archiveAssetAccesses.length === 0)
             }
             className="min-w-[184px] rounded-[16px]"
@@ -886,9 +827,9 @@ function ManagePermissionsModal({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const [profileType, setProfileType] = useState<PermissionProfileType>("role");
+  const profileType: PermissionProfileType = "role";
   const [profileKey, setProfileKey] = useState(() =>
-    getDefaultPermissionProfileValue("role"),
+    getDefaultPermissionProfileValue(),
   );
   const [selectedGroup, setSelectedGroup] = useState<PermissionMatrixGroupId>(
     permissionMatrixGroups[0]?.id ?? "dashboard",
@@ -907,10 +848,10 @@ function ManagePermissionsModal({
   const [isResettingProfile, setResettingProfile] = useState(false);
   const [isSyncingDefinitions, setSyncingDefinitions] = useState(false);
 
-  const profileOptions = useMemo(() => getPermissionProfileOptions(profileType), [profileType]);
+  const profileOptions = useMemo(() => getPermissionProfileOptions(), []);
   const selectedProfileDescription = useMemo(
-    () => getPermissionProfileDescription(profileType, profileKey),
-    [profileType, profileKey],
+    () => getPermissionProfileDescription(profileKey),
+    [profileKey],
   );
   const currentGroup = useMemo(() => getPermissionGroup(selectedGroup), [selectedGroup]);
   const hasChanges = useMemo(
@@ -991,16 +932,6 @@ function ManagePermissionsModal({
       isCancelled = true;
     };
   }, [isOpen, profileType, profileKey]);
-
-  function handleProfileTypeChange(value: string) {
-    const nextProfileType = value as PermissionProfileType;
-
-    setProfileType(nextProfileType);
-    setProfileKey(getDefaultPermissionProfileValue(nextProfileType));
-    setSelectedGroup(permissionMatrixGroups[0]?.id ?? "dashboard");
-    setQuery("");
-    setProfileError(undefined);
-  }
 
   function handlePermissionToggle(permissionKey: PermissionKey, enabled: boolean) {
     if (
@@ -1146,7 +1077,7 @@ function ManagePermissionsModal({
               Manage Permissions
             </h2>
             <p className="mt-3 text-[15px] text-[#6f776f]">
-              Configure saved permission profiles for roles, collaborator types, and access presets.
+              Configure saved permission profiles for administrator and user roles.
             </p>
           </div>
           <Button
@@ -1169,27 +1100,9 @@ function ManagePermissionsModal({
                 <div>
                   <p className="text-[18px] font-[700] text-[#18201a]">Profile</p>
                   <p className="mt-1 text-[13px] leading-5 text-[#748074]">
-                    Permission profiles are global. Users inherit role permissions, and collaborators are further limited by collaborator type.
+                    Permission profiles are global. Accounts inherit the permissions assigned to their role.
                   </p>
                 </div>
-
-                <label className="block">
-                  <span className="mb-2 block text-[13px] font-[700] uppercase tracking-[0.08em] text-[#7b857c]">
-                    Profile type
-                  </span>
-                  <Select value={profileType} onValueChange={handleProfileTypeChange}>
-                    <SelectTrigger className="h-[46px] rounded-[16px] border border-[#dde6dd]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {permissionProfileTypeValues.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {profileTypeLabels[type]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
 
                 <label className="block">
                   <span className="mb-2 block text-[13px] font-[700] uppercase tracking-[0.08em] text-[#7b857c]">
@@ -1295,12 +1208,7 @@ function ManagePermissionsModal({
                 ) : (
                   <div className="mt-5 space-y-3">
                     {filteredItems.map((item) => {
-                      const isUnavailableForProfile = isPermissionUnavailableForProfile({
-                        permissionKey: item.key,
-                        profileType,
-                        profileKey,
-                      });
-                      const enabled = isUnavailableForProfile ? false : draftState[item.key];
+                      const enabled = draftState[item.key];
                       const isProtectedSuperAdminPermission =
                         profileType === "role" &&
                         profileKey === "SUPER_ADMIN" &&
@@ -1324,8 +1232,7 @@ function ManagePermissionsModal({
                             disabled={
                               isSavingProfile ||
                               isResettingProfile ||
-                              isProtectedSuperAdminPermission ||
-                              isUnavailableForProfile
+                              isProtectedSuperAdminPermission
                             }
                             className="mt-1 h-4 w-4 rounded border-[#c6d6c8] accent-[#256a45]"
                           />
@@ -1360,11 +1267,6 @@ function ManagePermissionsModal({
                                   {isProtectedSuperAdminPermission ? (
                                     <StatusBadge className="border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]">
                                       Protected for SUPER_ADMIN
-                                    </StatusBadge>
-                                  ) : null}
-                                  {isUnavailableForProfile ? (
-                                    <StatusBadge className="border-[#e4e5e4] bg-[#f5f6f5] text-[#6b746d]">
-                                      Internal clients only
                                     </StatusBadge>
                                   ) : null}
                                 </div>
@@ -1480,8 +1382,6 @@ export function UsersWorkspace({
   const [isDrawerOpen, setDrawerOpen] = useState(false);
   const [isPermissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const isEditingOwnSuperAdmin =
-    editingUser?.id === currentUserId && editingUser.role === "SUPER_ADMIN";
   const selectedAvatarPreviewSrc = useMemo(() => {
     if (!selectedAvatarFile) {
       return null;
@@ -1512,7 +1412,7 @@ export function UsersWorkspace({
         user.name,
         user.email,
         user.role,
-        getCollaboratorTypeLabel(user.collaboratorType),
+        getUserRoleLabel(user.role),
         archiveAccessLabels[user.archiveAccessLevel],
         statusLabels[user.status],
       ]
@@ -1523,7 +1423,7 @@ export function UsersWorkspace({
   }, [query, users]);
 
   function openDrawer(user: ManagedUserRecord) {
-    if (!canUpdateUsers) {
+    if (!canUpdateUsers || isProtectedRootRole(user.role)) {
       return;
     }
 
@@ -1576,10 +1476,7 @@ export function UsersWorkspace({
 
       const next = { ...current, [field]: value };
 
-      if (next.collaboratorType === "CLIENT_OF_GTI") {
-        next.archiveAccessLevel = "NONE";
-        next.archiveAssetAccesses = [];
-      } else if (field === "role" && value === "SUPER_ADMIN") {
+      if (isBusinessAdministratorRole(next.role)) {
         next.archiveAccessLevel = "FULL";
         next.archiveAssetAccesses = [];
       }
@@ -1609,7 +1506,6 @@ export function UsersWorkspace({
           userId: form.userId,
           avatarUrl,
           role: form.role,
-          collaboratorType: form.collaboratorType,
           archiveAccessLevel: form.archiveAccessLevel,
           archiveAssetIds:
             form.archiveAccessLevel === "PARTIAL"
@@ -1678,12 +1574,12 @@ export function UsersWorkspace({
                   User Directory
                 </h2>
                 <p className="mt-1 text-[14px] text-[#748074]">
-                  Manage profile photos, roles, collaborator types, and Archive access.
+                  Manage profile photos, roles, and Archive access.
                 </p>
               </div>
               <FilterBadge
                 icon={<LockKeyhole className="h-4 w-4 text-brand" />}
-                text="SUPER_ADMIN only"
+                text="Administrators with access"
               />
             </div>
 
@@ -1693,7 +1589,7 @@ export function UsersWorkspace({
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search by name, email, role, type, or status..."
+                  placeholder="Search by name, email, role, or status..."
                   className="h-[48px] rounded-[16px] border border-[#dde6dd] pl-11 pr-4 shadow-none"
                 />
               </div>
@@ -1718,7 +1614,6 @@ export function UsersWorkspace({
                       "Name",
                       "Email",
                       "Role",
-                      "Collaborator Type",
                       "Archive Access",
                       "Status",
                       "Actions",
@@ -1757,12 +1652,7 @@ export function UsersWorkspace({
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
                         <StatusBadge className={roleBadgeStyles[user.role]}>
-                          {user.role}
-                        </StatusBadge>
-                      </td>
-                      <td className="border-b border-[#f1f4f0] px-4 py-4">
-                        <StatusBadge className="border-[#e1eadf] bg-[#f8fbf8] text-[#4d6552]">
-                          {getCollaboratorTypeLabel(user.collaboratorType)}
+                          {getUserRoleLabel(user.role)}
                         </StatusBadge>
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
@@ -1776,7 +1666,7 @@ export function UsersWorkspace({
                         </StatusBadge>
                       </td>
                       <td className="border-b border-[#f1f4f0] px-4 py-4">
-                        {canUpdateUsers ? (
+                        {canUpdateUsers && !isProtectedRootRole(user.role) ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -1787,6 +1677,10 @@ export function UsersWorkspace({
                             <PencilLine className="h-3.5 w-3.5" />
                             Edit User
                           </Button>
+                        ) : isProtectedRootRole(user.role) ? (
+                          <StatusBadge className="border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]">
+                            Protected root
+                          </StatusBadge>
                         ) : (
                           <StatusBadge className="border-[#dde4dd] bg-[#f8faf8] text-[#556058]">
                             Read only
@@ -1824,7 +1718,7 @@ export function UsersWorkspace({
                 Permission model
               </p>
               <p className="mt-1 text-[14px] leading-6 text-[#748074]">
-                Effective access is role permissions intersected with collaborator type permissions for collaborator users. Archive module access also requires a per-user Archive access level.
+                Effective access comes from the account role. Archive module access also requires a per-user Archive access level.
               </p>
             </div>
             {canManagePermissions ? (
@@ -1849,7 +1743,6 @@ export function UsersWorkspace({
         error={drawerError}
         avatarError={avatarError}
         saving={isPending}
-        roleLocked={isEditingOwnSuperAdmin}
         avatarPreviewSrc={editingUserAvatarSrc}
         selectedAvatarFileName={selectedAvatarFile?.name}
         onClose={closeDrawer}

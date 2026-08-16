@@ -19,13 +19,8 @@ function assertIncludes(source, value, label) {
 }
 
 const resolver = read("src/lib/permissions/resolver.ts");
-assertIncludes(resolver, "isClientOfGtiUser", "CLIENT_OF_GTI helper");
-assertIncludes(resolver, "archives: canUseArchives(user)", "archive sidebar hard block");
-assertIncludes(
-  resolver,
-  "isArchiveSensitivePermission(permissionKey) && isClientOfGtiUser(user)",
-  "project archive-sensitive client deny",
-);
+assert(!resolver.includes("isClientOfGtiUser"), "Removed client-type helper must stay absent.");
+assertIncludes(resolver, "archives: canUseArchives(user)", "archive sidebar entitlement block");
 assertIncludes(
   resolver,
   "case \"project.viewBudget\"",
@@ -38,17 +33,7 @@ assertIncludes(
 );
 
 const definitions = read("src/lib/permissions/definitions.ts");
-const collaboratorDefaults = definitions.match(
-  /defaultCollaboratorTypePermissions[\s\S]*?criticalSuperAdminPermissionKeys/,
-)?.[0] ?? "";
-assert(
-  !/allPermissionKeys/.test(collaboratorDefaults),
-  "Collaborator type defaults must not grant all permissions.",
-);
-assert(
-  !/"archive\.(view|download|uploadFile)"/.test(collaboratorDefaults),
-  "Collaborator type defaults must not include archive permissions.",
-);
+assert(!definitions.includes("defaultCollaboratorTypePermissions"), "Type defaults must stay removed.");
 
 const archives = read("src/lib/archives.ts");
 assertIncludes(archives, "await canAccessArchivesArea(user)", "archive list guard");
@@ -279,8 +264,8 @@ assertIncludes(
 );
 assertIncludes(
   projectCollaboratorPermissions,
-  "permissions.canAccessProjectArchives = false",
-  "CLIENT_OF_GTI archive hard override",
+  "canInteract: true",
+  "uniform project-participant interaction default",
 );
 assertIncludes(
   projectCollaboratorPermissions,

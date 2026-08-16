@@ -8,7 +8,6 @@ const stageParticipantSelect = {
   name: true,
   email: true,
   avatarUrl: true,
-  collaboratorType: true,
 } satisfies Prisma.UserSelect;
 
 export const projectStageAccessSelect = {
@@ -61,7 +60,6 @@ export const projectStageAccessSelect = {
     select: {
       projectId: true,
       userId: true,
-      participantType: true,
       canInteract: true,
       canAddCaptions: true,
       canDownloadFiles: true,

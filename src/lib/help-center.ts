@@ -202,7 +202,7 @@ export const helpTopics: HelpTopic[] = [
   {
     id: "topic-collaboration",
     title: "Collaboration & Permissions",
-    description: "Understand roles, collaborator types, project participants, and server-enforced access.",
+    description: "Understand account roles, project participants, and server-enforced access.",
     sectionId: "collaboration-permissions",
     icon: Users,
     keywords: ["collaboration", "permissions", "roles", "project owner", "project executor", "executor"],
@@ -262,7 +262,7 @@ export const helpTopics: HelpTopic[] = [
       "Manage user role assignments and global permission profiles safely from Users & Permissions.",
     sectionId: "user-permissions",
     icon: ShieldCheck,
-    keywords: ["user permissions", "manage permissions", "roles", "collaborator type", "permission profiles"],
+    keywords: ["user permissions", "manage permissions", "roles", "permission profiles"],
   },
   {
     id: "topic-troubleshooting",
@@ -446,9 +446,9 @@ export const recommendedGuides: HelpGuide[] = [
   {
     id: "guide-permissions",
     title: "How permissions work",
-    description: "Understand role profiles, collaborator type profiles, and why access is enforced server-side.",
+    description: "Understand role profiles, project grants, and why access is enforced server-side.",
     sectionId: "collaboration-permissions",
-    keywords: ["permissions", "role profile", "collaborator type", "access denied"],
+    keywords: ["permissions", "role profile", "project grants", "access denied"],
   },
   {
     id: "guide-user-permissions",
@@ -462,7 +462,7 @@ export const recommendedGuides: HelpGuide[] = [
       "users page",
       "users and permissions",
       "roles",
-      "collaborator type",
+      "archive access",
     ],
   },
   {
@@ -576,7 +576,7 @@ export const helpSections: HelpSection[] = [
         title: "What Flux AI cannot do",
         items: [
           "It cannot bypass permissions.",
-          "It cannot access Archives for CLIENT_OF_GTI accounts.",
+          "It cannot access Archives that the current user is not entitled to view.",
           "It cannot show archive names, filenames, dates, or counts from unauthorized records.",
           "It cannot create or update projects.",
           "It cannot delete projects.",
@@ -589,9 +589,9 @@ export const helpSections: HelpSection[] = [
         title: "Access rules",
         items: [
           "Flux AI is controlled by the View Flux AI permission.",
-          "By default, only SUPER_ADMIN users can access Flux AI.",
-          "ADMIN and COLLABORATOR users need the Flux AI permission explicitly granted before they can see or use it.",
-          "All collaborator types are denied Flux AI access by default.",
+          "By default, ADMIN and SUPER_ADMIN users can access Flux AI with full Archive scope.",
+          "USER accounts need the Flux AI permission and valid Archive access before they can use it.",
+          "Archive access for USER accounts is controlled by an explicit per-user entitlement.",
           "Hiding the sidebar item is not the only protection; the page and APIs are also permission-protected server-side.",
         ],
       },
@@ -602,7 +602,7 @@ export const helpSections: HelpSection[] = [
       {
         question: "Can Flux AI show information I cannot normally access?",
         answer:
-          "No. Flux AI uses the same archive visibility and CLIENT_OF_GTI restrictions as the Archives module.",
+          "No. Flux AI uses the same role permissions and per-user Archive entitlements as the Archives module.",
       },
       {
         question: "Can Flux AI create a project from a prompt?",
@@ -925,7 +925,7 @@ export const helpSections: HelpSection[] = [
       {
         title: "Business rules to remember",
         items: [
-          "Only the project owner reviews and completes submissions.",
+          "Project owners and global administrators review and complete submissions.",
           "Only Executors submit formal revisions; collaborators cannot submit or review revisions.",
           "A required stage invoice must be uploaded before the owner can complete that stage.",
           "Old revisions remain visible as project history and should not disappear when a new revision is submitted.",
@@ -939,15 +939,15 @@ export const helpSections: HelpSection[] = [
     eyebrow: "People & Access",
     title: "Collaboration & permissions",
     summary:
-      "GTI Archive combines global roles, collaborator types, project-specific responsibilities, and server-enforced permission profiles to decide what each user can see and do.",
+      "GTI Archive combines global roles, project-specific responsibilities, and server-enforced permission profiles to decide what each user can see and do.",
     keywords: ["collaboration", "permissions", "super admin", "admin", "collaborator", "project owner", "project executor", "executor"],
     blocks: [
       {
         title: "Roles and responsibilities",
         items: [
-          "SUPER_ADMIN manages users, permission profiles, master data, and broad system administration.",
-          "ADMIN manages day-to-day projects and collaboration workflows within their allowed scope.",
-          "COLLABORATOR accesses only assigned projects or allowed modules.",
+          "SUPER_ADMIN is a protected root and recovery identity that cannot be assigned through normal user management.",
+          "ADMIN manages users, permissions, master data, Archives, and all project workflows.",
+          "USER accounts access assigned projects and any modules granted by their role and explicit entitlements.",
           "Project Owner controls the project, budget, submission review, and final completion authority.",
           "Executor accepts briefs, starts work, and submits revisions for owner review.",
           "Executor is an execution participant with project access, but does not accept briefs or submit formal work in this phase.",
@@ -957,8 +957,8 @@ export const helpSections: HelpSection[] = [
       {
         title: "Permission model",
         items: [
-          "Permissions are profile-based by role and collaborator type, not manually tuned user-by-user at scale.",
-          "Collaborator types such as internal client, agency, freelancer, vendor, or client of GTI shape default access expectations.",
+          "Global permissions are profile-based by role, with ADMIN and USER as the editable profiles.",
+          "Project-level grants control a participant's interaction, caption, download, budget, vendor-information, and project-archive access.",
           "Hard business rules still apply even when broader permissions exist. For example, only the owner reviews submissions and only Executors submit work.",
           "Sensitive fields and protected actions must be enforced server-side, not only hidden in the UI.",
         ],
@@ -976,16 +976,16 @@ export const helpSections: HelpSection[] = [
         title: "Collaboration directory",
         items: [
           "The Collaboration page is used to invite collaborators, edit collaborator details, and review module gate settings.",
-          "A collaborator needs a name, a valid email address, and a collaborator type before the record can be saved.",
-          "Module gates for Projects, Calendar, Library, and Archives can be Full access, Limited access, or No access.",
-          "Module gates decide whether a user can enter an area; detailed actions still come from role and collaborator type permission profiles.",
+          "A directory user needs a name and a valid email address before the USER account can be saved.",
+          "Archive access for a USER can be No access, Partial access, or Full access.",
+          "Detailed actions come from the USER role profile, project relationships, and explicit project grants.",
           "Deleting a collaborator is blocked when that user is already referenced by project history. Remove or reduce access instead.",
         ],
       },
       {
         title: "Why access can differ by user",
         items: [
-          "Project membership affects whether a user can see a project at all. Owners, Executors, Executors, and assigned collaborators can be project members.",
+          "Project membership affects whether a user can see a project at all. Owners, co-owners, executors, and assigned collaborators can be project members.",
           "Field-level filtering can hide sensitive values such as budget even when the user can see the project.",
           "Calendar, Library, Archive, and project chat visibility can differ based on the assigned profile and workflow role.",
         ],
@@ -997,14 +997,13 @@ export const helpSections: HelpSection[] = [
     eyebrow: "Access Administration",
     title: "User Permissions",
     summary:
-      "User Permissions are managed from Users & Permissions by assigning user roles, assigning collaborator types, and editing global permission profiles.",
+      "User Permissions are managed from Users & Permissions by assigning account roles, Archive entitlements, and global role permission profiles.",
     keywords: [
       "user permissions",
       "manage permissions",
       "users page",
       "users and permissions",
       "roles",
-      "collaborator type",
       "permission profiles",
       "hard rules",
     ],
@@ -1012,9 +1011,9 @@ export const helpSections: HelpSection[] = [
       {
         title: "What Users & Permissions controls",
         items: [
-          "User role assignment: SUPER_ADMIN, ADMIN, or COLLABORATOR.",
-          "Collaborator type assignment, such as GTI internal client, sister company internal client, freelancer, agency, vendor, or client of GTI.",
-          "Global role permission profiles and collaborator type permission profiles through Manage Permissions.",
+          "Normal user role assignment supports ADMIN or USER.",
+          "Per-user Archive access can be No access, Partial access, or Full access.",
+          "Global ADMIN and USER role permission profiles are available through Manage Permissions.",
           "Permission definition sync after a new permission key is added to the product.",
         ],
       },
@@ -1023,9 +1022,9 @@ export const helpSections: HelpSection[] = [
         ordered: true,
         items: [
           "The user receives the permissions enabled for their role profile.",
-          "If the user is a COLLABORATOR, those role permissions are further limited by their collaborator type profile.",
+          "Project relationships and explicit project-level grants refine access inside each project.",
           "SUPER_ADMIN keeps critical user and permission management permissions even when saved profiles are edited.",
-          "Project ownership, executor status, and membership hard rules are checked after the global permission profile allows an action.",
+          "ADMIN and SUPER_ADMIN have global project authority; standard users remain subject to ownership, executor, and membership rules.",
         ],
       },
       {
@@ -1034,17 +1033,17 @@ export const helpSections: HelpSection[] = [
           "Project budget visibility and budget edits remain owner-controlled.",
           "Only Executors accept briefs, submit stage work, and upload formal submissions.",
           "Only Executors upload stage invoices.",
-          "Only the project owner reviews submissions, requests revisions, completes stages, and completes the final archive.",
+          "Project owners and global project administrators review submissions, request revisions, complete stages, and complete final archives.",
           "Checklist actions for approval proof and copyright documents remain owner-only.",
-          "Users and permission profile management remain SUPER_ADMIN-only in the current product.",
+          "ADMIN and SUPER_ADMIN can manage users and editable permission profiles, while protected SUPER_ADMIN identities cannot be mutated.",
         ],
       },
       {
         title: "Recommended admin workflow",
         ordered: true,
         items: [
-          "Open Users & Permissions and confirm the person has the correct role and collaborator type.",
-          "Open Manage Permissions and choose the relevant role profile or collaborator type profile.",
+          "Open Users & Permissions and confirm the person has the correct ADMIN or USER role.",
+          "Open Manage Permissions and choose the relevant role profile.",
           "Search for the permission key or select the permission group, then enable or disable the capability.",
           "Save the profile and let active sessions refresh. The app also refreshes permission-sensitive caches.",
           "If a newly added permission is missing, use Sync Definitions from the Manage Permissions modal.",
@@ -1052,7 +1051,7 @@ export const helpSections: HelpSection[] = [
       },
     ],
     callout:
-      "Use role and collaborator type profiles for broad access changes. Use the Archive Access grant only when a specific user should see Archives.",
+      "Use role profiles for broad access changes. Use the Archive Access grant when a specific USER account should see Archives.",
     questions: [
       {
         question: "Why can a permission be enabled but the user still cannot perform the action?",
@@ -1089,7 +1088,7 @@ export const helpSections: HelpSection[] = [
           "Preview common formats like images or PDFs when supported; otherwise download the file.",
           "Use Library quick menus for Project Assets, Quotations/Invoices, From Users, and Favourites.",
           "Use Library filters such as search, project, date, creator, file type, and favorites where available.",
-          "Delete should require confirmation and remain limited to allowed users such as the project owner or super admin.",
+          "Delete should require confirmation and remain limited to allowed users such as project owners, co-owners, or administrators.",
         ],
       },
       {
@@ -1293,9 +1292,9 @@ export const helpSections: HelpSection[] = [
       {
         title: "Users and permission profiles",
         items: [
-          "Users & Permissions is for user directory management and is intended for super-admin oversight.",
-          "Manage Permissions defines global capabilities by role and collaborator type rather than by editing every user one by one.",
-          "Use permission profiles to scale safely when many collaborators need consistent access patterns.",
+          "Users & Permissions is for administrators who manage the user directory and editable permission profiles.",
+          "Manage Permissions defines global capabilities by role rather than by editing every user one by one.",
+          "Use permission profiles to scale safely when many users need consistent access patterns.",
         ],
       },
       {

@@ -1,10 +1,12 @@
 import {
-  UserRole,
   type ProjectWorkflowStageKey,
   type ProjectWorkflowStageStatus,
 } from "@prisma/client";
 
-import type { PermissionUser } from "@/lib/permissions/resolver";
+import {
+  isGlobalProjectAdministrator,
+  type PermissionUser,
+} from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
@@ -26,7 +28,7 @@ export function canManageProjectConcept(
   context: ConceptAccessContext,
 ) {
   return (
-    user.role === UserRole.SUPER_ADMIN ||
+    isGlobalProjectAdministrator(user) ||
     context.ownerId === user.id ||
     context.coOwnerIds.includes(user.id)
   );
@@ -37,7 +39,7 @@ export function canCompleteProjectConceptStage(
   context: ConceptAccessContext,
 ) {
   return (
-    user.role === UserRole.SUPER_ADMIN || context.ownerId === user.id
+    isGlobalProjectAdministrator(user) || context.ownerId === user.id
   );
 }
 

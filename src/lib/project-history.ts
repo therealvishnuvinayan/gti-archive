@@ -18,11 +18,12 @@ import {
 } from "@prisma/client";
 
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
-import { getCollaboratorRoleLabel } from "@/lib/project-collaborator-participant-types";
+import { getUserRoleLabel } from "@/lib/user-role-compatibility";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
   hasProjectPermission,
+  isGlobalProjectAdministrator,
   isProjectExecutor,
   type PermissionUser,
   type ProjectPermissionContext,
@@ -111,7 +112,7 @@ async function ensureFinalCompletionWorkflowExistsTx(
 
 type AccessUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "collaboratorType"
+  "id" | "email" | "name" | "role"
 > &
   PermissionUser;
 
@@ -148,7 +149,7 @@ type StageHistoryQueryRecord = {
   updatedAt?: Date;
   createdBy: Pick<
     User,
-    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+    "id" | "name" | "email" | "role" | "avatarUrl"
   >;
   attachments: Array<{
     id: string;
@@ -175,7 +176,7 @@ type StageCommentQueryRecord = {
   updatedAt?: Date;
   author: Pick<
     User,
-    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+    "id" | "name" | "email" | "role" | "avatarUrl"
   >;
   mentions: Array<{
     mentionedUserId: string;
@@ -210,7 +211,7 @@ type StageComparisonQueryRecord = {
   updatedAt?: Date;
   createdBy: Pick<
     User,
-    "id" | "name" | "email" | "role" | "collaboratorType" | "avatarUrl"
+    "id" | "name" | "email" | "role" | "avatarUrl"
   >;
   baseAttachment: {
     id: string;
@@ -407,12 +408,12 @@ function getDisplayName(user: Pick<User, "name" | "email">) {
   return user.name?.trim() || user.email;
 }
 
-function getActorRole(user: Pick<User, "role" | "collaboratorType">) {
+function getActorRole(user: Pick<User, "role">) {
   if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
     return "Internal Team";
   }
 
-  return getCollaboratorRoleLabel(user.collaboratorType);
+  return getUserRoleLabel(user.role);
 }
 
 function getProfileAvatarSrc(user: Pick<User, "avatarUrl">) {
@@ -1724,7 +1725,6 @@ export async function getProjectStageChatMessages(
             name: true,
             email: true,
             role: true,
-            collaboratorType: true,
             avatarUrl: true,
           },
         },
@@ -1905,7 +1905,6 @@ export async function getProjectStageChatMessages(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -1974,7 +1973,6 @@ export async function getProjectStageChatMessages(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -2212,7 +2210,6 @@ async function findStageChatCommentForRealtime(input: {
             name: true,
             email: true,
             role: true,
-            collaboratorType: true,
             avatarUrl: true,
           },
         },
@@ -2361,7 +2358,6 @@ export async function getStageChatUpdatesForUser(
               name: true,
               email: true,
               role: true,
-              collaboratorType: true,
               avatarUrl: true,
             },
           },
@@ -2423,7 +2419,6 @@ export async function getStageChatUpdatesForUser(
               name: true,
               email: true,
               role: true,
-              collaboratorType: true,
               avatarUrl: true,
             },
           },
@@ -2480,7 +2475,6 @@ export async function getStageChatUpdatesForUser(
               name: true,
               email: true,
               role: true,
-              collaboratorType: true,
               avatarUrl: true,
             },
           },
@@ -2730,7 +2724,6 @@ export async function getProjectStageHistory(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -2778,7 +2771,6 @@ export async function getProjectStageHistory(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -2831,7 +2823,6 @@ export async function getProjectStageHistory(
                   name: true,
                   email: true,
                   role: true,
-                  collaboratorType: true,
                   avatarUrl: true,
                 },
               },
@@ -4460,7 +4451,7 @@ export async function completeProjectStage(
     user,
     project,
     "stage.markStageComplete",
-    "Only the project owner can mark this stage as complete.",
+    "Only a project owner, co-owner, or administrator can mark this stage as complete.",
   );
 
   if (isProjectStatusCompleted(project.status)) {
@@ -4670,7 +4661,7 @@ export async function reviewStageSubmission(
       "stage.reviewSubmission",
     )
   ) {
-    throw new Error("Only the project owner can review submissions.");
+    throw new Error("Only a project owner, co-owner, or administrator can review submissions.");
   }
 
   if (isProjectStatusCompleted(attachment.project.status)) {
@@ -4779,8 +4770,8 @@ export async function reviewProjectRevision(
       ? "stage.markSubmissionComplete"
       : "stage.requestRevision",
     input.status === "APPROVED"
-      ? "Only the project owner can review this submission."
-      : "Only the project owner can request revisions.",
+      ? "Only a project owner, co-owner, or administrator can review this submission."
+      : "Only a project owner, co-owner, or administrator can request revisions.",
   );
 
   if (isProjectStatusCompleted(revision.project.status)) {
@@ -5054,7 +5045,6 @@ export async function requestStageInvoice(
             collaborators: {
               select: {
                 userId: true,
-                participantType: true,
                 user: {
                   select: {
                     name: true,
@@ -5077,7 +5067,7 @@ export async function requestStageInvoice(
     user,
     stage.project,
     "stage.markSubmissionComplete",
-    "Only the project owner can request an invoice.",
+    "Only a project owner, co-owner, or administrator can request an invoice.",
   );
 
   if (isProjectStatusCompleted(stage.project.status)) {
@@ -5245,7 +5235,7 @@ async function hasStageSevenEvidenceUploadAccess(
   );
   return Boolean(
     project &&
-      (user.role === UserRole.SUPER_ADMIN ||
+      (isGlobalProjectAdministrator(user) ||
         project.ownerId === user.id ||
         project.coOwners.length),
   );

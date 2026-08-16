@@ -248,13 +248,13 @@ async function main() {
   const runLabel = runId.slice(0, 8);
   const userSpecs = [
     ["super-admin", UserRole.SUPER_ADMIN],
-    ["owner", UserRole.COLLABORATOR],
+    ["owner", UserRole.ADMIN],
     ["co-owner", UserRole.ADMIN],
-    ["executor-a", UserRole.COLLABORATOR],
-    ["executor-b", UserRole.COLLABORATOR],
-    ["collaborator", UserRole.COLLABORATOR],
+    ["executor-a", UserRole.USER],
+    ["executor-b", UserRole.USER],
+    ["collaborator", UserRole.USER],
     ["admin-outsider", UserRole.ADMIN],
-    ["unrelated-user", UserRole.COLLABORATOR],
+    ["unrelated-user", UserRole.USER],
   ] as const;
   const userIds = userSpecs.map(
     ([label]) => `e2e-qa-${runLabel}-${label}`,
@@ -288,13 +288,12 @@ async function main() {
           email: true,
           name: true,
           role: true,
-          collaboratorType: true,
         },
       }),
     ),
   );
 
-  const createdProject = await createProjectV2(superAdmin, {
+  const createdProject = await createProjectV2(owner, {
     name: `E2E QA - Concept Workflow - ${runLabel}`,
     ownerId: owner.id,
     coOwnerIds: [coOwner.id],
@@ -433,14 +432,22 @@ async function main() {
     executorBView?.folders.length === 1 && executorBView.folders[0].id === conceptB.id,
     "Executor B must see only Concept B",
   );
-  for (const actor of [collaborator, adminOutsider, unrelatedUser]) {
+  check(
+    (await getProjectConceptFolders(
+      adminOutsider,
+      projectId,
+      ProjectWorkflowStageKey.CONCEPT_CREATION,
+    ))?.folders.length === 2,
+    "ADMIN must retain global Stage 3 management access",
+  );
+  for (const actor of [collaborator, unrelatedUser]) {
     check(
       (await getProjectConceptFolders(
         actor,
         projectId,
         ProjectWorkflowStageKey.CONCEPT_CREATION,
       )) === null,
-      "collaborator, role-only ADMIN, and unrelated users must be denied",
+      "unassigned project participants and unrelated USER accounts must be denied",
     );
   }
   check(
@@ -634,7 +641,7 @@ async function main() {
     ownerRejection.status === ProjectRevisionStatus.REJECTED &&
       ownerRejection.reviewedAt !== null &&
       ownerRejection.rejectionReason ===
-        "Increase spacing and simplify the leaf geometry." &&
+        "<p>Increase spacing and simplify the leaf geometry.</p>" &&
       ownerRejection.rejectionComment?.body.includes("Increase spacing") &&
       (await prisma.projectRevision.findUniqueOrThrow({
         where: { id: revisionOne.id },
@@ -835,9 +842,12 @@ async function main() {
       !("stageTransition" in conceptBApproval),
     "final concept approval must wait for explicit owner completion confirmation",
   );
+  const coOwnerStageThreeCompletion = await completeStageThreeConcepts(coOwner, {
+    projectId,
+  });
   check(
-    isError(await completeStageThreeConcepts(coOwner, { projectId })),
-    "co-owner must not complete Stage 3",
+    !isError(coOwnerStageThreeCompletion) && coOwnerStageThreeCompletion.transitioned,
+    "ADMIN co-owner must be able to complete Stage 3",
   );
 
   const [stageThreeCompletionA, stageThreeCompletionB] = await Promise.all([
@@ -847,10 +857,11 @@ async function main() {
   check(
     !isError(stageThreeCompletionA) &&
       !isError(stageThreeCompletionB) &&
-      (stageThreeCompletionA.transitioned || stageThreeCompletionB.transitioned),
-    "manual Stage 3 confirmation must transition once and remain idempotent",
+      !stageThreeCompletionA.transitioned &&
+      !stageThreeCompletionB.transitioned,
+    "repeated Stage 3 confirmation must remain idempotent",
   );
-  const stageThreeCompletion = stageThreeCompletionA;
+  const stageThreeCompletion = coOwnerStageThreeCompletion;
   check(
     stageThreeCompletion.approvedCount === 2 &&
       stageThreeCompletion.unapprovedConcepts.length === 0,
@@ -880,18 +891,16 @@ async function main() {
     !isError(stageFourAResult) && !isError(stageFourBResult),
     "Stage 4 concepts must be created independently after Stage 3 completes",
   );
-  const [stageFourAImport, stageFourBImport] = await Promise.all([
-    importStageThreeConceptReference(owner, {
-      projectId,
-      folderId: stageFourAResult.folder.id,
-      sourceConceptId: conceptA.id,
-    }),
-    importStageThreeConceptReference(owner, {
-      projectId,
-      folderId: stageFourBResult.folder.id,
-      sourceConceptId: conceptB.id,
-    }),
-  ]);
+  const stageFourAImport = await importStageThreeConceptReference(owner, {
+    projectId,
+    folderId: stageFourAResult.folder.id,
+    sourceConceptId: conceptA.id,
+  });
+  const stageFourBImport = await importStageThreeConceptReference(owner, {
+    projectId,
+    folderId: stageFourBResult.folder.id,
+    sourceConceptId: conceptB.id,
+  });
   check(
     !isError(stageFourAImport) && !isError(stageFourBImport),
     "approved Stage 3 concepts must be imported explicitly into their Stage 4 chats",
@@ -915,7 +924,7 @@ async function main() {
             concepts.find((concept) => concept.name === folder.name)?.taskerStageId &&
           folder.taskerStage.actualStartedAt === null &&
           folder.taskerStage.startedById === null &&
-          folder.taskerStage.description === null &&
+          Boolean(folder.taskerStage.description) &&
           folder.sourceStage3ConceptId &&
           folder.sourceStage3ApprovedAttachmentId,
       ),
@@ -1146,7 +1155,7 @@ async function main() {
   });
   check(
     isError(await completeStageFourConcepts(coOwner, { projectId })),
-    "co-owner must not complete Stage 4",
+    "Stage 4 must remain incomplete for an ADMIN while a concept has no final file",
   );
   const finalBApproval = await markStageFourFinalApprovedAttachment(owner, {
     projectId,
@@ -1161,7 +1170,7 @@ async function main() {
   );
 
   const [stageFourCompletionA, stageFourCompletionB] = await Promise.all([
-    completeStageFourConcepts(owner, { projectId }),
+    completeStageFourConcepts(coOwner, { projectId }),
     completeStageFourConcepts(superAdmin, { projectId }),
   ]);
   check(
@@ -1404,7 +1413,7 @@ async function main() {
       ProjectFileChecklistRequestWorkflowStatus.COMPLETED &&
       completedEmail.checklistId === fileB.checklistId &&
       (completedEmail.checklistItem.value as { text?: string } | null)?.text ===
-        "Product B approved external tax stamp" &&
+        "<p>Product B approved external tax stamp</p>" &&
       (await getExternalChecklistRequestData(externalToken)).state === "completed",
     "external response must update only the real Final B checklist and revoke reuse",
   );

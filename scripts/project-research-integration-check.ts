@@ -45,49 +45,42 @@ const users = {
     email: "research-super-admin@example.test",
     name: "Research Super Admin",
     role: UserRole.SUPER_ADMIN,
-    collaboratorType: "GTI_INTERNAL_CLIENT" as const,
   },
   owner: {
     id: "research-owner",
     email: "research-owner@example.test",
     name: "Research Owner",
     role: UserRole.ADMIN,
-    collaboratorType: "GTI_INTERNAL_CLIENT" as const,
   },
   coOwner: {
     id: "research-co-owner",
     email: "research-co-owner@example.test",
     name: "Research Co-owner",
-    role: UserRole.COLLABORATOR,
-    collaboratorType: "GTI_INTERNAL_CLIENT" as const,
+    role: UserRole.ADMIN,
   },
   executor: {
     id: "research-executor",
     email: "research-executor@example.test",
     name: "Research Executor",
-    role: UserRole.COLLABORATOR,
-    collaboratorType: "EXTERNAL_AGENCY" as const,
+    role: UserRole.USER,
   },
   collaborator: {
     id: "research-collaborator",
     email: "research-collaborator@example.test",
     name: "Research Collaborator",
-    role: UserRole.COLLABORATOR,
-    collaboratorType: "EXTERNAL_VENDOR" as const,
+    role: UserRole.USER,
   },
   outsider: {
     id: "research-outsider",
     email: "research-outsider@example.test",
     name: "Research Outsider",
-    role: UserRole.COLLABORATOR,
-    collaboratorType: "CLIENT_OF_GTI" as const,
+    role: UserRole.USER,
   },
   adminOutsider: {
     id: "research-admin-outsider",
     email: "research-admin-outsider@example.test",
     name: "Research Admin Outsider",
     role: UserRole.ADMIN,
-    collaboratorType: "GTI_INTERNAL_CLIENT" as const,
   },
 };
 
@@ -126,7 +119,7 @@ async function unlockStageTwo(projectId: string) {
 
 async function mustCreateProject(name: string) {
   const result = await createProjectV2(
-    { id: users.superAdmin.id },
+    { id: users.owner.id },
     {
       name,
       ownerId: users.owner.id,
@@ -161,7 +154,6 @@ async function main() {
       projectId,
       userId: users.collaborator.id,
       addedById: users.superAdmin.id,
-      participantType: "EXTERNAL_VENDOR",
     },
   });
   await ensureProjectResearchWorkspace(projectId, users.collaborator.id);
@@ -209,8 +201,8 @@ async function main() {
   check(14, expectError(duplicateBrief), "custom folders must not duplicate Brief");
 
   const lateUserId = "research-late-collaborator";
-  await prisma.user.create({ data: { id: lateUserId, email: "research-late@example.test", name: "Late Collaborator", passwordHash: "x", role: UserRole.COLLABORATOR } });
-  await prisma.projectCollaborator.create({ data: { projectId, userId: lateUserId, addedById: users.superAdmin.id, participantType: "GTI_INTERNAL_CLIENT" } });
+  await prisma.user.create({ data: { id: lateUserId, email: "research-late@example.test", name: "Late Collaborator", passwordHash: "x", role: UserRole.USER } });
+  await prisma.projectCollaborator.create({ data: { projectId, userId: lateUserId, addedById: users.superAdmin.id } });
   await ensureProjectResearchWorkspace(projectId, lateUserId);
   check(15, (await prisma.projectResearchWorkspace.findUnique({ where: { projectId_ownerUserId: { projectId, ownerUserId: lateUserId } }, include: { folders: true } }))?.folders.length === 7, "late collaborator must get a complete workspace");
 
@@ -231,7 +223,7 @@ async function main() {
   check(21, executorCross?.selectedWorkspace.id === executorWorkspace.id, "executor cannot switch to another workspace");
   const collaboratorPage = await getProjectResearchPageData(users.collaborator, projectId, ownerWorkspace.id);
   check(22, collaboratorPage?.selectedWorkspace.ownerUserId === users.collaborator.id, "normal collaborator cannot switch to another workspace");
-  check(23, ownerPage?.selectedWorkspace.canWrite === false && coOwnerPage?.selectedWorkspace.canWrite === false, "owner/co-owner cross-workspace view must be read-only");
+  check(23, ownerPage?.selectedWorkspace.canWrite === true && coOwnerPage?.selectedWorkspace.canWrite === true, "ADMIN owner/co-owner must retain global Stage 2 write access");
   const superAdminCross = await getProjectResearchPageData(users.superAdmin, projectId, executorWorkspace.id);
   check(24, superAdminCross?.selectedWorkspace.canWrite === true, "SUPER_ADMIN must write cross-workspace");
   check(63, executorPage?.selectedWorkspace.canDeleteFolders === true, "workspace owners must receive folder deletion controls");
@@ -336,8 +328,8 @@ async function main() {
   try { await getProjectResearchFileDownloadUrl(users.outsider, { projectId, folderId: executorBrief.id, fileId: association!.id }); } catch { unauthorizedDownload = true; }
   check(34, unauthorizedDownload, "unauthorized download must fail");
   let unauthorizedDelete = false;
-  try { await deleteProjectResearchFile(users.owner, { projectId, folderId: executorBrief.id, fileId: association!.id }); } catch { unauthorizedDelete = true; }
-  check(36, unauthorizedDelete, "read-only cross-workspace delete must fail");
+  try { await deleteProjectResearchFile(users.outsider, { projectId, folderId: executorBrief.id, fileId: association!.id }); } catch { unauthorizedDelete = true; }
+  check(36, unauthorizedDelete, "unrelated USER cross-workspace delete must fail");
   await deleteProjectResearchFile(users.superAdmin, { projectId, folderId: executorBrief.id, fileId: association!.id });
   check(35, !(await prisma.projectResearchFolderFile.findUnique({ where: { id: association!.id } })) && (await prisma.projectAttachment.findUniqueOrThrow({ where: { id: upload.attachmentId } })).status === AttachmentStatus.DELETED, "authorized delete must remove association and mark attachment deleted");
 
@@ -367,7 +359,7 @@ async function main() {
   check(46, Boolean(await getProjectResearchPageData(users.owner, zeroFileProjectId)), "completed Stage 2 must remain openable");
   check(47, (await prisma.projectStage.count({ where: { projectId: { in: [projectId, zeroFileProjectId] } } })) === 0, "Stage 2 must not create legacy ProjectStage rows");
   check(48, !Object.keys(prisma).some((key) => /task|vendor/i.test(key)), "Stage 2 must not add task/chat/vendor-specific models");
-  check(30, (await getProjectResearchPageData(users.adminOutsider, projectId)) === null, "ADMIN role alone must not gain Stage 2 access");
+  check(30, Boolean(await getProjectResearchPageData(users.adminOutsider, projectId)), "ADMIN must retain global Stage 2 management access");
 
   console.log("Stage 2 database integration checks 1-67 passed.");
 }

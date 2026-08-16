@@ -58,11 +58,10 @@ assert(
   "Approved Concept designation must validate a same-project/tasker READY formal revision file through centralized reviewer policy.",
 );
 assert(
-  access.includes("user.role === UserRole.SUPER_ADMIN") &&
+  access.includes("isGlobalProjectAdministrator(user)") &&
     access.includes("context.ownerId === user.id") &&
-    access.includes("context.coOwnerIds.includes(user.id)") &&
-    !access.includes("user.role === UserRole.ADMIN ||"),
-  "Only owner, co-owner, and SUPER_ADMIN may manage concept approval.",
+    access.includes("context.coOwnerIds.includes(user.id)"),
+  "Owner, co-owner, and global administrators may manage concept approval.",
 );
 assert(
   concepts.includes("const changed = folder.approvedAttachmentId !== attachment.id") &&
@@ -105,7 +104,7 @@ assert(
 assert(
   concepts.includes("completeStageThreeConcepts") &&
     concepts.includes("canCompleteProjectConceptStage(user, managerContext)") &&
-    concepts.includes("Only the Project Owner or Super Admin can complete Stage 3.") &&
+    concepts.includes("Only a project owner, co-owner, or administrator can complete Stage 3.") &&
     concepts.includes("TransactionIsolationLevel.Serializable") &&
     concepts.includes("unapprovedConcepts.length > 0") &&
     concepts.includes("Every Stage 3 concept must have an Approved Concept") &&
@@ -113,7 +112,7 @@ assert(
     concepts.includes("ProjectWorkflowStageStatus.COMPLETED") &&
     concepts.includes("ProjectWorkflowStageStatus.AVAILABLE") &&
     !concepts.includes("ProjectStageFileHandoff"),
-  "Owner/Super-Admin-only Stage 3 completion must permit an empty optional stage, validate created concepts, and unlock Stage 4 without automatic promotion.",
+  "Owner/co-owner/administrator Stage 3 completion must permit an empty optional stage, validate created concepts, and unlock Stage 4 without automatic promotion.",
 );
 assert(
   concepts.includes("importStageThreeConceptReference") &&

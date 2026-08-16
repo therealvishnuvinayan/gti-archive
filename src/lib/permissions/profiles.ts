@@ -1,29 +1,24 @@
-import {
-  Prisma,
-  UserRole,
-  type CollaboratorType as PrismaCollaboratorType,
-  type User,
-} from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import { prisma, withPrismaRetry } from "../prisma";
+import { isBusinessAdministratorRole } from "../user-role-compatibility";
 import {
   allPermissionKeys,
-  collaboratorTypeValues,
   criticalSuperAdminPermissionKeys,
-  defaultCollaboratorTypePermissions,
   defaultRolePermissions,
+  editablePermissionRoleValues,
   permissionDefinitionMap,
   permissionDefinitions,
   permissionProfileTypeValues,
   permissionRoleValues,
-  type CollaboratorTypeValue,
   type PermissionDefinitionRecord,
   type PermissionKey,
   type PermissionProfileType,
   type PermissionRole,
 } from "./definitions";
+import { resolveEffectivePermissionSet } from "./effective";
 
 export type PermissionProfileState = Record<PermissionKey, boolean>;
 
@@ -37,7 +32,6 @@ export type PermissionProfile = {
 export type PermissionProfileSnapshot = {
   effectivePermissions: ReadonlySet<PermissionKey>;
   rolePermissions: ReadonlySet<PermissionKey>;
-  collaboratorTypePermissions: ReadonlySet<PermissionKey>;
   archiveAccessGranted: boolean;
   archiveAccessLevel: "NONE" | "FULL" | "PARTIAL";
 };
@@ -45,10 +39,9 @@ export type PermissionProfileSnapshot = {
 export type PermissionSyncResult = {
   definitionsSynced: number;
   rolePermissionsSeeded: number;
-  collaboratorTypePermissionsSeeded: number;
 };
 
-type PermissionProfileUser = Pick<User, "id" | "role" | "collaboratorType">;
+type PermissionProfileUser = Pick<User, "id" | "role">;
 
 type PermissionRow = {
   permissionKey: string;
@@ -56,49 +49,7 @@ type PermissionRow = {
 };
 
 export const PERMISSION_PROFILE_CACHE_TAG = "permission-profiles";
-
-const clientOfGtiDeniedEffectivePermissionKeys = [
-  "archive.view",
-  "archive.uploadFile",
-  "archive.download",
-  "project.completeArchive",
-  "project.viewBudget",
-  "project.updateBudget",
-  "project.update",
-  "project.delete",
-  "project.manageCollaborators",
-] as const satisfies PermissionKey[];
-
-function canCollaboratorTypeCreateProjects(
-  collaboratorType: PrismaCollaboratorType | null | undefined,
-) {
-  return collaboratorType === "GTI_INTERNAL_CLIENT";
-}
-
-function getCollaboratorTypesForPropagatedPermission(permissionKey: PermissionKey) {
-  if (permissionKey === "project.create") {
-    return ["GTI_INTERNAL_CLIENT"] as const;
-  }
-
-  return collaboratorTypeValues.filter((collaboratorType) =>
-    defaultCollaboratorTypePermissions[collaboratorType].includes(permissionKey),
-  );
-}
-
-function applyPermissionProfileHardRules(
-  profileType: PermissionProfileType,
-  profileKey: string,
-  state: PermissionProfileState,
-) {
-  if (
-    profileType === "collaboratorType" &&
-    !canCollaboratorTypeCreateProjects(profileKey as PrismaCollaboratorType)
-  ) {
-    state["project.create"] = false;
-  }
-
-  return state;
-}
+const PERMISSION_PROFILE_CACHE_VERSION = "final-account-roles-v1";
 
 export function getPermissionProfileCacheTag(
   profileType: PermissionProfileType,
@@ -134,28 +85,13 @@ function getDefaultPermissionSetForRole(role: PermissionRole) {
   return new Set(defaultRolePermissions[role]);
 }
 
-function getDefaultPermissionSetForCollaboratorType(
-  collaboratorType: CollaboratorTypeValue,
-) {
-  return new Set(defaultCollaboratorTypePermissions[collaboratorType]);
-}
-
 function getDefaultProfileState(
-  profileType: PermissionProfileType,
+  _profileType: PermissionProfileType,
   profileKey: string,
 ) {
-  switch (profileType) {
-    case "role":
-      return buildPermissionState(
-        getDefaultPermissionSetForRole(profileKey as PermissionRole),
-      );
-    case "collaboratorType":
-      return buildPermissionState(
-        getDefaultPermissionSetForCollaboratorType(
-          profileKey as CollaboratorTypeValue,
-        ),
-      );
-  }
+  return buildPermissionState(
+    getDefaultPermissionSetForRole(profileKey as PermissionRole),
+  );
 }
 
 function mergeProfileRows(
@@ -169,7 +105,7 @@ function mergeProfileRows(
     return {
       profileType,
       profileKey,
-      state: applyPermissionProfileHardRules(profileType, profileKey, defaultState),
+      state: defaultState,
       source: "code-default",
     };
   }
@@ -192,7 +128,7 @@ function mergeProfileRows(
   return {
     profileType,
     profileKey,
-    state: applyPermissionProfileHardRules(profileType, profileKey, mergedState),
+    state: mergedState,
     source: "db",
   };
 }
@@ -248,7 +184,7 @@ const getCachedRoleProfile = cache(async (role: PermissionRole) => {
           },
         }),
       ),
-    ["permission-profile", "role", role],
+    [PERMISSION_PROFILE_CACHE_VERSION, "permission-profile", "role", role],
     {
       tags: [
         PERMISSION_PROFILE_CACHE_TAG,
@@ -269,46 +205,6 @@ const getCachedRoleProfile = cache(async (role: PermissionRole) => {
   }
 });
 
-const getCachedCollaboratorTypeProfile = cache(
-  async (collaboratorType: CollaboratorTypeValue) => {
-    const getCachedRows = unstable_cache(
-      async () =>
-        withPrismaRetry(() =>
-          prisma.collaboratorTypePermission.findMany({
-            where: {
-              collaboratorType: collaboratorType as PrismaCollaboratorType,
-              permissionKey: {
-                in: allPermissionKeys,
-              },
-            },
-            select: {
-              permissionKey: true,
-              enabled: true,
-            },
-          }),
-        ),
-      ["permission-profile", "collaboratorType", collaboratorType],
-      {
-        tags: [
-          PERMISSION_PROFILE_CACHE_TAG,
-          getPermissionProfileCacheTag("collaboratorType", collaboratorType),
-        ],
-      },
-    );
-
-    try {
-      const rows = await getCachedRows();
-      return mergeProfileRows("collaboratorType", collaboratorType, rows);
-    } catch (error) {
-      if (isPermissionStorageUnavailable(error)) {
-        return mergeProfileRows("collaboratorType", collaboratorType, []);
-      }
-
-      throw error;
-    }
-  },
-);
-
 export async function getPermissionProfile(
   profileType: PermissionProfileType,
   profileKey: string,
@@ -317,22 +213,11 @@ export async function getPermissionProfile(
     throw new Error("Invalid permission profile type.");
   }
 
-  switch (profileType) {
-    case "role":
-      if (!permissionRoleValues.includes(profileKey as PermissionRole)) {
-        throw new Error("Invalid role profile.");
-      }
-
-      return getCachedRoleProfile(profileKey as PermissionRole);
-    case "collaboratorType":
-      if (!collaboratorTypeValues.includes(profileKey as CollaboratorTypeValue)) {
-        throw new Error("Invalid collaborator type profile.");
-      }
-
-      return getCachedCollaboratorTypeProfile(
-        profileKey as CollaboratorTypeValue,
-      );
+  if (!permissionRoleValues.includes(profileKey as PermissionRole)) {
+    throw new Error("Invalid role profile.");
   }
+
+  return getCachedRoleProfile(profileKey as PermissionRole);
 }
 
 export async function syncPermissionDefinitions(): Promise<PermissionSyncResult> {
@@ -361,42 +246,21 @@ export async function syncPermissionDefinitions(): Promise<PermissionSyncResult>
             });
           }
 
-          const rolePermissionRows = permissionRoleValues.flatMap((role) =>
+          const rolePermissionRows = editablePermissionRoleValues.flatMap((role) =>
             getProfileDefaultRowData("role", role).map((row) => ({
               role,
               permissionKey: row.permissionKey,
               enabled: row.enabled,
             })),
           );
-          const collaboratorTypeRows = collaboratorTypeValues.flatMap(
-            (collaboratorType) =>
-              getProfileDefaultRowData("collaboratorType", collaboratorType).map(
-                (row) => ({
-                  collaboratorType: collaboratorType as PrismaCollaboratorType,
-                  permissionKey: row.permissionKey,
-                  enabled: row.enabled,
-                }),
-              ),
-          );
-          const [
-            rolePermissionsResult,
-            collaboratorTypePermissionsResult,
-          ] = await Promise.all([
-            tx.rolePermission.createMany({
-              data: rolePermissionRows,
-              skipDuplicates: true,
-            }),
-            tx.collaboratorTypePermission.createMany({
-              data: collaboratorTypeRows,
-              skipDuplicates: true,
-            }),
-          ]);
+          const rolePermissionsResult = await tx.rolePermission.createMany({
+            data: rolePermissionRows,
+            skipDuplicates: true,
+          });
 
           return {
             definitionsSynced: permissionDefinitions.length,
             rolePermissionsSeeded: rolePermissionsResult.count,
-            collaboratorTypePermissionsSeeded:
-              collaboratorTypePermissionsResult.count,
           };
         },
         {
@@ -408,7 +272,7 @@ export async function syncPermissionDefinitions(): Promise<PermissionSyncResult>
   } catch (error) {
     if (isPermissionStorageUnavailable(error)) {
       throw new Error(
-        "Permission profile tables are not available yet. Run `pnpm prisma db push` first.",
+        "Permission profile tables are not available yet. Run `pnpm prisma migrate deploy` first.",
       );
     }
 
@@ -442,8 +306,6 @@ export async function savePermissionProfile(input: {
     }
   }
 
-  applyPermissionProfileHardRules(profileType, profileKey, nextState);
-
   if (profileType === "role" && profileKey === "SUPER_ADMIN") {
     const missingCriticalPermissions = criticalSuperAdminPermissionKeys.filter(
       (permissionKey) => !nextState[permissionKey],
@@ -469,141 +331,29 @@ export async function savePermissionProfile(input: {
 
   await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
-      switch (profileType) {
-        case "role": {
-          const role = profileKey as PermissionRole;
+      const role = profileKey as PermissionRole;
 
-          await tx.rolePermission.createMany({
-            data: rows.map((row) => ({
-              role,
-              permissionKey: row.permissionKey,
-              enabled: row.enabled,
-            })),
-            skipDuplicates: true,
-          });
+      await tx.rolePermission.createMany({
+        data: rows.map((row) => ({
+          role,
+          permissionKey: row.permissionKey,
+          enabled: row.enabled,
+        })),
+        skipDuplicates: true,
+      });
 
-          if (enabledPermissionKeys.length > 0) {
-            await tx.rolePermission.updateMany({
-              where: {
-                role,
-                permissionKey: {
-                  in: enabledPermissionKeys,
-                },
-              },
-              data: {
-                enabled: true,
-              },
-            });
-          }
+      if (enabledPermissionKeys.length > 0) {
+        await tx.rolePermission.updateMany({
+          where: { role, permissionKey: { in: enabledPermissionKeys } },
+          data: { enabled: true },
+        });
+      }
 
-          if (disabledPermissionKeys.length > 0) {
-            await tx.rolePermission.updateMany({
-              where: {
-                role,
-                permissionKey: {
-                  in: disabledPermissionKeys,
-                },
-              },
-              data: {
-                enabled: false,
-              },
-            });
-          }
-
-          if (role === "COLLABORATOR" && enabledPermissionKeys.length > 0) {
-            const propagatedRows = enabledPermissionKeys.flatMap((permissionKey) =>
-              getCollaboratorTypesForPropagatedPermission(permissionKey).map(
-                (collaboratorType) => ({
-                  collaboratorType: collaboratorType as PrismaCollaboratorType,
-                  permissionKey,
-                }),
-              ),
-            );
-
-            if (propagatedRows.length === 0) {
-              return;
-            }
-
-            await tx.collaboratorTypePermission.createMany({
-              data: propagatedRows.map((row) => ({
-                ...row,
-                enabled: true,
-              })),
-              skipDuplicates: true,
-            });
-
-            const propagatedPermissionsByType = new Map<
-              PrismaCollaboratorType,
-              PermissionKey[]
-            >();
-
-            propagatedRows.forEach((row) => {
-              const permissions =
-                propagatedPermissionsByType.get(row.collaboratorType) ?? [];
-
-              permissions.push(row.permissionKey);
-              propagatedPermissionsByType.set(row.collaboratorType, permissions);
-            });
-
-            for (const [collaboratorType, permissionKeys] of propagatedPermissionsByType) {
-              await tx.collaboratorTypePermission.updateMany({
-                where: {
-                  collaboratorType,
-                  permissionKey: {
-                    in: permissionKeys,
-                  },
-                },
-                data: {
-                  enabled: true,
-                },
-              });
-            }
-          }
-
-          return;
-        }
-        case "collaboratorType": {
-          const collaboratorType = profileKey as PrismaCollaboratorType;
-
-          await tx.collaboratorTypePermission.createMany({
-            data: rows.map((row) => ({
-              collaboratorType,
-              permissionKey: row.permissionKey,
-              enabled: row.enabled,
-            })),
-            skipDuplicates: true,
-          });
-
-          if (enabledPermissionKeys.length > 0) {
-            await tx.collaboratorTypePermission.updateMany({
-              where: {
-                collaboratorType,
-                permissionKey: {
-                  in: enabledPermissionKeys,
-                },
-              },
-              data: {
-                enabled: true,
-              },
-            });
-          }
-
-          if (disabledPermissionKeys.length > 0) {
-            await tx.collaboratorTypePermission.updateMany({
-              where: {
-                collaboratorType,
-                permissionKey: {
-                  in: disabledPermissionKeys,
-                },
-              },
-              data: {
-                enabled: false,
-              },
-            });
-          }
-
-          return;
-        }
+      if (disabledPermissionKeys.length > 0) {
+        await tx.rolePermission.updateMany({
+          where: { role, permissionKey: { in: disabledPermissionKeys } },
+          data: { enabled: false },
+        });
       }
     }),
   );
@@ -634,9 +384,8 @@ export async function resetPermissionProfileToDefaults(
 export async function getPermissionProfileSnapshotForUser(
   user: PermissionProfileUser,
 ): Promise<PermissionProfileSnapshot> {
-  const [roleProfile, collaboratorTypeProfile, archiveAccess] = await Promise.all([
+  const [roleProfile, archiveAccess] = await Promise.all([
     getCachedRoleProfile(user.role as PermissionRole),
-    getCachedCollaboratorTypeProfile(user.collaboratorType),
     prisma.userArchiveAccess.findUnique({
       where: {
         userId: user.id,
@@ -649,59 +398,17 @@ export async function getPermissionProfileSnapshotForUser(
   ]);
 
   const rolePermissions = getEnabledPermissionSet(roleProfile.state);
-  const collaboratorTypePermissions = getEnabledPermissionSet(
-    collaboratorTypeProfile.state,
-  );
-  const effectivePermissions = new Set<PermissionKey>();
-
-  for (const permissionKey of allPermissionKeys) {
-    if (!rolePermissions.has(permissionKey)) {
-      continue;
-    }
-
-    if (
-      user.role === UserRole.COLLABORATOR &&
-      permissionKey === "project.create"
-    ) {
-      if (canCollaboratorTypeCreateProjects(user.collaboratorType)) {
-        effectivePermissions.add(permissionKey);
-      }
-
-      continue;
-    }
-
-    if (
-      user.role === UserRole.COLLABORATOR &&
-      !collaboratorTypePermissions.has(permissionKey)
-    ) {
-      continue;
-    }
-
-    effectivePermissions.add(permissionKey);
-  }
-
-  if (user.role === UserRole.SUPER_ADMIN) {
-    for (const permissionKey of criticalSuperAdminPermissionKeys) {
-      effectivePermissions.add(permissionKey);
-    }
-  }
-
-  if (
-    user.role === UserRole.COLLABORATOR &&
-    user.collaboratorType === "CLIENT_OF_GTI"
-  ) {
-    for (const permissionKey of clientOfGtiDeniedEffectivePermissionKeys) {
-      effectivePermissions.delete(permissionKey);
-    }
-  }
+  const effectivePermissions = resolveEffectivePermissionSet({
+    user,
+    rolePermissions,
+  });
 
   return {
     effectivePermissions,
     rolePermissions,
-    collaboratorTypePermissions,
     archiveAccessGranted: Boolean(archiveAccess && archiveAccess.level !== "NONE"),
     archiveAccessLevel:
-      user.role === UserRole.SUPER_ADMIN
+      isBusinessAdministratorRole(user.role)
         ? "FULL"
         : archiveAccess?.level ?? "NONE",
   };

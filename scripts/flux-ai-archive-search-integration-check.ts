@@ -4,7 +4,6 @@ import {
   AttachmentStatus,
   PrismaClient,
   UserRole,
-  type CollaboratorType,
 } from "@prisma/client";
 
 import {
@@ -59,7 +58,6 @@ function buildPermissionSnapshot(input: {
   return {
     effectivePermissions: permissions,
     rolePermissions: permissions,
-    collaboratorTypePermissions: permissions,
     archiveAccessGranted: input.archiveAccessLevel !== "NONE",
     archiveAccessLevel: input.archiveAccessLevel,
   };
@@ -68,14 +66,12 @@ function buildPermissionSnapshot(input: {
 function buildArchiveUser(input: {
   id: string;
   role: UserRole;
-  collaboratorType: CollaboratorType;
   permissions: Iterable<PermissionKey>;
   archiveAccessLevel: "NONE" | "FULL" | "PARTIAL";
 }): ArchiveAccessUser {
   return {
     id: input.id,
     role: input.role,
-    collaboratorType: input.collaboratorType,
     name: "Archive search test user",
     email: "archive-search@example.test",
     permissionProfileSnapshot: buildPermissionSnapshot(input),
@@ -138,7 +134,6 @@ async function main() {
     select: {
       id: true,
       role: true,
-      collaboratorType: true,
       name: true,
       email: true,
     },
@@ -226,8 +221,7 @@ async function main() {
   };
   const unauthorizedPartialUser = buildArchiveUser({
     id: "__flux_ai_archive_search_no_grants__",
-    role: UserRole.COLLABORATOR,
-    collaboratorType: "GTI_INTERNAL_CLIENT",
+    role: UserRole.USER,
     permissions: ["archive.view"],
     archiveAccessLevel: "PARTIAL",
   });

@@ -4,7 +4,6 @@ import { getCurrentUser } from "@/lib/auth";
 import {
   canUseArchives,
   hasPermission,
-  isClientOfGtiUser,
 } from "@/lib/permissions/resolver";
 import {
   buildArchiveCategoryIconPrefix,
@@ -18,12 +17,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (
-    isClientOfGtiUser(user) ||
-    (!canUseArchives(user) &&
-    !hasPermission(user, "settings.viewMasterData")
-    )
-  ) {
+  if (!canUseArchives(user) && !hasPermission(user, "settings.viewMasterData")) {
     return NextResponse.json(
       { error: "You do not have permission to view archive category icons." },
       { status: 403 },

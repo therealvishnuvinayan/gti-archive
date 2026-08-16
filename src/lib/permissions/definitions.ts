@@ -1,21 +1,15 @@
-import { projectCollaboratorParticipantTypes } from "../project-collaborator-participant-types";
+import {
+  editableUserRoleValues,
+  userRoleValues,
+  type UserRoleValue,
+} from "../user-role-compatibility";
 
-export const permissionRoleValues = [
-  "SUPER_ADMIN",
-  "ADMIN",
-  "COLLABORATOR",
-] as const;
+export const permissionRoleValues = userRoleValues;
+export const editablePermissionRoleValues = editableUserRoleValues;
 
-export type PermissionRole = (typeof permissionRoleValues)[number];
+export type PermissionRole = UserRoleValue;
 
-export const collaboratorTypeValues = projectCollaboratorParticipantTypes;
-
-export type CollaboratorTypeValue = (typeof collaboratorTypeValues)[number];
-
-export const permissionProfileTypeValues = [
-  "role",
-  "collaboratorType",
-] as const;
+export const permissionProfileTypeValues = ["role"] as const;
 
 export type PermissionProfileType = (typeof permissionProfileTypeValues)[number];
 
@@ -93,7 +87,6 @@ export const permissionCatalog = {
     "collaborator.inviteToProject",
     "collaborator.removeFromProject",
     "collaborator.pauseVisibility",
-    "collaborator.changeType",
     "collaborator.changeAccess",
   ],
   calendar: [
@@ -589,12 +582,6 @@ const permissionMetadata: Record<
     moduleGated: true,
     hardRule: true,
   },
-  "collaborator.changeType": {
-    label: "Change collaborator type",
-    description: "Change project collaborator participant types.",
-    moduleGated: true,
-    hardRule: true,
-  },
   "collaborator.changeAccess": {
     label: "Change collaborator access",
     description: "Change collaborator project access assignments.",
@@ -693,13 +680,13 @@ const permissionMetadata: Record<
   },
   "users.update": {
     label: "Update users",
-    description: "Change a user's profile photo, role, collaborator type, or archive access.",
+    description: "Change a user's profile photo, role, or Archive access.",
     moduleGated: false,
     hardRule: true,
   },
   "users.managePermissions": {
     label: "Manage permission profiles",
-    description: "Change saved role and collaborator type permission profiles.",
+    description: "Change saved ADMIN and USER role permission profiles.",
     moduleGated: false,
     hardRule: true,
   },
@@ -804,7 +791,6 @@ export const permissionModuleMap: Record<PermissionKey, ModuleName> = {
   "collaborator.inviteToProject": "collaboration",
   "collaborator.removeFromProject": "collaboration",
   "collaborator.pauseVisibility": "collaboration",
-  "collaborator.changeType": "collaboration",
   "collaborator.changeAccess": "collaboration",
   "calendar.view": "calendar",
   "calendar.create": "calendar",
@@ -828,117 +814,7 @@ export const permissionModuleMap: Record<PermissionKey, ModuleName> = {
   "help.view": "help",
 };
 
-export const defaultRolePermissions: Record<PermissionRole, readonly PermissionKey[]> = {
-  SUPER_ADMIN: allPermissionKeys,
-  ADMIN: [
-    "dashboard.view",
-    "dashboard.viewProjectCounts",
-    "dashboard.viewRecentProjects",
-    "project.list",
-    "project.view",
-    "project.create",
-    "project.update",
-    "project.delete",
-    "project.viewBudget",
-    "project.updateBudget",
-    "project.viewParticipants",
-    "project.manageCollaborators",
-    "project.completeArchive",
-    "stage.view",
-    "stage.acceptBrief",
-    "stage.submitWork",
-    "stage.reviewSubmission",
-    "stage.requestRevision",
-    "stage.markSubmissionComplete",
-    "stage.markStageComplete",
-    "stage.manageDefinitions",
-    "stage.updateTimeline",
-    "stage.updateBudget",
-    "chat.view",
-    "chat.createComment",
-    "chat.uploadAttachment",
-    "chat.mentionUser",
-    "file.view",
-    "file.download",
-    "file.delete",
-    "file.favorite",
-    "file.uploadAttachment",
-    "file.uploadSubmission",
-    "library.view",
-    "library.filter",
-    "library.deleteFile",
-    "library.uploadAsset",
-    "archive.view",
-    "archive.uploadFile",
-    "archive.download",
-    "completion.viewChecklist",
-    "completion.setApprovalRequired",
-    "completion.prepareApproval",
-    "completion.uploadApprovalProof",
-    "completion.setCopyrightRequired",
-    "completion.prepareCopyrightTransfer",
-    "completion.uploadCopyrightDocument",
-    "completion.uploadInvoice",
-    "collaboration.viewDirectory",
-    "collaboration.createUser",
-    "collaboration.updateUser",
-    "collaborator.inviteToProject",
-    "collaborator.removeFromProject",
-    "collaborator.pauseVisibility",
-    "collaborator.changeType",
-    "collaborator.changeAccess",
-    "calendar.view",
-    "calendar.create",
-    "calendar.update",
-    "calendar.delete",
-    "calendar.assignParticipants",
-    "notification.view",
-    "notification.markRead",
-    "settings.viewOwnProfile",
-    "settings.updateOwnProfile",
-    "settings.changeOwnPassword",
-    "settings.viewMasterData",
-    "settings.manageMasterData",
-    "compare.view",
-    "compare.createComment",
-    "help.view",
-  ],
-  COLLABORATOR: [
-    "dashboard.view",
-    "dashboard.viewProjectCounts",
-    "dashboard.viewRecentProjects",
-    "project.list",
-    "project.view",
-    "project.viewParticipants",
-    "stage.view",
-    "stage.acceptBrief",
-    "stage.submitWork",
-    "chat.view",
-    "chat.createComment",
-    "chat.uploadAttachment",
-    "chat.mentionUser",
-    "file.view",
-    "file.download",
-    "file.favorite",
-    "file.uploadAttachment",
-    "file.uploadSubmission",
-    "library.view",
-    "library.filter",
-    "completion.viewChecklist",
-    "completion.uploadInvoice",
-    "calendar.view",
-    "notification.view",
-    "notification.markRead",
-    "settings.viewOwnProfile",
-    "settings.updateOwnProfile",
-    "settings.changeOwnPassword",
-    "compare.view",
-    "compare.createComment",
-    "help.view",
-  ],
-};
-
-const defaultCollaboratorWorkflowPermissions = [
+const defaultUserWorkflowPermissions = [
   "dashboard.view",
   "dashboard.viewProjectCounts",
   "dashboard.viewRecentProjects",
@@ -972,18 +848,10 @@ const defaultCollaboratorWorkflowPermissions = [
   "help.view",
 ] as const satisfies readonly PermissionKey[];
 
-const defaultRestrictedCollaboratorPermissions = [] as const satisfies readonly PermissionKey[];
-
-export const defaultCollaboratorTypePermissions: Record<
-  CollaboratorTypeValue,
-  readonly PermissionKey[]
-> = {
-  GTI_INTERNAL_CLIENT: defaultCollaboratorWorkflowPermissions,
-  GTI_SISTER_COMPANY_INTERNAL_CLIENT: defaultRestrictedCollaboratorPermissions,
-  EXTERNAL_FREELANCER: defaultRestrictedCollaboratorPermissions,
-  EXTERNAL_AGENCY: defaultRestrictedCollaboratorPermissions,
-  EXTERNAL_VENDOR: defaultRestrictedCollaboratorPermissions,
-  CLIENT_OF_GTI: defaultRestrictedCollaboratorPermissions,
+export const defaultRolePermissions: Record<PermissionRole, readonly PermissionKey[]> = {
+  SUPER_ADMIN: allPermissionKeys,
+  ADMIN: allPermissionKeys,
+  USER: defaultUserWorkflowPermissions,
 };
 
 export const criticalSuperAdminPermissionKeys = [

@@ -76,7 +76,7 @@ export type {
 
 export type ArchiveAccessUser = Pick<
   User,
-  "id" | "role" | "email" | "name" | "collaboratorType"
+  "id" | "role" | "email" | "name"
 > &
   PermissionUser;
 

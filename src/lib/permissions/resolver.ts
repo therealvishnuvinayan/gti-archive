@@ -1,6 +1,5 @@
 import {
   Prisma,
-  UserRole,
   type Project,
   type ProjectCoOwner,
   type ProjectCollaborator,
@@ -17,9 +16,9 @@ import type {
   ProjectCollaboratorPermissions,
 } from "@/lib/project-collaborator-permissions";
 import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
+import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 
 export type PermissionUser = Pick<User, "id" | "role"> & {
-  collaboratorType?: User["collaboratorType"] | null;
   permissionProfileSnapshot?: PermissionProfileSnapshot | null;
 };
 
@@ -99,14 +98,17 @@ function hasProjectArchiveAccessGrant(
   user: PermissionUser,
   project: ProjectPermissionContext,
 ) {
-  return (
-    !isClientOfGtiUser(user) &&
-    hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives")
-  );
+  return hasProjectCollaboratorGrant(user, project, "canAccessProjectArchives");
 }
 
 export function isProjectAdmin(user: Pick<PermissionUser, "role">) {
-  return user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN;
+  return isGlobalProjectAdministrator(user);
+}
+
+export function isGlobalProjectAdministrator(
+  user: Pick<PermissionUser, "role">,
+) {
+  return isBusinessAdministratorRole(user.role);
 }
 
 export function isProjectOwner(
@@ -128,7 +130,7 @@ function isProjectOwnerOrCoOwner(
   project: ProjectPermissionContext,
 ) {
   return (
-    user.role === UserRole.SUPER_ADMIN ||
+    isGlobalProjectAdministrator(user) ||
     isProjectOwner(user, project) ||
     isProjectCoOwner(user, project)
   );
@@ -142,31 +144,11 @@ export function isProjectExecutor(
 }
 
 export function hasPermission(user: PermissionUser, permissionKey: PermissionKey) {
-  if (
-    user.role === UserRole.COLLABORATOR &&
-    permissionKey === "project.create" &&
-    user.collaboratorType !== "GTI_INTERNAL_CLIENT"
-  ) {
-    return false;
-  }
-
   return getBasePermissionSet(user).has(permissionKey);
 }
 
-export function isClientOfGtiUser(
-  user: Pick<PermissionUser, "role"> & {
-    collaboratorType?: PermissionUser["collaboratorType"];
-  },
-) {
-  return user.collaboratorType === "CLIENT_OF_GTI";
-}
-
 export function getArchiveAccessLevel(user: PermissionUser) {
-  if (isClientOfGtiUser(user)) {
-    return "NONE" as const;
-  }
-
-  if (user.role === UserRole.SUPER_ADMIN) {
+  if (isGlobalProjectAdministrator(user)) {
     return "FULL" as const;
   }
 
@@ -191,15 +173,6 @@ export function assertCanUseArchives(
 
 export function getUserPermissionSet(user: PermissionUser) {
   return getBasePermissionSet(user);
-}
-
-function isArchiveSensitivePermission(permissionKey: PermissionKey) {
-  return (
-    permissionKey === "archive.view" ||
-    permissionKey === "archive.download" ||
-    permissionKey === "archive.uploadFile" ||
-    permissionKey === "project.completeArchive"
-  );
 }
 
 function hasProjectPermissionGrant(
@@ -227,7 +200,6 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
     permissionKey === "collaborator.inviteToProject" ||
     permissionKey === "collaborator.removeFromProject" ||
     permissionKey === "collaborator.pauseVisibility" ||
-    permissionKey === "collaborator.changeType" ||
     permissionKey === "collaborator.changeAccess" ||
     permissionKey === "stage.reviewSubmission" ||
     permissionKey === "stage.requestRevision" ||
@@ -251,8 +223,7 @@ export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
     projectCounts: hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),
     collaboration: hasPermission(user, "collaboration.viewDirectory"),
-    users:
-      user.role === UserRole.SUPER_ADMIN && hasPermission(user, "users.view"),
+    users: isBusinessAdministratorRole(user.role) && hasPermission(user, "users.view"),
     notifications: hasPermission(user, "notification.view"),
     library: hasPermission(user, "library.view"),
     archives: canUseArchives(user),
@@ -306,10 +277,6 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
-  if (isArchiveSensitivePermission(permissionKey) && isClientOfGtiUser(user)) {
-    return false;
-  }
-
   if (
     isProjectOwnerOrCoOwner(user, project) &&
     isProjectOwnerManagePermission(permissionKey)
@@ -400,7 +367,6 @@ export function hasProjectPermission(
       return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "collaborator.inviteToProject":
     case "collaborator.removeFromProject":
-    case "collaborator.changeType":
     case "collaborator.changeAccess":
       return isProjectAdmin(user) || isProjectOwnerOrCoOwner(user, project);
     case "stage.acceptBrief":

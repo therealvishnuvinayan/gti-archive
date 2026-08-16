@@ -2745,7 +2745,6 @@ export function ProjectChatWorkspace({
   const [collaboratorForm, setCollaboratorForm] = useState<CollaboratorForm>({
     name: "",
     email: "",
-    type: "GTI_INTERNAL_CLIENT",
   });
   const [isNearChatBottom, setIsNearChatBottom] = useState(true);
   const [newRealtimeMessageCount, setNewRealtimeMessageCount] = useState(0);
@@ -4541,7 +4540,6 @@ export function ProjectChatWorkspace({
     setCollaboratorForm({
       name: "",
       email: "",
-      type: "GTI_INTERNAL_CLIENT",
     });
     setCollaboratorDialogError(undefined);
     setCollaboratorDialogOpen(true);
@@ -4625,15 +4623,13 @@ export function ProjectChatWorkspace({
         return selection;
       }
 
-      const group = availableCollaborator.typeGroup;
       selection.push({
         id: availableCollaborator.id,
         name: availableCollaborator.name,
         email: availableCollaborator.email,
-        role: group === "external" ? "External Collaborator" : "Collaborator",
-        group,
-        participantType: availableCollaborator.type,
-        ...normalizeProjectCollaboratorPermissions(null, availableCollaborator.type),
+        role: "Project Participant",
+        group: "internal",
+        ...normalizeProjectCollaboratorPermissions(null),
         chatVisibilityPaused: false,
         access: "view",
         removable: true,
@@ -4654,11 +4650,7 @@ export function ProjectChatWorkspace({
         project.id,
         nextCollaborators.map((collaborator) => ({
           id: collaborator.id,
-          participantType: collaborator.participantType,
-          ...normalizeProjectCollaboratorPermissions(
-            collaborator,
-            collaborator.participantType,
-          ),
+          ...normalizeProjectCollaboratorPermissions(collaborator),
         })),
       );
 
@@ -4715,19 +4707,11 @@ export function ProjectChatWorkspace({
           .filter((collaborator) => collaborator.access !== "owner")
           .map((collaborator) => ({
             id: collaborator.id,
-            participantType: collaborator.participantType,
-            ...normalizeProjectCollaboratorPermissions(
-              collaborator,
-              collaborator.participantType,
-            ),
+            ...normalizeProjectCollaboratorPermissions(collaborator),
           })),
         {
           id: inviteResult.collaborator.id,
-          participantType: inviteResult.collaborator.type,
-          ...normalizeProjectCollaboratorPermissions(
-            null,
-            inviteResult.collaborator.type,
-          ),
+          ...normalizeProjectCollaboratorPermissions(null),
         },
       ]);
 
@@ -10023,7 +10007,7 @@ export function ProjectChatWorkspace({
               : !hasOfficialStageSubmission
                 ? "Invoice is required before completing this stage. Submit work first to request an invoice."
               : "Invoice is required before completing this stage. Request invoice from the executor."
-            : "This will mark the current stage as completed. Only the project owner can do this."
+            : "This will mark the current stage as completed. Project owners, co-owners, and administrators can do this."
         }
         confirmLabel={
           stageInvoiceMissing

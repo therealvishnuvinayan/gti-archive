@@ -203,11 +203,10 @@ async function main() {
   };
   const userIds = [ids.owner, ids.coOwner, ids.executor, ids.collaborator, ids.admin, ids.superAdmin, ids.outsider];
   const projectIds = [ids.project, ids.foreignProject];
-  const owner = { id: ids.owner, role: UserRole.COLLABORATOR };
-  const coOwner = { id: ids.coOwner, role: UserRole.COLLABORATOR };
-  const executor = { id: ids.executor, role: UserRole.COLLABORATOR };
-  const collaborator = { id: ids.collaborator, role: UserRole.COLLABORATOR };
-  const admin = { id: ids.admin, role: UserRole.ADMIN };
+  const owner = { id: ids.owner, role: UserRole.ADMIN };
+  const coOwner = { id: ids.coOwner, role: UserRole.ADMIN };
+  const executor = { id: ids.executor, role: UserRole.USER };
+  const collaborator = { id: ids.collaborator, role: UserRole.USER };
   const superAdmin = { id: ids.superAdmin, role: UserRole.SUPER_ADMIN };
   const sentEmails: SendEmailInput[] = [];
   const sentEmailCount = () => sentEmails.length;
@@ -222,13 +221,13 @@ async function main() {
   try {
     await prisma.user.createMany({
       data: [
-        [ids.owner, UserRole.COLLABORATOR],
-        [ids.coOwner, UserRole.COLLABORATOR],
-        [ids.executor, UserRole.COLLABORATOR],
-        [ids.collaborator, UserRole.COLLABORATOR],
+        [ids.owner, UserRole.ADMIN],
+        [ids.coOwner, UserRole.ADMIN],
+        [ids.executor, UserRole.USER],
+        [ids.collaborator, UserRole.USER],
         [ids.admin, UserRole.ADMIN],
         [ids.superAdmin, UserRole.SUPER_ADMIN],
-        [ids.outsider, UserRole.COLLABORATOR],
+        [ids.outsider, UserRole.USER],
       ].map(([id, role]) => ({
         id,
         email: `${id}@example.test`,
@@ -277,7 +276,6 @@ async function main() {
       recipientPhone: "971 50 123 4567",
       requestNote: "Please courier one physical sample before the deadline.",
     };
-    await expectRejected(createProductionSampleRound(admin, { ...baseInput, clientRequestId: `admin-${runId}` }, { sendEmail: sendSuccess }), "ADMIN alone must not manage Stage 7");
     await expectRejected(createProductionSampleRound(executor, { ...baseInput, clientRequestId: `executor-${runId}` }, { sendEmail: sendSuccess }), "an executor must not manage Stage 7");
     await expectRejected(createProductionSampleRound(collaborator, { ...baseInput, clientRequestId: `collab-${runId}` }, { sendEmail: sendSuccess }), "a collaborator must not manage Stage 7");
     await expectRejected(createProductionSampleRound(owner, { ...baseInput, clientRequestId: `blank-name-${runId}`, name: " " }, { sendEmail: sendSuccess }), "Round Name must be required");
@@ -328,7 +326,7 @@ async function main() {
     const rejected = await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Colour is outside the approved tolerance." });
     check(!rejected.duplicate, "the manager must be able to reject the delivered physical sample");
     const rejectedRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: failed.id } });
-    check(rejectedRow.decision === PhysicalSampleDecision.REJECTED && rejectedRow.decisionNote === "Colour is outside the approved tolerance." && rejectedRow.decidedById === ids.owner && Boolean(rejectedRow.decidedAt), "rejection must persist immutable decision audit fields");
+    check(rejectedRow.decision === PhysicalSampleDecision.REJECTED && rejectedRow.decisionNote === "<p>Colour is outside the approved tolerance.</p>" && rejectedRow.decidedById === ids.owner && Boolean(rejectedRow.decidedAt), "rejection must persist immutable decision audit fields");
     check(rejectedRow.status === ProductionSampleRoundStatus.COMPLETED && (await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } })).status === ProductionSupervisionStatus.REVISIONS_NEEDED, "rejection must map to Rejected while preserving the legacy status field");
     check((await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Ignored duplicate note" })).duplicate, "the same final decision must be idempotent");
     await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.ACCEPTED }), "a rejected round must never be overwritten as accepted");

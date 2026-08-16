@@ -52,7 +52,6 @@ function getDefaultCollaboratorForm(): CollaboratorForm {
   return {
     name: "",
     email: "",
-    type: "GTI_INTERNAL_CLIENT",
   };
 }
 
@@ -61,7 +60,7 @@ function toUserOption(collaborator: CollaboratorRecord): ProjectUserOption {
     id: collaborator.id,
     name: collaborator.name,
     email: collaborator.email,
-    role: "COLLABORATOR",
+    role: "USER",
   };
 }
 
@@ -96,9 +95,7 @@ export function CreateProjectForm({
   const isEditing = Boolean(editingProjectId);
   const [projectName, setProjectName] = useState(initialProject?.name ?? "");
   const [collaborators, setCollaborators] = useState(availableCollaborators);
-  const [ownerIds, setOwnerIds] = useState<string[]>(() => [
-    initialProject?.ownerId ?? currentUser.id,
-  ]);
+  const ownerId = initialProject?.ownerId ?? currentUser.id;
   const [coOwnerIds, setCoOwnerIds] = useState<string[]>(
     initialProject?.coOwnerIds ?? [],
   );
@@ -126,55 +123,43 @@ export function CreateProjectForm({
     () => collaboratorUserOptions.filter((user) => !collaboratorIds.includes(user.id)),
     [collaboratorIds, collaboratorUserOptions],
   );
-  const ownerOptions = useMemo(() => {
+  const coOwnerCandidateOptions = useMemo(() => {
     const options: ProjectUserOption[] = eligibleOwnerCandidates
-      .filter((candidate) => candidate.role !== "SUPER_ADMIN")
+      .filter((candidate) => candidate.role === "ADMIN")
       .map((candidate) => ({
         id: candidate.id,
         name: candidate.name,
         email: candidate.email,
         role: candidate.role,
-        avatarSrc:
-          candidate.id === currentUser.id ? currentUser.avatarSrc : null,
+        avatarSrc: candidate.id === currentUser.id ? currentUser.avatarSrc : null,
       }));
-    const uniqueOptions = new Map(
-      options.map((user) => [user.id, user] as const),
-    );
-
-    uniqueOptions.set(currentUser.id, currentUser);
-
-    return [...uniqueOptions.values()];
+    return [...new Map(options.map((user) => [user.id, user] as const)).values()];
   }, [currentUser, eligibleOwnerCandidates]);
+  const projectOwner = useMemo(
+    () =>
+      currentUser.id === ownerId
+        ? currentUser
+        : eligibleOwnerCandidates.find((candidate) => candidate.id === ownerId),
+    [currentUser, eligibleOwnerCandidates, ownerId],
+  );
   const coOwnerOptions = useMemo(
     () =>
-      ownerOptions.filter(
+      coOwnerCandidateOptions.filter(
         (user) =>
-          !ownerIds.includes(user.id) && !collaboratorIds.includes(user.id),
+          user.id !== ownerId && !collaboratorIds.includes(user.id),
       ),
-    [collaboratorIds, ownerIds, ownerOptions],
+    [coOwnerCandidateOptions, collaboratorIds, ownerId],
   );
   const projectCollaboratorOptions = useMemo(
     () =>
       collaboratorUserOptions.filter(
         (user) =>
-          !ownerIds.includes(user.id) &&
+          user.id !== ownerId &&
           !coOwnerIds.includes(user.id) &&
           !executorIds.includes(user.id),
       ),
-    [coOwnerIds, collaboratorUserOptions, executorIds, ownerIds],
+    [coOwnerIds, collaboratorUserOptions, executorIds, ownerId],
   );
-
-  function handleOwnerChange(nextOwnerIds: string[]) {
-    const nextOwnerId = nextOwnerIds[0];
-    setOwnerIds(nextOwnerId ? [nextOwnerId] : []);
-
-    if (nextOwnerId) {
-      setCoOwnerIds((current) => current.filter((id) => id !== nextOwnerId));
-      setCollaboratorIds((current) => current.filter((id) => id !== nextOwnerId));
-    }
-
-    setErrors((current) => ({ ...current, owner: undefined }));
-  }
 
   function openInviteDialog() {
     if (!canInviteCollaborator) {
@@ -246,10 +231,6 @@ export function CreateProjectForm({
       nextErrors.name = "Project name is required.";
     }
 
-    if (ownerIds.length !== 1) {
-      nextErrors.owner = "Select one project owner.";
-    }
-
     if (executorIds.length === 0) {
       nextErrors.executors = "Select at least one project executor.";
     }
@@ -264,7 +245,7 @@ export function CreateProjectForm({
     startCreating(async () => {
       const input = {
         name: projectName,
-        ownerId: ownerIds[0] ?? "",
+        ownerId,
         coOwnerIds,
         executorIds,
         collaboratorIds,
@@ -345,15 +326,14 @@ export function CreateProjectForm({
             <div className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">
               Project Owner
             </div>
-            <ProjectUserSelector
-              users={ownerOptions}
-              selectedIds={ownerIds}
-              onChange={handleOwnerChange}
-              mode="single"
-              placeholder="Search users..."
-              ariaLabel="Project owner"
-              error={errors.owner}
-            />
+            <div className="rounded-[16px] border border-[#d9e0d9] bg-[#f8faf8] px-4 py-3">
+              <p className="text-[14px] font-[700] text-[#18211b]">
+                {projectOwner?.name ?? "Project creator"}
+              </p>
+              <p className="mt-0.5 text-[12px] text-[#768078]">
+                {projectOwner?.email ?? "The project owner is fixed when the project is created."}
+              </p>
+            </div>
 
             <div className="pt-0 text-[14px] font-[700] text-[#18211b] md:pt-[16px]">
               Project Co-Owners

@@ -12,7 +12,7 @@ import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 type ManualLibraryAssetFavoriteUser = Pick<
   User,
-  "id" | "email" | "name" | "role" | "collaboratorType"
+  "id" | "email" | "name" | "role"
 > &
   PermissionUser;
 

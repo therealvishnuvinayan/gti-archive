@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
-import { getProjectCollaboratorTypeMeta } from "@/lib/project-collaborator-participant-types";
 import type { ProjectCollaboratorRecord, ProjectExecutorRecord } from "@/lib/projects";
 
 type ProjectCollaboratorsPanelProps = {
@@ -79,28 +78,6 @@ function getExecutorGroupBadgeClassName(executor: ProjectExecutorRecord) {
   return executor.group === "external"
     ? "border border-[#f1dfcf] bg-[#fff4ea] text-[#ca7b3b]"
     : "border border-[#d7ead7] bg-[#eef8ef] text-[#2f8d5d]";
-}
-
-function CollaboratorTypeBadge({
-  collaborator,
-  className = "",
-}: {
-  collaborator: ProjectCollaboratorRecord;
-  className?: string;
-}) {
-  const typeMeta = getProjectCollaboratorTypeMeta(collaborator.participantType);
-
-  return (
-    <span
-      className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-[700] uppercase leading-4 tracking-[0.06em] ${typeMeta.badgeClassName} ${className}`}
-    >
-      <span
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${typeMeta.dotClassName}`}
-        aria-hidden="true"
-      />
-      <span className="truncate">{typeMeta.label}</span>
-    </span>
-  );
 }
 
 function CollaboratorVisibilityButton({
@@ -171,12 +148,6 @@ function CollaboratorCompactRow({
         <p className={`${isModal ? "text-[12px]" : "text-[10px]"} truncate leading-4 text-[#707b73]`}>
           {collaborator.email ?? collaborator.role}
         </p>
-        <div className="mt-1 flex min-w-0">
-          <CollaboratorTypeBadge
-            collaborator={collaborator}
-            className={isModal ? "" : "max-w-[132px]"}
-          />
-        </div>
       </div>
       {actions ? <div className="flex shrink-0 items-center justify-end gap-0.5">{actions}</div> : <span />}
     </li>
@@ -609,18 +580,11 @@ function ProjectCollaboratorsModal({
       return collaborators;
     }
 
-    return collaborators.filter((collaborator) => {
-      const typeLabel = getProjectCollaboratorTypeMeta(
-        collaborator.participantType,
-      ).label.toLowerCase();
-
-      return (
+    return collaborators.filter((collaborator) =>
         collaborator.name.toLowerCase().includes(normalizedQuery) ||
         (collaborator.email ?? "").toLowerCase().includes(normalizedQuery) ||
-        collaborator.group.toLowerCase().includes(normalizedQuery) ||
-        typeLabel.includes(normalizedQuery)
-      );
-    });
+        collaborator.group.toLowerCase().includes(normalizedQuery),
+    );
   }, [collaborators, query]);
 
   if (!isOpen) {

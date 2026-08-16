@@ -1,43 +1,27 @@
 import { unstable_cache } from "next/cache";
 import { randomBytes, randomUUID } from "node:crypto";
 
-import {
-  CollaboratorType as PrismaCollaboratorType,
-  UserRole,
-  type User,
-} from "@prisma/client";
+import { UserRole, type User } from "@prisma/client";
 
 import { hashAuthPassword, normalizeAuthEmail } from "@/lib/auth";
 import { buildCollaboratorInviteEmail } from "@/lib/email/collaborator-invite";
 import { sendResendEmail } from "@/lib/email/resend";
 import { getPasswordValidationMessage } from "@/lib/password-rules";
-import {
-  getCollaboratorTypeGroup,
-  getCollaboratorTypeLabel,
-  isProjectCollaboratorParticipantType,
-  type ProjectCollaboratorParticipantType,
-} from "@/lib/project-collaborator-participant-types";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 
 export const COLLABORATORS_CACHE_TAG = "collaborators";
 export const CALENDAR_COLLABORATORS_CACHE_TAG = "calendar-collaborators";
 
-export type CollaboratorType = ProjectCollaboratorParticipantType;
-
 export type CollaboratorRecord = {
   id: string;
   name: string;
   email: string;
-  type: CollaboratorType;
-  typeLabel: string;
-  typeGroup: "internal" | "external";
 };
 
 export type CollaboratorInput = {
   name: string;
   email: string;
-  type: CollaboratorType;
 };
 
 export type InviteRegistrationRecord =
@@ -70,7 +54,6 @@ type CollaboratorValidationResult =
       data: {
         name: string;
         email: string;
-        type: PrismaCollaboratorType;
       };
     };
 
@@ -113,15 +96,11 @@ function mapCollaborator(user: Pick<
   | "id"
   | "email"
   | "name"
-  | "collaboratorType"
 >): CollaboratorRecord {
   return {
     id: user.id,
     name: user.name?.trim() || getFallbackName(user.email),
     email: user.email,
-    type: user.collaboratorType,
-    typeLabel: getCollaboratorTypeLabel(user.collaboratorType),
-    typeGroup: getCollaboratorTypeGroup(user.collaboratorType),
   };
 }
 
@@ -139,15 +118,10 @@ function validateCollaboratorInput(
     return { error: "Enter a valid collaborator email." };
   }
 
-  if (!isProjectCollaboratorParticipantType(input.type)) {
-    return { error: "Choose a valid collaborator type." };
-  }
-
   return {
     data: {
       name,
       email,
-      type: input.type as PrismaCollaboratorType,
     },
   };
 }
@@ -158,7 +132,7 @@ export async function getCollaborators() {
       withPrismaRetry(() =>
         prisma.user.findMany({
           where: {
-            role: UserRole.COLLABORATOR,
+            role: UserRole.USER,
           },
           orderBy: {
             createdAt: "asc",
@@ -167,7 +141,6 @@ export async function getCollaborators() {
             id: true,
             email: true,
             name: true,
-            collaboratorType: true,
           },
         }),
       ),
@@ -190,7 +163,6 @@ async function listCalendarCollaborators() {
             id: true,
             email: true,
             name: true,
-            collaboratorType: true,
           },
         },
       },
@@ -223,7 +195,7 @@ export async function updateCalendarCollaborators(
             id: {
               in: normalizedIds,
             },
-            role: UserRole.COLLABORATOR,
+            role: UserRole.USER,
           },
           select: {
             id: true,
@@ -297,7 +269,6 @@ export async function createCollaborator(
       id: true,
       email: true,
       name: true,
-      collaboratorType: true,
     },
   });
 
@@ -319,8 +290,7 @@ export async function createCollaborator(
     data: {
       email: parsed.data.email,
       name: parsed.data.name,
-      role: UserRole.COLLABORATOR,
-      collaboratorType: parsed.data.type,
+      role: UserRole.USER,
       passwordHash: hashAuthPassword(randomUUID()),
       inviteToken,
       inviteExpiresAt,
@@ -329,7 +299,6 @@ export async function createCollaborator(
       id: true,
       email: true,
       name: true,
-      collaboratorType: true,
     },
   });
 
@@ -338,7 +307,6 @@ export async function createCollaborator(
     collaboratorEmail: collaborator.email,
     inviterName,
     inviteUrl: buildInviteUrl(inviteToken),
-    collaboratorType: getCollaboratorTypeLabel(input.type),
   });
 
   const emailResult = await sendResendEmail({
@@ -394,10 +362,11 @@ export async function updateCollaborator(
     },
     select: {
       id: true,
+      role: true,
     },
   });
 
-  if (!collaborator) {
+  if (!collaborator || collaborator.role !== UserRole.USER) {
     return { error: "This collaborator could not be found." };
   }
 
@@ -408,14 +377,12 @@ export async function updateCollaborator(
     data: {
       email: parsed.data.email,
       name: parsed.data.name,
-      role: UserRole.COLLABORATOR,
-      collaboratorType: parsed.data.type,
+      role: UserRole.USER,
     },
     select: {
       id: true,
       email: true,
       name: true,
-      collaboratorType: true,
     },
   });
 
@@ -451,7 +418,7 @@ export async function deleteCollaborator(
       },
     });
 
-    if (!collaborator || collaborator.role !== UserRole.COLLABORATOR) {
+    if (!collaborator || collaborator.role !== UserRole.USER) {
       return { error: "Collaborator not found." };
     }
 
