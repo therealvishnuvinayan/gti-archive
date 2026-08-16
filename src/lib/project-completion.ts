@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  ArchiveRecordStatus,
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
@@ -342,12 +343,12 @@ function requireCompletionProjectPermission(
 
 function isCompletedProject(project: {
   status: Parameters<typeof isProjectStatusCompleted>[0];
-  archive: { id: string } | null;
+  archive: { id: string; status: ArchiveRecordStatus } | null;
   archivedAt: Date | null;
   completedAt: Date | null;
 }) {
   return Boolean(
-    project.archive ||
+    (project.archive && project.archive.status !== ArchiveRecordStatus.SAVED) ||
       project.archivedAt ||
       project.completedAt ||
       isProjectStatusCompleted(project.status),
@@ -365,7 +366,7 @@ function areAllStagesCompleted(project: {
 
 function canUseFinalCompletionWorkflow(project: {
   status: Parameters<typeof isProjectStatusCompleted>[0];
-  archive: { id: string } | null;
+  archive: { id: string; status: ArchiveRecordStatus } | null;
   archivedAt: Date | null;
   completedAt: Date | null;
   stages?: Array<{ status: string }>;
@@ -807,6 +808,7 @@ async function getProjectCompletionProject(projectId: string) {
         archive: {
           select: {
             id: true,
+            status: true,
             files: {
               orderBy: [
                 {
@@ -1988,6 +1990,7 @@ export async function finalizeProjectCompletionDocumentUpload(
           archive: {
             select: {
               id: true,
+              status: true,
             },
           },
           stages: {

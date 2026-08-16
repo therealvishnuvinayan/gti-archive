@@ -87,7 +87,7 @@ export function ArchiveArtworkMetadataField({
           >
             <SelectValue placeholder={`Select ${labelText.toLowerCase()}`} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[230]">
             {options.map((option) => (
               <SelectItem key={option} value={option}>
                 {option}
@@ -128,6 +128,7 @@ export function ArchiveArtworkMetadataField({
           disabled={disabled}
           required={required}
           clearable={!required}
+          popoverZIndex={230}
           placeholder={`Select ${labelText.toLowerCase()}`}
           triggerClassName={`h-10 w-full justify-between rounded-[14px] border bg-white px-3 text-left text-[13px] font-normal shadow-none hover:bg-white ${
             isMissing ? "border-[#df6f66]" : "border-line"

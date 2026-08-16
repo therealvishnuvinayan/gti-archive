@@ -36,6 +36,25 @@ const [
   readFile("src/lib/stage-seven.ts", "utf8"),
   readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
 ]);
+const [
+  archivesService,
+  savedArchiveMigration,
+  optionalLegacyStageMigration,
+  assetPreview,
+  archiveMetadataForm,
+] = await Promise.all([
+    readFile("src/lib/archives.ts", "utf8"),
+    readFile(
+      "prisma/migrations/20260812190000_stage_six_saved_archive_snapshot/migration.sql",
+      "utf8",
+    ),
+    readFile(
+      "prisma/migrations/20260812203000_saved_archive_optional_legacy_stage/migration.sql",
+      "utf8",
+    ),
+    readFile("src/components/projects/asset-preview-button.tsx", "utf8"),
+    readFile("src/components/archives/archive-artwork-metadata-form.tsx", "utf8"),
+  ]);
 
 for (const content of [
   "Stage 6 - Production &amp; Handover",
@@ -242,5 +261,56 @@ assert(
 );
 assert(service.includes("isGlobalProjectAdministrator(user)"), "Stage 6 management must grant business administrators global authority.");
 assert(actions.includes("completeStageSixAction") && actions.includes("handoverProductionUnitAction"), "Stage 6 server actions must expose real workflow mutations.");
+assert(
+  workspace.includes("StageSixArchiveDialog") &&
+    workspace.includes("Save to Archives") &&
+    workspace.includes("Update Saved Archive") &&
+    workspace.includes("Open Saved Archive") &&
+    workspace.includes("Stage 7 remains active") &&
+    workspace.includes("max-h-[calc(100dvh-2rem)]") &&
+    workspace.includes("min-h-0 flex-1 overflow-y-auto overscroll-contain") &&
+    !workspace.includes("router.push"),
+  "Completed Stage 6 must offer a viewport-bounded archive wizard without redirecting away.",
+);
+assert(
+  workspace.includes('<SelectContent className="z-[230]">') &&
+    assetPreview.includes("fixed inset-0 z-[260]") &&
+    archiveMetadataForm.includes('<SelectContent className="z-[230]">') &&
+    archiveMetadataForm.includes("popoverZIndex={230}") &&
+    workspace.includes(
+      "bg-[linear-gradient(120deg,#f8fcf8_0%,#eef7f0_58%,#e3f1e7_100%)]",
+    ),
+  "The Stage 6 archive menus, metadata date picker, and file preview must render above the visually structured archive dialog.",
+);
+assert(
+  actions.includes("prepareStageSixArchiveAction") &&
+    actions.includes("saveStageSixArchiveAction") &&
+    actions.includes("archive.previousArchiveCategorySlug") &&
+    archivesService.includes("getStageSixArchivePreparation") &&
+    archivesService.includes("saveStageSixArchiveSnapshot") &&
+    archivesService.includes("ArchiveRecordStatus.SAVED") &&
+    archivesService.includes("projectRemainsActive: true") &&
+    archivesService.includes("uniqueSubmittedSourceIds.size") &&
+    archivesService.includes("expectedSourceIds.has(sourceId)"),
+  "Stage 6 archive actions must save an exact, non-terminal server-validated source snapshot and invalidate moved categories.",
+);
+assert(
+  archivesService.includes("latestProject.archive.status !== ArchiveRecordStatus.SAVED") &&
+    archivesService.includes("status: ArchiveRecordStatus.ARCHIVED") &&
+    archivesService.includes("await tx.projectArchive.update({") &&
+    archivesService.includes("reserveExistingArchiveFileNames") &&
+    archivesService.includes("tx.archiveArtworkMetadata.upsert"),
+  "Final completion must safely upgrade the saved archive in place.",
+);
+assert(
+  schema.includes("SAVED") &&
+    schema.includes("ARCHIVE_SNAPSHOT_SAVED") &&
+    savedArchiveMigration.includes("'SAVED'") &&
+    savedArchiveMigration.includes("'ARCHIVE_SNAPSHOT_SAVED'") &&
+    optionalLegacyStageMigration.includes(
+      'ALTER COLUMN "finalStageId" DROP NOT NULL',
+    ),
+  "The schema must distinguish a saved snapshot and allow its legacy stage to be absent.",
+);
 
 console.log("Stage 6 production and handover UI/security checks passed.");

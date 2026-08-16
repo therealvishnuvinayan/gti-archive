@@ -315,12 +315,18 @@ export async function deleteProjectAction(projectId: string) {
   revalidateTag(PROJECTS_CACHE_TAG, "max");
 }
 
-function revalidateArchiveFlow(projectId: string, categorySlug?: string) {
+function revalidateArchiveFlow(
+  projectId: string,
+  categorySlugs?: string | Array<string | null | undefined>,
+) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/chat`);
   revalidatePath("/archives");
 
-  if (categorySlug) {
+  const slugs = Array.isArray(categorySlugs) ? categorySlugs : [categorySlugs];
+  for (const categorySlug of new Set(
+    slugs.filter((slug): slug is string => Boolean(slug)),
+  )) {
     revalidatePath(`/archives/${categorySlug}`);
   }
 }
@@ -943,7 +949,10 @@ export async function completeProjectArchiveAction(input: {
   try {
     const archive = await completeProjectArchive(user, input);
     revalidateProjectFlow();
-    revalidateArchiveFlow(input.projectId, archive.archiveCategorySlug);
+    revalidateArchiveFlow(input.projectId, [
+      archive.previousArchiveCategorySlug,
+      archive.archiveCategorySlug,
+    ]);
     publishStageChatTimelineInvalidation({
       projectId: input.projectId,
       stageId: input.stageId,

@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 import {
   AlertTriangle,
+  Archive,
   ArrowDown,
   ArrowRight,
   ArrowUp,
@@ -22,6 +23,7 @@ import {
   FileImage,
   FileText,
   ListChecks,
+  Loader2,
   PackageCheck,
   Plus,
   RefreshCw,
@@ -41,8 +43,15 @@ import {
   removeProductionApproverAction,
   removeProductionUnitFileAction,
   reorderProductionApproverAction,
+  prepareStageSixArchiveAction,
   retryProductionApprovalDispatchAction,
+  saveStageSixArchiveAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/6/actions";
+import {
+  ArchiveMetadataIdentificationStep,
+  ArchiveMetadataReviewList,
+  ArchiveMetadataTechnicalStep,
+} from "@/components/archives/archive-artwork-metadata-form";
 import {
   AssetImageThumbnail,
   AssetPreviewButton,
@@ -50,7 +59,13 @@ import {
 import { ProjectAccessRealtimeGuard } from "@/components/projects/project-access-realtime-guard";
 import { ProjectStageSummary } from "@/components/projects/project-stage-summary";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -60,6 +75,14 @@ import {
 import { RichTextEditor, richTextToPlainText } from "@/components/ui/rich-text-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getArchiveFileNameValidationError } from "@/lib/archive-file-name";
+import {
+  archiveProjectWizardSteps,
+  getArchiveArtworkMetadataMissingCount,
+  getArchiveArtworkMetadataMissingGroups,
+  type ArchiveArtworkMetadataDraft,
+} from "@/lib/archive-artwork-metadata";
+import type { StageSixArchivePreparation } from "@/lib/archives";
 import type { ProjectStageShellRecord } from "@/lib/projects";
 import {
   STAGE_FIVE_FIELD_DEFINITIONS,
@@ -886,6 +909,514 @@ function HandoverSection({ unit, canManage, onOpen }: { unit: StageSixUnitRecord
   );
 }
 
+type ArchiveWizardStep = 0 | 1 | 2 | 3;
+
+function StageSixArchiveDialog({
+  preparation,
+  projectId,
+  onClose,
+  onSaved,
+}: {
+  preparation: StageSixArchivePreparation;
+  projectId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [step, setStep] = useState<ArchiveWizardStep>(0);
+  const [categoryId, setCategoryId] = useState(preparation.selectedCategoryId);
+  const [fileNames, setFileNames] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      preparation.files.map((file) => [
+        file.sourceAttachmentId,
+        file.defaultArchiveFileName,
+      ]),
+    ),
+  );
+  const [metadata, setMetadata] = useState<
+    Record<string, ArchiveArtworkMetadataDraft>
+  >(() =>
+    Object.fromEntries(
+      preparation.files.map((file) => [
+        file.sourceAttachmentId,
+        file.metadataDraft,
+      ]),
+    ),
+  );
+  const [error, setError] = useState("");
+  const [saving, startSaving] = useTransition();
+
+  const fileErrors = useMemo(
+    () =>
+      Object.fromEntries(
+        preparation.files.map((file) => {
+          const otherNames = preparation.files
+            .filter(
+              (candidate) =>
+                candidate.sourceAttachmentId !== file.sourceAttachmentId,
+            )
+            .map(
+              (candidate) =>
+                fileNames[candidate.sourceAttachmentId] ??
+                candidate.defaultArchiveFileName,
+            );
+
+          return [
+            file.sourceAttachmentId,
+            getArchiveFileNameValidationError(
+              file.originalFileName,
+              fileNames[file.sourceAttachmentId] ?? file.defaultArchiveFileName,
+              otherNames,
+            ),
+          ];
+        }),
+      ) as Record<string, string | null>,
+    [fileNames, preparation.files],
+  );
+  const metadataFiles = preparation.files.map((file) => ({
+    id: file.sourceAttachmentId,
+    originalFileName: file.originalFileName,
+    metadata: metadata[file.sourceAttachmentId] ?? file.metadataDraft,
+  }));
+  const missingMetadataCount = metadataFiles.reduce(
+    (count, file) =>
+      count + getArchiveArtworkMetadataMissingCount(file.metadata),
+    0,
+  );
+  const canContinueFiles =
+    Boolean(categoryId) && !Object.values(fileErrors).some(Boolean);
+  const canSave = canContinueFiles && missingMetadataCount === 0;
+
+  function updateMetadata(
+    fileId: string,
+    field: keyof ArchiveArtworkMetadataDraft,
+    value: string,
+  ) {
+    const sourceFile = preparation.files.find(
+      (file) => file.sourceAttachmentId === fileId,
+    );
+    if (!sourceFile) return;
+
+    setMetadata((current) => ({
+      ...current,
+      [fileId]: {
+        ...(current[fileId] ?? sourceFile.metadataDraft),
+        [field]: value,
+      },
+    }));
+  }
+
+  function applyProjectMetadataToAll() {
+    const firstFile = metadataFiles[0];
+    if (!firstFile) return;
+
+    const sharedFields: Array<keyof ArchiveArtworkMetadataDraft> = [
+      "languageMarket",
+      "artworkType",
+      "brandSubBrand",
+      "productSku",
+      "campaignProject",
+      "colourSpace",
+      "printProcess",
+      "specialFinishes",
+      "archiveStatus",
+      "clientBrandOwner",
+      "regulatoryClearance",
+      "fontsUsed",
+      "imagesPhotography",
+      "illustrationsIcons",
+      "colourCodes",
+      "thirdPartyLogosIp",
+      "supplierPrinter",
+      "printProofRef",
+      "packagingDielineRef",
+      "relatedArtworks",
+      "briefSpecLink",
+      "generalNotes",
+    ];
+
+    setMetadata((current) =>
+      Object.fromEntries(
+        preparation.files.map((file) => {
+          const next = {
+            ...(current[file.sourceAttachmentId] ?? file.metadataDraft),
+          };
+          for (const field of sharedFields) {
+            next[field] = firstFile.metadata[field];
+          }
+          return [file.sourceAttachmentId, next];
+        }),
+      ),
+    );
+  }
+
+  function save() {
+    if (!canSave) {
+      if (!canContinueFiles) {
+        setError("Choose an archive category and fix the archive file names.");
+        setStep(0);
+        return;
+      }
+
+      const firstIncomplete = metadataFiles.find(
+        (file) =>
+          getArchiveArtworkMetadataMissingGroups(file.metadata).length > 0,
+      );
+      setError(
+        firstIncomplete
+          ? `Complete the required metadata for ${firstIncomplete.originalFileName}.`
+          : "Complete the required archive metadata.",
+      );
+      setStep(1);
+      return;
+    }
+
+    setError("");
+    startSaving(async () => {
+      const result = await saveStageSixArchiveAction({
+        projectId,
+        archiveCategoryId: categoryId,
+        files: preparation.files.map((file) => ({
+          sourceAttachmentId: file.sourceAttachmentId,
+          finalArchiveFileName:
+            fileNames[file.sourceAttachmentId] ?? file.defaultArchiveFileName,
+          artworkMetadata:
+            metadata[file.sourceAttachmentId] ?? file.metadataDraft,
+        })),
+      });
+
+      if ("error" in result) {
+        setError(result.error ?? "Unable to save the Stage 6 archive.");
+        return;
+      }
+
+      showSuccessToast(
+        "Final files saved to Archives. Stage 7 remains active.",
+      );
+      onSaved();
+      onClose();
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[180] flex items-center justify-center overflow-hidden bg-[#0d1b12]/58 px-3 py-4 backdrop-blur-[4px] sm:px-5 sm:py-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="stage-six-archive-title"
+    >
+      <Card className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[1080px] flex-col overflow-hidden rounded-[30px] border border-white/70 bg-[#f8faf8] shadow-[0_40px_110px_rgba(7,22,12,.34)] sm:max-h-[calc(100dvh-3rem)]">
+        <CardHeader className="relative shrink-0 flex-row items-start justify-between gap-4 overflow-hidden border-b border-[#dce7de] bg-[linear-gradient(120deg,#f8fcf8_0%,#eef7f0_58%,#e3f1e7_100%)] p-5 sm:p-7">
+          <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full border-[34px] border-white/35" />
+          <div className="relative flex min-w-0 items-start gap-4">
+            <span className="grid size-12 shrink-0 place-items-center rounded-[16px] bg-[#1f704a] text-white shadow-[0_12px_28px_rgba(31,112,74,.22)]">
+              <Archive className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-[#cce1d1] bg-white/75 px-2.5 py-1 text-[9px] font-[800] uppercase tracking-[.1em] text-[#397256]">
+                  Stage 6 snapshot
+                </span>
+                <span className="text-[11px] font-[700] text-[#647269]">
+                  {preparation.files.length} final file
+                  {preparation.files.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <CardTitle
+                id="stage-six-archive-title"
+                className="text-[23px] font-[780] tracking-[-.02em] text-[#111712] sm:text-[25px]"
+              >
+                Save Final Files to Archives
+              </CardTitle>
+              <p className="mt-1.5 max-w-[650px] text-[13px] leading-5 text-[#5f6e63]">
+                Create an archive snapshot while the project continues normally
+                into Stage 7.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            onClick={onClose}
+            disabled={saving}
+            className="relative shrink-0 border border-[#d6e1d8] bg-white/80 shadow-[0_8px_20px_rgba(24,45,30,.08)] hover:bg-white"
+            aria-label="Close archive dialog"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+
+        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f8faf8] px-5 py-5 sm:px-7 sm:py-6">
+          {error ? (
+            <div className="mb-4 rounded-[14px] border border-[#f0c9c7] bg-[#fff2f1] px-4 py-3 text-[12px] text-[#aa463f]">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="grid gap-2 rounded-[20px] border border-[#e0e7e1] bg-white p-2 shadow-[0_8px_24px_rgba(25,45,31,.04)] sm:grid-cols-4">
+            {archiveProjectWizardSteps.map((label, index) => (
+              <button
+                key={label}
+                type="button"
+                disabled={saving}
+                onClick={() => setStep(index as ArchiveWizardStep)}
+                className={cn(
+                  "relative flex min-h-[64px] items-center gap-3 overflow-hidden rounded-[14px] border px-3 py-2.5 text-left transition-all",
+                  step === index
+                    ? "border-[#69a17d] bg-[linear-gradient(135deg,#eff9f1,#e5f4e9)] text-[#173120] shadow-[0_6px_16px_rgba(39,105,70,.1)]"
+                    : index < step
+                      ? "border-[#d5e5d9] bg-[#f6faf7] text-[#42624d]"
+                      : "border-transparent bg-white text-[#718077] hover:border-[#dce6dd] hover:bg-[#fbfcfb]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-[850]",
+                    step === index
+                      ? "bg-[#26734d] text-white"
+                      : index < step
+                        ? "bg-[#dcefe1] text-[#27704b]"
+                        : "bg-[#edf1ee] text-[#738077]",
+                  )}
+                >
+                  {index < step ? <Check className="h-3.5 w-3.5" /> : index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[8px] font-[800] uppercase tracking-[.11em] opacity-70">
+                    Step {index + 1}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] font-[800] leading-4">
+                    {label}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {step === 0 ? (
+            <div className="mt-5 space-y-4">
+              <div className="grid overflow-hidden rounded-[20px] border border-[#dbe6dd] bg-white shadow-[0_10px_28px_rgba(25,45,31,.05)] sm:grid-cols-[minmax(0,1fr)_300px]">
+                <div className="flex items-center gap-3 p-4 sm:p-5">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-[#edf6ef] text-[#2c7650]">
+                    <FileCheck2 className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-[800] uppercase tracking-[.08em] text-[#70806f]">
+                      Project
+                    </p>
+                    <p className="mt-0.5 truncate text-[16px] font-[780] text-[#18251c]">
+                      {preparation.projectName}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-[#687269]">
+                      Source: Stage 6 approved production files
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2 border-t border-[#e1e8e2] bg-[#f3f8f4] p-4 sm:border-l sm:border-t-0 sm:p-5">
+                  <p className="text-[10px] font-[800] uppercase tracking-[.08em] text-[#70806f]">
+                    Archive Category *
+                  </p>
+                  <Select
+                    value={categoryId}
+                    onValueChange={setCategoryId}
+                    disabled={saving}
+                  >
+                    <SelectTrigger className="h-11 rounded-[12px] border border-[#d5e2d8] shadow-[0_4px_12px_rgba(26,53,35,.04)] focus-visible:border-[#70a382]">
+                      <SelectValue placeholder="Choose archive category" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[230]">
+                      {preparation.categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.parentName
+                            ? `${category.parentName} / ${category.name}`
+                            : category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {preparation.files.map((file) => (
+                <div
+                  key={file.sourceAttachmentId}
+                  className="group grid overflow-hidden rounded-[20px] border border-[#dfe6df] bg-white shadow-[0_8px_24px_rgba(25,45,31,.035)] transition hover:border-[#cadbce] hover:shadow-[0_14px_34px_rgba(25,45,31,.07)] lg:grid-cols-[minmax(0,1fr)_minmax(320px,.82fr)]"
+                >
+                  <div className="flex min-w-0 gap-3 p-4 sm:p-5">
+                    <span className="grid size-12 shrink-0 place-items-center rounded-[15px] border border-[#dce9df] bg-[linear-gradient(145deg,#f3faf5,#e7f3ea)] text-[#2b7650]">
+                      {file.mimeType.startsWith("image/") ? (
+                        <FileImage className="h-5 w-5" />
+                      ) : (
+                        <FileText className="h-5 w-5" />
+                      )}
+                    </span>
+                    <div className="min-w-0 pt-0.5">
+                      <p
+                        className="truncate text-[13px] font-[780] text-[#1b271f]"
+                        title={file.originalFileName}
+                      >
+                        {file.originalFileName}
+                      </p>
+                      <p className="mt-1 text-[11px] text-[#687269]">
+                        {file.fileSizeLabel} · {file.sourceLabel}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <AssetPreviewButton
+                          fileName={file.originalFileName}
+                          mimeType={file.mimeType}
+                          previewPath={file.previewPath}
+                          downloadPath={file.downloadPath}
+                          iconOnly={false}
+                          triggerClassName="rounded-full border border-[#d8e2d9] bg-white px-3 text-[#294034] shadow-sm hover:bg-[#f1f7f2]"
+                        />
+                        <Button
+                          asChild
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="rounded-full border-[#d8e2d9] bg-white shadow-sm hover:bg-[#f1f7f2]"
+                        >
+                          <a href={file.downloadPath}>
+                            <Download className="h-4 w-4" /> Download
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  <label className="space-y-2 border-t border-[#e4e9e4] bg-[#fafcfa] p-4 sm:p-5 lg:border-l lg:border-t-0">
+                    <span className="text-[10px] font-[800] uppercase tracking-[.08em] text-[#70806f]">
+                      Final Archive File Name *
+                    </span>
+                    <Input
+                      value={
+                        fileNames[file.sourceAttachmentId] ??
+                        file.defaultArchiveFileName
+                      }
+                      onChange={(event) =>
+                        setFileNames((current) => ({
+                          ...current,
+                          [file.sourceAttachmentId]: event.target.value,
+                        }))
+                      }
+                      disabled={saving}
+                      className={cn(
+                        "h-11 rounded-[12px] border-[#d7e1d9] bg-white shadow-[0_3px_10px_rgba(25,45,31,.035)] focus-visible:border-[#70a382]",
+                        fileErrors[file.sourceAttachmentId] &&
+                          "border-[#df6f66]",
+                      )}
+                    />
+                    {fileErrors[file.sourceAttachmentId] ? (
+                      <span className="block text-[11px] text-[#bd4a43]">
+                        {fileErrors[file.sourceAttachmentId]}
+                      </span>
+                    ) : (
+                      <span className="block text-[10px] text-[#77827a]">
+                        Keep the original extension.
+                      </span>
+                    )}
+                  </label>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {step === 1 ? (
+            <div className="mt-5">
+              <ArchiveMetadataIdentificationStep
+                files={metadataFiles}
+                onChange={updateMetadata}
+                onApplyToAll={applyProjectMetadataToAll}
+                disabled={saving}
+                description="Complete Artwork Legend identification for each Stage 6 final file."
+              />
+            </div>
+          ) : null}
+          {step === 2 ? (
+            <div className="mt-5">
+              <ArchiveMetadataTechnicalStep
+                files={metadataFiles}
+                onChange={updateMetadata}
+                disabled={saving}
+              />
+            </div>
+          ) : null}
+          {step === 3 ? (
+            <div className="mt-5">
+              <ArchiveMetadataReviewList
+                files={metadataFiles}
+                getFinalFileName={(file) =>
+                  fileNames[file.id] ?? file.originalFileName
+                }
+                onEditMetadata={() => setStep(1)}
+                missingMetadataCount={missingMetadataCount}
+                fileCountLabel={`${preparation.files.length} final file${
+                  preparation.files.length === 1 ? "" : "s"
+                }`}
+              />
+            </div>
+          ) : null}
+        </CardContent>
+
+        <CardFooter className="shrink-0 flex-col gap-3 border-t border-[#dce7de] bg-[linear-gradient(90deg,#f9fbf9,#f2f8f3)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+          <p className="flex items-center gap-2 text-[11px] leading-5 text-[#607066]">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-[#317552]" />
+            Files become available in Archives while the project continues to
+            Stage 7.
+          </p>
+          <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            {step > 0 ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  setStep(
+                    (current) =>
+                      Math.max(0, current - 1) as ArchiveWizardStep,
+                  )
+                }
+                disabled={saving}
+              >
+                Previous
+              </Button>
+            ) : null}
+            {step < 3 ? (
+              <Button
+                type="button"
+                onClick={() =>
+                  setStep(
+                    (current) =>
+                      Math.min(3, current + 1) as ArchiveWizardStep,
+                  )
+                }
+                disabled={saving || (step === 0 && !canContinueFiles)}
+              >
+                Next
+              </Button>
+            ) : (
+              <Button type="button" onClick={save} disabled={saving || !canSave}>
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Archive className="h-4 w-4" />
+                )}
+                Save to Archives
+              </Button>
+            )}
+          </div>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
+
 export function StageSixWorkspace({
   project,
   currentUserId,
@@ -904,6 +1435,10 @@ export function StageSixWorkspace({
   const [handoverDialog, setHandoverDialog] = useState(false);
   const [completionDialog, setCompletionDialog] = useState(false);
   const [completionError, setCompletionError] = useState("");
+  const [archivePreparation, setArchivePreparation] =
+    useState<StageSixArchivePreparation | null>(null);
+  const [archiveError, setArchiveError] = useState("");
+  const [preparingArchive, startPreparingArchive] = useTransition();
   const [completing, startCompleting] = useTransition();
   const activeUnit = useMemo(() => pageData.units.find((unit) => unit.id === activeUnitId) ?? pageData.units[0], [activeUnitId, pageData.units]);
 
@@ -935,9 +1470,27 @@ export function StageSixWorkspace({
         return;
       }
       setCompletionDialog(false);
-      showSuccessToast("Stage 6 completed. Stage 7 is now available.");
-      router.push(`/projects/${project.id}/stages/7`);
+      showSuccessToast(
+        "Stage 6 completed. Save the final files to Archives or continue to Stage 7.",
+      );
       router.refresh();
+    });
+  }
+
+  function openArchiveDialog() {
+    setArchiveError("");
+    startPreparingArchive(async () => {
+      const result = await prepareStageSixArchiveAction({
+        projectId: project.id,
+      });
+      if ("error" in result) {
+        const message =
+          result.error ?? "Unable to prepare the Stage 6 archive.";
+        setArchiveError(message);
+        showErrorToast("Unable to prepare the archive.", message);
+        return;
+      }
+      setArchivePreparation(result.preparation);
     });
   }
 
@@ -973,12 +1526,107 @@ export function StageSixWorkspace({
 
         <div className="flex flex-col-reverse gap-3 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
           <Button asChild type="button" variant="outline" className="min-w-[160px]"><Link href={`/projects/${project.id}`}><ListChecks className="h-4 w-4" /> All Stages</Link></Button>
-          {pageData.stageCompleted ? <Button asChild type="button" className="min-w-[180px]"><Link href={`/projects/${project.id}/stages/7`}>Next Stage <ArrowRight className="h-4 w-4" /></Link></Button> : pageData.canManage ? <div className="text-right"><Button type="button" className="min-w-[180px]" disabled={!pageData.units.length || pageData.summary.ready !== pageData.summary.total} onClick={() => { setCompletionError(""); setCompletionDialog(true); }}><Check className="h-4 w-4" /> Complete Stage 6</Button>{pageData.summary.ready !== pageData.summary.total ? <p className="mt-2 text-[10px] text-[#8a7452]">Every Production Unit must be ready for handover. Approval is optional when no active approvers exist.</p> : null}</div> : <p className="text-[11px] text-[#77827a]">Owner or Co-Owner management required.</p>}
+          {pageData.stageCompleted ? (
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                {pageData.canSaveArchive ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-w-[180px]"
+                    disabled={preparingArchive}
+                    onClick={openArchiveDialog}
+                  >
+                    {preparingArchive ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Archive className="h-4 w-4" />
+                    )}
+                    {pageData.savedArchive
+                      ? "Update Saved Archive"
+                      : "Save to Archives"}
+                  </Button>
+                ) : null}
+                {pageData.savedArchive ? (
+                  <Button
+                    asChild
+                    type="button"
+                    variant="outline"
+                    className="min-w-[180px]"
+                  >
+                    <Link
+                      href={
+                        pageData.savedArchive.archiveCategorySlug
+                          ? `/archives/${pageData.savedArchive.archiveCategorySlug}`
+                          : "/archives"
+                      }
+                    >
+                      <Archive className="h-4 w-4" /> Open Saved Archive
+                    </Link>
+                  </Button>
+                ) : null}
+                <Button asChild type="button" className="min-w-[180px]">
+                  <Link href={`/projects/${project.id}/stages/7`}>
+                    Next Stage <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+              {archiveError ? (
+                <p className="max-w-[620px] text-right text-[11px] text-[#b54b43]">
+                  {archiveError}
+                </p>
+              ) : pageData.savedArchive ? (
+                <p className="text-right text-[10px] text-[#6d786f]">
+                  {pageData.savedArchive.fileCount} saved file
+                  {pageData.savedArchive.fileCount === 1 ? "" : "s"} · Stage 7
+                  remains active.
+                </p>
+              ) : (
+                <p className="text-right text-[10px] text-[#6d786f]">
+                  Saving a snapshot keeps Stage 7 active.
+                </p>
+              )}
+            </div>
+          ) : pageData.canManage ? (
+            <div className="text-right">
+              <Button
+                type="button"
+                className="min-w-[180px]"
+                disabled={
+                  !pageData.units.length ||
+                  pageData.summary.ready !== pageData.summary.total
+                }
+                onClick={() => {
+                  setCompletionError("");
+                  setCompletionDialog(true);
+                }}
+              >
+                <Check className="h-4 w-4" /> Complete Stage 6
+              </Button>
+              {pageData.summary.ready !== pageData.summary.total ? (
+                <p className="mt-2 text-[10px] text-[#8a7452]">
+                  Every Production Unit must be ready for handover. Approval is optional when no active approvers exist.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-[11px] text-[#77827a]">
+              Owner or Co-Owner management required.
+            </p>
+          )}
         </div>
       </CardContent></Card>
 
       {activeUnit && approverDialog ? <ApproverDialog mode={approverDialog} projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setApproverDialog(null)} onSaved={refresh} /> : null}
       {activeUnit && handoverDialog ? <HandoverDialog projectId={project.id} unit={activeUnit} participants={pageData.participants} onClose={() => setHandoverDialog(false)} onSaved={refresh} /> : null}
+      {archivePreparation ? (
+        <StageSixArchiveDialog
+          preparation={archivePreparation}
+          projectId={project.id}
+          onClose={() => setArchivePreparation(null)}
+          onSaved={refresh}
+        />
+      ) : null}
       <ConfirmationDialog isOpen={completionDialog} title="Complete Stage 6" description="All Production Units are ready. Complete Stage 6 and unlock Stage 7? Approval-not-required units and optional handovers can proceed without a decision record." confirmLabel="Complete Stage 6" pending={completing} error={completionError || undefined} onConfirm={complete} onClose={() => { if (!completing) setCompletionDialog(false); }} />
     </section>
   );

@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
+  ArchiveRecordStatus,
   AttachmentAssetType,
   AttachmentStatus,
   ProductionApprovalRecipientType,
   ProductionApprovalStepStatus,
   ProductionHandoverDeliveryStatus,
   ProductionHandoverRoute,
+  ProjectExecutionType,
   ProjectFileChecklistField,
   ProjectFileChecklistItemStatus,
   ProjectFileChecklistRequestChannel,
@@ -14,10 +16,23 @@ import {
   ProjectProductionUnitStatus,
   ProjectWorkflowStageKey,
   ProjectWorkflowStageStatus,
+  StageStatus,
+  SubmissionReviewStatus,
   UserRole,
 } from "@prisma/client";
 
 import type { SendEmailInput } from "../src/lib/email/resend";
+import { getArchiveCategoryBySlug } from "../src/lib/archive-categories";
+import {
+  completeProjectArchive,
+  getProjectArchivePreparation,
+  getProjectCompletionSummary,
+  getStageSixArchivePreparation,
+  listArchivedFilesByCategory,
+  saveStageSixArchiveSnapshot,
+  type ArchiveArtworkMetadataDraft,
+  type StageSixArchivePreparation,
+} from "../src/lib/archives";
 import { prisma } from "../src/lib/prisma";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 import {
@@ -67,6 +82,44 @@ function handoverToken(email: SendEmailInput) {
   const token = email.text.match(/\/external\/production-handover\/([A-Za-z0-9_-]{43})/)?.[1];
   check(token, "handover email must contain a raw secure token");
   return token;
+}
+
+function completeArchiveMetadata(
+  draft: ArchiveArtworkMetadataDraft,
+  marker: string,
+) {
+  return {
+    ...draft,
+    artworkId: draft.artworkId || `ART-${marker}`,
+    titleWorkingName: `Saved ${marker}`,
+    versionRevision: draft.versionRevision || "v1",
+    languageMarket: "Global",
+    artworkType: draft.artworkType || "Packaging",
+    brandSubBrand: "Integration Brand",
+    colourSpace: "CMYK",
+    creationDate: draft.creationDate || "2026-08-16",
+    lastModifiedDate: draft.lastModifiedDate || "2026-08-16",
+    archiveStatus: "Approved",
+    createdByName: draft.createdByName || "Integration Owner",
+    approvedByName: draft.approvedByName || "Integration Approver",
+    clientBrandOwner: "Integration Brand Owner",
+    fontsUsed: "None",
+    imagesPhotography: "None",
+    illustrationsIcons: "None",
+    colourCodes: "CMYK",
+    changeLog: `Saved archive metadata ${marker}`,
+  } satisfies ArchiveArtworkMetadataDraft;
+}
+
+function buildSavedArchiveInput(
+  preparation: StageSixArchivePreparation,
+  names: string[],
+) {
+  return preparation.files.map((file, index) => ({
+    sourceAttachmentId: file.sourceAttachmentId,
+    finalArchiveFileName: names[index] ?? file.defaultArchiveFileName,
+    artworkMetadata: completeArchiveMetadata(file.metadataDraft, String(index + 1)),
+  }));
 }
 
 async function createProjectFixture(input: {
@@ -182,6 +235,8 @@ async function main() {
     project: `s6-main-${runId}`,
     rejectProject: `s6-reject-${runId}`,
     foreignProject: `s6-foreign-${runId}`,
+    archiveCategoryA: `s6-archive-category-a-${runId}`,
+    archiveCategoryB: `s6-archive-category-b-${runId}`,
   };
   const userIds = [ids.owner, ids.coOwner, ids.approver, ids.secondApprover, ids.outsider, ids.admin, ids.superAdmin];
   const emailLog: SendEmailInput[] = [];
@@ -208,6 +263,22 @@ async function main() {
         passwordHash: "integration-only",
         role: role as UserRole,
       })),
+    });
+    await prisma.archiveCategory.createMany({
+      data: [
+        {
+          id: ids.archiveCategoryA,
+          name: `Stage 6 Archive A ${runId}`,
+          slug: `stage-6-archive-a-${runId}`,
+          isActive: true,
+        },
+        {
+          id: ids.archiveCategoryB,
+          name: `Stage 6 Archive B ${runId}`,
+          slug: `stage-6-archive-b-${runId}`,
+          isActive: true,
+        },
+      ],
     });
     const mainFixture = await createProjectFixture({
       id: ids.project,
@@ -259,12 +330,54 @@ async function main() {
       },
     });
 
-    const owner = { id: ids.owner, role: UserRole.ADMIN };
-    const coOwner = { id: ids.coOwner, role: UserRole.ADMIN };
-    const approver = { id: ids.approver, role: UserRole.USER };
-    const outsider = { id: ids.outsider, role: UserRole.USER };
-    const admin = { id: ids.admin, role: UserRole.ADMIN };
-    const superAdmin = { id: ids.superAdmin, role: UserRole.SUPER_ADMIN };
+    const owner = {
+      id: ids.owner,
+      role: UserRole.ADMIN,
+      email: `${ids.owner}@example.test`,
+      name: ids.owner,
+    };
+    const coOwner = {
+      id: ids.coOwner,
+      role: UserRole.ADMIN,
+      email: `${ids.coOwner}@example.test`,
+      name: ids.coOwner,
+    };
+    const approver = {
+      id: ids.approver,
+      role: UserRole.USER,
+      email: `${ids.approver}@example.test`,
+      name: ids.approver,
+    };
+    const outsider = {
+      id: ids.outsider,
+      role: UserRole.USER,
+      email: `${ids.outsider}@example.test`,
+      name: ids.outsider,
+    };
+    const admin = {
+      id: ids.admin,
+      role: UserRole.ADMIN,
+      email: `${ids.admin}@example.test`,
+      name: ids.admin,
+    };
+    const superAdmin = {
+      id: ids.superAdmin,
+      role: UserRole.SUPER_ADMIN,
+      email: `${ids.superAdmin}@example.test`,
+      name: ids.superAdmin,
+    };
+    await expectRejected(
+      getStageSixArchivePreparation(owner, { projectId: ids.project }),
+      "Stage 6 archive preparation must be denied before Stage 6 completion",
+    );
+    await expectRejected(
+      saveStageSixArchiveSnapshot(owner, {
+        projectId: ids.project,
+        archiveCategoryId: ids.archiveCategoryA,
+        files: [],
+      }),
+      "Stage 6 archive saving must be denied before Stage 6 completion",
+    );
     const completedFive = await completeStageFive(owner, { projectId: ids.project });
     check(!isError(completedFive), "owner must complete Stage 5");
     check(completedFive.productionUnitCount === 2, "two Stage 5 files must create two units");
@@ -434,6 +547,319 @@ async function main() {
     check(stageSix?.status === ProjectWorkflowStageStatus.COMPLETED, "Stage 6 must become COMPLETED");
     check(stageSeven?.status === ProjectWorkflowStageStatus.AVAILABLE && stageSeven.unlockedAt, "Stage 7 must become AVAILABLE with unlockedAt");
 
+    await expectRejected(
+      getStageSixArchivePreparation(approver, { projectId: ids.project }),
+      "a project collaborator without completion authority must not prepare a Stage 6 archive",
+    );
+    const archivePreparation = await getStageSixArchivePreparation(owner, {
+      projectId: ids.project,
+    });
+    check(
+      archivePreparation.files.length === 3 &&
+        new Set(
+          archivePreparation.files.map((file) => file.sourceAttachmentId),
+        ).size === 3,
+      "Stage 6 archive preparation must include each approved source and production file exactly once",
+    );
+    const initialArchiveNames = archivePreparation.files.map(
+      (_, index) => `stage-six-saved-${index + 1}.pdf`,
+    );
+    const validArchiveFiles = buildSavedArchiveInput(
+      archivePreparation,
+      initialArchiveNames,
+    );
+
+    await expectRejected(
+      saveStageSixArchiveSnapshot(approver, {
+        projectId: ids.project,
+        archiveCategoryId: ids.archiveCategoryA,
+        files: validArchiveFiles,
+      }),
+      "an unauthorized collaborator must not save a Stage 6 archive",
+    );
+    await expectRejected(
+      saveStageSixArchiveSnapshot(owner, {
+        projectId: ids.project,
+        archiveCategoryId: ids.archiveCategoryA,
+        files: validArchiveFiles.slice(0, -1),
+      }),
+      "a missing Stage 6 source attachment must be rejected",
+    );
+    await expectRejected(
+      saveStageSixArchiveSnapshot(owner, {
+        projectId: ids.project,
+        archiveCategoryId: ids.archiveCategoryA,
+        files: validArchiveFiles.map((file, index) =>
+          index === 1
+            ? { ...file, sourceAttachmentId: validArchiveFiles[0].sourceAttachmentId }
+            : file,
+        ),
+      }),
+      "a duplicated Stage 6 source attachment must be rejected",
+    );
+    await expectRejected(
+      saveStageSixArchiveSnapshot(owner, {
+        projectId: ids.project,
+        archiveCategoryId: ids.archiveCategoryA,
+        files: validArchiveFiles.map((file, index) =>
+          index === validArchiveFiles.length - 1
+            ? { ...file, sourceAttachmentId: foreignFixture.sourceIds[0] }
+            : file,
+        ),
+      }),
+      "an injected foreign source attachment must be rejected",
+    );
+    await expectRejected(
+      saveStageSixArchiveSnapshot(owner, {
+        projectId: ids.project,
+        archiveCategoryId: ids.archiveCategoryA,
+        files: validArchiveFiles.map((file, index) =>
+          index === 0
+            ? { ...file, finalArchiveFileName: "wrong-extension.jpg" }
+            : file,
+        ),
+      }),
+      "a Stage 6 archive filename must retain its original extension",
+    );
+    await expectRejected(
+      saveStageSixArchiveSnapshot(owner, {
+        projectId: ids.project,
+        archiveCategoryId: ids.archiveCategoryA,
+        files: validArchiveFiles.map((file, index) =>
+          index === 1
+            ? {
+                ...file,
+                finalArchiveFileName: validArchiveFiles[0].finalArchiveFileName,
+              }
+            : file,
+        ),
+      }),
+      "duplicate Stage 6 archive filenames must be rejected",
+    );
+
+    const firstSnapshot = await saveStageSixArchiveSnapshot(owner, {
+      projectId: ids.project,
+      archiveCategoryId: ids.archiveCategoryA,
+      files: validArchiveFiles,
+    });
+    const savedProject = await prisma.project.findUniqueOrThrow({
+      where: { id: ids.project },
+      select: {
+        completedAt: true,
+        archivedAt: true,
+        archive: {
+          select: {
+            id: true,
+            status: true,
+            finalStageId: true,
+            archiveCategoryId: true,
+            _count: { select: { files: true } },
+          },
+        },
+      },
+    });
+    check(
+      savedProject.completedAt === null && savedProject.archivedAt === null,
+      "a SAVED Stage 6 snapshot must not complete or archive the project",
+    );
+    check(
+      savedProject.archive?.id === firstSnapshot.archiveId &&
+        savedProject.archive.status === ArchiveRecordStatus.SAVED &&
+        savedProject.archive.finalStageId === null &&
+        savedProject.archive._count.files === validArchiveFiles.length,
+      "the first Stage 6 save must create one nullable-stage SAVED archive",
+    );
+    const savedActivity = await prisma.projectActivityLog.findFirstOrThrow({
+      where: {
+        projectId: ids.project,
+        action: "ARCHIVE_SNAPSHOT_SAVED",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    check(
+      savedActivity.stageId === null &&
+        JSON.stringify(savedActivity.metadata).includes(
+          '"projectRemainsActive":true',
+        ),
+      "a nullable legacy Stage 6 activity must record that the project remains active",
+    );
+    const savedCategory = await getArchiveCategoryBySlug(
+      `stage-6-archive-a-${runId}`,
+    );
+    check(savedCategory, "the saved archive category must remain available");
+    const savedArchiveListing = await listArchivedFilesByCategory(
+      owner,
+      savedCategory,
+    );
+    check(
+      savedArchiveListing.length === validArchiveFiles.length &&
+        savedArchiveListing.every(
+          (file) => file.recordTypeLabel === "Saved Archive Snapshot",
+        ),
+      "SAVED Stage 6 files must be visible in Archives without being labeled final",
+    );
+    check(
+      (await prisma.projectWorkflowStage.findUniqueOrThrow({
+        where: {
+          projectId_stageKey: {
+            projectId: ids.project,
+            stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
+          },
+        },
+      })).status === ProjectWorkflowStageStatus.AVAILABLE,
+      "Stage 7 must remain available after saving a Stage 6 snapshot",
+    );
+    const savedCompletionSummary = await getProjectCompletionSummary(
+      owner,
+      ids.project,
+    );
+    check(
+      !savedCompletionSummary.isCompleted &&
+        savedCompletionSummary.archivedAt === null,
+      "completion summaries must treat SAVED archives as non-terminal",
+    );
+    const savedWorkspace = await getStageSixWorkspaceData(owner, ids.project);
+    check(
+      savedWorkspace?.savedArchive?.fileCount === validArchiveFiles.length &&
+        savedWorkspace.canSaveArchive,
+      "the Stage 6 workspace must expose the saved archive state to an authorized owner",
+    );
+
+    const reopenedPreparation = await getStageSixArchivePreparation(owner, {
+      projectId: ids.project,
+    });
+    check(
+      reopenedPreparation.selectedCategoryId === ids.archiveCategoryA &&
+        reopenedPreparation.files[0].defaultArchiveFileName ===
+          initialArchiveNames[0] &&
+        reopenedPreparation.files[0].metadataDraft.titleWorkingName === "Saved 1",
+      "reopening a Stage 6 snapshot must restore its category, filenames, and metadata",
+    );
+    const swappedNames = [
+      initialArchiveNames[1],
+      initialArchiveNames[0],
+      ...initialArchiveNames.slice(2),
+    ];
+    const swappedArchiveFiles = buildSavedArchiveInput(
+      reopenedPreparation,
+      swappedNames,
+    );
+    swappedArchiveFiles[0] = {
+      ...swappedArchiveFiles[0],
+      artworkMetadata: {
+        ...swappedArchiveFiles[0].artworkMetadata,
+        titleWorkingName: "Updated after filename swap",
+      },
+    };
+    const secondSnapshot = await saveStageSixArchiveSnapshot(coOwner, {
+      projectId: ids.project,
+      archiveCategoryId: ids.archiveCategoryB,
+      files: swappedArchiveFiles,
+    });
+    check(
+      secondSnapshot.archiveId === firstSnapshot.archiveId &&
+        secondSnapshot.previousArchiveCategorySlug ===
+          `stage-6-archive-a-${runId}` &&
+        secondSnapshot.archiveCategorySlug === `stage-6-archive-b-${runId}`,
+      "re-saving must update one archive and report both category cache paths",
+    );
+    check(
+      (await prisma.projectArchive.count({ where: { projectId: ids.project } })) ===
+        1,
+      "repeated Stage 6 saves must never duplicate ProjectArchive",
+    );
+    const swappedPersistedFiles = await prisma.archivedProjectFile.findMany({
+      where: { projectId: ids.project },
+      orderBy: { sourceAttachmentId: "asc" },
+      select: {
+        sourceAttachmentId: true,
+        finalArchiveFileName: true,
+        artworkMetadata: { select: { titleWorkingName: true } },
+      },
+    });
+    check(
+      swappedPersistedFiles.length === validArchiveFiles.length &&
+        new Set(
+          swappedPersistedFiles.map((file) => file.finalArchiveFileName),
+        ).size === validArchiveFiles.length &&
+        swappedPersistedFiles.some(
+          (file) =>
+            file.artworkMetadata?.titleWorkingName ===
+            "Updated after filename swap",
+        ),
+      "filename swaps and metadata updates must persist without uniqueness failures or duplicate metadata",
+    );
+
+    const finalLegacyStage = await prisma.projectStage.create({
+      data: {
+        projectId: ids.project,
+        name: "Stage 7 Final Completion",
+        order: 7,
+        status: StageStatus.COMPLETED,
+        completedAt: new Date(),
+      },
+    });
+    await prisma.project.update({
+      where: { id: ids.project },
+      data: { executionType: ProjectExecutionType.INTERNAL },
+    });
+    const finalPreparation = await getProjectArchivePreparation(owner, {
+      projectId: ids.project,
+      stageId: finalLegacyStage.id,
+    });
+    check(
+      finalPreparation.selectedCategoryId === ids.archiveCategoryB &&
+        finalPreparation.files.some(
+          (file) =>
+            file.metadataDraft.titleWorkingName ===
+            "Updated after filename swap",
+        ),
+      "final completion preparation must start from the saved filenames and metadata",
+    );
+    const finalizedArchive = await completeProjectArchive(owner, {
+      projectId: ids.project,
+      stageId: finalLegacyStage.id,
+      archiveCategoryId: ids.archiveCategoryB,
+      files: finalPreparation.files.map((file) => ({
+        sourceAttachmentId: file.sourceAttachmentId,
+        finalArchiveFileName: file.defaultArchiveFileName,
+        artworkMetadata: file.metadataDraft,
+      })),
+    });
+    const finalizedProject = await prisma.project.findUniqueOrThrow({
+      where: { id: ids.project },
+      select: {
+        completedAt: true,
+        archivedAt: true,
+        archive: {
+          select: {
+            id: true,
+            status: true,
+            finalStageId: true,
+            _count: { select: { files: true } },
+          },
+        },
+      },
+    });
+    check(
+      finalizedArchive.archiveId === firstSnapshot.archiveId &&
+        finalizedProject.archive?.id === firstSnapshot.archiveId &&
+        finalizedProject.archive.status === ArchiveRecordStatus.ARCHIVED &&
+        finalizedProject.archive.finalStageId === finalLegacyStage.id &&
+        finalizedProject.completedAt &&
+        finalizedProject.archivedAt &&
+        finalizedProject.archive._count.files === validArchiveFiles.length,
+      "final completion must upgrade SAVED to ARCHIVED in place and preserve its files",
+    );
+    check(
+      (await prisma.projectArchive.count({ where: { projectId: ids.project } })) ===
+        1 &&
+        (await prisma.archiveArtworkMetadata.count({
+          where: { projectId: ids.project },
+        })) === validArchiveFiles.length,
+      "final completion must not duplicate the archive or Artwork Legend metadata",
+    );
+
     const completedRejectFive = await completeStageFive(owner, { projectId: ids.rejectProject });
     check(!isError(completedRejectFive), "rejection fixture Stage 5 must complete");
     const rejectUnit = await prisma.projectProductionUnit.findFirstOrThrow({ where: { projectId: ids.rejectProject } });
@@ -554,9 +980,73 @@ async function main() {
     check(isError(await removeProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: addedAfterRejection.step.id })), "removal must be blocked after Stage 6 completion");
     check(isError(await reorderProductionApprover(owner, { projectId: ids.rejectProject, productionUnitId: rejectUnit.id, stepId: addedAfterRejection.step.id, direction: "UP" })), "reorder must be blocked after Stage 6 completion");
     check(isError(await addProductionApprover(owner, { clientRequestId: `after-handover-${runId}`, projectId: ids.project, productionUnitId: unitA.id, recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR, recipientUserId: ids.approver, sharedFieldKeys: [], selectedFileIds: [unitA.sourceAttachmentId] })), "Add Approver must be blocked after permanent handover");
+
+    const noSnapshotFinalStage = await prisma.projectStage.create({
+      data: {
+        projectId: ids.rejectProject,
+        name: "Final stage without saved snapshot",
+        order: 7,
+        status: StageStatus.COMPLETED,
+        completedAt: new Date(),
+      },
+    });
+    const noSnapshotFinalAttachmentId = `s6-final-only-${runId}`;
+    await prisma.projectAttachment.create({
+      data: {
+        id: noSnapshotFinalAttachmentId,
+        projectId: ids.rejectProject,
+        stageId: noSnapshotFinalStage.id,
+        uploadedById: ids.owner,
+        fileName: `final-only-${runId}.pdf`,
+        originalFileName: "Final-Only.pdf",
+        mimeType: "application/pdf",
+        fileSize: 4096,
+        bucket: "stage-six-integration",
+        storageKey: `stage-six/${runId}/final-only`,
+        assetType: AttachmentAssetType.STAGE_SUBMISSION,
+        status: AttachmentStatus.READY,
+        submissionReviewStatus: SubmissionReviewStatus.APPROVED,
+        reviewedById: ids.owner,
+        reviewedAt: new Date(),
+      },
+    });
+    await prisma.project.update({
+      where: { id: ids.rejectProject },
+      data: { executionType: ProjectExecutionType.INTERNAL },
+    });
+    const noSnapshotPreparation = await getProjectArchivePreparation(owner, {
+      projectId: ids.rejectProject,
+      stageId: noSnapshotFinalStage.id,
+    });
+    const noSnapshotFiles = noSnapshotPreparation.files.map((file, index) => ({
+      sourceAttachmentId: file.sourceAttachmentId,
+      finalArchiveFileName: `final-without-snapshot-${index + 1}.pdf`,
+      artworkMetadata: completeArchiveMetadata(
+        file.metadataDraft,
+        `without-snapshot-${index + 1}`,
+      ),
+    }));
+    const noSnapshotArchive = await completeProjectArchive(owner, {
+      projectId: ids.rejectProject,
+      stageId: noSnapshotFinalStage.id,
+      archiveCategoryId: ids.archiveCategoryA,
+      files: noSnapshotFiles,
+    });
+    check(
+      (await prisma.projectArchive.count({
+        where: { projectId: ids.rejectProject },
+      })) === 1 &&
+        (await prisma.projectArchive.findUniqueOrThrow({
+          where: { id: noSnapshotArchive.archiveId },
+        })).status === ArchiveRecordStatus.ARCHIVED,
+      "projects without Stage 6 snapshots must retain the existing final archive creation flow",
+    );
     console.log("Stage 5 -> Stage 6 production, approval, handover, security, and Stage 7 unlock integration checks passed.");
   } finally {
     await prisma.project.deleteMany({ where: { id: { in: [ids.project, ids.rejectProject, ids.foreignProject] } } });
+    await prisma.archiveCategory.deleteMany({
+      where: { id: { in: [ids.archiveCategoryA, ids.archiveCategoryB] } },
+    });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await prisma.$disconnect();
   }

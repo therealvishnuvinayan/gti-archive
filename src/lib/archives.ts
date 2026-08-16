@@ -1,10 +1,17 @@
 import {
+  ActivityLogAction,
+  ArchiveRecordStatus,
   AttachmentAssetType,
   AttachmentStatus,
+  ProductionApprovalStepStatus,
+  ProjectProductionUnitStatus,
   ProjectRevisionStatus,
+  ProjectWorkflowStageKey,
+  ProjectWorkflowStageStatus,
   Prisma,
   StageStatus,
   SubmissionReviewStatus,
+  type ArchiveArtworkMetadata,
   type User,
 } from "@prisma/client";
 
@@ -23,6 +30,8 @@ import {
   getArchiveAccessLevel,
   hasPermission,
   hasProjectPermission,
+  isProjectCoOwner,
+  isProjectOwner,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
@@ -37,6 +46,7 @@ import {
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { sanitizeRichText } from "@/lib/rich-text";
 import { defaultProjectStatusGroupSlugs } from "@/lib/project-statuses";
+import { isSuperAdminRole } from "@/lib/user-role-compatibility";
 import {
   createPresignedDownloadUrl,
   createPresignedPreviewUrl,
@@ -274,6 +284,13 @@ export type ProjectArchivePreparation = {
   selectedCategoryId: string;
   categories: ArchiveCategoryOption[];
   files: ProjectArchivePreparationFile[];
+};
+
+export type StageSixArchivePreparation = Omit<
+  ProjectArchivePreparation,
+  "finalStageId"
+> & {
+  finalStageId: string | null;
 };
 
 export type ProjectCompletionSummary = {
@@ -860,6 +877,12 @@ async function getProjectArchiveBase(projectId: string) {
         },
         completedAt: true,
         archivedAt: true,
+        workflowStages: {
+          select: {
+            stageKey: true,
+            status: true,
+          },
+        },
         stages: {
           where: { isTasker: false },
           orderBy: {
@@ -876,6 +899,7 @@ async function getProjectArchiveBase(projectId: string) {
         archive: {
           select: {
             id: true,
+            status: true,
             archiveCategory: {
               select: {
                 id: true,
@@ -1143,6 +1167,238 @@ async function getFinalStageArchivableAttachments(projectId: string, finalStageI
   return [...approvedRevisionAttachments, ...approvedStageSubmissions];
 }
 
+async function getStageSixArchivableAttachments(
+  projectId: string,
+  tx?: Prisma.TransactionClient,
+) {
+  const query = {
+    where: { projectId },
+    orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+    select: {
+      id: true,
+      status: true,
+      approvedAt: true,
+      sourceAttachment: {
+        select: {
+          id: true,
+          projectId: true,
+          revisionId: true,
+          originalFileName: true,
+          mimeType: true,
+          fileSize: true,
+          bucket: true,
+          storageKey: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          uploadedById: true,
+          uploadedBy: { select: { name: true, email: true } },
+        },
+      },
+      files: {
+        orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+        select: {
+          attachment: {
+            select: {
+              id: true,
+              projectId: true,
+              revisionId: true,
+              originalFileName: true,
+              mimeType: true,
+              fileSize: true,
+              bucket: true,
+              storageKey: true,
+              status: true,
+              createdAt: true,
+              updatedAt: true,
+              uploadedById: true,
+              uploadedBy: { select: { name: true, email: true } },
+            },
+          },
+        },
+      },
+      approvalSteps: {
+        where: { removedAt: null },
+        orderBy: [{ sequence: "asc" as const }, { id: "asc" as const }],
+        select: {
+          status: true,
+          decidedAt: true,
+          decidedByUserId: true,
+          decidedByUser: { select: { name: true, email: true } },
+        },
+      },
+    },
+  } satisfies Prisma.ProjectProductionUnitFindManyArgs;
+  const units = tx
+    ? await tx.projectProductionUnit.findMany(query)
+    : await withPrismaRetry(() => prisma.projectProductionUnit.findMany(query));
+
+  if (units.length === 0) {
+    return [];
+  }
+
+  const seenAttachmentIds = new Set<string>();
+
+  return units.flatMap<ArchivableAttachment>((unit) => {
+    const approvalChainComplete =
+      unit.approvalSteps.length === 0 ||
+      unit.approvalSteps.every(
+        (step) => step.status === ProductionApprovalStepStatus.APPROVED,
+      );
+    const unitIsFinal =
+      unit.status === ProjectProductionUnitStatus.HANDOVER_READY ||
+      unit.status === ProjectProductionUnitStatus.HANDED_OVER;
+
+    if (
+      !unitIsFinal ||
+      !approvalChainComplete ||
+      unit.sourceAttachment.projectId !== projectId ||
+      unit.sourceAttachment.status !== AttachmentStatus.READY
+    ) {
+      throw new Error(
+        "Every Stage 6 Production Unit must remain approval-ready before saving to Archives.",
+      );
+    }
+
+    const approval = unit.approvalSteps.findLast(
+      (step) => step.status === ProductionApprovalStepStatus.APPROVED,
+    );
+    const attachments = [
+      { attachment: unit.sourceAttachment, source: true },
+      ...unit.files.map((file) => ({ attachment: file.attachment, source: false })),
+    ];
+
+    return attachments.flatMap(({ attachment, source }) => {
+      if (
+        attachment.projectId !== projectId ||
+        attachment.status !== AttachmentStatus.READY ||
+        seenAttachmentIds.has(attachment.id)
+      ) {
+        return [];
+      }
+
+      seenAttachmentIds.add(attachment.id);
+
+      return [
+        {
+          sourceAttachmentId: attachment.id,
+          sourceRevisionId: attachment.revisionId,
+          sourceRevisionNumber: null,
+          originalFileName: attachment.originalFileName,
+          mimeType: attachment.mimeType,
+          fileSize: attachment.fileSize,
+          bucket: attachment.bucket,
+          storageKey: attachment.storageKey,
+          sourceLabel: source
+            ? "Stage 6 approved production source"
+            : "Stage 6 approved production file",
+          uploadedById: attachment.uploadedById,
+          uploadedByName: getUserNameLabel(attachment.uploadedBy),
+          approvedById: approval?.decidedByUserId ?? null,
+          approvedByName: getUserNameLabel(approval?.decidedByUser),
+          approvedAt: approval?.decidedAt ?? unit.approvedAt,
+          createdAt: attachment.createdAt,
+          updatedAt: attachment.updatedAt,
+          changeLog: "Approved during Stage 6 production and handover.",
+        },
+      ];
+    });
+  });
+}
+
+async function getSavedArchiveArchivableAttachments(
+  projectId: string,
+  tx?: Prisma.TransactionClient,
+) {
+  const query = {
+      where: {
+        projectId,
+        archive: { is: { status: ArchiveRecordStatus.SAVED } },
+      },
+      orderBy: [{ archivedAt: "asc" }, { id: "asc" }],
+      select: {
+        sourceAttachmentId: true,
+        sourceRevisionId: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        bucket: true,
+        storageKey: true,
+        archivedAt: true,
+        archivedById: true,
+        archivedBy: { select: { name: true, email: true } },
+        artworkMetadata: true,
+      },
+    } satisfies Prisma.ArchivedProjectFileFindManyArgs;
+  const files = tx
+    ? await tx.archivedProjectFile.findMany(query)
+    : await withPrismaRetry(() => prisma.archivedProjectFile.findMany(query));
+
+  return files.map<ArchivableAttachment>((file) => ({
+    sourceAttachmentId: file.sourceAttachmentId,
+    sourceRevisionId: file.sourceRevisionId,
+    sourceRevisionNumber: null,
+    originalFileName: file.originalFileName,
+    mimeType: file.mimeType,
+    fileSize: file.fileSize,
+    bucket: file.bucket,
+    storageKey: file.storageKey,
+    sourceLabel: "Saved Stage 6 archive snapshot",
+    uploadedById: file.archivedById,
+    uploadedByName: getUserNameLabel(file.archivedBy),
+    approvedById: file.artworkMetadata?.approvedByUserId ?? null,
+    approvedByName: file.artworkMetadata?.approvedByName ?? null,
+    approvedAt: file.artworkMetadata?.approvedAt ?? null,
+    createdAt: file.artworkMetadata?.creationDate ?? file.archivedAt,
+    updatedAt: file.artworkMetadata?.lastModifiedDate ?? file.archivedAt,
+    changeLog: file.artworkMetadata?.changeLog ?? "Saved from Stage 6.",
+  }));
+}
+
+function buildArchiveArtworkMetadataDraftFromRecord(
+  metadata: ArchiveArtworkMetadata,
+): ArchiveArtworkMetadataDraft {
+  return {
+    artworkId: metadata.artworkId,
+    titleWorkingName: metadata.titleWorkingName,
+    versionRevision: metadata.versionRevision,
+    languageMarket: metadata.languageMarket,
+    artworkType: metadata.artworkType,
+    brandSubBrand: metadata.brandSubBrand,
+    productSku: metadata.productSku ?? "",
+    campaignProject: metadata.campaignProject ?? "",
+    formatDimensions: metadata.formatDimensions ?? "",
+    colourSpace: metadata.colourSpace,
+    resolution: metadata.resolution ?? "",
+    fileFormats: metadata.fileFormats,
+    printProcess: metadata.printProcess ?? "",
+    specialFinishes: metadata.specialFinishes ?? "",
+    creationDate: formatArchiveMetadataDate(metadata.creationDate),
+    lastModifiedDate: formatArchiveMetadataDate(metadata.lastModifiedDate),
+    goLiveOnShelfDate: formatArchiveMetadataDate(metadata.goLiveOnShelfDate),
+    expirySunsetDate: formatArchiveMetadataDate(metadata.expirySunsetDate),
+    archiveStatus: metadata.archiveStatus,
+    createdByName: metadata.createdByName,
+    approvedByName: metadata.approvedByName,
+    approvedAt: formatArchiveMetadataDate(metadata.approvedAt),
+    clientBrandOwner: metadata.clientBrandOwner,
+    regulatoryClearance: metadata.regulatoryClearance ?? "",
+    fontsUsed: metadata.fontsUsed,
+    imagesPhotography: metadata.imagesPhotography,
+    illustrationsIcons: metadata.illustrationsIcons,
+    colourCodes: metadata.colourCodes,
+    thirdPartyLogosIp: metadata.thirdPartyLogosIp ?? "",
+    supplierPrinter: metadata.supplierPrinter ?? "",
+    outputFilesList: metadata.outputFilesList ?? "",
+    printProofRef: metadata.printProofRef ?? "",
+    packagingDielineRef: metadata.packagingDielineRef ?? "",
+    changeLog: metadata.changeLog,
+    relatedArtworks: metadata.relatedArtworks ?? "",
+    briefSpecLink: metadata.briefSpecLink ?? "",
+    generalNotes: metadata.generalNotes ?? "",
+  };
+}
+
 function buildArchiveArtworkMetadataDraft(input: {
   file: ArchivableAttachment;
   project: {
@@ -1297,7 +1553,11 @@ function ensureProjectCanBeCompleted(
     throw new Error("You do not have permission to complete and archive this project.");
   }
 
-  if (project.archive || project.archivedAt || project.completedAt) {
+  if (
+    (project.archive && project.archive.status !== ArchiveRecordStatus.SAVED) ||
+    project.archivedAt ||
+    project.completedAt
+  ) {
     throw new Error("Project is already completed.");
   }
 
@@ -1332,6 +1592,168 @@ function ensureProjectCanBeCompleted(
   }
 
   return finalStage;
+}
+
+function getStageSixArchiveStage(project: {
+  workflowStages: Array<{
+    stageKey: ProjectWorkflowStageKey;
+    status: ProjectWorkflowStageStatus;
+  }>;
+  stages: Array<{ id: string; name: string; order: number }>;
+}) {
+  const stageSixWorkflow = project.workflowStages.find(
+    (stage) =>
+      stage.stageKey === ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER,
+  );
+
+  if (stageSixWorkflow?.status !== ProjectWorkflowStageStatus.COMPLETED) {
+    throw new Error("Complete Stage 6 before saving final files to Archives.");
+  }
+
+  const legacyStage = project.stages.find((stage) => stage.order === 6) ?? null;
+
+  return {
+    id: legacyStage?.id ?? null,
+    name: legacyStage?.name ?? "Production and Handover",
+  };
+}
+
+function canSaveStageSixArchive(
+  user: ArchiveAccessUser,
+  project: {
+    ownerId: string | null;
+    coOwners: Array<{ userId: string }>;
+    executors?: Array<{ userId: string }>;
+    collaborators?: Array<{ userId: string }>;
+  },
+) {
+  const hasManagementRole =
+    isSuperAdminRole(user.role) ||
+    isProjectOwner(user, project) ||
+    isProjectCoOwner(user, project);
+
+  return (
+    hasManagementRole &&
+    hasProjectPermission(user, project, "project.completeArchive")
+  );
+}
+
+async function restoreSavedArchivePreparation(
+  projectId: string,
+  preparedFiles: ProjectArchivePreparationFile[],
+) {
+  const savedFiles = await withPrismaRetry(() =>
+    prisma.archivedProjectFile.findMany({
+      where: {
+        projectId,
+        archive: { is: { status: ArchiveRecordStatus.SAVED } },
+      },
+      select: {
+        sourceAttachmentId: true,
+        finalArchiveFileName: true,
+        artworkMetadata: true,
+      },
+    }),
+  );
+  const savedBySourceId = new Map(
+    savedFiles.map((file) => [file.sourceAttachmentId, file] as const),
+  );
+
+  for (const file of preparedFiles) {
+    const savedFile = savedBySourceId.get(file.sourceAttachmentId);
+    if (!savedFile) continue;
+
+    file.defaultArchiveFileName = savedFile.finalArchiveFileName;
+    if (savedFile.artworkMetadata) {
+      file.metadataDraft = buildArchiveArtworkMetadataDraftFromRecord(
+        savedFile.artworkMetadata,
+      );
+    }
+  }
+}
+
+type SubmittedProjectArchiveFile = {
+  sourceAttachmentId: string;
+  finalArchiveFileName: string;
+  artworkMetadata: ArchiveArtworkMetadataDraft;
+};
+
+function validateSubmittedArchiveFiles(
+  preparedFiles: ArchivableAttachment[],
+  submittedFiles: SubmittedProjectArchiveFile[],
+  staleMessage: string,
+) {
+  const submittedSourceIds = submittedFiles.map((file) => file.sourceAttachmentId);
+  const uniqueSubmittedSourceIds = new Set(submittedSourceIds);
+
+  if (uniqueSubmittedSourceIds.size !== submittedSourceIds.length) {
+    throw new Error("Archive source files must be unique. Reload and try again.");
+  }
+
+  const expectedSourceIds = new Set(
+    preparedFiles.map((file) => file.sourceAttachmentId),
+  );
+  if (
+    submittedSourceIds.length !== expectedSourceIds.size ||
+    submittedSourceIds.some((sourceId) => !expectedSourceIds.has(sourceId))
+  ) {
+    throw new Error(staleMessage);
+  }
+
+  const preparedFileMap = new Map(
+    preparedFiles.map((file) => [file.sourceAttachmentId, file] as const),
+  );
+  const duplicateNames = new Set<string>();
+
+  return submittedFiles.map((file) => {
+    const preparedFile = preparedFileMap.get(file.sourceAttachmentId);
+    if (!preparedFile) {
+      throw new Error(staleMessage);
+    }
+
+    return {
+      ...preparedFile,
+      finalArchiveFileName: validateArchiveFileName(
+        preparedFile.originalFileName,
+        file.finalArchiveFileName,
+        duplicateNames,
+      ),
+      artworkMetadata: validateArchiveArtworkMetadataInput({
+        metadata: file.artworkMetadata,
+        file: preparedFile,
+      }),
+    };
+  });
+}
+
+async function reserveExistingArchiveFileNames(
+  tx: Prisma.TransactionClient,
+  archiveId: string,
+  sourceAttachmentIds: string[],
+  finalArchiveFileNames: string[],
+) {
+  const existingFiles = await tx.archivedProjectFile.findMany({
+    where: {
+      archiveId,
+      sourceAttachmentId: { in: sourceAttachmentIds },
+    },
+    select: { id: true },
+  });
+  const reservedNames = new Set(
+    finalArchiveFileNames.map((name) => name.toLowerCase()),
+  );
+
+  for (const file of existingFiles) {
+    let temporaryName = `__archive_name_reservation_${archiveId}_${file.id}`;
+    while (reservedNames.has(temporaryName.toLowerCase())) {
+      temporaryName += "_";
+    }
+    reservedNames.add(temporaryName.toLowerCase());
+    await tx.archivedProjectFile.update({
+      where: { id: file.id },
+      data: { finalArchiveFileName: temporaryName },
+    });
+  }
 }
 
 async function getProjectCompletionArchiveCategoryOptions() {
@@ -1580,6 +2002,7 @@ function mapArchivedFileRecord(input: {
   projectTags?: string[];
   assetTags?: AssetTagAssignmentRecord[];
   archiveCategory: ArchiveCategoryDisplay;
+  archiveStatus?: ArchiveRecordStatus;
   sourceRevisionId: string | null;
   sourceRevisionNumber?: number | null;
   submissionReviewStatus?: SubmissionReviewStatus | null;
@@ -1589,11 +2012,14 @@ function mapArchivedFileRecord(input: {
   archivedBy: Pick<User, "name" | "email">;
   artworkMetadata?: ArchiveArtworkMetadataSummarySource | null;
 }) {
-  const sourceLabel = input.sourceRevisionId
-    ? `Revision ${input.sourceRevisionNumber ?? "—"}`
-    : input.submissionReviewStatus === SubmissionReviewStatus.APPROVED
-      ? "Approved submission"
-      : "Final archive";
+  const isSavedSnapshot = input.archiveStatus === ArchiveRecordStatus.SAVED;
+  const sourceLabel = isSavedSnapshot
+    ? "Stage 6 saved snapshot"
+    : input.sourceRevisionId
+      ? `Revision ${input.sourceRevisionNumber ?? "—"}`
+      : input.submissionReviewStatus === SubmissionReviewStatus.APPROVED
+        ? "Approved submission"
+        : "Final archive";
   const projectTags = input.projectTags ?? splitProjectTagSnapshot(input.projectTag);
   const assetTags = input.assetTags
     ? mapAssetTagAssignments(input.assetTags)
@@ -1603,7 +2029,9 @@ function mapArchivedFileRecord(input: {
   return {
     id: input.id,
     recordType: "FINAL_ARCHIVE_FILE",
-    recordTypeLabel: "Final Archived File",
+    recordTypeLabel: isSavedSnapshot
+      ? "Saved Archive Snapshot"
+      : "Final Archived File",
     finalArchiveFileName: input.finalArchiveFileName,
     originalFileName: input.originalFileName,
     projectId: input.projectId,
@@ -2759,6 +3187,7 @@ export async function listArchivedFilesByCategory(
           },
           archive: {
             select: {
+              status: true,
               archiveCategory: {
                 select: {
                   id: true,
@@ -2876,6 +3305,7 @@ export async function listArchivedFilesByCategory(
         projectTag: file.archive.projectTag,
         assetTags: file.sourceAttachment.assetTags,
         archiveCategory: file.archive.archiveCategory,
+        archiveStatus: file.archive.status,
         sourceRevisionId: file.sourceRevisionId,
         sourceRevisionNumber: file.sourceRevision?.revisionNumber ?? null,
         submissionReviewStatus: file.sourceAttachment.submissionReviewStatus,
@@ -2930,7 +3360,14 @@ export async function getProjectArchivePreparation(
   await assertProjectAccess(user, input.projectId);
 
   const finalStage = ensureProjectCanBeCompleted(user, project, input.stageId);
-  const files = await getFinalStageArchivableAttachments(project.id, finalStage.id);
+  const savedArchiveFiles =
+    project.archive?.status === ArchiveRecordStatus.SAVED
+      ? await getSavedArchiveArchivableAttachments(project.id)
+      : [];
+  const files =
+    savedArchiveFiles.length > 0
+      ? savedArchiveFiles
+      : await getFinalStageArchivableAttachments(project.id, finalStage.id);
 
   if (files.length === 0) {
     throw new Error("No approved final files are available to archive.");
@@ -2942,15 +3379,334 @@ export async function getProjectArchivePreparation(
     throw new Error("Create an archive category before archiving final files.");
   }
 
+  const preparedFiles = normalizePreparedArchiveFiles(project, files);
+  if (savedArchiveFiles.length > 0) {
+    await restoreSavedArchivePreparation(project.id, preparedFiles);
+  }
+
   return {
     projectId: project.id,
     projectName: project.name,
     finalStageId: finalStage.id,
     finalStageName: finalStage.name,
-    selectedCategoryId: categories[0]?.id ?? "",
+    selectedCategoryId:
+      project.archive?.archiveCategory?.id ?? categories[0]?.id ?? "",
     categories,
-    files: normalizePreparedArchiveFiles(project, files),
+    files: preparedFiles,
   } satisfies ProjectArchivePreparation;
+}
+
+export async function getStageSixArchivePreparation(
+  user: ArchiveAccessUser,
+  input: { projectId: string },
+) {
+  const project = await getProjectArchiveBase(input.projectId);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  await assertProjectAccess(user, input.projectId);
+  if (!canSaveStageSixArchive(user, project)) {
+    throw new Error("You do not have permission to save this project to Archives.");
+  }
+  if (project.archivedAt || project.completedAt) {
+    throw new Error("Project is already completed.");
+  }
+  if (
+    project.archive &&
+    project.archive.status !== ArchiveRecordStatus.SAVED
+  ) {
+    throw new Error("The final project archive is already complete.");
+  }
+
+  const stageSix = getStageSixArchiveStage(project);
+  const files = await getStageSixArchivableAttachments(project.id);
+  if (files.length === 0) {
+    throw new Error("No approved Stage 6 production files are available to archive.");
+  }
+
+  const categories = await getProjectCompletionArchiveCategoryOptions();
+  if (categories.length === 0) {
+    throw new Error("Create an archive category before saving final files.");
+  }
+
+  const preparedFiles = normalizePreparedArchiveFiles(project, files);
+  if (project.archive?.status === ArchiveRecordStatus.SAVED) {
+    await restoreSavedArchivePreparation(project.id, preparedFiles);
+  }
+
+  return {
+    projectId: project.id,
+    projectName: project.name,
+    finalStageId: stageSix.id,
+    finalStageName: stageSix.name,
+    selectedCategoryId:
+      project.archive?.archiveCategory?.id ?? categories[0]?.id ?? "",
+    categories,
+    files: preparedFiles,
+  } satisfies StageSixArchivePreparation;
+}
+
+export async function saveStageSixArchiveSnapshot(
+  user: ArchiveAccessUser,
+  input: {
+    projectId: string;
+    archiveCategoryId?: string;
+    files: SubmittedProjectArchiveFile[];
+  },
+) {
+  const project = await getProjectArchiveBase(input.projectId);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  await assertProjectAccess(user, input.projectId);
+  if (!canSaveStageSixArchive(user, project)) {
+    throw new Error("You do not have permission to save this project to Archives.");
+  }
+  if (project.archivedAt || project.completedAt) {
+    throw new Error("Project is already completed.");
+  }
+  if (
+    project.archive &&
+    project.archive.status !== ArchiveRecordStatus.SAVED
+  ) {
+    throw new Error("The final project archive is already complete.");
+  }
+
+  getStageSixArchiveStage(project);
+  const preparedFiles = await getStageSixArchivableAttachments(project.id);
+  if (preparedFiles.length === 0) {
+    throw new Error("No approved Stage 6 production files are available to archive.");
+  }
+  validateSubmittedArchiveFiles(
+    preparedFiles,
+    input.files,
+    "Archive file list is out of date. Please review the Stage 6 files again.",
+  );
+
+  const archiveCategoryId = input.archiveCategoryId?.trim();
+  if (!archiveCategoryId) {
+    throw new Error("Choose an archive category.");
+  }
+  await assertActiveProjectCompletionArchiveCategory(archiveCategoryId);
+
+  const savedAt = new Date();
+  const snapshot = await withPrismaRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const latestProject = await tx.project.findUnique({
+          where: { id: input.projectId },
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            ownerId: true,
+            coOwners: { select: { userId: true } },
+            executors: { select: { userId: true } },
+            collaborators: { select: { userId: true } },
+            tags: { include: { tag: true } },
+            completedAt: true,
+            archivedAt: true,
+            archive: {
+              select: {
+                id: true,
+                status: true,
+                archiveCategory: { select: { slug: true } },
+              },
+            },
+            workflowStages: {
+              select: { stageKey: true, status: true },
+            },
+            stages: {
+              where: { isTasker: false },
+              orderBy: { order: "asc" },
+              select: { id: true, name: true, order: true },
+            },
+          },
+        });
+
+        if (!latestProject) {
+          throw new Error("Project not found.");
+        }
+        if (!canSaveStageSixArchive(user, latestProject)) {
+          throw new Error(
+            "You do not have permission to save this project to Archives.",
+          );
+        }
+        if (latestProject.completedAt || latestProject.archivedAt) {
+          throw new Error("Project is already completed.");
+        }
+        if (
+          latestProject.archive &&
+          latestProject.archive.status !== ArchiveRecordStatus.SAVED
+        ) {
+          throw new Error("The final project archive is already complete.");
+        }
+
+        const stageSix = getStageSixArchiveStage(latestProject);
+        const latestPreparedFiles = await getStageSixArchivableAttachments(
+          latestProject.id,
+          tx,
+        );
+        if (latestPreparedFiles.length === 0) {
+          throw new Error(
+            "No approved Stage 6 production files are available to archive.",
+          );
+        }
+        const archiveFiles = validateSubmittedArchiveFiles(
+          latestPreparedFiles,
+          input.files,
+          "Archive file list is out of date. Please review the Stage 6 files again.",
+        );
+        const archiveCategory = await tx.archiveCategory.findFirst({
+          where: { id: archiveCategoryId, isActive: true },
+          select: { id: true, name: true, slug: true },
+        });
+        if (!archiveCategory) {
+          throw new Error("Choose a valid archive category.");
+        }
+
+        const projectTags = getArchiveProjectTagNames(latestProject);
+        const projectTagLabel = formatArchiveProjectTagsLabel(projectTags);
+        const previousArchiveCategorySlug =
+          latestProject.archive?.archiveCategory?.slug ?? null;
+        const archive = latestProject.archive
+          ? await tx.projectArchive.update({
+              where: { id: latestProject.archive.id },
+              data: {
+                finalStageId: stageSix.id,
+                archivedById: user.id,
+                projectName: latestProject.name,
+                projectCategory: latestProject.category ?? "Uncategorized",
+                projectTag: projectTagLabel === "—" ? null : projectTagLabel,
+                archiveCategoryId: archiveCategory.id,
+                status: ArchiveRecordStatus.SAVED,
+                archivedAt: savedAt,
+              },
+              select: { id: true },
+            })
+          : await tx.projectArchive.create({
+              data: {
+                projectId: latestProject.id,
+                finalStageId: stageSix.id,
+                archivedById: user.id,
+                projectName: latestProject.name,
+                projectCategory: latestProject.category ?? "Uncategorized",
+                projectTag: projectTagLabel === "—" ? null : projectTagLabel,
+                archiveCategoryId: archiveCategory.id,
+                status: ArchiveRecordStatus.SAVED,
+                archivedAt: savedAt,
+              },
+              select: { id: true },
+            });
+
+        const incomingSourceIds = archiveFiles.map(
+          (file) => file.sourceAttachmentId,
+        );
+        await tx.archivedProjectFile.deleteMany({
+          where: {
+            archiveId: archive.id,
+            sourceAttachmentId: { notIn: incomingSourceIds },
+          },
+        });
+        await reserveExistingArchiveFileNames(
+          tx,
+          archive.id,
+          incomingSourceIds,
+          archiveFiles.map((file) => file.finalArchiveFileName),
+        );
+
+        for (const file of archiveFiles) {
+          const archiveFile = await tx.archivedProjectFile.upsert({
+            where: {
+              archiveId_sourceAttachmentId: {
+                archiveId: archive.id,
+                sourceAttachmentId: file.sourceAttachmentId,
+              },
+            },
+            update: {
+              sourceRevisionId: file.sourceRevisionId,
+              finalArchiveFileName: file.finalArchiveFileName,
+              originalFileName: file.originalFileName,
+              mimeType: file.mimeType,
+              fileSize: file.fileSize,
+              bucket: file.bucket,
+              storageKey: file.storageKey,
+              archivedById: user.id,
+              archivedAt: savedAt,
+            },
+            create: {
+              archiveId: archive.id,
+              projectId: latestProject.id,
+              sourceAttachmentId: file.sourceAttachmentId,
+              sourceRevisionId: file.sourceRevisionId,
+              finalArchiveFileName: file.finalArchiveFileName,
+              originalFileName: file.originalFileName,
+              mimeType: file.mimeType,
+              fileSize: file.fileSize,
+              bucket: file.bucket,
+              storageKey: file.storageKey,
+              archivedById: user.id,
+              archivedAt: savedAt,
+            },
+            select: { id: true },
+          });
+          const artworkMetadataData = buildArchiveArtworkMetadataCreateData({
+            sourceType: "PROJECT_FINAL_FILE",
+            archiveFileId: archiveFile.id,
+            projectId: latestProject.id,
+            sourceAttachmentId: file.sourceAttachmentId,
+            artworkMetadata: file.artworkMetadata,
+            archivedById: user.id,
+          });
+          await tx.archiveArtworkMetadata.upsert({
+            where: { archiveFileId: archiveFile.id },
+            update: artworkMetadataData,
+            create: artworkMetadataData,
+          });
+        }
+
+        await tx.projectActivityLog.create({
+          data: {
+            projectId: latestProject.id,
+            stageId: stageSix.id,
+            actorId: user.id,
+            action: ActivityLogAction.ARCHIVE_SNAPSHOT_SAVED,
+            metadata: {
+              archiveId: archive.id,
+              archiveCategoryId: archiveCategory.id,
+              archiveCategorySlug: archiveCategory.slug,
+              archiveCategoryLabel: archiveCategory.name,
+              archivedFileCount: archiveFiles.length,
+              projectRemainsActive: true,
+            },
+          },
+        });
+
+        return {
+          archiveId: archive.id,
+          archivedFileCount: archiveFiles.length,
+          archiveCategoryId: archiveCategory.id,
+          archiveCategorySlug: archiveCategory.slug,
+          archiveCategoryLabel: archiveCategory.name,
+          previousArchiveCategorySlug,
+        };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 30_000,
+      },
+    ),
+  );
+
+  return {
+    ...snapshot,
+    savedAt: savedAt.toISOString(),
+  };
 }
 
 export async function getProjectCompletionSummary(
@@ -2971,7 +3727,11 @@ export async function getProjectCompletionSummary(
   const isSelectedStageFinal = Boolean(finalStage && stageIdToCheck === finalStage.id);
   const incompleteStages = getIncompleteProjectStages(project);
   const allStagesCompleted = incompleteStages.length === 0 && project.stages.length > 0;
-  const isCompleted = Boolean(project.archive || project.archivedAt || project.completedAt);
+  const isCompleted = Boolean(
+    (project.archive && project.archive.status !== ArchiveRecordStatus.SAVED) ||
+      project.archivedAt ||
+      project.completedAt,
+  );
   const canCompleteArchive = hasProjectPermission(user, project, "project.completeArchive");
   const isProjectOwner = hasProjectPermission(user, project, "project.completeArchive");
   const canViewArchivedFiles = hasProjectPermission(user, project, "archive.view");
@@ -2992,7 +3752,9 @@ export async function getProjectCompletionSummary(
 
   const approvedFiles =
     finalStage && canCompleteArchive && !isCompleted
-      ? await getFinalStageArchivableAttachments(project.id, finalStage.id)
+      ? project.archive?.status === ArchiveRecordStatus.SAVED
+        ? await getSavedArchiveArchivableAttachments(project.id)
+        : await getFinalStageArchivableAttachments(project.id, finalStage.id)
       : [];
   const projectTags = getArchiveProjectTagNames(project);
   const finalCompletionBlockers =
@@ -3008,7 +3770,11 @@ export async function getProjectCompletionSummary(
   return {
     isCompleted,
     completedAt: formatArchiveTimestamp(project.completedAt),
-    archivedAt: formatArchiveTimestamp(project.archivedAt ?? project.archive?.archivedAt ?? null),
+    archivedAt: isCompleted
+      ? formatArchiveTimestamp(
+          project.archivedAt ?? project.archive?.archivedAt ?? null,
+        )
+      : null,
     finalStageId: finalStage?.id ?? null,
     finalStageName: finalStage?.name ?? null,
     isSelectedStageFinal,
@@ -3040,6 +3806,7 @@ export async function getProjectCompletionSummary(
             projectTags,
             assetTags: file.sourceAttachment.assetTags,
             archiveCategory: project.archive?.archiveCategory ?? null,
+            archiveStatus: project.archive?.status,
             sourceRevisionId: file.sourceRevisionId,
             sourceRevisionNumber: file.sourceRevision?.revisionNumber ?? null,
             submissionReviewStatus: file.sourceAttachment.submissionReviewStatus,
@@ -3078,43 +3845,23 @@ export async function completeProjectArchive(
   await assertProjectAccess(user, input.projectId);
 
   const finalStage = ensureProjectCanBeCompleted(user, archiveProject, input.stageId);
-  const preparedFiles = await getFinalStageArchivableAttachments(
-    archiveProject.id,
-    finalStage.id,
-  );
+  const preparedFiles =
+    archiveProject.archive?.status === ArchiveRecordStatus.SAVED
+      ? await getSavedArchiveArchivableAttachments(archiveProject.id)
+      : await getFinalStageArchivableAttachments(
+          archiveProject.id,
+          finalStage.id,
+        );
 
   if (preparedFiles.length === 0) {
     throw new Error("No approved final files are available to archive.");
   }
 
-  if (input.files.length !== preparedFiles.length) {
-    throw new Error("Archive file list is out of date. Please review the final files again.");
-  }
-
-  const preparedFileMap = new Map(
-    preparedFiles.map((file) => [file.sourceAttachmentId, file] as const),
+  const archiveFiles = validateSubmittedArchiveFiles(
+    preparedFiles,
+    input.files,
+    "Archive file list is out of date. Please review the final files again.",
   );
-  const duplicateNames = new Set<string>();
-  const archiveFiles = input.files.map((file) => {
-    const preparedFile = preparedFileMap.get(file.sourceAttachmentId);
-
-    if (!preparedFile) {
-      throw new Error("Archive file list is invalid. Please reload and try again.");
-    }
-
-    return {
-      ...preparedFile,
-      finalArchiveFileName: validateArchiveFileName(
-        preparedFile.originalFileName,
-        file.finalArchiveFileName,
-        duplicateNames,
-      ),
-      artworkMetadata: validateArchiveArtworkMetadataInput({
-        metadata: file.artworkMetadata,
-        file: preparedFile,
-      }),
-    };
-  });
   const projectTags = getArchiveProjectTagNames(archiveProject);
   const projectTagLabel = formatArchiveProjectTagsLabel(projectTags);
   const archiveCategoryId = input.archiveCategoryId?.trim();
@@ -3183,6 +3930,7 @@ export async function completeProjectArchive(
           archive: {
             select: {
               id: true,
+              status: true,
             },
           },
           completionWorkflow: {
@@ -3217,7 +3965,12 @@ export async function completeProjectArchive(
         throw new Error("You do not have permission to complete and archive this project.");
       }
 
-      if (latestProject.archive || latestProject.archivedAt || latestProject.completedAt) {
+      if (
+        (latestProject.archive &&
+          latestProject.archive.status !== ArchiveRecordStatus.SAVED) ||
+        latestProject.archivedAt ||
+        latestProject.completedAt
+      ) {
         throw new Error("Project is already completed.");
       }
 
@@ -3241,26 +3994,83 @@ export async function completeProjectArchive(
         );
       }
 
-      const createdArchive = await tx.projectArchive.create({
-        data: {
-          projectId: archiveProject.id,
-          finalStageId: finalStage.id,
-          archivedById: user.id,
-          projectName: archiveProject.name,
-          projectCategory: archiveProject.category ?? "Uncategorized",
-          projectTag: projectTagLabel === "—" ? null : projectTagLabel,
-          archiveCategoryId: archiveCategory.id,
-          status: "ARCHIVED",
-          archivedAt,
-        },
-        select: {
-          id: true,
+      const currentArchiveFiles =
+        latestProject.archive?.status === ArchiveRecordStatus.SAVED
+          ? validateSubmittedArchiveFiles(
+              await getSavedArchiveArchivableAttachments(
+                archiveProject.id,
+                tx,
+              ),
+              input.files,
+              "Archive file list is out of date. Please review the final files again.",
+            )
+          : archiveFiles;
+      const createdArchive = latestProject.archive
+        ? await tx.projectArchive.update({
+            where: { id: latestProject.archive.id },
+            data: {
+              finalStageId: finalStage.id,
+              archivedById: user.id,
+              projectName: archiveProject.name,
+              projectCategory: archiveProject.category ?? "Uncategorized",
+              projectTag: projectTagLabel === "—" ? null : projectTagLabel,
+              archiveCategoryId: archiveCategory.id,
+              status: ArchiveRecordStatus.ARCHIVED,
+              archivedAt,
+            },
+            select: { id: true },
+          })
+        : await tx.projectArchive.create({
+            data: {
+              projectId: archiveProject.id,
+              finalStageId: finalStage.id,
+              archivedById: user.id,
+              projectName: archiveProject.name,
+              projectCategory: archiveProject.category ?? "Uncategorized",
+              projectTag: projectTagLabel === "—" ? null : projectTagLabel,
+              archiveCategoryId: archiveCategory.id,
+              status: ArchiveRecordStatus.ARCHIVED,
+              archivedAt,
+            },
+            select: { id: true },
+          });
+
+      const incomingSourceIds = currentArchiveFiles.map(
+        (file) => file.sourceAttachmentId,
+      );
+      await tx.archivedProjectFile.deleteMany({
+        where: {
+          archiveId: createdArchive.id,
+          sourceAttachmentId: { notIn: incomingSourceIds },
         },
       });
+      await reserveExistingArchiveFileNames(
+        tx,
+        createdArchive.id,
+        incomingSourceIds,
+        currentArchiveFiles.map((file) => file.finalArchiveFileName),
+      );
 
-      for (const file of archiveFiles) {
-        const createdFile = await tx.archivedProjectFile.create({
-          data: {
+      for (const file of currentArchiveFiles) {
+        const createdFile = await tx.archivedProjectFile.upsert({
+          where: {
+            archiveId_sourceAttachmentId: {
+              archiveId: createdArchive.id,
+              sourceAttachmentId: file.sourceAttachmentId,
+            },
+          },
+          update: {
+            sourceRevisionId: file.sourceRevisionId,
+            finalArchiveFileName: file.finalArchiveFileName,
+            originalFileName: file.originalFileName,
+            mimeType: file.mimeType,
+            fileSize: file.fileSize,
+            bucket: file.bucket,
+            storageKey: file.storageKey,
+            archivedById: user.id,
+            archivedAt,
+          },
+          create: {
             archiveId: createdArchive.id,
             projectId: archiveProject.id,
             sourceAttachmentId: file.sourceAttachmentId,
@@ -3274,57 +4084,21 @@ export async function completeProjectArchive(
             archivedById: user.id,
             archivedAt,
           },
-          select: {
-            id: true,
-          },
+          select: { id: true },
         });
 
-        await tx.archiveArtworkMetadata.create({
-          data: {
-            archiveFileId: createdFile.id,
-            projectId: archiveProject.id,
-            sourceAttachmentId: file.sourceAttachmentId,
-            artworkId: file.artworkMetadata.artworkId,
-            titleWorkingName: file.artworkMetadata.titleWorkingName,
-            versionRevision: file.artworkMetadata.versionRevision,
-            languageMarket: file.artworkMetadata.languageMarket,
-            artworkType: file.artworkMetadata.artworkType,
-            brandSubBrand: file.artworkMetadata.brandSubBrand,
-            productSku: file.artworkMetadata.productSku,
-            campaignProject: file.artworkMetadata.campaignProject,
-            formatDimensions: file.artworkMetadata.formatDimensions,
-            colourSpace: file.artworkMetadata.colourSpace,
-            resolution: file.artworkMetadata.resolution,
-            fileFormats: file.artworkMetadata.fileFormats,
-            printProcess: file.artworkMetadata.printProcess,
-            specialFinishes: file.artworkMetadata.specialFinishes,
-            creationDate: file.artworkMetadata.creationDate,
-            lastModifiedDate: file.artworkMetadata.lastModifiedDate,
-            goLiveOnShelfDate: file.artworkMetadata.goLiveOnShelfDate,
-            expirySunsetDate: file.artworkMetadata.expirySunsetDate,
-            archiveStatus: file.artworkMetadata.archiveStatus,
-            createdByName: file.artworkMetadata.createdByName,
-            createdByUserId: file.artworkMetadata.createdByUserId,
-            approvedByName: file.artworkMetadata.approvedByName,
-            approvedByUserId: file.artworkMetadata.approvedByUserId,
-            approvedAt: file.artworkMetadata.approvedAt,
-            clientBrandOwner: file.artworkMetadata.clientBrandOwner,
-            regulatoryClearance: file.artworkMetadata.regulatoryClearance,
-            fontsUsed: file.artworkMetadata.fontsUsed,
-            imagesPhotography: file.artworkMetadata.imagesPhotography,
-            illustrationsIcons: file.artworkMetadata.illustrationsIcons,
-            colourCodes: file.artworkMetadata.colourCodes,
-            thirdPartyLogosIp: file.artworkMetadata.thirdPartyLogosIp,
-            supplierPrinter: file.artworkMetadata.supplierPrinter,
-            outputFilesList: file.artworkMetadata.outputFilesList,
-            printProofRef: file.artworkMetadata.printProofRef,
-            packagingDielineRef: file.artworkMetadata.packagingDielineRef,
-            changeLog: file.artworkMetadata.changeLog,
-            relatedArtworks: file.artworkMetadata.relatedArtworks,
-            briefSpecLink: file.artworkMetadata.briefSpecLink,
-            generalNotes: file.artworkMetadata.generalNotes,
-            archivedById: user.id,
-          },
+        const artworkMetadataData = buildArchiveArtworkMetadataCreateData({
+          sourceType: "PROJECT_FINAL_FILE",
+          archiveFileId: createdFile.id,
+          projectId: archiveProject.id,
+          sourceAttachmentId: file.sourceAttachmentId,
+          artworkMetadata: file.artworkMetadata,
+          archivedById: user.id,
+        });
+        await tx.archiveArtworkMetadata.upsert({
+          where: { archiveFileId: createdFile.id },
+          update: artworkMetadataData,
+          create: artworkMetadataData,
         });
       }
 
@@ -3358,10 +4132,12 @@ export async function completeProjectArchive(
 
       return {
         archiveId: createdArchive.id,
-        archivedFileCount: archiveFiles.length,
+        archivedFileCount: currentArchiveFiles.length,
         archiveCategoryId: archiveCategory.id,
         archiveCategorySlug: archiveCategory.slug,
         archiveCategoryLabel: archiveCategory.name,
+        previousArchiveCategorySlug:
+          archiveProject.archive?.archiveCategory?.slug ?? null,
       };
     }),
   );

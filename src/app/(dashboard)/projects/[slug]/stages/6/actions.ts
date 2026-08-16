@@ -9,6 +9,11 @@ import type {
 
 import { requireUser } from "@/lib/auth";
 import {
+  getStageSixArchivePreparation,
+  saveStageSixArchiveSnapshot,
+  type ArchiveArtworkMetadataDraft,
+} from "@/lib/archives";
+import {
   addProductionApprover,
   addProductionUnitFile,
   completeStageSix,
@@ -26,6 +31,17 @@ function revalidateStageSix(projectId: string) {
   revalidatePath(`/projects/${projectId}/stages/5`);
   revalidatePath(`/projects/${projectId}/stages/6`);
   revalidatePath(`/projects/${projectId}/stages/7`);
+}
+
+function revalidateStageSixArchive(
+  projectId: string,
+  archiveCategorySlugs: Array<string | null | undefined>,
+) {
+  revalidateStageSix(projectId);
+  revalidatePath("/archives");
+  for (const archiveCategorySlug of new Set(archiveCategorySlugs.filter(Boolean))) {
+    revalidatePath(`/archives/${archiveCategorySlug}`);
+  }
 }
 
 function publishStageSixChange(input: {
@@ -182,5 +198,55 @@ export async function completeStageSixAction(input: { projectId: string }) {
   } catch (error) {
     console.error("[stage-six] completion failed", error);
     return { error: "Unable to complete Stage 6 right now." } as const;
+  }
+}
+
+export async function prepareStageSixArchiveAction(input: { projectId: string }) {
+  const user = await requireUser();
+
+  try {
+    return {
+      preparation: await getStageSixArchivePreparation(user, input),
+    } as const;
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the Stage 6 archive.",
+    } as const;
+  }
+}
+
+export async function saveStageSixArchiveAction(input: {
+  projectId: string;
+  archiveCategoryId?: string;
+  files: Array<{
+    sourceAttachmentId: string;
+    finalArchiveFileName: string;
+    artworkMetadata: ArchiveArtworkMetadataDraft;
+  }>;
+}) {
+  const user = await requireUser();
+
+  try {
+    const archive = await saveStageSixArchiveSnapshot(user, input);
+    revalidateStageSixArchive(input.projectId, [
+      archive.previousArchiveCategorySlug,
+      archive.archiveCategorySlug,
+    ]);
+    publishStageSixChange({
+      projectId: input.projectId,
+      actorId: user.id,
+      changedEntityId: archive.archiveId,
+    });
+    return { archive } as const;
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to save the Stage 6 archive.",
+    } as const;
   }
 }

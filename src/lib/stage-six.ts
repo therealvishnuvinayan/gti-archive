@@ -1,4 +1,5 @@
 import {
+  ArchiveRecordStatus,
   AttachmentAssetType,
   AttachmentStatus,
   Prisma,
@@ -22,6 +23,8 @@ import { sendResendEmail } from "@/lib/email/resend";
 import {
   hasProjectPermission,
   isGlobalProjectAdministrator,
+  isProjectCoOwner,
+  isProjectOwner,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { normalizeInternationalPhone } from "@/lib/project-contact-validation";
@@ -55,6 +58,7 @@ import {
   ACCESSIBLE_WORKFLOW_STAGE_STATUSES,
   canOpenImplementedWorkflowStage,
 } from "@/lib/workflow-stage-access";
+import { isSuperAdminRole } from "@/lib/user-role-compatibility";
 
 type EmailSender = typeof sendResendEmail;
 type StageProject = ProjectStageAccessRecord;
@@ -153,7 +157,14 @@ export type StageSixWorkspaceData = {
   units: StageSixUnitRecord[];
   participants: Array<{ id: string; name: string; email: string; role: string }>;
   canManage: boolean;
+  canSaveArchive: boolean;
   stageCompleted: boolean;
+  savedArchive: {
+    archiveCategorySlug: string | null;
+    archiveCategoryLabel: string;
+    fileCount: number;
+    savedAt: string;
+  } | null;
   summary: {
     total: number;
     approved: number;
@@ -584,13 +595,24 @@ export async function getStageSixWorkspaceData(
 ): Promise<StageSixWorkspaceData | null> {
   const project = await getAuthorizedStageSixProject(user, projectId);
   if (!project || !canManageStageSix(user, project)) return null;
-  const records = await withPrismaRetry(() =>
-    prisma.projectProductionUnit.findMany({
-      where: { projectId },
-      relationLoadStrategy: "join",
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: workspaceUnitSelect,
-    }),
+  const [records, savedArchive] = await withPrismaRetry(() =>
+    Promise.all([
+      prisma.projectProductionUnit.findMany({
+        where: { projectId },
+        relationLoadStrategy: "join",
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: workspaceUnitSelect,
+      }),
+      prisma.projectArchive.findUnique({
+        where: { projectId },
+        select: {
+          status: true,
+          archivedAt: true,
+          archiveCategory: { select: { slug: true, name: true } },
+          _count: { select: { files: true } },
+        },
+      }),
+    ]),
   );
   const units: StageSixUnitRecord[] = records.map((unit) => {
     const itemByKey = new Map(
@@ -673,9 +695,24 @@ export async function getStageSixWorkspaceData(
     units,
     participants: getParticipants(project),
     canManage: canManageStageSix(user, project),
+    canSaveArchive:
+      (isSuperAdminRole(user.role) ||
+        isProjectOwner(user, project) ||
+        isProjectCoOwner(user, project)) &&
+      hasProjectPermission(user, project, "project.completeArchive"),
     stageCompleted:
       stageStatus(project, ProjectWorkflowStageKey.PRODUCTION_AND_HANDOVER) ===
       ProjectWorkflowStageStatus.COMPLETED,
+    savedArchive:
+      savedArchive?.status === ArchiveRecordStatus.SAVED
+        ? {
+            archiveCategorySlug: savedArchive.archiveCategory?.slug ?? null,
+            archiveCategoryLabel:
+              savedArchive.archiveCategory?.name ?? "Uncategorized",
+            fileCount: savedArchive._count.files,
+            savedAt: savedArchive.archivedAt.toISOString(),
+          }
+        : null,
     summary: {
       total: units.length,
       approved: units.filter(

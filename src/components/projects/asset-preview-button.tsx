@@ -157,7 +157,7 @@ export function AssetPreviewDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#112118]/45 px-4 py-8 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[260] flex items-center justify-center bg-[#112118]/55 px-4 py-8 backdrop-blur-[3px]"
       role="dialog"
       aria-modal="true"
       aria-label={`Preview ${fileName}`}

@@ -100,7 +100,7 @@ assertIncludesAll(
     "if (!hasProjectPermission(user, project, \"archive.view\"))",
     "Final completion requirements must be resolved before archive.",
     "getFinalCompletionArchiveBlockers",
-    "latestProject.archive || latestProject.archivedAt || latestProject.completedAt",
+    "latestProject.archive.status !== ArchiveRecordStatus.SAVED",
   ],
   "archive access and final archive gating",
 );
