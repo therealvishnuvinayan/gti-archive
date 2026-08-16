@@ -131,7 +131,11 @@ function FlexibleProjectCard({ project }: { project: FlexibleProjectFixture }) {
   );
 }
 
-export function FlexibleProjectsBrowser() {
+export function FlexibleProjectsBrowser({
+  canCreateProject,
+}: {
+  canCreateProject: boolean;
+}) {
   const [createOpen, setCreateOpen] = useState(false);
   const [deadline, setDeadline] = useState("");
   const [owner, setOwner] = useState("sarah-ahmed");
@@ -139,6 +143,7 @@ export function FlexibleProjectsBrowser() {
 
   function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canCreateProject) return;
     setCreateOpen(false);
     setDeadline("");
     setOwner("sarah-ahmed");
@@ -164,13 +169,15 @@ export function FlexibleProjectsBrowser() {
               Custom work organized with user-defined milestones rather than the fixed artwork stages.
             </p>
           </div>
-          <Button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto"
-          >
-            <Plus className="size-4" /> New Flexible Project
-          </Button>
+          {canCreateProject ? (
+            <Button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="h-12 self-start rounded-full px-6 text-[14px] lg:self-auto"
+            >
+              <Plus className="size-4" /> New Flexible Project
+            </Button>
+          ) : null}
         </div>
       </MotionSection>
 
@@ -186,7 +193,7 @@ export function FlexibleProjectsBrowser() {
       </MotionStaggerGroup>
 
       <FlexiblePrototypeDialog
-        open={createOpen}
+        open={canCreateProject && createOpen}
         title="New Flexible Project"
         description="Prototype the project setup. Nothing entered here will be saved."
         onClose={() => setCreateOpen(false)}

@@ -31,6 +31,7 @@ export type ManagedUserRecord = {
   email: string;
   avatarUrl: string | null;
   role: PermissionRole;
+  projectCreationAccessGranted: boolean;
   canAccessArchives: boolean;
   archiveAccessLevel: ManagedArchiveAccessLevel;
   archiveAssetAccesses: ManagedArchiveAssetAccessRecord[];
@@ -41,6 +42,7 @@ export type ManagedUserUpdateInput = {
   userId: string;
   avatarUrl?: string;
   role: PermissionRole;
+  projectCreationAccessGranted: boolean;
   archiveAccessLevel: ManagedArchiveAccessLevel;
   archiveAssetIds?: string[];
   updatedById?: string | null;
@@ -175,6 +177,7 @@ function mapManagedUser(user: {
   name: string | null;
   avatarUrl: string | null;
   role: UserRole;
+  projectCreationAccessGranted: boolean;
   inviteToken: string | null;
   inviteExpiresAt: Date | null;
   inviteAcceptedAt: Date | null;
@@ -209,6 +212,7 @@ function mapManagedUser(user: {
     email: user.email,
     avatarUrl: user.avatarUrl,
     role: user.role,
+    projectCreationAccessGranted: user.projectCreationAccessGranted,
     canAccessArchives: archiveAccessLevel !== "NONE",
     archiveAccessLevel,
     archiveAssetAccesses,
@@ -230,6 +234,7 @@ export async function listUsersForPermissionManagement() {
         email: true,
         avatarUrl: true,
         role: true,
+        projectCreationAccessGranted: true,
         inviteToken: true,
         inviteExpiresAt: true,
         inviteAcceptedAt: true,
@@ -297,6 +302,7 @@ export async function getManagedUserPermissionRecord(userId: string) {
         email: true,
         avatarUrl: true,
         role: true,
+        projectCreationAccessGranted: true,
         inviteToken: true,
         inviteExpiresAt: true,
         inviteAcceptedAt: true,
@@ -450,6 +456,10 @@ export async function updateManagedUserPermissions(
     throw new Error("SUPER_ADMIN cannot be assigned through user management.");
   }
 
+  if (typeof input.projectCreationAccessGranted !== "boolean") {
+    throw new Error("Choose whether this user may create projects.");
+  }
+
   const updatedUser = await withPrismaRetry(() =>
     prisma.$transaction(async (tx) => {
       const existingUser = await tx.user.findUnique({
@@ -486,6 +496,10 @@ export async function updateManagedUserPermissions(
         },
         data: {
           role: input.role,
+          projectCreationAccessGranted:
+            input.role === UserRole.USER
+              ? input.projectCreationAccessGranted
+              : false,
           ...(input.avatarUrl === undefined ? {} : { avatarUrl: input.avatarUrl }),
         },
         select: {
@@ -555,6 +569,7 @@ export async function updateManagedUserPermissions(
           email: true,
           avatarUrl: true,
           role: true,
+          projectCreationAccessGranted: true,
           inviteToken: true,
           inviteExpiresAt: true,
           inviteAcceptedAt: true,

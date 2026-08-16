@@ -19,7 +19,7 @@ The database stores editable profile assignments for:
 
 - global roles
 
-Users are assigned one account role. Archive module access also requires a per-user entitlement for non-administrator users. Project relationships and explicit `ProjectCollaborator` grants further scope access within an individual project; generic per-user permission overrides are not implemented.
+Users are assigned one account role. Archive module access also requires a per-user entitlement for non-administrator users, and `project.create` uses a dedicated per-user grant for selected USER accounts. Project relationships and explicit `ProjectCollaborator` grants further scope access within an individual project; generic per-user permission overrides are not implemented.
 
 Run `pnpm permissions:sync` after schema changes to upsert permission definitions and seed missing profile rows.
 

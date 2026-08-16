@@ -384,6 +384,7 @@ model User {
   passwordHash                        String
   passwordChangedAt                   DateTime?
   role                                UserRole                             @default(USER)
+  projectCreationAccessGranted        Boolean                              @default(false)
   inviteToken                         String?                              @unique
   inviteExpiresAt                     DateTime?
   inviteAcceptedAt                    DateTime?

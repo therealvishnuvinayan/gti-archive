@@ -260,7 +260,7 @@ export function ProjectsBrowser({
       </MotionSection>
 
       {activeProjectView === "flexible" ? (
-        <FlexibleProjectsBrowser />
+        <FlexibleProjectsBrowser canCreateProject={canCreateProject} />
       ) : (
         <div className="space-y-5">
       <MotionSection>

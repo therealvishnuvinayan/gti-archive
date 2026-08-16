@@ -112,6 +112,7 @@ export async function createProjectV2(
       select: {
         id: true,
         role: true,
+        projectCreationAccessGranted: true,
       },
     }),
   );
@@ -120,8 +121,12 @@ export async function createProjectV2(
 
   if (!owner) {
     fieldErrors.ownerId = "The selected project owner no longer exists.";
-  } else if (!isBusinessAdministratorRole(owner.role)) {
-    fieldErrors.ownerId = "Only an Admin can create and own a project.";
+  } else if (
+    !isBusinessAdministratorRole(owner.role) &&
+    !owner.projectCreationAccessGranted
+  ) {
+    fieldErrors.ownerId =
+      "Only an Admin or a user granted Create Project access can own a new project.";
   }
 
   const invalidCoOwner = coOwnerIds.find((userId) => {

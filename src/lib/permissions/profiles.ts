@@ -318,6 +318,10 @@ export async function savePermissionProfile(input: {
     }
   }
 
+  if (profileType === "role" && profileKey === "USER") {
+    nextState["project.create"] = false;
+  }
+
   const rows = allPermissionKeys.map((permissionKey) => ({
     permissionKey,
     enabled: nextState[permissionKey],

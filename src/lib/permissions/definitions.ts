@@ -284,7 +284,8 @@ const permissionMetadata: Record<
   },
   "project.create": {
     label: "Create projects",
-    description: "Create new projects.",
+    description:
+      "Create new projects. USER accounts receive this access individually from User Management.",
     moduleGated: true,
     hardRule: false,
   },

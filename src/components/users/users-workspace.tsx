@@ -90,6 +90,7 @@ type UsersWorkspaceProps = {
 type UserEditForm = {
   userId: string;
   role: PermissionRole;
+  projectCreationAccessGranted: boolean;
   archiveAccessLevel: ManagedArchiveAccessLevel;
   archiveAssetAccesses: ManagedArchiveAssetAccessRecord[];
 };
@@ -285,6 +286,7 @@ function getDefaultForm(user: ManagedUserRecord): UserEditForm {
   return {
     userId: user.id,
     role: user.role,
+    projectCreationAccessGranted: user.projectCreationAccessGranted,
     archiveAccessLevel,
     archiveAssetAccesses:
       archiveAccessLevel === "PARTIAL" ? user.archiveAssetAccesses : [],
@@ -707,6 +709,56 @@ function EditUserModal({
               </Select>
             </label>
 
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[16px] font-[700] text-[#18201a]">
+                  Create Project
+                </p>
+                <p className="mt-1 text-[13px] leading-5 text-[#748074]">
+                  Allow this specific user to create and own new projects.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={
+                  isBusinessAdministratorRole(form.role) ||
+                  form.projectCreationAccessGranted
+                }
+                disabled={saving || isBusinessAdministratorRole(form.role)}
+                onClick={() =>
+                  onChange(
+                    "projectCreationAccessGranted",
+                    !form.projectCreationAccessGranted,
+                  )
+                }
+                className={cn(
+                  "relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  isBusinessAdministratorRole(form.role) ||
+                    form.projectCreationAccessGranted
+                    ? "bg-[#2f8d5d]"
+                    : "bg-[#ccd6ce]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-1 size-5 rounded-full bg-white shadow-sm transition-transform",
+                    isBusinessAdministratorRole(form.role) ||
+                      form.projectCreationAccessGranted
+                      ? "translate-x-6"
+                      : "translate-x-1",
+                  )}
+                />
+              </button>
+            </div>
+            {isBusinessAdministratorRole(form.role) ? (
+              <p className="mt-3 rounded-[14px] bg-[#f8fbff] px-4 py-3 text-[12px] leading-5 text-[#5f6c75]">
+                Administrators receive Create Project access through their role.
+              </p>
+            ) : null}
           </div>
 
           <div className="mt-5 rounded-[24px] border border-[#e8eee7] bg-[#fbfcfa] p-5">
@@ -1208,7 +1260,13 @@ function ManagePermissionsModal({
                 ) : (
                   <div className="mt-5 space-y-3">
                     {filteredItems.map((item) => {
-                      const enabled = draftState[item.key];
+                      const isPerUserProjectCreationPermission =
+                        profileType === "role" &&
+                        profileKey === "USER" &&
+                        item.key === "project.create";
+                      const enabled = isPerUserProjectCreationPermission
+                        ? false
+                        : draftState[item.key];
                       const isProtectedSuperAdminPermission =
                         profileType === "role" &&
                         profileKey === "SUPER_ADMIN" &&
@@ -1232,7 +1290,8 @@ function ManagePermissionsModal({
                             disabled={
                               isSavingProfile ||
                               isResettingProfile ||
-                              isProtectedSuperAdminPermission
+                              isProtectedSuperAdminPermission ||
+                              isPerUserProjectCreationPermission
                             }
                             className="mt-1 h-4 w-4 rounded border-[#c6d6c8] accent-[#256a45]"
                           />
@@ -1269,6 +1328,11 @@ function ManagePermissionsModal({
                                       Protected for SUPER_ADMIN
                                     </StatusBadge>
                                   ) : null}
+                                  {isPerUserProjectCreationPermission ? (
+                                    <StatusBadge className="border-[#d6e4f4] bg-[#eef5fd] text-[#2f6da6]">
+                                      Assigned per user
+                                    </StatusBadge>
+                                  ) : null}
                                 </div>
                               </div>
                               <StatusBadge
@@ -1278,7 +1342,11 @@ function ManagePermissionsModal({
                                     : "border-[#f3d1cf] bg-[#fff0ef] text-[#d6544d]"
                                 }
                               >
-                                {enabled ? "Allowed" : "Not Allowed"}
+                                {isPerUserProjectCreationPermission
+                                  ? "Use Edit User"
+                                  : enabled
+                                    ? "Allowed"
+                                    : "Not Allowed"}
                               </StatusBadge>
                             </div>
                           </div>
@@ -1477,6 +1545,7 @@ export function UsersWorkspace({
       const next = { ...current, [field]: value };
 
       if (isBusinessAdministratorRole(next.role)) {
+        next.projectCreationAccessGranted = false;
         next.archiveAccessLevel = "FULL";
         next.archiveAssetAccesses = [];
       }
@@ -1506,6 +1575,7 @@ export function UsersWorkspace({
           userId: form.userId,
           avatarUrl,
           role: form.role,
+          projectCreationAccessGranted: form.projectCreationAccessGranted,
           archiveAccessLevel: form.archiveAccessLevel,
           archiveAssetIds:
             form.archiveAccessLevel === "PARTIAL"

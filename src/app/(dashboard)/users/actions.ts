@@ -46,6 +46,7 @@ type SaveUserAccessInput = {
   userId: string;
   avatarUrl?: string;
   role: PermissionRole;
+  projectCreationAccessGranted: boolean;
   archiveAccessLevel: ManagedArchiveAccessLevel;
   archiveAssetIds?: string[];
 };
@@ -221,6 +222,7 @@ export async function saveUserAccessAction(input: SaveUserAccessInput) {
     userId,
     avatarUrl,
     role: input.role,
+    projectCreationAccessGranted: input.projectCreationAccessGranted,
     archiveAccessLevel: input.archiveAccessLevel,
     archiveAssetIds: input.archiveAssetIds ?? [],
     updatedById: currentUser.id,

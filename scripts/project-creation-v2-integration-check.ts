@@ -9,6 +9,7 @@ import { createProjectV2 } from "../src/lib/project-creation";
 import { deriveProjectListWorkflowState } from "../src/lib/project-list-workflow";
 import { hasProjectPermission } from "../src/lib/permissions/resolver";
 import { prisma as servicePrisma } from "../src/lib/prisma";
+import { updateManagedUserPermissions } from "../src/lib/user-permissions";
 
 const prisma = new PrismaClient();
 const runId = randomUUID();
@@ -122,6 +123,43 @@ async function main() {
     (await prisma.project.count()) === projectCountBeforeForgedUserCreate,
     "A forged USER project creation attempt must not persist a project.",
   );
+
+  const selectedProjectCreator = await updateManagedUserPermissions({
+    userId: ids.executorA,
+    role: UserRole.USER,
+    projectCreationAccessGranted: true,
+    archiveAccessLevel: "NONE",
+    updatedById: ids.creator,
+  });
+  assert(
+    selectedProjectCreator.projectCreationAccessGranted,
+    "User Management must persist the selected USER Create Project grant.",
+  );
+  const selectedUserCreate = await createProjectV2(
+    { id: ids.executorA },
+    {
+      name: "Selected USER project creation",
+      ownerId: ids.creator,
+      coOwnerIds: [],
+      executorIds: [ids.executorB],
+      collaboratorIds: [],
+    },
+  );
+  assert(
+    "projectId" in selectedUserCreate,
+    "A USER explicitly granted Create Project access must create successfully.",
+  );
+  if ("projectId" in selectedUserCreate) {
+    const selectedUserProject = await prisma.project.findUniqueOrThrow({
+      where: { id: selectedUserCreate.projectId },
+      select: { ownerId: true, createdById: true },
+    });
+    assert(
+      selectedUserProject.ownerId === ids.executorA &&
+        selectedUserProject.createdById === ids.executorA,
+      "The selected USER must become the owner and creator of their project.",
+    );
+  }
 
   const created = await prisma.project.findUnique({
     where: { id: success.projectId },
@@ -524,7 +562,9 @@ main()
     await prisma.$executeRawUnsafe(
       `DROP FUNCTION IF EXISTS fail_v2_notification_insert()`,
     ).catch(() => undefined);
-    await prisma.project.deleteMany({ where: { createdById: ids.creator } });
+    await prisma.project.deleteMany({
+      where: { createdById: { in: [ids.creator, ids.executorA] } },
+    });
     await prisma.user.deleteMany({ where: { id: { in: Object.values(ids) } } });
     await prisma.$disconnect();
     await servicePrisma.$disconnect();

@@ -18,7 +18,8 @@ import type {
 import type { PermissionProfileSnapshot } from "@/lib/permissions/profiles";
 import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 
-export type PermissionUser = Pick<User, "id" | "role"> & {
+export type PermissionUser = Pick<User, "id" | "role"> &
+  Partial<Pick<User, "projectCreationAccessGranted">> & {
   permissionProfileSnapshot?: PermissionProfileSnapshot | null;
 };
 
@@ -148,10 +149,11 @@ export function hasPermission(user: PermissionUser, permissionKey: PermissionKey
 }
 
 export function canCreateProjects(user: PermissionUser) {
-  return (
-    isBusinessAdministratorRole(user.role) &&
-    hasPermission(user, "project.create")
-  );
+  if (isBusinessAdministratorRole(user.role)) {
+    return hasPermission(user, "project.create");
+  }
+
+  return user.projectCreationAccessGranted === true;
 }
 
 export function getArchiveAccessLevel(user: PermissionUser) {

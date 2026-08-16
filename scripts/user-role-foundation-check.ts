@@ -112,6 +112,24 @@ assert.equal(
   false,
   "USER must not create projects even if project.create is mistakenly enabled.",
 );
+assert.equal(
+  canCreateProjects({
+    id: "selected-project-creator",
+    role: UserRole.USER,
+    projectCreationAccessGranted: true,
+  }),
+  true,
+  "A USER explicitly selected for Create Project access must be allowed.",
+);
+assert.equal(
+  canCreateProjects({
+    id: "unselected-project-creator",
+    role: UserRole.USER,
+    projectCreationAccessGranted: false,
+  }),
+  false,
+  "An unselected USER must not be allowed to create projects.",
+);
 
 const userWithViewModules = {
   id: "user",

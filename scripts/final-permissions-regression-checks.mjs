@@ -18,8 +18,13 @@ includes(
 );
 includes(
   resolver,
-  'isBusinessAdministratorRole(user.role) &&\n    hasPermission(user, "project.create")',
-  "project creation must combine the hard ADMIN role boundary with project.create",
+  'return hasPermission(user, "project.create")',
+  "administrator project creation must honor the saved role permission",
+);
+includes(
+  resolver,
+  "user.projectCreationAccessGranted === true",
+  "USER project creation must require an explicit per-user grant",
 );
 
 for (const stageNumber of [1, 2, 5, 6, 7]) {
