@@ -103,6 +103,26 @@ async function main() {
   );
   assert("projectId" in success, "Valid V2 creation must succeed.");
 
+  const projectCountBeforeForgedUserCreate = await prisma.project.count();
+  const forgedUserCreate = await createProjectV2(
+    { id: ids.executorA },
+    {
+      name: "Forged USER project creation",
+      ownerId: ids.creator,
+      coOwnerIds: [],
+      executorIds: [ids.executorB],
+      collaboratorIds: [],
+    },
+  );
+  assert(
+    "error" in forgedUserCreate,
+    "A USER must not create a project by calling the service directly.",
+  );
+  assert(
+    (await prisma.project.count()) === projectCountBeforeForgedUserCreate,
+    "A forged USER project creation attempt must not persist a project.",
+  );
+
   const created = await prisma.project.findUnique({
     where: { id: success.projectId },
     include: {

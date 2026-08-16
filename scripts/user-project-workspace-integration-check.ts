@@ -150,6 +150,12 @@ async function createConcept(input: {
 }
 
 async function main() {
+  process.env.AWS_REGION ||= "us-east-1";
+  process.env.AWS_ACCESS_KEY_ID ||= "user-workspace-test";
+  process.env.AWS_SECRET_ACCESS_KEY ||= "user-workspace-test-secret";
+  process.env.AWS_S3_BUCKET ||= "user-workspace-integration";
+  process.env.S3_USE_ACCELERATE_ENDPOINT ||= "false";
+
   const runId = randomUUID();
   const users = {
     owner: {

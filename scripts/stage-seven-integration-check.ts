@@ -258,6 +258,10 @@ async function main() {
 
     const initial = await getStageSevenWorkspaceData(owner, ids.project);
     check(initial?.units.length === 2, "the loader must derive handed-over Stage 6 units");
+    check(
+      (await getStageSevenWorkspaceData(executor, ids.project)) === null,
+      "project membership must not expose the Stage 7 manager workspace to a USER",
+    );
     check(initial.units[0].name === "Retail Carton" && initial.units[0].rawFileName === "unit-1-source.pdf", "OUTPUT_NAME must be primary and raw filename secondary");
     check(initial.units.every((unit) => unit.status === ProductionSupervisionStatus.NOT_STARTED), "missing supervision must display Not Started");
     check((await prisma.projectProductionSupervision.count({ where: { projectId: ids.project } })) === 0, "read-only loading must not create supervision rows");

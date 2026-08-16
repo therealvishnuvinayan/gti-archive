@@ -147,6 +147,13 @@ export function hasPermission(user: PermissionUser, permissionKey: PermissionKey
   return getBasePermissionSet(user).has(permissionKey);
 }
 
+export function canCreateProjects(user: PermissionUser) {
+  return (
+    isBusinessAdministratorRole(user.role) &&
+    hasPermission(user, "project.create")
+  );
+}
+
 export function getArchiveAccessLevel(user: PermissionUser) {
   if (isGlobalProjectAdministrator(user)) {
     return "FULL" as const;
@@ -277,6 +284,10 @@ export function hasProjectPermission(
   project: ProjectPermissionContext,
   permissionKey: PermissionKey,
 ) {
+  if (!hasProjectPermissionGrant(user, permissionKey)) {
+    return false;
+  }
+
   if (
     isProjectOwnerOrCoOwner(user, project) &&
     isProjectOwnerManagePermission(permissionKey)
@@ -336,10 +347,6 @@ export function hasProjectPermission(
         isProjectOwnerOrCoOwner(user, project) ||
         hasProjectArchiveAccessGrant(user, project)
       );
-  }
-
-  if (!hasProjectPermissionGrant(user, permissionKey)) {
-    return false;
   }
 
   switch (permissionKey) {
@@ -403,8 +410,9 @@ export function canAddProjectCaptions(
   project: ProjectPermissionContext,
 ) {
   return (
-    isProjectAdmin(user) ||
-    isProjectOwnerOrCoOwner(user, project) ||
-    hasProjectCollaboratorGrant(user, project, "canAddCaptions")
+    hasProjectPermissionGrant(user, "compare.createComment") &&
+    (isProjectAdmin(user) ||
+      isProjectOwnerOrCoOwner(user, project) ||
+      hasProjectCollaboratorGrant(user, project, "canAddCaptions"))
   );
 }

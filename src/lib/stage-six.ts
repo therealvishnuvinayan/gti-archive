@@ -223,9 +223,8 @@ function stageStatus(project: StageProject, key: ProjectWorkflowStageKey) {
 
 export function canManageStageSix(user: PermissionUser, project: StageProject) {
   return (
-    isGlobalProjectAdministrator(user) ||
-    project.ownerId === user.id ||
-    project.coOwners.some((coOwner) => coOwner.userId === user.id)
+    isGlobalProjectAdministrator(user) &&
+    hasProjectPermission(user, project, "stage.view")
   );
 }
 
@@ -296,7 +295,13 @@ function uniqueAllowedFieldKeys(values: ProjectFileChecklistField[]) {
 
 async function getAuthorizedStageSixProject(user: PermissionUser, projectId: string) {
   const project = await getProjectStageAccessRecordById(projectId);
-  if (!project || !hasProjectPermission(user, project, "project.view")) return null;
+  if (
+    !project ||
+    !hasProjectPermission(user, project, "project.view") ||
+    !hasProjectPermission(user, project, "stage.view")
+  ) {
+    return null;
+  }
   if (
     !canOpenImplementedWorkflowStage({
       stageKey: ProjectWorkflowStageKey.FINAL_LAYOUT,
@@ -533,7 +538,7 @@ export async function getStageSixWorkspaceData(
   projectId: string,
 ): Promise<StageSixWorkspaceData | null> {
   const project = await getAuthorizedStageSixProject(user, projectId);
-  if (!project) return null;
+  if (!project || !canManageStageSix(user, project)) return null;
   const records = await withPrismaRetry(() =>
     prisma.projectProductionUnit.findMany({
       where: { projectId },
@@ -662,7 +667,9 @@ export async function getStageFiveCompletionState(
     ]),
   );
   return {
-    canComplete: canManageStageSix(user, project),
+    canComplete:
+      canManageStageSix(user, project) &&
+      hasProjectPermission(user, project, "stage.markStageComplete"),
     completed:
       stageStatus(project, ProjectWorkflowStageKey.FINAL_LAYOUT) ===
       ProjectWorkflowStageStatus.COMPLETED,
@@ -740,9 +747,8 @@ export async function completeStageFive(
           });
           if (!project) return { error: "Project not found." } as const;
           const manager =
-            isGlobalProjectAdministrator(user) ||
-            project.ownerId === user.id ||
-            project.coOwners.some((entry) => entry.userId === user.id);
+            isGlobalProjectAdministrator(user) &&
+            hasProjectPermission(user, project, "stage.markStageComplete");
           if (!manager) {
             return { error: "You do not have permission to complete Stage 5." } as const;
           }
@@ -2605,7 +2611,12 @@ export async function completeStageSix(
   conflictRetryCount = 0,
 ) {
   const accessProject = await getStageSixManagerProject(user, input.projectId);
-  if (!accessProject) return { error: "You do not have permission to complete Stage 6." } as const;
+  if (
+    !accessProject ||
+    !hasProjectPermission(user, accessProject, "stage.markStageComplete")
+  ) {
+    return { error: "You do not have permission to complete Stage 6." } as const;
+  }
   try {
     return await withPrismaRetry(() =>
       prisma.$transaction(

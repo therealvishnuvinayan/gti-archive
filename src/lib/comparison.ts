@@ -18,11 +18,13 @@ import {
 } from "@/lib/project-history";
 import {
   canAddProjectCaptions,
+  hasPermission,
   hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import {
   canReviewProjectConcept,
+  canViewProjectConcept,
   getProjectConceptAccessContext,
 } from "@/lib/project-concept-access";
 import { getUserRoleLabel } from "@/lib/user-role-compatibility";
@@ -216,9 +218,11 @@ async function resolveComparableSubmissionPair(
     projectId: input.projectId,
     taskerStageId: input.stageId,
   });
-  const canViewComparison = concept
-    ? canReviewProjectConcept(user, concept)
-    : hasProjectPermission(user, project, "compare.view");
+  const canViewComparison =
+    hasPermission(user, "compare.view") &&
+    (concept
+      ? canViewProjectConcept(user, concept)
+      : hasProjectPermission(user, project, "compare.view"));
 
   if (!canViewComparison) {
     throw new Error("You do not have permission to compare project submissions.");
@@ -418,7 +422,8 @@ async function canCreateComparisonMarker(
   });
 
   return concept
-    ? canReviewProjectConcept(user, concept)
+    ? hasPermission(user, "compare.createComment") &&
+        canReviewProjectConcept(user, concept)
     : canAddProjectCaptions(user, project);
 }
 

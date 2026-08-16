@@ -8,7 +8,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
 import { getDashboardSnapshot } from "@/lib/dashboard";
 import { getAuthenticatedDefaultRoute } from "@/lib/permissions/fallback-route";
-import { hasPermission } from "@/lib/permissions/resolver";
+import { canCreateProjects, hasPermission } from "@/lib/permissions/resolver";
 
 export default async function Home() {
   const user = await requireUser();
@@ -18,7 +18,7 @@ export default async function Home() {
   }
 
   const snapshot = await getDashboardSnapshot(user);
-  const canCreateProject = hasPermission(user, "project.create");
+  const canCreateProject = canCreateProjects(user);
 
   return (
     <DashboardLayout>

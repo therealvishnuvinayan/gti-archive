@@ -133,6 +133,12 @@ async function mustCreateProject(name: string) {
 }
 
 async function main() {
+  process.env.AWS_REGION ||= "us-east-1";
+  process.env.AWS_ACCESS_KEY_ID ||= "stage-two-test";
+  process.env.AWS_SECRET_ACCESS_KEY ||= "stage-two-test-secret";
+  process.env.AWS_S3_BUCKET ||= "stage-two-integration";
+  process.env.S3_USE_ACCELERATE_ENDPOINT ||= "false";
+
   check(51, "error" in normalizeProjectResearchTextFileName("   "), "empty text file names must fail");
   const appendedTextName = normalizeProjectResearchTextFileName("  Market research notes  ");
   check(52, "fileName" in appendedTextName && appendedTextName.fileName === "Market research notes.txt", "text file names must be trimmed and receive .txt");

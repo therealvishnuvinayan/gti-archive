@@ -178,9 +178,8 @@ assert(
 
 assert(
   service.includes("isGlobalProjectAdministrator(user)") &&
-    service.includes("project.ownerId === user.id") &&
-    service.includes("project.coOwners.some"),
-  "Owner, Co-Owner, and global administrators may manage Stage 7.",
+    service.includes('hasProjectPermission(user, project, "stage.view")'),
+  "Only business administrators with effective Stage access may manage Stage 7.",
 );
 assert(
   service.includes("requestReferenceFileIds") &&

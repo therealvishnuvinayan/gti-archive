@@ -124,12 +124,13 @@ assert(
 );
 assert.equal(
   stageTwoFolder.match(/<ProjectBackButton/g)?.length,
-  1,
-  "Stage 2 folders must render exactly one contextual parent control.",
+  2,
+  "The shared folder workspace must define one contextual parent control per research/private context.",
 );
 assert(
   stageTwoFolder.includes("?workspace=${encodeURIComponent(data.workspace.id)}") &&
     stageTwoFolder.includes('ariaLabel="Back to Stage 2 Research Workspace"') &&
+    stageTwoFolder.includes('ariaLabel="Back to project workspace"') &&
     !stageTwoFolderPage.includes("leadingContent"),
   "Stage 2 folder navigation must preserve workspace context and suppress a page-declared topbar Back.",
 );
@@ -144,9 +145,9 @@ assert(
 );
 assert(
   !conceptChat.includes("ProjectBackButton") &&
-    !conceptChat.includes("backHref") &&
-    !conceptChat.includes("backLabel"),
-  "Concept chat must rely on the stage-specific centralized parent mapping.",
+    conceptChat.includes("stageNeutral: true") &&
+    conceptChat.includes("backHref: `/projects/${encodeURIComponent(projectId)}`"),
+  "USER concept chat must return to the stage-neutral project workspace without adding a duplicate page-level control.",
 );
 assert(
   backButton.includes('aria-label={ariaLabel ?? label}') &&

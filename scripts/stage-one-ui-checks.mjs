@@ -289,7 +289,19 @@ assert(
 );
 assert(stageActions.includes('"use server"'), "Stage 1 mutations must use authenticated server actions.");
 assert(service.includes('"project.update"'), "Stage 1 mutation must enforce project update permission.");
-assert(service.includes('"stage.view"'), "Stage 1 read must enforce stage view permission.");
+assert(
+  service.match(/hasProjectPermission\(user, toPermissionContext\(project\), "project\.update"\)/g)?.length >= 2,
+  "Stage 1 manager reads and option queries must enforce project update permission.",
+);
+assert(
+  service.match(/hasProjectPermission\(user, toPermissionContext\(project\), "stage\.view"\)/g)?.length >= 2,
+  "Stage 1 manager reads and option queries must enforce effective stage visibility.",
+);
+assert(
+  stagePage.includes("!isBusinessAdministratorRole(user.role)") &&
+    stagePage.includes("redirect(`/projects/${slug}`)"),
+  "Related USERS must be redirected from the Stage 1 manager route.",
+);
 assert(service.includes("prisma.$transaction"), "Stage 1 completion must be transactional.");
 assert(
   service.includes("timeout: 30_000") && service.includes("maxWait: 10_000"),

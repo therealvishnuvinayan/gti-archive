@@ -20,6 +20,7 @@ import {
 } from "@/lib/dev-timing";
 import {
   hasPermission,
+  hasProjectPermission,
   type PermissionUser,
 } from "@/lib/permissions/resolver";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
@@ -131,6 +132,7 @@ type RawLibraryAttachment = {
     }>;
     collaborators: Array<{
       userId: string;
+      canDownloadFiles: boolean;
       chatVisibilityPaused: boolean;
       visibilityPauses: Array<{
         pausedAt: Date;
@@ -477,6 +479,8 @@ function mapAttachmentToLibraryItem(
     mimeType: attachment.mimeType,
     previewPath: `/api/project-assets/${attachment.id}/preview`,
     downloadPath: `/api/project-assets/${attachment.id}/download`,
+    canDownload: hasProjectPermission(user, attachment.project, "file.download"),
+    canFavorite: hasProjectPermission(user, attachment.project, "file.favorite"),
     canDelete: canDeleteLibraryAttachment(user, attachment.project),
     isFavoritedByCurrentUser: favoritedAttachmentIds?.has(attachment.id) ?? false,
   };
@@ -512,6 +516,8 @@ function mapManualAssetToLibraryItem(
     mimeType: asset.mimeType,
     previewPath: `/api/library/manual-assets/${asset.id}/preview`,
     downloadPath: `/api/library/manual-assets/${asset.id}/download`,
+    canDownload: hasPermission(user, "file.download"),
+    canFavorite: hasPermission(user, "file.favorite"),
     canDelete: canDeleteManualLibraryAsset(user, asset.uploadedById),
     isFavoritedByCurrentUser: favoritedAssetIds?.has(asset.id) ?? false,
   };
@@ -732,6 +738,7 @@ async function getAccessibleLibraryAttachments(user: LibraryUser) {
               },
               select: {
                 userId: true,
+                canDownloadFiles: true,
                 chatVisibilityPaused: true,
                 visibilityPauses: {
                   orderBy: {
@@ -781,9 +788,10 @@ export async function getLibraryPageDataForUser(
     (input.search ||
       input.projectId ||
       input.createdById ||
-      input.date ||
-      input.type ||
-      input.quickMenu) &&
+      input.assetTagId ||
+      (input.date && input.date !== "all") ||
+      (input.type && input.type !== "All Types") ||
+      (input.quickMenu && input.quickMenu !== "assets")) &&
     !hasPermission(user, "library.filter")
   ) {
     throw new Error("You do not have permission to filter library files.");
@@ -1376,7 +1384,7 @@ export async function getManualLibraryAssetDownloadUrlForUser(
   user: LibraryUser,
   assetId: string,
 ) {
-  if (!canViewLibrary(user)) {
+  if (!canViewLibrary(user) || !hasPermission(user, "file.download")) {
     throw new Error("You do not have permission to download library files.");
   }
 

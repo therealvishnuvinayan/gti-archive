@@ -1,5 +1,9 @@
 import { Suspense } from "react";
-import { ProjectFileChecklistField, ProjectWorkflowStageKey } from "@prisma/client";
+import {
+  ProjectFileChecklistField,
+  ProjectWorkflowStageKey,
+} from "@prisma/client";
+import { redirect } from "next/navigation";
 import { FileCheck2 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -22,6 +26,7 @@ import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/pro
 import { decodeRouteParam } from "@/lib/route-params";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 import { getStageFiveWorkspaceData } from "@/lib/stage-five";
+import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 
 type StageFiveUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -55,6 +60,11 @@ async function StageFiveContent({
   initialField?: ProjectFileChecklistField;
 }) {
   const user = await userPromise;
+
+  if (!isBusinessAdministratorRole(user.role)) {
+    redirect(`/projects/${slug}`);
+  }
+
   const project = await getProjectStageShellById(slug, user);
 
   if (!project) {

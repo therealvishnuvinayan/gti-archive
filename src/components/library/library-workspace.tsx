@@ -207,7 +207,7 @@ function LibraryPreviewAction({ item }: { item: LibraryItemRecord }) {
         fileName={item.fileName}
         mimeType={item.mimeType}
         previewPath={item.previewPath}
-        downloadPath={item.downloadPath}
+        downloadPath={item.canDownload ? item.downloadPath : null}
         triggerClassName="h-9 w-9 rounded-full text-brand hover:bg-[#eef6ef]"
       />
     );
@@ -236,6 +236,7 @@ function LibraryPreviewAction({ item }: { item: LibraryItemRecord }) {
 type LibraryWorkspaceProps = {
   initialData: LibraryPageData;
   assetTagOptions: AssetTagRecord[];
+  canFilterAssets: boolean;
   canUploadAssets: boolean;
   initialQuery?: {
     search: string;
@@ -251,6 +252,7 @@ type LibraryWorkspaceProps = {
 export function LibraryWorkspace({
   initialData,
   assetTagOptions,
+  canFilterAssets,
   canUploadAssets,
   initialQuery,
 }: LibraryWorkspaceProps) {
@@ -660,6 +662,8 @@ export function LibraryWorkspace({
 
       <MotionSection y={10}>
         <Card className="rounded-[30px] border-0 bg-surface p-6 shadow-[0_22px_60px_rgba(23,39,28,0.06)]">
+          {canFilterAssets ? (
+            <>
           <div className="mb-6 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -828,6 +832,8 @@ export function LibraryWorkspace({
               </Select>
             </div>
           </Card>
+            </>
+          ) : null}
 
           <div className="mt-6 overflow-hidden rounded-[24px] border border-[#e3e8e3] bg-white shadow-[0_18px_45px_rgba(23,39,28,0.05)]">
             <div className="overflow-x-auto">
@@ -929,32 +935,36 @@ export function LibraryWorkspace({
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-2">
                             <LibraryPreviewAction item={item} />
-                            <AttachmentFavoriteButton
-                              attachmentId={item.id}
-                              initialIsFavorited={item.isFavoritedByCurrentUser}
-                              onChange={(isFavorited) =>
-                                handleFavoriteChange(item.id, isFavorited)
-                              }
-                              favoriteApiPath={
-                                item.source === "PROJECT_ATTACHMENT"
-                                  ? `/api/project-assets/${item.id}/favorite`
-                                  : `/api/library/manual-assets/${item.id}/favorite`
-                              }
-                              className="h-9 w-9 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
-                              iconClassName="h-4.5 w-4.5"
-                              showToast={true}
-                            />
-                            <Button asChild type="button" size="sm" className="min-h-[32px] px-3 text-[11px]">
-                              <a
-                                href={item.downloadPath}
-                                target="_blank"
-                                rel="noreferrer"
-                                aria-label={`Download ${item.fileName}`}
-                              >
-                                <span className="mr-1.5">Download</span>
-                                <Download className="h-3 w-3" />
-                              </a>
-                            </Button>
+                            {item.canFavorite ? (
+                              <AttachmentFavoriteButton
+                                attachmentId={item.id}
+                                initialIsFavorited={item.isFavoritedByCurrentUser}
+                                onChange={(isFavorited) =>
+                                  handleFavoriteChange(item.id, isFavorited)
+                                }
+                                favoriteApiPath={
+                                  item.source === "PROJECT_ATTACHMENT"
+                                    ? `/api/project-assets/${item.id}/favorite`
+                                    : `/api/library/manual-assets/${item.id}/favorite`
+                                }
+                                className="h-9 w-9 rounded-full text-[#7a847d] hover:bg-[#fff4f5]"
+                                iconClassName="h-4.5 w-4.5"
+                                showToast={true}
+                              />
+                            ) : null}
+                            {item.canDownload ? (
+                              <Button asChild type="button" size="sm" className="min-h-[32px] px-3 text-[11px]">
+                                <a
+                                  href={item.downloadPath}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  aria-label={`Download ${item.fileName}`}
+                                >
+                                  <span className="mr-1.5">Download</span>
+                                  <Download className="h-3 w-3" />
+                                </a>
+                              </Button>
+                            ) : null}
                             {item.canDelete ? (
                               <Button
                                 type="button"

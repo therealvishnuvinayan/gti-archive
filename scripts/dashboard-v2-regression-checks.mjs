@@ -124,8 +124,8 @@ assert(
   "Recent Projects must be bounded and use Project.updatedAt recency.",
 );
 assert(
-  page.includes('hasPermission(user, "project.create")'),
-  "New Project visibility must use the existing create permission.",
+  page.includes("canCreateProjects(user)"),
+  "New Project visibility must combine the ADMIN role boundary with the existing create permission.",
 );
 assert(
   !schema.includes("DashboardAttentionItem") &&

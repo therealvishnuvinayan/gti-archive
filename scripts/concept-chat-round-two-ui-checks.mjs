@@ -211,13 +211,14 @@ assert(
   "Owner/co-owner/global administrator review and Request Changes must not restore tasker approval.",
 );
 assert(
-  compareRoute.includes("!context || !context.chatMode.canReview") &&
-    comparison.includes("? canReviewProjectConcept(user, concept)") &&
-    history.includes('mode: "review"') &&
+  compareRoute.includes('!context || !hasPermission(user, "compare.view")') &&
+    comparison.includes("canViewProjectConcept(user, concept)") &&
+    comparison.includes('hasPermission(user, "compare.createComment")') &&
+    history.includes('mode: "view"') &&
     workspace.includes('isConceptMode ? "hidden" : ""') &&
     workspace.includes("!isConceptMode &&\n              canReviewLatestRevision") &&
     workspace.includes("showLatestRevisionActionBar && latestRevisionMessage"),
-  "Concept comparison and review actions must be reviewer-only, keep the composer action bar, and hide duplicate top/presence controls.",
+  "Assigned executors must receive read-only comparison access while review mutations remain reviewer-only.",
 );
 assert(
     history.includes("Concept taskers cannot use the legacy approve/complete action") &&

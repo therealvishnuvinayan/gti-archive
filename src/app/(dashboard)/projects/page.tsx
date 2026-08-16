@@ -17,7 +17,7 @@ import {
   getProjectListFilterOptions,
   getProjectsList,
 } from "@/lib/projects";
-import { hasPermission } from "@/lib/permissions/resolver";
+import { canCreateProjects, hasPermission } from "@/lib/permissions/resolver";
 import {
   getUserProjectsList,
   USER_PROJECT_FILTERS,
@@ -216,7 +216,7 @@ async function loadManagementProjectsPageData(
     projects: projectResult.projects,
     projectCount: projectResult.total,
     hasAnyProjects: projectCounts.total > 0,
-    canCreateProject: hasPermission(user, "project.create"),
+    canCreateProject: canCreateProjects(user),
     activeStatus,
     activeSort,
     activeStage,

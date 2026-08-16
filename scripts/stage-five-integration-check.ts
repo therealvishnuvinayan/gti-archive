@@ -283,6 +283,34 @@ async function main() {
       selectedFileB?.files.find((file) => file.handoffId === fileB.handoffId)?.items.length === 16,
       "each final file must expose its own 16-field checklist when selected",
     );
+    check(
+      (await getStageFiveWorkspaceData(recipient, projectId)) === null,
+      "project membership must not expose the Stage 5 manager workspace to a USER",
+    );
+    const forgedChecklistSave = await saveStageFiveChecklist(recipient, {
+      projectId,
+      handoffId: fileA.handoffId,
+      items: [],
+    });
+    check(
+      isError(forgedChecklistSave),
+      "a project USER must not save the Stage 5 manager checklist",
+    );
+    const forgedInformationRequest = await requestStageFiveChecklistInformation(
+      recipient,
+      {
+        clientRequestId: `forged-user-${runId}`,
+        projectId,
+        handoffId: fileA.handoffId,
+        fieldKey: ProjectFileChecklistField.OUTPUT_NAME,
+        channel: ProjectFileChecklistRequestChannel.IN_APP,
+        recipientUserId: owner.id,
+      },
+    );
+    check(
+      isError(forgedInformationRequest),
+      "a project USER must not send Stage 5 manager information requests",
+    );
 
     await prisma.projectAttachment.createMany({
       data: [

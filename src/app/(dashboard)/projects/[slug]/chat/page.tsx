@@ -21,6 +21,7 @@ import {
 } from "@/lib/projects";
 import {
   canAddProjectCaptions,
+  hasPermission,
   hasProjectPermission,
 } from "@/lib/permissions/resolver";
 import {
@@ -202,10 +203,10 @@ async function ProjectChatDeferredContent({
     ? false
     : hasProjectPermission(user, projectContext, "collaborator.pauseVisibility");
   const canViewCompareSubmissions = conceptMode
-    ? conceptMode.canReview
+    ? hasPermission(user, "compare.view")
     : hasProjectPermission(user, projectContext, "compare.view");
   const canAddCaptions = conceptMode
-    ? conceptMode.canReview
+    ? conceptMode.canReview && hasPermission(user, "compare.createComment")
     : canAddProjectCaptions(user, projectContext);
   const currentUserAvatarSrc = user.avatarUrl
     ? `/api/profile/avatar?v=${encodeURIComponent(user.avatarUrl)}`

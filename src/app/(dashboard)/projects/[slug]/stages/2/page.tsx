@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { ProjectWorkflowStageKey, UserRole } from "@prisma/client";
+import { ProjectWorkflowStageKey } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { FolderKanban } from "lucide-react";
 
@@ -24,6 +24,7 @@ import {
   getProjectStageShellById,
 } from "@/lib/projects";
 import { getProjectResearchPageData } from "@/lib/project-research";
+import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 type StageTwoPageUser = Awaited<ReturnType<typeof requireUser>>;
@@ -142,7 +143,7 @@ export default async function StageTwoPage({
   const { workspace } = await searchParams;
   const user = await requireUser();
 
-  if (user.role === UserRole.USER) {
+  if (!isBusinessAdministratorRole(user.role)) {
     redirect(`/projects/${slug}`);
   }
 

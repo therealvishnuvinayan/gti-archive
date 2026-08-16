@@ -392,7 +392,8 @@ export async function getProjectInquiryPageData(
   if (
     !project ||
     !canOpenProjectInquiry(project) ||
-    !hasProjectPermission(user, toPermissionContext(project), "stage.view")
+    !hasProjectPermission(user, toPermissionContext(project), "stage.view") ||
+    !hasProjectPermission(user, toPermissionContext(project), "project.update")
   ) {
     throw new Error("Project Inquiry is unavailable.");
   }
@@ -481,7 +482,7 @@ export async function getProjectInquiryPageData(
       ...PROJECT_INQUIRY_COUNTRY_OPTIONS,
     ],
     deliverableSuggestions: [],
-    canEdit: hasProjectPermission(user, toPermissionContext(project), "project.update"),
+    canEdit: true,
     workflowStatus:
       project.workflowStages.find(
         (stage) => stage.stageKey === ProjectWorkflowStageKey.PROJECT_INQUIRY,
@@ -498,7 +499,8 @@ async function assertProjectInquiryOptionsAccess(
   if (
     !project ||
     !canOpenProjectInquiry(project) ||
-    !hasProjectPermission(user, toPermissionContext(project), "stage.view")
+    !hasProjectPermission(user, toPermissionContext(project), "stage.view") ||
+    !hasProjectPermission(user, toPermissionContext(project), "project.update")
   ) {
     throw new Error("Project Inquiry is unavailable.");
   }

@@ -144,6 +144,16 @@ function stageStatus(project: StageFiveProject, stageKey: ProjectWorkflowStageKe
   return project.workflowStages.find((stage) => stage.stageKey === stageKey)?.status;
 }
 
+export function canManageStageFive(
+  user: PermissionUser,
+  project: StageFiveProject,
+) {
+  return (
+    isGlobalProjectAdministrator(user) &&
+    hasProjectPermission(user, project, "file.uploadAttachment")
+  );
+}
+
 async function getAuthorizedProject(
   user: PermissionUser,
   projectId: string,
@@ -151,7 +161,13 @@ async function getAuthorizedProject(
 ) {
   const project = await getProjectStageAccessRecordById(projectId);
 
-  if (!project || !hasProjectPermission(user, project, "project.view")) return null;
+  if (
+    !project ||
+    !hasProjectPermission(user, project, "project.view") ||
+    !hasProjectPermission(user, project, "stage.view")
+  ) {
+    return null;
+  }
   if (
     !canOpenImplementedWorkflowStage({
       stageKey,
@@ -332,7 +348,7 @@ export async function getStageFiveWorkspaceData(
     projectId,
     ProjectWorkflowStageKey.FINAL_LAYOUT,
   );
-  if (!project) return null;
+  if (!project || !canManageStageFive(user, project)) return null;
 
   const handoffs = await withPrismaRetry(() =>
     prisma.projectStageFileHandoff.findMany({
@@ -428,7 +444,7 @@ export async function getStageFiveWorkspaceData(
   return {
     files,
     participants: getParticipants(project).filter((participant) => participant.id !== user.id),
-    canEdit: hasProjectPermission(user, project, "file.uploadAttachment"),
+    canEdit: true,
     canComplete: completionState?.canComplete ?? false,
     stageCompleted: completionState?.completed ?? false,
     pendingRequestCount: completionState?.pendingRequestCount ?? 0,
@@ -512,7 +528,7 @@ export async function saveStageFiveChecklist(
     input.projectId,
     ProjectWorkflowStageKey.FINAL_LAYOUT,
   );
-  if (!project || !hasProjectPermission(user, project, "file.uploadAttachment")) {
+  if (!project || !canManageStageFive(user, project)) {
     return { error: "You do not have permission to edit this file checklist." } as const;
   }
 
@@ -694,7 +710,7 @@ export async function requestStageFiveChecklistInformation(
     input.projectId,
     ProjectWorkflowStageKey.FINAL_LAYOUT,
   );
-  if (!project || !hasProjectPermission(user, project, "file.uploadAttachment")) {
+  if (!project || !canManageStageFive(user, project)) {
     return { error: "You do not have permission to request checklist information." } as const;
   }
   if (!/^[a-zA-Z0-9_-]{16,120}$/.test(input.clientRequestId)) {
@@ -1058,7 +1074,7 @@ export async function resendStageFiveExternalChecklistRequest(
     request.projectId,
     ProjectWorkflowStageKey.FINAL_LAYOUT,
   );
-  if (!project || !hasProjectPermission(user, project, "file.uploadAttachment")) {
+  if (!project || !canManageStageFive(user, project)) {
     return { error: "You do not have permission to resend this request." } as const;
   }
   if (
@@ -1181,7 +1197,7 @@ export async function cancelStageFiveChecklistRequest(
   );
   if (
     !project ||
-    !hasProjectPermission(user, project, "file.uploadAttachment") ||
+    !canManageStageFive(user, project) ||
     (!isGlobalProjectAdministrator(user) && request.requestedById !== user.id)
   ) {
     return { error: "You do not have permission to cancel this request." } as const;

@@ -5,6 +5,7 @@ import { prisma, withPrismaRetry } from "./prisma";
 import { ensureProjectResearchWorkspaceTx } from "./project-research";
 import { ensureProjectPrivateFolderTx } from "./project-private-folders";
 import { getInitialProjectWorkflowStageData } from "./project-workflow";
+import { isBusinessAdministratorRole } from "./user-role-compatibility";
 
 export type CreateProjectV2Input = {
   name: string;
@@ -119,6 +120,8 @@ export async function createProjectV2(
 
   if (!owner) {
     fieldErrors.ownerId = "The selected project owner no longer exists.";
+  } else if (!isBusinessAdministratorRole(owner.role)) {
+    fieldErrors.ownerId = "Only an Admin can create and own a project.";
   }
 
   const invalidCoOwner = coOwnerIds.find((userId) => {

@@ -15,6 +15,8 @@ const profiles = read("src/lib/permissions/profiles.ts");
 const effective = read("src/lib/permissions/effective.ts");
 const resolver = read("src/lib/permissions/resolver.ts");
 const projectCreation = read("src/lib/project-creation.ts");
+const projectAction = read("src/app/(dashboard)/projects/new/v2-actions.ts");
+const projectPage = read("src/app/(dashboard)/projects/new/page.tsx");
 const projectCandidates = read("src/lib/project-owner-candidates.ts");
 const projectGrants = read("src/lib/project-collaborator-permissions.ts");
 const usersWorkspace = read("src/components/users/users-workspace.tsx");
@@ -32,12 +34,16 @@ assert(!usersWorkspace.includes("Collaborator Type"), "The permissions UI must b
 
 for (const snippet of [
   "const ownerId = creator.id",
+  "isBusinessAdministratorRole(owner.role)",
   "user.role !== UserRole.ADMIN",
   "userById.get(userId)?.role !== UserRole.USER",
   "normalizeProjectCollaboratorPermissions(null, {",
 ]) {
   assertIncludes(projectCreation, snippet, `Project creation invariant ${snippet}`);
 }
+
+assertIncludes(projectAction, "canCreateProjects(user)", "project creation action role gate");
+assertIncludes(projectPage, "canCreateProjects(user)", "project creation route role gate");
 assertIncludes(projectCandidates, "role: UserRole.ADMIN", "ADMIN co-owner candidate query");
 
 for (const snippet of [
@@ -57,8 +63,8 @@ for (const guardedPath of [
 ]) {
   assertIncludes(
     read(guardedPath),
-    'hasPermission(user, "project.create")',
-    `${guardedPath} project.create guard`,
+    "canCreateProjects(user)",
+    `${guardedPath} project creation role and permission guard`,
   );
 }
 

@@ -279,6 +279,10 @@ async function main() {
 
     const units = await prisma.projectProductionUnit.findMany({ where: { projectId: ids.project }, orderBy: { createdAt: "asc" } });
     const [unitA, unitB] = units;
+    check(
+      (await getStageSixWorkspaceData(approver, ids.project)) === null,
+      "project membership must not expose the Stage 6 manager workspace to a USER",
+    );
     check(unitA.sourceHandoffId && unitA.sourceChecklistId && unitA.sourceAttachmentId, "Production Unit must preserve full Stage 5 lineage");
     const protectedStep = requiredSteps.find((step) => step.productionUnitId === unitA.id);
     check(protectedStep, "the first Production Unit must have its required step");
@@ -288,6 +292,12 @@ async function main() {
     await prisma.projectAttachment.create({ data: { id: productionAttachmentId, projectId: ids.project, uploadedById: ids.owner, fileName: `production-${runId}.pdf`, originalFileName: "Production-A.pdf", mimeType: "application/pdf", fileSize: 2048, bucket: "stage-six-integration", storageKey: `stage-six/${runId}/production-a`, assetType: AttachmentAssetType.GENERAL_PROJECT_ASSET, status: AttachmentStatus.READY } });
     const associated = await addProductionUnitFile(owner, { projectId: ids.project, productionUnitId: unitA.id, attachmentId: productionAttachmentId });
     check(!isError(associated) && !associated.duplicate, "manager must associate a same-project production file once");
+    const forgedAssociation = await addProductionUnitFile(approver, {
+      projectId: ids.project,
+      productionUnitId: unitA.id,
+      attachmentId: productionAttachmentId,
+    });
+    check(isError(forgedAssociation), "a project USER must not mutate Stage 6 manager files");
     const crossProjectAssociation = await addProductionUnitFile(owner, { projectId: ids.project, productionUnitId: unitA.id, attachmentId: foreignFixture.sourceIds[0] });
     check(isError(crossProjectAssociation), "cross-project production file injection must be denied");
 

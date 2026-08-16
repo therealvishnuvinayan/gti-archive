@@ -6,6 +6,7 @@ import { ProjectCompareWorkspace } from "@/components/projects/project-compare-w
 import { ProjectCompareLoadingShell } from "@/components/projects/project-route-loading-shells";
 import { ProjectAccessUnavailableState } from "@/components/projects/project-route-state";
 import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions/resolver";
 import { getComparisonCommentsForPair } from "@/lib/comparison";
 import {
   getStageSubmissionAttachments,
@@ -103,7 +104,7 @@ export async function ConceptCompareRoute({
     stageKey,
   });
 
-  if (!context || !context.chatMode.canReview) {
+  if (!context || !hasPermission(user, "compare.view")) {
     return (
       <DashboardLayout>
         <ProjectAccessUnavailableState />

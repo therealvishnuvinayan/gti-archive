@@ -51,6 +51,8 @@ export type LibraryItemRecord = {
   mimeType: string;
   previewPath: string;
   downloadPath: string;
+  canDownload: boolean;
+  canFavorite: boolean;
   canDelete: boolean;
   isFavoritedByCurrentUser: boolean;
 };

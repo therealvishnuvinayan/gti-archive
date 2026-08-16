@@ -22,6 +22,7 @@ import { getUserRoleLabel } from "@/lib/user-role-compatibility";
 import { projectCollaboratorPermissionSelect } from "@/lib/project-collaborator-permissions";
 import type { PermissionKey } from "@/lib/permissions/definitions";
 import {
+  hasPermission,
   hasProjectPermission,
   isGlobalProjectAdministrator,
   isProjectExecutor,
@@ -2665,11 +2666,13 @@ export async function getProjectStageHistory(
     throw new Error("You do not have access to this project.");
   }
   const conceptComparisonAccess =
-    requiredPermissionKey === "compare.view" && preferredStageId
+    requiredPermissionKey === "compare.view" &&
+    hasPermission(user, "compare.view") &&
+    preferredStageId
       ? await assertConceptTaskerAccessIfNeeded(user, {
           projectId,
           stageId: preferredStageId,
-          mode: "review",
+          mode: "view",
         })
       : null;
 

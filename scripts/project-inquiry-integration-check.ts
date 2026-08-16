@@ -37,6 +37,15 @@ function assertError(
   }
 }
 
+async function assertRejected(task: Promise<unknown>, message: string) {
+  try {
+    await task;
+  } catch {
+    return;
+  }
+  throw new Error(message);
+}
+
 const superAdmin = {
   id: "inquiry-super-admin",
   role: UserRole.SUPER_ADMIN,
@@ -144,6 +153,30 @@ async function main() {
   const minimalProject = await createProject("inquiry-minimal-project", "Minimal Inquiry");
   const failureProject = await createProject("inquiry-failure-project", "Failure Inquiry");
   const foreignProject = await createProject("inquiry-foreign-project", "Foreign Asset");
+  const relatedUser = {
+    id: "inquiry-collaborator-a",
+    role: UserRole.USER,
+  };
+  await prisma.projectExecutor.create({
+    data: {
+      projectId: mainProject.id,
+      userId: relatedUser.id,
+      addedById: "inquiry-owner",
+    },
+  });
+  await assertRejected(
+    getProjectInquiryPageData(relatedUser, mainProject.id),
+    "A related USER must not load Stage 1 manager data.",
+  );
+  await assertRejected(
+    searchProjectInquiryHistorySuggestions(
+      relatedUser,
+      mainProject.id,
+      "target-market",
+      "",
+    ),
+    "A related USER must not query Stage 1 manager suggestions.",
+  );
 
   const missingClient = await completeProjectInquiry(superAdmin, {
     ...requiredParties(failureProject.id),
@@ -609,13 +642,6 @@ async function main() {
   );
   await prisma.$executeRawUnsafe(`DROP FUNCTION fail_inquiry_market_insert()`);
 
-  await prisma.projectExecutor.create({
-    data: {
-      projectId: mainProject.id,
-      userId: "inquiry-collaborator-a",
-      addedById: superAdmin.id,
-    },
-  });
   await prisma.projectCollaborator.create({
     data: {
       projectId: mainProject.id,

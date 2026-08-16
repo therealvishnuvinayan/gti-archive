@@ -33,6 +33,7 @@ export default async function LibraryPage({
   timer.mark("auth/session");
 
   const canViewLibrary = hasPermission(user, "library.view");
+  const canFilterAssets = hasPermission(user, "library.filter");
   const canUploadAssets = hasPermission(user, "library.uploadAsset");
   timer.mark("permission check", {
     canViewLibrary,
@@ -47,13 +48,25 @@ export default async function LibraryPage({
   timer.mark("search params");
 
   const initialQuery = {
-    search: resolvedSearchParams?.search?.trim() ?? "",
-    projectId: resolvedSearchParams?.projectId?.trim() ?? "",
-    createdById: resolvedSearchParams?.createdById?.trim() ?? "",
-    assetTagId: resolvedSearchParams?.assetTagId?.trim() ?? "",
-    date: parseLibraryDateFilter(resolvedSearchParams?.date),
-    type: parseLibraryTypeFilter(resolvedSearchParams?.type),
-    quickMenu: parseLibraryQuickMenu(resolvedSearchParams?.quickMenu),
+    search: canFilterAssets ? resolvedSearchParams?.search?.trim() ?? "" : "",
+    projectId: canFilterAssets
+      ? resolvedSearchParams?.projectId?.trim() ?? ""
+      : "",
+    createdById: canFilterAssets
+      ? resolvedSearchParams?.createdById?.trim() ?? ""
+      : "",
+    assetTagId: canFilterAssets
+      ? resolvedSearchParams?.assetTagId?.trim() ?? ""
+      : "",
+    date: canFilterAssets
+      ? parseLibraryDateFilter(resolvedSearchParams?.date)
+      : parseLibraryDateFilter(undefined),
+    type: canFilterAssets
+      ? parseLibraryTypeFilter(resolvedSearchParams?.type)
+      : parseLibraryTypeFilter(undefined),
+    quickMenu: canFilterAssets
+      ? parseLibraryQuickMenu(resolvedSearchParams?.quickMenu)
+      : parseLibraryQuickMenu(undefined),
     page: Number(resolvedSearchParams?.page ?? "1"),
     pageSize: Number(resolvedSearchParams?.pageSize ?? "20"),
   };
@@ -85,6 +98,7 @@ export default async function LibraryPage({
       <LibraryWorkspace
         initialData={initialData}
         assetTagOptions={assetTagOptions}
+        canFilterAssets={canFilterAssets}
         canUploadAssets={canUploadAssets}
         initialQuery={initialQuery}
       />

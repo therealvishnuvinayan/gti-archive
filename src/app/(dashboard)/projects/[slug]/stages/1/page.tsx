@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { ProjectWorkflowStageKey } from "@prisma/client";
+import { redirect } from "next/navigation";
 import { FileText } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -23,6 +24,7 @@ import {
   getProjectRouteAvailability,
   getProjectStageShellById,
 } from "@/lib/projects";
+import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 
 type StageOnePageUser = Awaited<ReturnType<typeof requireUser>>;
@@ -51,6 +53,11 @@ async function StageOneContent({
   userPromise: Promise<StageOnePageUser>;
 }) {
   const user = await userPromise;
+
+  if (!isBusinessAdministratorRole(user.role)) {
+    redirect(`/projects/${slug}`);
+  }
+
   const project = await getProjectStageShellById(slug, user);
 
   if (!project) {

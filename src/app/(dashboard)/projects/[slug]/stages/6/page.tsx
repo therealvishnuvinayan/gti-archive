@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { ProjectWorkflowStageKey } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { ProjectBackButton } from "@/components/projects/project-back-button";
@@ -17,6 +18,7 @@ import { getProjectRouteAvailability, getProjectStageShellById } from "@/lib/pro
 import { decodeRouteParam } from "@/lib/route-params";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
 import { getStageSixWorkspaceData } from "@/lib/stage-six";
+import { isBusinessAdministratorRole } from "@/lib/user-role-compatibility";
 
 type StageSixUser = Awaited<ReturnType<typeof requireUser>>;
 
@@ -46,6 +48,11 @@ async function StageSixContent({
   initialUnitId?: string;
 }) {
   const user = await userPromise;
+
+  if (!isBusinessAdministratorRole(user.role)) {
+    redirect(`/projects/${slug}`);
+  }
+
   const project = await getProjectStageShellById(slug, user);
 
   if (!project) {

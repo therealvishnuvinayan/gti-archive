@@ -820,14 +820,15 @@ async function main() {
       body: "Co-owner review marker",
       opacity: 60,
     });
-    await expectRejected(
-      getComparisonCommentsForPair(executorA, {
-        projectId,
-        stageId: conceptA.folder.taskerStageId,
-        baseAttachmentId: firstRevisionFile.id,
-        compareAttachmentId: secondRevisionFile.id,
-      }),
-      "assigned executor must not access the reviewer comparison workspace",
+    const executorComparison = await getComparisonCommentsForPair(executorA, {
+      projectId,
+      stageId: conceptA.folder.taskerStageId,
+      baseAttachmentId: firstRevisionFile.id,
+      compareAttachmentId: secondRevisionFile.id,
+    });
+    check(
+      executorComparison.length === 2,
+      "the assigned executor must read manager feedback in the comparison workspace",
     );
     await expectRejected(
       createComparisonComment(executorA, {
@@ -1522,14 +1523,18 @@ async function main() {
       yPercent: 50,
       body: "Stage 4 review marker",
     });
-    await expectRejected(
-      getComparisonCommentsForPair(executorA, {
+    const stageFourExecutorComparison = await getComparisonCommentsForPair(
+      executorA,
+      {
         projectId,
         stageId: stageFourTasker.id,
         baseAttachmentId: stageFourBase.id,
         compareAttachmentId: stageFourCompare.id,
-      }),
-      "Stage 4 comparison must remain restricted to authorized reviewers",
+      },
+    );
+    check(
+      stageFourExecutorComparison.some((comment) => comment.id === stageFourMarker.id),
+      "the assigned Stage 4 executor must read manager comparison feedback",
     );
 
     const promotedConcept = await prisma.projectConceptFolder.findUniqueOrThrow({

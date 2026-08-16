@@ -11,7 +11,10 @@ import {
   updateProjectV2,
 } from "@/lib/project-creation";
 import { notifyProjectAssignmentChanges, runNotificationTask } from "@/lib/notification-center";
-import { hasPermission, hasProjectPermission } from "@/lib/permissions/resolver";
+import {
+  canCreateProjects,
+  hasProjectPermission,
+} from "@/lib/permissions/resolver";
 import { prisma } from "@/lib/prisma";
 import { PROJECTS_CACHE_TAG } from "@/lib/projects";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
@@ -25,7 +28,7 @@ export async function createProjectV2Action(
 ): Promise<CreateProjectV2Result> {
   const user = await requireUser();
 
-  if (!hasPermission(user, "project.create")) {
+  if (!canCreateProjects(user)) {
     return {
       error: "You are not allowed to create projects.",
     };

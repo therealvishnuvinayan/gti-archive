@@ -211,7 +211,7 @@ export function parseCalendarEventInput(
   } as const;
 }
 
-function buildCalendarAccessState(
+export function buildCalendarAccessState(
   user: CalendarAccessUser,
   isAssignedCollaborator: boolean,
 ): CalendarAccessState {

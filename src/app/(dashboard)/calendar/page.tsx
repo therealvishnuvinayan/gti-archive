@@ -31,11 +31,13 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   }
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const [events, availableCollaborators, assignedCollaborators, access] = await Promise.all([
+  const access = await getCalendarAccessState(user);
+  const [events, availableCollaborators, assignedCollaborators] = await Promise.all([
     getCalendarEvents(user),
-    getCollaborators(),
-    getCalendarCollaborators(),
-    getCalendarAccessState(user),
+    access.canManageCollaborators ? getCollaborators() : Promise.resolve([]),
+    access.canManageCollaborators
+      ? getCalendarCollaborators()
+      : Promise.resolve([]),
   ]);
 
   return (

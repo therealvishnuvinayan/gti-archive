@@ -123,9 +123,8 @@ export function canManageStageSeven(
   project: StageProject,
 ) {
   return (
-    isGlobalProjectAdministrator(user) ||
-    project.ownerId === user.id ||
-    project.coOwners.some((coOwner) => coOwner.userId === user.id)
+    isGlobalProjectAdministrator(user) &&
+    hasProjectPermission(user, project, "stage.view")
   );
 }
 
@@ -277,7 +276,13 @@ async function getAuthorizedStageSevenProject(
   projectId: string,
 ) {
   const project = await getProjectStageAccessRecordById(projectId);
-  if (!project || !hasProjectPermission(user, project, "project.view")) return null;
+  if (
+    !project ||
+    !hasProjectPermission(user, project, "project.view") ||
+    !hasProjectPermission(user, project, "stage.view")
+  ) {
+    return null;
+  }
   if (
     !canOpenImplementedWorkflowStage({
       stageKey: ProjectWorkflowStageKey.IMPLEMENTATION_AND_SUPERVISION,
@@ -326,7 +331,7 @@ export async function getStageSevenWorkspaceData(
   selectedRoundId?: string | null,
 ): Promise<StageSevenWorkspaceData | null> {
   const project = await getAuthorizedStageSevenProject(user, projectId);
-  if (!project) return null;
+  if (!project || !canManageStageSeven(user, project)) return null;
 
   const [units, closure] = await withPrismaRetry(() =>
     prisma.$transaction([
@@ -1089,7 +1094,11 @@ export async function closeStageSevenProject(
   input: { projectId: string },
 ) {
   const project = await getAuthorizedStageSevenProject(user, input.projectId);
-  if (!project || !canManageStageSeven(user, project)) {
+  if (
+    !project ||
+    !canManageStageSeven(user, project) ||
+    !hasProjectPermission(user, project, "project.completeArchive")
+  ) {
     throw new StageSevenWorkflowError(
       "Only a project owner, co-owner, or administrator can complete the project.",
     );

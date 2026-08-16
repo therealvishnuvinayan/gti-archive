@@ -11,7 +11,12 @@ import {
   type PermissionKey,
 } from "../src/lib/permissions/definitions";
 import { resolveEffectivePermissionSet } from "../src/lib/permissions/effective";
-import { hasPermission } from "../src/lib/permissions/resolver";
+import {
+  canCreateProjects,
+  getSidebarVisibility,
+  hasPermission,
+  hasProjectPermission,
+} from "../src/lib/permissions/resolver";
 import {
   getUserRoleLabel,
   isBusinessAdministratorRole,
@@ -89,6 +94,85 @@ assert.equal(
 assert.equal(
   hasPermission({ id: "user", role: UserRole.USER }, "project.create"),
   false,
+);
+
+const userWithForgedCreatePermission = {
+  id: "user",
+  role: UserRole.USER,
+  permissionProfileSnapshot: {
+    effectivePermissions: new Set<PermissionKey>(["project.create"]),
+    rolePermissions: new Set<PermissionKey>(["project.create"]),
+    archiveAccessGranted: false,
+    archiveAccessLevel: "NONE" as const,
+  },
+};
+assert.equal(
+  canCreateProjects(userWithForgedCreatePermission),
+  false,
+  "USER must not create projects even if project.create is mistakenly enabled.",
+);
+
+const userWithViewModules = {
+  id: "user",
+  role: UserRole.USER,
+  permissionProfileSnapshot: {
+    effectivePermissions: new Set<PermissionKey>([
+      "calendar.view",
+      "library.view",
+      "notification.view",
+      "help.view",
+      "fluxAi.view",
+      "archive.view",
+    ]),
+    rolePermissions: new Set<PermissionKey>([
+      "calendar.view",
+      "library.view",
+      "notification.view",
+      "help.view",
+      "fluxAi.view",
+      "archive.view",
+    ]),
+    archiveAccessGranted: false,
+    archiveAccessLevel: "NONE" as const,
+  },
+};
+assert.deepEqual(
+  getSidebarVisibility(userWithViewModules),
+  {
+    dashboard: false,
+    fluxAi: false,
+    projects: false,
+    projectCounts: false,
+    calendar: true,
+    collaboration: false,
+    users: false,
+    notifications: true,
+    library: true,
+    archives: false,
+    settings: false,
+    help: true,
+  },
+  "USER module toggles and Archive/Flux entitlement must drive navigation.",
+);
+
+const restrictedAdmin = {
+  id: "admin",
+  role: UserRole.ADMIN,
+  permissionProfileSnapshot: {
+    effectivePermissions: new Set<PermissionKey>(["project.view"]),
+    rolePermissions: new Set<PermissionKey>(["project.view"]),
+    archiveAccessGranted: true,
+    archiveAccessLevel: "FULL" as const,
+  },
+};
+assert.equal(
+  hasProjectPermission(
+    restrictedAdmin,
+    { ownerId: "another-admin", coOwners: [], executors: [], collaborators: [] },
+    "project.update",
+  ),
+  false,
+  "A disabled ADMIN project permission must not be restored by global scope.",
 );
 
 const schema = read("prisma/schema.prisma");

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 
 import {
   AttachmentStatus,
@@ -42,6 +43,7 @@ function loadLocalEnvironment() {
 loadLocalEnvironment();
 
 const prisma = new PrismaClient();
+const fixtureIds: { categoryId?: string; manualArchiveId?: string } = {};
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -167,7 +169,7 @@ async function main() {
       },
     },
   });
-  const manualArchive = await prisma.manualArchiveFile.findFirst({
+  let manualArchive = await prisma.manualArchiveFile.findFirst({
     where: {
       status: AttachmentStatus.READY,
       archiveCategoryId: {
@@ -189,6 +191,39 @@ async function main() {
       },
     },
   });
+
+  if (!projectArchive?.archiveCategory && !manualArchive?.archiveCategory) {
+    const runId = randomUUID();
+    const category = await prisma.archiveCategory.create({
+      data: {
+        name: `Flux Search Fixture ${runId}`,
+        slug: `flux-search-fixture-${runId}`,
+        isActive: true,
+      },
+    });
+    const archive = await prisma.manualArchiveFile.create({
+      data: {
+        fileName: `Flux Search Fixture ${runId}`,
+        originalFileName: `flux-search-fixture-${runId}.pdf`,
+        archiveCategoryId: category.id,
+        mimeType: "application/pdf",
+        fileSize: 128,
+        bucket: "flux-search-integration",
+        storageKey: `flux-search-integration/${runId}.pdf`,
+        status: AttachmentStatus.READY,
+        uploadedById: superAdmin.id,
+      },
+      select: {
+        id: true,
+        fileName: true,
+        originalFileName: true,
+        archiveCategory: { select: { slug: true, name: true } },
+      },
+    });
+    fixtureIds.categoryId = category.id;
+    fixtureIds.manualArchiveId = archive.id;
+    manualArchive = archive;
+  }
 
   check(
     projectArchive?.archiveCategory || manualArchive?.archiveCategory,
@@ -375,5 +410,15 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    if (fixtureIds.manualArchiveId) {
+      await prisma.manualArchiveFile.deleteMany({
+        where: { id: fixtureIds.manualArchiveId },
+      });
+    }
+    if (fixtureIds.categoryId) {
+      await prisma.archiveCategory.deleteMany({
+        where: { id: fixtureIds.categoryId },
+      });
+    }
     await prisma.$disconnect();
   });
