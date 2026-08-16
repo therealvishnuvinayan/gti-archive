@@ -2325,24 +2325,63 @@ function buildManualArchiveSearchBaseWhere(
   };
 }
 
+function getArchiveSearchTerms(query: string) {
+  const terms = query.split(/\s+/).filter(Boolean);
+
+  return terms.length ? terms : [query];
+}
+
 function buildArchivedFileNameSearchWhere(
   user: ArchiveAccessUser,
   query: string,
 ): Prisma.ArchivedProjectFileWhereInput {
-  const containsQuery = {
-    contains: query,
-    mode: "insensitive" as const,
-  };
-
   return {
     AND: [
       getArchivedProjectFileAccessWhere(user),
-      {
+      ...getArchiveSearchTerms(query).map((term) => ({
         OR: [
-          { finalArchiveFileName: containsQuery },
-          { originalFileName: containsQuery },
+          {
+            finalArchiveFileName: {
+              contains: term,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            originalFileName: {
+              contains: term,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            artworkMetadata: {
+              is: {
+                artworkId: {
+                  contains: term,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          },
+          {
+            sourceAttachment: {
+              is: {
+                assetTags: {
+                  some: {
+                    tag: {
+                      is: {
+                        name: {
+                          contains: term,
+                          mode: "insensitive" as const,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         ],
-      },
+      })),
     ],
   };
 }
@@ -2351,38 +2390,44 @@ function buildProjectArchiveBroadSearchWhere(
   user: ArchiveAccessUser,
   query: string,
 ): Prisma.ProjectArchiveWhereInput {
-  const containsQuery = {
-    contains: query,
-    mode: "insensitive" as const,
-  };
-
   return {
     AND: [
       buildProjectArchiveSearchBaseWhere(user),
-      {
+      ...getArchiveSearchTerms(query).map((term) => ({
         OR: [
-          { projectName: containsQuery },
+          {
+            projectName: {
+              contains: term,
+              mode: "insensitive" as const,
+            },
+          },
           {
             project: {
               is: {
-                name: containsQuery,
+                name: {
+                  contains: term,
+                  mode: "insensitive" as const,
+                },
               },
             },
           },
           {
             archiveCategory: {
               is: {
-                name: containsQuery,
+                name: {
+                  contains: term,
+                  mode: "insensitive" as const,
+                },
               },
             },
           },
           {
             files: {
-              some: buildArchivedFileNameSearchWhere(user, query),
+              some: buildArchivedFileNameSearchWhere(user, term),
             },
           },
         ],
-      },
+      })),
     ],
   };
 }
@@ -2391,28 +2436,48 @@ function buildManualArchiveBroadSearchWhere(
   user: ArchiveAccessUser,
   query: string,
 ): Prisma.ManualArchiveFileWhereInput {
-  const containsQuery = {
-    contains: query,
-    mode: "insensitive" as const,
-  };
-
   return {
     AND: [
       buildManualArchiveSearchBaseWhere(user),
-      {
-        OR: [
-          { fileName: containsQuery },
-          { projectName: containsQuery },
-          { originalFileName: containsQuery },
-          {
-            archiveCategory: {
-              is: {
-                name: containsQuery,
+      ...getArchiveSearchTerms(query).map((term) => {
+        const containsTerm = {
+          contains: term,
+          mode: "insensitive" as const,
+        };
+
+        return {
+          OR: [
+            { fileName: containsTerm },
+            { projectName: containsTerm },
+            { originalFileName: containsTerm },
+            {
+              artworkMetadata: {
+                is: {
+                  artworkId: containsTerm,
+                },
               },
             },
-          },
-        ],
-      },
+            {
+              assetTags: {
+                some: {
+                  tag: {
+                    is: {
+                      name: containsTerm,
+                    },
+                  },
+                },
+              },
+            },
+            {
+              archiveCategory: {
+                is: {
+                  name: containsTerm,
+                },
+              },
+            },
+          ],
+        };
+      }),
     ],
   };
 }
@@ -2439,6 +2504,24 @@ function getProjectArchiveSearchSelect(user: ArchiveAccessUser, query: string) {
       select: {
         finalArchiveFileName: true,
         originalFileName: true,
+        artworkMetadata: {
+          select: {
+            artworkId: true,
+          },
+        },
+        sourceAttachment: {
+          select: {
+            assetTags: {
+              select: {
+                tag: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
     project: {
@@ -2478,6 +2561,20 @@ const manualArchiveSearchSelect = {
   originalFileName: true,
   projectName: true,
   uploadedAt: true,
+  artworkMetadata: {
+    select: {
+      artworkId: true,
+    },
+  },
+  assetTags: {
+    select: {
+      tag: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  },
   archiveCategory: {
     select: {
       name: true,
@@ -2530,12 +2627,20 @@ function mapProjectArchiveSearchResult(
     file.finalArchiveFileName,
     file.originalFileName,
   ]);
+  const artworkIds = archive.files.flatMap((file) =>
+    file.artworkMetadata ? [file.artworkMetadata.artworkId] : [],
+  );
+  const assetTags = archive.files.flatMap((file) =>
+    file.sourceAttachment.assetTags.map((assignment) => assignment.tag.name),
+  );
   const match = rankArchiveSearchCandidate(
     {
       archiveName: archive.projectName,
       projectName: archive.project.name,
       archiveCategory: archive.archiveCategory.name,
       archivedFileNames,
+      artworkIds,
+      assetTags,
     },
     query,
   );
@@ -2544,7 +2649,11 @@ function mapProjectArchiveSearchResult(
     return null;
   }
 
-  const searchValue = match.matchedFileName ?? archive.projectName;
+  const searchValue =
+    match.matchedFileName ??
+    (match.kind === "ARTWORK_ID" || match.kind === "ASSET_TAG"
+      ? query
+      : archive.projectName);
 
   return {
     result: {
@@ -2576,6 +2685,10 @@ function mapManualArchiveSearchResult(
       projectName: archive.projectName,
       archiveCategory: archive.archiveCategory.name,
       archivedFileNames: [archive.originalFileName],
+      artworkIds: archive.artworkMetadata
+        ? [archive.artworkMetadata.artworkId]
+        : [],
+      assetTags: archive.assetTags.map((assignment) => assignment.tag.name),
     },
     query,
   );
@@ -2584,7 +2697,11 @@ function mapManualArchiveSearchResult(
     return null;
   }
 
-  const searchValue = match.matchedFileName ?? archive.fileName;
+  const searchValue =
+    match.matchedFileName ??
+    (match.kind === "ARTWORK_ID" || match.kind === "ASSET_TAG"
+      ? query
+      : archive.fileName);
 
   return {
     result: {

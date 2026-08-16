@@ -3,6 +3,8 @@ export const archiveSearchMatchKindValues = [
   "PROJECT_NAME",
   "ARCHIVE_CATEGORY",
   "ARCHIVED_FILE_NAME",
+  "ARTWORK_ID",
+  "ASSET_TAG",
 ] as const;
 
 export type ArchiveSearchMatchKind =
@@ -13,6 +15,8 @@ export type ArchiveSearchCandidate = {
   projectName?: string | null;
   archiveCategory?: string | null;
   archivedFileNames?: string[];
+  artworkIds?: string[];
+  assetTags?: string[];
 };
 
 export type ArchiveSearchMatch = {
@@ -54,7 +58,10 @@ export function parseArchiveSearchQuery(
   }
 
   let query = rawQuery
-    .replace(/^(?:can\s+you\s+|could\s+you\s+|would\s+you\s+)?(?:please\s+)?/i, "")
+    .replace(
+      /^(?:can\s+(?:you|u)\s+|could\s+(?:you|u)\s+|would\s+(?:you|u)\s+)?(?:please\s+)?/i,
+      "",
+    )
     .replace(
       /^(?:find|search|show|view|display|locate|open)(?:\s+me)?(?:\s+the)?\s+/i,
       "",
@@ -62,9 +69,14 @@ export function parseArchiveSearchQuery(
     .replace(/^(?:an?\s+)?archives?\s+(?:for\s+)?/i, "")
     .replace(/^(?:an?\s+)?archived\s+projects?\s+/i, "")
     .replace(/^(?:an?\s+)?archived\s+files?\s+/i, "")
+    .replace(
+      /^(?:an?\s+)?(?:(?:archive|archived)\s+)?files?(?:\s+(?:named|called))?\s+/i,
+      "",
+    )
     .replace(/^where\s+is(?:\s+the)?\s+/i, "")
     .replace(/^where\s+can\s+i\s+find(?:\s+the)?\s+/i, "")
     .replace(/\s+(?:archives?|archived\s+projects?)$/i, "")
+    .replace(/\s+(?:(?:archive|archived)\s+)?files?$/i, "")
     .replace(/^[\s"'`“”‘’]+|[\s"'`“”‘’.?!]+$/g, "");
 
   query = normalizeWhitespace(query);
@@ -146,6 +158,30 @@ export function rankArchiveSearchCandidate(
       rank: 5,
       kind: "ARCHIVED_FILE_NAME",
       matchedFileName: matchingFile,
+    };
+  }
+
+  if (
+    (candidate.artworkIds ?? []).some(
+      (artworkId) => getTextMatchRank(artworkId, normalizedQuery) !== null,
+    )
+  ) {
+    return {
+      rank: 6,
+      kind: "ARTWORK_ID",
+      matchedFileName: null,
+    };
+  }
+
+  if (
+    (candidate.assetTags ?? []).some(
+      (assetTag) => getTextMatchRank(assetTag, normalizedQuery) !== null,
+    )
+  ) {
+    return {
+      rank: 7,
+      kind: "ASSET_TAG",
+      matchedFileName: null,
     };
   }
 

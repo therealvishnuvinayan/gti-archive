@@ -76,6 +76,8 @@ for (const snippet of [
   "MAX_ARCHIVE_SEARCH_CANDIDATES",
   "finalArchiveFileName: true",
   "originalFileName: true",
+  "artworkId: true",
+  "assetTags: {",
 ]) {
   assertIncludes(archives, snippet, `Canonical archive search ${snippet}`);
 }
@@ -92,6 +94,8 @@ for (const snippet of [
   'fetch("/api/flux-ai/search"',
   "Open Archive",
   "Matched file",
+  'ARTWORK_ID: "Artwork ID"',
+  'ASSET_TAG: "Asset tag"',
 ]) {
   assertIncludes(workspace, snippet, `Flux AI archive finder UI ${snippet}`);
 }

@@ -30,6 +30,8 @@ const matchLabels: Record<ArchiveSearchResult["matchedOn"], string> = {
   PROJECT_NAME: "Project name",
   ARCHIVE_CATEGORY: "Archive category",
   ARCHIVED_FILE_NAME: "Archived filename",
+  ARTWORK_ID: "Artwork ID",
+  ASSET_TAG: "Asset tag",
 };
 
 function formatArchivedDate(value: string) {

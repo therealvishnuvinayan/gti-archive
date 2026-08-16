@@ -43,7 +43,13 @@ function loadLocalEnvironment() {
 loadLocalEnvironment();
 
 const prisma = new PrismaClient();
-const fixtureIds: { categoryId?: string; manualArchiveId?: string } = {};
+const fixtureIds: {
+  categoryId?: string;
+  manualArchiveId?: string;
+  searchCategoryId?: string;
+  searchManualArchiveId?: string;
+  searchAssetTagId?: string;
+} = {};
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -165,6 +171,25 @@ async function main() {
         take: 1,
         select: {
           finalArchiveFileName: true,
+          artworkMetadata: {
+            select: {
+              artworkId: true,
+            },
+          },
+          sourceAttachment: {
+            select: {
+              assetTags: {
+                take: 1,
+                select: {
+                  tag: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -183,6 +208,21 @@ async function main() {
       id: true,
       fileName: true,
       originalFileName: true,
+      artworkMetadata: {
+        select: {
+          artworkId: true,
+        },
+      },
+      assetTags: {
+        take: 1,
+        select: {
+          tag: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
       archiveCategory: {
         select: {
           slug: true,
@@ -218,6 +258,8 @@ async function main() {
         fileName: true,
         originalFileName: true,
         archiveCategory: { select: { slug: true, name: true } },
+        artworkMetadata: { select: { artworkId: true } },
+        assetTags: { select: { tag: { select: { name: true } } } },
       },
     });
     fixtureIds.categoryId = category.id;
@@ -235,6 +277,9 @@ async function main() {
         id: projectArchive.id,
         name: projectArchive.projectName,
         filename: projectArchive.files[0]?.finalArchiveFileName ?? null,
+        artworkId: projectArchive.files[0]?.artworkMetadata?.artworkId ?? null,
+        assetTag:
+          projectArchive.files[0]?.sourceAttachment.assetTags[0]?.tag.name ?? null,
         categoryName: projectArchive.archiveCategory.name,
         categorySlug: projectArchive.archiveCategory.slug,
         recordType: "PROJECT_ARCHIVE" as const,
@@ -243,6 +288,8 @@ async function main() {
         id: manualArchive!.id,
         name: manualArchive!.fileName,
         filename: manualArchive!.originalFileName,
+        artworkId: manualArchive!.artworkMetadata?.artworkId ?? null,
+        assetTag: manualArchive!.assetTags[0]?.tag.name ?? null,
         categoryName: manualArchive!.archiveCategory!.name,
         categorySlug: manualArchive!.archiveCategory!.slug,
         recordType: "MANUAL_ARCHIVE_FILE" as const,
@@ -254,6 +301,66 @@ async function main() {
       archiveAccessLevel: "FULL",
     }),
   };
+  const searchFixtureRunId = randomUUID();
+  const searchFixtureCategory = await prisma.archiveCategory.create({
+    data: {
+      name: `Flux metadata fixture ${searchFixtureRunId}`,
+      slug: `flux-metadata-fixture-${searchFixtureRunId}`,
+      isActive: true,
+    },
+  });
+  fixtureIds.searchCategoryId = searchFixtureCategory.id;
+  const searchFixtureAssetTag = await prisma.assetTag.create({
+    data: {
+      name: `FluxAssetTag-${searchFixtureRunId}`,
+    },
+  });
+  fixtureIds.searchAssetTagId = searchFixtureAssetTag.id;
+  const searchFixtureArtworkId = `FLUX-ART-${searchFixtureRunId}`;
+  const searchFixtureArchive = await prisma.manualArchiveFile.create({
+    data: {
+      fileName: `Flux metadata fixture file ${searchFixtureRunId}.pdf`,
+      originalFileName: `flux-metadata-original-${searchFixtureRunId}.pdf`,
+      projectName: `Flux metadata project ${searchFixtureRunId}`,
+      archiveCategoryId: searchFixtureCategory.id,
+      mimeType: "application/pdf",
+      fileSize: 128,
+      bucket: "flux-search-integration",
+      storageKey: `flux-search-integration/metadata-${searchFixtureRunId}.pdf`,
+      status: AttachmentStatus.READY,
+      uploadedById: superAdmin.id,
+      assetTags: {
+        create: {
+          tagId: searchFixtureAssetTag.id,
+        },
+      },
+      artworkMetadata: {
+        create: {
+          artworkId: searchFixtureArtworkId,
+          titleWorkingName: "Flux metadata fixture",
+          versionRevision: "1",
+          languageMarket: "English",
+          artworkType: "Integration test",
+          brandSubBrand: "Flux",
+          colourSpace: "RGB",
+          fileFormats: "PDF",
+          creationDate: new Date(),
+          lastModifiedDate: new Date(),
+          archiveStatus: "Archived",
+          createdByName: "Flux integration check",
+          approvedByName: "Flux integration check",
+          clientBrandOwner: "Flux",
+          fontsUsed: "None",
+          imagesPhotography: "None",
+          illustrationsIcons: "None",
+          colourCodes: "None",
+          changeLog: "Created for archive search verification.",
+          archivedById: superAdmin.id,
+        },
+      },
+    },
+  });
+  fixtureIds.searchManualArchiveId = searchFixtureArchive.id;
   const unauthorizedPartialUser = buildArchiveUser({
     id: "__flux_ai_archive_search_no_grants__",
     role: UserRole.USER,
@@ -307,9 +414,63 @@ async function main() {
     });
     check(
       filename.results.some((result) => result.id === source.id),
-      "archived filename search must find its real archive record",
+      `archived filename search must find its real archive record (${JSON.stringify({
+        source,
+        parsedQuery: filename.query,
+        results: filename.results,
+      })})`,
     );
   }
+
+  if (source.artworkId) {
+    const artworkId = await searchArchivesForUser({
+      user: authorizedUser,
+      query: source.artworkId,
+    });
+    check(
+      artworkId.results.some(
+        (result) => result.id === source.id && result.matchedOn === "ARTWORK_ID",
+      ),
+      "Artwork ID search must find its real archive record",
+    );
+  }
+
+  if (source.assetTag) {
+    const assetTag = await searchArchivesForUser({
+      user: authorizedUser,
+      query: source.assetTag,
+    });
+    check(
+      assetTag.results.some(
+        (result) => result.id === source.id && result.matchedOn === "ASSET_TAG",
+      ),
+      "asset-tag search must find its real archive record",
+    );
+  }
+
+  const fixtureArtworkId = await searchArchivesForUser({
+    user: authorizedUser,
+    query: searchFixtureArtworkId,
+  });
+  check(
+    fixtureArtworkId.results.some(
+      (result) =>
+        result.id === searchFixtureArchive.id && result.matchedOn === "ARTWORK_ID",
+    ),
+    "Artwork ID search must find a metadata-backed archive record",
+  );
+
+  const fixtureAssetTag = await searchArchivesForUser({
+    user: authorizedUser,
+    query: searchFixtureAssetTag.name,
+  });
+  check(
+    fixtureAssetTag.results.some(
+      (result) =>
+        result.id === searchFixtureArchive.id && result.matchedOn === "ASSET_TAG",
+    ),
+    "asset-tag search must find a tagged archive record",
+  );
 
   const multiple = await searchArchivesForUser({
     user: authorizedUser,
@@ -393,6 +554,8 @@ async function main() {
         partialMatches: partial.results.length,
         naturalLanguageMatches: naturalLanguage.results.length,
         filenameSearchSupported: Boolean(source.filename),
+        artworkIdSearchChecked: true,
+        assetTagSearchChecked: true,
         multipleMatches: multiple.results.length,
         unauthorizedMatches: 0,
         mutationPromptsChecked: 3,
@@ -410,6 +573,21 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    if (fixtureIds.searchManualArchiveId) {
+      await prisma.manualArchiveFile.deleteMany({
+        where: { id: fixtureIds.searchManualArchiveId },
+      });
+    }
+    if (fixtureIds.searchAssetTagId) {
+      await prisma.assetTag.deleteMany({
+        where: { id: fixtureIds.searchAssetTagId },
+      });
+    }
+    if (fixtureIds.searchCategoryId) {
+      await prisma.archiveCategory.deleteMany({
+        where: { id: fixtureIds.searchCategoryId },
+      });
+    }
     if (fixtureIds.manualArchiveId) {
       await prisma.manualArchiveFile.deleteMany({
         where: { id: fixtureIds.manualArchiveId },
