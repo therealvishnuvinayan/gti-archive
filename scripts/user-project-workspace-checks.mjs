@@ -10,6 +10,9 @@ const detailPage = read("src/app/(dashboard)/projects/[slug]/page.tsx");
 const workspace = read("src/components/projects/user-project-workspace.tsx");
 const workspaceQuery = read("src/lib/user-project-workspace.ts");
 const privateFolders = read("src/lib/project-private-folders.ts");
+const privateUploadRoute = read(
+  "src/app/api/projects/[projectId]/private-folders/[folderId]/upload-url/route.ts",
+);
 const researchAccess = read("src/lib/project-research-access.ts");
 const stageTwoPage = read("src/app/(dashboard)/projects/[slug]/stages/2/page.tsx");
 const stageTwoFolderPage = read(
@@ -80,6 +83,9 @@ assert.match(workspaceQuery, /buildAccessibleProjectsWhere\(currentUser\)/);
 assert.match(privateFolders, /ownerUserId: user\.id/);
 assert.match(privateFolders, /activeParticipantWhere\(user\.id\)/);
 assert.doesNotMatch(privateFolders, /isGlobalProjectAdministrator|SUPER_ADMIN/);
+assert.match(privateFolders, /if \(input\.createdTextFile\)/);
+assert.match(privateFolders, /validatePreparedProjectResearchTextFile/);
+assert.match(privateUploadRoute, /createdTextFile: payload\.createdTextFile === true/);
 assert.match(history, /assertProjectPrivateAttachmentAccess/);
 assert.match(history, /Use the private folder upload endpoint/);
 

@@ -62,6 +62,7 @@ export async function POST(
       originalFileName: payload.originalFileName,
       mimeType: payload.mimeType ?? "application/octet-stream",
       fileSize: payload.fileSize,
+      createdTextFile: payload.createdTextFile === true,
       uploadEndpointMode: isUploadEndpointMode(payload.uploadEndpointMode)
         ? payload.uploadEndpointMode
         : undefined,

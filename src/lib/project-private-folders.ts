@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 
 import { prisma, withPrismaRetry } from "@/lib/prisma";
+import { validatePreparedProjectResearchTextFile } from "@/lib/project-research-text-file";
 import {
   buildProjectAssetKey,
   createPresignedDownloadUrl,
@@ -251,6 +252,7 @@ export async function requestProjectPrivateFileUpload(
     originalFileName: string;
     mimeType: string;
     fileSize: number;
+    createdTextFile?: boolean;
     uploadEndpointMode?: S3UploadEndpointMode;
   },
 ) {
@@ -265,7 +267,18 @@ export async function requestProjectPrivateFileUpload(
   if (input.fileSize > getMaxAssetUploadBytes()) {
     return { error: "This file exceeds the allowed size limit." } as const;
   }
-  if (!isAllowedAssetFile(input.originalFileName)) {
+  if (input.createdTextFile) {
+    const validation = validatePreparedProjectResearchTextFile({
+      fileName: input.originalFileName,
+      mimeType: input.mimeType,
+      fileSize: input.fileSize,
+    });
+    if ("error" in validation) {
+      return {
+        error: validation.error ?? "Text file metadata is invalid.",
+      } as const;
+    }
+  } else if (!isAllowedAssetFile(input.originalFileName)) {
     return buildFileTypeNotAllowedPayload({
       fileName: input.originalFileName,
       mimeType: input.mimeType,

@@ -388,7 +388,30 @@ async function main() {
       attachmentId: prepared.attachmentId,
     });
     check(completedPrivate?.name === "private-notes.pdf", "private upload must complete in the exact folder");
-    check((await getProjectPrivateFolderPageData(users.userOne, { projectId, folderId: ownFolder.id })).files.length === 1, "own private file must appear in the file browser dataset");
+    const rejectedUnmarkedTextFile = await requestProjectPrivateFileUpload(users.userOne, {
+      projectId,
+      folderId: ownFolder.id,
+      originalFileName: "private-notes.txt",
+      mimeType: "text/plain",
+      fileSize: 24,
+    });
+    check(isError(rejectedUnmarkedTextFile), "ordinary private uploads must not bypass the asset allowlist by using .txt");
+    const preparedTextFile = await requestProjectPrivateFileUpload(users.userOne, {
+      projectId,
+      folderId: ownFolder.id,
+      originalFileName: "private-notes.txt",
+      mimeType: "text/plain",
+      fileSize: 24,
+      createdTextFile: true,
+    });
+    check(!isError(preparedTextFile), "New Text File must prepare a validated private .txt upload");
+    const completedTextFile = await completeProjectPrivateFileUpload(users.userOne, {
+      projectId,
+      folderId: ownFolder.id,
+      attachmentId: preparedTextFile.attachmentId,
+    });
+    check(completedTextFile?.name === "private-notes.txt", "New Text File must complete in the exact private folder");
+    check((await getProjectPrivateFolderPageData(users.userOne, { projectId, folderId: ownFolder.id })).files.length === 2, "private uploads and created text files must appear in the file browser dataset");
     check((await getProjectPrivateFilePreviewUrl(users.userOne, { projectId, folderId: ownFolder.id, fileId: prepared.attachmentId })).length > 0, "own private preview must be authorized");
     check((await getProjectPrivateFileDownloadUrl(users.userOne, { projectId, folderId: ownFolder.id, fileId: prepared.attachmentId })).length > 0, "own private download must be authorized");
     check((await getAttachmentPreviewUrlForUser(users.userOne, prepared.attachmentId)).length > 0, "generic attachment preview must honor private ownership");
@@ -478,6 +501,11 @@ async function main() {
       projectId,
       folderId: ownFolder.id,
       fileId: prepared.attachmentId,
+    });
+    await deleteProjectPrivateFile(users.userOne, {
+      projectId,
+      folderId: ownFolder.id,
+      fileId: preparedTextFile.attachmentId,
     });
     check(
       (await prisma.projectAttachment.findUniqueOrThrow({
