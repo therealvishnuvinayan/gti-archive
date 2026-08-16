@@ -11,6 +11,7 @@ import {
   type PermissionKey,
 } from "../src/lib/permissions/definitions";
 import { resolveEffectivePermissionSet } from "../src/lib/permissions/effective";
+import { getAuthenticatedDefaultRoute } from "../src/lib/permissions/fallback-route";
 import {
   canCreateProjects,
   getSidebarVisibility,
@@ -140,7 +141,7 @@ assert.deepEqual(
   getSidebarVisibility(userWithViewModules),
   {
     dashboard: false,
-    fluxAi: false,
+    fluxAi: true,
     projects: false,
     projectCounts: false,
     calendar: true,
@@ -152,7 +153,12 @@ assert.deepEqual(
     settings: false,
     help: true,
   },
-  "USER module toggles and Archive/Flux entitlement must drive navigation.",
+  "USER module toggles must drive navigation while Archive data remains entitlement-scoped.",
+);
+assert.equal(
+  getAuthenticatedDefaultRoute(userWithViewModules),
+  "/flux-ai",
+  "A USER whose first available module is Flux AI must receive its accessible route.",
 );
 
 const restrictedAdmin = {

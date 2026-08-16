@@ -1,4 +1,5 @@
 import {
+  canUseFluxAi,
   canUseArchives,
   isProjectAdmin,
   hasPermission,
@@ -8,6 +9,10 @@ import {
 export function getAuthenticatedDefaultRoute(user: PermissionUser) {
   if (hasPermission(user, "dashboard.view")) {
     return "/";
+  }
+
+  if (canUseFluxAi(user)) {
+    return "/flux-ai";
   }
 
   if (hasPermission(user, "project.list")) {

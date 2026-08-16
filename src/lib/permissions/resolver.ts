@@ -169,6 +169,10 @@ export function canUseArchives(user: PermissionUser) {
   );
 }
 
+export function canUseFluxAi(user: PermissionUser) {
+  return hasPermission(user, "fluxAi.view");
+}
+
 export function assertCanUseArchives(
   user: PermissionUser,
   message = "You do not have permission to view archives.",
@@ -225,7 +229,7 @@ function isProjectOwnerManagePermission(permissionKey: PermissionKey) {
 export function getSidebarVisibility(user: PermissionUser): SidebarVisibility {
   return {
     dashboard: hasPermission(user, "dashboard.view"),
-    fluxAi: hasPermission(user, "fluxAi.view") && canUseArchives(user),
+    fluxAi: canUseFluxAi(user),
     projects: hasPermission(user, "project.list"),
     projectCounts: hasPermission(user, "dashboard.viewProjectCounts"),
     calendar: hasPermission(user, "calendar.view"),

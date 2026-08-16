@@ -590,8 +590,8 @@ export const helpSections: HelpSection[] = [
         items: [
           "Flux AI is controlled by the View Flux AI permission.",
           "By default, ADMIN and SUPER_ADMIN users can access Flux AI with full Archive scope.",
-          "USER accounts need the Flux AI permission and valid Archive access before they can use it.",
-          "Archive access for USER accounts is controlled by an explicit per-user entitlement.",
+          "The Flux AI permission controls whether USER accounts can open the module.",
+          "Archive access for USER accounts is controlled separately by an explicit per-user entitlement and determines which results they can find.",
           "Hiding the sidebar item is not the only protection; the page and APIs are also permission-protected server-side.",
         ],
       },

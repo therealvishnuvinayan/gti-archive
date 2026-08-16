@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { searchArchivesForUser } from "@/lib/archives";
 import { getCurrentUser } from "@/lib/auth";
 import { recordFluxAiSearch } from "@/lib/flux-ai-search-history";
-import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
+import { canUseFluxAi } from "@/lib/permissions/resolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,16 +22,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!hasPermission(user, "fluxAi.view")) {
+  if (!canUseFluxAi(user)) {
     return NextResponse.json(
       { error: "You do not have permission to use Flux AI." },
-      { status: 403 },
-    );
-  }
-
-  if (!canUseArchives(user)) {
-    return NextResponse.json(
-      { error: "You do not have permission to search archives." },
       { status: 403 },
     );
   }

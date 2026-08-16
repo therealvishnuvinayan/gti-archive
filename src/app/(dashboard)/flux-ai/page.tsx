@@ -5,12 +5,12 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { requireUser } from "@/lib/auth";
 import { getRecentFluxAiSearches } from "@/lib/flux-ai-search-history";
 import { getRestrictedAreaFallbackRoute } from "@/lib/permissions/fallback-route";
-import { canUseArchives, hasPermission } from "@/lib/permissions/resolver";
+import { canUseFluxAi } from "@/lib/permissions/resolver";
 
 export default async function FluxAiPage() {
   const user = await requireUser();
 
-  if (!hasPermission(user, "fluxAi.view") || !canUseArchives(user)) {
+  if (!canUseFluxAi(user)) {
     redirect(getRestrictedAreaFallbackRoute(user));
   }
 

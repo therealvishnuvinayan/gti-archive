@@ -43,8 +43,7 @@ for (const relativePath of removedFluxPaths) {
 
 const searchRoute = read("src/app/api/flux-ai/search/route.ts");
 for (const snippet of [
-  'hasPermission(user, "fluxAi.view")',
-  "canUseArchives(user)",
+  "canUseFluxAi(user)",
   "searchArchivesForUser",
   "recordFluxAiSearch",
   "No archives matched",
@@ -54,6 +53,7 @@ for (const snippet of [
 }
 for (const forbidden of [
   "OpenAI",
+  "canUseArchives(",
   "prisma.",
   ".create(",
   ".update(",
@@ -120,13 +120,17 @@ for (const forbidden of [
 
 const fluxPage = read("src/app/(dashboard)/flux-ai/page.tsx");
 for (const snippet of [
-  'hasPermission(user, "fluxAi.view")',
-  "canUseArchives(user)",
+  "canUseFluxAi(user)",
   "getRecentFluxAiSearches(user.id)",
   "<FluxAiWorkspace initialRecentSearches={initialRecentSearches} />",
 ]) {
   assertIncludes(fluxPage, snippet, `Flux AI page ${snippet}`);
 }
+assertNotIncludes(
+  fluxPage,
+  "canUseArchives(",
+  "Flux AI page independent permission access",
+);
 
 const searchHistory = read("src/lib/flux-ai-search-history.ts");
 for (const snippet of [
@@ -164,8 +168,8 @@ assertIncludes(
 const resolver = read("src/lib/permissions/resolver.ts");
 assertIncludes(
   resolver,
-  'fluxAi: hasPermission(user, "fluxAi.view") && canUseArchives(user)',
-  "Flux AI sidebar archive-access guard",
+  "fluxAi: canUseFluxAi(user)",
+  "Flux AI sidebar permission guard",
 );
 
 const permissions = read("src/lib/permissions/definitions.ts");
