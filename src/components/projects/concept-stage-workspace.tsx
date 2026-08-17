@@ -976,6 +976,41 @@ export function ConceptStageWorkspace({
                           : "In Progress"}
                     </span>
                   ) : null}
+                  {stageNumber === 3 && folder.approvedAttachment ? (
+                    <span className="relative z-10 mt-3 block rounded-[12px] border border-[#c9e2d0] bg-[#f1faf3] p-2.5">
+                      <span className="block text-[9px] font-[800] uppercase tracking-[0.08em] text-[#32704b]">
+                        Approved Concept File
+                      </span>
+                      <span className="mt-1 flex min-w-0 items-center gap-1">
+                        <span className="min-w-0 flex-1 truncate text-[10px] font-[650] text-[#344138]">
+                          {folder.approvedAttachment.name}
+                        </span>
+                        <AssetPreviewButton
+                          fileName={folder.approvedAttachment.name}
+                          mimeType={folder.approvedAttachment.mimeType}
+                          previewPath={folder.approvedAttachment.previewPath}
+                          downloadPath={folder.approvedAttachment.downloadPath}
+                          triggerClassName="size-7 rounded-full text-brand"
+                        />
+                        <Button
+                          asChild
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 rounded-full text-brand"
+                        >
+                          <a
+                            href={folder.approvedAttachment.downloadPath}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`Download ${folder.approvedAttachment.name}`}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      </span>
+                    </span>
+                  ) : null}
                   {stageNumber === 4 && folder.approvedAttachment ? (
                     <span className="relative z-10 mt-3 block rounded-[12px] border border-[#c9e2d0] bg-[#f1faf3] p-2.5">
                       <span className="block text-[9px] font-[800] uppercase tracking-[0.08em] text-[#32704b]">

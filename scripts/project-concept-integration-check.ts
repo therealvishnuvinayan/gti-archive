@@ -1230,6 +1230,22 @@ async function main() {
       })) === 1,
       "each concept must retain exactly one Approved Concept designation",
     );
+    const stageThreeCardView = await getProjectConceptFolders(
+      owner,
+      projectId,
+      ProjectWorkflowStageKey.CONCEPT_CREATION,
+    );
+    const approvedConceptCard = stageThreeCardView?.folders.find(
+      (folder) => folder.id === conceptA.folder.id,
+    );
+    check(
+      approvedConceptCard?.approvedAttachment?.id === replacementFile.id &&
+        approvedConceptCard.approvedAttachment.name ===
+          replacementFile.originalFileName &&
+        approvedConceptCard.approvedAttachment.previewPath.includes(replacementFile.id) &&
+        approvedConceptCard.approvedAttachment.downloadPath.includes(replacementFile.id),
+      "the Stage 3 concept card payload must expose the exact Approved Concept file with preview and download paths",
+    );
     const preCompletionState = await prisma.$transaction([
       prisma.projectStage.findUniqueOrThrow({
         where: { id: conceptA.folder.taskerStageId },

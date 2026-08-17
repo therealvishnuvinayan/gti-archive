@@ -127,6 +127,7 @@ assert(
 
 for (const label of [
   "Approved Concept",
+  "Approved Concept File",
   "Not Approved",
   "Changes Requested",
   "Skip Stage 3",
@@ -140,6 +141,9 @@ assert(
   workspace.includes("unapprovedConcepts.map") &&
     workspace.includes("completeStageThreeConceptsAction") &&
     workspace.includes("stageNumber === 3") &&
+    workspace.includes("stageNumber === 3 && folder.approvedAttachment") &&
+    workspace.includes("folder.approvedAttachment.previewPath") &&
+    workspace.includes("folder.approvedAttachment.downloadPath") &&
     workspace.includes("isEmptyStageThree") &&
     workspace.includes("canCompleteStage && !managementLocked && stageCompletionReady") &&
     workspace.includes("folder.startingReference.previewPath") &&

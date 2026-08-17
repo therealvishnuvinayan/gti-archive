@@ -112,9 +112,13 @@ assert(
 );
 assert(
   !workspace.includes("AssetImageThumbnail") &&
+    workspace.includes("Approved Concept File") &&
+    workspace.includes("stageNumber === 3 && folder.approvedAttachment") &&
+    workspace.includes("folder.approvedAttachment.previewPath") &&
+    workspace.includes("folder.approvedAttachment.downloadPath") &&
     workspace.includes("folder.startingReference.previewPath") &&
     workspace.includes("AssetPreviewButton"),
-  "Stage 4 tasker cards must stay compact without image thumbnails while retaining the preview action.",
+  "Stage 3 and Stage 4 tasker cards must stay compact without image thumbnails while retaining file preview and download actions.",
 );
 assert(
   workspace.includes("Deadline *") &&
