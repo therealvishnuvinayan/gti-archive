@@ -1,10 +1,12 @@
 import {
+  Prisma,
   ProjectRevisionStatus,
   StageStatus,
   UserRole,
 } from "@prisma/client";
 
 import { canUseProjects } from "@/lib/permissions/resolver";
+import { buildProjectListStatusWhere } from "@/lib/project-list-workflow";
 import {
   buildAccessibleProjectsWhere,
   type ProjectAccessUser,
@@ -187,12 +189,8 @@ function projectMatchesFilter(
   status: UserProjectDisplayStatus,
   filter: UserProjectFilter,
 ) {
-  if (filter === "ALL") return true;
-  if (filter === "ACTIVE") {
-    return status === "IN_PROGRESS" || status === "WAITING_FOR_REVIEW";
-  }
   if (filter === "NEEDS_ATTENTION") return status === "NEEDS_ATTENTION";
-  return status === "COMPLETED";
+  return true;
 }
 
 function latestDate(values: Array<Date | null | undefined>) {
@@ -247,11 +245,25 @@ export async function getUserProjectsList(
         ],
       }
     : accessibleWhere;
+  const lifecycleWhere: Prisma.ProjectWhereInput =
+    input.filter === "ACTIVE"
+      ? {
+          AND: [
+            buildProjectListStatusWhere("ACTIVE"),
+            { archivedAt: null },
+          ],
+        }
+      : input.filter === "COMPLETED"
+        ? buildProjectListStatusWhere("COMPLETED")
+        : {};
+  const listWhere: Prisma.ProjectWhereInput = {
+    AND: [searchedWhere, lifecycleWhere],
+  };
 
   const [records, accessibleProjectCount] = await withPrismaRetry(() =>
     Promise.all([
       prisma.project.findMany({
-        where: searchedWhere,
+        where: listWhere,
         select: {
           id: true,
           name: true,

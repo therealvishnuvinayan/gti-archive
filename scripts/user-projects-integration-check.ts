@@ -13,6 +13,7 @@ import {
 import { createProjectConceptFolder } from "../src/lib/project-concepts";
 import { createProjectV2 } from "../src/lib/project-creation";
 import { prisma } from "../src/lib/prisma";
+import { getUserProjectWorkspace } from "../src/lib/user-project-workspace";
 import { getUserProjectsList } from "../src/lib/user-projects";
 
 function check(condition: unknown, message: string): asserts condition {
@@ -222,6 +223,19 @@ async function main() {
     projectIds.push(completedProjectId);
     const completedConcept = await createConcept({ owner, projectId: completedProjectId, executorId: ids.userOne, name: "Completed USER Task", dueInDays: 4 });
     await setTaskState({ projectId: completedProjectId, taskerStageId: completedConcept.taskerStageId, executorId: ids.userOne, state: "COMPLETED" });
+    const completedAt = new Date();
+    await prisma.projectWorkflowStage.updateMany({
+      where: { projectId: completedProjectId },
+      data: {
+        status: ProjectWorkflowStageStatus.COMPLETED,
+        unlockedAt: completedAt,
+        completedAt,
+      },
+    });
+    await prisma.project.update({
+      where: { id: completedProjectId },
+      data: { completedAt },
+    });
 
     const activeProjectId = await createProject({
       ownerId: ids.owner,
@@ -269,7 +283,7 @@ async function main() {
       { filter: "COMPLETED", query: "", sort: "updated", page: 1 },
       userOne,
     );
-    check(completed.total === 1 && completed.projects[0]?.id === completedProjectId, "Completed filter must use USER task completion only");
+    check(completed.total === 1 && completed.projects[0]?.id === completedProjectId, "Completed filter must match the dashboard's completed project lifecycle");
     const finalWorkflow = await prisma.projectWorkflowStage.findUniqueOrThrow({
       where: {
         projectId_stageKey: {
@@ -279,14 +293,20 @@ async function main() {
       },
       select: { status: true },
     });
-    check(finalWorkflow.status === ProjectWorkflowStageStatus.LOCKED, "USER completed status must not require overall project completion");
+    check(finalWorkflow.status === ProjectWorkflowStageStatus.COMPLETED, "USER completed results must use the completed project workflow");
 
     const active = await getUserProjectsList(
       { filter: "ACTIVE", query: "", sort: "updated", page: 1 },
       userOne,
     );
+    check(active.total === 3, "Active filter must return the same three active projects counted by the dashboard");
     check(active.projects.some((project) => project.id === activeProjectId), "Active filter must include unfinished non-urgent work");
-    check(!active.projects.some((project) => project.id === mixedProjectId), "Active filter must exclude USER work needing attention");
+    check(active.projects.some((project) => project.id === mixedProjectId), "Active filter must retain active projects that also need attention");
+    check(active.projects.some((project) => project.id === zeroTaskProjectId), "Active filter must retain related active projects with no assigned concept task");
+    check(!active.projects.some((project) => project.id === completedProjectId), "Active filter must exclude workflow-completed projects");
+
+    const zeroTaskWorkspace = await getUserProjectWorkspace(zeroTaskProjectId, userOne);
+    check(zeroTaskWorkspace?.project.id === zeroTaskProjectId, "a USER must be able to open an active related project even when it has no assigned concept task");
 
     const attention = await getUserProjectsList(
       { filter: "NEEDS_ATTENTION", query: "", sort: "updated", page: 1 },
