@@ -468,7 +468,7 @@ export function ArchiveMetadataTechnicalStep({
             <p className="mb-3 text-[12px] font-[800] uppercase tracking-[0.08em] text-[#2f8d5d]">
               Assets, Rights & Production
             </p>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid items-start gap-3 md:grid-cols-2">
               <ArchiveArtworkMetadataField
                 fileId={file.id}
                 metadata={file.metadata}
@@ -521,6 +521,15 @@ export function ArchiveMetadataTechnicalStep({
               <ArchiveArtworkMetadataField
                 fileId={file.id}
                 metadata={file.metadata}
+                field="outputFilesList"
+                label="Output files list"
+                type="textarea"
+                disabled={disabled}
+                onChange={onChange}
+              />
+              <ArchiveArtworkMetadataField
+                fileId={file.id}
+                metadata={file.metadata}
                 field="regulatoryClearance"
                 label="Regulatory clearance"
                 disabled={disabled}
@@ -531,15 +540,6 @@ export function ArchiveMetadataTechnicalStep({
                 metadata={file.metadata}
                 field="supplierPrinter"
                 label="Supplier / Printer"
-                disabled={disabled}
-                onChange={onChange}
-              />
-              <ArchiveArtworkMetadataField
-                fileId={file.id}
-                metadata={file.metadata}
-                field="outputFilesList"
-                label="Output files list"
-                type="textarea"
                 disabled={disabled}
                 onChange={onChange}
               />

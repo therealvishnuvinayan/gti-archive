@@ -45,6 +45,21 @@ for (const snippet of [
   assertIncludes(metadataForm, snippet, `Shared archive metadata form ${snippet}`);
 }
 
+const thirdPartyLogosIndex = metadataForm.indexOf('field="thirdPartyLogosIp"');
+const outputFilesIndex = metadataForm.indexOf('field="outputFilesList"');
+const regulatoryClearanceIndex = metadataForm.indexOf(
+  'field="regulatoryClearance"',
+);
+const supplierPrinterIndex = metadataForm.indexOf('field="supplierPrinter"');
+
+assert(
+  metadataForm.includes('className="grid items-start gap-3 md:grid-cols-2"') &&
+    thirdPartyLogosIndex < outputFilesIndex &&
+    outputFilesIndex < regulatoryClearanceIndex &&
+    regulatoryClearanceIndex < supplierPrinterIndex,
+  "Archive metadata must pair multiline fields together and compact fields together without stretched blank grid rows.",
+);
+
 for (const snippet of [
   "ArchiveMetadataIdentificationStep",
   "ArchiveMetadataTechnicalStep",
