@@ -141,7 +141,8 @@ assert(
     workspace.includes("getPhysicalSampleRequestActionState") &&
     workspace.includes("actions.showRowDelete") &&
     workspace.includes("actions?.showDetailsDelete") &&
-    sampleActions.includes("showRowDelete: canDelete && !input.selected") &&
+    sampleActions.includes("showRowDelete: canDelete") &&
+    !sampleActions.includes("showRowDelete: canDelete && !input.selected") &&
     sampleActions.includes("showDetailsDelete: canDelete && input.selected") &&
     workspace.includes("onDeleteRound(round)") &&
     workspace.includes("sampleRoundId: target.round.id") &&

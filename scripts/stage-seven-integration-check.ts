@@ -64,11 +64,11 @@ function checkPhysicalSampleRequestActionStates() {
   };
   const selectedReceived = getPhysicalSampleRequestActionState(base);
   check(
-    !selectedReceived.showRowDelete &&
+    selectedReceived.showRowDelete &&
       selectedReceived.showDetailsDelete &&
       selectedReceived.reviewable &&
       selectedReceived.reviewActionsEnabled,
-    "a selected received request must show one details Delete action and enable both review actions",
+    "a selected eligible request must retain its row Delete action, expose the details Delete action, and enable both review actions",
   );
 
   const unselected = getPhysicalSampleRequestActionState({
@@ -77,7 +77,7 @@ function checkPhysicalSampleRequestActionStates() {
   });
   check(
     unselected.showRowDelete && !unselected.showDetailsDelete,
-    "an unselected request must retain only its row-level Delete action",
+    "an unselected eligible request must expose its own row-level Delete action",
   );
 
   const pending = getPhysicalSampleRequestActionState({
