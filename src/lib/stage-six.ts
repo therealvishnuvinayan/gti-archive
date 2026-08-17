@@ -59,6 +59,7 @@ import {
   canOpenImplementedWorkflowStage,
 } from "@/lib/workflow-stage-access";
 import { isSuperAdminRole } from "@/lib/user-role-compatibility";
+import { disableProjectRequestReminders } from "@/lib/request-reminders";
 
 type EmailSender = typeof sendResendEmail;
 type StageProject = ProjectStageAccessRecord;
@@ -973,6 +974,11 @@ export async function completeStageFive(
             });
 
             if (completed.count === 1) {
+              await disableProjectRequestReminders(tx, {
+                projectId: project.id,
+                stage: "FIVE",
+                now,
+              });
               await tx.projectWorkflowStage.updateMany({
                 where: {
                   id: stageSix.id,

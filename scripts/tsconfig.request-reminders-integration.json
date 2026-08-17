@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": "../.tmp/request-reminders-integration",
+    "rootDir": "..",
+    "target": "ES2022"
+  },
+  "include": ["request-reminder-integration-check.ts"]
+}

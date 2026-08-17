@@ -35,6 +35,7 @@ import {
 
 import {
   closeStageSevenProjectAction,
+  configureStageSevenSampleRequestReminderAction,
   createProductionSampleRoundAction,
   deleteProductionSampleRoundAction,
   decidePhysicalSampleRoundAction,
@@ -71,6 +72,11 @@ import type { StageSevenWorkspaceData } from "@/lib/stage-seven";
 import { getPhysicalSampleRequestActionState } from "@/lib/stage-seven-sample-actions";
 import { showErrorToast, showSuccessToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import {
+  REQUEST_REMINDER_INTERVAL_HOURS,
+  formatRequestReminderInterval,
+  type RequestReminderIntervalHours,
+} from "@/lib/request-reminder-shared";
 
 type Unit = StageSevenWorkspaceData["units"][number];
 type Round = Unit["rounds"][number];
@@ -236,6 +242,9 @@ function NewSampleRequestDialog({
   const [recipientEmail, setRecipientEmail] = useState(previous?.recipientEmail ?? "");
   const [recipientPhone, setRecipientPhone] = useState(previous?.recipientPhone ?? "");
   const [requestNote, setRequestNote] = useState("");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderIntervalHours, setReminderIntervalHours] =
+    useState<RequestReminderIntervalHours>(24);
   const autosave = useProjectFormAutosave({
     projectId,
     formKey: `stage-seven-sample-request:${unit.id}`,
@@ -251,6 +260,8 @@ function NewSampleRequestDialog({
       recipientEmail,
       recipientPhone,
       requestNote,
+      reminderEnabled,
+      reminderIntervalHours,
     },
     onRestore: (draft) => {
       setName(draft.name);
@@ -264,6 +275,12 @@ function NewSampleRequestDialog({
       setRecipientEmail(draft.recipientEmail);
       setRecipientPhone(draft.recipientPhone);
       setRequestNote(draft.requestNote);
+      setReminderEnabled(draft.reminderEnabled ?? false);
+      setReminderIntervalHours(
+        REQUEST_REMINDER_INTERVAL_HOURS.includes(draft.reminderIntervalHours)
+          ? draft.reminderIntervalHours
+          : 24,
+      );
     },
   });
   const isInternal = recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT;
@@ -311,6 +328,9 @@ function NewSampleRequestDialog({
               recipientPhone,
             }),
         requestNote,
+        reminderIntervalHours: reminderEnabled
+          ? reminderIntervalHours
+          : null,
       });
       if ("error" in result) {
         showErrorToast("Unable to send the physical sample request.", result.error);
@@ -393,6 +413,29 @@ function NewSampleRequestDialog({
         <div className="space-y-2">
           <span className="text-[12px] font-[720] text-[#2d372f]">Request Note</span>
           <RichTextEditor value={requestNote} maxLength={8000} minHeightClassName="min-h-[110px]" ariaLabel="Request note" placeholder="Please produce and courier one physical sample using the approved packaging artwork. Please ensure it reaches GTI before the deadline." onChange={setRequestNote} />
+        </div>
+        <div className="rounded-[14px] border border-[#dce5dd] bg-[#f8fbf8] p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[12px] font-[720] text-[#2d372f]">Reminder</p>
+              <p className="mt-1 text-[10px] leading-4 text-[#748078]">Repeat while this sample round is unresolved.</p>
+            </div>
+            <button type="button" role="switch" aria-checked={reminderEnabled} className={cn("relative h-7 w-12 shrink-0 rounded-full transition", reminderEnabled ? "bg-[#2f8057]" : "bg-[#cdd6cf]")} onClick={() => setReminderEnabled((value) => !value)}>
+              <span className={cn("absolute top-1 size-5 rounded-full bg-white shadow-sm transition", reminderEnabled ? "left-6" : "left-1")} />
+              <span className="sr-only">Enable recurring reminder</span>
+            </button>
+          </div>
+          {reminderEnabled ? (
+            <label className="mt-4 block space-y-2">
+              <span className="text-[11px] font-[700] text-[#455148]">Reminder interval</span>
+              <Select value={String(reminderIntervalHours)} onValueChange={(value) => setReminderIntervalHours(Number(value) as RequestReminderIntervalHours)}>
+                <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent className="z-[190]">
+                  {REQUEST_REMINDER_INTERVAL_HOURS.map((hours) => <SelectItem key={hours} value={String(hours)}>{formatRequestReminderInterval(hours)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </label>
+          ) : null}
         </div>
       </div>
     </ModalShell>
@@ -535,6 +578,8 @@ function SampleRequestDetails({
   const [reviewNote, setReviewNote] = useState(round?.decisionNote ?? "");
   const [confirm, setConfirm] = useState<PhysicalSampleDecision | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [reminderIntervalHours, setReminderIntervalHours] =
+    useState<RequestReminderIntervalHours>(round?.reminder?.intervalHours ?? 24);
   const actions = round
     ? getPhysicalSampleRequestActionState({
         selected: true,
@@ -632,6 +677,28 @@ function SampleRequestDetails({
     setConfirm(PhysicalSampleDecision.REJECTED);
   }
 
+  function changeReminder(intervalHours: RequestReminderIntervalHours | null) {
+    if (pending) return;
+    startPending(async () => {
+      const result = await configureStageSevenSampleRequestReminderAction({
+        projectId,
+        productionUnitId: unit.id,
+        sampleRoundId: roundId,
+        intervalHours,
+      });
+      if ("error" in result) {
+        showErrorToast("Unable to update reminder.", result.error);
+        return;
+      }
+      showSuccessToast(
+        intervalHours
+          ? `Reminder changed to every ${intervalHours} hours.`
+          : "Reminder stopped.",
+      );
+      onRefresh();
+    });
+  }
+
   function decide() {
     if (!confirm || pending) return;
     startPending(async () => {
@@ -664,6 +731,38 @@ function SampleRequestDetails({
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Email Status</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{EMAIL_STATUS_LABELS[round.emailStatus]}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.emailStatus === ProductionDispatchStatus.FAILED ? round.emailError || "Not delivered" : round.emailSentAt ? `Sent ${formatDateTime(round.emailSentAt)}` : "Not delivered"}</p></div>
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Request Created</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{formatDateTime(round.createdAt)}</p></div>
         </section>
+        {round.reminderManageable ? (
+          <section className="rounded-[14px] border border-[#dce5dd] bg-[#f8fbf8] p-3.5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Reminder</h3>
+                <p className="mt-1 text-[10px] text-[#59665d]">
+                  {round.reminder?.enabled
+                    ? formatRequestReminderInterval(round.reminder.intervalHours)
+                    : "Reminder is off"}
+                </p>
+                {round.reminder?.enabled && round.reminder.nextReminderAt ? (
+                  <p className="mt-0.5 text-[9px] text-[#7c867f]">Next reminder: {formatDateTime(round.reminder.nextReminderAt)}</p>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 items-center gap-2">
+                <Select value={String(reminderIntervalHours)} onValueChange={(value) => {
+                  const hours = Number(value) as RequestReminderIntervalHours;
+                  setReminderIntervalHours(hours);
+                  if (round.reminder?.enabled) changeReminder(hours);
+                }}>
+                  <SelectTrigger className="h-9 min-w-[160px] rounded-[10px] border-[#c8d5cb] bg-white text-[10px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>{REQUEST_REMINDER_INTERVAL_HOURS.map((hours) => <SelectItem key={hours} value={String(hours)}>{formatRequestReminderInterval(hours)}</SelectItem>)}</SelectContent>
+                </Select>
+                {round.reminder?.enabled ? (
+                  <Button type="button" size="sm" variant="outline" disabled={pending} className="rounded-[10px] text-[#a34a43]" onClick={() => changeReminder(null)}>Stop</Button>
+                ) : (
+                  <Button type="button" size="sm" disabled={pending} className="rounded-[10px]" onClick={() => changeReminder(reminderIntervalHours)}>Enable</Button>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : null}
         <section><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Request Note</h3><div className="mt-2 rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><RichTextContent value={round.requestNote} fallback={<p className="text-[10px] leading-4 text-[#4c584f]">No request note was added.</p>} className="text-[10px] leading-4 text-[#4c584f]" /></div></section>
         <section><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Production Files / References</h3><div className="mt-2 grid gap-2">{round.referenceFiles.length ? round.referenceFiles.map((file) => <a key={file.id} href={file.downloadPath} className="flex min-w-0 items-center gap-3 rounded-[11px] border border-[#e0e7e0] bg-[#fafcfa] px-3 py-2.5 text-[10px] text-[#354139] hover:bg-[#f3f8f4]"><FileImage className="h-4 w-4 shrink-0 text-[#4b7e5d]" /><span className="min-w-0 flex-1 truncate font-[680]">{file.name}</span><Download className="h-3.5 w-3.5 shrink-0" /></a>) : <p className="text-[10px] text-[#8a948d]">No reference files are available for this legacy request.</p>}</div></section>
       </div>

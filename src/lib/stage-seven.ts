@@ -33,6 +33,16 @@ import {
 import { getWorkflowStageCompletionMode } from "@/lib/project-workflow";
 import { createPresignedDownloadUrl } from "@/lib/storage/s3";
 import { canOpenImplementedWorkflowStage } from "@/lib/workflow-stage-access";
+import {
+  buildRequestReminderCreateData,
+  disableProjectRequestReminders,
+  isRequestReminderInterval,
+  mapRequestReminder,
+  setRequestReminder,
+  stopRequestReminder,
+  type RequestReminderConfiguration,
+  type RequestReminderIntervalHours,
+} from "@/lib/request-reminders";
 
 type StageProject = ProjectStageAccessRecord;
 type EmailSender = typeof sendResendEmail;
@@ -90,6 +100,8 @@ export type StageSevenWorkspaceData = {
       decidedBy: string | null;
       decidedAt: string | null;
       overdue: boolean;
+      reminder: RequestReminderConfiguration | null;
+      reminderManageable: boolean;
       referenceFiles: Array<{
         id: string;
         name: string;
@@ -431,6 +443,14 @@ export async function getStageSevenWorkspaceData(
                 orderBy: [{ sequence: "asc" }, { id: "asc" }],
                 include: {
                   decidedBy: { select: { name: true, email: true } },
+                  reminder: {
+                    select: {
+                      enabled: true,
+                      intervalHours: true,
+                      nextReminderAt: true,
+                      lastReminderAt: true,
+                    },
+                  },
                 },
               },
             },
@@ -460,7 +480,7 @@ export async function getStageSevenWorkspaceData(
         ? displayName(unit.supervision.signedOffBy)
         : null,
       rounds:
-        unit.supervision?.sampleRounds.map((round) => ({
+        unit.supervision?.sampleRounds.map((round, roundIndex, rounds) => ({
           id: round.id,
           sequence: round.sequence,
           name: round.name,
@@ -492,6 +512,12 @@ export async function getStageSevenWorkspaceData(
           overdue:
             round.decision === null &&
             round.deadline.getTime() < currentDate.getTime(),
+          reminder: mapRequestReminder(round.reminder),
+          reminderManageable:
+            canManage &&
+            !round.decision &&
+            round.status !== ProductionSampleRoundStatus.COMPLETED &&
+            roundIndex === rounds.length - 1,
           referenceFiles: round.requestReferenceFileIds.flatMap((id) => {
             const attachment = referenceById.get(id);
             return attachment
@@ -939,11 +965,19 @@ export async function createProductionSampleRound(
     recipientPhone?: string | null;
     requestNote?: string | null;
     referenceFileIds?: string[];
+    reminderIntervalHours?: number | null;
   },
   options: { sendEmail?: EmailSender } = {},
 ) {
   const project = await getManagerProject(user, input.projectId);
   const validated = validateSampleRequestInput(input);
+  if (
+    input.reminderIntervalHours !== undefined &&
+    input.reminderIntervalHours !== null &&
+    !isRequestReminderInterval(input.reminderIntervalHours)
+  ) {
+    throw new StageSevenWorkflowError("Select a valid reminder interval.");
+  }
   const recipient = resolveSampleRecipient(project, input);
   const prepared = await serializable(async (tx) => {
     await assertStageSevenActive(tx, input.projectId);
@@ -1014,6 +1048,26 @@ export async function createProductionSampleRound(
       where: { supervisionId: supervision.id },
       _max: { sequence: true },
     });
+    const requestCreatedAt = new Date();
+    const reminderCreateData = buildRequestReminderCreateData({
+      projectId: input.projectId,
+      configuredById: user.id,
+      intervalHours: input.reminderIntervalHours,
+      now: requestCreatedAt,
+    });
+    await tx.requestReminder.updateMany({
+      where: {
+        enabled: true,
+        stageSevenSampleRound: { supervisionId: supervision.id },
+      },
+      data: {
+        enabled: false,
+        nextReminderAt: null,
+        stoppedAt: requestCreatedAt,
+        processingToken: null,
+        processingStartedAt: null,
+      },
+    });
     const created = await tx.productionSampleRound.create({
       data: {
         clientRequestId: input.clientRequestId,
@@ -1031,6 +1085,10 @@ export async function createProductionSampleRound(
         emailAttemptCount: 1,
         status: ProductionSampleRoundStatus.PENDING,
         createdById: user.id,
+        createdAt: requestCreatedAt,
+        ...(reminderCreateData
+          ? { reminder: { create: reminderCreateData } }
+          : {}),
       },
       select: { id: true, emailStatus: true, emailError: true },
     });
@@ -1071,6 +1129,69 @@ export async function createProductionSampleRound(
     emailStatus: delivery.status,
     emailError: delivery.error,
   } as const;
+}
+
+export async function configureStageSevenSampleRequestReminder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    productionUnitId: string;
+    sampleRoundId: string;
+    intervalHours: RequestReminderIntervalHours | null;
+  },
+) {
+  await getManagerProject(user, input.projectId);
+  const round = await withPrismaRetry(() =>
+    prisma.productionSampleRound.findFirst({
+      where: {
+        id: input.sampleRoundId,
+        projectId: input.projectId,
+        decision: null,
+        status: { not: ProductionSampleRoundStatus.COMPLETED },
+        supervision: {
+          productionUnitId: input.productionUnitId,
+          status: { not: ProductionSupervisionStatus.SIGNED_OFF },
+        },
+      },
+      select: {
+        id: true,
+        supervisionId: true,
+        supervision: {
+          select: {
+            sampleRounds: {
+              orderBy: [{ sequence: "desc" }, { id: "desc" }],
+              take: 1,
+              select: { id: true },
+            },
+          },
+        },
+      },
+    }),
+  );
+  if (!round) {
+    throw new StageSevenWorkflowError(
+      "This physical sample request is no longer pending.",
+    );
+  }
+  if (round.supervision.sampleRounds[0]?.id !== round.id) {
+    throw new StageSevenWorkflowError(
+      "Only the latest physical sample round can send reminders.",
+    );
+  }
+  if (input.intervalHours === null) {
+    await stopRequestReminder({ stageSevenSampleRoundId: round.id });
+    return { reminder: null } as const;
+  }
+  if (!isRequestReminderInterval(input.intervalHours)) {
+    throw new StageSevenWorkflowError("Select a valid reminder interval.");
+  }
+  const reminder = await setRequestReminder({
+    projectId: input.projectId,
+    configuredById: user.id,
+    target: { stageSevenSampleRoundId: round.id },
+    intervalHours: input.intervalHours,
+  });
+  return { reminder } as const;
 }
 
 export async function retryProductionSampleRequestEmail(
@@ -1318,6 +1439,22 @@ export async function decidePhysicalSampleRound(
       if (decided.decision === input.decision) return { duplicate: true } as const;
       throw new StageSevenWorkflowError("This sample request already has a final decision.");
     }
+    await tx.requestReminder.updateMany({
+      where:
+        input.decision === PhysicalSampleDecision.ACCEPTED
+          ? {
+              enabled: true,
+              stageSevenSampleRound: { supervisionId: round.supervisionId },
+            }
+          : { enabled: true, stageSevenSampleRoundId: round.id },
+      data: {
+        enabled: false,
+        nextReminderAt: null,
+        stoppedAt: now,
+        processingToken: null,
+        processingStartedAt: null,
+      },
+    });
     await tx.projectProductionSupervision.update({
       where: { id: round.supervisionId },
       data:
@@ -1491,6 +1628,11 @@ export async function closeStageSevenProject(
     await tx.project.update({
       where: { id: input.projectId },
       data: { completedAt: now },
+    });
+    await disableProjectRequestReminders(tx, {
+      projectId: input.projectId,
+      stage: "SEVEN",
+      now,
     });
     return { duplicate: false, closedAt: closure.closedAt.toISOString() } as const;
   });

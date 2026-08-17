@@ -411,6 +411,20 @@ export async function submitExternalChecklistResponse(
       });
       if (updated.count !== 1) return false;
 
+      await tx.requestReminder.updateMany({
+        where: {
+          enabled: true,
+          stageFiveRequest: { checklistItemId: request.checklistItemId },
+        },
+        data: {
+          enabled: false,
+          nextReminderAt: null,
+          stoppedAt: completedAt,
+          processingToken: null,
+          processingStartedAt: null,
+        },
+      });
+
       await tx.projectFileChecklistItem.update({
         where: { id: request.checklistItemId },
         data: {
@@ -499,6 +513,16 @@ export async function declineExternalChecklistRequest(token: string, reasonInput
         },
       });
       if (updated.count !== 1) return false;
+      await tx.requestReminder.updateMany({
+        where: { stageFiveRequestId: request.id, enabled: true },
+        data: {
+          enabled: false,
+          nextReminderAt: null,
+          stoppedAt: declinedAt,
+          processingToken: null,
+          processingStartedAt: null,
+        },
+      });
       const otherActiveRequests = await tx.projectFileChecklistRequest.count({
         where: {
           checklistItemId: request.checklistItemId,

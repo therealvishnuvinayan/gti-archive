@@ -1,6 +1,6 @@
 import { richTextToPlainText } from "@/lib/rich-text";
 
-type ChecklistInformationRequestEmailInput = {
+export type ChecklistInformationRequestEmailInput = {
   recipientName?: string | null;
   requesterName: string;
   projectName: string;
@@ -8,6 +8,7 @@ type ChecklistInformationRequestEmailInput = {
   fieldLabel: string;
   message?: string | null;
   responseUrl: string;
+  reminder?: boolean;
 };
 
 function escapeHtml(value: string) {
@@ -24,7 +25,9 @@ export function buildChecklistInformationRequestEmail(
 ) {
   const recipientName = input.recipientName?.trim() || "there";
   const message = richTextToPlainText(input.message) || null;
-  const subject = `[GTI Archive] Information requested: ${input.fieldLabel} — ${input.projectName}`;
+  const subject = input.reminder
+    ? `[GTI Archive] Reminder: ${input.fieldLabel} is still needed — ${input.projectName}`
+    : `[GTI Archive] Information requested: ${input.fieldLabel} — ${input.projectName}`;
   const rows = [
     ["Project", input.projectName],
     ["File", input.fileName],
@@ -36,12 +39,12 @@ export function buildChecklistInformationRequestEmail(
       <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dbe3da;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(20,40,28,0.1);">
         <div style="padding:32px 38px;background:linear-gradient(140deg,#2f8d5d,#174f38 65%,#123b2b);color:#ffffff;">
           <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.8;">GTI Archive</div>
-          <h1 style="margin:14px 0 0;font-size:28px;line-height:1.15;">Information requested</h1>
+          <h1 style="margin:14px 0 0;font-size:28px;line-height:1.15;">${input.reminder ? "Reminder: action required" : "Information requested"}</h1>
         </div>
         <div style="padding:32px 38px 38px;">
           <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#4d5a51;">Hello ${escapeHtml(recipientName)},</p>
           <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#4d5a51;">
-            ${escapeHtml(input.requesterName)} has requested information for a project file in GTI Archive.
+            ${input.reminder ? "This is a reminder that " : ""}${escapeHtml(input.requesterName)} has requested information for a project file in GTI Archive.
           </p>
           <div style="border:1px solid #e1e8e2;border-radius:14px;overflow:hidden;">
             ${rows
@@ -74,7 +77,7 @@ export function buildChecklistInformationRequestEmail(
   const text = [
     `Hello ${recipientName},`,
     "",
-    `${input.requesterName} has requested information for a project file in GTI Archive.`,
+    `${input.reminder ? "Reminder: " : ""}${input.requesterName} has requested information for a project file in GTI Archive.`,
     "",
     `Project: ${input.projectName}`,
     `File: ${input.fileName}`,
@@ -86,4 +89,10 @@ export function buildChecklistInformationRequestEmail(
   ].join("\n");
 
   return { subject, html, text };
+}
+
+export function buildChecklistInformationReminderEmail(
+  input: Omit<ChecklistInformationRequestEmailInput, "reminder">,
+) {
+  return buildChecklistInformationRequestEmail({ ...input, reminder: true });
 }

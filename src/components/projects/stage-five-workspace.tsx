@@ -46,6 +46,7 @@ import {
 } from "@/components/projects/asset-preview-button";
 import {
   completeStageFiveAction,
+  configureStageFiveChecklistRequestReminderAction,
   requestStageFiveChecklistInformationAction,
   resendStageFiveExternalChecklistRequestAction,
   saveStageFiveChecklistAction,
@@ -81,6 +82,11 @@ import {
 import { uploadStageFiveChecklistAttachment } from "@/lib/stage-five-upload-client";
 import { showErrorToast, showSuccessToast, showWarningToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import {
+  REQUEST_REMINDER_INTERVAL_HOURS,
+  formatRequestReminderInterval,
+  type RequestReminderIntervalHours,
+} from "@/lib/request-reminder-shared";
 
 type ChecklistFieldKey = ProjectFileChecklistField;
 
@@ -384,6 +390,16 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatReminderDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function ChecklistStatusBadge({ status }: { status: ProjectFileChecklistItemStatus }) {
   const filled = status === ProjectFileChecklistItemStatus.FILLED;
   const requested = status === ProjectFileChecklistItemStatus.REQUESTED;
@@ -493,6 +509,7 @@ function ChecklistItemRow({
   children,
   onRequest,
   onResend,
+  onReminderChange,
   isResending,
 }: {
   item: ChecklistDefinition;
@@ -501,6 +518,7 @@ function ChecklistItemRow({
   children: React.ReactNode;
   onRequest: () => void;
   onResend?: () => void;
+  onReminderChange?: (intervalHours: RequestReminderIntervalHours | null) => void;
   isResending?: boolean;
 }) {
   const Icon = item.icon;
@@ -539,6 +557,61 @@ function ChecklistItemRow({
                 >
                   {isResending ? "Resending..." : "Resend email"}
                 </button>
+              ) : null}
+              {latestRequest.reminder?.enabled && onReminderChange ? (
+                <div className="mt-2 rounded-[10px] border border-[#cfe0d3] bg-[#f4faf5] p-2">
+                  <p className="font-[740] text-[#32684a]">
+                    Reminder: {formatRequestReminderInterval(latestRequest.reminder.intervalHours)}
+                  </p>
+                  {latestRequest.reminder.nextReminderAt ? (
+                    <p className="mt-0.5 text-[#6f7c73]">
+                      Next: {formatReminderDate(latestRequest.reminder.nextReminderAt)}
+                    </p>
+                  ) : null}
+                  <div className="mt-2 flex items-center gap-2">
+                    <Select
+                      value={String(latestRequest.reminder.intervalHours)}
+                      onValueChange={(value) =>
+                        onReminderChange(Number(value) as RequestReminderIntervalHours)
+                      }
+                    >
+                      <SelectTrigger className="h-8 min-w-0 flex-1 rounded-[9px] border-[#c8d8cc] bg-white px-2 text-[10px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REQUEST_REMINDER_INTERVAL_HOURS.map((hours) => (
+                          <SelectItem key={hours} value={String(hours)}>
+                            {formatRequestReminderInterval(hours)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <button
+                      type="button"
+                      disabled={isResending}
+                      className="shrink-0 font-[740] text-[#a34a43] underline underline-offset-2 disabled:opacity-50"
+                      onClick={() => onReminderChange(null)}
+                    >
+                      Stop
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {!latestRequest.reminder?.enabled && onReminderChange ? (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="font-[700] text-[#6f7c73]">Enable reminder:</span>
+                  {REQUEST_REMINDER_INTERVAL_HOURS.map((hours) => (
+                    <button
+                      key={hours}
+                      type="button"
+                      disabled={isResending}
+                      className="rounded-full border border-[#cbd9ce] bg-white px-2 py-0.5 font-[740] text-[#32684a] disabled:opacity-50"
+                      onClick={() => onReminderChange(hours)}
+                    >
+                      {hours}h
+                    </button>
+                  ))}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -717,16 +790,33 @@ function RequestInformationDialog({
   const [recipientName, setRecipientName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderIntervalHours, setReminderIntervalHours] =
+    useState<RequestReminderIntervalHours>(24);
   const autosave = useProjectFormAutosave({
     projectId,
     formKey: `stage-five-information-request:${handoffId}:${field.key}`,
-    value: { recipientMode, participantId, recipientName, email, message },
+    value: {
+      recipientMode,
+      participantId,
+      recipientName,
+      email,
+      message,
+      reminderEnabled,
+      reminderIntervalHours,
+    },
     onRestore: (draft) => {
       setRecipientMode(draft.recipientMode);
       setParticipantId(draft.participantId);
       setRecipientName(draft.recipientName);
       setEmail(draft.email);
       setMessage(draft.message);
+      setReminderEnabled(draft.reminderEnabled ?? false);
+      setReminderIntervalHours(
+        REQUEST_REMINDER_INTERVAL_HOURS.includes(draft.reminderIntervalHours)
+          ? draft.reminderIntervalHours
+          : 24,
+      );
     },
   });
   const canPrepare =
@@ -752,6 +842,9 @@ function RequestInformationDialog({
           ? { recipientUserId: participantId }
           : { recipientName, recipientEmail: email }),
         message,
+        reminderIntervalHours: reminderEnabled
+          ? reminderIntervalHours
+          : null,
       });
       if ("error" in result) {
         showErrorToast("Unable to send request.", result.error);
@@ -885,6 +978,61 @@ function RequestInformationDialog({
                 minHeightClassName="min-h-[96px]"
                 onChange={setMessage}
               />
+            </div>
+
+            <div className="mt-5 rounded-[14px] border border-[#dce5dd] bg-[#f8fbf8] p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-[12px] font-[720] text-[#2d372f]">Reminder</p>
+                  <p className="mt-1 text-[10px] leading-4 text-[#748078]">
+                    Repeat while this specific request is still pending.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={reminderEnabled}
+                  className={cn(
+                    "relative h-7 w-12 shrink-0 rounded-full transition",
+                    reminderEnabled ? "bg-[#2f8057]" : "bg-[#cdd6cf]",
+                  )}
+                  onClick={() => setReminderEnabled((value) => !value)}
+                >
+                  <span
+                    className={cn(
+                      "absolute top-1 size-5 rounded-full bg-white shadow-sm transition",
+                      reminderEnabled ? "left-6" : "left-1",
+                    )}
+                  />
+                  <span className="sr-only">Enable recurring reminder</span>
+                </button>
+              </div>
+              {reminderEnabled ? (
+                <label className="mt-4 block space-y-2">
+                  <span className="text-[11px] font-[700] text-[#455148]">
+                    Reminder interval
+                  </span>
+                  <Select
+                    value={String(reminderIntervalHours)}
+                    onValueChange={(value) =>
+                      setReminderIntervalHours(
+                        Number(value) as RequestReminderIntervalHours,
+                      )
+                    }
+                  >
+                    <SelectTrigger className="h-11 rounded-[12px] border-[#c8d5cb] bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="z-[190]">
+                      {REQUEST_REMINDER_INTERVAL_HOURS.map((hours) => (
+                        <SelectItem key={hours} value={String(hours)}>
+                          {formatRequestReminderInterval(hours)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+              ) : null}
             </div>
 
             <p className="mt-4 rounded-[12px] bg-[#f4f7f4] px-3 py-2 text-[10px] leading-4 text-[#748078]">
@@ -1445,6 +1593,29 @@ export function StageFiveWorkspace({
     });
   }
 
+  function changeRequestReminder(
+    requestId: string,
+    intervalHours: RequestReminderIntervalHours | null,
+  ) {
+    startRequestAction(async () => {
+      const result = await configureStageFiveChecklistRequestReminderAction({
+        projectId: project.id,
+        requestId,
+        intervalHours,
+      });
+      if ("error" in result) {
+        showErrorToast("Unable to update reminder.", result.error);
+        return;
+      }
+      showSuccessToast(
+        intervalHours
+          ? `Reminder changed to every ${intervalHours} hours.`
+          : "Reminder stopped.",
+      );
+      router.refresh();
+    });
+  }
+
   function renderControl(item: ChecklistDefinition) {
     const value = activeDraft?.textValues[item.key] ?? "";
     const selectedFiles = activeDraft?.files[item.key] ?? [];
@@ -1779,6 +1950,15 @@ export function StageFiveWorkspace({
                     )?.latestRequest;
                     return latestRequest?.channel === ProjectFileChecklistRequestChannel.EMAIL
                       ? () => resendExternalRequest(latestRequest.id)
+                      : undefined;
+                  })()}
+                  onReminderChange={(() => {
+                    const latestRequest = activeFile.items.find(
+                      (activeItem) => activeItem.fieldKey === item.key,
+                    )?.latestRequest;
+                    return latestRequest
+                      ? (intervalHours) =>
+                          changeRequestReminder(latestRequest.id, intervalHours)
                       : undefined;
                   })()}
                   isResending={isRequestActionPending}

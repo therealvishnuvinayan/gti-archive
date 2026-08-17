@@ -117,3 +117,43 @@ export function buildProductionHandoverEmail(input: {
     }),
   };
 }
+
+export function buildPhysicalSampleReminderEmail(input: {
+  recipientName: string;
+  projectName: string;
+  unitName: string;
+  roundName: string;
+  sampleType: string;
+  deadline: string;
+  message?: string | null;
+  referenceFiles: Array<{ name: string; url: string }>;
+  actionUrl: string;
+  actionLabel: string;
+}) {
+  const fileRows = input.referenceFiles.length
+    ? input.referenceFiles.map((file, index) => [
+        `Reference file ${index + 1}`,
+        `${file.name}: ${file.url}`,
+      ] as [string, string])
+    : [];
+  return {
+    subject: `[GTI Archive] Reminder: Physical sample required — ${input.projectName} — ${input.unitName}`,
+    ...buildWorkflowEmail({
+      eyebrow: "GTI Archive · Physical Sample Reminder",
+      heading: "Reminder: physical sample required",
+      recipientName: input.recipientName,
+      intro: "This is a reminder that the physical sample request below is still awaiting completion.",
+      rows: [
+        ["Project", input.projectName],
+        ["Production unit", input.unitName],
+        ["Sample round", input.roundName],
+        ["Sample type", input.sampleType],
+        ["Deadline", input.deadline],
+        ...fileRows,
+      ],
+      message: input.message,
+      actionLabel: input.actionLabel,
+      actionUrl: input.actionUrl,
+    }),
+  };
+}

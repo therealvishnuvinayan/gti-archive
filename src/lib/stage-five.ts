@@ -46,6 +46,15 @@ import {
   createPresignedPreviewUrl,
 } from "@/lib/storage/s3";
 import { getStageFiveCompletionState } from "@/lib/stage-six";
+import {
+  buildRequestReminderCreateData,
+  isRequestReminderInterval,
+  mapRequestReminder,
+  setRequestReminder,
+  stopRequestReminder,
+  type RequestReminderConfiguration,
+  type RequestReminderIntervalHours,
+} from "@/lib/request-reminders";
 
 export { STAGE_FIVE_FIELD_KEYS, STAGE_FIVE_FIELD_LABELS } from "@/lib/stage-five-fields";
 export { completeStageFive } from "@/lib/stage-six";
@@ -75,6 +84,7 @@ export type StageFiveChecklistItemRecord = {
     workflowStatus: ProjectFileChecklistRequestWorkflowStatus;
     recipient: string;
     requestedAt: string;
+    reminder: RequestReminderConfiguration | null;
   } | null;
 };
 
@@ -313,6 +323,14 @@ function loadStageFiveChecklist(handoffId: string) {
                 recipientEmail: true,
                 recipientUser: { select: { name: true, email: true } },
                 requestedAt: true,
+                reminder: {
+                  select: {
+                    enabled: true,
+                    intervalHours: true,
+                    nextReminderAt: true,
+                    lastReminderAt: true,
+                  },
+                },
               },
             },
           },
@@ -431,6 +449,7 @@ export async function getStageFiveWorkspaceData(
                         latestRequest.recipientUser?.email ||
                         "Recipient",
                       requestedAt: latestRequest.requestedAt.toISOString(),
+                      reminder: mapRequestReminder(latestRequest.reminder),
                     }
                   : null,
               };
@@ -662,6 +681,32 @@ export async function saveStageFiveChecklist(
           });
         }
 
+        const filledChecklistItemIds = itemsWithStatus.flatMap((item) => {
+          const checklistItemId = checklistItemIdByField.get(item.fieldKey);
+          return item.status === ProjectFileChecklistItemStatus.FILLED &&
+            checklistItemId
+            ? [checklistItemId]
+            : [];
+        });
+        if (filledChecklistItemIds.length > 0) {
+          const stoppedAt = new Date();
+          await tx.requestReminder.updateMany({
+            where: {
+              enabled: true,
+              stageFiveRequest: {
+                checklistItemId: { in: filledChecklistItemIds },
+              },
+            },
+            data: {
+              enabled: false,
+              nextReminderAt: null,
+              stoppedAt,
+              processingToken: null,
+              processingStartedAt: null,
+            },
+          });
+        }
+
         return itemsWithStatus.map((item) => ({
           fieldKey: item.fieldKey,
           status: item.status,
@@ -702,6 +747,7 @@ export async function requestStageFiveChecklistInformation(
     recipientName?: string;
     recipientEmail?: string;
     message?: string;
+    reminderIntervalHours?: number | null;
   },
   options: { sendEmail?: ChecklistEmailSender } = {},
 ) {
@@ -718,6 +764,13 @@ export async function requestStageFiveChecklistInformation(
   }
   if (!STAGE_FIVE_FIELD_KEYS.includes(input.fieldKey)) {
     return { error: "Unknown checklist field." } as const;
+  }
+  if (
+    input.reminderIntervalHours !== undefined &&
+    input.reminderIntervalHours !== null &&
+    !isRequestReminderInterval(input.reminderIntervalHours)
+  ) {
+    return { error: "Select a valid reminder interval." } as const;
   }
 
   const checklist = await withPrismaRetry(() =>
@@ -772,6 +825,13 @@ export async function requestStageFiveChecklistInformation(
     prisma.user.findUnique({ where: { id: user.id }, select: { name: true, email: true } }),
   );
   if (!requester) return { error: "The requesting user was not found." } as const;
+  const requestCreatedAt = new Date();
+  const reminderCreateData = buildRequestReminderCreateData({
+    projectId: input.projectId,
+    configuredById: user.id,
+    intervalHours: input.reminderIntervalHours,
+    now: requestCreatedAt,
+  });
 
   if (input.channel === ProjectFileChecklistRequestChannel.IN_APP) {
     const recipientUserId = input.recipientUserId?.trim();
@@ -825,7 +885,11 @@ export async function requestStageFiveChecklistInformation(
             message,
             status: ProjectFileChecklistRequestStatus.SENT,
             workflowStatus: ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
-            sentAt: new Date(),
+            requestedAt: requestCreatedAt,
+            sentAt: requestCreatedAt,
+            ...(reminderCreateData
+              ? { reminder: { create: reminderCreateData } }
+              : {}),
           },
           select: { id: true, status: true, workflowStatus: true },
         });
@@ -939,6 +1003,7 @@ export async function requestStageFiveChecklistInformation(
             externalTokenHash: access.tokenHash,
             externalTokenCreatedAt: access.createdAt,
             externalTokenExpiresAt: access.expiresAt,
+            requestedAt: requestCreatedAt,
           },
           select: { id: true, checklistItemId: true, status: true },
         });
@@ -1033,10 +1098,70 @@ export async function requestStageFiveChecklistInformation(
         },
         data: { status: ProjectFileChecklistItemStatus.REQUESTED },
       });
+      if (reminderCreateData) {
+        await tx.requestReminder.create({
+          data: {
+            ...reminderCreateData,
+            stageFiveRequestId: pending.id,
+          },
+        });
+      }
       return request;
     }),
   );
   return { request: sent, duplicate: false } as const;
+}
+
+export async function configureStageFiveChecklistRequestReminder(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    requestId: string;
+    intervalHours: RequestReminderIntervalHours | null;
+  },
+) {
+  const project = await getAuthorizedProject(
+    user,
+    input.projectId,
+    ProjectWorkflowStageKey.FINAL_LAYOUT,
+  );
+  if (!project || !canManageStageFive(user, project)) {
+    return { error: "You do not have permission to manage this reminder." } as const;
+  }
+  const request = await withPrismaRetry(() =>
+    prisma.projectFileChecklistRequest.findFirst({
+      where: {
+        id: input.requestId,
+        projectId: input.projectId,
+        status: ProjectFileChecklistRequestStatus.SENT,
+        workflowStatus: {
+          in: [
+            ProjectFileChecklistRequestWorkflowStatus.REQUESTED,
+            ProjectFileChecklistRequestWorkflowStatus.ACCEPTED,
+          ],
+        },
+        checklistItem: { status: { not: ProjectFileChecklistItemStatus.FILLED } },
+      },
+      select: { id: true },
+    }),
+  );
+  if (!request) {
+    return { error: "This information request is no longer pending." } as const;
+  }
+  if (input.intervalHours === null) {
+    await stopRequestReminder({ stageFiveRequestId: request.id });
+    return { reminder: null } as const;
+  }
+  if (!isRequestReminderInterval(input.intervalHours)) {
+    return { error: "Select a valid reminder interval." } as const;
+  }
+  const reminder = await setRequestReminder({
+    projectId: input.projectId,
+    configuredById: user.id,
+    target: { stageFiveRequestId: request.id },
+    intervalHours: input.intervalHours,
+  });
+  return { reminder } as const;
 }
 
 export async function resendStageFiveExternalChecklistRequest(
@@ -1228,6 +1353,16 @@ export async function cancelStageFiveChecklistRequest(
         },
       });
       if (updated.count !== 1) return false;
+      await tx.requestReminder.updateMany({
+        where: { stageFiveRequestId: request.id, enabled: true },
+        data: {
+          enabled: false,
+          nextReminderAt: null,
+          stoppedAt: new Date(),
+          processingToken: null,
+          processingStartedAt: null,
+        },
+      });
       const otherActiveRequests = await tx.projectFileChecklistRequest.count({
         where: {
           checklistItemId: request.checklistItemId,
@@ -1548,6 +1683,17 @@ export async function declineStageFiveChecklistRequest(
       });
       if (updated.count !== 1) return false;
 
+      await tx.requestReminder.updateMany({
+        where: { stageFiveRequestId: request.id, enabled: true },
+        data: {
+          enabled: false,
+          nextReminderAt: null,
+          stoppedAt: new Date(),
+          processingToken: null,
+          processingStartedAt: null,
+        },
+      });
+
       const otherActiveRequests = await tx.projectFileChecklistRequest.count({
         where: {
           checklistItemId: request.checklistItemId,
@@ -1745,6 +1891,20 @@ export async function submitStageFiveChecklistResponse(
         },
       });
       if (updated.count !== 1) return false;
+
+      await tx.requestReminder.updateMany({
+        where: {
+          enabled: true,
+          stageFiveRequest: { checklistItemId: request.checklistItemId },
+        },
+        data: {
+          enabled: false,
+          nextReminderAt: null,
+          stoppedAt: new Date(),
+          processingToken: null,
+          processingStartedAt: null,
+        },
+      });
 
       await tx.projectFileChecklistItem.update({
         where: { id: request.checklistItemId },

@@ -134,6 +134,13 @@ enum ProjectFileChecklistResponseSource {
   EXTERNAL_EMAIL
 }
 
+enum RequestReminderDeliveryStatus {
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
+}
+
 enum ProjectProductionUnitStatus {
   PREPARATION
   APPROVAL_PENDING
@@ -471,6 +478,7 @@ model User {
   addedProductionSampleEvidence       ProductionSampleRoundEvidence[]      @relation("ProductionSampleRoundEvidenceAdder")
   productionSampleFeedbackRecipients  ProductionSampleFeedback[]           @relation("ProductionSampleFeedbackRecipient")
   productionSampleFeedbackSent        ProductionSampleFeedback[]           @relation("ProductionSampleFeedbackSender")
+  configuredRequestReminders          RequestReminder[]                    @relation("RequestReminderConfiguredBy")
   projectClosures                     ProjectClosure[]                     @relation("ProjectClosureCloser")
   projectFormDrafts                   ProjectFormDraft[]                   @relation("ProjectFormDraftOwner")
   createdAt                           DateTime                             @default(now())
@@ -588,6 +596,7 @@ model Project {
   productionUnits        ProjectProductionUnit[]
   productionSupervisions ProjectProductionSupervision[]
   productionSampleRounds ProductionSampleRound[]
+  requestReminders       RequestReminder[]
   closure                ProjectClosure?
   archive                ProjectArchive?
   archivedFiles          ArchivedProjectFile[]
@@ -973,6 +982,7 @@ model ProjectFileChecklistRequest {
   externalResponderName  String?
   externalResponderEmail String?
   responseAttachments    ProjectAttachment[]                       @relation("ProjectFileChecklistRequestResponseAttachments")
+  reminder               RequestReminder?
   createdAt              DateTime                                  @default(now())
   updatedAt              DateTime                                  @updatedAt
 
@@ -1087,6 +1097,7 @@ model ProductionSampleRound {
   participants            ProductionSampleRoundParticipant[]
   evidence                ProductionSampleRoundEvidence[]
   feedback                ProductionSampleFeedback[]
+  reminder                RequestReminder?
   createdAt               DateTime                           @default(now())
   updatedAt               DateTime                           @updatedAt
 
@@ -1100,6 +1111,55 @@ model ProductionSampleRound {
   @@index([recipientUserId])
   @@index([completedById])
   @@index([createdById])
+}
+
+model RequestReminder {
+  id                      String                           @id @default(cuid())
+  projectId               String
+  project                 Project                          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageFiveRequestId      String?                          @unique
+  stageFiveRequest        ProjectFileChecklistRequest?     @relation(fields: [stageFiveRequestId], references: [id], onDelete: Cascade)
+  stageSevenSampleRoundId String?                          @unique
+  stageSevenSampleRound   ProductionSampleRound?           @relation(fields: [stageSevenSampleRoundId], references: [id], onDelete: Cascade)
+  enabled                 Boolean                          @default(true)
+  intervalHours           Int
+  nextReminderAt          DateTime?
+  lastReminderAt          DateTime?
+  lastAttemptAt           DateTime?
+  lastError               String?                          @db.Text
+  processingToken         String?                          @unique
+  processingStartedAt     DateTime?
+  stoppedAt               DateTime?
+  configuredById          String
+  configuredBy            User                             @relation("RequestReminderConfiguredBy", fields: [configuredById], references: [id], onDelete: Restrict)
+  deliveryAttempts        RequestReminderDeliveryAttempt[]
+  createdAt               DateTime                         @default(now())
+  updatedAt               DateTime                         @updatedAt
+
+  @@index([enabled, nextReminderAt])
+  @@index([projectId, enabled])
+  @@index([processingStartedAt])
+  @@index([configuredById])
+}
+
+model RequestReminderDeliveryAttempt {
+  id                String                        @id @default(cuid())
+  reminderId        String
+  reminder          RequestReminder               @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  scheduledFor      DateTime
+  status            RequestReminderDeliveryStatus @default(PROCESSING)
+  recipientUserId   String?
+  recipientEmail    String?
+  channelSummary    String
+  providerMessageId String?
+  error             String?                       @db.Text
+  startedAt         DateTime                      @default(now())
+  finishedAt        DateTime?
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+
+  @@unique([reminderId, scheduledFor])
+  @@index([status, startedAt])
 }
 
 model ProductionSampleEvaluation {

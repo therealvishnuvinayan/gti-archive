@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/server";
 import {
   closeStageSevenProject,
+  configureStageSevenSampleRequestReminder,
   createProductionSampleRound,
   deleteProductionSampleRound,
   decidePhysicalSampleRound,
@@ -75,10 +76,23 @@ export async function createProductionSampleRoundAction(input: {
   recipientCompany?: string | null;
   recipientPhone?: string | null;
   requestNote?: string | null;
+  reminderIntervalHours?: number | null;
 }) {
   const user = await requireUser();
   return stageSevenAction(input.projectId, user.id, input.productionUnitId, () =>
     createProductionSampleRound(user, input),
+  );
+}
+
+export async function configureStageSevenSampleRequestReminderAction(input: {
+  projectId: string;
+  productionUnitId: string;
+  sampleRoundId: string;
+  intervalHours: 24 | 48 | 72 | null;
+}) {
+  const user = await requireUser();
+  return stageSevenAction(input.projectId, user.id, input.sampleRoundId, () =>
+    configureStageSevenSampleRequestReminder(user, input),
   );
 }
 

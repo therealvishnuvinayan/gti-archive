@@ -11,6 +11,7 @@ import { publishProjectActivityUpdatedAfterResponse } from "@/lib/realtime/serve
 import {
   cancelStageFiveChecklistRequest,
   completeStageFive,
+  configureStageFiveChecklistRequestReminder,
   requestStageFiveChecklistInformation,
   resendStageFiveExternalChecklistRequest,
   saveStageFiveChecklist,
@@ -66,9 +67,21 @@ export async function requestStageFiveChecklistInformationAction(input: {
   recipientName?: string;
   recipientEmail?: string;
   message?: string;
+  reminderIntervalHours?: number | null;
 }) {
   const user = await requireUser();
   const result = await requestStageFiveChecklistInformation(user, input);
+  revalidatePath(`/projects/${input.projectId}/stages/5`);
+  return result;
+}
+
+export async function configureStageFiveChecklistRequestReminderAction(input: {
+  projectId: string;
+  requestId: string;
+  intervalHours: 24 | 48 | 72 | null;
+}) {
+  const user = await requireUser();
+  const result = await configureStageFiveChecklistRequestReminder(user, input);
   revalidatePath(`/projects/${input.projectId}/stages/5`);
   return result;
 }

@@ -47,6 +47,8 @@
     "stage-six:integration-check": "tsc --project scripts/tsconfig.stage-six-integration.json && COMPILED_ALIAS_ROOT=.tmp/stage-six-integration node -r ./scripts/register-compiled-alias.cjs .tmp/stage-six-integration/scripts/stage-six-integration-check.js",
     "stage-seven:ui-check": "node scripts/stage-seven-ui-checks.mjs",
     "stage-seven:integration-check": "tsc --project scripts/tsconfig.stage-seven-integration.json && COMPILED_ALIAS_ROOT=.tmp/stage-seven-integration node -r ./scripts/register-compiled-alias.cjs .tmp/stage-seven-integration/scripts/stage-seven-integration-check.js",
+    "request-reminders:check": "tsc --project scripts/tsconfig.request-reminders.json && COMPILED_ALIAS_ROOT=.tmp/request-reminders node -r ./scripts/register-compiled-alias.cjs .tmp/request-reminders/scripts/request-reminder-checks.js",
+    "request-reminders:integration-check": "tsc --project scripts/tsconfig.request-reminders-integration.json && COMPILED_ALIAS_ROOT=.tmp/request-reminders-integration node -r ./scripts/register-compiled-alias.cjs .tmp/request-reminders-integration/scripts/request-reminder-integration-check.js",
     "rich-text:ui-check": "node scripts/rich-text-ui-checks.mjs",
     "autosave:ui-check": "node scripts/project-form-autosave-checks.mjs",
     "users:avatar-check": "node scripts/user-avatar-management-checks.mjs",

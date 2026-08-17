@@ -4,6 +4,7 @@ export type SendEmailInput = {
   html: string;
   text: string;
   replyTo?: string;
+  idempotencyKey?: string;
 };
 
 type SendEmailResult =
@@ -31,6 +32,9 @@ export async function sendResendEmail(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       "User-Agent": "GTI Archive/1.0",
+      ...(input.idempotencyKey
+        ? { "Idempotency-Key": input.idempotencyKey }
+        : {}),
     },
     body: JSON.stringify({
       from,

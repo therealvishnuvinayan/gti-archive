@@ -39,6 +39,19 @@ ASSET_UPLOAD_MAX_BYTES=104857600
 AWS_S3_TRANSFER_ACCELERATION=false
 ```
 
+For email delivery, external request links, and protected scheduled jobs:
+
+```bash
+RESEND_API_KEY=
+RESEND_FROM_EMAIL=
+APP_URL=https://your-production-host.example
+CRON_SECRET=
+```
+
+Recurring Stage 5 and Stage 7 request reminders require a scheduler to call
+`GET /api/internal/request-reminders` with `Authorization: Bearer $CRON_SECRET`.
+Run it every 15–60 minutes. See [Request reminder operations](docs/REQUEST_REMINDER_OPERATIONS.md).
+
 To test faster uploads for global users:
 
 1. Enable Transfer Acceleration on the S3 bucket in AWS Console.
