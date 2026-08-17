@@ -146,13 +146,19 @@ for (const label of [
 assert(
   chat.includes("Select exactly one submitted file below") &&
     chat.includes('"Select this file"') &&
-    chat.includes("singleApprovalSelection={isStageFourConceptMode}") &&
+    chat.includes("conceptMode?.stageNumber === 4") &&
+    chat.includes('role={singleApprovalSelection ? "radiogroup" : undefined}') &&
+    chat.includes('name="stage-four-final-approved-file"') &&
+    chat.includes("checked={isApprovalSelectionSelected}") &&
+    chat.includes("onChange={() => onSelectApprovalAttachment?.(attachment)}") &&
+    chat.includes("singleApprovalSelection={canSelectStageFourFinalApprovedFile}") &&
     chat.includes("selectedApprovalAttachmentId={selectedConceptApprovalCandidateId}") &&
     chat.includes("setSelectedConceptApprovalCandidateId(attachment.id)") &&
-    chat.includes("aria-pressed={singleApprovalSelection ? isApprovalSelectionSelected : undefined}") &&
+    chat.includes('"No file selected yet."') &&
+    !chat.includes("aria-pressed={singleApprovalSelection ? isApprovalSelectionSelected : undefined}") &&
     chat.includes("openConceptApprovalConfirmation(selectedConceptApprovalCandidate)") &&
     chat.includes("!selectedConceptApprovalCandidate"),
-  "Stage 4 review must present submitted files as one mutually exclusive final-file choice followed by one approval action.",
+  "Stage 4 review must present submitted files as one native, mutually exclusive radio group followed by one approval action.",
 );
 assert(
   chat.includes("markStageFourFinalApprovedAttachmentAction") &&

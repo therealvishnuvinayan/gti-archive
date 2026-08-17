@@ -1796,7 +1796,11 @@ function AttachmentHistoryList({
         : "border-[#e1e9e2] bg-white/92";
 
   return (
-    <div className={compact ? "mt-3 min-w-0 max-w-full space-y-2" : "mt-3 min-w-0 max-w-full space-y-2.5"}>
+    <div
+      className={compact ? "mt-3 min-w-0 max-w-full space-y-2" : "mt-3 min-w-0 max-w-full space-y-2.5"}
+      role={singleApprovalSelection ? "radiogroup" : undefined}
+      aria-label={singleApprovalSelection ? "Final Approved File" : undefined}
+    >
       {attachments.map((attachment) => (
         (() => {
           const isApprovedConcept =
@@ -1986,32 +1990,42 @@ function AttachmentHistoryList({
               </div>
               {canMarkApprovedConcept ? (
                 <div className="mt-2 flex justify-end border-t border-[#edf1ed] pt-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={isApprovalSelectionSelected ? "secondary" : "outline"}
-                    className="h-8 rounded-full border-[#93bda0] px-3 text-[10px] font-[760] text-[#276f49]"
-                    disabled={Boolean(approvingConceptAttachmentId)}
-                    aria-pressed={singleApprovalSelection ? isApprovalSelectionSelected : undefined}
-                    onClick={() => {
-                      if (singleApprovalSelection) {
-                        onSelectApprovalAttachment?.(attachment);
-                        return;
-                      }
-                      onApproveConceptFile?.(attachment);
-                    }}
-                  >
-                    {approvingConceptAttachmentId === attachment.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                    )}
-                    {singleApprovalSelection
-                      ? isApprovalSelectionSelected
-                        ? "Selected"
-                        : "Select this file"
-                      : markApprovedFileLabel}
-                  </Button>
+                  {singleApprovalSelection ? (
+                    <label
+                      className={`inline-flex h-8 cursor-pointer items-center gap-2 rounded-full border px-3 text-[10px] font-[760] transition-colors ${
+                        isApprovalSelectionSelected
+                          ? "border-[#2f8d5d] bg-[#e8f5eb] text-[#1f7145]"
+                          : "border-[#93bda0] bg-white text-[#276f49] hover:bg-[#f3faf5]"
+                      } ${approvingConceptAttachmentId ? "cursor-not-allowed opacity-60" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="stage-four-final-approved-file"
+                        value={attachment.id}
+                        checked={isApprovalSelectionSelected}
+                        disabled={Boolean(approvingConceptAttachmentId)}
+                        onChange={() => onSelectApprovalAttachment?.(attachment)}
+                        className="size-3.5 accent-[#2f8d5d]"
+                      />
+                      {isApprovalSelectionSelected ? "Selected" : "Select this file"}
+                    </label>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-full border-[#93bda0] px-3 text-[10px] font-[760] text-[#276f49]"
+                      disabled={Boolean(approvingConceptAttachmentId)}
+                      onClick={() => onApproveConceptFile?.(attachment)}
+                    >
+                      {approvingConceptAttachmentId === attachment.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      )}
+                      {markApprovedFileLabel}
+                    </Button>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -2583,8 +2597,7 @@ export function ProjectChatWorkspace({
   const isConceptMode = conceptMode?.type === "concept";
   const isStageNeutralConceptMode = Boolean(conceptMode?.stageNeutral);
   const draftComposerMaxHeight = isConceptMode ? 96 : 168;
-  const isStageFourConceptMode =
-    conceptMode?.workflowStageKey === "PROJECT_DEVELOPMENT";
+  const isStageFourConceptMode = conceptMode?.stageNumber === 4;
   const approvedFileLabel = isStageFourConceptMode
     ? "Final Approved File"
     : "Approved Concept";
@@ -11077,7 +11090,12 @@ export function ProjectChatWorkspace({
                   <p className="text-[13px] font-semibold text-[#2d372f]">Submitted Files</p>
                   {canSelectStageFourFinalApprovedFile ? (
                     <div className="rounded-[14px] border border-[#cfe2d4] bg-[#f3faf5] px-3.5 py-3 text-[12px] leading-5 text-[#41644d]" role="note">
-                      Select exactly one submitted file below. Only that file will be designated as the Final Approved File for this concept.
+                      <p>Select exactly one submitted file below. Only that file will be designated as the Final Approved File for this concept.</p>
+                      <p className="mt-1 font-semibold" aria-live="polite">
+                        {selectedConceptApprovalCandidate
+                          ? `Selected: ${selectedConceptApprovalCandidate.originalFileName}. Choose another file to change the selection.`
+                          : "No file selected yet."}
+                      </p>
                     </div>
                   ) : null}
                   <AttachmentHistoryList
@@ -11096,7 +11114,7 @@ export function ProjectChatWorkspace({
                                 "REJECTED",
                           )
                     }
-                    singleApprovalSelection={isStageFourConceptMode}
+                    singleApprovalSelection={canSelectStageFourFinalApprovedFile}
                     selectedApprovalAttachmentId={selectedConceptApprovalCandidateId}
                     approvingConceptAttachmentId={approvingConceptAttachmentId}
                     onSelectApprovalAttachment={(attachment) => {
