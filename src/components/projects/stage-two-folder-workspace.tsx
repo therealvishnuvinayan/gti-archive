@@ -739,134 +739,141 @@ export function StageTwoFolderWorkspace({
       <ProjectAccessRealtimeGuard projectId={data.project.id} currentUserId={currentUserId} />
       <Card className="overflow-clip rounded-[26px] border-[#dfe6df] shadow-[0_20px_54px_rgba(23,39,28,0.055)]">
         <CardContent className="p-0">
-          <nav
-            aria-label="Folder navigation"
-            className="sticky top-0 z-40 flex min-w-0 items-center gap-2 border-b border-[#e6ece7] bg-white/95 px-5 py-3 backdrop-blur-sm sm:px-8"
+          <div
+            data-folder-toolbar
+            className="sticky top-0 z-40 isolate bg-white shadow-[0_10px_24px_rgba(23,39,28,0.06)]"
           >
-            {context === "research" ? (
-              <ProjectBackButton
-                href={`/projects/${data.project.id}/stages/2`}
-                label="Research workspace"
-                ariaLabel="Back to Stage 2 Research Workspace"
-              />
-            ) : (
-              <ProjectBackButton
-                href={projectWorkspaceHref}
-                label="Workspace"
-                ariaLabel="Back to project workspace"
-              />
-            )}
-            <span className="text-[#a0aaa2]">/</span>
-            <span className="max-w-[220px] truncate text-[12px] font-[700] text-[#536158]">
-              {data.folder.name}
-            </span>
-          </nav>
-          <header className="border-b border-[#e6ece7] px-5 py-5 sm:px-8">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#e7f3ea] text-[#2d7952]">
-                  <FolderOpen className="h-5 w-5" />
-                </span>
-                <div className="min-w-0">
-                  <h1 className="truncate text-[26px] font-[780] tracking-[-0.04em] text-[#151c17] sm:text-[30px]">
-                    {data.folder.name}
-                  </h1>
-                  <p className="mt-0.5 text-[11px] text-[#77827a]">
-                    {context === "private"
-                      ? `Only you can access this folder · ${files.length} ${files.length === 1 ? "file" : "files"}`
-                      : context === "user-shared"
-                        ? `Shared project reference · ${files.length} ${files.length === 1 ? "file" : "files"}`
-                        : `Shared project research · ${files.length} ${files.length === 1 ? "file" : "files"}`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {!data.canWrite ? (
-                  <span className="inline-flex h-10 items-center gap-2 rounded-[11px] bg-[#e9eeea] px-3 text-[11px] font-[700] text-[#627067]">
-                    <LockKeyhole className="h-3.5 w-3.5" />
-                    {context === "user-shared" ? "Read-only folder" : "Read-only workspace"}
+            <nav
+              aria-label="Folder navigation"
+              className="flex min-w-0 items-center gap-2 border-b border-[#e6ece7] bg-white px-5 py-3 sm:px-8"
+            >
+              {context === "research" ? (
+                <ProjectBackButton
+                  href={`/projects/${data.project.id}/stages/2`}
+                  label="Research workspace"
+                  ariaLabel="Back to Stage 2 Research Workspace"
+                />
+              ) : (
+                <ProjectBackButton
+                  href={projectWorkspaceHref}
+                  label="Workspace"
+                  ariaLabel="Back to project workspace"
+                />
+              )}
+              <span className="text-[#a0aaa2]">/</span>
+              <span className="max-w-[220px] truncate text-[12px] font-[700] text-[#536158]">
+                {data.folder.name}
+              </span>
+            </nav>
+            <header className="border-b border-[#e6ece7] bg-white px-5 py-5 sm:px-8">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-[#e7f3ea] text-[#2d7952]">
+                    <FolderOpen className="h-5 w-5" />
                   </span>
-                ) : (
+                  <div className="min-w-0">
+                    <h1 className="truncate text-[26px] font-[780] tracking-[-0.04em] text-[#151c17] sm:text-[30px]">
+                      {data.folder.name}
+                    </h1>
+                    <p className="mt-0.5 text-[11px] text-[#77827a]">
+                      {context === "private"
+                        ? `Only you can access this folder · ${files.length} ${files.length === 1 ? "file" : "files"}`
+                        : context === "user-shared"
+                          ? `Shared project reference · ${files.length} ${files.length === 1 ? "file" : "files"}`
+                          : `Shared project research · ${files.length} ${files.length === 1 ? "file" : "files"}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!data.canWrite ? (
+                    <span className="inline-flex h-10 items-center gap-2 rounded-[11px] bg-[#e9eeea] px-3 text-[11px] font-[700] text-[#627067]">
+                      <LockKeyhole className="h-3.5 w-3.5" />
+                      {context === "user-shared"
+                        ? "Read-only folder"
+                        : "Read-only workspace"}
+                    </span>
+                  ) : (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" className="h-10 rounded-[11px]">
+                          <Plus className="h-4 w-4" /> New <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[200px]">
+                        <DropdownMenuLabel>Add to folder</DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => inputRef.current?.click()}>
+                          <Upload className="h-4 w-4" /> Upload Files
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setTextFileError(undefined);
+                            setTextFileDialogOpen(true);
+                          }}
+                        >
+                          <FileText className="h-4 w-4" /> New Text File
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  <div className="inline-flex rounded-[11px] border border-[#dce3dc] bg-white p-1">
+                    {(["grid", "list"] as FileView[]).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-label={`${option} view`}
+                        aria-pressed={view === option}
+                        onClick={() => changeView(option)}
+                        className={cn(
+                          "grid size-8 place-items-center rounded-[8px]",
+                          view === option ? "bg-[#24764e] text-white" : "text-[#68736b] hover:bg-[#f1f5f2]",
+                        )}
+                      >
+                        {option === "grid" ? <Grid2X2 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+                      </button>
+                    ))}
+                  </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button type="button" className="h-10 rounded-[11px]">
-                        <Plus className="h-4 w-4" /> New <ChevronDown className="h-3.5 w-3.5" />
+                      <Button type="button" variant="secondary" className="h-10 min-w-[145px] justify-between rounded-[11px] shadow-none">
+                        <SlidersHorizontal className="h-4 w-4" /> {sortLabels[sort]} <ChevronDown className="h-3.5 w-3.5" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-[200px]">
-                      <DropdownMenuLabel>Add to folder</DropdownMenuLabel>
-                      <DropdownMenuItem onSelect={() => inputRef.current?.click()}>
-                        <Upload className="h-4 w-4" /> Upload Files
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          setTextFileError(undefined);
-                          setTextFileDialogOpen(true);
-                        }}
-                      >
-                        <FileText className="h-4 w-4" /> New Text File
-                      </DropdownMenuItem>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Sort files</DropdownMenuLabel>
+                      {(Object.keys(sortLabels) as FileSort[]).map((option) => (
+                        <DropdownMenuItem key={option} onSelect={() => setSort(option)}>
+                          <span className="flex-1">{sortLabels[option]}</span>
+                          {sort === option ? <Check className="h-4 w-4 text-brand" /> : null}
+                        </DropdownMenuItem>
+                      ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                )}
-                <div className="inline-flex rounded-[11px] border border-[#dce3dc] bg-white p-1">
-                  {(["grid", "list"] as FileView[]).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      aria-label={`${option} view`}
-                      aria-pressed={view === option}
-                      onClick={() => changeView(option)}
-                      className={cn(
-                        "grid size-8 place-items-center rounded-[8px]",
-                        view === option ? "bg-[#24764e] text-white" : "text-[#68736b] hover:bg-[#f1f5f2]",
-                      )}
-                    >
-                      {option === "grid" ? <Grid2X2 className="h-4 w-4" /> : <List className="h-4 w-4" />}
-                    </button>
-                  ))}
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="secondary" className="h-10 min-w-[145px] justify-between rounded-[11px] shadow-none">
-                      <SlidersHorizontal className="h-4 w-4" /> {sortLabels[sort]} <ChevronDown className="h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Sort files</DropdownMenuLabel>
-                    {(Object.keys(sortLabels) as FileSort[]).map((option) => (
-                      <DropdownMenuItem key={option} onSelect={() => setSort(option)}>
-                        <span className="flex-1">{sortLabels[option]}</span>
-                        {sort === option ? <Check className="h-4 w-4 text-brand" /> : null}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
-            </div>
-          </header>
+            </header>
 
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              if (event.target.files) void uploadFiles(event.target.files);
-              event.target.value = "";
-            }}
-          />
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                if (event.target.files) void uploadFiles(event.target.files);
+                event.target.value = "";
+              }}
+            />
 
-          <div className="border-b border-[#e9eee9] bg-[#fbfcfb] px-5 py-3 sm:px-8">
-            <div className="relative max-w-[420px]">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#829087]" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search files in this folder..."
-                aria-label="Search files in this folder"
-                className="h-10 rounded-[11px] border-[#dce3dc] bg-white pl-10 shadow-none"
-              />
+            <div className="border-b border-[#e9eee9] bg-[#fbfcfb] px-5 py-3 sm:px-8">
+              <div className="relative max-w-[420px]">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#829087]" />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search files in this folder..."
+                  aria-label="Search files in this folder"
+                  className="h-10 rounded-[11px] border-[#dce3dc] bg-white pl-10 shadow-none"
+                />
+              </div>
             </div>
           </div>
 

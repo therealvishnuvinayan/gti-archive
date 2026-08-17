@@ -184,11 +184,14 @@ assert(
   "The file gallery must be responsive, truncate safely, search, and support all required sorts.",
 );
 assert(
-  folderWorkspace.includes('aria-label="Folder navigation"') &&
-    folderWorkspace.includes("sticky top-0 z-40") &&
+  folderWorkspace.includes("data-folder-toolbar") &&
+    folderWorkspace.includes("sticky top-0 z-40 isolate bg-white") &&
+    folderWorkspace.includes('aria-label="Folder navigation"') &&
+    !folderWorkspace.includes("bg-white/95") &&
+    !folderWorkspace.includes("backdrop-blur-sm") &&
     folderWorkspace.includes("overflow-clip rounded-[26px]") &&
     folderWorkspace.includes('ariaLabel="Back to Stage 2 Research Workspace"'),
-  "The Stage 2 folder Back control must remain visible in a compact sticky navigation bar.",
+  "The complete folder toolbar must remain aligned in one opaque sticky layer without content showing through it.",
 );
 assert(
   folderWorkspace.includes("FileActionMenu") &&
