@@ -336,6 +336,30 @@ async function getSampleReviewerProject(user: PermissionUser, projectId: string)
   };
 }
 
+function canReviewPhysicalSampleRound(input: {
+  userId: string;
+  canManage: boolean;
+  recipientUserId: string | null;
+}) {
+  return input.recipientUserId
+    ? input.recipientUserId === input.userId
+    : input.canManage;
+}
+
+function assertCanReviewPhysicalSampleRound(input: {
+  userId: string;
+  canManage: boolean;
+  recipientUserId: string | null;
+}) {
+  if (canReviewPhysicalSampleRound(input)) return;
+
+  throw new StageSevenWorkflowError(
+    input.recipientUserId
+      ? "Only the assigned internal recipient can review this sample request."
+      : "Only an authorized project manager can review this sample request.",
+  );
+}
+
 const workspaceAttachmentSelect = {
   id: true,
   projectId: true,
@@ -456,7 +480,11 @@ export async function getStageSevenWorkspaceData(
           emailError: round.emailError,
           status: round.status,
           receivedAt: round.deliveredAt?.toISOString() ?? null,
-          canReview: canManage || round.recipientUserId === user.id,
+          canReview: canReviewPhysicalSampleRound({
+            userId: user.id,
+            canManage,
+            recipientUserId: round.recipientUserId,
+          }),
           decision: round.decision,
           decisionNote: round.decisionNote,
           decidedBy: round.decidedBy ? displayName(round.decidedBy) : null,
@@ -1196,11 +1224,11 @@ export async function decidePhysicalSampleRound(
       include: { supervision: true },
     });
     if (!round) throw new StageSevenWorkflowError("Sample request not found.");
-    if (!reviewer.canManage && round.recipientUserId !== user.id) {
-      throw new StageSevenWorkflowError(
-        "Only a project manager or the assigned internal recipient can review this sample request.",
-      );
-    }
+    assertCanReviewPhysicalSampleRound({
+      userId: user.id,
+      canManage: reviewer.canManage,
+      recipientUserId: round.recipientUserId,
+    });
     if (round.decision) {
       if (round.decision === input.decision) return { duplicate: true } as const;
       throw new StageSevenWorkflowError("This sample request already has a final decision.");
@@ -1284,11 +1312,11 @@ export async function markPhysicalSampleRoundReceived(
       include: { supervision: true },
     });
     if (!round) throw new StageSevenWorkflowError("Sample request not found.");
-    if (!reviewer.canManage && round.recipientUserId !== user.id) {
-      throw new StageSevenWorkflowError(
-        "Only a project manager or the assigned internal recipient can review this sample request.",
-      );
-    }
+    assertCanReviewPhysicalSampleRound({
+      userId: user.id,
+      canManage: reviewer.canManage,
+      recipientUserId: round.recipientUserId,
+    });
     if (round.decision || round.status === ProductionSampleRoundStatus.COMPLETED) {
       throw new StageSevenWorkflowError(
         "This sample request already has a final decision.",

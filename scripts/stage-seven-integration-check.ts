@@ -436,6 +436,45 @@ async function main() {
       recipientUserId: ids.executor,
       requestNote: "The assigned internal recipient will review this sample.",
     }, { sendEmail: sendSuccess });
+    const ownerInternalWorkspace = await getStageSevenWorkspaceData(
+      owner,
+      ids.project,
+      units[1].id,
+      recipientDecisionRound.id,
+    );
+    const ownerInternalRound = ownerInternalWorkspace?.units
+      .find((unit) => unit.id === units[1].id)
+      ?.rounds.find((round) => round.id === recipientDecisionRound.id);
+    check(
+      ownerInternalRound?.canReview === false,
+      "the project owner who created an internal sample request must receive a read-only review state",
+    );
+    await expectRejected(
+      markPhysicalSampleRoundReceived(owner, {
+        projectId: ids.project,
+        productionUnitId: units[1].id,
+        sampleRoundId: recipientDecisionRound.id,
+      }),
+      "the project owner who created an internal request must not mark its sample as received",
+    );
+    await expectRejected(
+      decidePhysicalSampleRound(owner, {
+        projectId: ids.project,
+        productionUnitId: units[1].id,
+        sampleRoundId: recipientDecisionRound.id,
+        decision: PhysicalSampleDecision.REJECTED,
+        decisionNote: "The sender must not review its own internal request.",
+      }),
+      "the project owner who created an internal request must not accept or reject it",
+    );
+    await expectRejected(
+      markPhysicalSampleRoundReceived(superAdmin, {
+        projectId: ids.project,
+        productionUnitId: units[1].id,
+        sampleRoundId: recipientDecisionRound.id,
+      }),
+      "global administration must not override an explicitly assigned internal reviewer",
+    );
     const recipientDecisionWorkspace = await getStageSevenWorkspaceData(executor, ids.project, units[1].id, recipientDecisionRound.id);
     check(recipientDecisionWorkspace?.units[0].rounds[0].canReview === true, "the assigned internal recipient workspace must enable review for its own request");
     await expectRejected(markPhysicalSampleRoundReceived(collaborator, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id }), "an unassigned collaborator must not mark another recipient's sample as received");

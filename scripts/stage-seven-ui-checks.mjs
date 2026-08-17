@@ -145,14 +145,14 @@ assert(
     !service.includes("The latest physical sample request is still awaiting a decision") &&
     !service.includes("Previous sample rounds are read-only history.") &&
     !service.includes("The physical sample request email must be sent before recording a decision."),
-  "Managers must be able to create, review, and delete each physical sample request independently.",
+  "Managers must be able to create, inspect, and delete each physical sample request independently.",
 );
 assert(
-  workspace.includes('disabled={!reviewable || !received} onClick={requestRejection}') &&
+  workspace.includes('disabled={!received} onClick={requestRejection}') &&
     workspace.includes('"Review note required."') &&
     workspace.includes('"Enter a review note before rejecting the physical sample."') &&
     !workspace.includes("disabled={!reviewable || !received || !richTextToPlainText(reviewNote)}"),
-  "Received samples must enable both decision actions while rejection-note validation remains explicit.",
+  "Received samples must enable both decision actions for authorized reviewers while rejection-note validation remains explicit.",
 );
 
 for (const action of [
@@ -261,15 +261,18 @@ assert(
 assert(
   workspace.includes("ProductionSampleRoundStatus.PENDING") &&
     workspace.includes("Mark as Received") &&
-    workspace.includes("disabled={!reviewable || !received}") &&
+    workspace.includes('round.canReview ? "Accept / Reject" : "View Request"') &&
+    workspace.includes("Assigned recipient review") &&
+    workspace.includes("only its assigned internal recipient can mark it received") &&
     workspace.includes("canReview={Boolean(selectedRound?.canReview)}") &&
     service.includes("markPhysicalSampleRoundReceived") &&
-    service.includes("canReview: canManage || round.recipientUserId === user.id") &&
-    service.includes("round.recipientUserId !== user.id") &&
+    service.includes("canReviewPhysicalSampleRound") &&
+    service.includes("input.recipientUserId === input.userId") &&
+    service.includes("Only the assigned internal recipient can review this sample request.") &&
     service.includes("status: ProductionSampleRoundStatus.UNDER_REVIEW") &&
     service.includes("deliveredAt: receivedAt") &&
     service.includes("Mark the physical sample as received before accepting or rejecting it."),
-  "Managers and assigned internal recipients must be able to review only their physical sample requests after receipt, with the same rules enforced server-side.",
+  "Internal sample review must belong only to the assigned recipient, while external requests retain manager review and the same rule is enforced server-side.",
 );
 assert(
   service.includes("decision: null") &&
