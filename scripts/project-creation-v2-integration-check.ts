@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 
 import { createProjectV2 } from "../src/lib/project-creation";
+import { getNotificationsForUser } from "../src/lib/notification-center";
 import { deriveProjectListWorkflowState } from "../src/lib/project-list-workflow";
 import { hasProjectPermission } from "../src/lib/permissions/resolver";
 import { prisma as servicePrisma } from "../src/lib/prisma";
@@ -350,6 +351,32 @@ async function main() {
       2,
     "Additional collaborators must receive COLLABORATOR_ADDED notifications.",
   );
+  assert(
+    notifications.every((item) => item.url === `/projects/${created.id}/chat`),
+    "Every project assignment notification must link directly to the project chat.",
+  );
+
+  const legacyAssignmentNotifications = notifications.filter(
+    (item) =>
+      item.type === "PROJECT_ASSIGNED" ||
+      item.type === "COLLABORATOR_ADDED" ||
+      (item.type === "PROJECT_CREATED" && item.title === "Project assigned to you"),
+  );
+  await prisma.notification.updateMany({
+    where: { id: { in: legacyAssignmentNotifications.map((item) => item.id) } },
+    data: { url: `/projects/${created.id}` },
+  });
+  for (const legacyNotification of legacyAssignmentNotifications) {
+    const resolved = await getNotificationsForUser({
+      userId: legacyNotification.userId,
+      pageSize: 50,
+    });
+    assert(
+      resolved.notifications.find((item) => item.id === legacyNotification.id)
+        ?.targetHref === `/projects/${created.id}/chat`,
+      "Existing project assignment notifications must resolve to the project chat without a data migration.",
+    );
+  }
 
   const overlap = await createProjectV2(
     { id: ids.creator },

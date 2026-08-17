@@ -306,7 +306,7 @@ export async function notifyProjectCreated(input: {
       entityId: project.id,
       projectId: project.id,
       url: buildNotificationUrl({
-        kind: "project",
+        kind: "project-chat",
         projectId: project.id,
       }),
     });
@@ -327,7 +327,7 @@ export async function notifyProjectCreated(input: {
     entityId: project.id,
     projectId: project.id,
     url: buildNotificationUrl({
-      kind: "project",
+      kind: "project-chat",
       projectId: project.id,
     }),
   });
@@ -373,7 +373,7 @@ export async function notifyProjectAssignmentChanges(input: {
       entityId: project.id,
       projectId: project.id,
       url: buildNotificationUrl({
-        kind: "project",
+        kind: "project-chat",
         projectId: project.id,
       }),
     });
@@ -393,7 +393,7 @@ export async function notifyProjectAssignmentChanges(input: {
       entityId: project.id,
       projectId: project.id,
       url: buildNotificationUrl({
-        kind: "project",
+        kind: "project-chat",
         projectId: project.id,
       }),
     });

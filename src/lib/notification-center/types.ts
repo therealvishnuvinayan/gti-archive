@@ -46,6 +46,10 @@ export type NotificationUrlInput =
       projectId: string;
     }
   | {
+      kind: "project-chat";
+      projectId: string;
+    }
+  | {
       kind: "project-stage";
       projectId: string;
       stageId: string;

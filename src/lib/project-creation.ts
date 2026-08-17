@@ -249,7 +249,7 @@ export async function createProjectV2(
           !coOwnerRecipientIds.includes(userId) &&
           !executorRecipientIds.includes(userId),
       );
-      const notificationUrl = `/projects/${project.id}`;
+      const notificationUrl = `/projects/${project.id}/chat`;
       const createdAt = new Date();
 
       if (ownerRecipientIds.length > 0) {

@@ -1,4 +1,8 @@
-import { Prisma, ProjectWorkflowStageKey } from "@prisma/client";
+import {
+  Prisma,
+  ProjectWorkflowStageKey,
+  type NotificationType,
+} from "@prisma/client";
 
 import type {
   NotificationListResponse,
@@ -26,23 +30,44 @@ const DEFAULT_RECENT_LIMIT = 5;
 
 type NotificationDestinationRecord = {
   id: string;
+  type: NotificationType;
+  title: string;
   projectId: string | null;
   stageId: string | null;
   url: string | null;
 };
 
+function isProjectAssignmentNotification(item: NotificationDestinationRecord) {
+  return (
+    item.type === "PROJECT_ASSIGNED" ||
+    item.type === "COLLABORATOR_ADDED" ||
+    (item.type === "PROJECT_CREATED" && item.title === "Project assigned to you")
+  );
+}
+
 async function resolveNotificationDestinations<
   T extends NotificationDestinationRecord,
 >(items: T[]) {
+  const assignmentResolvedItems = items.map((item) =>
+    item.projectId && isProjectAssignmentNotification(item)
+      ? {
+          ...item,
+          url: buildNotificationUrl({
+            kind: "project-chat",
+            projectId: item.projectId,
+          }),
+        }
+      : item,
+  );
   const taskerStageIds = Array.from(
     new Set(
-      items
+      assignmentResolvedItems
         .map((item) => item.stageId)
         .filter((stageId): stageId is string => Boolean(stageId)),
     ),
   );
 
-  if (taskerStageIds.length === 0) return items;
+  if (taskerStageIds.length === 0) return assignmentResolvedItems;
 
   const conceptFolders = await withPrismaRetry(() =>
     prisma.projectConceptFolder.findMany({
@@ -69,7 +94,7 @@ async function resolveNotificationDestinations<
     }),
   );
 
-  return items.map((item) => {
+  return assignmentResolvedItems.map((item) => {
     const conceptRoute = item.stageId
       ? conceptRouteByStageId.get(item.stageId)
       : undefined;
@@ -160,6 +185,8 @@ export function buildNotificationUrl(input: NotificationUrlInput) {
   switch (input.kind) {
     case "project":
       return `/projects/${input.projectId}`;
+    case "project-chat":
+      return `/projects/${encodeURIComponent(input.projectId)}/chat`;
     case "project-stage":
       return `/projects/${input.projectId}/chat?stage=${input.stageId}`;
     case "archives":
