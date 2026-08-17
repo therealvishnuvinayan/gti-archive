@@ -14,6 +14,7 @@ import {
   createProductionSampleRound,
   deleteProductionSampleRound,
   decidePhysicalSampleRound,
+  markPhysicalSampleRoundReceived,
   retryProductionSampleRequestEmail,
   StageSevenWorkflowError,
 } from "@/lib/stage-seven";
@@ -89,6 +90,17 @@ export async function decidePhysicalSampleRoundAction(input: {
 }) {
   const user = await requireUser();
   return stageSevenAction(input.projectId, () => decidePhysicalSampleRound(user, input));
+}
+
+export async function markPhysicalSampleRoundReceivedAction(input: {
+  projectId: string;
+  productionUnitId: string;
+  sampleRoundId: string;
+}) {
+  const user = await requireUser();
+  return stageSevenAction(input.projectId, () =>
+    markPhysicalSampleRoundReceived(user, input),
+  );
 }
 
 export async function closeStageSevenProjectAction(input: { projectId: string }) {

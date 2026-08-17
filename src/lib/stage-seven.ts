@@ -82,6 +82,9 @@ export type StageSevenWorkspaceData = {
       emailStatus: ProductionDispatchStatus;
       emailSentAt: string | null;
       emailError: string | null;
+      status: ProductionSampleRoundStatus;
+      receivedAt: string | null;
+      canReview: boolean;
       decision: PhysicalSampleDecision | null;
       decisionNote: string | null;
       decidedBy: string | null;
@@ -314,6 +317,25 @@ async function getManagerProject(user: PermissionUser, projectId: string) {
   return project;
 }
 
+async function getSampleReviewerProject(user: PermissionUser, projectId: string) {
+  const project = await getAuthorizedStageSevenProject(user, projectId);
+  if (!project) {
+    throw new StageSevenWorkflowError("Physical sample request not found.");
+  }
+  if (project.archivedAt) {
+    throw new StageSevenWorkflowError("Archived projects are read-only.");
+  }
+  if (project.completedAt || stageStatus(project) === ProjectWorkflowStageStatus.COMPLETED) {
+    throw new StageSevenWorkflowError("Stage 7 is complete and is now read-only.");
+  }
+  if (stageStatus(project) !== ProjectWorkflowStageStatus.AVAILABLE) {
+    throw new StageSevenWorkflowError("Stage 7 is not currently available.");
+  }
+  return {
+    canManage: canManageStageSeven(user, project),
+  };
+}
+
 const workspaceAttachmentSelect = {
   id: true,
   projectId: true,
@@ -432,6 +454,9 @@ export async function getStageSevenWorkspaceData(
           emailStatus: round.emailStatus,
           emailSentAt: round.emailSentAt?.toISOString() ?? null,
           emailError: round.emailError,
+          status: round.status,
+          receivedAt: round.deliveredAt?.toISOString() ?? null,
+          canReview: canManage || round.recipientUserId === user.id,
           decision: round.decision,
           decisionNote: round.decisionNote,
           decidedBy: round.decidedBy ? displayName(round.decidedBy) : null,
@@ -1141,7 +1166,7 @@ export async function decidePhysicalSampleRound(
     decisionNote?: string | null;
   },
 ) {
-  await getManagerProject(user, input.projectId);
+  const reviewer = await getSampleReviewerProject(user, input.projectId);
   if (!Object.values(PhysicalSampleDecision).includes(input.decision)) {
     throw new StageSevenWorkflowError("Select Accept or Reject.");
   }
@@ -1171,12 +1196,22 @@ export async function decidePhysicalSampleRound(
       include: { supervision: true },
     });
     if (!round) throw new StageSevenWorkflowError("Sample request not found.");
+    if (!reviewer.canManage && round.recipientUserId !== user.id) {
+      throw new StageSevenWorkflowError(
+        "Only a project manager or the assigned internal recipient can review this sample request.",
+      );
+    }
     if (round.decision) {
       if (round.decision === input.decision) return { duplicate: true } as const;
       throw new StageSevenWorkflowError("This sample request already has a final decision.");
     }
     if (round.supervision.status === ProductionSupervisionStatus.SIGNED_OFF) {
       throw new StageSevenWorkflowError("Accepted Production Units are read-only.");
+    }
+    if (round.status !== ProductionSampleRoundStatus.UNDER_REVIEW) {
+      throw new StageSevenWorkflowError(
+        "Mark the physical sample as received before accepting or rejecting it.",
+      );
     }
     const now = new Date();
     const updated = await tx.productionSampleRound.updateMany({
@@ -1215,6 +1250,85 @@ export async function decidePhysicalSampleRound(
             },
     });
     return { duplicate: false } as const;
+  });
+}
+
+export async function markPhysicalSampleRoundReceived(
+  user: PermissionUser,
+  input: {
+    projectId: string;
+    productionUnitId: string;
+    sampleRoundId: string;
+  },
+) {
+  const reviewer = await getSampleReviewerProject(user, input.projectId);
+  return serializable(async (tx) => {
+    await assertStageSevenActive(tx, input.projectId);
+    const round = await tx.productionSampleRound.findFirst({
+      where: {
+        id: input.sampleRoundId,
+        projectId: input.projectId,
+        supervision: {
+          productionUnitId: input.productionUnitId,
+          productionUnit: {
+            projectId: input.projectId,
+            status: {
+              in: [
+                ProjectProductionUnitStatus.HANDOVER_READY,
+                ProjectProductionUnitStatus.HANDED_OVER,
+              ],
+            },
+          },
+        },
+      },
+      include: { supervision: true },
+    });
+    if (!round) throw new StageSevenWorkflowError("Sample request not found.");
+    if (!reviewer.canManage && round.recipientUserId !== user.id) {
+      throw new StageSevenWorkflowError(
+        "Only a project manager or the assigned internal recipient can review this sample request.",
+      );
+    }
+    if (round.decision || round.status === ProductionSampleRoundStatus.COMPLETED) {
+      throw new StageSevenWorkflowError(
+        "This sample request already has a final decision.",
+      );
+    }
+    if (round.supervision.status === ProductionSupervisionStatus.SIGNED_OFF) {
+      throw new StageSevenWorkflowError("Accepted Production Units are read-only.");
+    }
+    if (round.status === ProductionSampleRoundStatus.UNDER_REVIEW) {
+      return { duplicate: true } as const;
+    }
+
+    const receivedAt = new Date();
+    const updated = await tx.productionSampleRound.updateMany({
+      where: {
+        id: round.id,
+        status: ProductionSampleRoundStatus.PENDING,
+        decision: null,
+      },
+      data: {
+        status: ProductionSampleRoundStatus.UNDER_REVIEW,
+        deliveredAt: receivedAt,
+      },
+    });
+    if (!updated.count) {
+      const current = await tx.productionSampleRound.findUniqueOrThrow({
+        where: { id: round.id },
+        select: { status: true, decision: true },
+      });
+      if (
+        current.status === ProductionSampleRoundStatus.UNDER_REVIEW &&
+        !current.decision
+      ) {
+        return { duplicate: true } as const;
+      }
+      throw new StageSevenWorkflowError(
+        "This sample request is no longer awaiting receipt.",
+      );
+    }
+    return { duplicate: false, receivedAt: receivedAt.toISOString() } as const;
   });
 }
 

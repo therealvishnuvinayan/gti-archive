@@ -9,6 +9,7 @@ import {
   ProductionApprovalRecipientType,
   ProductionDispatchStatus,
   ProductionHandoverRoute,
+  ProductionSampleRoundStatus,
   ProductionSampleRoundType,
   ProductionSupervisionStatus,
 } from "@prisma/client";
@@ -37,6 +38,7 @@ import {
   createProductionSampleRoundAction,
   deleteProductionSampleRoundAction,
   decidePhysicalSampleRoundAction,
+  markPhysicalSampleRoundReceivedAction,
   retryProductionSampleRequestEmailAction,
 } from "@/app/(dashboard)/projects/[slug]/stages/7/actions";
 import { AppDatePicker } from "@/components/calendar/app-date-picker";
@@ -138,7 +140,7 @@ function UnitStatusBadge({ status }: { status: ProductionSupervisionStatus }) {
 }
 
 function ReceiptStatusBadge({ round }: { round: Round }) {
-  return round.decision ? (
+  return round.status !== ProductionSampleRoundStatus.PENDING ? (
     <Badge className="border-[#cde3d3] bg-[#e9f6ed] text-[#257049]">Received</Badge>
   ) : (
     <Badge className="border-[#dfe5df] bg-[#f5f7f5] text-[#68736b]">Not Received</Badge>
@@ -498,6 +500,7 @@ function SampleRequestDetails({
   unit,
   round,
   canManage,
+  canReview,
   stageCompleted,
   onRefresh,
   onRequestAnother,
@@ -506,6 +509,7 @@ function SampleRequestDetails({
   unit: Unit;
   round: Round | null;
   canManage: boolean;
+  canReview: boolean;
   stageCompleted: boolean;
   onRefresh: () => void;
   onRequestAnother: () => void;
@@ -519,11 +523,18 @@ function SampleRequestDetails({
   const mutable = Boolean(
     canDelete && unit.status !== ProductionSupervisionStatus.SIGNED_OFF,
   );
+  const reviewable = Boolean(
+    round && canReview && !stageCompleted && !decided &&
+      unit.status !== ProductionSupervisionStatus.SIGNED_OFF,
+  );
+  const received = Boolean(
+    round && round.status !== ProductionSampleRoundStatus.PENDING,
+  );
   const reviewAutosave = useProjectFormAutosave({
     projectId,
     formKey: `stage-seven-sample-review:${round?.id ?? "none"}`,
     value: { reviewNote },
-    enabled: mutable,
+    enabled: reviewable,
     onRestore: (draft) => setReviewNote(draft.reviewNote),
   });
 
@@ -566,6 +577,23 @@ function SampleRequestDetails({
     });
   }
 
+  function markReceived() {
+    if (pending || received) return;
+    startPending(async () => {
+      const result = await markPhysicalSampleRoundReceivedAction({
+        projectId,
+        productionUnitId: unit.id,
+        sampleRoundId: roundId,
+      });
+      if ("error" in result) {
+        showErrorToast("Unable to mark the physical sample as received.", result.error);
+        return;
+      }
+      showSuccessToast("Physical sample marked as received.");
+      onRefresh();
+    });
+  }
+
   function decide() {
     if (!confirm || pending) return;
     startPending(async () => {
@@ -585,12 +613,12 @@ function SampleRequestDetails({
     <aside className="min-w-0 rounded-[18px] border border-[#dfe6df] bg-white shadow-[0_10px_28px_rgba(23,39,28,0.035)]" aria-labelledby="selected-round-heading">
       <div className="border-b border-[#e5ebe5] px-4 py-4 sm:px-5">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[9px] font-[760] uppercase tracking-[0.08em] text-[#7d8780]">Selected Sample Request</p><h2 id="selected-round-heading" className="mt-1.5 text-[15px] font-[760] leading-5 text-[#1f2a22]">Round {round.sequence} — {round.name}</h2><p className="mt-1 text-[9px] text-[#758078]">{round.type === ProductionSampleRoundType.CUSTOM ? round.customTypeName : ROUND_TYPE_LABELS[round.type]}</p></div><ReceiptStatusBadge round={round} /></div>
-        {canDelete ? <div className="mt-3 flex flex-wrap justify-end gap-2">{mutable ? <Button type="button" size="sm" variant="outline" className="rounded-[10px]" disabled={pending || round.emailStatus === ProductionDispatchStatus.PENDING} onClick={resendEmail}><RefreshCw className="h-3.5 w-3.5" /> {round.emailStatus === ProductionDispatchStatus.SENT ? "Resend Request" : round.emailStatus === ProductionDispatchStatus.FAILED ? "Retry Send" : "Send Request"}</Button> : null}<Button type="button" size="sm" variant="destructive" className="rounded-[10px]" disabled={pending} onClick={() => setDeleteConfirm(true)}><Trash2 className="h-3.5 w-3.5" /> Delete Request</Button></div> : null}
+        {canDelete || (reviewable && !received) ? <div className="mt-3 flex flex-wrap justify-end gap-2">{mutable && !received ? <Button type="button" size="sm" variant="outline" className="rounded-[10px]" disabled={pending || round.emailStatus === ProductionDispatchStatus.PENDING} onClick={resendEmail}><RefreshCw className="h-3.5 w-3.5" /> {round.emailStatus === ProductionDispatchStatus.SENT ? "Resend Request" : round.emailStatus === ProductionDispatchStatus.FAILED ? "Retry Send" : "Send Request"}</Button> : null}{reviewable && !received ? <Button type="button" size="sm" className="rounded-[10px]" disabled={pending} onClick={markReceived}><PackageCheck className="h-3.5 w-3.5" /> Mark as Received</Button> : null}{canDelete ? <Button type="button" size="sm" variant="destructive" className="rounded-[10px]" disabled={pending} onClick={() => setDeleteConfirm(true)}><Trash2 className="h-3.5 w-3.5" /> Delete Request</Button> : null}</div> : null}
       </div>
       <div className="space-y-5 px-4 py-4 sm:px-5">
         {mutable && round.emailStatus === ProductionDispatchStatus.FAILED ? <div className="rounded-[12px] border border-[#f1dbb2] bg-[#fff9ed] p-3"><p className="text-[10px] leading-4 text-[#795c2b]">The request is saved, but the provider email was not delivered. Use Retry Send above to try again.</p></div> : null}
-        <section className="rounded-[14px] border border-[#dfe6df] bg-[#fafcfa] p-3.5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Physical Sample Review</h3><p className="mt-1 text-[9px] text-[#7c867f]">Record the note and outcome for this sample request.</p></div>{round.decision ? <DecisionBadge decision={round.decision} /> : <div className="grid shrink-0 grid-cols-2 gap-2"><Button type="button" size="sm" variant="outline" className="border-[#d96a60] text-[#b9433a] hover:bg-[#fff3f1]" disabled={!mutable || !richTextToPlainText(reviewNote)} onClick={() => setConfirm(PhysicalSampleDecision.REJECTED)}><XCircle className="h-4 w-4" /> Reject Sample</Button><Button type="button" size="sm" disabled={!mutable} onClick={() => setConfirm(PhysicalSampleDecision.ACCEPTED)}><CheckCircle2 className="h-4 w-4" /> Accept Sample</Button></div>}</div>
-          {round.decision ? <div className="mt-3 border-t border-[#e0e7e0] pt-3"><RichTextContent value={round.decisionNote} fallback={<p className="text-[10px] leading-4 text-[#465149]">No review note was added.</p>} className="text-[10px] leading-4 text-[#465149]" /><p className="mt-2 text-[8px] text-[#849087]">Decided by {round.decidedBy || "Unknown"}{round.decidedAt ? ` · ${formatDateTime(round.decidedAt)}` : ""}</p>{round.decision === PhysicalSampleDecision.REJECTED && canManage && !stageCompleted ? <Button type="button" size="sm" className="mt-3 rounded-[10px]" onClick={onRequestAnother}><Plus className="h-3.5 w-3.5" /> Request Another Sample</Button> : null}</div> : <div className="mt-3 block space-y-2 border-t border-[#e0e7e0] pt-3"><span className="text-[10px] font-[700] text-[#59655d]">Review Note <span className="font-[500] text-[#7c867f]">(required for rejection)</span></span><RichTextEditor value={reviewNote} maxLength={8000} disabled={!mutable} minHeightClassName="min-h-[90px]" ariaLabel="Physical sample review note" placeholder="Add a note for accepting or rejecting this physical sample." onChange={setReviewNote} />{mutable ? <ProjectFormAutosaveStatus status={reviewAutosave.status} savedAt={reviewAutosave.savedAt} restoredAt={reviewAutosave.restoredAt} onRetry={() => void reviewAutosave.retry()} /> : null}</div>}
+        <section className="rounded-[14px] border border-[#dfe6df] bg-[#fafcfa] p-3.5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-[10px] font-[760] uppercase tracking-[0.075em] text-[#657168]">Physical Sample Review</h3><p className="mt-1 text-[9px] text-[#7c867f]">{received ? "Record the note and outcome for this sample request." : "Mark the physical sample as received before accepting or rejecting it."}</p></div>{round.decision ? <DecisionBadge decision={round.decision} /> : <div className="grid shrink-0 grid-cols-2 gap-2"><Button type="button" size="sm" variant="outline" className="border-[#d96a60] text-[#b9433a] hover:bg-[#fff3f1]" disabled={!reviewable || !received || !richTextToPlainText(reviewNote)} onClick={() => setConfirm(PhysicalSampleDecision.REJECTED)}><XCircle className="h-4 w-4" /> Reject Sample</Button><Button type="button" size="sm" disabled={!reviewable || !received} onClick={() => setConfirm(PhysicalSampleDecision.ACCEPTED)}><CheckCircle2 className="h-4 w-4" /> Accept Sample</Button></div>}</div>
+          {round.decision ? <div className="mt-3 border-t border-[#e0e7e0] pt-3"><RichTextContent value={round.decisionNote} fallback={<p className="text-[10px] leading-4 text-[#465149]">No review note was added.</p>} className="text-[10px] leading-4 text-[#465149]" /><p className="mt-2 text-[8px] text-[#849087]">Decided by {round.decidedBy || "Unknown"}{round.decidedAt ? ` · ${formatDateTime(round.decidedAt)}` : ""}</p>{round.decision === PhysicalSampleDecision.REJECTED && canManage && !stageCompleted ? <Button type="button" size="sm" className="mt-3 rounded-[10px]" onClick={onRequestAnother}><Plus className="h-3.5 w-3.5" /> Request Another Sample</Button> : null}</div> : <div className="mt-3 block space-y-2 border-t border-[#e0e7e0] pt-3"><span className="text-[10px] font-[700] text-[#59655d]">Review Note <span className="font-[500] text-[#7c867f]">(required for rejection)</span></span><RichTextEditor value={reviewNote} maxLength={8000} disabled={!reviewable} minHeightClassName="min-h-[90px]" ariaLabel="Physical sample review note" placeholder="Add a note for accepting or rejecting this physical sample." onChange={setReviewNote} />{reviewable ? <ProjectFormAutosaveStatus status={reviewAutosave.status} savedAt={reviewAutosave.savedAt} restoredAt={reviewAutosave.restoredAt} onRetry={() => void reviewAutosave.retry()} /> : null}</div>}
         </section>
         <section className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[11px] border border-[#e2e8e2] bg-[#fafcfa] px-3 py-2.5"><p className="text-[8px] font-[760] uppercase tracking-[0.06em] text-[#7f8a82]">Provider</p><p className="mt-1 text-[10px] font-[700] text-[#39443c]">{round.recipientRoute === ProductionHandoverRoute.PURCHASE_DEPARTMENT ? "Internal" : round.recipientRoute === ProductionHandoverRoute.DIRECT_VENDOR ? "External" : "Legacy request"}{round.recipientCompany ? ` · ${round.recipientCompany}` : ""}</p><p className="mt-0.5 text-[9px] text-[#758078]">{round.recipientName || "Not provided"}</p><p className="mt-0.5 break-all text-[9px] text-[#758078]">{round.recipientEmail || "Legacy request"}{round.recipientPhone ? ` · ${round.recipientPhone}` : ""}</p></div>
@@ -659,7 +687,7 @@ export function StageSevenWorkspace({
             <ProjectStageSummary project={project} />
           </div>
           <div className="space-y-5 border-t border-[#e7ece7] bg-[#fbfcfb] px-5 py-6 sm:px-7 lg:px-9 lg:py-7">
-            {!data.units.length ? <div className="grid min-h-[360px] place-items-center rounded-[18px] border border-[#dfe6df] bg-white p-8 text-center"><div><PackageCheck className="mx-auto h-9 w-9 text-[#a7b2a9]" /><h2 className="mt-3 text-[15px] font-[740] text-[#303b33]">No approved Production Units are available.</h2><p className="mt-1 text-[10px] text-[#849087]">Stage 7 uses approved Stage 6 Production Units; the optional handover is not required.</p></div></div> : selectedUnit ? <><ProductionUnitSwitcher units={data.units} selectedUnitId={selectedUnit.id} onSelect={(unitId) => select(unitId)} /><StageSevenSummary data={data} />{selectedUnit.status === ProductionSupervisionStatus.SIGNED_OFF ? <div className="flex flex-wrap items-center gap-3 rounded-[13px] border border-[#cde3d3] bg-[#eff9f2] px-4 py-3 text-[10px] text-[#2d6f4a]"><CheckCircle2 className="h-4 w-4" /><strong>Physical Sample Accepted</strong><span>Accepted by {selectedUnit.acceptedBy || "manager"}{selectedUnit.signedOffAt ? ` on ${formatDateTime(selectedUnit.signedOffAt)}` : ""}.</span></div> : null}<div className="grid min-w-0 gap-5 min-[1360px]:grid-cols-[minmax(0,1.65fr)_minmax(380px,0.95fr)] min-[1360px]:items-start"><SampleRoundsList unit={selectedUnit} selectedRoundId={selectedRound?.id ?? null} canRequest={canRequest} onRequest={() => setRequestOpen(true)} onSelectRound={(roundId) => select(selectedUnit.id, roundId)} /><SampleRequestDetails key={selectedRound?.id ?? "none"} projectId={project.id} unit={selectedUnit} round={selectedRound} canManage={data.canManage} stageCompleted={data.stageCompleted} onRefresh={() => router.refresh()} onRequestAnother={() => setRequestOpen(true)} /></div>{data.summary.overdueRounds ? <div className="flex items-start gap-2 rounded-[13px] border border-[#ead6ae] bg-[#fff9ed] px-4 py-3 text-[10px] leading-4 text-[#795c2b]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#b37a21]" /><span><strong>{data.summary.overdueRounds} physical sample {data.summary.overdueRounds === 1 ? "request is" : "requests are"} overdue.</strong> Project Owner and Co-Owners receive one deduplicated alert per overdue request.</span></div> : null}</> : null}
+            {!data.units.length ? <div className="grid min-h-[360px] place-items-center rounded-[18px] border border-[#dfe6df] bg-white p-8 text-center"><div><PackageCheck className="mx-auto h-9 w-9 text-[#a7b2a9]" /><h2 className="mt-3 text-[15px] font-[740] text-[#303b33]">No approved Production Units are available.</h2><p className="mt-1 text-[10px] text-[#849087]">Stage 7 uses approved Stage 6 Production Units; the optional handover is not required.</p></div></div> : selectedUnit ? <><ProductionUnitSwitcher units={data.units} selectedUnitId={selectedUnit.id} onSelect={(unitId) => select(unitId)} /><StageSevenSummary data={data} />{selectedUnit.status === ProductionSupervisionStatus.SIGNED_OFF ? <div className="flex flex-wrap items-center gap-3 rounded-[13px] border border-[#cde3d3] bg-[#eff9f2] px-4 py-3 text-[10px] text-[#2d6f4a]"><CheckCircle2 className="h-4 w-4" /><strong>Physical Sample Accepted</strong><span>Accepted by {selectedUnit.acceptedBy || "manager"}{selectedUnit.signedOffAt ? ` on ${formatDateTime(selectedUnit.signedOffAt)}` : ""}.</span></div> : null}<div className="grid min-w-0 gap-5 min-[1360px]:grid-cols-[minmax(0,1.65fr)_minmax(380px,0.95fr)] min-[1360px]:items-start"><SampleRoundsList unit={selectedUnit} selectedRoundId={selectedRound?.id ?? null} canRequest={canRequest} onRequest={() => setRequestOpen(true)} onSelectRound={(roundId) => select(selectedUnit.id, roundId)} /><SampleRequestDetails key={selectedRound?.id ?? "none"} projectId={project.id} unit={selectedUnit} round={selectedRound} canManage={data.canManage} canReview={Boolean(selectedRound?.canReview)} stageCompleted={data.stageCompleted} onRefresh={() => router.refresh()} onRequestAnother={() => setRequestOpen(true)} /></div>{data.summary.overdueRounds ? <div className="flex items-start gap-2 rounded-[13px] border border-[#ead6ae] bg-[#fff9ed] px-4 py-3 text-[10px] leading-4 text-[#795c2b]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#b37a21]" /><span><strong>{data.summary.overdueRounds} physical sample {data.summary.overdueRounds === 1 ? "request is" : "requests are"} overdue.</strong> Project Owner and Co-Owners receive one deduplicated alert per overdue request.</span></div> : null}</> : null}
           </div>
           <div className="flex flex-col gap-4 border-t border-[#e7ece7] bg-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-9">
             <div className="flex items-start gap-2"><Info className="mt-0.5 h-4 w-4 shrink-0 text-[#4f8062]" /><div><p className="text-[11px] font-[720] text-[#354138]">Project completion is manual once every physical Production Unit sample is accepted.</p><p className="mt-0.5 text-[9px] text-[#849087]">Completing the project finishes Stage 7. Archiving remains a separate action.</p></div></div>

@@ -24,6 +24,7 @@ import {
   deleteProductionSampleRound,
   decidePhysicalSampleRound,
   getStageSevenWorkspaceData,
+  markPhysicalSampleRoundReceived,
   processStageSevenOverdueDeadlines,
   retryProductionSampleRequestEmail,
 } from "../src/lib/stage-seven";
@@ -334,6 +335,15 @@ async function main() {
     await expectRejected(decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Executor cannot decide." }), "executors must not decide physical sample requests");
     await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED }), "rejection must require a physical review note");
     await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Wrong unit." }), "a decision must not cross Production Units");
+    await expectRejected(decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.ACCEPTED }), "a physical sample must not be accepted before it is received");
+    await expectRejected(markPhysicalSampleRoundReceived(executor, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id }), "an executor must not mark a physical sample as received");
+    const received = await markPhysicalSampleRoundReceived(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id });
+    check(!received.duplicate, "a manager must be able to mark a pending physical sample as received");
+    check((await markPhysicalSampleRoundReceived(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id })).duplicate, "marking the same physical sample as received must be idempotent");
+    const receivedRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: failed.id } });
+    check(receivedRow.status === ProductionSampleRoundStatus.UNDER_REVIEW && Boolean(receivedRow.deliveredAt), "receipt must persist the Under Review status and received timestamp");
+    const receivedWorkspace = await getStageSevenWorkspaceData(owner, ids.project, units[0].id, failed.id);
+    check(receivedWorkspace?.units[0].rounds[0].status === ProductionSampleRoundStatus.UNDER_REVIEW && Boolean(receivedWorkspace.units[0].rounds[0].receivedAt), "the Stage 7 workspace must expose the persisted receipt state");
     const rejected = await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Colour is outside the approved tolerance." });
     check(!rejected.duplicate, "the manager must be able to reject the delivered physical sample");
     const rejectedRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: failed.id } });
@@ -358,6 +368,7 @@ async function main() {
     }, { sendEmail: sendSuccess });
     check(!acceptedRound.duplicate && acceptedRound.emailStatus === ProductionDispatchStatus.SENT, "rejection must allow a new independent sample request");
     check((await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: failed.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Old round" })).duplicate, "replaying the same decision on an earlier round must be a no-op");
+    await markPhysicalSampleRoundReceived(superAdmin, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: acceptedRound.id });
     const accepted = await decidePhysicalSampleRound(superAdmin, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: acceptedRound.id, decision: PhysicalSampleDecision.ACCEPTED, decisionNote: "Physical sample matches approved production artwork." });
     check(!accepted.duplicate, "SUPER_ADMIN must be able to accept a physical sample");
     const acceptedSupervision = await prisma.projectProductionSupervision.findUniqueOrThrow({ where: { productionUnitId: units[0].id } });
@@ -385,6 +396,29 @@ async function main() {
     await deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: deletableInternalRound.id });
     check((await prisma.notification.count({ where: { entityType: "SAMPLE_ROUND", entityId: deletableInternalRound.id } })) === 0, "deleting an internal request must remove its recipient notification");
     check((await getStageSevenWorkspaceData(executor, ids.project, units[1].id, deletableInternalRound.id)) === null, "a deleted request must disappear from the internal recipient workspace");
+
+    const recipientDecisionRound = await createProductionSampleRound(owner, {
+      projectId: ids.project,
+      productionUnitId: units[1].id,
+      clientRequestId: `recipient-decision-${runId}`,
+      name: "Internal recipient review sample",
+      type: ProductionSampleRoundType.PRODUCTION_SAMPLE,
+      deadline: deadlineDate(2),
+      recipientRoute: ProductionHandoverRoute.PURCHASE_DEPARTMENT,
+      recipientType: ProductionApprovalRecipientType.EXISTING_COLLABORATOR,
+      recipientUserId: ids.executor,
+      requestNote: "The assigned internal recipient will review this sample.",
+    }, { sendEmail: sendSuccess });
+    const recipientDecisionWorkspace = await getStageSevenWorkspaceData(executor, ids.project, units[1].id, recipientDecisionRound.id);
+    check(recipientDecisionWorkspace?.units[0].rounds[0].canReview === true, "the assigned internal recipient workspace must enable review for its own request");
+    await expectRejected(markPhysicalSampleRoundReceived(collaborator, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id }), "an unassigned collaborator must not mark another recipient's sample as received");
+    await markPhysicalSampleRoundReceived(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id });
+    await expectRejected(decidePhysicalSampleRound(collaborator, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "Unauthorized review." }), "an unassigned collaborator must not decide another recipient's sample request");
+    const recipientRejection = await decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id, decision: PhysicalSampleDecision.REJECTED, decisionNote: "The physical sample needs correction." });
+    check(!recipientRejection.duplicate, "the assigned internal recipient must be able to reject its received sample request");
+    const recipientRejectedRow = await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: recipientDecisionRound.id } });
+    check(recipientRejectedRow.decision === PhysicalSampleDecision.REJECTED && recipientRejectedRow.decidedById === ids.executor, "the internal recipient's rejection must persist its decision audit");
+    await expectRejected(retryProductionSampleRequestEmail(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: recipientDecisionRound.id }, { sendEmail: sendSuccess }), "review authority must not grant the internal recipient resend management access");
 
     const overdueRound = await createProductionSampleRound(superAdmin, {
       projectId: ids.project,
@@ -423,9 +457,11 @@ async function main() {
       recipientWorkspace?.canManage === false &&
         recipientWorkspace.participants.length === 0 &&
         recipientWorkspace.units.length === 1 &&
-        recipientWorkspace.units[0].rounds.length === 1 &&
-        recipientWorkspace.units[0].rounds[0].id === overdueRound.id,
-      "the internal recipient must receive a read-only workspace containing only assigned sample requests",
+        recipientWorkspace.units[0].rounds.length === 2 &&
+        recipientWorkspace.units[0].rounds.some(
+          (round) => round.id === overdueRound.id && round.canReview,
+        ),
+      "the internal recipient must receive a review-enabled workspace containing only assigned sample requests",
     );
     check(
       (await getStageSevenWorkspaceData(collaborator, ids.project, units[1].id, overdueRound.id)) === null,
@@ -441,7 +477,8 @@ async function main() {
     const overdueWorkspace = await getStageSevenWorkspaceData(owner, ids.project, units[1].id, overdueRound.id);
     check(overdueWorkspace?.summary.totalUnits === 2 && overdueWorkspace.summary.waitingUnits === 1 && overdueWorkspace.summary.overdueRounds === 1 && overdueWorkspace.summary.acceptedUnits === 1, "summary must report Production Units, Waiting, Overdue, and Accepted from persisted physical-sample state");
 
-    await decidePhysicalSampleRound(owner, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: overdueRound.id, decision: PhysicalSampleDecision.ACCEPTED });
+    await markPhysicalSampleRoundReceived(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: overdueRound.id });
+    await decidePhysicalSampleRound(executor, { projectId: ids.project, productionUnitId: units[1].id, sampleRoundId: overdueRound.id, decision: PhysicalSampleDecision.ACCEPTED });
     await processStageSevenOverdueDeadlines(new Date());
     check(
       (await prisma.productionSampleRound.count({

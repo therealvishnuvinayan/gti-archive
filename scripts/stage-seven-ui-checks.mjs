@@ -147,6 +147,7 @@ for (const action of [
   "createProductionSampleRoundAction",
   "retryProductionSampleRequestEmailAction",
   "deleteProductionSampleRoundAction",
+  "markPhysicalSampleRoundReceivedAction",
   "decidePhysicalSampleRoundAction",
   "closeStageSevenProjectAction",
 ]) {
@@ -236,6 +237,19 @@ assert(
     service.includes("status: ProductionSupervisionStatus.SIGNED_OFF") &&
     service.includes("status: ProductionSupervisionStatus.REVISIONS_NEEDED"),
   "Acceptance and rejection must be final, audited decisions with rejection-note enforcement.",
+);
+assert(
+  workspace.includes("ProductionSampleRoundStatus.PENDING") &&
+    workspace.includes("Mark as Received") &&
+    workspace.includes("disabled={!reviewable || !received}") &&
+    workspace.includes("canReview={Boolean(selectedRound?.canReview)}") &&
+    service.includes("markPhysicalSampleRoundReceived") &&
+    service.includes("canReview: canManage || round.recipientUserId === user.id") &&
+    service.includes("round.recipientUserId !== user.id") &&
+    service.includes("status: ProductionSampleRoundStatus.UNDER_REVIEW") &&
+    service.includes("deliveredAt: receivedAt") &&
+    service.includes("Mark the physical sample as received before accepting or rejecting it."),
+  "Managers and assigned internal recipients must be able to review only their physical sample requests after receipt, with the same rules enforced server-side.",
 );
 assert(
   service.includes("decision: null") &&
