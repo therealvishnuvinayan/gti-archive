@@ -28,6 +28,7 @@ import {
   processStageSevenOverdueDeadlines,
   retryProductionSampleRequestEmail,
 } from "../src/lib/stage-seven";
+import { getPhysicalSampleRequestActionState } from "../src/lib/stage-seven-sample-actions";
 import { getInitialProjectWorkflowStageData } from "../src/lib/project-workflow";
 
 function check(condition: unknown, message: string): asserts condition {
@@ -48,6 +49,66 @@ function deadlineDate(offsetDays = 1) {
   value.setUTCHours(0, 0, 0, 0);
   value.setUTCDate(value.getUTCDate() + offsetDays);
   return value.toISOString().slice(0, 10);
+}
+
+function checkPhysicalSampleRequestActionStates() {
+  const base = {
+    selected: true,
+    canManage: true,
+    canReview: true,
+    stageCompleted: false,
+    hasDecision: false,
+    unitStatus: ProductionSupervisionStatus.IN_REVIEW,
+    roundStatus: ProductionSampleRoundStatus.UNDER_REVIEW,
+  };
+  const selectedReceived = getPhysicalSampleRequestActionState(base);
+  check(
+    !selectedReceived.showRowDelete &&
+      selectedReceived.showDetailsDelete &&
+      selectedReceived.reviewable &&
+      selectedReceived.reviewActionsEnabled,
+    "a selected received request must show one details Delete action and enable both review actions",
+  );
+
+  const unselected = getPhysicalSampleRequestActionState({
+    ...base,
+    selected: false,
+  });
+  check(
+    unselected.showRowDelete && !unselected.showDetailsDelete,
+    "an unselected request must retain only its row-level Delete action",
+  );
+
+  const pending = getPhysicalSampleRequestActionState({
+    ...base,
+    roundStatus: ProductionSampleRoundStatus.PENDING,
+  });
+  check(
+    pending.showMarkReceived && !pending.reviewActionsEnabled,
+    "a pending request must require receipt before either review action is enabled",
+  );
+
+  const internalOwner = getPhysicalSampleRequestActionState({
+    ...base,
+    canReview: false,
+  });
+  check(
+    internalOwner.showDetailsDelete &&
+      !internalOwner.reviewable &&
+      !internalOwner.reviewActionsEnabled,
+    "an internal-request owner may manage the selected request but must not review it",
+  );
+
+  const internalRecipient = getPhysicalSampleRequestActionState({
+    ...base,
+    canManage: false,
+  });
+  check(
+    !internalRecipient.showRowDelete &&
+      !internalRecipient.showDetailsDelete &&
+      internalRecipient.reviewActionsEnabled,
+    "the assigned internal recipient must review a received request without receiving Delete access",
+  );
 }
 
 type FixtureUnit = {
@@ -185,6 +246,8 @@ async function createProjectFixture(input: {
 }
 
 async function main() {
+  checkPhysicalSampleRequestActionStates();
+
   process.env.AWS_REGION ||= "us-east-1";
   process.env.AWS_ACCESS_KEY_ID ||= "stage-seven-test";
   process.env.AWS_SECRET_ACCESS_KEY ||= "stage-seven-test-secret";
@@ -568,7 +631,12 @@ async function main() {
     console.log("Stage 7 physical-sample request, scoped email/retry, permissions, decisions, overdue, and manual project completion integration checks passed.");
   } finally {
     await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.user.deleteMany({
+      where: {
+        id: { in: userIds },
+        projectInquiryPartySelections: { none: {} },
+      },
+    });
     await prisma.$disconnect();
   }
 }

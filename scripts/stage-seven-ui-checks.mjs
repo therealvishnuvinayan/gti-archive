@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [workspace, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, recipientMigration, notificationMigration, notificationPresenter, cronRoute, datePicker] =
+const [workspace, sampleActions, page, actions, service, dashboard, schema, baseMigration, correctionMigration, physicalMigration, recipientMigration, notificationMigration, notificationPresenter, cronRoute, datePicker] =
   await Promise.all([
     readFile("src/components/projects/stage-seven-workspace.tsx", "utf8"),
+    readFile("src/lib/stage-seven-sample-actions.ts", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/7/page.tsx", "utf8"),
     readFile("src/app/(dashboard)/projects/[slug]/stages/7/actions.ts", "utf8"),
     readFile("src/lib/stage-seven.ts", "utf8"),
@@ -136,8 +137,11 @@ assert(
 );
 assert(
   workspace.includes("const canRequest = Boolean(selectedUnit && data.canManage") &&
-    workspace.includes("const canDelete = Boolean(round && canManage && !stageCompleted && !decided)") &&
-    workspace.includes("canDeleteRequests && !round.decision && !selected") &&
+    workspace.includes("getPhysicalSampleRequestActionState") &&
+    workspace.includes("actions.showRowDelete") &&
+    workspace.includes("actions?.showDetailsDelete") &&
+    sampleActions.includes("showRowDelete: canDelete && !input.selected") &&
+    sampleActions.includes("showDetailsDelete: canDelete && input.selected") &&
     workspace.includes("onDeleteRound(round)") &&
     workspace.includes("sampleRoundId: target.round.id") &&
     !workspace.includes("!latestRound || latestRound.decision") &&
@@ -148,7 +152,8 @@ assert(
   "Managers must be able to create, inspect, and delete each physical sample request independently.",
 );
 assert(
-  workspace.includes('disabled={!received} onClick={requestRejection}') &&
+  workspace.includes('disabled={!actions?.reviewActionsEnabled} onClick={requestRejection}') &&
+    sampleActions.includes("reviewActionsEnabled: reviewable && received") &&
     workspace.includes('"Review note required."') &&
     workspace.includes('"Enter a review note before rejecting the physical sample."') &&
     !workspace.includes("disabled={!reviewable || !received || !richTextToPlainText(reviewNote)}"),
