@@ -168,6 +168,15 @@ export async function importStageThreeConceptReferenceAction(input: {
       revalidatePath(
         `/projects/${input.projectId}/stages/4/concepts/${input.folderId}`,
       );
+      if (result.imported) {
+        publishProjectActivityUpdatedAfterResponse({
+          projectId: input.projectId,
+          stageId: null,
+          eventType: "timeline_updated",
+          changedEntityId: input.folderId,
+          actorId: user.id,
+        });
+      }
     }
 
     return result;

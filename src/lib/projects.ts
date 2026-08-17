@@ -309,7 +309,13 @@ export type ProjectAttachmentRecord = {
 
 export type ProjectChatEntry = {
   id: string;
-  kind: "revision" | "comment" | "system" | "comparison" | "caption";
+  kind:
+    | "revision"
+    | "comment"
+    | "system"
+    | "comparison"
+    | "caption"
+    | "reference";
   cursor?: string;
   revisionId?: string;
   revisionNumber?: number;
@@ -324,6 +330,7 @@ export type ProjectChatEntry = {
   role: string;
   body: string;
   createdAt: string;
+  createdAtValue?: string;
   deletedAt?: string | null;
   deletedByUserId?: string | null;
   canDeleteUntil?: string | null;
@@ -351,6 +358,16 @@ export type ProjectChatEntry = {
     yPercent: number;
     body: string;
     isReadOnly: boolean;
+  };
+  reference?: {
+    attachmentId: string;
+    fileName: string;
+    mimeType: string;
+    previewPath: string;
+    downloadPath: string;
+    sourceConceptId: string;
+    sourceConceptName: string;
+    stageNeutral?: boolean;
   };
 };
 

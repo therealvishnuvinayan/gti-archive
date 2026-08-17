@@ -446,6 +446,7 @@ model User {
   addedResearchFolderFiles            ProjectResearchFolderFile[]          @relation("ProjectResearchFolderFileAdder")
   createdConceptFolders               ProjectConceptFolder[]               @relation("ProjectConceptFolderCreator")
   approvedConceptFolders              ProjectConceptFolder[]               @relation("ProjectConceptFolderApprover")
+  importedStageThreeConceptReferences ProjectConceptFolder[]               @relation("ProjectConceptFolderStageThreeReferenceImporter")
   createdStageFileHandoffs            ProjectStageFileHandoff[]            @relation("ProjectStageFileHandoffCreator")
   updatedFileChecklistItems           ProjectFileChecklistItem[]           @relation("ProjectFileChecklistItemUpdater")
   fileChecklistRequestsMade           ProjectFileChecklistRequest[]        @relation("ProjectFileChecklistRequestRequester")
@@ -843,6 +844,9 @@ model ProjectConceptFolder {
   promotedStage4Concept            ProjectConceptFolder?   @relation("ProjectConceptPromotion")
   sourceStage3ApprovedAttachmentId String?                 @unique
   sourceStage3ApprovedAttachment   ProjectAttachment?      @relation("ProjectConceptStartingReference", fields: [sourceStage3ApprovedAttachmentId], references: [id], onDelete: Restrict)
+  sourceStage3ImportedAt           DateTime?
+  sourceStage3ImportedById         String?
+  sourceStage3ImportedBy           User?                   @relation("ProjectConceptFolderStageThreeReferenceImporter", fields: [sourceStage3ImportedById], references: [id], onDelete: SetNull)
   name                             String
   normalizedName                   String
   sortOrder                        Int                     @default(1)
@@ -856,6 +860,7 @@ model ProjectConceptFolder {
   @@index([projectId, workflowStageKey, assignedExecutorId, sortOrder])
   @@index([approvedById])
   @@index([createdById])
+  @@index([sourceStage3ImportedById])
 }
 
 model ProjectStageFileHandoff {

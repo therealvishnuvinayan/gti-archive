@@ -1589,6 +1589,8 @@ async function main() {
         assignedExecutorId: true,
         sourceStage3ConceptId: true,
         sourceStage3ApprovedAttachmentId: true,
+        sourceStage3ImportedAt: true,
+        sourceStage3ImportedById: true,
         taskerStage: {
           select: {
             id: true,
@@ -1606,7 +1608,9 @@ async function main() {
         promotedConcept.name === "Renamed Accepted Concept" &&
         promotedConcept.workflowStageKey === ProjectWorkflowStageKey.PROJECT_DEVELOPMENT &&
         promotedConcept.assignedExecutorId === executorA.id &&
-        promotedConcept.sourceStage3ApprovedAttachmentId === replacementFile.id,
+        promotedConcept.sourceStage3ApprovedAttachmentId === replacementFile.id &&
+        promotedConcept.sourceStage3ImportedById === owner.id &&
+        promotedConcept.sourceStage3ImportedAt instanceof Date,
       "the independently created Stage 4 concept must preserve its identity and the explicitly imported source binary",
     );
     check(
@@ -1682,7 +1686,13 @@ async function main() {
     });
     check(
       reassignedStageFourContext?.chatMode.startingReference?.id === replacementFile.id &&
-        reassignedStageFourContext.chatMode.startingReference.sourceConceptId === conceptA.folder.id,
+        reassignedStageFourContext.chatMode.startingReference.sourceConceptId === conceptA.folder.id &&
+        reassignedStageFourContext.chatMode.startingReference.importedBy?.id === owner.id &&
+        !Number.isNaN(
+          Date.parse(
+            reassignedStageFourContext.chatMode.startingReference.importedAt,
+          ),
+        ),
       "the reassigned Stage 4 executor must see the read-only starting reference",
     );
     await assertProjectAttachmentVisibilityForUser(executorB, {

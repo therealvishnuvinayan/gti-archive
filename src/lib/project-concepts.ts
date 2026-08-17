@@ -51,6 +51,17 @@ export type ProjectConceptStageThreeReference =
     sourceConceptName: string;
   };
 
+export type ProjectConceptStartingReference =
+  ProjectConceptStageThreeReference & {
+    importedAt: string;
+    importedBy: {
+      id: string;
+      name: string | null;
+      email: string;
+      avatarUrl: string | null;
+    } | null;
+  };
+
 export type ConceptWorkflowStageKey =
   | typeof ProjectWorkflowStageKey.CONCEPT_CREATION
   | typeof ProjectWorkflowStageKey.PROJECT_DEVELOPMENT;
@@ -121,7 +132,7 @@ export type ProjectConceptChatMode = {
   approvedAttachmentId: string | null;
   approvalRevocationEligibility: ConceptApprovalRevocationEligibility;
   isWorkflowCompleted: boolean;
-  startingReference: ProjectConceptStageThreeReference | null;
+  startingReference: ProjectConceptStartingReference | null;
   availableStageThreeReferences: ProjectConceptStageThreeReference[];
   backHref: string;
   compareHref: string;
@@ -815,6 +826,8 @@ export async function importStageThreeConceptReference(
               assignedExecutorId: true,
               sourceStage3ConceptId: true,
               sourceStage3ApprovedAttachmentId: true,
+              sourceStage3ImportedAt: true,
+              sourceStage3ImportedById: true,
               project: {
                 select: {
                   ownerId: true,
@@ -859,6 +872,16 @@ export async function importStageThreeConceptReference(
 
           if (folder.sourceStage3ConceptId) {
             if (folder.sourceStage3ConceptId === input.sourceConceptId) {
+              if (!folder.sourceStage3ImportedAt) {
+                await tx.projectConceptFolder.update({
+                  where: { id: folder.id },
+                  data: {
+                    sourceStage3ImportedAt: new Date(),
+                    sourceStage3ImportedById:
+                      folder.sourceStage3ImportedById ?? user.id,
+                  },
+                });
+              }
               const existingSource = await tx.projectConceptFolder.findUnique({
                 where: { id: input.sourceConceptId },
                 select: {
@@ -925,6 +948,8 @@ export async function importStageThreeConceptReference(
             data: {
               sourceStage3ConceptId: sourceConcept.id,
               sourceStage3ApprovedAttachmentId: sourceConcept.approvedAttachmentId,
+              sourceStage3ImportedAt: new Date(),
+              sourceStage3ImportedById: user.id,
             },
           });
 
@@ -2836,6 +2861,25 @@ export async function getProjectConceptChatContext(
             fileSize: true,
           },
         },
+        sourceStage3ImportedAt: true,
+        sourceStage3ImportedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+        createdAt: true,
+        updatedAt: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
         assignedExecutor: {
           select: {
             user: {
@@ -2879,6 +2923,12 @@ export async function getProjectConceptChatContext(
           ...mapConceptAttachmentReference(record.sourceStage3ApprovedAttachment),
           sourceConceptId: record.sourceStage3Concept.id,
           sourceConceptName: record.sourceStage3Concept.name,
+          importedAt: (
+            record.sourceStage3ImportedAt ??
+            record.updatedAt ??
+            record.createdAt
+          ).toISOString(),
+          importedBy: record.sourceStage3ImportedBy ?? record.createdBy,
         }
       : null;
   const availableStageThreeReferences =

@@ -101,10 +101,10 @@ assert(
   "Concept chat must keep a live, responsive deadline countdown visible independently of the large-screen sidebar.",
 );
 assert(
-  workspace.includes("Revoke Approval") &&
+    workspace.includes("Revoke Approval") &&
     workspace.includes("confirmConceptApprovalRevocation") &&
     workspace.includes("conceptMode.canReview") &&
-    workspace.includes("approvedConceptAttachmentId ?") &&
+    workspace.includes("canRevokeConceptApproval ?") &&
     workspace.includes('tone="destructive"') &&
     workspace.includes('status: "PENDING_REVIEW"'),
   "Authorized Stage 3/4 reviewers must receive a confirmed, responsive approval-revocation action that restores Pending Review.",

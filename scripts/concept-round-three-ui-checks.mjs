@@ -11,6 +11,7 @@ const [
   access,
   schema,
   migration,
+  referenceTimelineMigration,
 ] = await Promise.all([
   readFile("src/components/projects/concept-stage-workspace.tsx", "utf8"),
   readFile("src/components/projects/project-chat-workspace.tsx", "utf8"),
@@ -25,6 +26,10 @@ const [
   readFile("prisma/schema.prisma", "utf8"),
   readFile(
     "prisma/migrations/20260809150000_concept_approval_round_three/migration.sql",
+    "utf8",
+  ),
+  readFile(
+    "prisma/migrations/20260817130000_concept_reference_import_timeline/migration.sql",
     "utf8",
   ),
 ]);
@@ -46,6 +51,14 @@ assert(
     migration.includes("ProjectConceptFolder_approval_audit_check") &&
     migration.includes("ProjectConceptFolder_source_pair_check"),
   "Approval audit and Stage 3→4 lineage must be explicit database relationships.",
+);
+assert(
+  schema.includes("sourceStage3ImportedAt") &&
+    schema.includes("sourceStage3ImportedById") &&
+    schema.includes('relation("ProjectConceptFolderStageThreeReferenceImporter"') &&
+    referenceTimelineMigration.includes('"sourceStage3ImportedAt"') &&
+    referenceTimelineMigration.includes('"sourceStage3ImportedById"'),
+  "Stage 3 reference imports must persist their timestamp and importing user for chronological chat rendering.",
 );
 
 assert(
@@ -121,6 +134,8 @@ assert(
     concepts.includes("Choose a Stage 3 concept that has an Approved Concept file") &&
     concepts.includes("sourceStage3ConceptId: sourceConcept.id") &&
     concepts.includes("sourceStage3ApprovedAttachmentId: sourceConcept.approvedAttachmentId") &&
+    concepts.includes("sourceStage3ImportedAt: new Date()") &&
+    concepts.includes("sourceStage3ImportedById: user.id") &&
     concepts.includes("availableStageThreeReferences"),
   "Approved Stage 3 references must be explicitly imported into a Stage 4 chat through a server-authorized action.",
 );
@@ -161,12 +176,17 @@ assert(
     chatWorkspace.includes("legacyConceptApprovalRepairRef") &&
     chatWorkspace.includes('status: "APPROVED"') &&
     chatWorkspace.includes("revokeProjectConceptApprovedAttachmentAction") &&
-    chatWorkspace.includes("conceptMode.approvalRevocationEligibility.canRevoke") &&
+    chatWorkspace.includes("canRevokeConceptApproval") &&
     chatWorkspace.includes("Revoke Approved Concept?") &&
     chatWorkspace.includes("Revoke Approval") &&
     chatWorkspace.includes("Rework is allowed through completed Stage 5") &&
     chatWorkspace.includes("conceptMode.isWorkflowCompleted") &&
     chatWorkspace.includes("Read-only approved Stage 3 reference") &&
+    chatWorkspace.includes('kind: "reference"') &&
+    chatWorkspace.includes("startingReferenceTimelineEntry") &&
+    chatWorkspace.includes("getTimelineEntryCreatedAtMs") &&
+    chatWorkspace.includes("ConceptReferenceTimelineCard") &&
+    !chatWorkspace.includes("startingReference={conceptMode.startingReference}") &&
     chatWorkspace.includes("!activeStage?.isTasker"),
   "Concept chat must immediately show designated submissions as approved while the legacy tasker approval remains hidden.",
 );
@@ -179,6 +199,14 @@ assert(
     history.includes("Concept files are locked because this workflow stage is completed") &&
     !history.includes("This workflow stage is completed. Chat is read-only"),
   "Starting-reference access and explicit management/deletion locks must be enforced without inventing a completed-stage chat lock.",
+);
+
+assert(
+  actions.includes("importStageThreeConceptReferenceAction") &&
+    actions.includes("publishProjectActivityUpdatedAfterResponse") &&
+    actions.includes('eventType: "timeline_updated"') &&
+    actions.includes("changedEntityId: input.folderId"),
+  "A newly imported Stage 3 reference must refresh every open Stage 4 participant view in real time.",
 );
 
 assert(

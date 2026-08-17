@@ -705,6 +705,15 @@ function formatLocalStageDateTime(value: string | Date) {
   }).format(date);
 }
 
+function getTimelineEntryCreatedAtMs(entry: DisplayChatEntry) {
+  if (typeof entry.localCreatedAtMs === "number") {
+    return entry.localCreatedAtMs;
+  }
+
+  const timestamp = new Date(entry.createdAtValue ?? entry.createdAt).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
 function formatLocalFileSize(fileSize: number) {
   if (fileSize >= 1024 * 1024) {
     return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
@@ -1223,7 +1232,9 @@ function shouldGroupWithPreviousMessage(
   if (
     !previousMessage ||
     previousMessage.kind === "system" ||
-    message.kind === "system"
+    message.kind === "system" ||
+    previousMessage.kind === "reference" ||
+    message.kind === "reference"
   ) {
     return false;
   }
@@ -1341,6 +1352,7 @@ function getSystemActivityMeta(message: DisplayChatEntry) {
     text.includes("approved") ||
     text.includes("completed") ||
     text.includes("uploaded") ||
+    text.includes("imported") ||
     text.includes("started")
   ) {
     return {
@@ -1431,6 +1443,80 @@ function SystemActivityCard({
         </div>
       </div>
     </TimelineFrame>
+  );
+}
+
+function ConceptReferenceTimelineCard({
+  message,
+  currentUserId,
+  currentUserDisplayName,
+}: {
+  message: DisplayChatEntry;
+  currentUserId: string;
+  currentUserDisplayName: string;
+}) {
+  const reference = message.reference;
+
+  if (!reference) {
+    return null;
+  }
+
+  return (
+    <SystemActivityCard
+      message={message}
+      alignment={getTimelineEntryAlignment(
+        message,
+        currentUserId,
+        currentUserDisplayName,
+      )}
+      currentUserDisplayName={currentUserDisplayName}
+      activityLabelOverride="Concept update"
+      titleOverride="Starting reference imported"
+      action={
+        <div className="rounded-[14px] border border-[#cfe3d2] bg-white/75 p-3">
+          <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#4f765d]">
+            {reference.stageNeutral ? "Approved concept" : "Stage 3"} · {reference.sourceConceptName}
+          </p>
+          <div className="mt-2 flex min-w-0 items-center gap-2">
+            {reference.mimeType.startsWith("image/") ? (
+              <AssetImageThumbnail
+                fileName={reference.fileName}
+                mimeType={reference.mimeType}
+                previewPath={reference.previewPath}
+                downloadPath={reference.downloadPath}
+              />
+            ) : (
+              <FileText className="h-4 w-4 shrink-0 text-brand" />
+            )}
+            <span className="min-w-0 flex-1 truncate text-[12px] font-[680] text-[#2d3a31]">
+              {reference.fileName}
+            </span>
+            <AssetPreviewButton
+              fileName={reference.fileName}
+              mimeType={reference.mimeType}
+              previewPath={reference.previewPath}
+              downloadPath={reference.downloadPath}
+              triggerClassName="size-8 rounded-full text-brand"
+            />
+            <Button asChild variant="ghost" size="icon" className="size-8 rounded-full text-brand">
+              <a
+                href={reference.downloadPath}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Download ${reference.fileName}`}
+              >
+                <Download className="h-4 w-4" />
+              </a>
+            </Button>
+          </div>
+          <p className="mt-1.5 text-[10px] leading-4 text-[#708077]">
+            {reference.stageNeutral
+              ? "Read-only approved concept reference. New work remains independent."
+              : "Read-only approved Stage 3 reference. New Stage 4 work remains independent."}
+          </p>
+        </div>
+      }
+    />
   );
 }
 
@@ -1626,8 +1712,6 @@ function ConceptBriefContextCard({
   attachments,
   assignedExecutorName,
   hasAcceptedBrief,
-  stageNeutral,
-  startingReference,
   canImportStageThreeReference,
   onImportStageThreeReference,
 }: {
@@ -1635,8 +1719,6 @@ function ConceptBriefContextCard({
   attachments: DisplayAttachmentRecord[];
   assignedExecutorName: string;
   hasAcceptedBrief: boolean;
-  stageNeutral: boolean;
-  startingReference: ProjectConceptChatMode["startingReference"];
   canImportStageThreeReference: boolean;
   onImportStageThreeReference: () => void;
 }) {
@@ -1667,50 +1749,7 @@ function ConceptBriefContextCard({
           </span>
         </div>
         <CardContent className="space-y-4 px-4 py-4 sm:px-5">
-          {startingReference ? (
-            <div className="rounded-[14px] border border-[#cfe3d2] bg-[#f5faf6] p-3">
-              <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#4f765d]">
-                Starting Reference · {startingReference.sourceConceptName}
-              </p>
-              <div className="mt-2 flex min-w-0 items-center gap-2">
-                {startingReference.mimeType.startsWith("image/") ? (
-                  <AssetImageThumbnail
-                    fileName={startingReference.name}
-                    mimeType={startingReference.mimeType}
-                    previewPath={startingReference.previewPath}
-                    downloadPath={startingReference.downloadPath}
-                  />
-                ) : (
-                  <FileText className="h-4 w-4 shrink-0 text-brand" />
-                )}
-                <span className="min-w-0 flex-1 truncate text-[12px] font-[680] text-[#2d3a31]">
-                  {startingReference.name}
-                </span>
-                <AssetPreviewButton
-                  fileName={startingReference.name}
-                  mimeType={startingReference.mimeType}
-                  previewPath={startingReference.previewPath}
-                  downloadPath={startingReference.downloadPath}
-                  triggerClassName="size-8 rounded-full text-brand"
-                />
-                <Button asChild variant="ghost" size="icon" className="size-8 rounded-full text-brand">
-                  <a
-                    href={startingReference.downloadPath}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Download ${startingReference.name}`}
-                  >
-                    <Download className="h-4 w-4" />
-                  </a>
-                </Button>
-              </div>
-              <p className="mt-1.5 text-[10px] leading-4 text-[#708077]">
-                {stageNeutral
-                  ? "Read-only approved concept reference. New work remains independent."
-                  : "Read-only approved Stage 3 reference. New Stage 4 work remains independent."}
-              </p>
-            </div>
-          ) : canImportStageThreeReference ? (
+          {canImportStageThreeReference ? (
             <div className="flex flex-col gap-3 rounded-[14px] border border-dashed border-[#bcd5c2] bg-[#f7fbf7] p-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-[800] uppercase tracking-[0.08em] text-[#4f765d]">
@@ -2901,6 +2940,42 @@ export function ProjectChatWorkspace({
   }
 
   const messages = loadedHistoryEntries;
+  const startingReferenceTimelineEntry = useMemo<DisplayChatEntry | null>(() => {
+    const reference = conceptMode?.startingReference;
+
+    if (!reference) {
+      return null;
+    }
+
+    const importedByName =
+      reference.importedBy?.name?.trim() ||
+      reference.importedBy?.email ||
+      "Project Owner";
+
+    return {
+      id: `concept-reference-${conceptMode.folderId}-${reference.id}`,
+      kind: "reference",
+      authorId: reference.importedBy?.id,
+      author: importedByName,
+      authorAvatarSrc: reference.importedBy?.avatarUrl
+        ? `/api/profile/avatar?v=${encodeURIComponent(reference.importedBy.avatarUrl)}`
+        : null,
+      role: "Internal Team",
+      body: `${importedByName} imported ${reference.sourceConceptName} as the starting reference for this concept.`,
+      createdAt: formatLocalStageDateTime(reference.importedAt),
+      createdAtValue: reference.importedAt,
+      reference: {
+        attachmentId: reference.id,
+        fileName: reference.name,
+        mimeType: reference.mimeType,
+        previewPath: reference.previewPath,
+        downloadPath: reference.downloadPath,
+        sourceConceptId: reference.sourceConceptId,
+        sourceConceptName: reference.sourceConceptName,
+        stageNeutral: conceptMode.stageNeutral,
+      },
+    };
+  }, [conceptMode]);
   const completionState = completionOverrides
     ? { ...completionData.summary, ...completionOverrides }
     : completionData.summary;
@@ -2994,7 +3069,7 @@ export function ProjectChatWorkspace({
         ...localMessages,
       ];
 
-      return combinedMessages
+      const timelineMessages = combinedMessages
         .map((message) => {
           const serverMessageId = message.serverEntryId ?? message.id;
           const deletedOverride = deletedMessageOverrides[serverMessageId];
@@ -3015,6 +3090,22 @@ export function ProjectChatWorkspace({
         })
         .filter((message) => !isLegacyBriefContextMessage(message))
         .filter((message) => !isConceptMode || !isConceptIrrelevantSystemEntry(message));
+
+      if (!startingReferenceTimelineEntry) {
+        return timelineMessages;
+      }
+
+      return [...timelineMessages, startingReferenceTimelineEntry].sort(
+        (left, right) => {
+          const timeDifference =
+            getTimelineEntryCreatedAtMs(left) -
+            getTimelineEntryCreatedAtMs(right);
+
+          return timeDifference !== 0
+            ? timeDifference
+            : left.id.localeCompare(right.id);
+        },
+      );
     },
     [
       deletedMessageOverrides,
@@ -3023,6 +3114,7 @@ export function ProjectChatWorkspace({
       visibleConfirmedComments,
       visibleOptimisticComments,
       isConceptMode,
+      startingReferenceTimelineEntry,
     ],
   );
   const stageSubmissions = useMemo(
@@ -8247,8 +8339,6 @@ export function ProjectChatWorkspace({
                 "Unassigned"
               }
               hasAcceptedBrief={hasAcceptedBriefInTimeline}
-              stageNeutral={isStageNeutralConceptMode}
-              startingReference={conceptMode.startingReference}
               canImportStageThreeReference={
                 conceptMode.stageNumber === 4 &&
                 conceptMode.canManage &&
@@ -8317,7 +8407,14 @@ export function ProjectChatWorkspace({
           ) : null}
 
           {displayedMessages.map((message) =>
-            message.kind === "system" ? (
+            message.kind === "reference" ? (
+              <ConceptReferenceTimelineCard
+                key={message.id}
+                message={message}
+                currentUserId={currentUserId}
+                currentUserDisplayName={currentUserDisplayName}
+              />
+            ) : message.kind === "system" ? (
               (() => {
                 const isInvoiceUploadedMessage =
                   message.title === "Invoice uploaded";
