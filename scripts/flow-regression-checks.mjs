@@ -31,8 +31,8 @@ async function runExistingPhaseChecks() {
 
 await runExistingPhaseChecks();
 
-const pngOnlyHelpText =
-  "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.";
+const comparisonHelpText =
+  "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.";
 
 const resolver = read("src/lib/permissions/resolver.ts");
 assertIncludesAll(
@@ -161,7 +161,7 @@ assertIncludesAll(
     "input.assetType === AttachmentAssetType.STAGE_SUBMISSION ||",
     "input.assetType === AttachmentAssetType.REVISION_ORIGINAL",
     "isFormalStageSubmission &&",
-    "Formal stage submissions must be PNG.",
+    "Formal stage submissions must use a supported file format.",
     "Only a project executor can upload submissions for review.",
     "Only the requested invoice recipient can upload the invoice for this stage.",
     "Invoice is required before completing this stage.",
@@ -206,13 +206,13 @@ const uploadValidation = read("src/lib/upload-validation.ts");
 assertIncludesAll(
   uploadValidation,
   [
-    "export const STAGE_SUBMISSION_ALLOWED_EXTENSIONS = [\"png\"] as const;",
-    "export const STAGE_SUBMISSION_ALLOWED_MIME_TYPES = [\"image/png\"] as const;",
+    "PROJECT_ASSET_ALLOWED_EXTENSIONS;",
+    "export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = [\"png\"] as const;",
     "return STAGE_SUBMISSION_ALLOWED_EXTENSIONS;",
     "stageSubmissionAllowedExtensionSet",
-    "stageSubmissionAllowedMimeTypeSet",
+    "isAllowedComparisonSubmissionFile",
   ],
-  "PNG-only upload validation",
+  "standard stage upload and PNG comparison validation",
 );
 
 const comparisonUtils = read("src/lib/comparison-utils.ts");
@@ -224,8 +224,8 @@ const helpCenter = read("src/lib/help-center.ts");
 assertIncludesAll(
   comparisonUtils,
   [
-    pngOnlyHelpText,
-    "isAllowedStageSubmissionFile",
+    comparisonHelpText,
+    "isAllowedComparisonSubmissionFile",
     "isCaptionableStageSubmissionAttachment",
     'attachment.mimeType.toLowerCase() === "image/png"',
   ],
@@ -257,13 +257,13 @@ assert(!comparison.includes("\"file.download\""), "Captions must not grant downl
 assertIncludesAll(
   chatWorkspace,
   [
-    "PNG_STAGE_SUBMISSION_ACCEPT",
-    "accept={PNG_STAGE_SUBMISSION_ACCEPT}",
-    "Formal stage submissions must be PNG.",
-    "PNG only.",
+    "STAGE_SUBMISSION_ACCEPT",
+    "accept={STAGE_SUBMISSION_ACCEPT}",
+    "Formal stage submissions must use a supported file format.",
+    "STAGE_SUBMISSION_FORMAT_LABEL",
     "assetType: \"REVISION_ORIGINAL\"",
   ],
-  "formal submission client PNG-only UI",
+  "formal submission client supported-format UI",
 );
 assertIncludesAll(
   compareWorkspace,
@@ -285,7 +285,7 @@ assertIncludesAll(
   ],
   "caption dialog guard display",
 );
-assertIncludes(helpCenter, pngOnlyHelpText, "help center PNG-only copy");
+assertIncludes(helpCenter, comparisonHelpText, "help center comparison format copy");
 
 const activePngOnlyFlowSources = [
   ["upload-validation", uploadValidation],

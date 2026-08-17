@@ -5887,7 +5887,7 @@ export async function requestAttachmentUpload(
       allowedExtensions: getStageSubmissionAllowedExtensions(
         stageSubmissionProjectCategory,
       ),
-      error: "Formal stage submissions must be PNG.",
+      error: "Formal stage submissions must use a supported file format.",
     });
   }
 

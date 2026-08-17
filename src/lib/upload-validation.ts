@@ -43,9 +43,12 @@ export const SUBMISSION_IMAGE_ALLOWED_MIME_TYPES = [
   "image/webp",
 ] as const;
 
-export const STAGE_SUBMISSION_ALLOWED_EXTENSIONS = ["png"] as const;
+export const STAGE_SUBMISSION_ALLOWED_EXTENSIONS =
+  PROJECT_ASSET_ALLOWED_EXTENSIONS;
 
-export const STAGE_SUBMISSION_ALLOWED_MIME_TYPES = ["image/png"] as const;
+export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = ["png"] as const;
+
+export const COMPARISON_SUBMISSION_ALLOWED_MIME_TYPES = ["image/png"] as const;
 
 export const PROFILE_IMAGE_ALLOWED_EXTENSIONS = [
   "png",
@@ -92,8 +95,11 @@ const submissionImageAllowedMimeTypeSet = new Set<string>(
 const stageSubmissionAllowedExtensionSet = new Set<string>(
   STAGE_SUBMISSION_ALLOWED_EXTENSIONS,
 );
-const stageSubmissionAllowedMimeTypeSet = new Set<string>(
-  STAGE_SUBMISSION_ALLOWED_MIME_TYPES,
+const comparisonSubmissionAllowedExtensionSet = new Set<string>(
+  COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS,
+);
+const comparisonSubmissionAllowedMimeTypeSet = new Set<string>(
+  COMPARISON_SUBMISSION_ALLOWED_MIME_TYPES,
 );
 const profileImageAllowedExtensionSet = new Set<string>(
   PROFILE_IMAGE_ALLOWED_EXTENSIONS,
@@ -192,13 +198,21 @@ export function isAllowedStageSubmissionFile(input: {
   projectCategory?: string | null;
 }) {
   const extension = getFileExtension(input.fileName);
-  const mimeType = input.mimeType.toLowerCase();
+  void input.mimeType;
+  void input.projectCategory;
 
+  return !!extension && stageSubmissionAllowedExtensionSet.has(extension);
+}
+
+export function isAllowedComparisonSubmissionFile(input: {
+  fileName: string;
+  mimeType: string;
+}) {
   return isAllowedExtensionAndMime(
-    extension,
-    mimeType,
-    stageSubmissionAllowedExtensionSet,
-    stageSubmissionAllowedMimeTypeSet,
+    getFileExtension(input.fileName),
+    input.mimeType.toLowerCase(),
+    comparisonSubmissionAllowedExtensionSet,
+    comparisonSubmissionAllowedMimeTypeSet,
   );
 }
 

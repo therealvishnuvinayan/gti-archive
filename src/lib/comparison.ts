@@ -35,7 +35,7 @@ import {
 } from "@/lib/project-collaborator-visibility";
 import { isProjectStatusCompleted } from "@/lib/project-statuses";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
-import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
+import { isAllowedComparisonSubmissionFile } from "@/lib/upload-validation";
 
 type AccessUser = Pick<
   User,
@@ -76,10 +76,9 @@ function isComparableSubmissionAttachment(input: {
   mimeType: string;
   projectCategory?: string | null;
 }) {
-  return isAllowedStageSubmissionFile({
+  return isAllowedComparisonSubmissionFile({
     fileName: input.fileName,
     mimeType: input.mimeType,
-    projectCategory: input.projectCategory,
   });
 }
 

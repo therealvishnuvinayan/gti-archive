@@ -53,7 +53,7 @@ for (const snippet of [
   "getLatestFormalSubmissionAttachmentId",
   "This submission has been superseded. Existing captions are read-only.",
   'mimeType.toLowerCase() === "image/png"',
-  "isAllowedStageSubmissionFile",
+  "isAllowedComparisonSubmissionFile",
   "captionAttachmentId: context.attachment.id",
   "captionAttachmentId: captionTarget.attachment.id",
   "isCaption: true",
@@ -95,7 +95,7 @@ for (const snippet of [
 const comparisonUtils = read("src/lib/comparison-utils.ts");
 assertIncludes(
   comparisonUtils,
-  "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.",
+  "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.",
   "required caption/comparison help text",
 );
 assertIncludes(

@@ -159,8 +159,11 @@ import { normalizeProjectCollaboratorPermissions } from "@/lib/project-collabora
 import {
   buildFileTypeNotAllowedPayload,
   formatUploadFileTypeError,
+  getAllowedFormatLabels,
   getStageSubmissionAllowedExtensions,
   getUploadErrorMessage,
+  isAllowedStageSubmissionFile,
+  STAGE_SUBMISSION_ALLOWED_EXTENSIONS,
   type UploadFileTypeErrorPayload,
 } from "@/lib/upload-validation";
 
@@ -362,11 +365,18 @@ type UploadAssetType =
 type CommentUploadIntent = "COMMENT_ATTACHMENT" | "STAGE_SUBMISSION";
 const MAX_RECORDING_DURATION_MS = 60_000;
 const AUTO_TRANSLATE_DEBOUNCE_MS = 650;
-const PNG_STAGE_SUBMISSION_ACCEPT = ".png,image/png";
+const STAGE_SUBMISSION_ACCEPT = STAGE_SUBMISSION_ALLOWED_EXTENSIONS.map(
+  (extension) => `.${extension}`,
+).join(",");
+const STAGE_SUBMISSION_FORMAT_LABEL = getAllowedFormatLabels(
+  STAGE_SUBMISSION_ALLOWED_EXTENSIONS,
+).join(", ");
 
 function getSubmissionDropzoneAccept(): Accept {
   return {
-    "image/png": [".png"],
+    "application/octet-stream": STAGE_SUBMISSION_ALLOWED_EXTENSIONS.map(
+      (extension) => `.${extension}`,
+    ),
   };
 }
 
@@ -423,7 +433,7 @@ function UploadIntentDropzone({
               fileName: rejectedFile?.name ?? "Selected file",
               mimeType: rejectedFile?.type || "application/octet-stream",
               allowedExtensions: getStageSubmissionAllowedExtensions(projectCategory),
-              error: "Formal stage submissions must be PNG.",
+              error: "Formal stage submissions must use a supported file format.",
             }),
           ),
         );
@@ -453,7 +463,7 @@ function UploadIntentDropzone({
 
       <p className="mt-1 text-[11px] text-[#7a837b]">
         {intent === "STAGE_SUBMISSION"
-          ? "PNG only."
+          ? `Supported: ${STAGE_SUBMISSION_FORMAT_LABEL}.`
           : "Choose one or more files to attach to the chat discussion."}
       </p>
 
@@ -5720,18 +5730,14 @@ export function ProjectChatWorkspace({
     }
 
     const allowedExtensions = getStageSubmissionAllowedExtensions(project.category);
-    const invalidFile = selectedFiles.find((file) => {
-      const hasAllowedExtension = allowedExtensions.some((extension) =>
-        file.name.toLowerCase().endsWith(`.${extension}`),
-      );
-      const normalizedMimeType = file.type.toLowerCase();
-      const hasAllowedMimeType =
-        !normalizedMimeType ||
-        normalizedMimeType === "image/png" ||
-        normalizedMimeType === "application/octet-stream";
-
-      return !hasAllowedExtension || !hasAllowedMimeType;
-    });
+    const invalidFile = selectedFiles.find(
+      (file) =>
+        !isAllowedStageSubmissionFile({
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          projectCategory: project.category,
+        }),
+    );
 
     if (invalidFile) {
       setRevisionDialogError(
@@ -5740,7 +5746,7 @@ export function ProjectChatWorkspace({
             fileName: invalidFile.name,
             mimeType: invalidFile.type || "application/octet-stream",
             allowedExtensions,
-            error: "Formal stage submissions must be PNG.",
+            error: "Formal stage submissions must use a supported file format.",
           }),
         ),
       );
@@ -9188,7 +9194,7 @@ export function ProjectChatWorkspace({
                 ref={revisionFileInputRef}
                 type="file"
                 multiple
-                accept={PNG_STAGE_SUBMISSION_ACCEPT}
+                accept={STAGE_SUBMISSION_ACCEPT}
                 className="sr-only"
                 onChange={(event) => {
                   handleRevisionFilesSelected(event.target.files);
@@ -10814,7 +10820,7 @@ export function ProjectChatWorkspace({
                 ref={revisionDialogFileInputRef}
                 type="file"
                 multiple
-                accept={PNG_STAGE_SUBMISSION_ACCEPT}
+                accept={STAGE_SUBMISSION_ACCEPT}
                 className="sr-only"
                 onChange={(event) => {
                   handleRevisionFilesSelected(event.target.files);

@@ -1,5 +1,5 @@
 import type { ProjectAttachmentRecord, ProjectChatEntry } from "@/lib/projects";
-import { isAllowedStageSubmissionFile } from "@/lib/upload-validation";
+import { isAllowedComparisonSubmissionFile } from "@/lib/upload-validation";
 
 export type ComparisonCommentRecord = {
   id: string;
@@ -28,16 +28,17 @@ export type SubmissionCaptionRecord = {
 };
 
 export const stageSubmissionCaptionHelpText =
-  "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.";
+  "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.";
 
 function hasComparableSubmissionType(
   attachment: ProjectAttachmentRecord,
   projectCategory?: string | null,
 ) {
-  return isAllowedStageSubmissionFile({
+  void projectCategory;
+
+  return isAllowedComparisonSubmissionFile({
     fileName: attachment.originalFileName,
     mimeType: attachment.mimeType,
-    projectCategory,
   });
 }
 

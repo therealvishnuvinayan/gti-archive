@@ -208,7 +208,7 @@ assertIncludes(
 );
 assertIncludes(
   comparison,
-  "isAllowedStageSubmissionFile",
+  "isAllowedComparisonSubmissionFile",
   "comparison server submission validator",
 );
 assert(
@@ -222,7 +222,7 @@ assert(
 const comparisonUtils = read("src/lib/comparison-utils.ts");
 assertIncludes(
   comparisonUtils,
-  "isAllowedStageSubmissionFile",
+  "isAllowedComparisonSubmissionFile",
   "comparison candidate submission validator",
 );
 assert(
@@ -236,8 +236,13 @@ assert(
 const uploadValidation = read("src/lib/upload-validation.ts");
 assertIncludes(
   uploadValidation,
-  "export const STAGE_SUBMISSION_ALLOWED_EXTENSIONS = [\"png\"] as const;",
-  "PNG-only formal submission extension rule",
+  "PROJECT_ASSET_ALLOWED_EXTENSIONS;",
+  "standard project format formal submission extension rule",
+);
+assertIncludes(
+  uploadValidation,
+  "export const COMPARISON_SUBMISSION_ALLOWED_EXTENSIONS = [\"png\"] as const;",
+  "PNG-only comparison submission extension rule",
 );
 assertIncludes(
   uploadValidation,
@@ -373,8 +378,8 @@ assertIncludes(
 const helpCenter = read("src/lib/help-center.ts");
 assertIncludes(
   helpCenter,
-  "Formal stage submissions must be PNG. Only valid PNG stage submissions can be compared or captioned.",
-  "PNG-only submission help text",
+  "Stage submissions support standard project file formats. PNG submissions can also be compared or captioned.",
+  "stage upload and PNG comparison help text",
 );
 
 console.log("Phase 0/1/2 regression checks passed.");
