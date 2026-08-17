@@ -421,7 +421,13 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav className={`sidebar-scroll flex min-h-0 flex-1 flex-col overflow-y-auto pb-1 ${isCollapsed ? "gap-6 pr-0" : "gap-8 pr-1"}`}>
+        <nav
+          className={`sidebar-scroll -mr-5 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto pb-1 sm:-mr-6 ${
+            isCollapsed
+              ? "gap-6 pr-5 sm:pr-6 xl:-mr-2 xl:pr-2"
+              : "gap-8 pr-6 sm:pr-7 xl:-mr-4 xl:pr-5"
+          }`}
+        >
           {sidebarSections.map((section) => (
             <div key={section.title}>
               <p className={`mb-3 px-3 text-[10px] font-[800] uppercase leading-5 text-[#6d7a70] ${isCollapsed ? "xl:sr-only" : ""}`}>

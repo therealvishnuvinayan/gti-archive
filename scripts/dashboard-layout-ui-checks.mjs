@@ -51,7 +51,7 @@ assert(
 assert(
   sidebar.includes('aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}') &&
     sidebar.indexOf('aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}') <
-      sidebar.indexOf('<nav className=') &&
+      sidebar.indexOf("sidebar-scroll -mr-5") &&
     sidebar.includes("xl:flex-col xl:gap-2") &&
     sidebar.includes("PanelLeftOpen") &&
     sidebar.includes("PanelLeftClose"),
@@ -79,6 +79,13 @@ assert(
     sidebar.includes("xl:absolute xl:right-0 xl:top-0") &&
     sidebar.includes("unreadCount"),
   "Collapsed navigation must preserve active styling and compact project/notification badges.",
+);
+assert(
+  sidebar.includes("sidebar-scroll -mr-5") &&
+    sidebar.includes("overflow-x-hidden overflow-y-auto") &&
+    sidebar.includes('"gap-6 pr-5 sm:pr-6 xl:-mr-2 xl:pr-2"') &&
+    sidebar.includes('"gap-8 pr-6 sm:pr-7 xl:-mr-4 xl:pr-5"'),
+  "The sidebar scroll viewport must reach the shell edge while preserving an inset content gutter in expanded and collapsed layouts.",
 );
 assert(
   sidebar.includes("payload.total") &&
