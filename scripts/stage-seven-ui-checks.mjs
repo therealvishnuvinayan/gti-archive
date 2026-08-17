@@ -118,9 +118,9 @@ assert(
   "The Request New Sample dialog must remain viewport-bounded, scroll its fields internally, and keep its action footer accessible.",
 );
 assert(
-  (workspace.match(/grid-cols-\[50px_minmax\(155px,1\.25fr\)_minmax\(130px,1fr\)_110px_110px_120px\]/g)?.length ?? 0) === 2 &&
+  (workspace.match(/grid-cols-\[50px_minmax\(155px,1\.25fr\)_minmax\(130px,1fr\)_110px_110px_210px\]/g)?.length ?? 0) === 2 &&
     workspace.includes('<span className="justify-self-start">Status</span>') &&
-    workspace.includes('<span className="justify-self-end text-right">Action</span>') &&
+    workspace.includes('<span className="justify-self-end text-right">Actions</span>') &&
     workspace.includes("<ReceiptStatusBadge round={round} />") &&
     workspace.includes("<DecisionBadge decision={round.decision} />") &&
     !workspace.includes('{selected ? "Selected" : "View"}'),
@@ -136,11 +136,16 @@ assert(
 );
 assert(
   workspace.includes("const canRequest = Boolean(selectedUnit && data.canManage") &&
+    workspace.includes("const canDelete = Boolean(round && canManage && !stageCompleted && !decided)") &&
+    workspace.includes("canDeleteRequests && !round.decision") &&
+    workspace.includes("onDeleteRound(round)") &&
+    workspace.includes("sampleRoundId: target.round.id") &&
     !workspace.includes("!latestRound || latestRound.decision") &&
+    !workspace.includes("round.sequence === unit.rounds.at(-1)") &&
     !service.includes("The latest physical sample request is still awaiting a decision") &&
     !service.includes("Previous sample rounds are read-only history.") &&
     !service.includes("The physical sample request email must be sent before recording a decision."),
-  "Managers must be able to create and review each physical sample request independently.",
+  "Managers must be able to create, review, and delete each physical sample request independently.",
 );
 
 for (const action of [

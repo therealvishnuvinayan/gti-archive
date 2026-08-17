@@ -327,6 +327,33 @@ async function main() {
     check(!resent.duplicate && resent.emailStatus === ProductionDispatchStatus.SENT && sentEmailCount() === 2, "an already sent request must support an explicit resend");
     check((await prisma.productionSampleRound.findUniqueOrThrow({ where: { id: failed.id } })).emailAttemptCount === 3, "resend must increment the audited email attempt count");
 
+    const olderDeletableRound = await createProductionSampleRound(owner, {
+      ...baseInput,
+      clientRequestId: `older-deletable-${runId}`,
+      name: "Older active sample request",
+    }, { sendEmail: sendFailure });
+    const newerDeletableRound = await createProductionSampleRound(owner, {
+      ...baseInput,
+      clientRequestId: `newer-deletable-${runId}`,
+      name: "Newer active sample request",
+    }, { sendEmail: sendFailure });
+    const deletedOlderRound = await deleteProductionSampleRound(owner, {
+      projectId: ids.project,
+      productionUnitId: units[0].id,
+      sampleRoundId: olderDeletableRound.id,
+    });
+    check(
+      deletedOlderRound.deleted &&
+        (await prisma.productionSampleRound.findUnique({ where: { id: olderDeletableRound.id } })) === null &&
+        Boolean(await prisma.productionSampleRound.findUnique({ where: { id: newerDeletableRound.id } })),
+      "a manager must be able to delete an older active request without deleting the newer active request",
+    );
+    await deleteProductionSampleRound(owner, {
+      projectId: ids.project,
+      productionUnitId: units[0].id,
+      sampleRoundId: newerDeletableRound.id,
+    });
+
     await expectRejected(deleteProductionSampleRound(executor, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: parallelRequest.id }), "an executor must not delete physical sample requests");
     const deletedPending = await deleteProductionSampleRound(owner, { projectId: ids.project, productionUnitId: units[0].id, sampleRoundId: parallelRequest.id });
     check(deletedPending.deleted && (await prisma.productionSampleRound.findUnique({ where: { id: parallelRequest.id } })) === null, "a manager must be able to delete an undecided physical sample request");
